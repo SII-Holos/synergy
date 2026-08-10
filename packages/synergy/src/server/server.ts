@@ -35,7 +35,7 @@ import { MCP } from "../mcp"
 import { Storage } from "../storage/storage"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
 import { upgradeWebSocket, websocket } from "hono/bun"
-import { errors } from "./error"
+import { errors, RuntimeShuttingDownError } from "./error"
 import { QuestionRoute } from "./question"
 import { SessionExportRoute } from "./session-export"
 import { CortexRoute } from "./cortex"
@@ -75,6 +75,7 @@ import { BrowserHostBrokerProcess } from "../browser/host-broker-process"
 import { BlueprintRoute } from "./blueprint"
 import { LatticeRoute } from "./lattice"
 import { WorkflowRoute } from "./workflow"
+import { BossRoute } from "./boss"
 import { RuntimeReload } from "../runtime/reload"
 import { ObservabilityRoute } from "./observability-route"
 import { PerformanceRoute } from "./performance-route"
@@ -172,6 +173,15 @@ export namespace Server {
   let _globalEventBroadcastOff: (() => void) | undefined
   let _globalEventHeartbeatInterval: ReturnType<typeof setInterval> | undefined
   let _globalEventClients: ReturnType<typeof GlobalEventClients.createRegistry> | undefined
+  let _shuttingDown = false
+
+  export function beginShutdown(): void {
+    _shuttingDown = true
+  }
+
+  export function resumeRequests(): void {
+    _shuttingDown = false
+  }
 
   function isLoopbackOrigin(input: string) {
     try {
@@ -240,6 +250,8 @@ export namespace Server {
       pathname.startsWith("/lattice/") ||
       pathname === "/workflow" ||
       pathname.startsWith("/workflow/") ||
+      pathname === "/boss" ||
+      pathname.startsWith("/boss/") ||
       pathname === "/lsp" ||
       pathname.startsWith("/lsp/") ||
       pathname === "/formatter" ||
@@ -538,6 +550,16 @@ export namespace Server {
             maxAge: 600,
           }),
         )
+        .use(async (c, next) => {
+          if (!_shuttingDown) return next()
+          return c.json(
+            {
+              name: "RuntimeShuttingDown",
+              data: { message: "Synergy runtime is shutting down" },
+            },
+            503,
+          )
+        })
         .use(provideRequestScope)
         .use(cspMiddleware())
         .get(
@@ -1212,6 +1234,7 @@ export namespace Server {
         .route("/blueprint", BlueprintRoute)
         .route("/lattice", LatticeRoute)
         .route("/workflow", WorkflowRoute)
+        .route("/boss", BossRoute)
         .route("/asset", AssetRoute)
         .route("/holos", HolosDataRoute)
         .route("", BrowserRoute)
@@ -1580,6 +1603,31 @@ export namespace Server {
         openapi: "3.1.1",
       },
     })
+    const shutdown = await resolver(RuntimeShuttingDownError).toOpenAPISchema()
+    result.components = {
+      ...result.components,
+      schemas: {
+        ...result.components?.schemas,
+        ...shutdown.components?.schemas,
+      },
+    }
+    const methods = ["get", "put", "post", "delete", "patch"] as const
+    for (const item of Object.values(result.paths)) {
+      if (!item) continue
+      for (const method of methods) {
+        const operation = item[method]
+        if (!operation || operation.responses?.["503"]) continue
+        operation.responses ??= {}
+        operation.responses["503"] = {
+          description: "Runtime shutting down",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/RuntimeShuttingDownError" },
+            },
+          },
+        }
+      }
+    }
     return result
   }
 

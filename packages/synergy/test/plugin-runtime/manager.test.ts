@@ -350,6 +350,35 @@ describe("PluginRuntimeManager", () => {
     }
   })
 
+  test("keeps an external runtime available after a timeout-shaped cancellation", async () => {
+    const manager = new PluginRuntimeManager()
+    const entryPath = path.join(import.meta.dir, "fixtures", "runtime-plugin.ts")
+    const manifest = compilePluginManifest(definition, {
+      generation: "external-timeout-cancellation",
+      runtime: { entry: "runtime/index.js", sha256: "test" },
+    })
+    const controller = new AbortController()
+    controller.abort(new DOMException("Caller timed out", "TimeoutError"))
+
+    await manager.start({ manifest, pluginDir: path.dirname(entryPath), entryPath })
+    try {
+      await expect(
+        manager.invoke({
+          pluginId: manifest.id,
+          handlerId: "operation:delay.get",
+          value: { delayMs: 1_000 },
+          context: { scopeId: "scope-one", directory: import.meta.dir, actor: { type: "sdk" } },
+          pluginDir: path.dirname(entryPath),
+          manifest,
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ code: "CANCELLED" })
+      expect(manager.registry.active(manifest.id)?.state).toBe("ready")
+    } finally {
+      await manager.stop(manifest.id)
+    }
+  })
+
   test("terminates an external runtime on timeout and contains a process crash", async () => {
     const manager = new PluginRuntimeManager()
     const entryPath = path.join(import.meta.dir, "fixtures", "runtime-plugin.ts")

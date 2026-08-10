@@ -36,6 +36,7 @@ const window = (messages: UserMessage[]): MessageWindowState<UserMessage> => ({
   mode: "latest",
   pendingLatest: false,
   pendingLatestIds: [],
+  tailMissingLatest: false,
 })
 
 describe("optimistic message handoff", () => {
@@ -100,6 +101,7 @@ describe("optimistic message handoff", () => {
         mode: "history",
         pendingLatest: true,
         pendingLatestIds: ["temporary"],
+        tailMissingLatest: false,
       },
       optimisticID: "temporary",
       canonicalID: "canonical",

@@ -2,6 +2,7 @@ import { PermissionNext } from "@/permission/next"
 import { INTENT_MAX_CHARS } from "../library/encoder-constants"
 import type { Agent } from "./agent"
 import { resolveAgentModelRole, type BuiltinAgentContext } from "./builtin-context"
+import PROMPT_ACTIVITY_SUMMARY from "./prompt/activity-summary.txt"
 import PROMPT_ANIMA from "./prompt/anima.txt"
 import PROMPT_CHRONICLER from "./prompt/chronicler.txt"
 import PROMPT_AGENT_GENERATE from "./generate.txt"
@@ -99,6 +100,17 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       prompt: PROMPT_SUMMARY,
       ...resolveAgentModelRole(ctx, "nano"),
     },
+    "activity-summary": {
+      name: "activity-summary",
+      mode: "primary",
+      options: {},
+      native: true,
+      hidden: true,
+      temperature: 0,
+      permission: PermissionNext.merge(ctx.defaults, PermissionNext.fromConfig({ "*": "deny" }), ctx.user),
+      prompt: PROMPT_ACTIVITY_SUMMARY,
+      ...resolveAgentModelRole(ctx, "nano"),
+    },
     intent: {
       name: "intent",
       mode: "primary",
@@ -167,6 +179,8 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
         write: "allow",
         todoread: "allow",
         todowrite: "allow",
+        // The fix-delivery tool must be callable from the whitelist.
+        github_deliver_fix: "allow",
         bash: {
           "*": "allow",
           "gh*": "deny",

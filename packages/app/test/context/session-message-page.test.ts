@@ -51,6 +51,7 @@ const window = (messages: TestMessage[], mode: "latest" | "history" = "latest"):
   mode,
   pendingLatest: false,
   pendingLatestIds: [],
+  tailMissingLatest: false,
 })
 
 describe("planMessagePageApply", () => {
@@ -74,6 +75,7 @@ describe("planMessagePageApply", () => {
       mode: "latest",
       pendingLatest: false,
       pendingLatestIds: [],
+      tailMissingLatest: false,
     })
   })
 
@@ -109,6 +111,7 @@ describe("planMessagePageApply", () => {
       mode: "history",
       pendingLatest: true,
       pendingLatestIds: ["pending"],
+      tailMissingLatest: false,
     }
     const plan = planMessagePageApply<TestMessage, TestPart>({
       page: page({ items: [message("older", 1)], total: 3 }),
@@ -127,6 +130,7 @@ describe("planMessagePageApply", () => {
       mode: "history",
       pendingLatest: true,
       pendingLatestIds: ["older"],
+      tailMissingLatest: false,
     }
     const plan = planMessagePageApply<TestMessage, TestPart>({
       page: page({ items: [message("older", 1)], total: 2 }),
@@ -154,6 +158,50 @@ describe("planMessagePageApply", () => {
     expect(plan.window.messages.map((item) => item.id)).toEqual(["root", "child", "new"])
     expect(plan.parts.root.map((part) => part.id)).toEqual(["root-part"])
     expect(plan.parts.child.map((part) => part.id)).toEqual(["child-part"])
+  })
+
+  test("propagates the history tail gap through plan metadata", () => {
+    const current: MessageWindowState<TestMessage> = {
+      messages: [{ id: "new", time: { created: 4 }, role: "user" }],
+      mode: "history",
+      pendingLatest: false,
+      pendingLatestIds: [],
+      tailMissingLatest: true,
+    }
+    const plan = planMessagePageApply<TestMessage, TestPart>({
+      page: page({ items: [message("older", 1)] }),
+      current,
+      mode: "history",
+    })
+    expect(plan.window.tailMissingLatest).toBe(true)
+    expect(plan.metadata.tailMissingLatest).toBe(true)
+  })
+
+  test("propagates a fresh eviction tail gap through plan metadata", () => {
+    const current: MessageWindowState<TestMessage> = {
+      messages: [{ id: "new", time: { created: 4 }, role: "user" }],
+      mode: "history",
+      pendingLatest: false,
+      pendingLatestIds: [],
+      tailMissingLatest: false,
+    }
+    const plan = planMessagePageApply<TestMessage, TestPart>({
+      page: page({ items: [message("older", 1)], total: 2 }),
+      current,
+      mode: "history",
+      cap: 1,
+    })
+    expect(plan.window.messages.map((item) => item.id)).toEqual(["older"])
+    expect(plan.window.tailMissingLatest).toBe(true)
+    expect(plan.metadata.tailMissingLatest).toBe(true)
+  })
+
+  test("latest page plan metadata clears the tail gap", () => {
+    const plan = planMessagePageApply<TestMessage, TestPart>({
+      page: page({ items: [message("a", 1)], total: 1 }),
+    })
+    expect(plan.metadata.mode).toBe("latest")
+    expect(plan.metadata.tailMissingLatest).toBe(false)
   })
 
   test("projects the latest eligible assistant only from an authoritative latest page", () => {

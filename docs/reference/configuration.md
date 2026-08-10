@@ -160,6 +160,26 @@ Remote well-known config is cached for ten minutes and acts only as a base: loca
 
 The frontend may mirror the value locally to choose a catalog before the server responds, but `00-general.jsonc` remains authoritative after global configuration synchronization. Locale changes are client-side and do not restart the server or providers.
 
+## Activity display
+
+`activityDisplay` is a global General preference controlling how much agent activity detail the interface shows. It lives in `00-general.jsonc` and accepts three values:
+
+```jsonc
+{
+  "activityDisplay": "full", // full | balanced | minimal
+}
+```
+
+`full` is the default when the field is absent. Settings manages the preference globally in the installation config. If the key is declared manually in project config, ordinary project-over-global precedence still applies.
+
+- `full` preserves the detailed turn timeline: every reasoning, text, tool, media, and attachment part stays in its original part order, matching pre-preference behavior. It never invokes the activity-summary nano model.
+- `balanced` replaces raw reasoning with one root-turn status row rather than model-generated reasoning text. After reasoning begins, the working turn shows one stable `Thinking…` row across all assistant messages. When the turn completes, that row disappears if the turn produced text, tool activity, or a receipt; an otherwise empty reasoning-only turn keeps one deterministic `Reasoning` fallback. Reasoning never invokes the `nano` model or writes derived activity metadata.
+  Settled ordinary tool tails (completed or error) are grouped by shared user-facing intent through one bounded `nano` call; stable semantic groups carry a concise summary, while deterministic fallback tail groups may omit text. Text, reasoning, attachment, receipt-tool, and message boundaries remain hard boundaries; in settled and persisted semantic membership, an error step stays in its current group, promotes that group to error, and prevents later steps from joining, while transient unpersisted streaming grouping uses deterministic family-and-scope adjacency until persisted signatures arrive. File and URL hints sent for semantic grouping are reduced to bounded non-sensitive forms such as a basename or origin; tool inputs, outputs, full paths, raw errors, and secrets are excluded. The model output must cover every step once, preserve order, and stay within the 24-step group limit. Invalid output, timeout, provider failure, or a manifest larger than 48 steps falls back for the whole unsettled tail.
+  Tool-group nano summaries and semantic group signatures remain internal presentation metadata rather than visible parent rows. The group's original tool calls render as flat, independently expandable rows, may span different activity families, and keep their own family action labels, titles, states, results, and specialized content. Balanced mode does not render a group topic, progress marker, step count, connector, or parent indentation.
+- `minimal` collapses each turn into one compact per-turn activity summary with animated count updates and, when available, one latest high-level tool-activity line. Raw reasoning and reasoning-status rows are not rendered. Permission, failure, external-action, and production communication receipts stay standalone, and other non-tool timeline items continue to render in their original position.
+
+The mode changes only activity presentation. It never hides permission requests, failures, or external-action and production communication receipts, and it never rewrites message parts or changes model context. In `balanced` and `minimal`, bounded tool-group nano summaries and semantic group signatures may be persisted as derived assistant `metadata.activity` so reconnects and historical turns retain the same presentation. Historical `reasoning` entries and `now.source: "reasoning"` remain schema-valid read-only compatibility data but are not produced or used by the Balanced reasoning projection. Mode changes update already rendered turns reactively without remounting them.
+
 ## JSONC, Schema, and References
 
 Files allow comments and trailing commas. On startup, the installed config schema is copied to:
@@ -425,6 +445,30 @@ The global Runtime domain controls the process-wide Cortex subagent maximum:
 `cortex.maxConcurrentTasks` must be a positive integer and defaults to `8`. Changes made through global Settings or the global configuration API apply without restarting the runtime. Lowering the value leaves running tasks untouched and queues new work until capacity is available; raising it releases eligible queued work. Project configuration does not control this process-global scheduler.
 
 The configured value is the scheduler maximum. Memory pressure temporarily lowers new-task admission to four tasks, or two under critical pressure; running tasks are not cancelled. The scheduler uses the shared session memory classification, with earlier ArrayBuffer pressure thresholds at 1 GiB and 2 GiB. Settings and the Cortex concurrency status API report both the configured maximum and the effective pressure-capped limit. `SYNERGY_CORTEX_GLOBAL_CONCURRENCY` is a process-local positive-integer override with higher precedence than the global config value; while it is set, Settings reports the environment-managed maximum instead of editing it.
+
+## Compaction
+
+Compaction settings are owned by the Runtime domain (`120-runtime.jsonc`):
+
+```jsonc
+{
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "overflowThreshold": 0.85,
+    "maxHistoryImages": 8,
+  },
+}
+```
+
+| Field                          | Required | Default | Description                                                                                 |
+| ------------------------------ | -------- | ------- | ------------------------------------------------------------------------------------------- |
+| `compaction.auto`              | no       | `true`  | Enable automatic compaction when the measured prompt crosses the soft budget                |
+| `compaction.prune`             | no       | `true`  | Enable pruning of old tool outputs                                                          |
+| `compaction.overflowThreshold` | no       | `0.85`  | Fraction of the input envelope that triggers auto-compaction; constrained to `0.5`–`1`      |
+| `compaction.maxHistoryImages`  | no       | `8`     | Maximum historical images sent as base64 per request; older images become text placeholders |
+
+The soft budget is `floor(inputEnvelope * overflowThreshold)`. The input envelope is the usable input for models with an explicit input limit, and `context - output - margin` for shared-context models only when reserving output and margin leaves a positive remainder; fully shared or near-window output declarations otherwise use the model's usable input. The margin is `min(32000, max(2048, ceil(context * 0.05)))`. See [LLM loop and compaction](../architecture/llm-loop.md#prompt-budget) for the full budgeting model. When automatic compaction is enabled, a prompt with no response space receives one root-scoped compaction attempt before Synergy stops locally with an actionable error; when automatic compaction is disabled, it stops immediately. An explicit per-request output limit remains effective when model context metadata is unavailable. `SYNERGY_DISABLE_AUTOCOMPACT=1` and `SYNERGY_DISABLE_PRUNE=1` force `auto` and `prune` off for the process.
 
 ## GitHub Channel
 

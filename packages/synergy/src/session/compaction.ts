@@ -20,6 +20,7 @@ import { LLM } from "./llm"
 import type { ModelMessage } from "ai"
 import { SessionHistory } from "./history"
 import { ObservabilityRedaction } from "@/observability/redaction"
+import { PromptBudgeter } from "./prompt-budgeter"
 
 export namespace SessionCompaction {
   const log = Log.create({ service: "session.compaction" })
@@ -35,6 +36,7 @@ export namespace SessionCompaction {
 
   export const PRUNE_MINIMUM = 20_000
   export const PRUNE_PROTECT = 40_000
+  const OUTPUT_BUDGET = 32_000
 
   const PRUNE_PROTECTED_TOOLS = ["skill"]
   type CompactionAttemptState = "running" | "committed" | "failed" | "empty"
@@ -502,10 +504,15 @@ export namespace SessionCompaction {
     const promptText = compacting.prompt ?? [defaultPrompt, ...compacting.context].join("\n\n")
 
     // Trim the conversation history so it fits within the compaction model's
-    // context window, reserving space for the prompt and output.
+    // context window while reserving a bounded summary output and tokenizer
+    // estimation margin. Compaction does not need the model's full long-output
+    // allowance, and requesting it can make the recovery call reject itself.
     const contextLimit = model.limit?.context ?? 0
     const promptCost = (await Token.estimateModel(model.id, promptText)) + 200
-    const messageBudget = contextLimit > 0 ? contextLimit - promptCost : Infinity
+    const configuredOutput = model.limit?.output && model.limit.output > 0 ? model.limit.output : OUTPUT_BUDGET
+    const outputBudget = Math.min(configuredOutput, OUTPUT_BUDGET)
+    const margin = PromptBudgeter.outputMargin(contextLimit)
+    const messageBudget = contextLimit > 0 ? contextLimit - promptCost - outputBudget - margin : Infinity
     const safeMessages = isFinite(messageBudget)
       ? await trimMessagesForContext(modelMessages, messageBudget, model.id)
       : modelMessages
@@ -532,6 +539,7 @@ export namespace SessionCompaction {
             ],
           },
         ],
+        maxOutputTokens: outputBudget,
         model,
       })
     } catch (error) {

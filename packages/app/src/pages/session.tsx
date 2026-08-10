@@ -96,9 +96,11 @@ import {
   adjustTrimScrollTop,
   computeTurnTrim,
   selectPrependAnchor,
+  shouldRecoverToLatest,
   type PrependScrollAnchor,
 } from "@/components/session/session-history-scroll"
 import { buildSessionTurnProjection } from "@ericsanchezok/synergy-ui/session-turn-projection"
+import { resolveActivityDisplay } from "@ericsanchezok/synergy-ui/session-turn-activity"
 import { hasMessageWindowSnapshot } from "@/context/session-message-window"
 import { sessionSyncWatchKey, shouldRunSessionSync } from "@/context/session-sync-plan"
 import { messageAllowsCanonicalActions } from "@/context/session-optimistic-message"
@@ -510,6 +512,11 @@ function SessionPageContent() {
     if (!id) return false
     return sync.session.history.pendingLatest(id)
   })
+  const historyTailMissingLatest = createMemo(() => {
+    const id = params.id
+    if (!id) return false
+    return sync.session.history.tailMissingLatest(id)
+  })
   // ── Root message derivation layer ───────────────────────────────────
   // Replaces old isSessionIdentityAnchor / isGuidedContextUserMessage / synthetic metadata
   // heuristics with orthogonal isRoot/visible/rootID/origin fields.
@@ -521,6 +528,7 @@ function SessionPageContent() {
   )
   const visibleRoots = createMemo(() => rootMessages().filter((m) => m.visible !== false), emptyUserMessages)
   const turnProjection = createMemo(() => buildSessionTurnProjection(messages()))
+  const activityDisplay = createMemo(() => resolveActivityDisplay(sync.data.config.activityDisplay))
   const lastRoot = createMemo(() => rootMessages().at(-1))
   // visibleRoots for navigation/timeline (deprecated old names kept for compatibility)
   const visibleUserMessages = visibleRoots
@@ -1088,6 +1096,30 @@ function SessionPageContent() {
     }
   }
 
+  // When the bounded history window no longer reaches the true latest
+  // (cap-evicted tail or unseen arrivals) and the user heads back to the
+  // local bottom, recover through the existing return-to-latest path.
+  // The transition from scrolled-up to bottom keeps load-earlier-at-bottom
+  // from auto-jumping; gap-less history preserves the old scroll behavior.
+  createEffect(
+    on(scrolledUp, (up, prev) => {
+      if (up || prev === undefined) return
+      const id = params.id
+      if (!id) return
+      if (
+        !shouldRecoverToLatest({
+          mode: historyMode(),
+          tailMissingLatest: historyTailMissingLatest(),
+          pendingLatest: historyPendingLatest(),
+          historyLoading: historyLoading(),
+        })
+      ) {
+        return
+      }
+      void returnToLatestMessages()
+    }),
+  )
+
   const turnInit = 20
   const turnBatch = 20
 
@@ -1375,6 +1407,7 @@ function SessionPageContent() {
                           paramsDir={params.dir!}
                           timeline={timeline}
                           turnProjection={turnProjection}
+                          activityDisplay={activityDisplay}
                           pendingTimeline={pendingTimeline}
                           sessionTransition={visibleSessionTransition}
                           sessionTransitionActions={visibleSessionTransitionActions}

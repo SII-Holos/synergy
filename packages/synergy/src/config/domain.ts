@@ -48,6 +48,7 @@ export namespace ConfigDomain {
       "snapshot",
       "username",
       "locale",
+      "activityDisplay",
       "layout",
       "embedding",
       "rerank",

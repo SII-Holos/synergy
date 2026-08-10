@@ -1,6 +1,7 @@
 import { availableParallelism } from "os"
 import { ObservabilityMetrics } from "@/observability/metrics"
 import { Log } from "@/util/log"
+import { exponentialBackoffDelayMs } from "@/util/exponential-backoff"
 import {
   spawnPolicyWorkerProcess,
   type PolicyWorkerProcess,
@@ -465,9 +466,10 @@ export class PolicyWorkerPool {
       this.openStartupCircuit(cause)
       return
     }
-    const delayMs = Math.min(
+    const delayMs = exponentialBackoffDelayMs(
+      failures,
+      this.supervisor.startupBackoffBaseMs,
       this.supervisor.startupBackoffMaxMs,
-      this.supervisor.startupBackoffBaseMs * 2 ** (failures - 1),
     )
     const generation = ++this.startupRetryGeneration
     this.startupRetryPending = true

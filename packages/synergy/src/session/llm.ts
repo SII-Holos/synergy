@@ -447,6 +447,7 @@ export namespace LLM {
       params.options,
       input.model.limit.output,
       OUTPUT_TOKEN_MAX,
+      input.model.limit.context,
     )
     const maxOutputTokens = Math.min(providerMaxOutputTokens, input.maxOutputTokens ?? providerMaxOutputTokens)
 

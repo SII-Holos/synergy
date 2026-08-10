@@ -45,12 +45,15 @@ import type {
   ApiPluginsGetResponses,
   ApiPluginsInstallFromRegistryErrors,
   ApiPluginsInstallFromRegistryResponses,
+  ApiPluginsListErrors,
   ApiPluginsListResponses,
   ApiPluginsRemoveErrors,
   ApiPluginsRemoveResponses,
   ApiPluginsUpdateFromRegistryErrors,
   ApiPluginsUpdateFromRegistryResponses,
+  AppAgentModelRolesErrors,
   AppAgentModelRolesResponses,
+  AppAgentsErrors,
   AppAgentsResponses,
   AppLogErrors,
   AppLogResponses,
@@ -86,6 +89,17 @@ import type {
   BlueprintLoopStartResponses,
   BlueprintLoopWaitErrors,
   BlueprintLoopWaitResponses,
+  BossSessionTreeErrors,
+  BossSessionTreeResponses,
+  BossSessionWorkerAssignErrors,
+  BossSessionWorkerAssignResponses,
+  BossSessionWorkerCancelErrors,
+  BossSessionWorkerCancelResponses,
+  BossSessionWorkerCreateErrors,
+  BossSessionWorkerCreateResponses,
+  BossWorkerAssignInput,
+  BossWorkerCancelInput,
+  BossWorkerCreateInput,
   BrowserAnnotationRequest,
   BrowserControlErrors,
   BrowserControlRequest,
@@ -100,49 +114,68 @@ import type {
   BrowserSessionErrors,
   BrowserSessionResponses,
   BrowserViewerTicketRequest,
+  ChannelAppResetErrors,
   ChannelAppResetResponses,
+  ChannelAppSessionErrors,
   ChannelAppSessionResponses,
+  ChannelDisconnectErrors,
   ChannelDisconnectResponses,
+  ChannelDownloadDiagnosticsErrors,
   ChannelDownloadDiagnosticsResponses,
   ChannelRefreshProjectsErrors,
   ChannelRefreshProjectsResponses,
+  ChannelStartErrors,
+  ChannelStartOneErrors,
   ChannelStartOneResponses,
   ChannelStartResponses,
+  ChannelStatusErrors,
   ChannelStatusResponses,
+  ChannelStopErrors,
+  ChannelStopOneErrors,
   ChannelStopOneResponses,
   ChannelStopResponses,
+  CommandListErrors,
   CommandListResponses,
   Config as Config2,
+  ConfigDiagnosticsErrors,
   ConfigDiagnosticsResponses,
   ConfigDomainGetErrors,
   ConfigDomainGetResponses,
   ConfigDomainImportApplyInput,
   ConfigDomainImportPlanInput,
+  ConfigDomainListErrors,
   ConfigDomainListResponses,
   ConfigDomainOpenErrors,
   ConfigDomainOpenResponses,
   ConfigDomainUpdateErrors,
   ConfigDomainUpdateInput,
   ConfigDomainUpdateResponses,
+  ConfigGetErrors,
   ConfigGetResponses,
+  ConfigGlobalErrors,
   ConfigGlobalResponses,
   ConfigImportApplyErrors,
   ConfigImportApplyResponses,
   ConfigImportPlanErrors,
   ConfigImportPlanResponses,
+  ConfigInstructionsGetErrors,
   ConfigInstructionsGetResponses,
+  ConfigInstructionsResetErrors,
   ConfigInstructionsResetResponses,
   ConfigInstructionsUpdateErrors,
   ConfigInstructionsUpdateInput,
   ConfigInstructionsUpdateResponses,
+  ConfigProvidersErrors,
   ConfigProvidersResponses,
   ConfigUpdateErrors,
   ConfigUpdateResponses,
   ControlProfileEffectiveErrors,
   ControlProfileEffectiveResponses,
+  ControlProfileListErrors,
   ControlProfileListResponses,
   CortexCancelErrors,
   CortexCancelResponses,
+  CortexConcurrencyErrors,
   CortexConcurrencyResponses,
   CortexGetErrors,
   CortexGetResponses,
@@ -152,32 +185,45 @@ import type {
   CortexOutputResponses,
   EventReplayErrors,
   EventReplayResponses,
+  EventSubscribeErrors,
   EventSubscribeResponses,
   ExperienceListFilter,
   ExperienceListSort,
+  ExperimentalResourceListErrors,
   ExperimentalResourceListResponses,
+  FormatterStatusErrors,
   FormatterStatusResponses,
   GlobalAgendaListErrors,
   GlobalAgendaListResponses,
+  GlobalDisposeErrors,
   GlobalDisposeResponses,
+  GlobalFilesystemBrowseErrors,
   GlobalFilesystemBrowseResponses,
   GlobalGitInitErrors,
   GlobalGitInitResponses,
+  GlobalHealthErrors,
   GlobalHealthResponses,
+  GlobalNavAcknowledgeCompletionsErrors,
   GlobalNavAcknowledgeCompletionsResponses,
+  GlobalNavPinnedErrors,
   GlobalNavPinnedResponses,
+  GlobalNavRecentErrors,
   GlobalNavRecentResponses,
+  GlobalPathsGetErrors,
   GlobalPathsGetResponses,
   GlobalSessionSearchErrors,
   GlobalSessionSearchResponses,
   GlobalStatsGetErrors,
   GlobalStatsGetResponses,
+  GlobalStatsProgressErrors,
   GlobalStatsProgressResponses,
   GlobalUpdateCheckErrors,
   GlobalUpdateCheckResponses,
   GlobalUpdateStartErrors,
   GlobalUpdateStartResponses,
+  GlobalUpdateStatusErrors,
   GlobalUpdateStatusResponses,
+  HolosAccountsListErrors,
   HolosAccountsListResponses,
   HolosAccountsRemoveErrors,
   HolosAccountsRemoveResponses,
@@ -188,22 +234,31 @@ import type {
   HolosAgentsGetResponses,
   HolosAgentsListErrors,
   HolosAgentsListResponses,
+  HolosCallbackErrors,
   HolosCallbackResponses,
   HolosContactAddErrors,
   HolosContactAddResponses,
   HolosContactGetErrors,
   HolosContactGetResponses,
+  HolosContactListErrors,
   HolosContactListResponses,
+  HolosContactRemoveErrors,
   HolosContactRemoveResponses,
   HolosContactToggleBlockErrors,
   HolosContactToggleBlockResponses,
   HolosCredentialsErrors,
   HolosCredentialsResponses,
+  HolosCredentialsStatusErrors,
   HolosCredentialsStatusResponses,
+  HolosInboxListErrors,
   HolosInboxListResponses,
+  HolosLoginErrors,
   HolosLoginResponses,
+  HolosLogoutErrors,
   HolosLogoutResponses,
+  HolosOutboxListErrors,
   HolosOutboxListResponses,
+  HolosPresenceErrors,
   HolosPresenceResponses,
   HolosProfileGetErrors,
   HolosProfileGetResponses,
@@ -215,9 +270,13 @@ import type {
   HolosSendResponses,
   HolosSendRetryErrors,
   HolosSendRetryResponses,
+  HolosStateErrors,
   HolosStateResponses,
+  HolosStatusErrors,
   HolosStatusResponses,
+  HolosThreadGetErrors,
   HolosThreadGetResponses,
+  HolosVerifyErrors,
   HolosVerifyResponses,
   LatticeRunApproveErrors,
   LatticeRunApproveResponses,
@@ -237,6 +296,7 @@ import type {
   LatticeSessionGetRunResponses,
   LibraryEmbeddingDownloadErrors,
   LibraryEmbeddingDownloadResponses,
+  LibraryEmbeddingStatusErrors,
   LibraryEmbeddingStatusResponses,
   LibraryExperienceApplyRewardErrors,
   LibraryExperienceApplyRewardResponses,
@@ -248,6 +308,7 @@ import type {
   LibraryExperienceGetReencodeJobErrors,
   LibraryExperienceGetReencodeJobResponses,
   LibraryExperienceGetResponses,
+  LibraryExperienceListErrors,
   LibraryExperienceListResponses,
   LibraryExperiencePageErrors,
   LibraryExperiencePageResponses,
@@ -261,6 +322,7 @@ import type {
   LibraryExperienceStartReencodeJobResponses,
   LibraryGetErrors,
   LibraryGetResponses,
+  LibraryListErrors,
   LibraryListResponses,
   LibraryRemoveErrors,
   LibraryRemoveResponses,
@@ -271,6 +333,7 @@ import type {
   LibraryStatsErrors,
   LibraryStatsResponses,
   LightloopUpdateInput,
+  LspStatusErrors,
   LspStatusResponses,
   McpAddErrors,
   McpAddResponses,
@@ -282,7 +345,9 @@ import type {
   McpAuthRemoveResponses,
   McpAuthStartErrors,
   McpAuthStartResponses,
+  McpConnectErrors,
   McpConnectResponses,
+  McpDisconnectErrors,
   McpDisconnectResponses,
   McpInspectErrors,
   McpInspectResponses,
@@ -292,6 +357,7 @@ import type {
   McpRemoteConfig,
   McpRestartErrors,
   McpRestartResponses,
+  McpStatusErrors,
   McpStatusResponses,
   McpTestErrors,
   McpTestResponses,
@@ -317,34 +383,50 @@ import type {
   NoteRemoveResponses,
   NoteUpdateErrors,
   NoteUpdateResponses,
+  ObservabilityDiagnosticsSummaryErrors,
   ObservabilityDiagnosticsSummaryResponses,
   Part as Part2,
   PartDeleteErrors,
   PartDeleteResponses,
   PartUpdateErrors,
   PartUpdateResponses,
+  PathGetErrors,
   PathGetResponses,
   PerfBrowserMetricBatch,
   PerfIssueSeverity,
   PerfIssueStatus,
   PerfModule,
+  PerformanceAnalysisCancelErrors,
   PerformanceAnalysisCancelResponses,
+  PerformanceAnalysisGetErrors,
   PerformanceAnalysisGetResponses,
   PerformanceAnalysisRequest,
+  PerformanceAnalysisStartErrors,
   PerformanceAnalysisStartResponses,
+  PerformanceBrowserMetricsIngestErrors,
   PerformanceBrowserMetricsIngestResponses,
   PerformanceConfigPatch,
+  PerformanceEventsStreamErrors,
   PerformanceEventsStreamResponses,
+  PerformanceInflightErrors,
   PerformanceInflightResponses,
+  PerformanceIssuesListErrors,
   PerformanceIssuesListResponses,
+  PerformancePerformanceConfigGetErrors,
   PerformancePerformanceConfigGetResponses,
+  PerformancePerformanceConfigUpdateErrors,
   PerformancePerformanceConfigUpdateResponses,
+  PerformanceSummaryErrors,
   PerformanceSummaryResponses,
+  PerformanceTimelineErrors,
   PerformanceTimelineResponses,
+  PerformanceTracesDetailErrors,
   PerformanceTracesDetailResponses,
+  PerformanceTracesListErrors,
   PerformanceTracesListResponses,
   PerfSpanStatus,
   PerfTimelineStat,
+  PermissionListErrors,
   PermissionListResponses,
   PermissionReplyErrors,
   PermissionReplyResponses,
@@ -355,6 +437,7 @@ import type {
   PluginGetConfigResponses,
   PluginInvokeOperationErrors,
   PluginInvokeOperationResponses,
+  PluginListUiContributionsErrors,
   PluginListUiContributionsResponses,
   PluginRuntimeLogsErrors,
   PluginRuntimeLogsResponses,
@@ -368,9 +451,12 @@ import type {
   PluginStatusResponses,
   PluginUpdateConfigErrors,
   PluginUpdateConfigResponses,
+  PostPluginDevReloadErrors,
   PostPluginDevReloadResponses,
+  ProviderAuthErrors,
   ProviderAuthGithubLogoutErrors,
   ProviderAuthGithubLogoutResponses,
+  ProviderAuthGithubStatusErrors,
   ProviderAuthGithubStatusResponses,
   ProviderAuthResponses,
   ProviderConnectionCreateErrors,
@@ -385,6 +471,7 @@ import type {
   ProviderCredentialsImportCredentialsResponses,
   ProviderDisconnectErrors,
   ProviderDisconnectResponses,
+  ProviderListErrors,
   ProviderListResponses,
   ProviderModelsRefreshErrors,
   ProviderModelsRefreshResponses,
@@ -394,6 +481,7 @@ import type {
   ProviderOauthCallbackResponses,
   ProviderUsageGetErrors,
   ProviderUsageGetResponses,
+  ProviderUsageListErrors,
   ProviderUsageListResponses,
   PtyConnectErrors,
   PtyConnectResponses,
@@ -401,12 +489,14 @@ import type {
   PtyCreateResponses,
   PtyGetErrors,
   PtyGetResponses,
+  PtyListErrors,
   PtyListResponses,
   PtyRemoveErrors,
   PtyRemoveResponses,
   PtyUpdateErrors,
   PtyUpdateResponses,
   QuestionAnswer,
+  QuestionListErrors,
   QuestionListResponses,
   QuestionRejectErrors,
   QuestionRejectResponses,
@@ -423,20 +513,28 @@ import type {
   RegistryPluginsVersionsErrors,
   RegistryPluginsVersionsResponses,
   RegistryPublishInput,
+  RegistryRefreshErrors,
+  RegistryRefreshResponses,
   RewardsInfo,
   RuntimeReloadErrors,
   RuntimeReloadResponses,
   RuntimeReloadScope,
   RuntimeReloadTarget,
+  SandboxReadinessErrors,
   SandboxReadinessResponses,
+  SandboxStatusErrors,
   SandboxStatusResponses,
   ScopeBootstrapErrors,
   ScopeBootstrapResponses,
+  ScopeCurrentErrors,
   ScopeCurrentResponses,
+  ScopeIndexErrors,
   ScopeIndexResponses,
+  ScopeListErrors,
   ScopeListResponses,
   ScopeRemoveErrors,
   ScopeRemoveResponses,
+  ScopeRuntimeDisposeErrors,
   ScopeRuntimeDisposeResponses,
   ScopeUpdateErrors,
   ScopeUpdateResponses,
@@ -464,6 +562,7 @@ import type {
   SessionExportMode,
   SessionFilesRestoreErrors,
   SessionFilesRestoreResponses,
+  SessionForkErrors,
   SessionForkResponses,
   SessionGetErrors,
   SessionGetResponses,
@@ -477,11 +576,13 @@ import type {
   SessionInboxResponses,
   SessionInboxRetryErrors,
   SessionInboxRetryResponses,
+  SessionIndexErrors,
   SessionIndexResponses,
   SessionInitErrors,
   SessionInitResponses,
   SessionInputErrors,
   SessionInputResponses,
+  SessionListErrors,
   SessionListResponses,
   SessionMessageErrors,
   SessionMessagePageErrors,
@@ -520,7 +621,9 @@ import type {
   SkillImportResponses,
   SkillImportUrlErrors,
   SkillImportUrlResponses,
+  SkillListErrors,
   SkillListResponses,
+  SkillReloadErrors,
   SkillReloadResponses,
   SkillRemoveErrors,
   SkillRemoveResponses,
@@ -532,6 +635,7 @@ import type {
   SynergyLinkTargetProbeResponses,
   SynergyLinkTargetRemoveErrors,
   SynergyLinkTargetRemoveResponses,
+  SynergyLinkTargetsErrors,
   SynergyLinkTargetsResponses,
   SynergyLinkTargetUpdateErrors,
   SynergyLinkTargetUpdateResponses,
@@ -540,6 +644,7 @@ import type {
   ToolIdsResponses,
   ToolListErrors,
   ToolListResponses,
+  VcsGetErrors,
   VcsGetResponses,
   WorkflowSessionCancelLightloopErrors,
   WorkflowSessionCancelLightloopResponses,
@@ -554,9 +659,11 @@ import type {
   WorkspaceFilesChildrenResponses,
   WorkspaceFilesReadErrors,
   WorkspaceFilesReadResponses,
+  WorkspaceFilesSearchErrors,
   WorkspaceFilesSearchResponses,
   WorkspaceFilesStatErrors,
   WorkspaceFilesStatResponses,
+  WorkspaceFilesStatusErrors,
   WorkspaceFilesStatusResponses,
   WorkspaceFilesWriteErrors,
   WorkspaceFilesWriteResponses,
@@ -569,6 +676,7 @@ import type {
   WorktreeEnterResponses,
   WorktreeLeaveErrors,
   WorktreeLeaveResponses,
+  WorktreeListErrors,
   WorktreeListResponses,
   WorktreeRemoveErrors,
   WorktreeRemoveInput,
@@ -625,7 +733,7 @@ export class Paths extends HeyApiClient {
    * Retrieve process-level Synergy paths that do not require a scope context.
    */
   public get<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).get<GlobalPathsGetResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<GlobalPathsGetResponses, GlobalPathsGetErrors, ThrowOnError>({
       url: "/global/paths",
       ...options,
     })
@@ -660,7 +768,11 @@ export class Filesystem extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<GlobalFilesystemBrowseResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      GlobalFilesystemBrowseResponses,
+      GlobalFilesystemBrowseErrors,
+      ThrowOnError
+    >({
       url: "/global/filesystem/browse",
       ...options,
       ...params,
@@ -720,10 +832,11 @@ export class Stats extends HeyApiClient {
    * Force a stats recompute and stream progress updates over SSE until the final snapshot is ready.
    */
   public progress<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).sse.get<GlobalStatsProgressResponses, unknown, ThrowOnError>({
-      url: "/global/stats/progress",
-      ...options,
-    })
+    return (options?.client ?? this.client).sse.get<
+      GlobalStatsProgressResponses,
+      GlobalStatsProgressErrors,
+      ThrowOnError
+    >({ url: "/global/stats/progress", ...options })
   }
 }
 
@@ -734,7 +847,7 @@ export class Update extends HeyApiClient {
    * Report whether this Synergy server can be updated from the Web client.
    */
   public status<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).get<GlobalUpdateStatusResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<GlobalUpdateStatusResponses, GlobalUpdateStatusErrors, ThrowOnError>({
       url: "/global/update/status",
       ...options,
     })
@@ -1415,7 +1528,11 @@ export class Files extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<WorkspaceFilesSearchResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      WorkspaceFilesSearchResponses,
+      WorkspaceFilesSearchErrors,
+      ThrowOnError
+    >({
       url: "/workspace/files/search",
       ...options,
       ...params,
@@ -1445,7 +1562,11 @@ export class Files extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<WorkspaceFilesStatusResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      WorkspaceFilesStatusResponses,
+      WorkspaceFilesStatusErrors,
+      ThrowOnError
+    >({
       url: "/workspace/files/status",
       ...options,
       ...params,
@@ -1568,6 +1689,137 @@ export class Export extends HeyApiClient {
   }
 }
 
+export class Worker extends HeyApiClient {
+  /**
+   * Spawn a Boss Mode worker
+   *
+   * Spawn a persistent specialist worker as a direct child of the boss session.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      bossWorkerCreateInput?: BossWorkerCreateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "bossWorkerCreateInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      BossSessionWorkerCreateResponses,
+      BossSessionWorkerCreateErrors,
+      ThrowOnError
+    >({
+      url: "/boss/session/{id}/worker",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Assign a task to a Boss Mode worker
+   *
+   * Assign a task to a direct child worker. Idempotent per (caller, taskID).
+   */
+  public assign<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      bossWorkerAssignInput?: BossWorkerAssignInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "bossWorkerAssignInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      BossSessionWorkerAssignResponses,
+      BossSessionWorkerAssignErrors,
+      ThrowOnError
+    >({
+      url: "/boss/session/{id}/assign",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Cancel a Boss Mode task
+   *
+   * Cancel a task (or all tasks) assigned to a direct child worker.
+   */
+  public cancel<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      bossWorkerCancelInput?: BossWorkerCancelInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "bossWorkerCancelInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      BossSessionWorkerCancelResponses,
+      BossSessionWorkerCancelErrors,
+      ThrowOnError
+    >({
+      url: "/boss/session/{id}/cancel",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Session extends HeyApiClient {
   /**
    * Global session search
@@ -1648,7 +1900,7 @@ export class Session extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<SessionIndexResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<SessionIndexResponses, SessionIndexErrors, ThrowOnError>({
       url: "/session/index",
       ...options,
       ...params,
@@ -1692,7 +1944,7 @@ export class Session extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<SessionListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<SessionListResponses, SessionListErrors, ThrowOnError>({
       url: "/session",
       ...options,
       ...params,
@@ -2127,7 +2379,7 @@ export class Session extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<SessionForkResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<SessionForkResponses, SessionForkErrors, ThrowOnError>({
       url: "/session/{sessionID}/fork",
       ...options,
       ...params,
@@ -3177,9 +3429,43 @@ export class Session extends HeyApiClient {
     })
   }
 
+  /**
+   * Get the Boss Mode tree
+   *
+   * Returns the Boss Mode subtree derived from the session parent chain, rooted at the session.
+   */
+  public tree<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<BossSessionTreeResponses, BossSessionTreeErrors, ThrowOnError>({
+      url: "/boss/session/{id}/tree",
+      ...options,
+      ...params,
+    })
+  }
+
   files = new Files({ client: this.client })
 
   export = new Export({ client: this.client })
+
+  worker = new Worker({ client: this.client })
 }
 
 export class Nav extends HeyApiClient {
@@ -3218,7 +3504,7 @@ export class Nav extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<GlobalNavRecentResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<GlobalNavRecentResponses, GlobalNavRecentErrors, ThrowOnError>({
       url: "/global/recent",
       ...options,
       ...params,
@@ -3231,10 +3517,11 @@ export class Nav extends HeyApiClient {
    * Acknowledge completion notices for non-archived root sessions across all scopes.
    */
   public acknowledgeCompletions<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).post<GlobalNavAcknowledgeCompletionsResponses, unknown, ThrowOnError>({
-      url: "/global/acknowledge-completions",
-      ...options,
-    })
+    return (options?.client ?? this.client).post<
+      GlobalNavAcknowledgeCompletionsResponses,
+      GlobalNavAcknowledgeCompletionsErrors,
+      ThrowOnError
+    >({ url: "/global/acknowledge-completions", ...options })
   }
 
   /**
@@ -3249,7 +3536,7 @@ export class Nav extends HeyApiClient {
     options?: Options<never, ThrowOnError>,
   ) {
     const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "limit" }] }])
-    return (options?.client ?? this.client).get<GlobalNavPinnedResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<GlobalNavPinnedResponses, GlobalNavPinnedErrors, ThrowOnError>({
       url: "/global/pinned",
       ...options,
       ...params,
@@ -3264,7 +3551,7 @@ export class Global extends HeyApiClient {
    * Get health information about the Synergy server.
    */
   public health<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).get<GlobalHealthResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<GlobalHealthResponses, GlobalHealthErrors, ThrowOnError>({
       url: "/global/health",
       ...options,
     })
@@ -3276,7 +3563,7 @@ export class Global extends HeyApiClient {
    * Clean up and dispose all scope runtimes, releasing all scoped resources.
    */
   public dispose<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).post<GlobalDisposeResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<GlobalDisposeResponses, GlobalDisposeErrors, ThrowOnError>({
       url: "/global/dispose",
       ...options,
     })
@@ -3306,10 +3593,11 @@ export class Diagnostics extends HeyApiClient {
    * Get a readonly local diagnostics summary for the Synergy server.
    */
   public summary<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).get<ObservabilityDiagnosticsSummaryResponses, unknown, ThrowOnError>({
-      url: "/global/diagnostics",
-      ...options,
-    })
+    return (options?.client ?? this.client).get<
+      ObservabilityDiagnosticsSummaryResponses,
+      ObservabilityDiagnosticsSummaryErrors,
+      ThrowOnError
+    >({ url: "/global/diagnostics", ...options })
   }
 }
 
@@ -3330,7 +3618,11 @@ export class Analysis extends HeyApiClient {
     options?: Options<never, ThrowOnError>,
   ) {
     const params = buildClientParams([parameters], [{ args: [{ key: "performanceAnalysisRequest", map: "body" }] }])
-    return (options?.client ?? this.client).post<PerformanceAnalysisStartResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<
+      PerformanceAnalysisStartResponses,
+      PerformanceAnalysisStartErrors,
+      ThrowOnError
+    >({
       url: "/global/performance/analysis",
       ...options,
       ...params,
@@ -3354,7 +3646,11 @@ export class Analysis extends HeyApiClient {
     options?: Options<never, ThrowOnError>,
   ) {
     const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
-    return (options?.client ?? this.client).get<PerformanceAnalysisGetResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      PerformanceAnalysisGetResponses,
+      PerformanceAnalysisGetErrors,
+      ThrowOnError
+    >({
       url: "/global/performance/analysis/{sessionID}",
       ...options,
       ...params,
@@ -3373,7 +3669,11 @@ export class Analysis extends HeyApiClient {
     options?: Options<never, ThrowOnError>,
   ) {
     const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
-    return (options?.client ?? this.client).post<PerformanceAnalysisCancelResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<
+      PerformanceAnalysisCancelResponses,
+      PerformanceAnalysisCancelErrors,
+      ThrowOnError
+    >({
       url: "/global/performance/analysis/{sessionID}/cancel",
       ...options,
       ...params,
@@ -3429,7 +3729,11 @@ export class Traces extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<PerformanceTracesListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      PerformanceTracesListResponses,
+      PerformanceTracesListErrors,
+      ThrowOnError
+    >({
       url: "/global/performance/traces",
       ...options,
       ...params,
@@ -3463,7 +3767,11 @@ export class Traces extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<PerformanceTracesDetailResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      PerformanceTracesDetailResponses,
+      PerformanceTracesDetailErrors,
+      ThrowOnError
+    >({
       url: "/global/performance/traces/{traceId}",
       ...options,
       ...params,
@@ -3507,7 +3815,11 @@ export class Issues extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<PerformanceIssuesListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      PerformanceIssuesListResponses,
+      PerformanceIssuesListErrors,
+      ThrowOnError
+    >({
       url: "/global/performance/issues",
       ...options,
       ...params,
@@ -3522,10 +3834,11 @@ export class PerformanceConfig extends HeyApiClient {
    * Get effective performance observability configuration and default metadata.
    */
   public get<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).get<PerformancePerformanceConfigGetResponses, unknown, ThrowOnError>({
-      url: "/global/performance/config",
-      ...options,
-    })
+    return (options?.client ?? this.client).get<
+      PerformancePerformanceConfigGetResponses,
+      PerformancePerformanceConfigGetErrors,
+      ThrowOnError
+    >({ url: "/global/performance/config", ...options })
   }
 
   /**
@@ -3540,7 +3853,11 @@ export class PerformanceConfig extends HeyApiClient {
     options?: Options<never, ThrowOnError>,
   ) {
     const params = buildClientParams([parameters], [{ args: [{ key: "performanceConfigPatch", map: "body" }] }])
-    return (options?.client ?? this.client).patch<PerformancePerformanceConfigUpdateResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).patch<
+      PerformancePerformanceConfigUpdateResponses,
+      PerformancePerformanceConfigUpdateErrors,
+      ThrowOnError
+    >({
       url: "/global/performance/config",
       ...options,
       ...params,
@@ -3566,7 +3883,11 @@ export class BrowserMetrics extends HeyApiClient {
     options?: Options<never, ThrowOnError>,
   ) {
     const params = buildClientParams([parameters], [{ args: [{ key: "perfBrowserMetricBatch", map: "body" }] }])
-    return (options?.client ?? this.client).post<PerformanceBrowserMetricsIngestResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<
+      PerformanceBrowserMetricsIngestResponses,
+      PerformanceBrowserMetricsIngestErrors,
+      ThrowOnError
+    >({
       url: "/global/performance/browser-metrics",
       ...options,
       ...params,
@@ -3609,7 +3930,11 @@ export class Events extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<PerformanceEventsStreamResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      PerformanceEventsStreamResponses,
+      PerformanceEventsStreamErrors,
+      ThrowOnError
+    >({
       url: "/global/performance/events",
       ...options,
       ...params,
@@ -3643,7 +3968,7 @@ export class Performance extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<PerformanceSummaryResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<PerformanceSummaryResponses, PerformanceSummaryErrors, ThrowOnError>({
       url: "/global/performance/summary",
       ...options,
       ...params,
@@ -3677,7 +4002,7 @@ export class Performance extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<PerformanceInflightResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<PerformanceInflightResponses, PerformanceInflightErrors, ThrowOnError>({
       url: "/global/performance/inflight",
       ...options,
       ...params,
@@ -3725,7 +4050,7 @@ export class Performance extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<PerformanceTimelineResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<PerformanceTimelineResponses, PerformanceTimelineErrors, ThrowOnError>({
       url: "/global/performance/timeline",
       ...options,
       ...params,
@@ -3812,7 +4137,11 @@ export class Credentials extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<HolosCredentialsStatusResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      HolosCredentialsStatusResponses,
+      HolosCredentialsStatusErrors,
+      ThrowOnError
+    >({
       url: "/holos/credentials/status",
       ...options,
       ...params,
@@ -3913,7 +4242,7 @@ export class Accounts extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<HolosAccountsListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<HolosAccountsListResponses, HolosAccountsListErrors, ThrowOnError>({
       url: "/holos/accounts",
       ...options,
       ...params,
@@ -4020,7 +4349,7 @@ export class Contact extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<HolosContactListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<HolosContactListResponses, HolosContactListErrors, ThrowOnError>({
       url: "/holos/contact",
       ...options,
       ...params,
@@ -4091,11 +4420,13 @@ export class Contact extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).delete<HolosContactRemoveResponses, unknown, ThrowOnError>({
-      url: "/holos/contact/{id}",
-      ...options,
-      ...params,
-    })
+    return (options?.client ?? this.client).delete<HolosContactRemoveResponses, HolosContactRemoveErrors, ThrowOnError>(
+      {
+        url: "/holos/contact/{id}",
+        ...options,
+        ...params,
+      },
+    )
   }
 
   /**
@@ -4302,7 +4633,7 @@ export class Inbox extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<HolosInboxListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<HolosInboxListResponses, HolosInboxListErrors, ThrowOnError>({
       url: "/holos/inbox",
       ...options,
       ...params,
@@ -4334,7 +4665,7 @@ export class Outbox extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<HolosOutboxListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<HolosOutboxListResponses, HolosOutboxListErrors, ThrowOnError>({
       url: "/holos/outbox",
       ...options,
       ...params,
@@ -4368,7 +4699,7 @@ export class Thread extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<HolosThreadGetResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<HolosThreadGetResponses, HolosThreadGetErrors, ThrowOnError>({
       url: "/holos/thread/{contactId}",
       ...options,
       ...params,
@@ -4402,7 +4733,7 @@ export class Holos extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<HolosLoginResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<HolosLoginResponses, HolosLoginErrors, ThrowOnError>({
       url: "/holos/login",
       ...options,
       ...params,
@@ -4420,7 +4751,7 @@ export class Holos extends HeyApiClient {
    * Handles the redirect from Holos after user login. Exchanges the code for credentials.
    */
   public callback<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).get<HolosCallbackResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<HolosCallbackResponses, HolosCallbackErrors, ThrowOnError>({
       url: "/holos/callback",
       ...options,
     })
@@ -4432,7 +4763,7 @@ export class Holos extends HeyApiClient {
    * Remove the active Holos account credentials and stop the Holos runtime. Used for sign-out.
    */
   public logout<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).delete<HolosLogoutResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).delete<HolosLogoutResponses, HolosLogoutErrors, ThrowOnError>({
       url: "/holos/credentials",
       ...options,
     })
@@ -4508,7 +4839,7 @@ export class Holos extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<HolosStateResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<HolosStateResponses, HolosStateErrors, ThrowOnError>({
       url: "/holos/state",
       ...options,
       ...params,
@@ -4538,7 +4869,7 @@ export class Holos extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<HolosVerifyResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<HolosVerifyResponses, HolosVerifyErrors, ThrowOnError>({
       url: "/holos/verify",
       ...options,
       ...params,
@@ -4568,7 +4899,7 @@ export class Holos extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<HolosStatusResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<HolosStatusResponses, HolosStatusErrors, ThrowOnError>({
       url: "/holos/status",
       ...options,
       ...params,
@@ -4598,7 +4929,7 @@ export class Holos extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<HolosPresenceResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<HolosPresenceResponses, HolosPresenceErrors, ThrowOnError>({
       url: "/holos/presence",
       ...options,
       ...params,
@@ -4672,7 +5003,7 @@ export class SynergyLink extends HeyApiClient {
    * List the persisted remote Synergy targets available on this installation.
    */
   public targets<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).get<SynergyLinkTargetsResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<SynergyLinkTargetsResponses, SynergyLinkTargetsErrors, ThrowOnError>({
       url: "/synergy-link/targets",
       ...options,
     })
@@ -4853,11 +5184,13 @@ export class Runtime extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<ScopeRuntimeDisposeResponses, unknown, ThrowOnError>({
-      url: "/scope/runtime/dispose",
-      ...options,
-      ...params,
-    })
+    return (options?.client ?? this.client).post<ScopeRuntimeDisposeResponses, ScopeRuntimeDisposeErrors, ThrowOnError>(
+      {
+        url: "/scope/runtime/dispose",
+        ...options,
+        ...params,
+      },
+    )
   }
 
   /**
@@ -4975,7 +5308,7 @@ export class Scope extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ScopeListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<ScopeListResponses, ScopeListErrors, ThrowOnError>({
       url: "/scope",
       ...options,
       ...params,
@@ -5005,7 +5338,7 @@ export class Scope extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ScopeCurrentResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<ScopeCurrentResponses, ScopeCurrentErrors, ThrowOnError>({
       url: "/scope/current",
       ...options,
       ...params,
@@ -5035,7 +5368,7 @@ export class Scope extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ScopeIndexResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<ScopeIndexResponses, ScopeIndexErrors, ThrowOnError>({
       url: "/scope/index",
       ...options,
       ...params,
@@ -5197,7 +5530,7 @@ export class Pty extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<PtyListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<PtyListResponses, PtyListErrors, ThrowOnError>({
       url: "/pty",
       ...options,
       ...params,
@@ -5416,7 +5749,11 @@ export class Instructions extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).delete<ConfigInstructionsResetResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).delete<
+      ConfigInstructionsResetResponses,
+      ConfigInstructionsResetErrors,
+      ThrowOnError
+    >({
       url: "/config/instructions",
       ...options,
       ...params,
@@ -5446,7 +5783,11 @@ export class Instructions extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ConfigInstructionsGetResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      ConfigInstructionsGetResponses,
+      ConfigInstructionsGetErrors,
+      ThrowOnError
+    >({
       url: "/config/instructions",
       ...options,
       ...params,
@@ -5519,7 +5860,7 @@ export class Domain extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ConfigDomainListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<ConfigDomainListResponses, ConfigDomainListErrors, ThrowOnError>({
       url: "/config/domains",
       ...options,
       ...params,
@@ -5769,7 +6110,7 @@ export class Config extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ConfigGetResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<ConfigGetResponses, ConfigGetErrors, ThrowOnError>({
       url: "/config",
       ...options,
       ...params,
@@ -5836,7 +6177,7 @@ export class Config extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ConfigGlobalResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<ConfigGlobalResponses, ConfigGlobalErrors, ThrowOnError>({
       url: "/config/global",
       ...options,
       ...params,
@@ -5866,7 +6207,7 @@ export class Config extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ConfigDiagnosticsResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<ConfigDiagnosticsResponses, ConfigDiagnosticsErrors, ThrowOnError>({
       url: "/config/diagnostics",
       ...options,
       ...params,
@@ -5896,7 +6237,7 @@ export class Config extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ConfigProvidersResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<ConfigProvidersResponses, ConfigProvidersErrors, ThrowOnError>({
       url: "/config/providers",
       ...options,
       ...params,
@@ -5934,7 +6275,7 @@ export class ControlProfile extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ControlProfileListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<ControlProfileListResponses, ControlProfileListErrors, ThrowOnError>({
       url: "/control-profiles",
       ...options,
       ...params,
@@ -6002,7 +6343,7 @@ export class Sandbox extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<SandboxStatusResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<SandboxStatusResponses, SandboxStatusErrors, ThrowOnError>({
       url: "/sandbox/status",
       ...options,
       ...params,
@@ -6032,7 +6373,7 @@ export class Sandbox extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<SandboxReadinessResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<SandboxReadinessResponses, SandboxReadinessErrors, ThrowOnError>({
       url: "/sandbox/readiness",
       ...options,
       ...params,
@@ -6130,7 +6471,7 @@ export class Path extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<PathGetResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<PathGetResponses, PathGetErrors, ThrowOnError>({
       url: "/path",
       ...options,
       ...params,
@@ -6162,7 +6503,7 @@ export class Worktree extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<WorktreeListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<WorktreeListResponses, WorktreeListErrors, ThrowOnError>({
       url: "/experimental/worktree",
       ...options,
       ...params,
@@ -6339,7 +6680,7 @@ export class Vcs extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<VcsGetResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<VcsGetResponses, VcsGetErrors, ThrowOnError>({
       url: "/vcs",
       ...options,
       ...params,
@@ -6532,7 +6873,7 @@ export class Permission extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<PermissionListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<PermissionListResponses, PermissionListErrors, ThrowOnError>({
       url: "/permission",
       ...options,
       ...params,
@@ -6564,7 +6905,7 @@ export class Question extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<QuestionListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<QuestionListResponses, QuestionListErrors, ThrowOnError>({
       url: "/question",
       ...options,
       ...params,
@@ -6699,7 +7040,7 @@ export class Cortex extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<CortexConcurrencyResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<CortexConcurrencyResponses, CortexConcurrencyErrors, ThrowOnError>({
       url: "/cortex/tasks/concurrency",
       ...options,
       ...params,
@@ -6827,7 +7168,7 @@ export class Command extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<CommandListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<CommandListResponses, CommandListErrors, ThrowOnError>({
       url: "/command",
       ...options,
       ...params,
@@ -7019,7 +7360,7 @@ export class Usage extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ProviderUsageListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<ProviderUsageListResponses, ProviderUsageListErrors, ThrowOnError>({
       url: "/provider/usage",
       ...options,
       ...params,
@@ -7083,7 +7424,11 @@ export class Auth extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ProviderAuthGithubStatusResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      ProviderAuthGithubStatusResponses,
+      ProviderAuthGithubStatusErrors,
+      ThrowOnError
+    >({
       url: "/provider/auth/github/status",
       ...options,
       ...params,
@@ -7415,7 +7760,7 @@ export class Provider extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ProviderListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<ProviderListResponses, ProviderListErrors, ThrowOnError>({
       url: "/provider",
       ...options,
       ...params,
@@ -7445,7 +7790,7 @@ export class Provider extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ProviderAuthResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<ProviderAuthResponses, ProviderAuthErrors, ThrowOnError>({
       url: "/provider/auth",
       ...options,
       ...params,
@@ -7523,7 +7868,7 @@ export class Skill extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<SkillListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<SkillListResponses, SkillListErrors, ThrowOnError>({
       url: "/skill",
       ...options,
       ...params,
@@ -7553,7 +7898,7 @@ export class Skill extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<SkillReloadResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<SkillReloadResponses, SkillReloadErrors, ThrowOnError>({
       url: "/skill/reload",
       ...options,
       ...params,
@@ -7734,7 +8079,11 @@ export class Embedding extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<LibraryEmbeddingStatusResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      LibraryEmbeddingStatusResponses,
+      LibraryEmbeddingStatusErrors,
+      ThrowOnError
+    >({
       url: "/library/embedding/status",
       ...options,
       ...params,
@@ -8014,7 +8363,11 @@ export class Experience extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<LibraryExperienceListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      LibraryExperienceListResponses,
+      LibraryExperienceListErrors,
+      ThrowOnError
+    >({
       url: "/library/experience",
       ...options,
       ...params,
@@ -8426,7 +8779,7 @@ export class Library extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<LibraryListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<LibraryListResponses, LibraryListErrors, ThrowOnError>({
       url: "/library",
       ...options,
       ...params,
@@ -9370,6 +9723,10 @@ export class Workflow extends HeyApiClient {
   session = new Session({ client: this.client })
 }
 
+export class Boss extends HeyApiClient {
+  session = new Session({ client: this.client })
+}
+
 export class Asset extends HeyApiClient {
   /**
    * Upload asset
@@ -9772,7 +10129,11 @@ export class Plugin extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<PluginListUiContributionsResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      PluginListUiContributionsResponses,
+      PluginListUiContributionsErrors,
+      ThrowOnError
+    >({
       url: "/plugin/ui/contributions",
       ...options,
       ...params,
@@ -9968,7 +10329,7 @@ export class Plugins extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ApiPluginsListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<ApiPluginsListResponses, ApiPluginsListErrors, ThrowOnError>({
       url: "/api/plugins",
       ...options,
       ...params,
@@ -10389,6 +10750,36 @@ export class Api extends HeyApiClient {
 }
 
 export class Registry extends HeyApiClient {
+  /**
+   * Force refresh the official plugin registry cache
+   *
+   * Re-fetch the official plugin registry index immediately, bypassing the cache TTL.
+   */
+  public refresh<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<RegistryRefreshResponses, RegistryRefreshErrors, ThrowOnError>({
+      url: "/api/registry/refresh",
+      ...options,
+      ...params,
+    })
+  }
+
   plugins = new Plugins({ client: this.client })
 }
 
@@ -10461,7 +10852,7 @@ export class App extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<AppAgentsResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<AppAgentsResponses, AppAgentsErrors, ThrowOnError>({
       url: "/agent",
       ...options,
       ...params,
@@ -10491,7 +10882,7 @@ export class App extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<AppAgentModelRolesResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<AppAgentModelRolesResponses, AppAgentModelRolesErrors, ThrowOnError>({
       url: "/agent/model-roles",
       ...options,
       ...params,
@@ -10521,7 +10912,7 @@ export class App extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ChannelAppSessionResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<ChannelAppSessionResponses, ChannelAppSessionErrors, ThrowOnError>({
       url: "/channel/app/session",
       ...options,
       ...params,
@@ -10551,7 +10942,7 @@ export class App extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<ChannelAppResetResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<ChannelAppResetResponses, ChannelAppResetErrors, ThrowOnError>({
       url: "/channel/app/reset",
       ...options,
       ...params,
@@ -10583,7 +10974,7 @@ export class Mcp extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<McpStatusResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<McpStatusResponses, McpStatusErrors, ThrowOnError>({
       url: "/mcp",
       ...options,
       ...params,
@@ -10652,7 +11043,7 @@ export class Mcp extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<McpConnectResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<McpConnectResponses, McpConnectErrors, ThrowOnError>({
       url: "/mcp/{name}/connect",
       ...options,
       ...params,
@@ -10682,7 +11073,7 @@ export class Mcp extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<McpDisconnectResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<McpDisconnectResponses, McpDisconnectErrors, ThrowOnError>({
       url: "/mcp/{name}/disconnect",
       ...options,
       ...params,
@@ -10844,7 +11235,7 @@ export class Channel extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ChannelStatusResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<ChannelStatusResponses, ChannelStatusErrors, ThrowOnError>({
       url: "/channel",
       ...options,
       ...params,
@@ -10874,7 +11265,7 @@ export class Channel extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<ChannelStartResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<ChannelStartResponses, ChannelStartErrors, ThrowOnError>({
       url: "/channel/start",
       ...options,
       ...params,
@@ -10904,7 +11295,7 @@ export class Channel extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<ChannelStopResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<ChannelStopResponses, ChannelStopErrors, ThrowOnError>({
       url: "/channel/stop",
       ...options,
       ...params,
@@ -10938,7 +11329,7 @@ export class Channel extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<ChannelStartOneResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<ChannelStartOneResponses, ChannelStartOneErrors, ThrowOnError>({
       url: "/channel/{channelType}/{accountId}/start",
       ...options,
       ...params,
@@ -10972,7 +11363,7 @@ export class Channel extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<ChannelStopOneResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<ChannelStopOneResponses, ChannelStopOneErrors, ThrowOnError>({
       url: "/channel/{channelType}/{accountId}/stop",
       ...options,
       ...params,
@@ -11006,7 +11397,7 @@ export class Channel extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<ChannelDisconnectResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).post<ChannelDisconnectResponses, ChannelDisconnectErrors, ThrowOnError>({
       url: "/channel/{channelType}/{accountId}/disconnect",
       ...options,
       ...params,
@@ -11078,7 +11469,11 @@ export class Channel extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ChannelDownloadDiagnosticsResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      ChannelDownloadDiagnosticsResponses,
+      ChannelDownloadDiagnosticsErrors,
+      ThrowOnError
+    >({
       url: "/channel/{channelType}/{accountId}/diagnostics.ndjson",
       ...options,
       ...params,
@@ -11112,7 +11507,11 @@ export class Resource extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<ExperimentalResourceListResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<
+      ExperimentalResourceListResponses,
+      ExperimentalResourceListErrors,
+      ThrowOnError
+    >({
       url: "/experimental/resource",
       ...options,
       ...params,
@@ -11148,7 +11547,7 @@ export class Lsp extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<LspStatusResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<LspStatusResponses, LspStatusErrors, ThrowOnError>({
       url: "/lsp",
       ...options,
       ...params,
@@ -11180,7 +11579,7 @@ export class Formatter extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<FormatterStatusResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).get<FormatterStatusResponses, FormatterStatusErrors, ThrowOnError>({
       url: "/formatter",
       ...options,
       ...params,
@@ -11246,7 +11645,7 @@ export class Event extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).sse.get<EventSubscribeResponses, unknown, ThrowOnError>({
+    return (options?.client ?? this.client).sse.get<EventSubscribeResponses, EventSubscribeErrors, ThrowOnError>({
       url: "/event",
       ...options,
       ...params,
@@ -11286,16 +11685,18 @@ export class SynergyClient extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).post<PostPluginDevReloadResponses, unknown, ThrowOnError>({
-      url: "/plugin/dev/reload",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
+    return (options?.client ?? this.client).post<PostPluginDevReloadResponses, PostPluginDevReloadErrors, ThrowOnError>(
+      {
+        url: "/plugin/dev/reload",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
       },
-    })
+    )
   }
 
   global = new Global({ client: this.client })
@@ -11357,6 +11758,8 @@ export class SynergyClient extends HeyApiClient {
   lattice = new Lattice({ client: this.client })
 
   workflow = new Workflow({ client: this.client })
+
+  boss = new Boss({ client: this.client })
 
   asset = new Asset({ client: this.client })
 

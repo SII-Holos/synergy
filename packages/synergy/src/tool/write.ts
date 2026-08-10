@@ -10,6 +10,8 @@ import { ScopeContext } from "../scope/context"
 import { trimDiff } from "./edit"
 import { RuntimeReload } from "../runtime/reload"
 import { captureWriteDiagnosticsBefore, collectWriteDiagnostics } from "./write-quality"
+import { SnapshotSchema } from "@/session/snapshot-schema"
+import { diffStats } from "./anchored-file"
 
 export const WriteTool = Tool.define("write", {
   description: DESCRIPTION,
@@ -45,6 +47,16 @@ export const WriteTool = Tool.define("write", {
     await Bus.publish(File.Event.Edited, {
       file: filepath,
     })
+    const finalContent = await Bun.file(filepath).text()
+    const finalDiff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, finalContent))
+    const changeSummary = diffStats(finalDiff)
+    const filediff = SnapshotSchema.fromContents({
+      file: displayPath,
+      before: contentOld,
+      after: finalContent,
+      ...changeSummary,
+      preview: finalDiff,
+    })
     FileTime.read(ctx.sessionID, filepath)
 
     const runtimeReloadTargets = RuntimeReload.detectTargetsForFile(filepath)
@@ -73,8 +85,11 @@ export const WriteTool = Tool.define("write", {
       title: displayPath,
       metadata: {
         diagnostics: diagnostics.diagnostics,
+        diff: finalDiff,
+        filediff,
+        changeSummary,
         filepath,
-        exists: exists,
+        exists,
         runtimeReload,
         builtinSourceWarning,
       },

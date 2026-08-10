@@ -1,3 +1,7 @@
+import {
+  toolDisplayMetadata as sharedToolDisplayMetadata,
+  toolDisplayPolicy,
+} from "@ericsanchezok/synergy-util/activity"
 import type { AttachmentPart } from "@ericsanchezok/synergy-sdk/client"
 
 type MaybeToolPart = {
@@ -33,24 +37,17 @@ export interface ToolDisplayMetadata {
 
 export function toolDisplayMetadata(part: unknown): ToolDisplayMetadata | undefined {
   const candidate = part as MaybeToolPart
-  const metadata = candidate.state?.metadata
-  const display = metadata?.display
-  return display && typeof display === "object" && !Array.isArray(display)
-    ? (display as ToolDisplayMetadata)
-    : undefined
+  return sharedToolDisplayMetadata(candidate.state?.metadata) as ToolDisplayMetadata | undefined
 }
 
 export function isMediaGenerationToolPart(part: unknown): boolean {
   const candidate = part as MaybeToolPart
-  if (candidate?.type !== "tool") return false
-  const display = toolDisplayMetadata(candidate)
-  return display?.kind === "media-generation"
+  return candidate?.type === "tool" && toolDisplayPolicy(candidate.state?.metadata).mediaGeneration
 }
 
 export function isToolCardHidden(part: unknown): boolean {
   const candidate = part as MaybeToolPart
-  if (candidate?.type !== "tool") return false
-  return toolDisplayMetadata(candidate)?.toolCard === "hidden"
+  return candidate?.type === "tool" && toolDisplayPolicy(candidate.state?.metadata).toolCardHidden
 }
 
 export function isActiveMediaGenerationToolPart(part: unknown): boolean {

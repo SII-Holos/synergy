@@ -12,9 +12,12 @@ function Root(props: ParentProps<{ class?: string }>) {
   )
 }
 
-function Nav(props: ParentProps) {
+function Nav(props: ParentProps<{ class?: string; ref?: (element: HTMLDivElement) => void }>) {
   return (
-    <div class="shrink-0 w-[224px] border-r border-border-weaker-base/70 flex flex-col overflow-hidden bg-background-base">
+    <div
+      ref={props.ref}
+      class={`shrink-0 w-[224px] border-r border-border-weaker-base/70 flex flex-col overflow-hidden bg-background-base ${props.class ?? ""}`}
+    >
       {props.children}
     </div>
   )
@@ -33,6 +36,7 @@ function NavItem(props: { icon: IconName; label: string; active?: boolean; badge
   return (
     <button
       type="button"
+      aria-current={props.active ? "page" : undefined}
       classList={{
         "flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-13-medium transition-colors w-full text-left": true,
         "workbench-selected-surface bg-surface-raised-base text-text-strong shadow-sm": props.active,

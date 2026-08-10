@@ -12,6 +12,7 @@ import {
 } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { Dynamic } from "solid-js/web"
+import { createMediaQuery } from "@solid-primitives/media"
 import { useLingui } from "@lingui/solid"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -55,6 +56,11 @@ import { useSettingsSave } from "./hooks/useSettingsSave"
 import { hasExplicitSettingsChanges, saveExplicitSettingsChanges } from "./settings-explicit-save"
 import { pluginSettingsResourceKey } from "./plugin-settings-resource"
 import { createSettingsComponentLoader } from "./settings-component-loader"
+import {
+  createSettingsMobileNavigationState,
+  reduceSettingsMobileNavigation,
+  restoreSettingsMobileListFocus,
+} from "./settings-mobile-navigation"
 import { GeneralPanel } from "./panels/GeneralPanel"
 import { rollbackFailedLocalePatch } from "./panels/locale-preference-change"
 import { ModelsPanel } from "./panels/ModelsPanel"
@@ -101,6 +107,7 @@ const legacyInitialTabs: Record<string, string> = {
 const copy = {
   dialogLabel: { id: "settings.panel.dialog.label", message: "Settings" },
   closeLabel: { id: "settings.panel.close.label", message: "Close settings" },
+  backLabel: { id: "settings.panel.back.label", message: "Back" },
   globalConfig: { id: "settings.panel.globalConfig.label", message: "Global Config" },
   customInstructionsNotSaved: {
     id: "settings.panel.customInstructions.notSaved",
@@ -216,7 +223,24 @@ export function SettingsPanel(props: SettingsPanelProps) {
     reset: async () => (await globalSDK.client.config.instructions.reset()).data!,
   })
 
-  const [activeTab, setActiveTab] = createSignal(normalizeInitialTab(props.initialTab))
+  const isDesktop = createMediaQuery("(min-width: 768px)")
+  const initialTab = normalizeInitialTab(props.initialTab)
+  const initialDeveloperMode = readDeveloperMode()
+  const initialNavigation = createSettingsMobileNavigationState(
+    initialTab,
+    filterSettingsSections(getSettingsSections(), initialDeveloperMode).map((section) => section.id),
+    isDesktop(),
+  )
+  let settingsNavigation: HTMLDivElement | undefined
+  const [navigation, setNavigation] = createSignal(initialNavigation)
+  const activeTab = () => navigation().activeTab
+  const mobileDetailOpen = () => navigation().detailOpen
+  const setActiveTab = (id: string) =>
+    setNavigation((state) => reduceSettingsMobileNavigation(state, { type: "select", id }))
+  const showMobileSectionList = () => {
+    setNavigation((state) => reduceSettingsMobileNavigation(state, { type: "back" }))
+    restoreSettingsMobileListFocus(settingsNavigation)
+  }
   const [providerFocusID, setProviderFocusID] = createSignal(props.providerFocusID)
   const [search, setSearch] = createSignal("")
   const [initialized, setInitialized] = createSignal(false)
@@ -224,9 +248,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [refreshing, setRefreshing] = createSignal(false)
   const [openingDomain, setOpeningDomain] = createSignal<string | undefined>()
   const [settingsPopoverLayer, setSettingsPopoverLayer] = createSignal<HTMLElement>()
-  const [developerMode, setDeveloperMode] = createSignal(readDeveloperMode())
+  const [developerMode, setDeveloperMode] = createSignal(initialDeveloperMode)
   const [settingsRegistryVersion, setSettingsRegistryVersion] = createSignal(0)
   let settingsRegistryRefreshScheduled = false
+  let mobileBackButton: HTMLButtonElement | undefined
   let settingsRegistryDisposed = false
   const unsubscribeSettingsSections = subscribeSettingsSections(() => {
     if (settingsRegistryRefreshScheduled) return
@@ -817,10 +842,23 @@ export function SettingsPanel(props: SettingsPanelProps) {
     })
 
   createEffect(() => {
+    const desktop = isDesktop()
+    setNavigation((state) => reduceSettingsMobileNavigation(state, { type: "layout", desktop }))
+  })
+
+  const activeSection = createMemo(() => settingsSections().find((section) => section.id === activeTab()))
+
+  const selectSection = (id: string) => setActiveTab(id)
+
+  createEffect(() => {
     if (!ready()) return
-    const current = activeTab()
-    if (settingsSections().some((section) => section.id === current)) return
-    setActiveTab("general")
+    const sectionIDs = settingsSections().map((section) => section.id)
+    setNavigation((state) => reduceSettingsMobileNavigation(state, { type: "validate", sectionIDs }))
+  })
+
+  createEffect(() => {
+    if (!ready() || isDesktop() || !mobileDetailOpen()) return
+    queueMicrotask(() => mobileBackButton?.focus())
   })
 
   return (
@@ -830,8 +868,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
       </button>
       {ready() ? (
         <AppPanel.Root class="settings-panel-root">
-          <AppPanel.Nav>
-            <div class="px-3 pt-4 pb-2 flex flex-col gap-2">
+          <AppPanel.Nav
+            ref={(element) => (settingsNavigation = element)}
+            class={`settings-panel-navigation ${!isDesktop() && mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
+          >
+            <div class="settings-panel-navigation-header px-3 pt-4 pb-2 flex flex-col gap-2">
               <div>
                 <div class="settings-nav-title truncate">{_(copy.globalConfig)}</div>
                 <div class="flex items-center gap-1.5 flex-wrap">
@@ -872,7 +913,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                           icon={sectionIcon(section)}
                           label={section.label}
                           active={activeTab() === section.id}
-                          onClick={() => setActiveTab(section.id)}
+                          onClick={() => selectSection(section.id)}
                         />
                       )}
                     </For>
@@ -885,7 +926,21 @@ export function SettingsPanel(props: SettingsPanelProps) {
             </div>
           </AppPanel.Nav>
 
-          <AppPanel.Content>
+          <AppPanel.Content
+            class={`settings-panel-content ${!isDesktop() && !mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
+          >
+            <div class="settings-panel-mobile-detail-header">
+              <button
+                ref={mobileBackButton}
+                type="button"
+                class="settings-panel-mobile-back flex shrink-0 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus-base"
+                aria-label={_(copy.backLabel)}
+                onClick={showMobileSectionList}
+              >
+                <Icon name={getSemanticIcon("navigation.back")} size="small" />
+              </button>
+              <div class="min-w-0 truncate text-15-medium text-text-strong">{activeSection()?.label}</div>
+            </div>
             <Show when={(configDiagnostics()?.length ?? 0) > 0}>
               <div class="settings-config-diagnostics-banner" role="alert">
                 <div class="settings-config-diagnostics-title">{_(copy.configDiagnosticsTitle)}</div>
@@ -912,8 +967,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
             </Show>
             <AppPanel.Body padding={false}>{renderActiveContent()}</AppPanel.Body>
 
-            <AppPanel.Footer>
-              <div class="flex-1 flex items-center gap-3">
+            <AppPanel.Footer class="settings-panel-footer">
+              <div class="settings-panel-footer-status flex flex-1 items-center gap-3">
                 <SaveIndicator status={saveFooterStatus()} />
                 <button
                   type="button"
@@ -925,20 +980,22 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   <span>{_(copy.developerMode)}</span>
                 </button>
               </div>
-              <Button type="button" variant="ghost" size="large" onClick={save.closeWithGuard}>
-                {_(copy.cancel)}
-              </Button>
-              <Show when={hasExplicitChanges()}>
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="large"
-                  disabled={explicitSaveBlocked()}
-                  onClick={() => void saveExplicitChanges()}
-                >
-                  {saving() || personalizeController.status() === "saving" ? _(copy.saving) : _(copy.saveChanges)}
+              <div class="settings-panel-footer-actions">
+                <Button type="button" variant="ghost" size="large" onClick={save.closeWithGuard}>
+                  {_(copy.cancel)}
                 </Button>
-              </Show>
+                <Show when={hasExplicitChanges()}>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="large"
+                    disabled={explicitSaveBlocked()}
+                    onClick={() => void saveExplicitChanges()}
+                  >
+                    {saving() || personalizeController.status() === "saving" ? _(copy.saving) : _(copy.saveChanges)}
+                  </Button>
+                </Show>
+              </div>
             </AppPanel.Footer>
           </AppPanel.Content>
         </AppPanel.Root>
@@ -950,7 +1007,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   )
 
   function renderActiveContent(): JSX.Element {
-    const section = settingsSections().find((item) => item.id === activeTab())
+    const section = activeSection()
     if (!section) {
       return (
         <SettingsPage title={_(copy.emptyTitle)} description={_(copy.emptyDescription)}>

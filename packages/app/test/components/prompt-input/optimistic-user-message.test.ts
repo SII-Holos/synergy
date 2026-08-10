@@ -49,7 +49,7 @@ describe("optimistic user message", () => {
     })
 
     const result = reconcileMessage(
-      { messages: existing, mode: "latest", pendingLatest: false, pendingLatestIds: [] },
+      { messages: existing, mode: "latest", pendingLatest: false, pendingLatestIds: [], tailMissingLatest: false },
       optimistic,
     )
     const renderedRoots = result.window.messages

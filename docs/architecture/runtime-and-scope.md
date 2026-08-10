@@ -32,7 +32,7 @@ The same runtime can be launched through several ownership surfaces:
 - Agenda and its built-in bootstrap items
 - the bounded Agent and Policy worker pools plus the ToolTask scheduler
 
-Stopping the global runtime first stops Agent, Policy, and tool admission, cancels or drains their owned work, and then stops Agenda, Channels, MCP, project Scope runtimes, and other process-owned resources.
+Shutdown admission closes as soon as the process receives its first termination signal: HTTP requests return `503 RuntimeShuttingDown`, and Agent, Policy, and tool admission closes synchronously before any shutdown await so no new execution can escape the process drain. The runtime force-exit deadline is derived from the largest configured execution cancellation grace plus a settlement margin; Desktop's managed-server supervisor and the generated systemd user unit both wait beyond the maximum supported runtime deadline before force-killing the process. Shutdown then stops Agenda, Channels, MCP, project Scope runtimes, and other process-owned resources before actively closing remaining HTTP, SSE, and WebSocket connections.
 
 Global services may still perform scoped work. They must enter the relevant `ScopeContext` before reading scoped configuration, storage, files, or session state.
 
@@ -96,6 +96,9 @@ A project Scope can declare multiple folders: the main `worktree` plus
 additional `sandboxes` entries persisted under the same project record.
 `Scope.fromDirectory()` appends opened worktree/related directories to
 `sandboxes`, and the Web project editor manages the list explicitly.
+`scope.update` accepts a `?directory=` query parameter: when the path
+`scopeID` is unknown, the handler resolves and persists the project from that
+directory, so a client that only knows the worktree path can still update it.
 
 The canonical derivation lives in `Scope.Root`:
 
