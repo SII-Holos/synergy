@@ -302,7 +302,7 @@ Activity summaries never rewrite message parts and never enter model-context pro
 
 Attachments are durable parts with separate model and presentation policies. Model policy can provide a summary, extracted content, a provider-managed file, or no model input. Presentation policy can select image/video/audio/thumbnail/file rendering, size, crop, or hidden state.
 
-Inline data and returned tool attachments are externalized to the Asset store as `asset://` references when appropriate. Provider file IDs remain provider inputs; local paths remain explicit workspace references. Repeated historical images are deduplicated and bounded during model projection without removing their transcript parts. Asset routes validate IDs inside the Asset root rather than accepting arbitrary filesystem paths.
+Inline data, uploaded bytes, Channel temporary files, and returned tool attachments are externalized to the Asset store as `asset://` references when appropriate. Attachments created from uploaded bytes, inline data, or Channel temporary files carry a `localPath` resolved from their durable Asset ID, so model projection and inbox recovery do not depend on the original upload or temporary file. Plugin Host Service assets use the same durable path; tool-created asset attachments may retain a source workspace path for user-facing provenance. Summary-mode user attachments include their resolved local path in model context, while provider-managed files preserve their explicit local path and provider input. Repeated historical images are deduplicated and bounded during model projection without removing their transcript parts. Asset routes validate IDs inside the Asset root rather than accepting arbitrary filesystem paths.
 
 ### Assistant context usage
 

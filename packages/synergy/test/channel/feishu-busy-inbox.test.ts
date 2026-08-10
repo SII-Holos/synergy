@@ -4,11 +4,13 @@ import path from "path"
 import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
+import { MessageV2 } from "../../src/session/message-v2"
 import { SessionInbox } from "../../src/session/inbox"
 import { SessionInvoke } from "../../src/session/invoke"
 import { SessionManager } from "../../src/session/manager"
 import { BusyError } from "../../src/session/error"
 import { Attachment } from "../../src/attachment"
+import { Asset } from "../../src/asset/asset"
 import { ChannelBusyHandoff } from "../../src/channel/busy-handoff"
 import { ChannelConversationAcceptance } from "../../src/channel/conversation-acceptance"
 import { SessionEndpoint } from "../../src/session/endpoint"
@@ -348,12 +350,18 @@ describe("Feishu attachment durable prompt parts", () => {
 
         const items = await SessionInbox.list(session.id)
         const materialized = await SessionInbox.materializeItem(items[0])
+        if (!materialized) throw new Error("expected materialized message")
         const attachmentPart = materialized?.parts.find((p) => p.type === "attachment")
-        if (attachmentPart?.type === "attachment") {
-          expect(attachmentPart.url).toBe(part.url)
-          expect(attachmentPart.url.startsWith("asset://")).toBe(true)
-          expect(attachmentPart.model?.mode).toBe("summary")
-        }
+        if (attachmentPart?.type !== "attachment") throw new Error("expected materialized attachment")
+        expect(attachmentPart.url).toBe(part.url)
+        expect(attachmentPart.url.startsWith("asset://")).toBe(true)
+        expect(attachmentPart.model?.mode).toBe("summary")
+        const assetPath = Asset.resolvePath(attachmentPart.url.slice("asset://".length))
+        expect(attachmentPart.localPath).toBe(assetPath)
+        expect(await Bun.file(attachmentPart.localPath!).text()).toBe("%PDF-1.4 test pdf content")
+        const modelInput = JSON.stringify(MessageV2.toModelMessage([materialized]))
+        expect(modelInput).toContain(assetPath!)
+        expect(modelInput).not.toContain(filepath)
       },
     })
   })

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { MessageV2 } from "../../src/session/message-v2"
+import { Asset } from "../../src/asset/asset"
 
 const sessionID = "session"
 
@@ -958,6 +959,77 @@ describe("session.message-v2.toModelMessage", () => {
     ]
 
     expect(MessageV2.toModelMessage(input)).toStrictEqual([])
+  })
+
+  test("projects durable and provider-managed attachment paths", () => {
+    const messageID = "m-attachments"
+    const assetID = "0123456789abcdef.bin"
+    const assetPath = Asset.resolvePath(assetID)!
+    const staleSourcePath = "/temporary/upload/trace.bin"
+    const providerPath = "/workspace/reference.pdf"
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo(messageID),
+        parts: [
+          {
+            ...basePart(messageID, "asset"),
+            type: "attachment",
+            url: `asset://${assetID}`,
+            mime: "application/octet-stream",
+            filename: "trace.bin",
+            localPath: staleSourcePath,
+            model: { mode: "summary", summary: "trace.bin (application/octet-stream)" },
+          },
+          {
+            ...basePart(messageID, "provider"),
+            type: "attachment",
+            url: "data:application/pdf;base64,JVBERi0xLjQ=",
+            mime: "application/pdf",
+            filename: "reference.pdf",
+            localPath: providerPath,
+            model: { mode: "provider-file", summary: "reference.pdf (application/pdf)" },
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    const projection = MessageV2.projectModelMessages(input)
+    const serialized = JSON.stringify(projection.messages)
+
+    expect(serialized).toContain(`[Attachment: trace.bin (application/octet-stream). Local path: ${assetPath}]`)
+    expect(serialized).toContain(
+      `[The user attached a file: reference.pdf (application/pdf). Local path: ${providerPath}]`,
+    )
+    expect(serialized).toContain("data:application/pdf;base64,JVBERi0xLjQ=")
+    expect(serialized).not.toContain(staleSourcePath)
+    expect(projection.provenance.categories.filesReferences).toContainEqual({
+      text: `[Attachment: trace.bin (application/octet-stream). Local path: ${assetPath}]`,
+    })
+  })
+
+  test("does not duplicate a fallback attachment path", () => {
+    const messageID = "m-fallback-attachment"
+    const assetID = "fedcba9876543210.bin"
+    const assetPath = Asset.resolvePath(assetID)!
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo(messageID),
+        parts: [
+          {
+            ...basePart(messageID, "asset"),
+            type: "attachment",
+            url: `asset://${assetID}`,
+            mime: "application/octet-stream",
+            filename: "trace.bin",
+            model: { mode: "summary" },
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    expect(JSON.stringify(MessageV2.projectModelMessages(input).messages)).toContain(
+      `[Attachment: trace.bin (application/octet-stream). Local path: ${assetPath}]`,
+    )
   })
 
   test("keeps the compatibility wrapper equivalent to canonical projection", () => {

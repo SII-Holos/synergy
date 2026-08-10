@@ -648,6 +648,16 @@ export async function createUserMessage(input: CreateUserMessageInput, rootIDOve
             }
 
             FileTime.read(input.sessionID, filepath)
+            const attachment = await Attachment.toPart({
+              filepath,
+              mime: part.mime,
+              filename: part.filename,
+              sessionID: input.sessionID,
+              messageID: info.id,
+              id: part.id,
+              source: part.source,
+              localPath: filepath,
+            })
             return [
               {
                 id: Identifier.ascending("part"),
@@ -655,18 +665,9 @@ export async function createUserMessage(input: CreateUserMessageInput, rootIDOve
                 sessionID: input.sessionID,
                 type: "text",
                 origin: "system" as const,
-                text: `Called the Read tool with the following input: {\"filePath\":\"${filepath}\"}`,
+                text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: attachment.localPath })}`,
               },
-              await Attachment.toPart({
-                filepath,
-                mime: part.mime,
-                filename: part.filename,
-                sessionID: input.sessionID,
-                messageID: info.id,
-                id: part.id,
-                localPath: filepath,
-                source: part.source,
-              }),
+              attachment,
             ]
         }
       }
