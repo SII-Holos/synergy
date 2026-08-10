@@ -791,7 +791,8 @@ function normalizeCommand(command: string): string {
     .replace(/\x00/g, "") // strip null bytes
     .normalize("NFKC") // Unicode normalization
     .replace(/\\\r?\n/g, "") // join shell line continuations
-    .replace(/\\(.)/g, "$1") // collapse backslash escapes
+    .replace(/\\\\/g, "\\") // collapse escaped backslashes
+    .replace(/\\(?!(?:[xX][0-9a-fA-F]{2}|[uU][0-9a-fA-F]{4}))/g, "") // drop escapes, keep \xNN/\uNNNN for inline decode
     .replace(/""/g, "") // strip empty string literals
     .replace(/[ \t]+/g, " ") // normalize whitespace
     .trim()
@@ -1372,6 +1373,9 @@ function shellConsumesProcessSubstitution(name: string | undefined, args: string
   if (command === "source" || command === ".") {
     return stdinCodePositionals(args)[0]?.startsWith("<(") ?? false
   }
+  if (isInlineInterpreterCommand(command)) {
+    return stdinCodePositionals(args).some((argument) => argument.startsWith("<("))
+  }
   if (command === "env") {
     const expanded = expandEnvSplitString([command, ...args], 0)
     if (expanded) return shellConsumesProcessSubstitution(expanded[0], expanded.slice(1), depth + 1)
@@ -1399,7 +1403,7 @@ function processOutputMayInvokeSudo(payload: string, state: ClassificationState,
     const command = commandBasename(parsed.name ?? "")
     if (command === "echo") return payloadMayInvokeSudo(parsed.args.join(" "), state, depth)
     if (command !== "printf") return false
-    return parsed.args.some((argument, index) => index > 0 && payloadMayInvokeSudo(argument, state, depth))
+    return parsed.args.some((argument) => payloadMayInvokeSudo(argument, state, depth))
   })
 }
 
@@ -1520,6 +1524,17 @@ function fdReplayMayInvokeSudo(command: string, state: ClassificationState, dept
     }
   }
 
+  for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+    const segment = segments[segmentIndex]
+    const parsed = simpleCommandParts(controlCommandSegment(segment))
+    if (commandBasename(parsed.name ?? "") !== "exec") continue
+    const match = /(\d*)<<<(?:(['"])(.*?)\2|(\S+))/.exec(segment)
+    if (!match) continue
+    const fd = match[1] || "0"
+    if (fd === "0") continue
+    const payload = match[3] ?? match[4] ?? ""
+    if (replayConsumed(segmentIndex, segment, fd) && payloadMayInvokeSudo(payload, state, depth)) return true
+  }
   return false
 }
 
@@ -1962,7 +1977,19 @@ function inlineStringSequence(payload: string, start: number): string | undefine
     while (index < payload.length) {
       const char = payload[index++]
       if (char === "\\" && index < payload.length) {
-        value += payload[index++]
+        const escape = payload[index]
+        if ((escape === "x" || escape === "X") && /^[0-9a-fA-F]{2}$/.test(payload.slice(index + 1, index + 3))) {
+          value += String.fromCharCode(parseInt(payload.slice(index + 1, index + 3), 16))
+          index += 3
+          continue
+        }
+        if (escape === "u" && /^[0-9a-fA-F]{4}$/.test(payload.slice(index + 1, index + 5))) {
+          value += String.fromCharCode(parseInt(payload.slice(index + 1, index + 5), 16))
+          index += 5
+          continue
+        }
+        value += escape
+        index++
         continue
       }
       if (char === quote) break

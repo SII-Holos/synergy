@@ -1459,6 +1459,14 @@ EOF`,
     "tee .payload.sh <<'EOF'\nsudo make install\nEOF\nsh .payload.sh",
     `cat <<'EOF' > .payload.py\nimport os; os.system("sudo make install")\nEOF\npython3 .payload.py`,
     `cat <<'EOF' > .payload.js\nrequire("child_process").execSync("sudo make install")\nEOF\nnode .payload.js`,
+    String.raw`python3 -c 'import os; os.system("\x73\x75\x64\x6f make install")'`,
+    String.raw`node -e 'require("child_process").execSync("\x73\x75\x64\x6f make install")'`,
+    `python3 <(printf 'import os; os.system("sudo make install")\n')`,
+    `python3 < <(printf 'import os; os.system("sudo make install")\n')`,
+    `node <(printf 'require("child_process").execSync("sudo make install")\n')`,
+    `node < <(printf 'require("child_process").execSync("sudo make install")\n')`,
+    "exec 3<<<'sudo make install'\nsh <&3",
+    `exec 3<<<'import os; os.system("sudo make install")'\npython3 <&3`,
   ])("detects sudo in stdin-fed executable payloads: %s", (command) => {
     expect(ShellSafety.hasSudoInvocation(command)).toBe(true)
   })
