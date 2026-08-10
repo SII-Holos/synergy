@@ -141,56 +141,7 @@ describe("ActivitySummary", () => {
     })
   })
 
-  test("persists a bounded stable reasoning summary and minimal now line", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        setDisplay("balanced")
-        const calls: AgentCall.TextInput[] = []
-        ;(AgentCall.text as typeof AgentCall.text) = mock(async (input: AgentCall.TextInput) => {
-          calls.push(input)
-          return { text: "Tracing the activity flow", model: {} as never }
-        })
-        ActivitySummary.init()
-        const { session, assistant } = await createTurn(tmp.path)
-        const text = `${"a".repeat(1300)}MIDDLE_SECRET${"b".repeat(500)}`
-        await Session.updatePart({
-          id: "reasoning",
-          messageID: assistant.id,
-          sessionID: session.id,
-          type: "reasoning",
-          text,
-          time: { start: Date.now() - 100, end: Date.now() },
-        })
-        await ActivitySummary.idle(session.id)
-
-        expect(calls).toHaveLength(1)
-        expect(calls[0]).toMatchObject({
-          agent: "activity-summary",
-          modelRole: "nano",
-          retries: 0,
-          timeoutMs: 15_000,
-          maxInputChars: 2_400,
-          maxOutputChars: 280,
-          small: true,
-        })
-        const prompt = String(calls[0]?.messages[0]?.content)
-        expect(prompt).not.toContain("MIDDLE_SECRET")
-        const activity = (await storedAssistant(session.id, assistant.id))?.metadata?.activity
-        expect(activity).toMatchObject({
-          v: 1,
-          seq: 1,
-          reasoning: {
-            reasoning: { state: "stable", text: "Tracing the activity flow", source: "nano" },
-          },
-          now: { text: "Tracing the activity flow", source: "reasoning" },
-        })
-      },
-    })
-  })
-
-  test("settles a failed terminal refresh from the latest live reasoning summary", async () => {
+  test("does not invoke nano or persist derived activity for reasoning", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -199,58 +150,7 @@ describe("ActivitySummary", () => {
         let calls = 0
         ;(AgentCall.text as typeof AgentCall.text) = mock(async () => {
           calls++
-          if (calls === 1) return { text: "Inspecting the streaming path", model: {} as never }
-          throw new Error("terminal refresh unavailable")
-        })
-        ActivitySummary.init()
-        const { session, assistant } = await createTurn(tmp.path)
-        const livePart: MessageV2.ReasoningPart = {
-          id: "reasoning-live",
-          messageID: assistant.id,
-          sessionID: session.id,
-          type: "reasoning",
-          text: "a".repeat(900),
-          time: { start: Date.now() - 100 },
-        }
-        await Session.updatePartDelta(livePart, livePart.text)
-        await ActivitySummary.idle(session.id)
-
-        expect((await storedAssistant(session.id, assistant.id))?.metadata?.activity).toMatchObject({
-          reasoning: {
-            "reasoning-live": { state: "live", text: "Inspecting the streaming path", source: "nano" },
-          },
-        })
-
-        await Session.updatePart({
-          ...livePart,
-          text: `${livePart.text}${"b".repeat(200)}`,
-          time: { ...livePart.time, end: Date.now() },
-        })
-        await ActivitySummary.idle(session.id)
-
-        expect(calls).toBe(2)
-        expect((await storedAssistant(session.id, assistant.id))?.metadata?.activity).toMatchObject({
-          reasoning: {
-            "reasoning-live": {
-              state: "stable",
-              text: "Inspecting the streaming path",
-              source: "partial-live",
-            },
-          },
-          now: { text: "Inspecting the streaming path", source: "reasoning" },
-        })
-      },
-    })
-  })
-
-  test("falls back deterministically when a terminal reasoning summary fails", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        setDisplay("balanced")
-        ;(AgentCall.text as typeof AgentCall.text) = mock(async () => {
-          throw new Error("provider unavailable")
+          return { text: "Should not run", model: {} as never }
         })
         ActivitySummary.init()
         const { session, assistant } = await createTurn(tmp.path)
@@ -264,9 +164,8 @@ describe("ActivitySummary", () => {
         })
         await ActivitySummary.idle(session.id)
 
-        expect((await storedAssistant(session.id, assistant.id))?.metadata?.activity).toMatchObject({
-          reasoning: { reasoning: { state: "fallback" } },
-        })
+        expect(calls).toBe(0)
+        expect((await storedAssistant(session.id, assistant.id))?.metadata?.activity).toBeUndefined()
       },
     })
   })

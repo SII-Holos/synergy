@@ -44,6 +44,7 @@ import {
   activityItemStableKey,
   isActivityTimelineItem,
   projectAssistantActivityItems,
+  projectBalancedReasoningItems,
   projectMinimalActivityItems,
   resolveActivityDisplay,
   type ActivityDisplayMode,
@@ -893,6 +894,25 @@ export function SessionTurn(
       }
       if (activityDisplay() === "minimal") {
         return projectMinimalActivityItems(result, msg?.id ?? props.messageID, !working()) as SessionTurnDisplayItem[]
+      }
+      if (activityDisplay() === "balanced") {
+        const assistants = display.filter(
+          (item): item is AssistantMessage =>
+            item.role === "assistant" && !isCompactionAssistant(item as AssistantMessage),
+        )
+        const frontier = assistants.reduce<{ message: AssistantMessage; partID: string } | undefined>(
+          (latest, assistant) => {
+            const reasoningPart = (data.store.part[assistant.id] ?? emptyParts).findLast(
+              (part): part is ReasoningPart => part.type === "reasoning" && Boolean(part.text.trim()),
+            )
+            return reasoningPart ? { message: assistant, partID: reasoningPart.id } : latest
+          },
+          undefined,
+        )
+        return projectBalancedReasoningItems(result, msg?.id ?? props.messageID, working(), {
+          anchorMessage: assistants[0],
+          frontier,
+        }) as SessionTurnDisplayItem[]
       }
       return result
     },

@@ -210,21 +210,13 @@ function activityMetadata(message: AssistantMessage): ActivityDerivedMetadata | 
   return parsed.success ? parsed.data : undefined
 }
 
-function reasoningSummary(
-  message: AssistantMessage,
-  partID: string,
-  terminal: boolean,
-  metadata: ActivityDerivedMetadata | undefined,
-): ActivityReasoningSummaryItem {
-  const stored = metadata?.reasoning?.[partID]
+function reasoningSummary(message: AssistantMessage, partID: string, terminal: boolean): ActivityReasoningSummaryItem {
   return {
     kind: "activity-reasoning-summary",
     key: `activity-reasoning:${message.id}:${partID}`,
     message,
     partID,
-    state: stored?.state ?? (terminal ? "fallback" : "pending"),
-    text: stored?.text,
-    source: stored?.source,
+    state: terminal ? "fallback" : "pending",
   }
 }
 
@@ -272,13 +264,6 @@ export function projectAssistantActivityItems(input: {
   }
   let pendingGroup: ActivityGroupItem | undefined
   let pendingPersistedKey: string | undefined
-  let pendingReasoning: ActivityReasoningSummaryItem | undefined
-
-  const emitPendingReasoning = () => {
-    if (!pendingReasoning) return
-    result.push(pendingReasoning)
-    pendingReasoning = undefined
-  }
 
   const flush = () => {
     if (!pendingGroup) return
@@ -297,14 +282,10 @@ export function projectAssistantActivityItems(input: {
       flush()
       const visible = visibleByIdentity.get(timelineItemIdentity(source))
       if (source.kind === "reasoning") {
-        emitPendingReasoning()
         if (!visible) continue
-        const summary = reasoningSummary(input.message, source.part.id, visible.kind === "part", metadata)
-        if (summary.text?.trim()) pendingReasoning = summary
-        else result.push(summary)
+        result.push(reasoningSummary(input.message, source.part.id, visible.kind === "part"))
         continue
       }
-      emitPendingReasoning()
       if (!visible) continue
       result.push({ kind: "passthrough", item: visible, message: input.message })
       continue
@@ -312,14 +293,12 @@ export function projectAssistantActivityItems(input: {
 
     if (!isVisible(source, visibleIdentities)) {
       flush()
-      emitPendingReasoning()
       continue
     }
 
     const permission = permissionForStep(input.message.id, source.part, input.permissions)
     if (!hasStableInput(source.part) && !permission && source.part.state.status !== "error") {
       flush()
-      emitPendingReasoning()
       continue
     }
     const step = makeStep(input.message, source.part, input.permissions, input.resolveToolInfo)
@@ -330,25 +309,6 @@ export function projectAssistantActivityItems(input: {
       ? undefined
       : (persistedGroupByPartID.get(step.part.id) ?? (legacyStored && !legacyStored.signature ? defaultKey : undefined))
 
-    if (pendingReasoning) {
-      if (receipt) {
-        emitPendingReasoning()
-      } else if (persistedKey && metadata?.groups?.[persistedKey]?.text) {
-        pendingReasoning = undefined
-      } else {
-        flush()
-        pendingGroup = makeGroup(input.message, step, false, persistedKey)
-        pendingGroup.topic = {
-          state: pendingReasoning.state,
-          text: pendingReasoning.text,
-          source: pendingReasoning.source,
-        }
-        pendingPersistedKey = persistedKey
-        pendingReasoning = undefined
-        continue
-      }
-    }
-
     const canMerge =
       !receipt &&
       pendingGroup &&
@@ -356,9 +316,7 @@ export function projectAssistantActivityItems(input: {
       pendingGroup.steps.length < MAX_ACTIVITY_GROUP_STEPS &&
       (persistedKey
         ? pendingPersistedKey === persistedKey
-        : !pendingPersistedKey &&
-          (Boolean(pendingGroup.topic?.text) ||
-            (pendingGroup.family === step.family && pendingGroup.scopeKey === step.scopeKey)))
+        : !pendingPersistedKey && pendingGroup.family === step.family && pendingGroup.scopeKey === step.scopeKey)
 
     if (canMerge && pendingGroup) {
       pendingGroup.steps.push(step)
@@ -372,7 +330,6 @@ export function projectAssistantActivityItems(input: {
   }
 
   flush()
-  emitPendingReasoning()
   return result
 }
 export function isActivityTimelineItem(value: ActivityTimelineItem | unknown): value is ActivityTimelineItem {
@@ -386,6 +343,79 @@ export function isActivityTimelineItem(value: ActivityTimelineItem | unknown): v
     kind === "activity-boundary" ||
     kind === "passthrough"
   )
+}
+
+export type BalancedReasoningFrontier = {
+  message: AssistantMessage
+  partID: string
+}
+
+function isBalancedTurnOutput(item: ActivityTimelineItem): boolean {
+  if (item.kind === "activity-group" || item.kind === "activity-receipt") return true
+  return item.kind === "passthrough" && item.item.kind !== "compaction"
+}
+
+export function projectBalancedReasoningItems<T>(
+  items: readonly (ActivityTimelineItem | T)[],
+  rootMessageID: string,
+  working: boolean,
+  options?: {
+    anchorMessage?: AssistantMessage
+    frontier?: BalancedReasoningFrontier
+  },
+): (ActivityTimelineItem | T)[] {
+  const activityItems = items.filter(isActivityTimelineItem)
+  const reasoningItems = activityItems.filter(
+    (item): item is ActivityReasoningSummaryItem => item.kind === "activity-reasoning-summary",
+  )
+  const fallbackFrontier = reasoningItems.at(-1)
+  const frontier =
+    options?.frontier ??
+    (fallbackFrontier ? { message: fallbackFrontier.message, partID: fallbackFrontier.partID } : undefined)
+  if (!frontier) return [...items]
+
+  const anchorMessage = options?.anchorMessage ?? activityItems[0]?.message ?? frontier.message
+  const hasOutput = activityItems.some(isBalancedTurnOutput)
+  const summary: ActivityReasoningSummaryItem | undefined =
+    working || !hasOutput
+      ? {
+          kind: "activity-reasoning-summary",
+          key: `activity-reasoning:${rootMessageID}`,
+          message: anchorMessage,
+          partID: frontier.partID,
+          state: working ? "pending" : "fallback",
+        }
+      : undefined
+  const keptMessageIDs = new Set(
+    activityItems.flatMap((item) => (item.kind === "activity-reasoning-summary" ? [] : [item.message.id])),
+  )
+  if (summary) keptMessageIDs.add(summary.message.id)
+
+  const result: (ActivityTimelineItem | T)[] = []
+  const boundaryMessageIDs = new Set<string>()
+  let insertedSummary = false
+  for (const item of items) {
+    if (isActivityTimelineItem(item)) {
+      if (!insertedSummary && summary && item.message.id === summary.message.id) {
+        result.push(summary)
+        insertedSummary = true
+      }
+      if (item.kind === "activity-reasoning-summary") {
+        if (!keptMessageIDs.has(item.message.id) && !boundaryMessageIDs.has(item.message.id)) {
+          result.push({
+            kind: "activity-boundary",
+            key: `activity-boundary:${item.message.id}`,
+            message: item.message,
+          })
+          boundaryMessageIDs.add(item.message.id)
+        }
+        continue
+      }
+    }
+    result.push(item)
+  }
+  if (summary && !insertedSummary) result.push(summary)
+  return result
 }
 
 function receiptForGroup(group: ActivityGroupItem, step?: ActivityStepProjection): ActivityReceiptItem {

@@ -99,8 +99,13 @@ mock.module("../../src/components/special-user-message", () => ({ getSpecialUser
 mock.module("../../src/components/tool-renders", () => ({}))
 mock.module("../../src/components/typewriter", () => ({ Typewriter: Empty }))
 
-const { activityItemStableKey, projectAssistantActivityItems, projectMinimalActivityItems, resolveActivityDisplay } =
-  await import("../../src/components/session-turn-activity")
+const {
+  activityItemStableKey,
+  projectAssistantActivityItems,
+  projectBalancedReasoningItems,
+  projectMinimalActivityItems,
+  resolveActivityDisplay,
+} = await import("../../src/components/session-turn-activity")
 const { collectSessionTurnTimelineItems, timelineItemStableKey } = await import("../../src/components/session-turn")
 
 function assistant(id = "assistant-a"): AssistantMessage {
@@ -227,6 +232,83 @@ function project(input: {
 function activities(items: readonly ActivityTimelineItem[]) {
   return items.filter((item) => item.kind === "activity-group")
 }
+
+describe("balanced reasoning projection", () => {
+  test("keeps one root-turn Thinking status across assistant messages", () => {
+    const first = assistant("assistant-a")
+    const second = assistant("assistant-b")
+    const firstItems = project({
+      message: first,
+      parts: [reasoning("reason-a", first.id), text("answer-a", first.id)],
+      working: true,
+    })
+    const secondItems = project({
+      message: second,
+      parts: [reasoning("reason-b", second.id)],
+      working: true,
+    })
+
+    const projected = projectBalancedReasoningItems([...firstItems, ...secondItems], "root-user", true)
+    const summaries = projected.filter((item) => item.kind === "activity-reasoning-summary")
+
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]).toMatchObject({
+      key: "activity-reasoning:root-user",
+      partID: "reason-b",
+      state: "pending",
+      message: { id: "assistant-a" },
+    })
+    expect(projected.some((item) => item.kind === "passthrough" && item.item.part?.id === "answer-a")).toBe(true)
+  })
+
+  test("drops generic reasoning after the completed turn has output", () => {
+    const first = assistant("assistant-a")
+    const second = assistant("assistant-b")
+    const projected = projectBalancedReasoningItems(
+      [
+        ...project({ message: first, parts: [text("answer-a", first.id)], working: false }),
+        ...project({ message: second, parts: [reasoning("reason-b", second.id)], working: false }),
+      ],
+      "root-user",
+      false,
+    )
+
+    expect(projected.some((item) => item.kind === "activity-reasoning-summary")).toBe(false)
+    expect(projected.some((item) => item.kind === "passthrough" && item.item.part?.id === "answer-a")).toBe(true)
+    expect(projected).toContainEqual({
+      kind: "activity-boundary",
+      key: "activity-boundary:assistant-b",
+      message: second,
+    })
+  })
+
+  test("keeps one Reasoning fallback for a completed reasoning-only turn", () => {
+    const first = assistant("assistant-a")
+    const second = assistant("assistant-b")
+    const projected = projectBalancedReasoningItems(
+      [
+        ...project({ message: first, parts: [reasoning("reason-a", first.id)], working: false }),
+        ...project({ message: second, parts: [reasoning("reason-b", second.id)], working: false }),
+      ],
+      "root-user",
+      false,
+    )
+    const summaries = projected.filter((item) => item.kind === "activity-reasoning-summary")
+
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]).toMatchObject({
+      key: "activity-reasoning:root-user",
+      partID: "reason-b",
+      state: "fallback",
+      message: { id: "assistant-a" },
+    })
+    expect(projected).toContainEqual({
+      kind: "activity-boundary",
+      key: "activity-boundary:assistant-b",
+      message: second,
+    })
+  })
+})
 
 describe("activity display preference", () => {
   test("falls back missing and unknown values to balanced", () => {
@@ -357,7 +439,7 @@ describe("session turn activity projection", () => {
     expect(JSON.stringify(streaming)).not.toContain('"text":"Thinking"')
   })
 
-  test("lets a persisted nano topic replace its live reasoning precursor", () => {
+  test("keeps persisted tool topics separate from the generic reasoning status", () => {
     const message = assistant()
     message.metadata = {
       activity: {
@@ -385,7 +467,9 @@ describe("session turn activity projection", () => {
       working: true,
     })
 
-    expect(projected.some((item) => item.kind === "activity-reasoning-summary")).toBe(false)
+    const reasoningItems = projected.filter((item) => item.kind === "activity-reasoning-summary")
+    expect(reasoningItems).toHaveLength(1)
+    expect(reasoningItems[0]?.text).toBeUndefined()
     expect(activities(projected)).toHaveLength(1)
     expect(activities(projected)[0]).toMatchObject({
       state: "done",
@@ -396,7 +480,7 @@ describe("session turn activity projection", () => {
     })
   })
 
-  test("keeps the live nano topic when persisted semantic grouping falls back without text", () => {
+  test("ignores legacy reasoning text when persisted semantic grouping has no topic", () => {
     const message = assistant()
     message.metadata = {
       activity: {
@@ -430,14 +514,12 @@ describe("session turn activity projection", () => {
     })
     const groups = activities(projected)
 
-    expect(projected.some((item) => item.kind === "activity-reasoning-summary")).toBe(false)
+    const reasoningItems = projected.filter((item) => item.kind === "activity-reasoning-summary")
+    expect(reasoningItems).toHaveLength(1)
+    expect(reasoningItems[0]?.text).toBeUndefined()
     expect(groups).toHaveLength(1)
     expect(groups[0]?.steps.map((step) => step.family)).toEqual(["inspect-local", "research-web"])
-    expect(groups[0]?.topic).toEqual({
-      state: "live",
-      text: "Researching the ZERO project",
-      source: "nano",
-    })
+    expect(groups[0]?.topic).toBeUndefined()
   })
 
   test("projects persisted nano topics across heterogeneous tool families", () => {
@@ -476,7 +558,7 @@ describe("session turn activity projection", () => {
     })
   })
 
-  test("uses the latest nano reasoning topic for one unsettled heterogeneous activity group", () => {
+  test("does not use legacy reasoning text to merge an unsettled heterogeneous tail", () => {
     const message = assistant()
     message.metadata = {
       activity: {
@@ -508,15 +590,12 @@ describe("session turn activity projection", () => {
     })
     const groups = activities(projected)
 
-    expect(projected.filter((item) => item.kind === "activity-reasoning-summary")).toHaveLength(0)
-    expect(groups).toHaveLength(1)
-    expect(groups[0]?.state).toBe("running")
-    expect(groups[0]?.steps.map((step) => step.family)).toEqual(["inspect-local", "research-web"])
-    expect(groups[0]?.topic).toEqual({
-      state: "live",
-      text: "Planning the ZERO refactor",
-      source: "nano",
-    })
+    const reasoningItems = projected.filter((item) => item.kind === "activity-reasoning-summary")
+    expect(reasoningItems).toHaveLength(1)
+    expect(reasoningItems[0]?.text).toBeUndefined()
+    expect(groups).toHaveLength(2)
+    expect(groups.map((group) => group.steps[0]?.family)).toEqual(["inspect-local", "research-web"])
+    expect(groups.every((group) => group.topic?.text === undefined)).toBe(true)
   })
 
   test("ignores persisted semantic membership that crosses a presentation boundary", () => {
