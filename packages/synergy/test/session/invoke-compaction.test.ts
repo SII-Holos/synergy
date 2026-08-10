@@ -48,12 +48,12 @@ function isCompactionIntercept(error: unknown): boolean {
   return nested.error instanceof CompactionIntercept || nested.suppressed instanceof CompactionIntercept
 }
 
-function testModel() {
+function testModel(limit: { context: number; output: number } = { context: 100_000, output: 8_192 }) {
   return {
     id: "test-model",
     providerID: "test-provider",
     name: "Test Model",
-    limit: { context: 100_000, output: 8_192 },
+    limit,
     cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
     capabilities: {
       toolcall: true,
@@ -176,6 +176,7 @@ async function runCompactionProcessCase(input: {
   text?: string
   thrownError?: Error
   variant?: string
+  modelLimit?: { context: number; output: number }
 }) {
   await using tmp = await tmpdir({ git: true })
 
@@ -191,9 +192,10 @@ async function runCompactionProcessCase(input: {
   let initialVisible: boolean | undefined
   const attemptStates: Array<unknown> = []
   let processUserVariant: string | undefined
+  let processMaxOutputTokens: number | undefined
 
   try {
-    ;(Provider.getModel as any) = mock(async () => testModel())
+    ;(Provider.getModel as any) = mock(async () => testModel(input.modelLimit))
     ;(Agent.get as any) = mock(async () => primaryAgent())
     ;(Agent.getAvailableModel as any) = mock(async () => ({
       providerID: "test-provider",
@@ -216,6 +218,7 @@ async function runCompactionProcessCase(input: {
         trackExecution: () => {},
         process: mock(async (processInput: SessionProcessor.ProcessInput) => {
           processUserVariant = processInput.user.variant
+          processMaxOutputTokens = processInput.maxOutputTokens
           if (input.thrownError) throw input.thrownError
           if (input.text) {
             const now = Date.now()
@@ -297,6 +300,7 @@ async function runCompactionProcessCase(input: {
           initialIncludeInContext,
           initialVisible,
           processUserVariant,
+          processMaxOutputTokens,
           attemptStates,
         }
       },
@@ -439,6 +443,116 @@ describe.serial("SessionInvoke preflight compaction", () => {
     }
   })
 
+  test("stops locally when automatic compaction is disabled and no response space remains", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    const originalGetModel = Provider.getModel
+    const originalGetAgent = Agent.get
+    const originalConfigCurrent = Config.current
+    const originalDefinitions = ToolResolver.definitions
+    const originalResolveWithAvailability = ToolResolver.resolveWithAvailability
+    const originalBuildPlan = PromptBudgeter.buildPlan
+    const originalDecide = PromptBudgeter.decide
+    const originalProcessorCreate = SessionProcessor.create
+    const originalCortexList = Cortex.list
+    const originalCortexGetRunningTasks = Cortex.getRunningTasks
+
+    const processCalled = mock(async () => "stop" as const)
+
+    try {
+      ;(Provider.getModel as any) = mock(async () => testModel())
+      ;(Agent.get as any) = mock(async () => primaryAgent())
+      ;(Config.current as any) = mock(async () => {
+        const config = await fastLoopTestConfig(originalConfigCurrent)
+        return { ...config, compaction: { ...config.compaction, auto: false } }
+      })
+      ;(ToolResolver.definitions as any) = mock(async () => [])
+      ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
+        definitions: [],
+        executionTools: {},
+        executorKinds: {},
+        activeToolIDs: [],
+      }))
+      ;(PromptBudgeter.buildPlan as any) = mock(async () => ({
+        system: ["stub system"],
+        messages: [{ role: "user", content: "stub message" }],
+        toolDefinitions: [],
+      }))
+      ;(PromptBudgeter.decide as any) = mock(async () => ({
+        budget: {
+          context: 100_000,
+          usable: 100_000,
+          output: 8_192,
+          margin: 5_000,
+          inputEnvelope: 86_808,
+          threshold: 0.85,
+          soft: 73_786,
+        },
+        measure: { system: 0, messages: 98_000, tools: 0, total: 98_000 },
+        shouldCompact: true,
+        contextExceeded: true,
+      }))
+      ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
+        message: input.assistantMessage,
+        partFromToolCall: () => undefined,
+        trackExecution: () => {},
+        process: processCalled,
+      }))
+      ;(Cortex.list as any) = mock(() => [])
+      ;(Cortex.getRunningTasks as any) = mock(() => [])
+
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const user = await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            role: "user",
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: user.id,
+            sessionID: session.id,
+            type: "text",
+            text: "Continue without compaction.",
+          })
+
+          let thrown: unknown
+          try {
+            await SessionInvoke.loop.force(session.id)
+          } catch (error) {
+            thrown = error
+          }
+
+          const messages = await Session.messages({ sessionID: session.id })
+          const assistant = messages.find(
+            (message): message is MessageV2.WithParts & { info: MessageV2.Assistant } =>
+              message.info.role === "assistant" && message.info.parentID === user.id,
+          )
+          expect(assistant?.info.error?.name).toBe("UnknownError")
+          expect(JSON.stringify(assistant?.info.error)).toContain("leaves no room for a model response")
+          expect(thrown).toBeInstanceOf(MessageV2.SessionTerminalError)
+          expect(processCalled).not.toHaveBeenCalled()
+        },
+      })
+    } finally {
+      ;(Provider.getModel as any) = originalGetModel
+      ;(Agent.get as any) = originalGetAgent
+      ;(Config.current as any) = originalConfigCurrent
+      ;(ToolResolver.definitions as any) = originalDefinitions
+      ;(ToolResolver.resolveWithAvailability as any) = originalResolveWithAvailability
+      ;(PromptBudgeter.buildPlan as any) = originalBuildPlan
+      ;(PromptBudgeter.decide as any) = originalDecide
+      ;(SessionProcessor.create as any) = originalProcessorCreate
+      ;(Cortex.list as any) = originalCortexList
+      ;(Cortex.getRunningTasks as any) = originalCortexGetRunningTasks
+    }
+  })
+
   test("refreshes session state between model steps", async () => {
     await using tmp = await tmpdir({ git: true })
 
@@ -455,6 +569,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
 
     const definitionToolStates: Array<Session.Info["toolState"]> = []
     let processCount = 0
+    const processMaxOutputTokens: Array<number | undefined> = []
 
     try {
       ;(Provider.getModel as any) = mock(async () => testModel())
@@ -479,12 +594,14 @@ describe.serial("SessionInvoke preflight compaction", () => {
         budget: { context: 100_000, usable: 100_000, threshold: 0.85, soft: 85_000 },
         measure: { system: 10, messages: 10, tools: 0, total: 20 },
         shouldCompact: false,
+        maxOutputTokens: 7_000,
       }))
       ;(SessionProcessor.create as any) = mock((input: Parameters<typeof SessionProcessor.create>[0]) => ({
         message: input.assistantMessage,
         partFromToolCall: () => undefined,
         trackExecution: () => {},
-        process: mock(async () => {
+        process: mock(async (processInput: SessionProcessor.ProcessInput) => {
+          processMaxOutputTokens.push(processInput.maxOutputTokens)
           processCount++
           input.assistantMessage.finish = processCount === 1 ? "tool-calls" : "stop"
           input.assistantMessage.time.completed = Date.now()
@@ -534,6 +651,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
           expect(processCount).toBe(2)
           expect(definitionToolStates[0]).toBeUndefined()
           expect(definitionToolStates[1]?.expandedGroups).toEqual(["note"])
+          expect(processMaxOutputTokens).toEqual([7_000, 7_000])
         },
       })
     } finally {
@@ -1013,6 +1131,21 @@ describe.serial("SessionInvoke preflight compaction", () => {
 
     expect(observed.root.info.role === "user" && observed.root.info.variant).toBe("high")
     expect(observed.processUserVariant).toBeUndefined()
+  })
+
+  test("bounds compaction output instead of requesting the model long-output maximum", async () => {
+    const observed = await runCompactionProcessCase({ text: "## Goal\n\nContinue the implementation." })
+
+    expect(observed.processMaxOutputTokens).toBe(8_192)
+  })
+
+  test("caps compaction output at 32k for long-output models", async () => {
+    const observed = await runCompactionProcessCase({
+      text: "## Goal\n\nContinue the implementation.",
+      modelLimit: { context: 1_048_576, output: 384_000 },
+    })
+
+    expect(observed.processMaxOutputTokens).toBe(32_000)
   })
 
   test("keeps provider failures as uncommitted compaction attempts", async () => {

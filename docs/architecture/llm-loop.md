@@ -198,7 +198,14 @@ The post-job captures only session, root-message, and terminal-revision identifi
 - tool names, descriptions, schemas, and protocol overhead
 - bounded estimates for historical image/file parts
 
-The usable input budget accounts for context and reserved model output. Automatic compaction defaults to a soft threshold of 85% of usable input and can be configured.
+The budget derives from the model's declared limits. For a context `C`, an effective requested output `O` bounded by the model's configured output and the global output maximum, and no explicit separate input limit, the input envelope reserves the requested output plus a safety margin:
+
+- `margin = min(32000, max(2048, ceil(C * 0.05)))`
+- `inputEnvelope = C - O - margin` when the configured output is smaller than `C`
+
+Models with an explicit input limit (for example 400k context / 272k input / 128k output) keep the input-based envelope instead, and shared-window models whose configured output equals the context do not reserve the entire window. The soft compaction threshold is `floor(inputEnvelope * overflowThreshold)`, defaulting to 85% and configurable through `compaction.overflowThreshold` (see [Configuration](../reference/configuration.md#compaction)).
+
+Before each provider call, the per-request maximum output is clamped to the configured output and to the context remaining after the measured input and margin, so a long prompt cannot push the request past the window. If no response space remains, automatic compaction runs first when enabled; otherwise Synergy records a local actionable error and does not send a guaranteed-to-fail provider request.
 
 After the first provider call, Synergy calibrates estimates using provider-reported input and output tokens plus the smaller newly accumulated delta. This avoids repeatedly estimating the entire prompt with a tokenizer that may not match the provider.
 
@@ -231,7 +238,7 @@ The compaction job:
 
 1. resolves the dedicated `compaction` agent and its available model, falling back to the root model;
 2. projects the current effective history with no tools;
-3. trims oldest summary input if even the compaction model cannot accept the full history, advancing the cut past any tool results whose assistant tool calls were omitted;
+3. trims oldest summary input so the history, compaction prompt, a bounded summary output, and tokenizer margin fit the compaction model's context window, advancing the cut past any tool results whose assistant tool calls were omitted; the summarization call requests at most 32,000 output tokens (the model's configured output when smaller), and that output budget plus the margin is what the history trim reserves;
 4. persists a hidden compaction attempt with `includeInContext = false` and `metadata.compactionAttempt.state = "running"` so streamed output remains auditable without affecting later prompts;
 5. asks only for a structured continuation summary;
 6. records provider or processor failures as terminal `failed` attempts with a sanitized serialized error, `visible = true`, and `includeInContext = false`; provider response headers and bodies are not retained on this visible audit record, while empty output becomes `empty` and stays hidden outside model context;
