@@ -1,5 +1,4 @@
 import type { ConfigDomainSummary } from "@ericsanchezok/synergy-sdk/client"
-import { FIELD_SAVE_STRATEGY, type SettingsFieldStrategy } from "./catalog"
 
 export function buildFieldDomainMap(domains: ConfigDomainSummary[]): Map<string, ConfigDomainSummary["id"]> {
   const result = new Map<string, ConfigDomainSummary["id"]>()
@@ -23,12 +22,4 @@ export function groupPatchByDomain(
     grouped.set(domain, domainPatch)
   }
   return grouped
-}
-
-export function strategyForPatch(patch: Record<string, unknown>): SettingsFieldStrategy[] {
-  return Object.keys(patch).map((key) => {
-    const strategy = FIELD_SAVE_STRATEGY[key]
-    if (!strategy) throw new Error(`Settings field "${key}" does not define a save strategy`)
-    return strategy
-  })
 }

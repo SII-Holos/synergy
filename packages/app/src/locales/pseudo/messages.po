@@ -6445,10 +6445,6 @@ msgid "app.plugin.permissionGroup.ui"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.plugin.settings.saveFailed"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "app.plugin.settings.stateOff"
 msgstr ""
 
@@ -14869,10 +14865,6 @@ msgid "settings.general.font.applied"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.general.font.apply"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "settings.general.font.check"
 msgstr ""
 
@@ -14914,14 +14906,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.general.language.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.general.language.failed.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.general.language.failed.title"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -16561,6 +16545,14 @@ msgid "settings.panel.reference.lspTitle"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.panel.save.partialFailure"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.panel.save.partialFailure.description"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.panel.search.empty"
 msgstr ""
 
@@ -16689,47 +16681,7 @@ msgid "settings.personalize.page.title"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.personalize.reset.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.reset.title"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.resetError.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.resetError.title"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "settings.personalize.retry"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.save.label"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveError.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveError.title"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveSuccess.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveSuccess.title"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saving"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17510,18 +17462,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.sandbox.warn"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.save.auto.failed"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.save.background.failed"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.save.background.updated"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -18701,6 +18641,10 @@ msgid "tool.title.research-state"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.resolve-conflicts"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.resolve-library"
 msgstr ""
 
@@ -18969,6 +18913,14 @@ msgid "ui.anchoredTool.recovery.safelyMapped"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "ui.anchoredTool.resolveConflicts"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.anchoredTool.resolvedConflictCount"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "ui.anchoredTool.reviseFile"
 msgstr ""
 
@@ -19013,11 +18965,19 @@ msgid "ui.anchoredTool.summary.regex"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "ui.anchoredTool.summary.resolved"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.result"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.searchPath"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.anchoredTool.summary.strategies"
 msgstr ""
 
 #. js-lingui-explicit-id

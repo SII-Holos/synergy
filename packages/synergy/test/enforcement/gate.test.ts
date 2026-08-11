@@ -353,6 +353,23 @@ describe("EnforcementGate path classification", () => {
     expect(paths).toContain("src/a.ts")
     expect(paths).toContain("src/b.ts")
   })
+
+  test("resolve_conflicts classifies its filePath as a write target", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("resolve_conflicts", {
+      filePath: "/tmp/conflict.ts",
+      tag: "A1B2",
+      resolutions: [{ conflict: 1, strategy: "ours" }],
+    })
+
+    const external = result.capabilities.find((capability: any) => capability.class === "file_external_write")
+    expect(external).toBeDefined()
+    expect(external?.nonBypassable).toBe(true)
+  })
 })
 
 // ------------------------------------------------------------------

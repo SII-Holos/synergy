@@ -17,6 +17,7 @@ interface ActivityDomHarness {
   setCountValue: (value: number) => void
   setSummaryCompleted: (completed: boolean) => void
   setRailState: (state: "running" | "done") => void
+  refreshActivityGroup: () => void
 }
 
 let fixtureDirectory: string
@@ -120,6 +121,7 @@ beforeAll(async () => {
         receipt: false,
         topic: { state: "stable", text: "Updated the activity presentation" },
       }
+      const [activityGroup, setActivityGroup] = createSignal(group)
       const railGroup = (state: "running" | "done", key: string) => ({
         ...group,
         key,
@@ -233,7 +235,7 @@ beforeAll(async () => {
                 }}
               />
               <div id="activity-main-host">
-                <ActivityTrace group={group} serverUrl="http://localhost" />
+                <ActivityTrace group={activityGroup()} serverUrl="http://localhost" />
               </div>
               <div id="activity-rail-host">
                 <div data-slot="session-turn-timeline-item" data-kind="activity-group" data-activity-continues="">
@@ -273,6 +275,14 @@ beforeAll(async () => {
         setCountValue: (value: number) => setCountValue(value),
         setSummaryCompleted: (completed: boolean) => setSummaryCompleted(completed),
         setRailState: (state: "running" | "done") => setRailState(state),
+        refreshActivityGroup: () =>
+          setActivityGroup((current) => ({
+            ...current,
+            steps: current.steps.map((step) => ({
+              ...step,
+              part: { ...step.part, state: { ...step.part.state } },
+            })),
+          })),
       }
     `,
   )
@@ -544,6 +554,24 @@ describe("ActivityTrace DOM behavior", () => {
     triggers[0]?.click()
     await wait(0)
     expect(triggers[0]?.getAttribute("aria-expanded")).toBe("false")
+  })
+
+  test("preserves an expanded child when streaming replaces activity projections", async () => {
+    const host = document.querySelector("#activity-main-host") as HTMLElement
+    let trigger = host.querySelector('[data-slot="activity-step-trigger"]') as HTMLButtonElement
+
+    trigger.click()
+    await wait(0)
+    expect(trigger.getAttribute("aria-expanded")).toBe("true")
+
+    harness.refreshActivityGroup()
+    await wait(0)
+
+    trigger = host.querySelector('[data-slot="activity-step-trigger"]') as HTMLButtonElement
+    expect(trigger.getAttribute("aria-expanded")).toBe("true")
+
+    trigger.click()
+    await wait(0)
   })
 
   test("renders the waiting approval state once within its child activity", () => {

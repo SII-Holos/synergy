@@ -610,6 +610,14 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         subtitle: path ? getDirectory(path) + getFilename(path) : undefined,
       }
     }
+    case "resolve_conflicts": {
+      const path = metadata.path || metadata.filepath || input.filePath
+      return {
+        icon: "file-pen",
+        title: TOOL_TITLE_DESC["resolve_conflicts"],
+        subtitle: path ? getDirectory(path) + getFilename(path) : undefined,
+      }
+    }
     case "multiedit":
       return {
         icon: "pen-line",
