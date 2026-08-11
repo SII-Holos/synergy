@@ -100,4 +100,12 @@ describe("diff-patch canRenderPatch", () => {
     const patch = ["--- file", "+++ file", "@@ -1,2 +1,2 @@", "-old line", "+new line"].join("\n")
     expect(canRenderPatch(patch)).toBe(true)
   })
+
+  test.each([
+    ["addition", ["--- a/foo.ts", "+++ b/foo.ts", "@@ -1 +1,2 @@", " existing", "+"]],
+    ["deletion", ["--- a/foo.ts", "+++ b/foo.ts", "@@ -1,2 +1 @@", " existing", "-"]],
+    ["context", ["--- a/foo.ts", "+++ b/foo.ts", "@@ -1,2 +1,2 @@", "-old", "+new", " "]],
+  ])("rejects a trailing empty %s line that pierre cannot render", (_kind, lines) => {
+    expect(canRenderPatch(lines.join("\n"))).toBe(false)
+  })
 })

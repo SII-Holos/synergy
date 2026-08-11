@@ -29,5 +29,8 @@ Output: {"risk":"safe","reason":"focused test command in workspace","confidence"
 Input: Tool: revise_file; Path: packages/synergy/src/permission/smart-allow.ts
 Output: {"risk":"safe","reason":"workspace-local source edit","confidence":0.9}
 
+Input: Tool: resolve_conflicts; Path: packages/synergy/src/tool/resolve-conflicts.ts
+Output: {"risk":"safe","reason":"workspace-local conflict resolution","confidence":0.9}
+
 Input: Tool: bash; Command: printenv OPENAI_API_KEY
 Output: {"risk":"dangerous","reason":"attempts to expose an API key","confidence":0.98}

@@ -16,6 +16,14 @@ describe("tool taxonomy", () => {
     expect(entry.domain).toBe("communication")
   })
 
+  test("classifies resolve_conflicts as a stateful code write", () => {
+    expect(ToolTaxonomy.classify("resolve_conflicts")).toEqual({
+      kind: "code.write",
+      domain: "code",
+      traits: { stateful: true },
+    })
+  })
+
   test("classifies response_card as stateful external Channel delivery", () => {
     expect(ToolTaxonomy.classify("response_card")).toEqual({
       kind: "communication.deliver",

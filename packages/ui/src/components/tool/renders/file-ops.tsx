@@ -7,6 +7,7 @@ import { useCodeComponent } from "../../../context/code"
 import { BasicTool } from "../../basic-tool"
 import {
   AnchoredParseCodeTool,
+  AnchoredResolveConflictsTool,
   AnchoredReviseTool,
   AnchoredSaveTool,
   AnchoredScanFilesTool,
@@ -21,6 +22,7 @@ ToolRegistry.register({ name: "view_file", render: AnchoredViewTool })
 ToolRegistry.register({ name: "scan_files", render: AnchoredScanFilesTool })
 ToolRegistry.register({ name: "parse_code", render: AnchoredParseCodeTool })
 ToolRegistry.register({ name: "revise_file", render: AnchoredReviseTool })
+ToolRegistry.register({ name: "resolve_conflicts", render: AnchoredResolveConflictsTool })
 ToolRegistry.register({ name: "save_file", render: AnchoredSaveTool })
 
 ToolRegistry.register({

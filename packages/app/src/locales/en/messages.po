@@ -6445,10 +6445,6 @@ msgid "app.plugin.permissionGroup.ui"
 msgstr "UI"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.settings.saveFailed"
-msgstr "Setting not saved"
-
-#. js-lingui-explicit-id
 msgid "app.plugin.settings.stateOff"
 msgstr "Off"
 
@@ -14474,7 +14470,7 @@ msgstr "Waiting for transport"
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.desc"
-msgstr "Return language-server feedback after write, edit, save_file, and revise_file."
+msgstr "Return language-server feedback after write, edit, save_file, revise_file, and resolve_conflicts."
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.title"
@@ -14869,10 +14865,6 @@ msgid "settings.general.font.applied"
 msgstr "Applied"
 
 #. js-lingui-explicit-id
-msgid "settings.general.font.apply"
-msgstr "Apply"
-
-#. js-lingui-explicit-id
 msgid "settings.general.font.check"
 msgstr "Check"
 
@@ -14890,11 +14882,11 @@ msgstr "Font access was denied; using default"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.description"
-msgstr "Check loads the fonts installed on this device, then pick one and Apply it."
+msgstr "Check loads the fonts installed on this device. Save Changes applies your selection."
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.ready"
-msgstr "Select a font, then Apply"
+msgstr "Unsaved selection"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.reset"
@@ -14915,14 +14907,6 @@ msgstr "This browser cannot scan local fonts; using default"
 #. js-lingui-explicit-id
 msgid "settings.general.language.description"
 msgstr "Choose the language used by Synergy controls and accessibility labels"
-
-#. js-lingui-explicit-id
-msgid "settings.general.language.failed.description"
-msgstr "The selected language catalog could not be loaded. The previous language is still active."
-
-#. js-lingui-explicit-id
-msgid "settings.general.language.failed.title"
-msgstr "Language change failed"
 
 #. js-lingui-explicit-id
 msgid "settings.general.language.system"
@@ -16561,6 +16545,14 @@ msgid "settings.panel.reference.lspTitle"
 msgstr "LSP"
 
 #. js-lingui-explicit-id
+msgid "settings.panel.save.partialFailure"
+msgstr "Some settings were not saved"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.save.partialFailure.description"
+msgstr "Review the failed settings and try again."
+
+#. js-lingui-explicit-id
 msgid "settings.panel.search.empty"
 msgstr "No settings found"
 
@@ -16650,11 +16642,11 @@ msgstr "Keep override"
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.confirmReset.confirm"
-msgstr "Reset to AGENTS.md"
+msgstr "Stage reset to AGENTS.md"
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.confirmReset.description"
-msgstr "Remove AGENTS.override.md and return to the global AGENTS.md content."
+msgstr "Clear this draft and stage removal of AGENTS.override.md. Save Changes commits the reset."
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.confirmReset.title"
@@ -16689,48 +16681,8 @@ msgid "settings.personalize.page.title"
 msgstr "Personalize"
 
 #. js-lingui-explicit-id
-msgid "settings.personalize.reset.description"
-msgstr "Synergy will fall back to the global AGENTS.md file."
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.reset.title"
-msgstr "Custom instructions reset"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.resetError.description"
-msgstr "Try again."
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.resetError.title"
-msgstr "Custom instructions not reset"
-
-#. js-lingui-explicit-id
 msgid "settings.personalize.retry"
 msgstr "Retry"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.save.label"
-msgstr "Save Custom Instructions"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveError.description"
-msgstr "Review the Custom Instructions content and try again."
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveError.title"
-msgstr "Custom instructions not saved"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveSuccess.description"
-msgstr "Synergy will use AGENTS.override.md for subsequent prompt assembly."
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveSuccess.title"
-msgstr "Custom instructions saved"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saving"
-msgstr "Saving..."
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.section.description"
@@ -17511,18 +17463,6 @@ msgstr "{backend} is unavailable. Fallback policy will apply."
 #. js-lingui-explicit-id
 msgid "settings.sandbox.warn"
 msgstr "Warn"
-
-#. js-lingui-explicit-id
-msgid "settings.save.auto.failed"
-msgstr "Auto-save failed"
-
-#. js-lingui-explicit-id
-msgid "settings.save.background.failed"
-msgstr "Background save failed"
-
-#. js-lingui-explicit-id
-msgid "settings.save.background.updated"
-msgstr "Updated: {fields}"
 
 #. js-lingui-explicit-id
 msgid "settings.save.explicit.changed"
@@ -18701,6 +18641,10 @@ msgid "tool.title.research-state"
 msgstr "Manage research state"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.resolve-conflicts"
+msgstr "Resolve Conflicts"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.resolve-library"
 msgstr "Resolve Library"
 
@@ -18969,6 +18913,14 @@ msgid "ui.anchoredTool.recovery.safelyMapped"
 msgstr "Safely mapped onto the current file"
 
 #. js-lingui-explicit-id
+msgid "ui.anchoredTool.resolveConflicts"
+msgstr "Resolve Conflicts"
+
+#. js-lingui-explicit-id
+msgid "ui.anchoredTool.resolvedConflictCount"
+msgstr "{count} resolved"
+
+#. js-lingui-explicit-id
 msgid "ui.anchoredTool.reviseFile"
 msgstr "Revise File"
 
@@ -19013,12 +18965,20 @@ msgid "ui.anchoredTool.summary.regex"
 msgstr "Regex"
 
 #. js-lingui-explicit-id
+msgid "ui.anchoredTool.summary.resolved"
+msgstr "Resolved"
+
+#. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.result"
 msgstr "Result"
 
 #. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.searchPath"
 msgstr "Search path"
+
+#. js-lingui-explicit-id
+msgid "ui.anchoredTool.summary.strategies"
+msgstr "Strategies"
 
 #. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.tag"

@@ -43,19 +43,21 @@ describe("Electron Browser Host broker contract", () => {
         ],
         { cwd: path.resolve(import.meta.dir, ".."), stdout: "pipe", stderr: "pipe" },
       )
+      const stdout = new Response(child.stdout).text().catch(() => "")
+      const stderr = new Response(child.stderr).text().catch(() => "")
+      let exitCode: number
       try {
-        const exitCode = await withTimeout(child.exited, 30_000, "Native Browser page pool smoke")
-        if (exitCode === 0) return
-        const stdout = await new Response(child.stdout).text().catch(() => "")
-        const stderr = await new Response(child.stderr).text().catch(() => "")
-        throw new Error(`Native Browser page pool exited with ${exitCode}.\n${stdout}\n${stderr}`)
+        exitCode = await withTimeout(child.exited, 30_000, "Native Browser page pool smoke")
       } catch (error) {
         child.kill("SIGTERM")
         await Promise.race([child.exited, new Promise((resolve) => setTimeout(resolve, 2_000))])
         if (child.exitCode === null) child.kill("SIGKILL")
-        const stdout = await new Response(child.stdout).text().catch(() => "")
-        const stderr = await new Response(child.stderr).text().catch(() => "")
-        throw new Error(`${error instanceof Error ? error.message : String(error)}\n${stdout}\n${stderr}`)
+        const [stdoutText, stderrText] = await Promise.all([stdout, stderr])
+        throw new Error(`${error instanceof Error ? error.message : String(error)}\n${stdoutText}\n${stderrText}`)
+      }
+      const [stdoutText, stderrText] = await Promise.all([stdout, stderr])
+      if (exitCode !== 0) {
+        throw new Error(`Native Browser page pool exited with ${exitCode}.\n${stdoutText}\n${stderrText}`)
       }
     },
     45_000,

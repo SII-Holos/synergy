@@ -19,6 +19,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   ast_grep: d("tool.title.ast-search", "Search AST"),
   edit: d("tool.title.edit", "Edit file"),
   revise_file: d("tool.title.revise-file", "Revise File"),
+  resolve_conflicts: d("tool.title.resolve-conflicts", "Resolve Conflicts"),
   write: d("tool.title.write", "Write file"),
   save_file: d("tool.title.save-file", "Save File"),
   create_file: d("tool.title.create-file", "Create File"),

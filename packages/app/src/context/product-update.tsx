@@ -112,6 +112,7 @@ export const { use: useProductUpdate, provider: ProductUpdateProvider } = create
       return run("mode", async () => {
         const next = await platform.desktopUpdate?.setMode(mode)
         if (next) setDesktopStatus(next)
+        return next ?? null
       })
     }
 
