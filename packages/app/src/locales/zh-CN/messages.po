@@ -14470,7 +14470,7 @@ msgstr "等待传输连接"
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.desc"
-msgstr "在 write、edit、save_file 和 revise_file 后返回语言服务器反馈。"
+msgstr "在 write、edit、save_file、revise_file 和 resolve_conflicts 后返回语言服务器反馈。"
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.title"
@@ -18641,6 +18641,10 @@ msgid "tool.title.research-state"
 msgstr "管理研究状态"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.resolve-conflicts"
+msgstr "解决冲突"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.resolve-library"
 msgstr "查找软件库"
 
@@ -18909,6 +18913,14 @@ msgid "ui.anchoredTool.recovery.safelyMapped"
 msgstr "已根据当前文件重新定位"
 
 #. js-lingui-explicit-id
+msgid "ui.anchoredTool.resolveConflicts"
+msgstr "解决冲突"
+
+#. js-lingui-explicit-id
+msgid "ui.anchoredTool.resolvedConflictCount"
+msgstr "{count} 个已解决"
+
+#. js-lingui-explicit-id
 msgid "ui.anchoredTool.reviseFile"
 msgstr "修改文件"
 
@@ -18953,12 +18965,20 @@ msgid "ui.anchoredTool.summary.regex"
 msgstr "正则表达式"
 
 #. js-lingui-explicit-id
+msgid "ui.anchoredTool.summary.resolved"
+msgstr "已解决"
+
+#. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.result"
 msgstr "结果"
 
 #. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.searchPath"
 msgstr "搜索路径"
+
+#. js-lingui-explicit-id
+msgid "ui.anchoredTool.summary.strategies"
+msgstr "策略"
 
 #. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.tag"

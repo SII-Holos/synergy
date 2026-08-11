@@ -513,7 +513,11 @@ export namespace EnforcementGate {
       // blanket .synergy/.env hard boundary.
       if (toolName !== "openai_image_gen" && toolName !== "openai_image_edit") {
         const mode =
-          toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file"
+          toolName === "write" ||
+          toolName === "edit" ||
+          toolName === "revise_file" ||
+          toolName === "resolve_conflicts" ||
+          toolName === "save_file"
             ? "write"
             : "read"
         for (const pathArg of pathArgs(args)) {
@@ -607,7 +611,13 @@ export namespace EnforcementGate {
       }
 
       // File write operations
-      if (toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file") {
+      if (
+        toolName === "write" ||
+        toolName === "edit" ||
+        toolName === "revise_file" ||
+        toolName === "resolve_conflicts" ||
+        toolName === "save_file"
+      ) {
         if (toolName === "revise_file") {
           const multiPaths = allPathsFromMultiSectionPatch(args.input)
           const paths =

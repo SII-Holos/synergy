@@ -359,7 +359,7 @@ Binding a server beyond loopback exposes it to other hosts. Configure allowed or
 
 ## Code Checks
 
-Post-write language-server diagnostic policy. Controls the diagnostics returned after write, edit, save_file, and revise_file complete. All fields are owned by `120-runtime.jsonc`.
+Post-write language-server diagnostic policy. Controls the diagnostics returned after write, edit, save_file, revise_file, and resolve_conflicts complete. All fields are owned by `120-runtime.jsonc`.
 
 ```jsonc
 {

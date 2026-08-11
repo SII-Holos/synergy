@@ -18641,6 +18641,10 @@ msgid "tool.title.research-state"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.resolve-conflicts"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.resolve-library"
 msgstr ""
 
@@ -18909,6 +18913,14 @@ msgid "ui.anchoredTool.recovery.safelyMapped"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "ui.anchoredTool.resolveConflicts"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.anchoredTool.resolvedConflictCount"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "ui.anchoredTool.reviseFile"
 msgstr ""
 
@@ -18953,11 +18965,19 @@ msgid "ui.anchoredTool.summary.regex"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "ui.anchoredTool.summary.resolved"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.result"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.searchPath"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.anchoredTool.summary.strategies"
 msgstr ""
 
 #. js-lingui-explicit-id
