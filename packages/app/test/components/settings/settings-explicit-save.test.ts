@@ -11,32 +11,45 @@ describe("settings explicit save coordination", () => {
     expect(hasExplicitSettingsChanges(sources)).toBe(true)
   })
 
-  test("saves every dirty source and closes only when all succeed", async () => {
+  test("saves every dirty source without closing Settings", async () => {
     const calls: string[] = []
     let closed = false
-    const saved = await saveExplicitSettingsChanges(
-      [source(false, "clean", calls), source(true, "server", calls), source(true, "personalize", calls)],
-      () => {
-        closed = true
-      },
-    )
+    const saved = await saveExplicitSettingsChanges([
+      source(false, "clean", calls),
+      source(true, "server", calls),
+      source(true, "personalize", calls),
+    ])
 
     expect(saved).toBe(true)
     expect(calls).toEqual(["server", "personalize"])
-    expect(closed).toBe(true)
+    expect(closed).toBe(false)
   })
 
   test("keeps Settings open when any dirty source fails", async () => {
     let closed = false
-    const saved = await saveExplicitSettingsChanges(
-      [source(true, "server", [], true), source(true, "personalize", [], false)],
-      () => {
-        closed = true
-      },
-    )
+    const saved = await saveExplicitSettingsChanges([
+      source(true, "server", [], true),
+      source(true, "personalize", [], false),
+    ])
 
     expect(saved).toBe(false)
     expect(closed).toBe(false)
+  })
+  test("continues saving other sources when one source throws", async () => {
+    const calls: string[] = []
+    const saved = await saveExplicitSettingsChanges([
+      {
+        dirty: () => true,
+        save: async () => {
+          calls.push("throws")
+          throw new Error("save failed")
+        },
+      },
+      source(true, "continues", calls),
+    ])
+
+    expect(saved).toBe(false)
+    expect(calls).toEqual(["throws", "continues"])
   })
 })
 

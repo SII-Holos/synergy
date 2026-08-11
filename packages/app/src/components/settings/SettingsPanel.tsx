@@ -14,13 +14,13 @@ import { createStore, produce } from "solid-js/store"
 import { Dynamic } from "solid-js/web"
 import { createMediaQuery } from "@solid-primitives/media"
 import { useLingui } from "@lingui/solid"
-import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import type {
   ChannelStatus,
   ConfigDomainSummary,
@@ -33,8 +33,9 @@ import type { PluginSettingsComponentProps, PluginSettingsSurfaceContext } from 
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
-import { usePlatform } from "@/context/platform"
-import { useLocale } from "@/context/locale"
+import { usePlatform, type DesktopUpdateMode } from "@/context/platform"
+import { useProductUpdate } from "@/context/product-update"
+import { useFontPreference } from "@/context/font-preference"
 import { useHolos } from "@/context/holos"
 import { useConfirm, type ConfirmOptions } from "@/components/dialog/confirm-dialog"
 import {
@@ -56,13 +57,15 @@ import { useSettingsSave } from "./hooks/useSettingsSave"
 import { hasExplicitSettingsChanges, saveExplicitSettingsChanges } from "./settings-explicit-save"
 import { pluginSettingsResourceKey } from "./plugin-settings-resource"
 import { createSettingsComponentLoader } from "./settings-component-loader"
+import { createPluginSettingsDrafts } from "./plugin-settings-drafts"
+import { SettingsDialogFrame } from "./settings-dialog-frame"
+import { settingsSaveFooterStatus } from "./settings-save-status"
 import {
   createSettingsMobileNavigationState,
   reduceSettingsMobileNavigation,
   restoreSettingsMobileListFocus,
 } from "./settings-mobile-navigation"
 import { GeneralPanel } from "./panels/GeneralPanel"
-import { rollbackFailedLocalePatch } from "./panels/locale-preference-change"
 import { ModelsPanel } from "./panels/ModelsPanel"
 import { ProvidersPanel } from "./panels/ProvidersPanel"
 import { isSelectableModel } from "@/components/provider/model-catalog"
@@ -95,6 +98,10 @@ import {
   clarusDiagnosticsFilename,
   shouldRefreshChannelStatuses,
 } from "./channel-account-model"
+
+function settingsValues(value: unknown, fallback: Record<string, unknown> = {}): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : fallback
+}
 
 const legacyInitialTabs: Record<string, string> = {
   advanced: "control-profile",
@@ -164,6 +171,11 @@ const copy = {
     id: "settings.panel.section.unavailable",
     message: "{label} is not available",
   },
+  partialSaveFailed: { id: "settings.panel.save.partialFailure", message: "Some settings were not saved" },
+  partialSaveReview: {
+    id: "settings.panel.save.partialFailure.description",
+    message: "Review the failed settings and try again.",
+  },
   clarusRefreshFailed: { id: "settings.channels.clarus.refreshFailed", message: "Failed to refresh Clarus projects" },
   clarusDiagnosticsFailed: {
     id: "settings.channels.clarus.diagnosticsFailed",
@@ -196,9 +208,9 @@ export function SettingsDialog(props: DialogSettingsProps) {
   const dialog = useDialog()
   const { _ } = useLingui()
   return (
-    <Dialog ariaLabel={_(copy.dialogLabel)} class="settings-dialog-panel">
+    <SettingsDialogFrame ariaLabel={_(copy.dialogLabel)}>
       <SettingsPanel {...props} onClose={() => dialog.close()} />
-    </Dialog>
+    </SettingsDialogFrame>
   )
 }
 
@@ -210,7 +222,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const globalSync = useGlobalSync()
   const input = useInput()
   const platform = usePlatform()
-  const locale = useLocale()
+  const productUpdate = useProductUpdate()
+  const theme = useTheme()
+  const font = useFontPreference()
   const holos = useHolos()
   const personalizeController = createPersonalizeController({
     get: async () => (await globalSDK.client.config.instructions.get()).data!,
@@ -245,6 +259,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [search, setSearch] = createSignal("")
   const [initialized, setInitialized] = createSignal(false)
   const [saving, setSaving] = createSignal(false)
+  const [aggregateSaveStatus, setAggregateSaveStatus] = createSignal<"idle" | "saving" | "saved" | "error">("idle")
+  const [saveResultFingerprint, setSaveResultFingerprint] = createSignal<string>()
+  const [desktopUpdateDraft, setDesktopUpdateDraft] = createSignal<DesktopUpdateMode>()
+  const [pluginDraftVersion, setPluginDraftVersion] = createSignal(0)
+  const pluginDrafts = createPluginSettingsDrafts(() => setPluginDraftVersion((version) => version + 1))
   const [refreshing, setRefreshing] = createSignal(false)
   const [openingDomain, setOpeningDomain] = createSignal<string | undefined>()
   const [settingsPopoverLayer, setSettingsPopoverLayer] = createSignal<HTMLElement>()
@@ -266,7 +285,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
     unsubscribeSettingsSections()
   })
 
-  const [settings, setSettings] = createStore<SettingsState>(defaultSettingsState(input.sendShortcut()))
+  const [settings, setSettings] = createStore<SettingsState>(
+    defaultSettingsState(input.sendShortcut(), theme.colorScheme()),
+  )
 
   const [config, { refetch: refetchConfig }] = createResource(async () => {
     const res = await globalSDK.client.config.global()
@@ -392,6 +413,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       initialized,
       initializedForSet,
       sendShortcut: () => input.sendShortcut(),
+      colorScheme: theme.colorScheme,
       setSettings,
       setInitialized,
       originalMcpsRef,
@@ -406,7 +428,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   // Include agents() — the Agents page requires the agent list for the Default Agent dropdown.
   const ready = () => initialized() && !!domainSummaries() && !!modelRoleSummaries() && !!agents()
-  const cancelDebouncesRef = { current: () => {} }
 
   function resetEditor() {
     setInitialized(false)
@@ -414,7 +435,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
   }
 
   async function refreshAfterConfigChange() {
-    cancelDebouncesRef.current()
     setRefreshing(true)
     resetEditor()
     await globalSync.refreshAllConfigs()
@@ -440,11 +460,47 @@ export function SettingsPanel(props: SettingsPanelProps) {
   })
 
   const hasServerChanges = createMemo(() => Object.keys(serverPatch()).length > 0)
+  const hasPluginChanges = () => {
+    pluginDraftVersion()
+    return pluginDrafts.dirty()
+  }
+  const colorSchemeDirty = () => settings.general.colorScheme !== theme.colorScheme()
+  const desktopUpdateDirty = () => {
+    const draft = desktopUpdateDraft()
+    return draft !== undefined && draft !== (productUpdate.desktopStatus()?.mode ?? "auto")
+  }
   const editingLabel = createMemo(() => _(copy.globalConfig))
-  const hasAnyChanges = createMemo(() => hasServerChanges() || personalizeController.dirty())
+  const hasAnyChanges = createMemo(
+    () =>
+      hasServerChanges() ||
+      hasPluginChanges() ||
+      personalizeController.dirty() ||
+      font.dirty() ||
+      colorSchemeDirty() ||
+      desktopUpdateDirty(),
+  )
+  const draftFingerprint = createMemo(() =>
+    JSON.stringify({
+      server: serverPatch(),
+      plugin: pluginDraftVersion(),
+      personalize: [personalizeController.content(), personalizeController.resetPending()],
+      font: [font.selected("sans"), font.selected("mono")],
+      colorScheme: settings.general.colorScheme,
+      desktopUpdate: desktopUpdateDraft(),
+    }),
+  )
 
   function showConfirm(params: ConfirmOptions) {
     confirm.show(params)
+  }
+
+  function discardChanges() {
+    pluginDrafts.discard()
+    personalizeController.discard()
+    font.discard()
+    setDesktopUpdateDraft(undefined)
+    resetEditor()
+    doEnsureInit()
   }
 
   const save = useSettingsSave({
@@ -452,21 +508,14 @@ export function SettingsPanel(props: SettingsPanelProps) {
     domainSummaries: () => domainSummaries() ?? [],
     hasAnyChanges,
     editingLabel,
-    setSaving,
     refreshAfterConfigChange,
-    onPatchFailed: async (patch) => {
-      const authoritativePreference = config()?.locale
-      const rolledBack = await rollbackFailedLocalePatch({
-        patch,
-        authoritativePreference,
-        controller: locale.controller,
-      })
-      if (rolledBack) setSettings("general", "locale", authoritativePreference ?? "system")
+    onPatchSaved: (patch) => {
+      if ("theme" in patch) theme.setThemeId(settings.general.theme)
     },
+    discardChanges,
     closeDialog: () => props.onClose?.() ?? dialog.close(),
     showConfirm,
   })
-  cancelDebouncesRef.current = save.cancelDebounces
 
   async function savePersonalizeChanges() {
     const saved = await personalizeController.save()
@@ -490,9 +539,48 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return true
   }
 
+  async function savePluginChanges() {
+    return pluginDrafts.save(async (key, values) => {
+      const result = await globalSDK.client.plugin.updateConfig({
+        pluginId: key.pluginId,
+        scopeID: key.scopeId,
+        pluginConfigUpdate: values,
+      })
+      const saved = settingsValues(result.data, values)
+      window.dispatchEvent(
+        new CustomEvent("synergy:plugin-config-changed", {
+          detail: { pluginId: key.pluginId, scopeId: key.scopeId, values: saved },
+        }),
+      )
+      return saved
+    })
+  }
+
+  async function saveFontChanges() {
+    return font.save()
+  }
+
+  async function saveColorSchemeChanges() {
+    theme.setColorScheme(settings.general.colorScheme)
+    return true
+  }
+
+  async function saveDesktopUpdateChanges() {
+    const mode = desktopUpdateDraft()
+    if (mode === undefined) return true
+    const next = await productUpdate.setDesktopMode(mode)
+    if (next?.mode !== mode) return false
+    setDesktopUpdateDraft(undefined)
+    return true
+  }
+
   const explicitSaveSources = () => [
     { dirty: save.explicitDirty, save: save.saveServerChanges },
+    { dirty: hasPluginChanges, save: savePluginChanges },
     { dirty: personalizeController.dirty, save: savePersonalizeChanges },
+    { dirty: font.dirty, save: saveFontChanges },
+    { dirty: colorSchemeDirty, save: saveColorSchemeChanges },
+    { dirty: desktopUpdateDirty, save: saveDesktopUpdateChanges },
   ]
   const hasExplicitChanges = createMemo(() => hasExplicitSettingsChanges(explicitSaveSources()))
   const explicitSaveBlocked = createMemo(
@@ -501,7 +589,18 @@ export function SettingsPanel(props: SettingsPanelProps) {
   )
 
   async function saveExplicitChanges() {
-    await saveExplicitSettingsChanges(explicitSaveSources(), () => props.onClose?.() ?? dialog.close())
+    setSaving(true)
+    setAggregateSaveStatus("saving")
+    try {
+      const saved = await saveExplicitSettingsChanges(explicitSaveSources())
+      setSaveResultFingerprint(draftFingerprint())
+      setAggregateSaveStatus(saved ? "saved" : "error")
+      if (!saved) {
+        showToast({ type: "error", title: _(copy.partialSaveFailed), description: _(copy.partialSaveReview) })
+      }
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function openDomain(domain: ConfigDomainSummary["id"]) {
@@ -553,16 +652,21 @@ export function SettingsPanel(props: SettingsPanelProps) {
     setDeveloperMode(next)
     persistDeveloperMode(next)
   }
+  function stageDesktopUpdateMode(mode: DesktopUpdateMode) {
+    const saved = productUpdate.desktopStatus()?.mode ?? "auto"
+    setDesktopUpdateDraft(mode === saved ? undefined : mode)
+  }
 
-  const saveFooterStatus = createMemo<"idle" | "saving" | "saved" | "error" | "dirty">(() => {
-    if (save.autoStatus() === "error" || save.bgStatus() === "error" || personalizeController.status() === "error")
-      return "error"
-    if (save.autoStatus() === "saving" || save.bgStatus() === "saving" || saving() || personalizeController.busy())
-      return "saving"
-    if (save.autoStatus() === "saved" || save.bgStatus() === "saved") return "saved"
-    if (save.explicitDirty() || personalizeController.dirty()) return "dirty"
-    return "idle"
-  })
+  const saveFooterStatus = createMemo(() =>
+    settingsSaveFooterStatus({
+      saving: saving() || personalizeController.busy(),
+      dirty: hasExplicitChanges(),
+      resultCurrent: saveResultFingerprint() === draftFingerprint(),
+      aggregate: aggregateSaveStatus(),
+      server: save.status(),
+      personalize: personalizeController.status(),
+    }),
+  )
   const canRefreshClarusProjects = (accountID: string) =>
     canRefreshChannelAccount(channelStatuses()?.[`clarus:${accountID}`])
   const refreshClarusProjects = async (accountID: string) => {
@@ -621,6 +725,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
       <GeneralPanel
         general={settings.general}
         onGeneralChange={(key, value) => setSettings("general", key, value)}
+        desktopUpdateMode={desktopUpdateDraft() ?? productUpdate.desktopStatus()?.mode}
+        onDesktopUpdateModeChange={stageDesktopUpdateMode}
         popoverLayer={settingsPopoverLayer()}
       />
     ),
@@ -992,7 +1098,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     disabled={explicitSaveBlocked()}
                     onClick={() => void saveExplicitChanges()}
                   >
-                    {saving() || personalizeController.status() === "saving" ? _(copy.saving) : _(copy.saveChanges)}
+                    {saving() ? _(copy.saving) : _(copy.saveChanges)}
                   </Button>
                 </Show>
               </div>
@@ -1017,7 +1123,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         </SettingsPage>
       )
     }
-    return <SettingsSectionContent section={section} />
+    return <SettingsSectionContent section={section} drafts={pluginDrafts} draftVersion={pluginDraftVersion} />
   }
 
   function referencePanel(title: string, description: string, domainIds: string[]) {
@@ -1040,7 +1146,11 @@ type SettingsHostComponentProps = Omit<PluginSettingsComponentProps, "context"> 
   context?: PluginSettingsSurfaceContext
 }
 
-function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
+function SettingsSectionContent(props: {
+  section: RegisteredSettingsSection
+  drafts: ReturnType<typeof createPluginSettingsDrafts>
+  draftVersion: () => number
+}) {
   const globalSDK = useGlobalSDK()
   const { _ } = useLingui()
   const componentLoader = createSettingsComponentLoader<Component<SettingsHostComponentProps>>()
@@ -1050,28 +1160,26 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
   const section = () => props.section
   const [values, { mutate }] = createResource(
     () => pluginSettingsResourceKey(section()),
-    async ({ pluginId, scopeId }) => {
-      const result = await globalSDK.client.plugin.getConfig({ pluginId, scopeID: scopeId })
-      return result.data ?? {}
+    async (key) => {
+      const result = await globalSDK.client.plugin.getConfig({ pluginId: key.pluginId, scopeID: key.scopeId })
+      return props.drafts.adopt(key, settingsValues(result.data))
     },
   )
 
-  async function updateValues(next: Record<string, unknown>) {
-    const pluginId = section().pluginId
-    if (!pluginId) return
-    const result = await globalSDK.client.plugin.updateConfig({
-      pluginId,
-      scopeID: section().scopeId,
-      pluginConfigUpdate: next,
-    })
-    const saved = result.data ?? next
-    mutate(saved)
-    window.dispatchEvent(
-      new CustomEvent("synergy:plugin-config-changed", {
-        detail: { pluginId, scopeId: section().scopeId, values: saved },
-      }),
-    )
+  function updateValues(next: Record<string, unknown>) {
+    const key = pluginSettingsResourceKey(section())
+    if (!key) return
+    props.drafts.stage(key, next)
+    mutate(next)
   }
+
+  createEffect(() => {
+    props.draftVersion()
+    const key = pluginSettingsResourceKey(section())
+    if (!key) return
+    const draft = props.drafts.values(key)
+    if (draft) mutate(draft)
+  })
 
   createEffect(() => {
     const current = section()

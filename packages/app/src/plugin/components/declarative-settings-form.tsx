@@ -1,49 +1,28 @@
-import { createSignal, For, Show, createEffect, onCleanup } from "solid-js"
+import { createSignal, For, Show, createEffect } from "solid-js"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { useLingui } from "@lingui/solid"
-import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { SettingRow } from "@/components/settings/components/SettingRow"
 
 interface DeclarativeSettingsFormProps {
   schema: Record<string, unknown>
   values: Record<string, unknown>
-  onChange: (values: Record<string, unknown>) => Promise<void>
+  onChange: (values: Record<string, unknown>) => void
 }
 
 export function DeclarativeSettingsForm(props: DeclarativeSettingsFormProps) {
   const { _ } = useLingui()
   const [local, setLocal] = createSignal(props.values)
-  let committed = props.values
-  let debounceTimer: ReturnType<typeof setTimeout>
   const inputClass =
     "workbench-input-surface w-full rounded-lg border border-border-base/40 bg-input-base px-3 py-2 text-14-regular text-text-strong outline-none transition-colors placeholder:text-text-weaker focus-visible:ring-2 focus-visible:ring-border-strong-base/25"
 
   createEffect(() => {
-    committed = props.values
     setLocal(props.values)
   })
-
-  onCleanup(() => clearTimeout(debounceTimer))
 
   function handleChange(key: string, value: unknown) {
     const next = { ...local(), [key]: value }
     setLocal(next)
-    clearTimeout(debounceTimer)
-    debounceTimer = setTimeout(() => {
-      void props
-        .onChange(next)
-        .then(() => {
-          committed = next
-        })
-        .catch((error) => {
-          setLocal(committed)
-          showToast({
-            type: "error",
-            title: _({ id: "app.plugin.settings.saveFailed", message: "Setting not saved" }),
-            description: error instanceof Error ? error.message : String(error),
-          })
-        })
-    }, 500)
+    props.onChange(next)
   }
 
   const properties = (props.schema.properties ?? {}) as Record<string, Record<string, unknown>>

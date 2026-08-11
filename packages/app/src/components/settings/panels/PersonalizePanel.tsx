@@ -2,36 +2,21 @@ import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
-import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { Show, onMount } from "solid-js"
 import { useLocale } from "@/context/locale"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { PersonalizeController } from "./personalize-controller"
 
-const saveErrorTitle = { id: "settings.personalize.saveError.title", message: "Custom instructions not saved" }
-const saveErrorDesc = {
-  id: "settings.personalize.saveError.description",
-  message: "Review the Custom Instructions content and try again.",
-}
-const saveSuccessTitle = { id: "settings.personalize.saveSuccess.title", message: "Custom instructions saved" }
-const saveSuccessDesc = {
-  id: "settings.personalize.saveSuccess.description",
-  message: "Synergy will use AGENTS.override.md for subsequent prompt assembly.",
-}
-const resetSuccessTitle = { id: "settings.personalize.reset.title", message: "Custom instructions reset" }
-const resetSuccessDesc = {
-  id: "settings.personalize.reset.description",
-  message: "Synergy will fall back to the global AGENTS.md file.",
-}
-const resetErrorTitle = { id: "settings.personalize.resetError.title", message: "Custom instructions not reset" }
-const resetErrorDesc = { id: "settings.personalize.resetError.description", message: "Try again." }
 const confirmResetTitle = { id: "settings.personalize.confirmReset.title", message: "Reset custom instructions?" }
 const confirmResetDesc = {
   id: "settings.personalize.confirmReset.description",
-  message: "Remove AGENTS.override.md and return to the global AGENTS.md content.",
+  message: "Clear this draft and stage removal of AGENTS.override.md. Save Changes commits the reset.",
 }
-const confirmResetConfirmLabel = { id: "settings.personalize.confirmReset.confirm", message: "Reset to AGENTS.md" }
+const confirmResetConfirmLabel = {
+  id: "settings.personalize.confirmReset.confirm",
+  message: "Stage reset to AGENTS.md",
+}
 const confirmResetCancelLabel = { id: "settings.personalize.confirmReset.cancel", message: "Keep override" }
 const managedOverrideTitle = { id: "settings.personalize.managedOverride", message: "Managed override" }
 const globalInstructionsTitle = { id: "settings.personalize.globalInstructions", message: "Global instructions" }
@@ -65,12 +50,7 @@ const inputPlaceholder = {
   id: "settings.personalize.input.placeholder",
   message: "Describe your preferred language, response style, engineering conventions, or collaboration rules.",
 }
-const saveCustomInstructionsLabel = {
-  id: "settings.personalize.save.label",
-  message: "Save Custom Instructions",
-}
 const bytesLabel = { id: "settings.personalize.bytes", message: "bytes" }
-const savingLabel = { id: "settings.personalize.saving", message: "Saving..." }
 
 export function PersonalizePanel(props: { controller: PersonalizeController }) {
   const { _ } = useLingui()
@@ -82,23 +62,6 @@ export function PersonalizePanel(props: { controller: PersonalizeController }) {
     if (!controller.info() && controller.status() === "idle") void controller.load()
   })
 
-  async function save() {
-    const saved = await controller.save()
-    if (!saved) {
-      showToast({
-        type: "error",
-        title: _(saveErrorTitle),
-        description: controller.error() ?? _(saveErrorDesc),
-      })
-      return
-    }
-    showToast({
-      type: "success",
-      title: controller.info()?.hasOverride ? _(saveSuccessTitle) : _(resetSuccessTitle),
-      description: controller.info()?.hasOverride ? _(saveSuccessDesc) : _(resetSuccessDesc),
-    })
-  }
-
   function reset() {
     confirm.show({
       title: confirmResetTitle,
@@ -106,21 +69,8 @@ export function PersonalizePanel(props: { controller: PersonalizeController }) {
       confirmLabel: confirmResetConfirmLabel,
       cancelLabel: confirmResetCancelLabel,
       tone: "warning",
-      onConfirm: async () => {
-        const reset = await controller.reset()
-        if (!reset) {
-          showToast({
-            type: "error",
-            title: _(resetErrorTitle),
-            description: controller.error() ?? _(resetErrorDesc),
-          })
-          return
-        }
-        showToast({
-          type: "success",
-          title: _(resetSuccessTitle),
-          description: _(resetSuccessDesc),
-        })
+      onConfirm: () => {
+        controller.stageReset()
       },
     })
   }
@@ -193,15 +143,6 @@ export function PersonalizePanel(props: { controller: PersonalizeController }) {
                     {controller.error()}
                   </span>
                 </Show>
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="normal"
-                  disabled={!controller.canSave()}
-                  onClick={() => void save()}
-                >
-                  {controller.status() === "saving" ? _(savingLabel) : _(saveCustomInstructionsLabel)}
-                </Button>
               </div>
             </div>
           </div>

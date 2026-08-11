@@ -2,7 +2,7 @@ import type { ConfigInstructionsInfo } from "@ericsanchezok/synergy-sdk/client"
 import { createSignal } from "solid-js"
 
 export type CustomInstructionsInfo = ConfigInstructionsInfo
-export type PersonalizeStatus = "idle" | "loading" | "saving" | "resetting" | "error"
+export type PersonalizeStatus = "idle" | "loading" | "saving" | "error"
 
 export type PersonalizeApi = {
   get(): Promise<CustomInstructionsInfo>
@@ -14,19 +14,21 @@ export function createPersonalizeController(api: PersonalizeApi) {
   const [info, setInfo] = createSignal<CustomInstructionsInfo>()
   const [content, setContent] = createSignal("")
   const [savedContent, setSavedContent] = createSignal("")
+  const [resetPending, setResetPending] = createSignal(false)
   const [status, setStatus] = createSignal<PersonalizeStatus>("idle")
   const [error, setError] = createSignal<string>()
 
   const byteCount = () => new TextEncoder().encode(content()).byteLength
-  const dirty = () => content() !== savedContent()
+  const dirty = () => resetPending() || content() !== savedContent()
   const overLimit = () => byteCount() > (info()?.maxBytes ?? Number.POSITIVE_INFINITY)
-  const busy = () => status() === "loading" || status() === "saving" || status() === "resetting"
+  const busy = () => status() === "loading" || status() === "saving"
   const canSave = () => dirty() && !overLimit() && !busy()
 
   function adopt(next: CustomInstructionsInfo) {
     setInfo(next)
     setContent(next.content)
     setSavedContent(next.content)
+    setResetPending(false)
     setError(undefined)
     setStatus("idle")
   }
@@ -36,6 +38,26 @@ export function createPersonalizeController(api: PersonalizeApi) {
     setStatus("error")
   }
 
+  function updateContent(next: string) {
+    setResetPending(false)
+    setContent(next)
+  }
+
+  function stageReset() {
+    if (busy()) return false
+    setResetPending(true)
+    setContent("")
+    setError(undefined)
+    setStatus("idle")
+    return true
+  }
+
+  function discard() {
+    setResetPending(false)
+    setContent(savedContent())
+    setError(undefined)
+    setStatus("idle")
+  }
   async function load() {
     setStatus("loading")
     setError(undefined)
@@ -51,20 +73,7 @@ export function createPersonalizeController(api: PersonalizeApi) {
     setStatus("saving")
     setError(undefined)
     try {
-      adopt(await api.update(content()))
-      return true
-    } catch (cause) {
-      fail(cause)
-      return false
-    }
-  }
-
-  async function reset() {
-    if (busy()) return false
-    setStatus("resetting")
-    setError(undefined)
-    try {
-      adopt(await api.reset())
+      adopt(resetPending() ? await api.reset() : await api.update(content()))
       return true
     } catch (cause) {
       fail(cause)
@@ -75,8 +84,9 @@ export function createPersonalizeController(api: PersonalizeApi) {
   return {
     info,
     content,
-    setContent,
+    setContent: updateContent,
     savedContent,
+    resetPending,
     status,
     error,
     byteCount,
@@ -86,7 +96,8 @@ export function createPersonalizeController(api: PersonalizeApi) {
     canSave,
     load,
     save,
-    reset,
+    stageReset,
+    discard,
   }
 }
 
