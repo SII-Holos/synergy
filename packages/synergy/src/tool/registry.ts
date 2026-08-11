@@ -9,6 +9,7 @@ import { ReadTool } from "./read"
 import { ViewFileTool } from "./view-file"
 import { ViewImageTool } from "./view-image"
 import { ReviseFileTool } from "./revise-file"
+import { ResolveConflictsTool } from "./resolve-conflicts"
 import { SaveFileTool } from "./save-file"
 import { ScanFilesTool } from "./scan-files"
 import { ParseCodeTool } from "./parse-code"
@@ -346,6 +347,7 @@ export namespace ToolRegistry {
       FileSearchTool,
       ParseCodeTool,
       ReviseFileTool,
+      ResolveConflictsTool,
       SaveFileTool,
       GlobTool,
       GrepTool,

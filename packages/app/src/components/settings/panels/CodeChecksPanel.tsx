@@ -15,7 +15,7 @@ const sectionTitle = { id: "settings.codeChecks.section.title", message: "Post-w
 const includeRowTitle = { id: "settings.codeChecks.include.title", message: "Include Diagnostics" }
 const includeRowDesc = {
   id: "settings.codeChecks.include.desc",
-  message: "Return language-server feedback after write, edit, save_file, and revise_file.",
+  message: "Return language-server feedback after write, edit, save_file, revise_file, and resolve_conflicts.",
 }
 const severityRowTitle = { id: "settings.codeChecks.severity.title", message: "Diagnostic Severity" }
 const severityRowDesc = {

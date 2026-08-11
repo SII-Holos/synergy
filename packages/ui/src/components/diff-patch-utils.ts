@@ -14,6 +14,10 @@ import { parsePatchFiles } from "@pierre/diffs"
 const TRUNCATION_MARKER = /\[\d[\d,]* characters omitted\]/
 const SECTION_MARKER = /^=== .+ ===\s*$/
 
+function hasUnrenderableTrailingBlankLine(lines: readonly string[]): boolean {
+  return /^\r?\n$/.test(lines.at(-1) ?? "")
+}
+
 export function canRenderPatch(patch: string | undefined | null): boolean {
   if (!patch || !patch.trim()) return false
   // Truncated previews (middle-omitted by SessionBounds) still parse as valid
@@ -33,6 +37,14 @@ export function canRenderPatch(patch: string | undefined | null): boolean {
     if (
       metadata.deletionLines?.some((line) => SECTION_MARKER.test(line)) ||
       metadata.additionLines?.some((line) => SECTION_MARKER.test(line))
+    ) {
+      return false
+    }
+    // Pierre strips the final newline before highlighting, so an empty final
+    // hunk line leaves its renderer with a line index but no highlighted row.
+    if (
+      hasUnrenderableTrailingBlankLine(metadata.deletionLines) ||
+      hasUnrenderableTrailingBlankLine(metadata.additionLines)
     ) {
       return false
     }

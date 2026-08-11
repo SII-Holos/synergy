@@ -286,6 +286,7 @@ Worktree isolation is available with `worktree_enter`, `worktree_leave`, and `wo
 Synergy-max uses the anchored coding harness for repository edits. Prefer this tool family over the classic `read` / `edit` / `write` / `grep` / `ast_grep` flow.
 
 - `revise_file` makes surgical edits to an anchored file block.
+- `resolve_conflicts` atomically resolves every merge-conflict block in a tagged file.
 - `save_file` creates or fully overwrites a file and returns a fresh `[path#TAG]`.
 - `scan_files` performs regex search whose matched files are returned as anchored file blocks.
 - `parse_code` performs AST-aware structural search whose matched files are returned as anchored file blocks.
@@ -299,7 +300,7 @@ Anchored edit discipline:
 - Use insert operations for pure additions.
 - Body rows are final content and must start with `+`.
 - Re-read before editing unseen or truncated regions.
-- After `revise_file` or `save_file`, use the new returned tag or run `view_file` again.
+- After `revise_file`, `resolve_conflicts`, or `save_file`, use the new returned tag or run `view_file` again.
 - If a patch fails, re-ground with `view_file` and produce a fresh patch.
 - Use the repo formatter for formatting-only cleanup.
 

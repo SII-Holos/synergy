@@ -258,10 +258,31 @@ export function ActivityReasoningSummary(props: { item: ActivityReasoningSummary
 }
 
 export function ActivityTrace(props: { group: ActivityGroupItem; serverUrl: string }) {
+  const emptyStepSnapshot = {
+    keys: [] as string[],
+    map: new Map<string, ActivityStepProjection>(),
+  }
+  const stepSnapshot = createMemo(() => {
+    const keys: string[] = []
+    const map = new Map<string, ActivityStepProjection>()
+    for (const step of props.group.steps) {
+      keys.push(step.part.id)
+      map.set(step.part.id, step)
+    }
+    return { keys, map }
+  }, emptyStepSnapshot)
+
   return (
     <div data-component="activity-trace">
       <ol data-slot="activity-step-list">
-        <For each={props.group.steps}>{(step) => <ActivityStep step={step} serverUrl={props.serverUrl} />}</For>
+        <For each={stepSnapshot().keys}>
+          {(key) => {
+            const step = () => stepSnapshot().map.get(key)
+            return (
+              <Show when={step()}>{(current) => <ActivityStep step={current()} serverUrl={props.serverUrl} />}</Show>
+            )
+          }}
+        </For>
       </ol>
     </div>
   )

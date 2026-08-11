@@ -43,7 +43,7 @@ There is NO other body row kind. NEVER write `-old` or a bare/context line. To k
 - Non-adjacent changes = separate hunks; untouched lines stay out of every range.
 - Pure additions use `INS.PRE` / `INS.POST` / `INS.HEAD` / `INS.TAIL`, never a widened `SWAP` — retyped keeper lines are exactly what may be dropped. A multi-line `SWAP` whose body restates the line just outside the range may be auto-dropped as an off-by-one keeper (with a warning), but issue the payload as the final content for the range only and never lean on the repair.
 - NEVER format/restyle code with this tool; run the project formatter instead.
-- `revise_file` refuses to edit files that contain unresolved merge conflict markers. Resolve conflicts first, or use `save_file` for an intentional full-file resolution.
+- `revise_file` refuses to edit files that contain unresolved merge conflict markers. Use `resolve_conflicts` with the current `view_file` tag, or use `save_file` only for an intentional full-file resolution.
 </rules>
 
 <examples>

@@ -145,9 +145,9 @@ export const { use: useFontPreference, provider: FontPreferenceProvider } = crea
       createStore<FontPreferenceStore>(defaultPreferences()),
     )
 
-    // Per-kind UI phase: Check loads the local font list, then the user picks a
-    // family from it and Apply uses it. The list is intentionally not
-    // persisted; only the applied preference is.
+    // Per-kind UI phase: Check loads the local font list, then the user stages
+    // a family selection. The list is intentionally not persisted; only a
+    // selection committed through the Settings footer is persisted.
     const [phase, setPhase] = createStore<Record<FontKind, FontPhase>>({ sans: "idle", mono: "idle" })
     const [fontList, setFontList] = createStore<Record<FontKind, string[]>>({ sans: [], mono: [] })
     const [selected, setSelected] = createStore<Record<FontKind, string>>({
@@ -187,22 +187,37 @@ export const { use: useFontPreference, provider: FontPreferenceProvider } = crea
       return "ready"
     }
 
-    function apply(kind: FontKind): boolean {
-      if (phase[kind] !== "ready") return false
-      const family = normalizeFontFamily(selected[kind])
-      if (!family) return false
-      setStore(kind, { requestedFamily: family, appliedFamily: family })
-      applyFontFamily(kind, family)
+    function dirty(kind?: FontKind) {
+      const changed = (target: FontKind) => normalizeFontFamily(selected[target]) !== store[target].appliedFamily
+      return kind ? changed(kind) : changed("sans") || changed("mono")
+    }
+
+    function save(): boolean {
+      const kinds: FontKind[] = ["sans", "mono"]
+      for (const kind of kinds) {
+        if (!dirty(kind)) continue
+        const family = normalizeFontFamily(selected[kind])
+        if (family && (phase[kind] !== "ready" || !isValidFontFamily(family))) return false
+      }
+
+      for (const kind of kinds) {
+        if (!dirty(kind)) continue
+        const family = normalizeFontFamily(selected[kind])
+        setStore(kind, { requestedFamily: family, appliedFamily: family })
+        applyFontFamily(kind, family)
+      }
       return true
     }
 
     function reset(kind: FontKind) {
       requestSeq[kind]++
-      setStore(kind, { requestedFamily: "", appliedFamily: "" })
       setSelected(kind, "")
       setFontList(kind, [])
       setPhase(kind, "idle")
-      applyFontFamily(kind, "")
+    }
+
+    function discard() {
+      for (const kind of ["sans", "mono"] as const) setSelected(kind, store[kind].appliedFamily)
     }
 
     function select(kind: FontKind, family: string) {
@@ -215,9 +230,11 @@ export const { use: useFontPreference, provider: FontPreferenceProvider } = crea
       fontList: (kind: FontKind) => fontList[kind],
       selected: (kind: FontKind) => selected[kind],
       appliedFamily: (kind: FontKind) => store[kind].appliedFamily,
+      dirty,
       check,
-      apply,
+      save,
       reset,
+      discard,
       select,
     }
   },
