@@ -28,18 +28,6 @@ export function parseToastDurationOverrides(durations: ToastDurationOverrides): 
   return result
 }
 
-export function toastConfigFromPreferences(
-  muted: readonly string[],
-  durations: ToastDurationOverrides,
-): ToastConfig | undefined {
-  const patch = toastPatchFromPreferences(muted, durations)
-  if (!patch.muted.length && !patch.durationOverrides) return undefined
-  return {
-    ...(patch.muted.length ? { muted: patch.muted } : {}),
-    ...(patch.durationOverrides ? { durationOverrides: patch.durationOverrides } : {}),
-  }
-}
-
 /** Domain-update payload that always carries `muted` so mergeDeep can clear it. */
 export function toastPatchFromPreferences(muted: readonly string[], durations: ToastDurationOverrides): ToastPatch {
   const normalizedMuted = muted.filter(isToastType) as RuntimeToastType[]

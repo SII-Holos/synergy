@@ -589,6 +589,7 @@ function createGlobalSync() {
     refreshAllConfigsQueued = false
     const scopeKeys = Object.keys(children)
     await Promise.all([
+      loadGlobalConfig(),
       loadGlobalProviders(),
       runInstanceRequests(scopeKeys, (scopeKey) => refreshConfig(scopeKey)),
     ]).catch(() => undefined)

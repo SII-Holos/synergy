@@ -39,7 +39,7 @@ Read [PRODUCT.md](PRODUCT.md) before changing interaction structure, visual hier
 
 ## Settings and Plugins
 
-- Use `src/components/settings/catalog.ts` for built-in section metadata, search terms, domains, and save strategies.
+- Use `src/components/settings/catalog.ts` for built-in section metadata, search terms, and domains.
 - Derive field ownership from `/config/domains` `ownedKeys`; do not maintain a frontend duplicate.
 - Use focused forms for common settings. For complex/low-frequency config, always show the canonical file and Copy Path; expose generated `config.domain.open` behavior only in Desktop managed-local mode where the shell and server share filesystem and desktop authority.
 - Preserve plugin-contributed settings and UI lifecycle. Built-ins use semantic `iconToken`; plugins may use declared plugin icons.
