@@ -44,6 +44,14 @@ Each Feishu/Lark account can set a default model and one of that model's exposed
 
 Channel sessions default to the `autonomous` control profile. An inbound message therefore receives either an allowed result or a clear denial; it never stalls on an approval dialog visible only in another client.
 
+### Feishu Boss Mode Routing
+
+When Runtime Boss Mode is enabled (`experimental.boss_mode` in the Runtime domain), every accepted Feishu group or direct message on an account routes to that account's runtime boss session instead of a per-chat session. The existing admission checks still apply first — `requireMention`, `allowGroup`, and `allowDM` — and the account's other settings are unchanged. The boss session is provisioned once per enabled account in the home scope with the endpoint keyed `scope:boss`; replies anchor back to the original inbound message (`replyToMessageId = messageId`).
+
+Inbound user messages carry a source prefix of `[群: {chatName} | 发送者: {senderName} | {时间}]` and the metadata fields `channelChatId`, `channelChatName`, `channelSenderId`, and `channelSenderName`. The boss session runs one turn at a time: accepted messages enter a FIFO task queue, and repeated steers are coalesced so backlog stays bounded.
+
+Accounts configured with `projectDir` are not routed: the account keeps its existing per-chat behavior, and the runtime warns instead of using the boss session for Feishu ingress. Disabling `experimental.boss_mode` reverts routing to the per-chat sessions used before; the boss session and its history remain.
+
 ### Channel Commands
 
 Channel commands are handled before ordinary agent invocation. Commands that accept trailing text can switch or reset the conversation and immediately continue that text as the next user request.

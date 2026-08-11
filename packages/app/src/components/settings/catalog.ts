@@ -44,6 +44,7 @@ export const BUILTIN_SETTINGS_IDS = [
   "formatter",
   "lsp",
   "observability",
+  "boss",
   "import",
   "config-files",
   "archived-sessions",
@@ -413,6 +414,24 @@ const BUILTIN_SETTINGS_COPY = {
       comment: SEARCH_TERMS_COMMENT,
     },
   },
+  boss: {
+    label: { id: "settings.catalog.boss.label", message: "Boss Mode" },
+    description: {
+      id: "settings.catalog.boss.description",
+      message:
+        "Turn this Synergy instance into a colleague: auto-create a runtime boss session and route all Feishu messages to it.",
+    },
+    searchTerms: {
+      id: "settings.catalog.boss.searchTerms",
+      message: "boss | colleague | feishu | routing | runtime",
+      comment: SEARCH_TERMS_COMMENT,
+    },
+    rowLabels: [
+      { id: "settings.catalog.boss.row.bossMode", message: "Boss Mode" },
+      { id: "settings.catalog.boss.row.identity", message: "Colleague Identity" },
+      { id: "settings.catalog.boss.row.interval", message: "World Overview Briefing Interval (days)" },
+    ],
+  },
   import: {
     label: { id: "settings.catalog.import.label", message: "Import" },
     description: { id: "settings.catalog.import.description", message: "Import selected config domains." },
@@ -488,6 +507,7 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
     domainIds: ["general", "runtime"],
     visibility: "developer",
   }),
+  section("boss", "runtime", 80, "prompt.boss", { domainIds: ["runtime"] }),
   section("import", "system", 10, "settings.import"),
   section("config-files", "system", 20, "settings.configFiles"),
   section("archived-sessions", "system", 30, "session.archive"),

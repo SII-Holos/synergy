@@ -1,0 +1,5 @@
+Create a new project as a runtime colleague: create the project directory if missing, bind it as a project Scope, and create a project boss session in that scope.
+
+The project boss is an interactive boss session (`workflow.kind: "boss", role: "boss"`) with the default layered-reporting discipline written into its standing instructions: it reports status-change summaries + one-line results + sessionID references to the coordinating boss via session_send, and never forwards raw worker reports.
+
+Use this when a colleague asks you to start work on a new project that has no directory/scope yet. After creation, delegate work to the project boss with session_send.

@@ -151,6 +151,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   boss_report: entry("orchestration.session", { stateful: true }),
   boss_status: entry("orchestration.session"),
   boss_cancel: entry("orchestration.session", { stateful: true }),
+  boss_project: entry("orchestration.session", { stateful: true }),
   scope_list: entry("orchestration.session"),
   agenda_schedule: entry("orchestration.agenda", { stateful: true }),
   agenda_watch: entry("orchestration.agenda", { stateful: true }),

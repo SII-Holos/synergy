@@ -114,6 +114,16 @@ Workers are created with `boss_spawn` (a role label and an optional agent) and r
 
 The model prompt is injected at the workflow context layer: the root receives `<boss-context>` plus a live `<boss-tree>` overview, and workers receive `<boss-worker-context>`. `WorkflowUserWrapper` supports Boss Mode for message projection, and `boss_report` deliveries are never wrapped again.
 
+### Runtime Boss Mode
+
+Runtime Boss Mode is an opt-in experimental mode (`experimental.boss_mode` in the Runtime domain) that provisions a singleton runtime boss session and routes Feishu conversation ingress to it. When enabled, the runtime idempotently creates one boss session per enabled Feishu account, in the home scope, with `workflow: { kind: "boss", role: "boss" }`, an interactive interaction, and the endpoint keyed `scope:boss`. All accepted Feishu group and direct messages for that account route to this session — after the existing mention, `allowGroup`, and `allowDM` filters — with a source prefix and `channelChatId`/`channelSenderId` metadata, and replies anchor back to the original message.
+
+The runtime boss receives a one-time world-overview briefing covering sessions, projects, agenda, memory, and experience, plus the optional `boss_identity_text` colleague identity; the briefing is delivered as a steer message with a deduplicated delivery key. With `boss_briefing_interval_days` set, the versioned briefing is re-injected on that cadence. Identity text and collaboration discipline — dispatch, layered reporting, memory discipline, lark-cli history reading, and Feishu source headers — are injected into model context each turn through `<boss-identity>` built by `buildBossContext`.
+
+The runtime boss and project bosses are peers: there is no cross-scope parent tree. Delegation flows through `session_send`; worker reports (`boss_report`) enter only the direct project boss history, and the top boss receives only project-boss summaries and deep-reads through `session_read`. Memory written with `memory_write` survives compaction. The `boss_project` tool (`orchestration.session`) creates one project per call: it creates the directory when missing, binds it through `Scope.fromDirectory`, and creates an interactive project boss session (`workflow boss`, role `boss`) in that project scope. The project boss's `workflow.instructions` carry the default layered-reporting discipline — report only status-change summaries plus a one-line result with a `sessionID` reference to the top boss via `session_send`, never forwarding raw worker reports. The tool requires the caller to be in boss mode and an absolute directory outside the home directory.
+
+Disabling `experimental.boss_mode` reverts Feishu routing to the per-chat sessions used before; the runtime boss session and its history remain.
+
 ## Continuation Drive
 
 `SessionDrive` is the single session-level arbitration entry point. Cortex completion, Agenda delivery or wait release, Lattice resume, and `SessionManager.release` all request the drive instead of delivering workflow continuations independently. Requests are serialized per session: each arbitration is queued after the previous request settles, so reentrant requests are not lost and processing wakes happen outside the tracked arbitration promise.

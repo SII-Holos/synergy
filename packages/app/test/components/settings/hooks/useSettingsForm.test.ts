@@ -77,6 +77,36 @@ describe("settings form agent worker pool", () => {
   })
 })
 
+describe("settings form boss mode", () => {
+  test("defaults boss mode off with empty identity and briefing interval", () => {
+    expect(initializedRuntime({})).toMatchObject({
+      bossMode: "false",
+      bossIdentityText: "",
+      bossBriefingIntervalDays: "",
+    })
+  })
+
+  test("hydrates enabled boss mode with identity and briefing interval", () => {
+    expect(
+      initializedRuntime({
+        experimental: {
+          boss_mode: true,
+          boss_identity_text: "Ops lead",
+          boss_briefing_interval_days: 7,
+        },
+      }),
+    ).toMatchObject({
+      bossMode: "true",
+      bossIdentityText: "Ops lead",
+      bossBriefingIntervalDays: "7",
+    })
+  })
+
+  test("hydrates explicit boss mode false", () => {
+    expect(initializedRuntime({ experimental: { boss_mode: false } }).bossMode).toBe("false")
+  })
+})
+
 describe("settings form channel accounts", () => {
   test("hydrates Feishu model overrides and Clarus enablement", () => {
     expect(

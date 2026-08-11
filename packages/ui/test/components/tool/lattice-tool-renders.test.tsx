@@ -41,6 +41,7 @@ describe("Lattice tool renderers", () => {
     expect([...registrations.keys()].toSorted()).toEqual([
       "boss_assign",
       "boss_cancel",
+      "boss_project",
       "boss_report",
       "boss_spawn",
       "boss_status",
@@ -49,6 +50,20 @@ describe("Lattice tool renderers", () => {
       "pathway_write",
     ])
     expect(registrations.has("pathway_patch")).toBe(false)
+  })
+
+  test("renders boss_project with the crown glyph and directory subtitle", () => {
+    registrations.get("boss_project")?.({
+      tool: "boss_project",
+      input: { directory: "/work/projects/alpha", title: "Alpha" },
+      metadata: {},
+    })
+    expect(capturedTrigger).toEqual({
+      icon: "crown",
+      title: { id: "tool.title.boss-project", message: "Create project" },
+      subtitle: "/work/projects/alpha",
+      tags: undefined,
+    })
   })
 
   test("registers boss tool renderers with the crown glyph", () => {

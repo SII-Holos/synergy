@@ -13797,6 +13797,30 @@ msgid "settings.catalog.archivedSessions.searchTerms"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.boss.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.row.bossMode"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.row.identity"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.row.interval"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.searchTerms"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.channels.description"
 msgstr ""
 
@@ -17261,6 +17285,38 @@ msgid "settings.runtime.agents.wall.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.boss.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.enabled.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.identity"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.identity.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.identity.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.interval"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.interval.desc"
+msgstr ""
+
+#. Boss Mode
+msgid "settings.runtime.boss.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.compaction.autoCompact.desc"
 msgstr ""
 
@@ -18242,6 +18298,10 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.boss-cancel"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-project"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────

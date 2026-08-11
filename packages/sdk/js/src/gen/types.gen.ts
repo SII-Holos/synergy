@@ -3927,6 +3927,18 @@ export type Config = {
      * Timeout in milliseconds for model context protocol (MCP) requests
      */
     mcp_timeout?: number
+    /**
+     * Enable Runtime Boss Mode: auto-provision a home-scope runtime boss session and route all Feishu messages to it
+     */
+    boss_mode?: boolean
+    /**
+     * Optional colleague identity description injected into the runtime boss session
+     */
+    boss_identity_text?: string
+    /**
+     * Re-inject the versioned world-overview briefing every N days (default: disabled)
+     */
+    boss_briefing_interval_days?: number
   }
   /**
    * Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.

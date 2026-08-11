@@ -396,6 +396,108 @@ describe("settings config patch", () => {
     ).toEqual({ coauthor_reminder: true })
   })
 
+  test("boss mode defaults off without materializing experimental config", () => {
+    const state = defaultSettingsState("enter")
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toBeUndefined()
+  })
+
+  test("boss mode fields materialize in experimental config when enabled", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossMode = "true"
+    state.runtime.bossIdentityText = "Ops lead"
+    state.runtime.bossBriefingIntervalDays = "7"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({
+      boss_mode: true,
+      boss_identity_text: "Ops lead",
+      boss_briefing_interval_days: 7,
+    })
+  })
+
+  test("boss mode can be disabled and clears identity and briefing interval", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossMode = "false"
+    state.runtime.bossIdentityText = ""
+    state.runtime.bossBriefingIntervalDays = ""
+
+    expect(
+      buildPatch({
+        cfg: {
+          experimental: {
+            boss_mode: true,
+            boss_identity_text: "Ops lead",
+            boss_briefing_interval_days: 7,
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({
+      boss_mode: false,
+      boss_identity_text: undefined,
+      boss_briefing_interval_days: undefined,
+    })
+  })
+
+  test("boss identity and briefing interval can be re-added from explicit values", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossMode = "true"
+    state.runtime.bossIdentityText = "Ops lead"
+    state.runtime.bossBriefingIntervalDays = "7"
+
+    expect(
+      buildPatch({
+        cfg: {
+          experimental: {
+            boss_mode: false,
+            boss_identity_text: undefined,
+            boss_briefing_interval_days: undefined,
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({
+      boss_mode: true,
+      boss_identity_text: "Ops lead",
+      boss_briefing_interval_days: 7,
+    })
+  })
+
+  test("does not re-save unchanged boss mode experimental config", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossMode = "true"
+    state.runtime.bossIdentityText = "Ops lead"
+    state.runtime.bossBriefingIntervalDays = "7"
+
+    expect(
+      buildPatch({
+        cfg: {
+          experimental: {
+            boss_mode: true,
+            boss_identity_text: "Ops lead",
+            boss_briefing_interval_days: 7,
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("experimental")
+  })
+
   test("does not re-save unchanged sandbox config when enabled is already explicit", () => {
     const state = defaultSettingsState("enter")
     state.safety.sandboxEnabled = "true"

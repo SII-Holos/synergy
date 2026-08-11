@@ -349,6 +349,29 @@ export namespace RuntimeReload {
             }
           }
         }
+        // Runtime Boss Mode: react to experimental toggle / identity text / briefing interval changes.
+        if (resolvedScope === "global" && changedFields.includes("experimental")) {
+          const oldExp = oldConfig.experimental ?? {}
+          const newExp = result.config.experimental ?? {}
+          if (oldExp.boss_mode !== newExp.boss_mode) {
+            try {
+              const { BossRuntime } = await import("../session/boss-runtime")
+              await BossRuntime.sync(newExp.boss_mode === true)
+            } catch (err) {
+              ctx.warnings.push(`Failed to sync runtime boss mode: ${err instanceof Error ? err.message : String(err)}`)
+            }
+          }
+          if (newExp.boss_mode === true && oldExp.boss_identity_text !== newExp.boss_identity_text) {
+            try {
+              const { BossRuntime } = await import("../session/boss-runtime")
+              await BossRuntime.refreshIdentity({ versioned: true })
+            } catch (err) {
+              ctx.warnings.push(
+                `Failed to refresh runtime boss identity: ${err instanceof Error ? err.message : String(err)}`,
+              )
+            }
+          }
+        }
         if (changedFields.includes("timeout")) {
           const { TimeoutConfig } = await import("@/util/timeout-config")
           TimeoutConfig.invalidate()

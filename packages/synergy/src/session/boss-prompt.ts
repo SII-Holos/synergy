@@ -16,6 +16,62 @@ export function buildBossContext(session: SessionInfo): string {
   ].join("\n")
 }
 
+/**
+ * Runtime Boss Mode identity + collaboration discipline block. Injected into
+ * every boss turn (Layer 2.5, `case "boss"`) when the session is the runtime
+ * boss (home scope, `scope:boss` endpoint) or any project boss.
+ *
+ * `identityText` comes from `experimental.boss_identity_text` (config single
+ * source, never written to the session); the default colleague persona is
+ * used when unset.
+ */
+export const BOSS_DISCIPLINE_BLOCK = [
+  "<boss-identity>",
+  "You are a runtime colleague, not just a session: you receive Feishu messages from many chats and coordinate project owners.",
+  "",
+  "Dispatch discipline:",
+  "- Classify every inbound message first: answer directly when it is simple; delegate to the owning project boss via session_send (attach the original text) when it belongs to a project — do not deep-process it yourself; use boss_project to create a new project when the directory/scope does not exist.",
+  "",
+  "Layered reporting discipline:",
+  "- Your direct information sources are the project bosses' summaries. Worker raw reports (boss_report) never enter this session's history.",
+  "- When you need detail, deep-read with session_read on the project boss or its workers instead of keeping everything in context.",
+  "- Send summaries to the top boss with status + one-line result + sessionID reference; never forward raw worker reports.",
+  "",
+  "Memory discipline:",
+  "- Persist important facts (project ownership, in-flight tasks, decisions, constraints) with memory_write. Compaction only folds message history; memory, experience, and the <boss-tree> are recomputed every turn from durable stores and survive compaction.",
+  "",
+  "Feishu source headers:",
+  "- Inbound messages carry a prefix `[群: {chatName} | 发送者: {senderName} | {时间}]` plus metadata (channelChatId/channelChatName/channelSenderId/channelSenderName). Use it to attribute requests and route them.",
+  "",
+  "lark-cli history reading:",
+  "- To backfill history before the bot joined or messages filtered out, use bash lark-cli: `lark-cli auth status --json --verify` first, then `lark-cli im +chat-messages-list --chat-id <chat_id>`, `lark-cli im +messages-search`, `lark-cli im +chat-search --query <term>`.",
+  "- If auth lacks IM scopes, request them interactively from the human: `lark-cli auth login --scope im:message:readonly --scope im:chat:read` (user identity) or enable bot scopes.",
+  "</boss-identity>",
+].join("\n")
+
+/**
+ * Full boss system context for runtime/project bosses: base boss role +
+ * identity/discipline block (runtime boss) or standing instructions (project
+ * boss created via boss_project). `identityText` is resolved by the caller
+ * (invoke.ts) from `experimental.boss_identity_text`; `instructions` come from
+ * `workflow.instructions` (project-boss reporting discipline).
+ */
+export function buildRuntimeBossContext(
+  session: SessionInfo,
+  options: { identityText?: string; instructions?: string },
+): string {
+  const lines = [buildBossContext(session)]
+  const identity = options.identityText?.trim()
+  if (identity) {
+    lines.push("", BOSS_DISCIPLINE_BLOCK, "", `<boss-persona>\n${identity}\n</boss-persona>`)
+  }
+  const instructions = options.instructions?.trim()
+  if (instructions) {
+    lines.push("", "Standing instructions from your coordinator:", instructions)
+  }
+  return lines.join("\n")
+}
+
 export function buildWorkerContext(session: SessionInfo): string {
   const workflow = session.workflow?.kind === "boss" ? session.workflow : undefined
   const workerRole = workflow?.workerRole ?? "general"

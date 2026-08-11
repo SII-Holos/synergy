@@ -13797,6 +13797,30 @@ msgid "settings.catalog.archivedSessions.searchTerms"
 msgstr "archive | archived | session | delete | history | project"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.boss.description"
+msgstr "Turn this Synergy instance into a colleague: auto-create a runtime boss session and route all Feishu messages to it."
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.label"
+msgstr "Boss Mode"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.row.bossMode"
+msgstr "Boss Mode"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.row.identity"
+msgstr "Colleague Identity"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.row.interval"
+msgstr "World Overview Briefing Interval (days)"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.searchTerms"
+msgstr "boss | colleague | feishu | routing | runtime"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.channels.description"
 msgstr "External messaging channel accounts."
 
@@ -17261,6 +17285,38 @@ msgid "settings.runtime.agents.wall.title"
 msgstr "Wall Timeout"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.boss.desc"
+msgstr "Turn this Synergy instance into a colleague: auto-create a runtime boss session and route all Feishu messages to it."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.enabled.desc"
+msgstr "Route all Feishu messages to the runtime boss session"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.identity"
+msgstr "Colleague Identity"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.identity.desc"
+msgstr "Optional colleague identity description injected into the runtime boss session."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.identity.placeholder"
+msgstr "e.g. Product-minded operator who triages Feishu requests"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.interval"
+msgstr "World Overview Briefing Interval (days)"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.interval.desc"
+msgstr "Re-inject the versioned world-overview briefing every N days; leave empty to disable."
+
+#. Boss Mode
+msgid "settings.runtime.boss.title"
+msgstr "Boss Mode"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.compaction.autoCompact.desc"
 msgstr "Compact sessions when context is full"
 
@@ -18243,6 +18299,10 @@ msgstr "Assign task"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.boss-cancel"
 msgstr "Cancel task"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-project"
+msgstr "Create project"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.boss-report"

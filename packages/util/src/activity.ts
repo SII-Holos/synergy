@@ -177,6 +177,7 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   boss_report: "session",
   boss_status: "session",
   boss_cancel: "session-control",
+  boss_project: "session",
   agenda_schedule: "schedule",
   agenda_watch: "schedule",
   agenda_list: "schedule",

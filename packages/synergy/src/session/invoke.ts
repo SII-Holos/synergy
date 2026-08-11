@@ -81,7 +81,7 @@ import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
 import { BlueprintLoopStore } from "../blueprint/loop-store"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
-import { buildBossContext, buildWorkerContext, renderBossTree } from "./boss-prompt"
+import { buildBossContext, buildRuntimeBossContext, buildWorkerContext, renderBossTree } from "./boss-prompt"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { ObservabilitySpans } from "@/observability/spans"
 import { ObservabilityContext } from "@/observability/context"
@@ -757,7 +757,13 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           case "boss": {
             const bossWorkflow = session.workflow
             if (bossWorkflow.role === "boss") {
-              systemParts.push(buildBossContext(session))
+              const identityText = (await Config.current().catch(() => undefined))?.experimental?.boss_identity_text
+              systemParts.push(
+                buildRuntimeBossContext(session, {
+                  identityText: identityText?.trim() ? identityText : undefined,
+                  instructions: bossWorkflow.instructions,
+                }),
+              )
               const { BossService } = await import("./boss")
               const tree = await BossService.status(sessionID).catch(() => undefined)
               if (tree) {

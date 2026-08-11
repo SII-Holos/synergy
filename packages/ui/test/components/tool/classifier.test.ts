@@ -38,7 +38,7 @@ describe("tool classifier localization", () => {
   })
 
   test("preserves Boss tool categories from the shared classifier", () => {
-    for (const tool of ["boss_spawn", "boss_assign", "boss_report", "boss_status"]) {
+    for (const tool of ["boss_spawn", "boss_assign", "boss_report", "boss_status", "boss_project"]) {
       expect(classifyTool(tool).category).toBe("session")
     }
     expect(classifyTool("boss_cancel").category).toBe("session-control")

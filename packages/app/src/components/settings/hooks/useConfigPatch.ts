@@ -258,10 +258,28 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
   const timeout = buildTimeoutPatch(cfg, runtime)
   if (timeout.changed) patch.timeout = timeout.value
 
+  const experimental: Record<string, unknown> = {}
   const coauthorReminder = runtime.coauthorReminder === "true"
   const currentCoauthorReminder = cfg.experimental?.coauthor_reminder !== false
-  if (coauthorReminder !== currentCoauthorReminder) {
-    patch.experimental = { ...(cfg.experimental ?? {}), coauthor_reminder: coauthorReminder }
+  if (coauthorReminder !== currentCoauthorReminder) experimental.coauthor_reminder = coauthorReminder
+
+  const bossMode = runtime.bossMode === "true"
+  const currentBossMode = cfg.experimental?.boss_mode === true
+  if (bossMode !== currentBossMode) experimental.boss_mode = bossMode
+
+  const bossIdentityText = runtime.bossIdentityText.trim() === "" ? undefined : runtime.bossIdentityText
+  const currentBossIdentityText = cfg.experimental?.boss_identity_text
+  if (bossIdentityText !== currentBossIdentityText) experimental.boss_identity_text = bossIdentityText
+
+  const bossBriefingIntervalDays =
+    runtime.bossBriefingIntervalDays.trim() === "" ? undefined : Number(runtime.bossBriefingIntervalDays)
+  const currentBossBriefingIntervalDays = cfg.experimental?.boss_briefing_interval_days
+  if (bossBriefingIntervalDays !== currentBossBriefingIntervalDays) {
+    experimental.boss_briefing_interval_days = bossBriefingIntervalDays
+  }
+
+  if (Object.keys(experimental).length) {
+    patch.experimental = { ...(cfg.experimental ?? {}), ...experimental }
   }
 
   const watcherIgnore = parseList(runtime.watcherIgnore)

@@ -24,6 +24,7 @@ const playwrightIsolated = [
   "test/components/library/filter-menu-surface.test.ts",
   "test/components/menu-field/menu-field.test.ts",
   "test/components/settings/settings-mobile-layout.test.ts",
+  "test/components/settings/panels/BossModePanel.test.ts",
   "test/components/session/question-prompt-style.test.ts",
   "test/components/session/raw-messages-layout.test.ts",
   "test/components/session/session-progress-island-motion.test.ts",
