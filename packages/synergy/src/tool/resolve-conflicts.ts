@@ -1,4 +1,4 @@
-import { chmod, lstat, rename, unlink } from "node:fs/promises"
+import { chmod, lstat, realpath, rename, unlink } from "node:fs/promises"
 import z from "zod"
 import { createTwoFilesPatch } from "diff"
 import DESCRIPTION from "./resolve-conflicts.txt"
@@ -16,21 +16,30 @@ import { RuntimeReload } from "../runtime/reload"
 import { diffStats, displayPath, hashlineHeaderFor, recordSeenSessionLines, resolveFilePath } from "./anchored-file"
 import { captureWriteDiagnosticsBefore, collectWriteDiagnostics } from "./write-quality"
 import { SnapshotSchema } from "@/session/snapshot-schema"
+import { ScopeContext } from "@/scope/context"
+import { Filesystem } from "@/util/filesystem"
 
 const ConflictNumber = z.number().int().positive().describe("The 1-based conflict number in current file order")
+const ConflictStyle = z
+  .enum(["merge", "diff3"])
+  .optional()
+  .describe("Use diff3 only when the block has a real ||||||| base section; defaults to merge")
 
 const Resolution = z.discriminatedUnion("strategy", [
-  z.object({ conflict: ConflictNumber, strategy: z.literal("ours") }),
-  z.object({ conflict: ConflictNumber, strategy: z.literal("theirs") }),
+  z.object({ conflict: ConflictNumber, strategy: z.literal("ours"), conflictStyle: ConflictStyle }),
+  z.object({ conflict: ConflictNumber, strategy: z.literal("theirs"), conflictStyle: ConflictStyle }),
   z.object({
     conflict: ConflictNumber,
     strategy: z.literal("both"),
     order: z.enum(["ours-theirs", "theirs-ours"]).optional().describe("Defaults to ours-theirs"),
+    conflictStyle: ConflictStyle,
   }),
   z.object({
     conflict: ConflictNumber,
     strategy: z.literal("custom"),
-    content: z.string().describe("Final replacement content for the entire conflict block, without marker lines"),
+    content: z
+      .string()
+      .describe("Final replacement content for the entire conflict block; must not contain a complete conflict block"),
   }),
 ])
 
@@ -41,6 +50,15 @@ function staleTagError(title: string): Error {
   return new Error(
     `Unknown or out-of-date tag for ${title}. The file changed since that conflict view. Use view_file again and retry with the current tag and conflict numbers.`,
   )
+}
+
+async function assertPathStaysWithinWorkspace(filePath: string, title: string): Promise<void> {
+  const physicalPath = await realpath(filePath).catch(() => undefined)
+  if (!physicalPath) throw new Error(`File not found: ${title}`)
+  const workspacePath = await realpath(ScopeContext.current.directory)
+  if (!Filesystem.contains(workspacePath, physicalPath)) {
+    throw new Error(`Refusing to resolve conflicts through a path that escapes the active workspace: ${title}`)
+  }
 }
 
 async function atomicReplace(filePath: string, content: string, mode: number): Promise<void> {
@@ -75,6 +93,7 @@ export const ResolveConflictsTool = Tool.define("resolve_conflicts", {
     return FileTime.withLock(
       filePath,
       async () => {
+        await assertPathStaysWithinWorkspace(filePath, title)
         const stats = await lstat(filePath).catch(() => undefined)
         if (!stats) throw new Error(`File not found: ${title}`)
         if (stats.isSymbolicLink()) throw new Error(`Refusing to resolve conflicts through a symbolic link: ${title}`)
@@ -121,6 +140,7 @@ export const ResolveConflictsTool = Tool.define("resolve_conflicts", {
           },
         })
         ctx.abort.throwIfAborted()
+        await assertPathStaysWithinWorkspace(filePath, title)
         const currentStats = await lstat(filePath).catch(() => undefined)
         if (!currentStats) throw new Error(`File not found: ${title}`)
         if (currentStats.isSymbolicLink())

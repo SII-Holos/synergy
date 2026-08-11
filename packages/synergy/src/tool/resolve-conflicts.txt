@@ -8,4 +8,6 @@ Resolution strategies:
 - `both`: keep both sides in the requested order.
 - `custom`: replace the whole conflict block with the supplied content.
 
+For a real diff3 conflict containing a `|||||||` base section, set `conflictStyle` to `diff3` on an `ours`, `theirs`, or `both` resolution. The default `merge` style treats `|||||||` lines as ordinary source content so standard two-way conflicts are never truncated.
+
 The tool rejects stale tags, clean files, missing or duplicate conflict resolutions, and any result that still contains complete conflict-marker blocks. It resolves all current conflicts atomically under one file lock, returns a fresh `[path#TAG]`, and does not stage or commit the file in Git.

@@ -1,4 +1,4 @@
-import { lstat, symlink } from "node:fs/promises"
+import { lstat, mkdir, symlink } from "node:fs/promises"
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { ScopeContext } from "../../src/scope/context"
@@ -159,7 +159,10 @@ describe("tool.resolve_conflicts", () => {
         const filePath = path.join(tmp.path, "diff3.ts")
         const tag = await viewTag(filePath)
         const tool = await ResolveConflictsTool.init()
-        await tool.execute({ filePath, tag, resolutions: [{ conflict: 1, strategy: "ours" }] }, ctx)
+        await tool.execute(
+          { filePath, tag, resolutions: [{ conflict: 1, strategy: "ours", conflictStyle: "diff3" }] },
+          ctx,
+        )
 
         expect(await Bun.file(filePath).text()).toBe("before\nlocal\nafter\n")
       },
@@ -318,6 +321,76 @@ describe("tool.resolve_conflicts", () => {
         ).rejects.toThrow(/symbolic link/i)
         expect((await lstat(filePath)).isSymbolicLink()).toBe(true)
         expect(await Bun.file(targetPath).text()).toBe(original)
+      },
+    })
+  })
+
+  test("allows a parent symlink that remains inside the project root", async () => {
+    const original = conflictedFile(conflictBlock("local", "remote"))
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await mkdir(path.join(dir, "actual"))
+        await Bun.write(path.join(dir, "actual", "inside.ts"), original)
+        await symlink("actual", path.join(dir, "alias"))
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const filePath = path.join(tmp.path, "alias", "inside.ts")
+        const tag = await viewTag(filePath)
+        const tool = await ResolveConflictsTool.init()
+
+        await tool.execute(
+          {
+            filePath,
+            tag,
+            resolutions: [{ conflict: 1, strategy: "ours" }],
+          },
+          ctx,
+        )
+
+        expect(await Bun.file(path.join(tmp.path, "actual", "inside.ts")).text()).toBe(
+          "before\nlocal\nbetween-1\nafter\n",
+        )
+      },
+    })
+  })
+
+  test("rejects a path whose parent symlink escapes the project root", async () => {
+    const original = conflictedFile(conflictBlock("local", "remote"))
+    await using external = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "outside.ts"), original)
+      },
+    })
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await symlink(external.path, path.join(dir, "escape"))
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const filePath = path.join(tmp.path, "escape", "outside.ts")
+        const tag = await viewTag(filePath)
+        const tool = await ResolveConflictsTool.init()
+
+        await expect(
+          tool.execute(
+            {
+              filePath,
+              tag,
+              resolutions: [{ conflict: 1, strategy: "ours" }],
+            },
+            ctx,
+          ),
+        ).rejects.toThrow(/symbolic link|escapes/i)
+        expect(await Bun.file(path.join(external.path, "outside.ts")).text()).toBe(original)
       },
     })
   })

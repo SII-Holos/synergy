@@ -1,35 +1,87 @@
 import { detectConflicts, type ConflictLocation } from "./detect"
-import { detectLineEnding, normalizeToLF, restoreLineEndings, stripBom } from "../hashline/normalize"
+import { stripBom } from "../hashline/normalize"
+
+type ConflictStyle = "merge" | "diff3"
 
 export type ConflictResolution =
-  | { conflict: number; strategy: "ours" | "theirs" }
-  | { conflict: number; strategy: "both"; order?: "ours-theirs" | "theirs-ours" }
+  | { conflict: number; strategy: "ours" | "theirs"; conflictStyle?: ConflictStyle }
+  | {
+      conflict: number
+      strategy: "both"
+      order?: "ours-theirs" | "theirs-ours"
+      conflictStyle?: ConflictStyle
+    }
   | { conflict: number; strategy: "custom"; content: string }
 
-const BASE_MARKER = /^\|\|\|\|\|\|\|(?:\s+.*)?$/
-const ANY_CONFLICT_MARKER = /^(?:<<<<<<<(?:\s+.*)?|\|\|\|\|\|\|\|(?:\s+.*)?|=======(?:\s*)|>>>>>>>(?:\s+.*)?)$/m
+type SourceLine = {
+  text: string
+  ending: string
+}
 
-function splitReplacement(content: string): string[] {
-  if (content === "") return []
-  const lines = normalizeToLF(content).split("\n")
-  if (lines.at(-1) === "") lines.pop()
+const BASE_MARKER = /^\|\|\|\|\|\|\|(?:\s+.*)?$/
+
+function splitLines(content: string): SourceLine[] {
+  const lines: SourceLine[] = []
+  let start = 0
+  for (let index = 0; index < content.length; index++) {
+    const character = content[index]
+    if (character !== "\r" && character !== "\n") continue
+    const ending = character === "\r" && content[index + 1] === "\n" ? "\r\n" : character
+    lines.push({ text: content.slice(start, index), ending })
+    if (ending === "\r\n") index++
+    start = index + 1
+  }
+  if (start < content.length) lines.push({ text: content.slice(start), ending: "" })
   return lines
 }
 
-function conflictSides(lines: string[], conflict: ConflictLocation): { ours: string[]; theirs: string[] } {
+function joinLines(lines: readonly SourceLine[]): string {
+  return lines.map((line) => `${line.text}${line.ending}`).join("")
+}
+
+function splitCustomReplacement(content: string, trailingEnding: string): SourceLine[] {
+  if (content === "") return []
+  const lines = splitLines(content)
+  const last = lines.at(-1)
+  if (last && last.ending === "") last.ending = trailingEnding
+  return lines
+}
+
+function conflictSides(
+  lines: SourceLine[],
+  conflict: ConflictLocation,
+  conflictNumber: number,
+  style: ConflictStyle,
+): { ours: SourceLine[]; theirs: SourceLine[] } {
   const startIndex = conflict.startLine - 1
   const separatorIndex = conflict.separatorLine - 1
   const endIndex = conflict.endLine - 1
-  const baseOffset = lines.slice(startIndex + 1, separatorIndex).findIndex((line) => BASE_MARKER.test(line))
-  const oursEnd = baseOffset === -1 ? separatorIndex : startIndex + 1 + baseOffset
+  let oursEnd = separatorIndex
+  if (style === "diff3") {
+    const baseMarkers = lines
+      .slice(startIndex + 1, separatorIndex)
+      .map((line, index) => ({ index, matches: BASE_MARKER.test(line.text) }))
+      .filter((entry) => entry.matches)
+    if (baseMarkers.length !== 1) {
+      throw new Error(
+        `Conflict ${conflictNumber} declares diff3 format but does not contain exactly one diff3 base marker.`,
+      )
+    }
+    oursEnd = startIndex + 1 + baseMarkers[0].index
+  }
   return {
     ours: lines.slice(startIndex + 1, oursEnd),
     theirs: lines.slice(separatorIndex + 1, endIndex),
   }
 }
 
-function replacementFor(lines: string[], conflict: ConflictLocation, resolution: ConflictResolution): string[] {
-  const sides = conflictSides(lines, conflict)
+function replacementFor(lines: SourceLine[], conflict: ConflictLocation, resolution: ConflictResolution): SourceLine[] {
+  const endIndex = conflict.endLine - 1
+  if (resolution.strategy === "custom") {
+    return splitCustomReplacement(resolution.content, lines[endIndex]?.ending ?? "")
+  }
+
+  const sides = conflictSides(lines, conflict, resolution.conflict, resolution.conflictStyle ?? "merge")
   switch (resolution.strategy) {
     case "ours":
       return sides.ours
@@ -37,11 +89,6 @@ function replacementFor(lines: string[], conflict: ConflictLocation, resolution:
       return sides.theirs
     case "both":
       return resolution.order === "theirs-ours" ? [...sides.theirs, ...sides.ours] : [...sides.ours, ...sides.theirs]
-    case "custom":
-      if (ANY_CONFLICT_MARKER.test(normalizeToLF(resolution.content))) {
-        throw new Error(`Custom resolution for conflict ${resolution.conflict} must not contain conflict marker lines.`)
-      }
-      return splitReplacement(resolution.content)
   }
 }
 
@@ -71,8 +118,7 @@ export function resolveAllConflicts(content: string, resolutions: readonly Confl
   }
 
   const { bom, text } = stripBom(content)
-  const lineEnding = detectLineEnding(text)
-  const lines = normalizeToLF(text).split("\n")
+  const lines = splitLines(text)
 
   for (let index = report.conflicts.length - 1; index >= 0; index--) {
     const location = report.conflicts[index]
@@ -84,9 +130,9 @@ export function resolveAllConflicts(content: string, resolutions: readonly Confl
     )
   }
 
-  const resolved = `${bom}${restoreLineEndings(lines.join("\n"), lineEnding)}`
-  if (detectConflicts(resolved).hasConflicts || ANY_CONFLICT_MARKER.test(normalizeToLF(resolved))) {
-    throw new Error("Conflict resolution must remove all conflict marker lines from the file.")
+  const resolved = `${bom}${joinLines(lines)}`
+  if (detectConflicts(resolved).hasConflicts) {
+    throw new Error("Conflict resolution must remove all complete conflict blocks from the file.")
   }
   return resolved
 }
