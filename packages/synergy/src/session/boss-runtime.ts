@@ -117,6 +117,11 @@ export namespace BossRuntime {
     }
   }
 
+  /** Re-register the periodic briefing Agenda item from current config (interval changes). */
+  export async function rescheduleBriefing(): Promise<void> {
+    await syncBriefingSchedule()
+  }
+
   // ---------------------------------------------------------------------------
   // Internal
   // ---------------------------------------------------------------------------

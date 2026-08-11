@@ -169,4 +169,23 @@ describe("BossRuntime", () => {
       expect(item!.triggers).toContainEqual({ type: "every", interval: "7d" })
     })
   })
+
+  test("rescheduleBriefing updates the agenda item triggers to the new interval", async () => {
+    await withHomeScope(async () => {
+      stubConfig({ ...FEISHU_ONE, experimental: { boss_mode: true, boss_briefing_interval_days: 7 } })
+      await BossRuntime.ensure()
+      const { AgendaStore } = await import("../../src/agenda/store")
+      const before = await AgendaStore.get("home", BossRuntime.BRIEFING_AGENDA_ID).catch(() => undefined)
+      expect(before).toBeDefined()
+      expect(before!.triggers).toContainEqual({ type: "every", interval: "7d" })
+
+      // Interval change re-registers the same item with the new cadence.
+      stubConfig({ ...FEISHU_ONE, experimental: { boss_mode: true, boss_briefing_interval_days: 3 } })
+      await BossRuntime.rescheduleBriefing()
+      const after = await AgendaStore.get("home", BossRuntime.BRIEFING_AGENDA_ID).catch(() => undefined)
+      expect(after).toBeDefined()
+      expect(after!.triggers).toContainEqual({ type: "every", interval: "3d" })
+      expect(after!.triggers).not.toContainEqual({ type: "every", interval: "7d" })
+    })
+  })
 })

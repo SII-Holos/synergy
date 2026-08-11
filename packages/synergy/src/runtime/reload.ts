@@ -371,6 +371,16 @@ export namespace RuntimeReload {
               )
             }
           }
+          if (newExp.boss_mode === true && oldExp.boss_briefing_interval_days !== newExp.boss_briefing_interval_days) {
+            try {
+              const { BossRuntime } = await import("../session/boss-runtime")
+              await BossRuntime.rescheduleBriefing()
+            } catch (err) {
+              ctx.warnings.push(
+                `Failed to reschedule runtime boss briefing: ${err instanceof Error ? err.message : String(err)}`,
+              )
+            }
+          }
         }
         if (changedFields.includes("timeout")) {
           const { TimeoutConfig } = await import("@/util/timeout-config")

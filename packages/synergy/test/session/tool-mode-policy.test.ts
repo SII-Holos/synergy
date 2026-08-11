@@ -148,7 +148,7 @@ describe("SessionModePolicy Boss visibility", () => {
   } as any
 
   test("hides Boss tools outside Boss Mode", () => {
-    for (const tool of ["boss_spawn", "boss_assign", "boss_report", "boss_status", "boss_cancel"]) {
+    for (const tool of ["boss_spawn", "boss_assign", "boss_report", "boss_status", "boss_cancel", "boss_project"]) {
       expect(SessionModePolicy.visibility({ toolName: tool, session: {} })).toMatchObject({
         code: "tool_unavailable",
         toolName: tool,
@@ -161,6 +161,7 @@ describe("SessionModePolicy Boss visibility", () => {
     expect(SessionModePolicy.visibility({ toolName: "boss_assign", session: bossSession })).toBeUndefined()
     expect(SessionModePolicy.visibility({ toolName: "boss_status", session: bossSession })).toBeUndefined()
     expect(SessionModePolicy.visibility({ toolName: "boss_cancel", session: bossSession })).toBeUndefined()
+    expect(SessionModePolicy.visibility({ toolName: "boss_project", session: bossSession })).toBeUndefined()
     expect(SessionModePolicy.visibility({ toolName: "boss_report", session: bossSession })).toMatchObject({
       code: "tool_unavailable",
       toolName: "boss_report",
@@ -168,7 +169,7 @@ describe("SessionModePolicy Boss visibility", () => {
   })
 
   test("exposes all boss tools including boss_report to workers", () => {
-    for (const tool of ["boss_spawn", "boss_assign", "boss_report", "boss_status", "boss_cancel"]) {
+    for (const tool of ["boss_spawn", "boss_assign", "boss_report", "boss_status", "boss_cancel", "boss_project"]) {
       expect(SessionModePolicy.visibility({ toolName: tool, session: workerSession })).toBeUndefined()
     }
   })

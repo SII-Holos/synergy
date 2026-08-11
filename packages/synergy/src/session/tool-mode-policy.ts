@@ -61,7 +61,7 @@ export namespace SessionModePolicy {
   ])
 
   const LATTICE_PARENT_TOOLS = new Set(["pathway_read", "pathway_write", "lattice_submit"])
-  const BOSS_TOOLS = new Set(["boss_spawn", "boss_assign", "boss_report", "boss_status", "boss_cancel"])
+  const BOSS_TOOLS = new Set(["boss_spawn", "boss_assign", "boss_report", "boss_status", "boss_cancel", "boss_project"])
   const BOSS_WORKER_ONLY_TOOLS = new Set(["boss_report"])
 
   export function isPlan(session?: Pick<SessionInfo, "workflow">) {
