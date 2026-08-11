@@ -28,6 +28,19 @@ describe("Settings footer save status", () => {
     ).toBe("error")
   })
 
+  test("clears a stale save error after the failed draft is reverted", () => {
+    expect(
+      settingsSaveFooterStatus({
+        saving: false,
+        dirty: false,
+        resultCurrent: false,
+        aggregate: "error",
+        server: "error",
+        personalize: "idle",
+      }),
+    ).toBe("idle")
+  })
+
   test("keeps an active save ahead of the dirty state", () => {
     expect(
       settingsSaveFooterStatus({

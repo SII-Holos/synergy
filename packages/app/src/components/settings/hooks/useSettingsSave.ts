@@ -18,19 +18,22 @@ const copy = {
 export type ShowConfirmFn = (params: ConfirmOptions) => void
 export type SaveStatus = "idle" | "saving" | "saved" | "error"
 
-export type SaveContext = {
+export type SaveContext<TDraft> = {
   serverPatch: () => Record<string, unknown>
+  serverDraft: () => TDraft
   domainSummaries: () => ConfigDomainSummary[]
   hasAnyChanges: () => boolean
   editingLabel: () => string
-  refreshAfterConfigChange: () => Promise<void>
-  onPatchSaved?: (patch: Record<string, unknown>) => void | Promise<void>
+  refreshAfterConfigChange: (submittedDraft: TDraft) => Promise<void>
+  onPatchSaved?: (patch: Record<string, unknown>, submittedDraft: TDraft) => void | Promise<void>
+  preparePatchSave?: (patch: Record<string, unknown>, submittedDraft: TDraft) => void | Promise<void>
+  rejectPatchSave?: (patch: Record<string, unknown>, submittedDraft: TDraft) => void | Promise<void>
   discardChanges: () => void | Promise<void>
   closeDialog: () => void
   showConfirm: ShowConfirmFn
 }
 
-export function useSettingsSave(ctx: SaveContext) {
+export function useSettingsSave<TDraft>(ctx: SaveContext<TDraft>) {
   const globalSDK = useGlobalSDK()
   const { _ } = useLingui()
   const [status, setStatus] = createSignal<SaveStatus>("idle")
@@ -57,13 +60,17 @@ export function useSettingsSave(ctx: SaveContext) {
   async function saveServerChanges() {
     const patch = ctx.serverPatch()
     if (Object.keys(patch).length === 0) return true
+    const submittedDraft = ctx.serverDraft()
 
     setStatus("saving")
+    let persisted = false
     try {
+      await ctx.preparePatchSave?.(patch, submittedDraft)
       await saveServerPatch(patch)
-      await ctx.refreshAfterConfigChange()
-      await ctx.onPatchSaved?.(patch)
-      setExplicitDirty(false)
+      persisted = true
+      await ctx.refreshAfterConfigChange(submittedDraft)
+      await ctx.onPatchSaved?.(patch, submittedDraft)
+      setExplicitDirty(Object.keys(ctx.serverPatch()).length > 0)
       setStatus("saved")
       showToast({
         type: "success",
@@ -72,6 +79,7 @@ export function useSettingsSave(ctx: SaveContext) {
       })
       return true
     } catch (error) {
+      if (!persisted) await ctx.rejectPatchSave?.(patch, submittedDraft)
       setStatus("error")
       showToast({
         type: "error",

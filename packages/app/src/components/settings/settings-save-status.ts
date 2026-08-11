@@ -13,8 +13,9 @@ export function settingsSaveFooterStatus(input: {
   if (input.saving || input.server === "saving" || input.personalize === "saving" || input.personalize === "loading")
     return "saving"
   if (input.dirty && !input.resultCurrent) return "dirty"
-  if (input.aggregate === "error" || input.server === "error" || input.personalize === "error") return "error"
+  if (input.resultCurrent && (input.aggregate === "error" || input.server === "error" || input.personalize === "error"))
+    return "error"
   if (input.dirty) return "dirty"
-  if (input.aggregate === "saved" || input.server === "saved") return "saved"
+  if (input.resultCurrent && (input.aggregate === "saved" || input.server === "saved")) return "saved"
   return "idle"
 }

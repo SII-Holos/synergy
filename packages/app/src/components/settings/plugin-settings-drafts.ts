@@ -8,6 +8,7 @@ type PluginSettingsDraftEntry = {
   saved: Record<string, unknown>
   draft: Record<string, unknown>
   dirty: boolean
+  revision: number
 }
 
 export function createPluginSettingsDrafts(onChange: () => void = () => {}) {
@@ -20,7 +21,7 @@ export function createPluginSettingsDrafts(onChange: () => void = () => {}) {
   function adopt(key: PluginSettingsDraftKey, values: Record<string, unknown>) {
     const entry = entries.get(id(key))
     if (entry?.dirty) return entry.draft
-    const next = { key, saved: values, draft: values, dirty: false }
+    const next = { key, saved: values, draft: values, dirty: false, revision: 0 }
     entries.set(id(key), next)
     onChange()
     return next.draft
@@ -31,9 +32,10 @@ export function createPluginSettingsDrafts(onChange: () => void = () => {}) {
   }
 
   function stage(key: PluginSettingsDraftKey, values: Record<string, unknown>) {
-    const entry = entries.get(id(key)) ?? { key, saved: {}, draft: {}, dirty: false }
+    const entry = entries.get(id(key)) ?? { key, saved: {}, draft: {}, dirty: false, revision: 0 }
     entry.draft = values
     entry.dirty = JSON.stringify(values) !== JSON.stringify(entry.saved)
+    entry.revision += 1
     entries.set(id(key), entry)
     onChange()
   }
@@ -45,23 +47,23 @@ export function createPluginSettingsDrafts(onChange: () => void = () => {}) {
   async function save(
     update: (key: PluginSettingsDraftKey, values: Record<string, unknown>) => Promise<Record<string, unknown>>,
   ) {
-    const active = [...entries.values()].filter((entry) => entry.dirty)
-    const results = await Promise.all(
-      active.map(async (entry) => {
-        try {
-          const saved = await update(entry.key, entry.draft)
-          entry.saved = saved
-          entry.draft = saved
-          entry.dirty = false
-          onChange()
-          return true
-        } catch {
-          onChange()
-          return false
-        }
-      }),
-    )
-    return results.every(Boolean)
+    const active = [...entries.values()]
+      .filter((entry) => entry.dirty)
+      .map((entry) => ({ entry, submitted: entry.draft, revision: entry.revision }))
+    let savedAll = true
+    for (const { entry, submitted, revision } of active) {
+      try {
+        const saved = await update(entry.key, submitted)
+        entry.saved = saved
+        if (entry.revision === revision) entry.draft = saved
+        entry.dirty = JSON.stringify(entry.draft) !== JSON.stringify(entry.saved)
+        onChange()
+      } catch {
+        savedAll = false
+        onChange()
+      }
+    }
+    return savedAll
   }
 
   function discard() {

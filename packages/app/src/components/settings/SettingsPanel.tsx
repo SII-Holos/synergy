@@ -10,7 +10,7 @@ import {
   type Component,
   type JSX,
 } from "solid-js"
-import { createStore, produce } from "solid-js/store"
+import { createStore, produce, reconcile } from "solid-js/store"
 import { Dynamic } from "solid-js/web"
 import { createMediaQuery } from "@solid-primitives/media"
 import { useLingui } from "@lingui/solid"
@@ -33,6 +33,7 @@ import type { PluginSettingsComponentProps, PluginSettingsSurfaceContext } from 
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
+import { useLocale } from "@/context/locale"
 import { usePlatform, type DesktopUpdateMode } from "@/context/platform"
 import { useProductUpdate } from "@/context/product-update"
 import { useFontPreference } from "@/context/font-preference"
@@ -54,7 +55,15 @@ import { isBuiltinSettingsId, settingsGroupOrder } from "./catalog"
 import { ensureInit } from "./hooks/useSettingsForm"
 import { buildPatch } from "./hooks/useConfigPatch"
 import { useSettingsSave } from "./hooks/useSettingsSave"
-import { hasExplicitSettingsChanges, saveExplicitSettingsChanges } from "./settings-explicit-save"
+import {
+  hasExplicitSettingsChanges,
+  rebaseDraftAfterSave,
+  retainDraftAfterSave,
+  saveExplicitSettingsChanges,
+  snapshotSettingsDraft,
+  themeIdToApplyAfterSave,
+} from "./settings-explicit-save"
+import { prepareLocaleSettingsSave, rejectLocaleSettingsSave } from "./settings-locale-save"
 import { pluginSettingsResourceKey } from "./plugin-settings-resource"
 import { createSettingsComponentLoader } from "./settings-component-loader"
 import { createPluginSettingsDrafts } from "./plugin-settings-drafts"
@@ -220,6 +229,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const confirm = useConfirm()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
+  const locale = useLocale()
   const input = useInput()
   const platform = usePlatform()
   const productUpdate = useProductUpdate()
@@ -434,7 +444,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     initializedForSet = undefined
   }
 
-  async function refreshAfterConfigChange() {
+  async function refreshAfterConfigChange(submittedDraft?: SettingsState) {
     setRefreshing(true)
     resetEditor()
     await globalSync.refreshAllConfigs()
@@ -446,8 +456,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
       refetchCortexConcurrencyStatus(),
       refetchChannelStatuses(),
     ])
+    const currentDraft = submittedDraft ? snapshotSettingsDraft(settings) : undefined
     setRefreshing(false)
     doEnsureInit()
+    if (submittedDraft && currentDraft) {
+      setSettings(reconcile(rebaseDraftAfterSave(snapshotSettingsDraft(settings), submittedDraft, currentDraft)))
+    }
   }
 
   const serverPatch = createMemo<Record<string, unknown>>(() => {
@@ -505,12 +519,18 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   const save = useSettingsSave({
     serverPatch,
+    serverDraft: () => snapshotSettingsDraft(settings),
     domainSummaries: () => domainSummaries() ?? [],
     hasAnyChanges,
     editingLabel,
     refreshAfterConfigChange,
+    preparePatchSave: (patch) => prepareLocaleSettingsSave(patch, locale.controller),
+    rejectPatchSave: async (patch) => {
+      await rejectLocaleSettingsSave(patch, locale.controller, globalSync.data.config.locale)
+    },
     onPatchSaved: (patch) => {
-      if ("theme" in patch) theme.setThemeId(settings.general.theme)
+      const themeId = themeIdToApplyAfterSave(patch)
+      if (themeId !== undefined) theme.setThemeId(themeId)
     },
     discardChanges,
     closeDialog: () => props.onClose?.() ?? dialog.close(),
@@ -570,7 +590,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     if (mode === undefined) return true
     const next = await productUpdate.setDesktopMode(mode)
     if (next?.mode !== mode) return false
-    setDesktopUpdateDraft(undefined)
+    setDesktopUpdateDraft((current) => retainDraftAfterSave(current, mode))
     return true
   }
 
