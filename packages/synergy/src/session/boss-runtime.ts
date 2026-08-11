@@ -8,6 +8,7 @@ import { ScopeContext } from "@/scope/context"
 import { Log } from "@/util/log"
 import { withTimeout } from "@/util/timeout"
 import { Session } from "."
+import { DEFAULT_IDENTITY_TEXT as DefaultIdentityText } from "./boss-prompt"
 import { SessionEndpoint } from "./endpoint"
 import { SessionInbox } from "./inbox"
 import { SessionInteraction } from "./interaction"
@@ -51,11 +52,8 @@ export namespace BossRuntime {
     "重要事实请用 memory_write 固化(compaction 只折叠消息历史,memory 与 <boss-tree> 每轮重算存活)。",
   ].join("\n")
 
-  /** Default colleague identity used when `boss_identity_text` is not set. */
-  export const DEFAULT_IDENTITY_TEXT = [
-    "你是这个 Synergy runtime 的同事(运行时 boss):负责接收外部消息、判断分派对象、协调各项目负责人,并维护对整个 runtime 的认知。",
-    "你与各项目 boss 平级协作:用 session_send 派活与接收摘要,用 boss_project 为新项目创建目录、project scope 与项目 boss。",
-  ].join(" ")
+  /** Default colleague identity used when `boss_identity_text` is not set (owned by boss-prompt). */
+  export const DEFAULT_IDENTITY_TEXT = DefaultIdentityText
 
   export function bossSessionForAccount(accountId: string): string | undefined {
     return accountBossSessions.get(accountId)

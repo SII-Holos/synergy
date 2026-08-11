@@ -3,7 +3,12 @@ import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionWorkflowService } from "../../src/session/workflow"
-import { BOSS_DISCIPLINE_BLOCK, buildBossContext, buildRuntimeBossContext } from "../../src/session/boss-prompt"
+import {
+  BOSS_DISCIPLINE_BLOCK,
+  DEFAULT_IDENTITY_TEXT,
+  buildBossContext,
+  buildRuntimeBossContext,
+} from "../../src/session/boss-prompt"
 import { tmpdir } from "../fixture/fixture"
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
@@ -46,14 +51,26 @@ describe("boss identity prompt", () => {
     })
   })
 
-  test("buildRuntimeBossContext without identity skips persona but keeps base context", async () => {
+  test("buildRuntimeBossContext without identity still injects discipline and the default persona", async () => {
     await withScope(async () => {
       const session = await Session.create({})
       await SessionWorkflowService.enableBoss(session.id)
       const context = buildRuntimeBossContext(session, {})
       expect(context).toContain("<boss-context>")
-      expect(context).not.toContain("<boss-persona>")
-      expect(context).not.toContain(BOSS_DISCIPLINE_BLOCK)
+      expect(context).toContain(BOSS_DISCIPLINE_BLOCK)
+      expect(context).toContain("<boss-persona>")
+      expect(context).toContain(DEFAULT_IDENTITY_TEXT)
+    })
+  })
+
+  test("buildRuntimeBossContext with a custom identity overrides the default persona", async () => {
+    await withScope(async () => {
+      const session = await Session.create({})
+      await SessionWorkflowService.enableBoss(session.id)
+      const context = buildRuntimeBossContext(session, { identityText: "我是同事小飞" })
+      expect(context).toContain("<boss-persona>")
+      expect(context).toContain("我是同事小飞")
+      expect(context).not.toContain(DEFAULT_IDENTITY_TEXT)
     })
   })
 

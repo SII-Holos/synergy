@@ -49,11 +49,19 @@ export const BOSS_DISCIPLINE_BLOCK = [
   "</boss-identity>",
 ].join("\n")
 
+/** Default colleague identity used when `boss_identity_text` is not set. */
+export const DEFAULT_IDENTITY_TEXT = [
+  "你是这个 Synergy runtime 的同事(运行时 boss):负责接收外部消息、判断分派对象、协调各项目负责人,并维护对整个 runtime 的认知。",
+  "你与各项目 boss 平级协作:用 session_send 派活与接收摘要,用 boss_project 为新项目创建目录、project scope 与项目 boss。",
+].join(" ")
+
 /**
  * Full boss system context for runtime/project bosses: base boss role +
- * identity/discipline block (runtime boss) or standing instructions (project
- * boss created via boss_project). `identityText` is resolved by the caller
- * (invoke.ts) from `experimental.boss_identity_text`; `instructions` come from
+ * identity/discipline block (always present) + standing instructions
+ * (project boss created via boss_project). `identityText` is resolved by the
+ * caller (invoke.ts) from `experimental.boss_identity_text`; when unset the
+ * default colleague persona is injected instead, so the discipline block is
+ * unconditionally present every turn. `instructions` come from
  * `workflow.instructions` (project-boss reporting discipline).
  */
 export function buildRuntimeBossContext(
@@ -61,10 +69,8 @@ export function buildRuntimeBossContext(
   options: { identityText?: string; instructions?: string },
 ): string {
   const lines = [buildBossContext(session)]
-  const identity = options.identityText?.trim()
-  if (identity) {
-    lines.push("", BOSS_DISCIPLINE_BLOCK, "", `<boss-persona>\n${identity}\n</boss-persona>`)
-  }
+  const identity = options.identityText?.trim() || DEFAULT_IDENTITY_TEXT
+  lines.push("", BOSS_DISCIPLINE_BLOCK, "", `<boss-persona>\n${identity}\n</boss-persona>`)
   const instructions = options.instructions?.trim()
   if (instructions) {
     lines.push("", "Standing instructions from your coordinator:", instructions)

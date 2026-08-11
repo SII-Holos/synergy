@@ -757,10 +757,13 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           case "boss": {
             const bossWorkflow = session.workflow
             if (bossWorkflow.role === "boss") {
-              const identityText = (await Config.current().catch(() => undefined))?.experimental?.boss_identity_text
+              const { BossRuntime } = await import("./boss-runtime")
+              const configuredIdentity = (await Config.current().catch(() => undefined))?.experimental
+                ?.boss_identity_text
+              const identityText = configuredIdentity?.trim() || BossRuntime.DEFAULT_IDENTITY_TEXT
               systemParts.push(
                 buildRuntimeBossContext(session, {
-                  identityText: identityText?.trim() ? identityText : undefined,
+                  identityText,
                   instructions: bossWorkflow.instructions,
                 }),
               )
