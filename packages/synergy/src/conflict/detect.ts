@@ -58,5 +58,5 @@ export function detectConflicts(content: string): ConflictReport {
 export function conflictWarning(report: ConflictReport): string {
   if (!report.hasConflicts) return ""
   const ranges = report.conflicts.map((conflict) => `${conflict.startLine}-${conflict.endLine}`).join(", ")
-  return `[CONFLICT WARNING]\nThis file contains unresolved merge conflict markers at lines ${ranges}. Do not use revise_file until conflicts are resolved. Use save_file only for an intentional full-file resolution.`
+  return `[CONFLICT WARNING]\nThis file contains unresolved merge conflict markers at lines ${ranges}. Do not use revise_file until conflicts are resolved. Use resolve_conflicts with the current view_file tag, or use save_file only for an intentional full-file resolution.`
 }

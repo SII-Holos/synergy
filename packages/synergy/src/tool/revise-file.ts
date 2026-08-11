@@ -122,7 +122,7 @@ export const ReviseFileTool = Tool.define("revise_file", {
       if (conflict.hasConflicts) {
         const ranges = conflict.conflicts.map((item) => `${item.startLine}-${item.endLine}`).join(", ")
         throw new Error(
-          `Refusing revise_file on ${section.path} because it contains unresolved merge conflict markers at lines ${ranges}. Resolve the conflict first, or use save_file only for an intentional full-file resolution.`,
+          `Refusing revise_file on ${section.path} because it contains unresolved merge conflict markers at lines ${ranges}. Use resolve_conflicts with the current view_file tag, or use save_file only for an intentional full-file resolution.`,
         )
       }
     }

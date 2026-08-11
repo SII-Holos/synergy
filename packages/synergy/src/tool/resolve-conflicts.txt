@@ -1,0 +1,11 @@
+Resolve every merge-conflict marker block in one anchored file as a single guarded write.
+
+Use this tool after `view_file` reports conflict ranges and `revise_file` refuses the file. Pass the current `[path#TAG]` tag and exactly one resolution for every conflict block, numbered in file order starting at 1.
+
+Resolution strategies:
+- `ours`: keep the content between `<<<<<<<` and `=======`.
+- `theirs`: keep the content between `=======` and `>>>>>>>`.
+- `both`: keep both sides in the requested order.
+- `custom`: replace the whole conflict block with the supplied content.
+
+The tool rejects stale tags, clean files, missing or duplicate conflict resolutions, and any result that still contains complete conflict-marker blocks. It resolves all current conflicts atomically under one file lock, returns a fresh `[path#TAG]`, and does not stage or commit the file in Git.

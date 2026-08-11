@@ -13,6 +13,7 @@ const isolated = new Set([
   "test/components/session-turn-projection.test.ts",
   "test/components/tool/renders/task.test.tsx",
   "test/components/tool/renders/standard.test.tsx",
+  "test/components/tool/renders/file-ops.test.tsx",
 ])
 const browserOnly = new Set(["test/hooks/use-filtered-list.test.tsx"])
 

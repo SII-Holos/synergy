@@ -84,11 +84,12 @@ Synergy supports ordinary file tools and an anchored coding harness. The anchore
 - `scan_files` for bounded text matches
 - `parse_code` for AST-aware matches
 - `revise_file` for surgical changes
+- `resolve_conflicts` for atomic, tag-checked merge-conflict resolution
 - `save_file` for new files or intentional full-file replacement
 
-Anchored reads return a `[path#TAG]` representing a session-local snapshot of that file. Displayed lines are recorded separately. `revise_file` accepts only a real current tag and operations on lines that the agent actually saw; fabricated, stale, truncated, or unseen anchors are rejected.
+Anchored reads return a `[path#TAG]` representing a session-local snapshot of that file. Displayed lines are recorded separately. `revise_file` accepts only a real current tag and operations on lines that the agent actually saw; fabricated, stale, truncated, or unseen anchors are rejected. `resolve_conflicts` also requires the current tag and exactly one explicit resolution for every conflict block in the file.
 
-Every successful edit mints a new tag and makes older tags stale. The patch language applies all ranges to the original snapshot, resolves block operations with syntax-aware parsing, rejects overlapping/duplicate file sections, detects no-op loops, and refuses surgical edits across unresolved merge-conflict markers. This turns freshness and observed context into enforced preconditions rather than prompt-only advice.
+Every successful edit mints a new tag and makes older tags stale. The patch language applies all ranges to the original snapshot, resolves block operations with syntax-aware parsing, rejects overlapping/duplicate file sections, detects no-op loops, and refuses surgical edits across unresolved merge-conflict markers. A conflicted file must be resolved atomically with `resolve_conflicts`, or intentionally replaced in full with `save_file`. This turns freshness and observed context into enforced preconditions rather than prompt-only advice.
 
 `save_file` bypasses line-level anchoring because it owns the complete replacement. It still crosses normal permission, conflict, formatting, diagnostic, snapshot, and event boundaries.
 

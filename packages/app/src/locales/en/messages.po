@@ -14474,7 +14474,7 @@ msgstr "Waiting for transport"
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.desc"
-msgstr "Return language-server feedback after write, edit, save_file, and revise_file."
+msgstr "Return language-server feedback after write, edit, save_file, revise_file, and resolve_conflicts."
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.title"
@@ -18701,6 +18701,10 @@ msgid "tool.title.research-state"
 msgstr "Manage research state"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.resolve-conflicts"
+msgstr "Resolve Conflicts"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.resolve-library"
 msgstr "Resolve Library"
 
@@ -18969,6 +18973,14 @@ msgid "ui.anchoredTool.recovery.safelyMapped"
 msgstr "Safely mapped onto the current file"
 
 #. js-lingui-explicit-id
+msgid "ui.anchoredTool.resolveConflicts"
+msgstr "Resolve Conflicts"
+
+#. js-lingui-explicit-id
+msgid "ui.anchoredTool.resolvedConflictCount"
+msgstr "{count} resolved"
+
+#. js-lingui-explicit-id
 msgid "ui.anchoredTool.reviseFile"
 msgstr "Revise File"
 
@@ -19013,12 +19025,20 @@ msgid "ui.anchoredTool.summary.regex"
 msgstr "Regex"
 
 #. js-lingui-explicit-id
+msgid "ui.anchoredTool.summary.resolved"
+msgstr "Resolved"
+
+#. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.result"
 msgstr "Result"
 
 #. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.searchPath"
 msgstr "Search path"
+
+#. js-lingui-explicit-id
+msgid "ui.anchoredTool.summary.strategies"
+msgstr "Strategies"
 
 #. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.tag"
