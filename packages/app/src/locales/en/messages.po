@@ -5,6 +5,78 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
+#. js-lingui-explicit-id
+msgid "activity.trace.actions"
+msgstr "{count, plural, one {# action} other {# actions}}"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.activity"
+msgstr "Activity"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.browser"
+msgstr "Browsed"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.coordination"
+msgstr "Coordinated"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.delegate"
+msgstr "Delegated"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.execute"
+msgstr "Ran"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.external-action"
+msgstr "External action"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.generic"
+msgstr "Worked"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.inspect-local"
+msgstr "Inspected"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.modify-files"
+msgstr "Changed"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.produce"
+msgstr "Produced"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.research-web"
+msgstr "Researched"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.reasoning.fallback"
+msgstr "Reasoning"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.reasoning.thinking"
+msgstr "Thinking…"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.done"
+msgstr "Done"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.error"
+msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.running"
+msgstr "Running"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.waiting-approval"
+msgstr "Waiting for approval"
+
 #. ── Anchored-tool chip labels ──────────────────────────────────────
 msgid "anchored-chip.conflict"
 msgstr "conflict"
@@ -805,6 +877,178 @@ msgstr "This attachment is no longer available in the conversation."
 #. js-lingui-explicit-id
 msgid "app.attachment.unsupported"
 msgstr "Preview is not available for this file type."
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.failed"
+msgstr "Failed to assign task"
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.label"
+msgstr "Assign a task to an idle worker"
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.selectWorker"
+msgstr "Select worker…"
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.submit"
+msgstr "Assign"
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.success"
+msgstr "Task assigned"
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.taskPlaceholder"
+msgstr "Task description…"
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.cancel"
+msgstr "Keep"
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.confirm"
+msgstr "Cancel work"
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.confirmDescription"
+msgstr "Pending tasks will be removed and a running turn will be interrupted."
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.confirmTitle"
+msgstr "Cancel this worker's work?"
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.failed"
+msgstr "Failed to cancel work"
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.success"
+msgstr "Work cancelled"
+
+#. js-lingui-explicit-id
+msgid "app.boss.copy.failed"
+msgstr "Failed to copy the Boss tree."
+
+#. js-lingui-explicit-id
+msgid "app.boss.copy.title"
+msgstr "Tree copied"
+
+#. js-lingui-explicit-id
+msgid "app.boss.genericFailed"
+msgstr "The Boss action failed."
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.agent"
+msgstr "Agent"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.cancel"
+msgstr "Cancel"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.children"
+msgstr "Children"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.copyTree"
+msgstr "Copy tree"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.currentTask"
+msgstr "Current task"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.depth"
+msgstr "Worker at depth {depth}"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.loadFailed"
+msgstr "Failed to load the Boss tree."
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.noTask"
+msgstr "No task is currently assigned."
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.notAvailable"
+msgstr "Not available"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.openSession"
+msgstr "Open session"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.orchestrator"
+msgstr "Orchestrator"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.reportsTo"
+msgstr "Reports to"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.spawn"
+msgstr "Spawn worker"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.title"
+msgstr "Boss Mode"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.workerCount"
+msgstr "{count, plural, one {# worker} other {# workers}}"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.agentLabel"
+msgstr "Agent"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.agentPlaceholder"
+msgstr "Agent (e.g. synergy)"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.cancel"
+msgstr "Cancel"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.create"
+msgstr "Create"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.failed"
+msgstr "Failed to spawn worker"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.roleLabel"
+msgstr "Worker role"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.rolePlaceholder"
+msgstr "Worker role (e.g. code)"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.success"
+msgstr "Worker spawned"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.archived"
+msgstr "Archived"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.idle"
+msgstr "Idle"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.queued"
+msgstr "Queued"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.running"
+msgstr "Running"
+
+#. js-lingui-explicit-id
+msgid "app.boss.workspace.sessionRequired"
+msgstr "Open a Session to use Boss Mode."
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.action.cancel"
@@ -4737,6 +4981,10 @@ msgid "app.panel.attachment"
 msgstr "Attachment"
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.boss"
+msgstr "Boss"
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.browser"
 msgstr "Browser"
 
@@ -6041,6 +6289,18 @@ msgid "app.plugin.marketplace.pluginApi.label"
 msgstr "Plugin API {version}"
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.button"
+msgstr "Refresh plugins"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.failed"
+msgstr "Plugin catalog refresh failed"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.updated"
+msgstr "Plugin catalog updated"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.registryUnavailable.description"
 msgstr "Synergy couldn't reach this plugin registry. Check your connection and try again."
 
@@ -6183,10 +6443,6 @@ msgstr "Tools"
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permissionGroup.ui"
 msgstr "UI"
-
-#. js-lingui-explicit-id
-msgid "app.plugin.settings.saveFailed"
-msgstr "Setting not saved"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.settings.stateOff"
@@ -9224,6 +9480,20 @@ msgstr "Add"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.attach.bossActive"
+msgstr "Boss Mode is active"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.attach.cancelBoss"
+msgstr "Exit Boss Mode before equipping a user Blueprint."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.attach.cancelLattice"
 msgstr "Cancel Lattice before equipping a user Blueprint."
 
@@ -9484,6 +9754,20 @@ msgstr "Blueprint running"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.bpSlot.waiting"
 msgstr "Blueprint waiting"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.cancelBoss"
+msgstr "Exit Boss Mode"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.cancelBoss.label"
+msgstr "Boss"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -10426,6 +10710,13 @@ msgstr "Failed to send command"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.failedEnableBoss"
+msgstr "Failed to enable Boss Mode"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.submit.failedEnableLattice"
 msgstr "Failed to enable Lattice"
 
@@ -10651,8 +10942,50 @@ msgstr "Isolated checkout"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.bossUnavailableBp"
+msgstr "Boss Mode is unavailable while a Blueprint is equipped"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.bossUnavailableLattice"
+msgstr "Boss Mode is unavailable while Lattice is active"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.bossUnavailableLl"
+msgstr "Boss Mode is unavailable while Light Loop is active"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.bossUnavailablePlan"
+msgstr "Boss Mode is unavailable while Plan is active"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.clickExitBoss"
+msgstr "Click to exit Boss Mode"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.wm.clickExitLattice"
 msgstr "Click to exit Lattice"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.exitBoss"
+msgstr "Exit Boss Mode"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -10699,6 +11032,20 @@ msgstr "Run a goal as a recursive Blueprint"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.wm.stopSessionBeforeWorkflow"
 msgstr "Stop the session before changing workflow modes."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.workflow.boss"
+msgstr "Boss"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.workflow.bossDesc"
+msgstr "Delegate to a worker tree"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -13586,6 +13933,10 @@ msgid "settings.catalog.general.label"
 msgstr "General"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.general.row.activityDisplay"
+msgstr "Activity display"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.general.row.colorScheme"
 msgstr "Color Scheme"
 
@@ -13611,7 +13962,7 @@ msgstr "Toast Duration"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.searchTerms"
-msgstr "appearance | color | light | dark | auto | language | snapshot | product update | toast | notification"
+msgstr "appearance | color | light | dark | auto | language | snapshot | activity | activity display | product update | toast | notification"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.github.description"
@@ -14119,7 +14470,7 @@ msgstr "Waiting for transport"
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.desc"
-msgstr "Return language-server feedback after write, edit, save_file, and revise_file."
+msgstr "Return language-server feedback after write, edit, save_file, revise_file, and resolve_conflicts."
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.title"
@@ -14454,6 +14805,26 @@ msgid "settings.email.state.paused"
 msgstr "Paused"
 
 #. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.balanced"
+msgstr "Balanced"
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.description"
+msgstr "Choose how much activity detail Synergy shows in the interface"
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.full"
+msgstr "Full"
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.minimal"
+msgstr "Minimal"
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.title"
+msgstr "Activity display"
+
+#. js-lingui-explicit-id
 msgid "settings.general.appearance.title"
 msgstr "Appearance"
 
@@ -14494,10 +14865,6 @@ msgid "settings.general.font.applied"
 msgstr "Applied"
 
 #. js-lingui-explicit-id
-msgid "settings.general.font.apply"
-msgstr "Apply"
-
-#. js-lingui-explicit-id
 msgid "settings.general.font.check"
 msgstr "Check"
 
@@ -14515,11 +14882,11 @@ msgstr "Font access was denied; using default"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.description"
-msgstr "Check loads the fonts installed on this device, then pick one and Apply it."
+msgstr "Check loads the fonts installed on this device. Save Changes applies your selection."
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.ready"
-msgstr "Select a font, then Apply"
+msgstr "Unsaved selection"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.reset"
@@ -14540,14 +14907,6 @@ msgstr "This browser cannot scan local fonts; using default"
 #. js-lingui-explicit-id
 msgid "settings.general.language.description"
 msgstr "Choose the language used by Synergy controls and accessibility labels"
-
-#. js-lingui-explicit-id
-msgid "settings.general.language.failed.description"
-msgstr "The selected language catalog could not be loaded. The previous language is still active."
-
-#. js-lingui-explicit-id
-msgid "settings.general.language.failed.title"
-msgstr "Language change failed"
 
 #. js-lingui-explicit-id
 msgid "settings.general.language.system"
@@ -16066,6 +16425,10 @@ msgid "settings.panel.action.saving"
 msgstr "Saving..."
 
 #. js-lingui-explicit-id
+msgid "settings.panel.back.label"
+msgstr "Back"
+
+#. js-lingui-explicit-id
 msgid "settings.panel.badge.developer"
 msgstr "Dev"
 
@@ -16182,6 +16545,14 @@ msgid "settings.panel.reference.lspTitle"
 msgstr "LSP"
 
 #. js-lingui-explicit-id
+msgid "settings.panel.save.partialFailure"
+msgstr "Some settings were not saved"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.save.partialFailure.description"
+msgstr "Review the failed settings and try again."
+
+#. js-lingui-explicit-id
 msgid "settings.panel.search.empty"
 msgstr "No settings found"
 
@@ -16271,11 +16642,11 @@ msgstr "Keep override"
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.confirmReset.confirm"
-msgstr "Reset to AGENTS.md"
+msgstr "Stage reset to AGENTS.md"
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.confirmReset.description"
-msgstr "Remove AGENTS.override.md and return to the global AGENTS.md content."
+msgstr "Clear this draft and stage removal of AGENTS.override.md. Save Changes commits the reset."
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.confirmReset.title"
@@ -16310,48 +16681,8 @@ msgid "settings.personalize.page.title"
 msgstr "Personalize"
 
 #. js-lingui-explicit-id
-msgid "settings.personalize.reset.description"
-msgstr "Synergy will fall back to the global AGENTS.md file."
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.reset.title"
-msgstr "Custom instructions reset"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.resetError.description"
-msgstr "Try again."
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.resetError.title"
-msgstr "Custom instructions not reset"
-
-#. js-lingui-explicit-id
 msgid "settings.personalize.retry"
 msgstr "Retry"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.save.label"
-msgstr "Save Custom Instructions"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveError.description"
-msgstr "Review the Custom Instructions content and try again."
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveError.title"
-msgstr "Custom instructions not saved"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveSuccess.description"
-msgstr "Synergy will use AGENTS.override.md for subsequent prompt assembly."
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveSuccess.title"
-msgstr "Custom instructions saved"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saving"
-msgstr "Saving..."
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.section.description"
@@ -17134,18 +17465,6 @@ msgid "settings.sandbox.warn"
 msgstr "Warn"
 
 #. js-lingui-explicit-id
-msgid "settings.save.auto.failed"
-msgstr "Auto-save failed"
-
-#. js-lingui-explicit-id
-msgid "settings.save.background.failed"
-msgstr "Background save failed"
-
-#. js-lingui-explicit-id
-msgid "settings.save.background.updated"
-msgstr "Updated: {fields}"
-
-#. js-lingui-explicit-id
 msgid "settings.save.explicit.changed"
 msgstr "Changed: {fields}"
 
@@ -17858,6 +18177,26 @@ msgid "tool.title.blueprints"
 msgstr "View Blueprints"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-assign"
+msgstr "Assign task"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-cancel"
+msgstr "Cancel task"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-report"
+msgstr "Report result"
+
+#. Boss Mode
+msgid "tool.title.boss-spawn"
+msgstr "Spawn worker"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-status"
+msgstr "View worker tree"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.cancel-agenda"
 msgstr "Cancel Agenda"
 
@@ -18302,6 +18641,10 @@ msgid "tool.title.research-state"
 msgstr "Manage research state"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.resolve-conflicts"
+msgstr "Resolve Conflicts"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.resolve-library"
 msgstr "Resolve Library"
 
@@ -18570,6 +18913,14 @@ msgid "ui.anchoredTool.recovery.safelyMapped"
 msgstr "Safely mapped onto the current file"
 
 #. js-lingui-explicit-id
+msgid "ui.anchoredTool.resolveConflicts"
+msgstr "Resolve Conflicts"
+
+#. js-lingui-explicit-id
+msgid "ui.anchoredTool.resolvedConflictCount"
+msgstr "{count} resolved"
+
+#. js-lingui-explicit-id
 msgid "ui.anchoredTool.reviseFile"
 msgstr "Revise File"
 
@@ -18614,12 +18965,20 @@ msgid "ui.anchoredTool.summary.regex"
 msgstr "Regex"
 
 #. js-lingui-explicit-id
+msgid "ui.anchoredTool.summary.resolved"
+msgstr "Resolved"
+
+#. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.result"
 msgstr "Result"
 
 #. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.searchPath"
 msgstr "Search path"
+
+#. js-lingui-explicit-id
+msgid "ui.anchoredTool.summary.strategies"
+msgstr "Strategies"
 
 #. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.tag"

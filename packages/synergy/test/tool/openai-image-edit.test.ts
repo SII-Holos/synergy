@@ -256,9 +256,12 @@ describe("tool.openai_image_edit", () => {
     await using tmp = await tmpdir({ git: true })
     await connectCodex()
     await writeFixture(path.join(tmp.path, "inputs", "fake.png"), "not a png")
-    let fetchCalls = 0
-    globalThis.fetch = asFetch(async () => {
-      fetchCalls++
+    let imageCalls = 0
+    globalThis.fetch = asFetch(async (input) => {
+      if (!String(input).includes("/images/")) {
+        return jsonResponse({ error: { message: "unrelated" } }, { status: 200 })
+      }
+      imageCalls++
       return jsonResponse({})
     })
 
@@ -279,7 +282,7 @@ describe("tool.openai_image_edit", () => {
             ctx,
           ),
         ).rejects.toThrow("fake.png: file content does not match image/png.")
-        expect(fetchCalls).toBe(0)
+        expect(imageCalls).toBe(0)
       },
     })
   })
@@ -288,9 +291,12 @@ describe("tool.openai_image_edit", () => {
     await using tmp = await tmpdir({ git: true })
     await connectCodex()
     await writeFixture(path.join(tmp.path, "inputs", "notes.txt"), "hello")
-    let fetchCalls = 0
-    globalThis.fetch = asFetch(async () => {
-      fetchCalls++
+    let imageCalls = 0
+    globalThis.fetch = asFetch(async (input) => {
+      if (!String(input).includes("/images/")) {
+        return jsonResponse({ error: { message: "unrelated" } }, { status: 200 })
+      }
+      imageCalls++
       return jsonResponse({})
     })
 
@@ -311,7 +317,7 @@ describe("tool.openai_image_edit", () => {
             ctx,
           ),
         ).rejects.toThrow("notes.txt: text/plain is not a supported image input. Use PNG, JPEG, or WebP.")
-        expect(fetchCalls).toBe(0)
+        expect(imageCalls).toBe(0)
       },
     })
   })
@@ -319,9 +325,12 @@ describe("tool.openai_image_edit", () => {
   test("empty input_paths rejects before making a network call", async () => {
     await using tmp = await tmpdir({ git: true })
     await connectCodex()
-    let fetchCalls = 0
-    globalThis.fetch = asFetch(async () => {
-      fetchCalls++
+    let imageCalls = 0
+    globalThis.fetch = asFetch(async (input) => {
+      if (!String(input).includes("/images/")) {
+        return jsonResponse({ error: { message: "unrelated" } }, { status: 200 })
+      }
+      imageCalls++
       return jsonResponse({})
     })
 
@@ -342,7 +351,7 @@ describe("tool.openai_image_edit", () => {
             ctx,
           ),
         ).rejects.toThrow("The openai_image_edit tool was called with invalid arguments")
-        expect(fetchCalls).toBe(0)
+        expect(imageCalls).toBe(0)
       },
     })
   })
@@ -454,10 +463,13 @@ describe("tool.openai_image_edit", () => {
     await using tmp = await tmpdir({ git: true })
     await connectCodex()
     await writeFixture(path.join(tmp.path, "inputs", "source.png"), PNG_BYTES)
-    let fetchCalls = 0
-    globalThis.fetch = asFetch(async () => {
-      fetchCalls++
-      if (fetchCalls === 1) return jsonResponse({ error: { message: "boom" } }, { status: 500 })
+    let imageCalls = 0
+    globalThis.fetch = asFetch(async (input) => {
+      if (!String(input).includes("/images/")) {
+        return jsonResponse({ error: { message: "unrelated" } }, { status: 200 })
+      }
+      imageCalls++
+      if (imageCalls === 1) return jsonResponse({ error: { message: "boom" } }, { status: 500 })
       return jsonResponse({ data: [{ b64_json: PNG_BYTES.toString("base64") }] })
     })
 
@@ -476,7 +488,7 @@ describe("tool.openai_image_edit", () => {
           },
           ctx,
         )
-        expect(fetchCalls).toBe(2)
+        expect(imageCalls).toBe(2)
         expect(result.output).toContain("Edited image saved")
       },
     })
@@ -486,9 +498,12 @@ describe("tool.openai_image_edit", () => {
     await using tmp = await tmpdir({ git: true })
     await connectCodex()
     await writeFixture(path.join(tmp.path, "inputs", "source.png"), PNG_BYTES)
-    let fetchCalls = 0
-    globalThis.fetch = asFetch(async () => {
-      fetchCalls++
+    let imageCalls = 0
+    globalThis.fetch = asFetch(async (input) => {
+      if (!String(input).includes("/images/")) {
+        return jsonResponse({ error: { message: "unrelated" } }, { status: 200 })
+      }
+      imageCalls++
       return jsonResponse({ error: { message: "boom" } }, { status: 500 })
     })
 
@@ -509,7 +524,7 @@ describe("tool.openai_image_edit", () => {
             ctx,
           ),
         ).rejects.toThrow("Codex image edit failed with status 500")
-        expect(fetchCalls).toBe(3)
+        expect(imageCalls).toBe(3)
       },
     })
   }, 20_000)
@@ -520,7 +535,10 @@ describe("tool.openai_image_edit", () => {
     await writeFixture(path.join(tmp.path, "inputs", "source.png"), PNG_BYTES)
     let imageCalls = 0
     globalThis.fetch = asFetch(async (input) => {
-      if (String(input).includes("/images/")) imageCalls++
+      if (!String(input).includes("/images/")) {
+        return jsonResponse({ error: { message: "unrelated" } }, { status: 200 })
+      }
+      imageCalls++
       if (imageCalls === 1) {
         return jsonResponse({ error: { message: "rate limited" } }, { status: 429, headers: { "retry-after": "1" } })
       }
@@ -555,7 +573,10 @@ describe("tool.openai_image_edit", () => {
     await writeFixture(path.join(tmp.path, "inputs", "source.png"), PNG_BYTES)
     let imageCalls = 0
     globalThis.fetch = asFetch(async (input) => {
-      if (String(input).includes("/images/")) imageCalls++
+      if (!String(input).includes("/images/")) {
+        return jsonResponse({ error: { message: "unrelated" } }, { status: 200 })
+      }
+      imageCalls++
       return jsonResponse({ error: { message: "rate limited" } }, { status: 429, headers: { "retry-after": "31" } })
     })
 
@@ -587,10 +608,13 @@ describe("tool.openai_image_edit", () => {
     await using tmp = await tmpdir({ git: true })
     await connectCodex()
     await writeFixture(path.join(tmp.path, "inputs", "source.png"), PNG_BYTES)
-    let fetchCalls = 0
-    globalThis.fetch = asFetch(async () => {
-      fetchCalls++
-      if (fetchCalls === 1) throw new TypeError("fetch failed")
+    let imageCalls = 0
+    globalThis.fetch = asFetch(async (input) => {
+      if (!String(input).includes("/images/")) {
+        return jsonResponse({ error: { message: "unrelated" } }, { status: 200 })
+      }
+      imageCalls++
+      if (imageCalls === 1) throw new TypeError("fetch failed")
       return jsonResponse({ data: [{ b64_json: PNG_BYTES.toString("base64") }] })
     })
 
@@ -609,7 +633,7 @@ describe("tool.openai_image_edit", () => {
           },
           ctx,
         )
-        expect(fetchCalls).toBe(2)
+        expect(imageCalls).toBe(2)
         expect(result.output).toContain("Edited image saved")
       },
     })
@@ -621,7 +645,10 @@ describe("tool.openai_image_edit", () => {
     await writeFixture(path.join(tmp.path, "inputs", "source.png"), PNG_BYTES)
     let imageCalls = 0
     globalThis.fetch = asFetch(async (input) => {
-      if (String(input).includes("/images/")) imageCalls++
+      if (!String(input).includes("/images/")) {
+        return jsonResponse({ error: { message: "unrelated" } }, { status: 200 })
+      }
+      imageCalls++
       return jsonResponse({ error: { message: "unauthorized" } }, { status: 401 })
     })
 
@@ -653,9 +680,12 @@ describe("tool.openai_image_edit", () => {
     await writeFixture(path.join(tmp.path, "inputs", "source.png"), PNG_BYTES)
     const controller = new AbortController()
     controller.abort()
-    let fetchCalls = 0
-    globalThis.fetch = asFetch(async () => {
-      fetchCalls++
+    let imageCalls = 0
+    globalThis.fetch = asFetch(async (input) => {
+      if (!String(input).includes("/images/")) {
+        return jsonResponse({ error: { message: "unrelated" } }, { status: 200 })
+      }
+      imageCalls++
       return jsonResponse({ data: [{ b64_json: PNG_BYTES.toString("base64") }] })
     })
 
@@ -676,7 +706,7 @@ describe("tool.openai_image_edit", () => {
             { ...ctx, abort: controller.signal },
           ),
         ).rejects.toThrow("Aborted")
-        expect(fetchCalls).toBe(0)
+        expect(imageCalls).toBe(0)
       },
     })
   })

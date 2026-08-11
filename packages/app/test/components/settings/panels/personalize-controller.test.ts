@@ -118,8 +118,9 @@ describe("Personalize custom instructions controller", () => {
     })
   })
 
-  test("resets the managed override and surfaces request failures", async () => {
+  test("stages reset until save and keeps the draft dirty when reset fails", async () => {
     let shouldFail = true
+    let resetCalls = 0
     const result = await withController(
       {
         get: async () => ({
@@ -131,25 +132,49 @@ describe("Personalize custom instructions controller", () => {
         }),
         update: async () => primary,
         reset: async () => {
+          resetCalls++
           if (shouldFail) throw new Error("reset failed")
           return primary
         },
       },
       async (controller) => {
         await controller.load()
-        await controller.reset()
-        const failed = { status: controller.status(), error: controller.error(), content: controller.content() }
+        controller.stageReset()
+        const staged = {
+          content: controller.content(),
+          dirty: controller.dirty(),
+          resetCalls,
+        }
+        await controller.save()
+        const failed = {
+          status: controller.status(),
+          error: controller.error(),
+          content: controller.content(),
+          dirty: controller.dirty(),
+          resetCalls,
+        }
         shouldFail = false
-        await controller.reset()
-        return { failed, status: controller.status(), error: controller.error(), content: controller.content() }
+        await controller.save()
+        return {
+          staged,
+          failed,
+          status: controller.status(),
+          error: controller.error(),
+          content: controller.content(),
+          dirty: controller.dirty(),
+          resetCalls,
+        }
       },
     )
 
     expect(result).toEqual({
-      failed: { status: "error", error: "reset failed", content: "Override.\n" },
+      staged: { content: "", dirty: true, resetCalls: 0 },
+      failed: { status: "error", error: "reset failed", content: "", dirty: true, resetCalls: 1 },
       status: "idle",
       error: undefined,
       content: "Base instructions.\n",
+      dirty: false,
+      resetCalls: 2,
     })
   })
 })

@@ -17,6 +17,10 @@ export namespace PolicyWorker {
     }
   }
 
+  export function closeAdmission(): void {
+    accepting = false
+  }
+
   export function context(options: GateOptions): PolicyClassificationContext {
     return {
       activeWorkspace: options.activeWorkspace,
@@ -92,8 +96,8 @@ export namespace PolicyWorker {
   }
 
   export async function stop(): Promise<void> {
+    closeAdmission()
     if (stopPromise) return stopPromise
-    accepting = false
     const current = pool
     stopPromise = (async () => {
       await current?.stop()

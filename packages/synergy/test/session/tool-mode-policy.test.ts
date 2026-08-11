@@ -55,6 +55,45 @@ describe("SessionModePolicy Channel visibility", () => {
     ).toBeUndefined()
     expect(SessionModePolicy.visibility({ toolName: "read", session: {} })).toBeUndefined()
   })
+
+  test("exposes github_deliver_fix only to GitHub Channel sessions", () => {
+    const diagnostic = SessionModePolicy.visibility({ toolName: "github_deliver_fix", session: {} })
+    expect(diagnostic).toMatchObject({
+      code: "tool_unavailable",
+      toolName: "github_deliver_fix",
+      metadata: { requiredEndpoint: "github" },
+    })
+    expect(diagnostic?.message).toContain("only available in GitHub Channel sessions")
+
+    // A non-GitHub channel session (e.g. Feishu) must not see the tool.
+    expect(
+      SessionModePolicy.visibility({
+        toolName: "github_deliver_fix",
+        session: {
+          endpoint: {
+            kind: "channel",
+            channel: { type: "feishu", accountId: "account_test", chatId: "chat_test" },
+          },
+        } as any,
+      }),
+    ).toMatchObject({
+      code: "tool_unavailable",
+      toolName: "github_deliver_fix",
+      metadata: { requiredEndpoint: "github" },
+    })
+
+    expect(
+      SessionModePolicy.visibility({
+        toolName: "github_deliver_fix",
+        session: {
+          endpoint: {
+            kind: "channel",
+            channel: { type: "github", accountId: "account_test", chatId: "owner/repo#1" },
+          },
+        } as any,
+      }),
+    ).toBeUndefined()
+  })
 })
 
 describe("SessionModePolicy Plan bash calls", () => {
@@ -97,5 +136,40 @@ describe("SessionModePolicy Lattice execution visibility", () => {
     expect(diagnostic?.message).toContain("future Pathway Step")
     expect(diagnostic?.message).toContain("blueprint_loop_stop")
     expect(diagnostic?.message).toContain("end this assistant turn immediately")
+  })
+})
+
+describe("SessionModePolicy Boss visibility", () => {
+  const bossSession = {
+    workflow: { kind: "boss", role: "boss", rootID: "ses_boss" },
+  } as any
+  const workerSession = {
+    workflow: { kind: "boss", role: "worker", workerRole: "code", rootID: "ses_boss" },
+  } as any
+
+  test("hides Boss tools outside Boss Mode", () => {
+    for (const tool of ["boss_spawn", "boss_assign", "boss_report", "boss_status", "boss_cancel"]) {
+      expect(SessionModePolicy.visibility({ toolName: tool, session: {} })).toMatchObject({
+        code: "tool_unavailable",
+        toolName: tool,
+      })
+    }
+  })
+
+  test("exposes boss tools to the root boss except worker-only boss_report", () => {
+    expect(SessionModePolicy.visibility({ toolName: "boss_spawn", session: bossSession })).toBeUndefined()
+    expect(SessionModePolicy.visibility({ toolName: "boss_assign", session: bossSession })).toBeUndefined()
+    expect(SessionModePolicy.visibility({ toolName: "boss_status", session: bossSession })).toBeUndefined()
+    expect(SessionModePolicy.visibility({ toolName: "boss_cancel", session: bossSession })).toBeUndefined()
+    expect(SessionModePolicy.visibility({ toolName: "boss_report", session: bossSession })).toMatchObject({
+      code: "tool_unavailable",
+      toolName: "boss_report",
+    })
+  })
+
+  test("exposes all boss tools including boss_report to workers", () => {
+    for (const tool of ["boss_spawn", "boss_assign", "boss_report", "boss_status", "boss_cancel"]) {
+      expect(SessionModePolicy.visibility({ toolName: tool, session: workerSession })).toBeUndefined()
+    }
   })
 })

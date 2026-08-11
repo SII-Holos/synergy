@@ -9,7 +9,7 @@ afterEach(() => {
   ;(Token.estimateModelJSON as any) = originalEstimateModelJSON
 })
 
-function createModel(limit: Provider.Model["limit"]): Provider.Model {
+function createModel(limit?: Provider.Model["limit"]): Provider.Model {
   return {
     id: "test-model",
     providerID: "test",
@@ -30,20 +30,37 @@ function createModel(limit: Provider.Model["limit"]): Provider.Model {
 }
 
 describe("prompt-budgeter budget", () => {
-  test("uses full context for shared-context models", () => {
-    const result = PromptBudgeter.budget({ context: 202_752, output: 32_768 })
-    expect(result.usable).toBe(202_752)
-    expect(result.soft).toBe(Math.floor(202_752 * 0.85))
+  test("reserves long output capacity for shared-context models", () => {
+    const result = PromptBudgeter.budget({ context: 1_048_576, output: 384_000 })
+    expect(result.usable).toBe(1_048_576)
+    expect(result.output).toBe(384_000)
+    expect(result.margin).toBe(32_000)
+    expect(result.inputEnvelope).toBe(632_576)
+    expect(result.soft).toBe(537_689)
   })
 
-  test("uses input cap directly for models with explicit input limit", () => {
+  test("keeps explicit input partitions as the compaction budget", () => {
     const result = PromptBudgeter.budget({ context: 400_000, input: 272_000, output: 128_000 })
     expect(result.usable).toBe(272_000)
+    expect(result.inputEnvelope).toBe(272_000)
+    expect(result.soft).toBe(231_200)
+  })
+
+  test("does not reserve the entire window for fully shared output limits", () => {
+    const result = PromptBudgeter.budget({ context: 262_144, output: 262_144 })
+    expect(result.inputEnvelope).toBe(262_144)
+    expect(result.soft).toBe(Math.floor(262_144 * 0.85))
+  })
+
+  test("treats near-window output limits as shared instead of deriving a zero threshold", () => {
+    const result = PromptBudgeter.budget({ context: 131_072, output: 129_024 })
+    expect(result.inputEnvelope).toBe(131_072)
+    expect(result.soft).toBe(Math.floor(131_072 * 0.85))
   })
 
   test("respects overflow threshold override", () => {
     const result = PromptBudgeter.budget({ context: 100_000, output: 8_192 }, { overflowThreshold: 0.95 })
-    expect(result.soft).toBe(Math.floor(100_000 * 0.95))
+    expect(result.soft).toBe(Math.floor((100_000 - 8_192 - 5_000) * 0.95))
   })
 })
 
@@ -57,6 +74,105 @@ describe("prompt-budgeter decision", () => {
     }
     const result = await PromptBudgeter.decide(plan, model.limit, model.id)
     expect(result.shouldCompact).toBe(false)
+  })
+
+  test("compacts DeepSeek-sized prompts before they consume the long-output reserve", async () => {
+    const model = createModel({ context: 1_048_576, output: 384_000 })
+    const plan: PromptBudgeter.PromptPlan = {
+      system: ["You are helpful."],
+      messages: [{ role: "user", content: "continue" }],
+      toolDefinitions: [],
+    }
+
+    const result = await PromptBudgeter.decide(plan, model.limit, model.id, {
+      calibration: { actualInput: 683_111, outputTokens: 0, deltaTokens: 0 },
+    })
+
+    expect(result.shouldCompact).toBe(true)
+    expect(result.maxOutputTokens).toBe(333_465)
+  })
+
+  test("preserves full GPT output at the explicit-input compaction threshold", async () => {
+    const model = createModel({ context: 400_000, input: 272_000, output: 128_000 })
+    const plan: PromptBudgeter.PromptPlan = {
+      system: ["You are helpful."],
+      messages: [{ role: "user", content: "continue" }],
+      toolDefinitions: [],
+    }
+
+    const result = await PromptBudgeter.decide(plan, model.limit, model.id, {
+      calibration: { actualInput: 231_200, outputTokens: 0, deltaTokens: 0 },
+    })
+
+    expect(result.shouldCompact).toBe(true)
+    expect(result.maxOutputTokens).toBe(128_000)
+  })
+
+  test("uses an explicit output limit for both reserve and request clamping", async () => {
+    const model = createModel({ context: 1_048_576, output: 384_000 })
+    const plan: PromptBudgeter.PromptPlan = {
+      system: ["You are helpful."],
+      messages: [{ role: "user", content: "continue" }],
+      toolDefinitions: [],
+    }
+
+    const result = await PromptBudgeter.decide(plan, model.limit, model.id, {
+      maxOutputTokens: 8_000,
+      calibration: { actualInput: 700_000, outputTokens: 0, deltaTokens: 0 },
+    })
+
+    expect(result.shouldCompact).toBe(false)
+    expect(result.maxOutputTokens).toBe(8_000)
+  })
+
+  test("reports when a known context window leaves no response space", async () => {
+    const model = createModel({ context: 100_000, output: 8_192 })
+    const plan: PromptBudgeter.PromptPlan = {
+      system: ["You are helpful."],
+      messages: [{ role: "user", content: "continue" }],
+      toolDefinitions: [],
+    }
+
+    const result = await PromptBudgeter.decide(plan, model.limit, model.id, {
+      calibration: { actualInput: 98_000, outputTokens: 0, deltaTokens: 0 },
+    })
+
+    expect(result.shouldCompact).toBe(true)
+    expect(result.contextExceeded).toBe(true)
+    expect(result.maxOutputTokens).toBeUndefined()
+  })
+
+  test("keeps legacy output fallback when context metadata is unavailable", async () => {
+    const model = createModel(undefined)
+    const plan: PromptBudgeter.PromptPlan = {
+      system: ["You are helpful."],
+      messages: [{ role: "user", content: "continue" }],
+      toolDefinitions: [],
+    }
+
+    const result = await PromptBudgeter.decide(plan, model.limit, model.id, {
+      calibration: { actualInput: 98_000, outputTokens: 0, deltaTokens: 0 },
+    })
+
+    expect(result.contextExceeded).toBe(false)
+    expect(result.maxOutputTokens).toBeUndefined()
+  })
+
+  test("preserves an explicit output limit when context metadata is unavailable", async () => {
+    const model = createModel(undefined)
+    const plan: PromptBudgeter.PromptPlan = {
+      system: ["You are helpful."],
+      messages: [{ role: "user", content: "continue" }],
+      toolDefinitions: [],
+    }
+
+    const result = await PromptBudgeter.decide(plan, model.limit, model.id, {
+      maxOutputTokens: 4_000,
+      calibration: { actualInput: 98_000, outputTokens: 0, deltaTokens: 0 },
+    })
+
+    expect(result.contextExceeded).toBe(false)
+    expect(result.maxOutputTokens).toBe(4_000)
   })
 
   test("larger assembled prompts produce larger measured totals", async () => {

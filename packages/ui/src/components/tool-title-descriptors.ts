@@ -19,6 +19,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   ast_grep: d("tool.title.ast-search", "Search AST"),
   edit: d("tool.title.edit", "Edit file"),
   revise_file: d("tool.title.revise-file", "Revise File"),
+  resolve_conflicts: d("tool.title.resolve-conflicts", "Resolve Conflicts"),
   write: d("tool.title.write", "Write file"),
   save_file: d("tool.title.save-file", "Save File"),
   create_file: d("tool.title.create-file", "Create File"),
@@ -74,6 +75,13 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   session_dismiss_question: d("tool.title.dismiss-question", "Dismiss Question"),
   session_approve_permission: d("tool.title.approve-permission", "Allow operation"),
   session_deny_permission: d("tool.title.deny-permission", "Deny operation"),
+
+  // Boss Mode
+  boss_spawn: d("tool.title.boss-spawn", "Spawn worker"),
+  boss_assign: d("tool.title.boss-assign", "Assign task"),
+  boss_report: d("tool.title.boss-report", "Report result"),
+  boss_status: d("tool.title.boss-status", "View worker tree"),
+  boss_cancel: d("tool.title.boss-cancel", "Cancel task"),
 
   // Knowledge / memory / notes
   memory_search: d("tool.title.memory-search", "Search memories"),

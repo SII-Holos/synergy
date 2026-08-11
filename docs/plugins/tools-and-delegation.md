@@ -87,7 +87,7 @@ An MCP contribution contains one strict local or remote server declaration. Loca
 
 `cliCommand()` contributes a flat executable command below `synergy <pluginId> <command>`. Command discovery and help resolve the launch directory through a transient Scope without registering it as a project, writing its Git identity cache, archiving stale Scope records, or emitting Scope events; the host resolves the persistent Scope when a declared command actually executes. Its handler receives parsed options and the normal invocation context. Commands that execute processes declare `shell.execute` and call `context.shell.run({ command: [program, ...args] })`; plugins never pass shell source strings.
 
-Tools that produce files declare `asset.write`, call `context.asset.create()`, and return the host-owned attachment directly in `attachments`. This keeps asset URLs, Session/message identity, and presentation metadata under host ownership.
+Tools that produce files declare `asset.write`, call `context.asset.create()`, and return the host-owned attachment directly in `attachments`. This keeps asset URLs, durable host `localPath`, Session/message identity, and presentation metadata under host ownership.
 
 ## BlueprintLoop Delegation
 

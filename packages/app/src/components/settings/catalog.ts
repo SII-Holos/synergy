@@ -51,7 +51,6 @@ export const BUILTIN_SETTINGS_IDS = [
 ] as const
 
 export type BuiltinSettingsId = (typeof BUILTIN_SETTINGS_IDS)[number]
-export type SettingsFieldStrategy = "auto" | "background" | "explicit"
 
 export type SettingsCatalogCopy = {
   label: MessageDescriptor
@@ -117,12 +116,14 @@ const BUILTIN_SETTINGS_COPY = {
     },
     searchTerms: {
       id: "settings.catalog.general.searchTerms",
-      message: "appearance | color | light | dark | auto | language | snapshot | product update | toast | notification",
+      message:
+        "appearance | color | light | dark | auto | language | snapshot | activity | activity display | product update | toast | notification",
       comment: SEARCH_TERMS_COMMENT,
     },
     rowLabels: [
       { id: "settings.catalog.general.row.colorScheme", message: "Color Scheme" },
       { id: "settings.catalog.general.row.interfaceLanguage", message: "Interface Language" },
+      { id: "settings.catalog.general.row.activityDisplay", message: "Activity display" },
       { id: "settings.catalog.general.row.snapshot", message: "Snapshot" },
       { id: "settings.catalog.general.row.productUpdates", message: "Product Updates" },
       { id: "settings.catalog.general.row.notifications", message: "Notifications" },
@@ -533,55 +534,6 @@ function splitSearchTerms(value: string): string[] {
 
 export function getBuiltinSettingsSection(id: string): SettingsCatalogSection | undefined {
   return BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === id)
-}
-
-export const FIELD_SAVE_STRATEGY: Record<string, SettingsFieldStrategy> = {
-  snapshot: "auto",
-  theme: "background",
-  locale: "background",
-  username: "background",
-  toast: "background",
-  model: "explicit",
-  nano_model: "explicit",
-  mini_model: "explicit",
-  mid_model: "explicit",
-  vision_model: "explicit",
-  thinking_model: "explicit",
-  long_context_model: "explicit",
-  creative_model: "explicit",
-  role_variant: "explicit",
-  quick_switcher: "background",
-  default_agent: "explicit",
-  enabled_providers: "background",
-  disabled_providers: "background",
-  embedding: "explicit",
-  rerank: "explicit",
-  library: "explicit",
-  mcp: "explicit",
-  mcpDefaults: "explicit",
-  plugin: "explicit",
-  pluginRuntimePolicy: "explicit",
-  pluginMarketplace: "explicit",
-  channel: "background",
-  email: "explicit",
-  permission: "background",
-  tools: "explicit",
-  controlProfile: "explicit",
-  sandbox: "background",
-  smartAllow: "background",
-  question: "background",
-  compaction: "auto",
-  cortex: "background",
-  execution: "background",
-  timeout: "background",
-  experimental: "background",
-  watcher: "background",
-  formatter: "explicit",
-  lsp: "explicit",
-  lspWriteDiagnostics: "background",
-  lspDiagnostics: "background",
-  logLevel: "background",
-  observability: "background",
 }
 
 export function isBuiltinSettingsId(id: string): id is BuiltinSettingsId {

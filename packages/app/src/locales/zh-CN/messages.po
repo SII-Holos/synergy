@@ -5,6 +5,78 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
+#. js-lingui-explicit-id
+msgid "activity.trace.actions"
+msgstr "{count, plural, one {# 个操作} other {# 个操作}}"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.activity"
+msgstr "活动"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.browser"
+msgstr "已浏览"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.coordination"
+msgstr "已协调"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.delegate"
+msgstr "已委派"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.execute"
+msgstr "已执行"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.external-action"
+msgstr "外部操作"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.generic"
+msgstr "已处理"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.inspect-local"
+msgstr "已检查"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.modify-files"
+msgstr "已修改"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.produce"
+msgstr "已生成"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.family.research-web"
+msgstr "已调研"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.reasoning.fallback"
+msgstr "推理过程"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.reasoning.thinking"
+msgstr "思考中…"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.done"
+msgstr "完成"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.error"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.running"
+msgstr "运行中"
+
+#. js-lingui-explicit-id
+msgid "activity.trace.status.waiting-approval"
+msgstr "等待批准"
+
 #. ── Anchored-tool chip labels ──────────────────────────────────────
 msgid "anchored-chip.conflict"
 msgstr "冲突"
@@ -805,6 +877,178 @@ msgstr "此附件已无法从当前会话中获取。"
 #. js-lingui-explicit-id
 msgid "app.attachment.unsupported"
 msgstr "此文件类型暂不支持预览。"
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.failed"
+msgstr "分配任务失败"
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.label"
+msgstr "将任务分配给空闲的 worker"
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.selectWorker"
+msgstr "选择 worker…"
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.submit"
+msgstr "分配"
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.success"
+msgstr "任务已分配"
+
+#. js-lingui-explicit-id
+msgid "app.boss.assign.taskPlaceholder"
+msgstr "任务描述…"
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.cancel"
+msgstr "保留"
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.confirm"
+msgstr "取消工作"
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.confirmDescription"
+msgstr "待处理任务将被移除，运行中的回合将被中断。"
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.confirmTitle"
+msgstr "取消此 worker 的工作？"
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.failed"
+msgstr "取消工作失败"
+
+#. js-lingui-explicit-id
+msgid "app.boss.cancel.success"
+msgstr "工作已取消"
+
+#. js-lingui-explicit-id
+msgid "app.boss.copy.failed"
+msgstr "复制 Boss 树失败。"
+
+#. js-lingui-explicit-id
+msgid "app.boss.copy.title"
+msgstr "树已复制"
+
+#. js-lingui-explicit-id
+msgid "app.boss.genericFailed"
+msgstr "Boss 操作失败。"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.agent"
+msgstr "Agent"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.cancel"
+msgstr "取消"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.children"
+msgstr "子节点"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.copyTree"
+msgstr "复制树"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.currentTask"
+msgstr "当前任务"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.depth"
+msgstr "第 {depth} 层工作节点"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.loadFailed"
+msgstr "加载 Boss 树失败。"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.noTask"
+msgstr "当前没有分配任务。"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.notAvailable"
+msgstr "暂无"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.openSession"
+msgstr "打开会话"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.orchestrator"
+msgstr "协调器"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.reportsTo"
+msgstr "上级节点"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.spawn"
+msgstr "创建 worker"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.title"
+msgstr "Boss 模式"
+
+#. js-lingui-explicit-id
+msgid "app.boss.panel.workerCount"
+msgstr "{count, plural, other {# 个 Worker}}"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.agentLabel"
+msgstr "Agent"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.agentPlaceholder"
+msgstr "Agent（例如 synergy）"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.cancel"
+msgstr "取消"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.create"
+msgstr "创建"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.failed"
+msgstr "创建 worker 失败"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.roleLabel"
+msgstr "Worker 角色"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.rolePlaceholder"
+msgstr "Worker 角色（例如 code）"
+
+#. js-lingui-explicit-id
+msgid "app.boss.spawn.success"
+msgstr "Worker 已创建"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.archived"
+msgstr "已归档"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.idle"
+msgstr "空闲"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.queued"
+msgstr "排队中"
+
+#. js-lingui-explicit-id
+msgid "app.boss.status.running"
+msgstr "运行中"
+
+#. js-lingui-explicit-id
+msgid "app.boss.workspace.sessionRequired"
+msgstr "打开一个会话以使用 Boss 模式。"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.action.cancel"
@@ -4737,6 +4981,10 @@ msgid "app.panel.attachment"
 msgstr "附件"
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.boss"
+msgstr "Boss"
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.browser"
 msgstr "浏览器"
 
@@ -6041,6 +6289,18 @@ msgid "app.plugin.marketplace.pluginApi.label"
 msgstr "Plugin API {version}"
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.button"
+msgstr "刷新插件"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.failed"
+msgstr "插件目录刷新失败"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.refresh.updated"
+msgstr "插件目录已更新"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.registryUnavailable.description"
 msgstr "Synergy 无法连接到此插件注册表。请检查网络连接后重试。"
 
@@ -6183,10 +6443,6 @@ msgstr "工具"
 #. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permissionGroup.ui"
 msgstr "UI"
-
-#. js-lingui-explicit-id
-msgid "app.plugin.settings.saveFailed"
-msgstr "设置未保存"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.settings.stateOff"
@@ -9224,6 +9480,20 @@ msgstr "添加"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.attach.bossActive"
+msgstr "Boss 模式已激活"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.attach.cancelBoss"
+msgstr "在装备用户 Blueprint 前退出 Boss 模式。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.attach.cancelLattice"
 msgstr "请先取消 Lattice，再启用你选择的 Blueprint。"
 
@@ -9484,6 +9754,20 @@ msgstr "运行中"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.bpSlot.waiting"
 msgstr "等待中"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.cancelBoss"
+msgstr "退出 Boss 模式"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.cancelBoss.label"
+msgstr "Boss"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -10426,6 +10710,13 @@ msgstr "发送命令失败"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.failedEnableBoss"
+msgstr "启用 Boss 模式失败"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.submit.failedEnableLattice"
 msgstr "启用 Lattice 失败"
 
@@ -10651,8 +10942,50 @@ msgstr "为当前会话创建独立工作区"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.bossUnavailableBp"
+msgstr "装备 Blueprint 时无法使用 Boss 模式"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.bossUnavailableLattice"
+msgstr "Lattice 激活时无法使用 Boss 模式"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.bossUnavailableLl"
+msgstr "Light Loop 激活时无法使用 Boss 模式"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.bossUnavailablePlan"
+msgstr "Plan 激活时无法使用 Boss 模式"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.clickExitBoss"
+msgstr "点击退出 Boss 模式"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.wm.clickExitLattice"
 msgstr "点击退出 Lattice"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.wm.exitBoss"
+msgstr "退出 Boss 模式"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -10699,6 +11032,20 @@ msgstr "以递归 Blueprint 运行目标"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.wm.stopSessionBeforeWorkflow"
 msgstr "请先停止会话，再更改工作流模式。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.workflow.boss"
+msgstr "Boss"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.workflow.bossDesc"
+msgstr "委托给 worker 树"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -13586,6 +13933,10 @@ msgid "settings.catalog.general.label"
 msgstr "通用"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.general.row.activityDisplay"
+msgstr "活动显示"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.general.row.colorScheme"
 msgstr "配色方案"
 
@@ -13611,7 +13962,7 @@ msgstr "提示时长"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.searchTerms"
-msgstr "外观 | 颜色 | 浅色 | 深色 | 自动 | 语言 | 快照 | 产品更新 | 提示 | 通知"
+msgstr "外观 | 颜色 | 浅色 | 深色 | 自动 | 语言 | 快照 | 活动 | 活动显示 | 产品更新 | 提示 | 通知"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.github.description"
@@ -14119,7 +14470,7 @@ msgstr "等待传输连接"
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.desc"
-msgstr "在 write、edit、save_file 和 revise_file 后返回语言服务器反馈。"
+msgstr "在 write、edit、save_file、revise_file 和 resolve_conflicts 后返回语言服务器反馈。"
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.title"
@@ -14454,6 +14805,26 @@ msgid "settings.email.state.paused"
 msgstr "已暂停"
 
 #. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.balanced"
+msgstr "平衡"
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.description"
+msgstr "选择 Synergy 在界面中显示的活动详情程度"
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.full"
+msgstr "完整"
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.minimal"
+msgstr "精简"
+
+#. js-lingui-explicit-id
+msgid "settings.general.activityDisplay.title"
+msgstr "活动显示"
+
+#. js-lingui-explicit-id
 msgid "settings.general.appearance.title"
 msgstr "外观"
 
@@ -14494,10 +14865,6 @@ msgid "settings.general.font.applied"
 msgstr "已应用"
 
 #. js-lingui-explicit-id
-msgid "settings.general.font.apply"
-msgstr "应用"
-
-#. js-lingui-explicit-id
 msgid "settings.general.font.check"
 msgstr "检查"
 
@@ -14515,11 +14882,11 @@ msgstr "字体访问被拒绝；使用默认字体"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.description"
-msgstr "点击“检查”加载本机已安装的字体，选择一个后点击“应用”。"
+msgstr "点击“检查”加载本机已安装的字体。点击“保存更改”应用所选字体。"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.ready"
-msgstr "选择字体，然后点击“应用”"
+msgstr "有未保存的字体选择"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.reset"
@@ -14540,14 +14907,6 @@ msgstr "此浏览器无法扫描本地字体；使用默认字体"
 #. js-lingui-explicit-id
 msgid "settings.general.language.description"
 msgstr "选择 Synergy 控件和无障碍标签使用的语言"
-
-#. js-lingui-explicit-id
-msgid "settings.general.language.failed.description"
-msgstr "无法加载所选语言目录。上一种语言仍处于活动状态。"
-
-#. js-lingui-explicit-id
-msgid "settings.general.language.failed.title"
-msgstr "切换语言失败"
 
 #. js-lingui-explicit-id
 msgid "settings.general.language.system"
@@ -16066,6 +16425,10 @@ msgid "settings.panel.action.saving"
 msgstr "正在保存…"
 
 #. js-lingui-explicit-id
+msgid "settings.panel.back.label"
+msgstr "返回"
+
+#. js-lingui-explicit-id
 msgid "settings.panel.badge.developer"
 msgstr "开发"
 
@@ -16182,6 +16545,14 @@ msgid "settings.panel.reference.lspTitle"
 msgstr "LSP"
 
 #. js-lingui-explicit-id
+msgid "settings.panel.save.partialFailure"
+msgstr "部分设置未能保存"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.save.partialFailure.description"
+msgstr "请检查保存失败的设置，然后重试。"
+
+#. js-lingui-explicit-id
 msgid "settings.panel.search.empty"
 msgstr "未找到设置"
 
@@ -16271,11 +16642,11 @@ msgstr "保留覆盖"
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.confirmReset.confirm"
-msgstr "重置为 AGENTS.md"
+msgstr "暂存重置为 AGENTS.md"
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.confirmReset.description"
-msgstr "移除 AGENTS.override.md，并恢复为全局 AGENTS.md 内容。"
+msgstr "清空当前草稿并暂存移除 AGENTS.override.md。点击“保存更改”后才会提交重置。"
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.confirmReset.title"
@@ -16310,48 +16681,8 @@ msgid "settings.personalize.page.title"
 msgstr "个性化"
 
 #. js-lingui-explicit-id
-msgid "settings.personalize.reset.description"
-msgstr "Synergy 将改用全局 AGENTS.md 文件。"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.reset.title"
-msgstr "自定义指令已重置"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.resetError.description"
-msgstr "请重试。"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.resetError.title"
-msgstr "重置失败"
-
-#. js-lingui-explicit-id
 msgid "settings.personalize.retry"
 msgstr "重试"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.save.label"
-msgstr "保存自定义指令"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveError.description"
-msgstr "检查自定义指令内容后重试。"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveError.title"
-msgstr "自定义指令未保存"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveSuccess.description"
-msgstr "Synergy 会在后续提示组装中使用 AGENTS.override.md。"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveSuccess.title"
-msgstr "自定义指令已保存"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saving"
-msgstr "正在保存…"
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.section.description"
@@ -17134,18 +17465,6 @@ msgid "settings.sandbox.warn"
 msgstr "提醒"
 
 #. js-lingui-explicit-id
-msgid "settings.save.auto.failed"
-msgstr "自动保存失败"
-
-#. js-lingui-explicit-id
-msgid "settings.save.background.failed"
-msgstr "后台保存失败"
-
-#. js-lingui-explicit-id
-msgid "settings.save.background.updated"
-msgstr "已更新：{fields}"
-
-#. js-lingui-explicit-id
 msgid "settings.save.explicit.changed"
 msgstr "已更改：{fields}"
 
@@ -17858,6 +18177,26 @@ msgid "tool.title.blueprints"
 msgstr "查看 Blueprint"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-assign"
+msgstr "分配任务"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-cancel"
+msgstr "取消任务"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-report"
+msgstr "汇报结果"
+
+#. Boss Mode
+msgid "tool.title.boss-spawn"
+msgstr "创建 worker"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-status"
+msgstr "查看 worker 树"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.cancel-agenda"
 msgstr "取消日程"
 
@@ -18302,6 +18641,10 @@ msgid "tool.title.research-state"
 msgstr "管理研究状态"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.resolve-conflicts"
+msgstr "解决冲突"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.resolve-library"
 msgstr "查找软件库"
 
@@ -18570,6 +18913,14 @@ msgid "ui.anchoredTool.recovery.safelyMapped"
 msgstr "已根据当前文件重新定位"
 
 #. js-lingui-explicit-id
+msgid "ui.anchoredTool.resolveConflicts"
+msgstr "解决冲突"
+
+#. js-lingui-explicit-id
+msgid "ui.anchoredTool.resolvedConflictCount"
+msgstr "{count} 个已解决"
+
+#. js-lingui-explicit-id
 msgid "ui.anchoredTool.reviseFile"
 msgstr "修改文件"
 
@@ -18614,12 +18965,20 @@ msgid "ui.anchoredTool.summary.regex"
 msgstr "正则表达式"
 
 #. js-lingui-explicit-id
+msgid "ui.anchoredTool.summary.resolved"
+msgstr "已解决"
+
+#. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.result"
 msgstr "结果"
 
 #. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.searchPath"
 msgstr "搜索路径"
+
+#. js-lingui-explicit-id
+msgid "ui.anchoredTool.summary.strategies"
+msgstr "策略"
 
 #. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.tag"

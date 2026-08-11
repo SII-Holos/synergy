@@ -363,13 +363,12 @@ export class PluginRuntimeManager {
     if (input.signal?.aborted) abort()
     else input.signal?.addEventListener("abort", abort, { once: true })
     const timeoutMs = input.timeoutMs ?? (await resolvePluginRuntimeLimits()).contributionInvokeTimeoutMs
-    const timeout = setTimeout(
-      () => controller.abort(new DOMException("Plugin invocation timed out", "TimeoutError")),
-      timeoutMs,
-    )
+    let timedOut = false
+    const timeout = setTimeout(() => {
+      timedOut = true
+      controller.abort(new DOMException("Plugin invocation timed out", "TimeoutError"))
+    }, timeoutMs)
     const abortError = () => {
-      const timedOut =
-        controller.signal.reason instanceof DOMException && controller.signal.reason.name === "TimeoutError"
       return new PluginRuntimeError(
         timedOut ? "TIMEOUT" : "CANCELLED",
         timedOut ? `Plugin invocation timed out after ${timeoutMs}ms` : "Plugin invocation cancelled",

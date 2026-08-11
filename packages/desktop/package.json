@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@ericsanchezok/synergy-browser": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
     "electron-updater": "6.6.8",
     "zod": "catalog:"
   },
@@ -36,7 +37,8 @@
     "@types/node": "catalog:",
     "@types/unzipper": "0.10.11",
     "electron": "42.5.0",
-    "electron-builder": "26.11.1",
+    "electron-builder": "26.15.7",
+    "electron-builder-squirrel-windows": "26.15.7",
     "typescript": "catalog:",
     "unzipper": "^0.12.3"
   }

@@ -119,12 +119,13 @@ When the agent fixes an issue, the fix is delivered as a pull request by default
 
 1. Verifies the session is bound to a GitHub channel thread and the workspace checkout exists.
 2. Resolves the repository default branch as the PR base.
-3. Verifies the local branch exists and has commits ahead of the base.
-4. **When the thread is a pull request**, pushes the fix to that PR's head branch first, updating the PR in place (Codex-style behavior). Same-repository PRs push directly; fork PRs push to the fork only when the App has an installation there. If the push is impossible (fork without App access, protected or moved head branch), it falls back to the next step.
-5. **Fallback / issue threads**: pushes the `synergy/fix/...` branch and opens a deduplicated pull request against the repository default branch (reuses an existing open PR with the same head branch).
-6. Returns the PR URL; the agent reports it in its final comment.
+3. Resolves the supplied ref to its canonical local branch (rejecting symbolic refs such as `HEAD`, which would push whatever branch is checked out), then rejects the request when that branch is the repository base branch itself — delivery must use a dedicated fix branch so the provider never pushes directly to the default branch.
+4. Verifies the branch has at least one commit beyond the comparison ref: the fetched PR head for PR threads (so pushing the unchanged PR back is never reported as a delivery), otherwise the repository base branch.
+5. **When the thread is a pull request**, pushes the fix to that PR's head branch first, updating the PR in place (Codex-style behavior). Same-repository PRs push directly; fork PRs push to the fork only when the App has an installation there. If the push is impossible (fork without App access, protected or moved head branch, or the PR head repository is unknown), it falls back to the next step.
+6. **Fallback / issue threads**: pushes the `synergy/fix/...` branch and opens a deduplicated pull request against the repository default branch (reuses an existing open PR with the same head branch).
+7. Returns the PR URL; the agent reports it in its final comment.
 
-The agent's bash permissions keep `gh`, `git push`, and `git remote` denied — all GitHub writes flow through the provider with the installation token.
+All git commands run with the installation-token credential helper (`git -c credential.helper=…`), never the token on argv, and provider-owned pushes use `--no-verify` so repository-controlled pre-push hooks cannot read the token from the child environment. The delivery honors the session abort signal: cancellation terminates in-flight git subprocesses and aborts GitHub API requests.
 
 ## Agent
 

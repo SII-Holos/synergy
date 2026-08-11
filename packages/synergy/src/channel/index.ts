@@ -368,6 +368,13 @@ export namespace Channel {
   export async function reload() {
     log.info("reloading channel state")
     await state.resetAll()
+    // resetAll() only disposes connections; rebuild them eagerly in the home
+    // scope so a reload never leaves channels destroyed-but-not-reconnected.
+    // Channels are a global resource: the server starts them under the home
+    // scope, so the rebuilt state must land there regardless of the caller's
+    // ambient scope, or the next home-scoped access would create a second
+    // state and duplicate connections.
+    await ScopeContext.provide({ scope: Scope.home(), fn: () => state() })
     log.info("channel state reloaded")
   }
 
@@ -759,12 +766,6 @@ export namespace Channel {
               })
               void reactionController.setQueued()
 
-              // The foreground streaming card owns this root's terminal reply:
-              // register the root so the outbound bridge skips it and the
-              // answer is not delivered twice. Queued (busy/recovered) roots
-              // are never registered and keep the bridge as their delivery path.
-              ChannelOutbound.beginForeground(sessionID, delivery.messageID)
-
               let streaming = createStreamingSession({
                 accountId: ctx.accountId,
                 chatId: ctx.chatId,
@@ -785,6 +786,19 @@ export namespace Channel {
                   messageId: replyToMessageId,
                   scopeKey: ctx.scopeKey,
                 })
+              }
+
+              // A foreground streaming session that owns the terminal delivery
+              // (e.g. Feishu cards post the final text in close()) must not be
+              // re-delivered by the outbound bridge: register the root so the
+              // bridge skips it. Sessions that do not own delivery (e.g.
+              // GitHub, whose streaming session is a no-op and relies on the
+              // bridge for comments) are never registered, so the bridge
+              // posts the reply. Queued (busy/recovered) roots are never
+              // registered and keep the bridge as their delivery path.
+              const ownsTerminalDelivery = streaming.ownsTerminalDelivery?.() === true
+              if (ownsTerminalDelivery) {
+                ChannelOutbound.beginForeground(sessionID, delivery.messageID)
               }
 
               const assistantTranscript = new Map<string, string>()
@@ -867,8 +881,8 @@ export namespace Channel {
                 // degraded fallback so the user still receives tool outputs.
                 const fallbackText = hasError ? buildDegradedFallback(toolProgress) : undefined
                 await streaming.close(responseText || fallbackText, hasError)
-                if (result.info.role === "assistant") {
-                  // The streaming card already delivered this root's terminal
+                if (result.info.role === "assistant" && ownsTerminalDelivery) {
+                  // The streaming session already delivered this root's terminal
                   // reply. Persist the sent marker so any later message update
                   // (context usage, metadata merge) never re-triggers the
                   // outbound bridge after the foreground registration ends.
@@ -980,6 +994,7 @@ export namespace Channel {
         })
       },
       isActive: () => false,
+      ownsTerminalDelivery: () => true,
     }
   }
 

@@ -419,6 +419,20 @@ describe("Channel provider lifecycle capability", () => {
       [`${fake.value.type}:account`]: { status: "disabled" },
     })
   })
+
+  test("reload rebuilds connections without waiting for a lazy access", async () => {
+    const fake = makeProvider({ type: `reload-${crypto.randomUUID()}`, lifecycle: "self_connected" })
+    Channel.registerProvider(fake.value)
+    await configure(fake.value.type, true)
+    expect(fake.connectCount()).toBe(1)
+
+    await inHome(() => Channel.reload())
+    await waitFor(() => fake.connectCount() === 2)
+    expect(fake.connectCount()).toBe(2)
+    expect(await inHome(() => Channel.status())).toMatchObject({
+      [`${fake.value.type}:account`]: { status: "connected" },
+    })
+  })
 })
 
 test("waits for provider drain before stopping a channel account", async () => {

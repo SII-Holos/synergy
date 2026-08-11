@@ -402,7 +402,7 @@ describe("ToolTaskScheduler", () => {
     await ToolScheduler.stop()
   })
 
-  test("accepts new work after runtime shutdown completes", async () => {
+  test("keeps rejecting new work after runtime shutdown until reconfigured", async () => {
     await ToolScheduler.stop()
     const target = processor()
     const tool = {
@@ -414,8 +414,7 @@ describe("ToolTaskScheduler", () => {
         })
       },
     } as unknown as AITool
-
-    const result = await ToolScheduler.dispatch({
+    const input = {
       sessionID: "ses_test",
       generation: 1,
       messageID: "msg_test",
@@ -425,9 +424,12 @@ describe("ToolTaskScheduler", () => {
       tool,
       processor: target,
       signal: new AbortController().signal,
-    })
+    }
 
-    expect(result.state).toBe("completed")
+    await expect(ToolScheduler.dispatch(input)).rejects.toThrow("Tool scheduler is stopping")
+
+    ToolScheduler.configure()
+    expect((await ToolScheduler.dispatch({ ...input, callID: "call_after_reconfigure" })).state).toBe("completed")
     await ToolScheduler.stop()
   })
 })

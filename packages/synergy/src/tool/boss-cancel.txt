@@ -1,0 +1,3 @@
+Cancel a task (or all tasks) assigned to a direct-child worker in the Boss Mode tree.
+
+If the worker is running, its turn is interrupted; matching pending inbox tasks are removed. Use taskID to cancel one task, or omit it to cancel all tasks from this caller.

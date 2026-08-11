@@ -363,6 +363,8 @@ function registerShutdown(
     }
 
     shuttingDown = true
+    Server.beginShutdown()
+    GlobalRuntime.closeAdmission()
     stopWatchingParent()
     log.info("received signal, shutting down gracefully", { signal })
     await Observability.emit("shutdown.signal", {
@@ -389,7 +391,7 @@ function registerShutdown(
         Log.flush()
         process.exit(1)
       })()
-    }, 5000)
+    }, GlobalRuntime.shutdownTimeoutMs())
     forceExitTimeout.unref()
 
     try {
@@ -418,7 +420,7 @@ function registerShutdown(
       phase = "server stop"
       await Observability.emit("shutdown.phase", { data: { phase } })
       try {
-        await server.stop()
+        await server.stop(true)
       } finally {
         // Clear the runtime endpoint only after the server has stopped so plugins can still
         // read it while their runtimes are being drained and stopped above.

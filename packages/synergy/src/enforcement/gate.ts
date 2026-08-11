@@ -1,4 +1,4 @@
-import { splitCompoundCommands, stripWrappers } from "./shell-command"
+import { lexCompoundCommands, splitCompoundCommands, stripWrappers } from "./shell-command"
 
 export { splitCompoundCommands, stripWrappers } from "./shell-command"
 
@@ -127,8 +127,6 @@ const DESTRUCTIVE_PATTERNS = [
   "lvremove ",
   "pvremove ",
   "vgremove ",
-  // Privilege escalation
-  "sudo ",
   // Git destructive operations (force/delete/hard-reset only — ordinary feature-branch push is shell_remote_publish)
   "git reset --hard",
   "git clean -f",
@@ -304,6 +302,7 @@ function imagePathArgs(args: Record<string, any>): { read: string[]; write: stri
 
 function isDestructive(command: string): string | null {
   const lower = command.toLowerCase()
+  if (ShellSafety.hasSudoInvocation(command)) return "sudo"
   for (const p of DESTRUCTIVE_PATTERNS) {
     if (lower.includes(p)) return p
   }
@@ -430,7 +429,7 @@ function classifyProtectedPathCapability(
 function extractShellPathArguments(command: string, cwd: string): string[] {
   const paths: string[] = []
   const commandPattern =
-    /(?:^|[;&|]\s*)(cd|rm|cp|mv|mkdir|touch|chmod|chown|cat|tee|ln|install|dd|python3?|python2?|node|ruby|perl)\s+([^;&|]+)/g
+    /(?:^|[;&|]\s*)(cd|rm|cp|mv|mkdir|touch|chmod|chown|cat|file|tee|ln|install|dd|python3?|python2?|node|ruby|perl)\s+([^;&|]+)/g
   let match: RegExpExecArray | null
   while ((match = commandPattern.exec(command)) !== null) {
     const [, name, rawArgs] = match
@@ -452,6 +451,7 @@ function extractShellPathArguments(command: string, cwd: string): string[] {
   }
   return paths
 }
+
 function hasNetworkActivity(command: string): boolean {
   const lower = command.toLowerCase()
   return NETWORK_PATTERNS.some((p) => lower.includes(p))
@@ -513,7 +513,11 @@ export namespace EnforcementGate {
       // blanket .synergy/.env hard boundary.
       if (toolName !== "openai_image_gen" && toolName !== "openai_image_edit") {
         const mode =
-          toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file"
+          toolName === "write" ||
+          toolName === "edit" ||
+          toolName === "revise_file" ||
+          toolName === "resolve_conflicts" ||
+          toolName === "save_file"
             ? "write"
             : "read"
         for (const pathArg of pathArgs(args)) {
@@ -607,7 +611,13 @@ export namespace EnforcementGate {
       }
 
       // File write operations
-      if (toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file") {
+      if (
+        toolName === "write" ||
+        toolName === "edit" ||
+        toolName === "revise_file" ||
+        toolName === "resolve_conflicts" ||
+        toolName === "save_file"
+      ) {
         if (toolName === "revise_file") {
           const multiPaths = allPathsFromMultiSectionPatch(args.input)
           const paths =
@@ -736,23 +746,56 @@ export namespace EnforcementGate {
         }
 
         const cwd = args.workdir ?? activeWorkspace
+        const workdirWriteCapable = risk !== "shell_read"
         if (args.workdir) {
-          classifyPathCapability(caps, args.workdir, pathOptions)
-        }
-
-        const pathCandidates = [...extractAbsolutePaths(command), ...extractShellPathArguments(command, cwd)].filter(
-          (candidate) => !BashVirtualPath.isShellCandidate(candidate),
-        )
-        // shell_read → known read-only (cat, ls, grep, git log, etc.)
-        // shell / shell_destructive → write-capable (builds, scripts, destructive ops)
-        const writeCapable = risk !== "shell_read"
-        for (const candidate of pathCandidates) {
-          classifyProtectedPathCapability(caps, candidate, writeCapable ? "write" : "read", {
+          classifyProtectedPathCapability(caps, args.workdir, workdirWriteCapable ? "write" : "read", {
             activeWorkspace,
             originalCheckout,
             synergyRoot,
           })
-          classifyPathCapability(caps, candidate, { ...pathOptions, write: writeCapable })
+          classifyPathCapability(caps, args.workdir, { ...pathOptions, write: workdirWriteCapable })
+        }
+
+        const compound = lexCompoundCommands(command)
+        const pathSegments = compound.segments.length > 0 ? compound.segments : [command]
+        const directoryChanges = ShellSafety.analyzeDirectoryChanges(command)
+        const pipelinePathRisk = compound.operators.some((operator) => operator === "|" || operator === "|&")
+        const shellStatePathRisk = ShellSafety.hasCompoundShellStateDependency(command)
+        const aggregatePathRisk =
+          pipelinePathRisk || shellStatePathRisk || directoryChanges.opaque || directoryChanges.targets.length > 0
+        const aggregateWriteCapable = aggregatePathRisk && risk !== "shell_read"
+        if (aggregateWriteCapable && (shellStatePathRisk || directoryChanges.opaque)) {
+          uniqueCapability(caps, {
+            class: "file_external_write",
+            nonBypassable: true,
+            opaque: true,
+            reason: shellStatePathRisk
+              ? "write-capable shell command reuses path-bearing state across compound segments"
+              : "write-capable shell command changes to a directory that cannot be resolved statically",
+          })
+        }
+        for (const target of directoryChanges.targets) {
+          const candidate = target.startsWith("/") || target.startsWith("~") ? target : `${cwd}/${target}`
+          classifyProtectedPathCapability(caps, candidate, aggregateWriteCapable ? "write" : "read", {
+            activeWorkspace,
+            originalCheckout,
+            synergyRoot,
+          })
+          classifyPathCapability(caps, candidate, { ...pathOptions, write: aggregateWriteCapable })
+        }
+        for (const segment of pathSegments) {
+          const pathCandidates = [...extractAbsolutePaths(segment), ...extractShellPathArguments(segment, cwd)].filter(
+            (candidate) => !BashVirtualPath.isShellCandidate(candidate),
+          )
+          const writeCapable = aggregateWriteCapable || ShellSafety.classifyBashRisk(segment) !== "shell_read"
+          for (const candidate of pathCandidates) {
+            classifyProtectedPathCapability(caps, candidate, writeCapable ? "write" : "read", {
+              activeWorkspace,
+              originalCheckout,
+              synergyRoot,
+            })
+            classifyPathCapability(caps, candidate, { ...pathOptions, write: writeCapable })
+          }
         }
 
         // Check for network activity
@@ -1039,6 +1082,13 @@ export namespace EnforcementGate {
       // LightLoop review tools — session state coordination
       if (toolName === "loop_stop" || toolName === "light_loop_approve" || toolName === "light_loop_reject") {
         caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      // GitHub fix delivery — pushes a branch and opens a pull request through
+      // the provider's installation token (external platform write).
+      if (toolName === "github_deliver_fix") {
+        caps.push({ class: "platform_control", nonBypassable: true })
+        caps.push({ class: "network_request", nonBypassable: true })
         return { capabilities: caps }
       }
       // Default: unknown tool, no capabilities

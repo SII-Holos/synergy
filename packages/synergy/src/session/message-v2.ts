@@ -842,8 +842,12 @@ export namespace MessageV2 {
     if (model?.mode === "summary" || model?.mode === "provider-file") {
       if (model.summary?.trim()) return model.summary.trim()
     }
-    if (part.localPath) return `${attachmentName(part)} (${part.mime}) at ${part.localPath}`
     return `${attachmentName(part)} (${part.mime})`
+  }
+
+  function attachmentModelPath(part: AttachmentPart): string | undefined {
+    if (!part.url.startsWith("asset://")) return part.localPath
+    return Asset.resolvePath(part.url.slice("asset://".length)) ?? part.localPath
   }
 
   function attachmentModelMode(part: AttachmentPart): AttachmentModelPolicy["mode"] {
@@ -875,6 +879,7 @@ export namespace MessageV2 {
     return {
       ...part,
       url: `asset://${assetID}`,
+      localPath: Asset.resolvePath(assetID),
       metadata: {
         ...part.metadata,
         attachment: {
@@ -983,14 +988,18 @@ export namespace MessageV2 {
     }
 
     if (!shouldSendAttachmentFile(part)) {
-      const text = `[Attachment: ${attachmentSummary(part)}]`
+      const summary = attachmentSummary(part)
+      const localPath = attachmentModelPath(part)
+      const description = options.includeLocalPath && localPath ? `${summary}. Local path: ${localPath}` : summary
+      const text = `[Attachment: ${description}]`
       parts.push({ type: "text", text })
       provenance.categories.filesReferences.push({ text })
       return
     }
 
-    if (options.includeLocalPath && part.localPath) {
-      const text = `[The user attached a file: ${attachmentName(part)} (${part.mime}). Local path: ${part.localPath}]`
+    const localPath = attachmentModelPath(part)
+    if (options.includeLocalPath && localPath) {
+      const text = `[The user attached a file: ${attachmentName(part)} (${part.mime}). Local path: ${localPath}]`
       parts.push({ type: "text", text })
       provenance.categories.filesReferences.push({ text })
     }
@@ -1726,6 +1735,20 @@ export namespace MessageV2 {
             isRetryable: e.isRetryable || retryableNetworkMessage(message) || isRetryableNetworkError(cause),
             responseHeaders: e.responseHeaders,
             responseBody: e.responseBody,
+          },
+          { cause: e },
+        ).toObject()
+      case e instanceof Error && typeof (e as { isRetryable?: unknown }).isRetryable === "boolean":
+        const structured = e as Error & { statusCode?: unknown; isRetryable?: boolean; code?: unknown }
+        return new MessageV2.APIError(
+          {
+            message: structured.message,
+            statusCode: typeof structured.statusCode === "number" ? structured.statusCode : undefined,
+            isRetryable: structured.isRetryable ?? false,
+            metadata: {
+              ...(typeof structured.code === "string" ? { code: structured.code } : {}),
+              message: structured.message,
+            },
           },
           { cause: e },
         ).toObject()

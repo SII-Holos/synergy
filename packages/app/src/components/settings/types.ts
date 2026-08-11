@@ -1,6 +1,7 @@
 import type { MessageDescriptor } from "@lingui/core"
 
 import type { LocalePreference } from "@/context/locale/types"
+import type { ColorScheme } from "@ericsanchezok/synergy-ui/theme"
 import type { SendShortcut } from "@/context/input"
 
 export type ProviderModel = {
@@ -21,6 +22,8 @@ export type ModelKey =
   | "long_context_model"
   | "creative_model"
 
+export type ActivityDisplay = "full" | "balanced" | "minimal"
+
 /** Empty strings mean this role falls back to runtime model resolution. */
 export const MODEL_DEFAULTS: Record<ModelKey, string> = {
   model: "",
@@ -37,6 +40,7 @@ export const MODEL_DEFAULTS: Record<ModelKey, string> = {
 export const UI_DEFAULTS = {
   locale: "system" as LocalePreference,
   theme: "" as string,
+  activityDisplay: "full" as ActivityDisplay,
   username: "" as string,
   snapshot: true,
   permission: "ask" as string, // resolved from backend { "*": "ask" } object
@@ -269,10 +273,12 @@ export function groupByProvider(list: ProviderModel[]): ProviderGroup[] {
 }
 
 export type GeneralStore = {
+  colorScheme: ColorScheme
   snapshot: boolean
   username: string
   theme: string
   locale: LocalePreference
+  activityDisplay: ActivityDisplay
   mutedToasts: string[]
   toastDurations: ToastDurationOverrides
   sendShortcut: SendShortcut
@@ -373,13 +379,15 @@ export type SettingsState = {
   roleVariant: Record<string, string>
 }
 
-export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState {
+export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: ColorScheme = "system"): SettingsState {
   return {
     general: {
+      colorScheme,
       snapshot: UI_DEFAULTS.snapshot,
       username: UI_DEFAULTS.username,
       theme: UI_DEFAULTS.theme,
       locale: UI_DEFAULTS.locale,
+      activityDisplay: UI_DEFAULTS.activityDisplay,
       mutedToasts: [],
       toastDurations: emptyToastDurationOverrides(),
       sendShortcut,

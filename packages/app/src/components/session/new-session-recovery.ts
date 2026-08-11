@@ -11,6 +11,7 @@ export type NewSessionRecovery = {
   plan: boolean
   lattice: { mode: "auto" | "collaborative"; maxModelCalls: number } | null
   lightLoop: boolean
+  boss: boolean
   blueprintSlot: BlueprintSlot | null
   agent: string
   model: { providerID: string; modelID: string }
@@ -52,6 +53,7 @@ type RestoreNewSessionRecoveryInput = {
   setPlan: (enabled: boolean) => void
   setLattice: (config: NewSessionRecovery["lattice"]) => void
   setLightLoop: (enabled: boolean) => void
+  setBoss: (enabled: boolean) => void
   setBlueprintSlot: (slot: BlueprintSlot | null) => void
   setAgent: (agent: string) => void
   setModel: (model: NewSessionRecovery["model"]) => void
@@ -67,6 +69,7 @@ export function restoreNewSessionRecovery(input: RestoreNewSessionRecoveryInput)
   input.setPlan(recovery.plan)
   input.setLattice(recovery.lattice)
   input.setLightLoop(recovery.lightLoop)
+  input.setBoss(recovery.boss)
   input.setBlueprintSlot(recovery.blueprintSlot)
   input.setAgent(recovery.agent)
   input.setModel(recovery.model)

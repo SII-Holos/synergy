@@ -71,3 +71,23 @@ export function computeTurnTrim(input: TurnTrimInput): TurnTrimDecision {
   if (input.distanceFromBottom >= input.pinnedThreshold) return { trim: false }
   return { trim: true, nextTurnStart: len - maxRenderedTurns }
 }
+
+export type BottomRecoveryInput = {
+  mode: "latest" | "history"
+  tailMissingLatest: boolean
+  pendingLatest: boolean
+  historyLoading: boolean
+}
+
+/**
+ * Decides whether reaching the local bottom of a bounded history window should
+ * recover to the true latest messages. Only recovers when the window tail no
+ * longer reaches latest (cap eviction) or unseen arrivals are pending, while
+ * history is not loading; latest mode and in-flight loads keep their existing
+ * scroll behavior.
+ */
+export function shouldRecoverToLatest(input: BottomRecoveryInput): boolean {
+  if (input.historyLoading) return false
+  if (input.mode !== "history") return false
+  return input.tailMissingLatest || input.pendingLatest
+}

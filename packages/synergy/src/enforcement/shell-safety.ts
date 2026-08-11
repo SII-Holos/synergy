@@ -1,4 +1,10 @@
-import { lexCompoundCommands } from "./shell-command"
+import {
+  extractShellHeredocBodies,
+  lexCompoundCommands,
+  stripWrappers,
+  walkShellChars,
+  type ShellHeredocBody,
+} from "./shell-command"
 
 const SAFE_COMMANDS = new Set(["pwd", "ls", "cat", "head", "tail", "wc", "grep", "rg", "jq", "true"])
 
@@ -622,21 +628,121 @@ function stripAllowedRedirects(command: string): string {
 }
 
 function shellWords(segment: string): string[] {
-  const words = segment.match(/"[^"]*"|'[^']*'|[^\s]+/g) ?? []
-  return words.map((word) => word.replace(/^['"]|['"]$/g, ""))
+  const words: string[] = []
+  let current = ""
+  let started = false
+  let quote: "'" | '"' | undefined
+
+  for (let index = 0; index < segment.length; index++) {
+    const char = segment[index]
+    if (quote) {
+      if (char === quote) {
+        quote = undefined
+        continue
+      }
+      if (char === "\\" && quote === '"' && index + 1 < segment.length) {
+        const next = segment[index + 1]
+        if (next === "$" || next === "`" || next === '"' || next === "\\") {
+          current += next
+          index++
+        } else {
+          current += char
+        }
+        continue
+      }
+      current += char
+      continue
+    }
+    if (/\s/.test(char)) {
+      if (started) words.push(current)
+      current = ""
+      started = false
+      continue
+    }
+    if (char === "$" && (segment[index + 1] === "'" || segment[index + 1] === '"')) {
+      quote = segment[++index] as "'" | '"'
+      started = true
+      continue
+    }
+    if (char === "'" || char === '"') {
+      quote = char
+      started = true
+      continue
+    }
+    current += char
+    started = true
+  }
+  if (started) words.push(current)
+  return words
+}
+function separateAttachedInputRedirects(segment: string): string {
+  const insertions: number[] = []
+  walkShellChars(
+    segment,
+    (char, index, quote, context) => {
+      if (
+        quote ||
+        context.inBacktick ||
+        context.arithmetic ||
+        context.commandSubstitutionDepth > 0 ||
+        char !== "<" ||
+        segment[index + 1] !== "<" ||
+        segment[index - 1] === "<"
+      ) {
+        return
+      }
+      const previous = segment[index - 1]
+      if (!previous || /\s/.test(previous)) return
+
+      let start = index - 1
+      while (start >= 0 && !/[\s;&|()<>]/.test(segment[start] ?? "")) start--
+      const prefix = segment.slice(start + 1, index)
+      if (prefix && !/^\d+$/.test(prefix)) insertions.push(index)
+    },
+    { comments: true, backticks: true },
+  )
+  if (insertions.length === 0) return segment
+
+  let result = ""
+  let start = 0
+  for (const index of insertions) {
+    result += `${segment.slice(start, index)} `
+    start = index
+  }
+  return result + segment.slice(start)
 }
 
-function commandName(words: string[]): string | undefined {
+function simpleCommandParts(segment: string): { name?: string; args: string[] } {
+  const words = shellWords(normalizeCommand(separateAttachedInputRedirects(segment)))
   let index = 0
   while (words[index]?.includes("=") && !words[index]?.startsWith("-")) index++
-  return words[index]
+  while (words[index] === "command" || words[index] === "builtin") {
+    const prefix = words[index++]
+    if (prefix === "command") {
+      while (index < words.length) {
+        const option = words[index]
+        if (option === "--path") {
+          index += 2
+          continue
+        }
+        if (option?.startsWith("--path=") || /^-[pPvV]+$/.test(option ?? "")) {
+          index++
+          continue
+        }
+        break
+      }
+    }
+    if (words[index] === "--") index++
+  }
+  return { name: words[index], args: words.slice(index + 1) }
 }
 
 function isSafeSimpleCommand(segment: string): boolean {
-  const words = shellWords(segment)
-  if (words.length === 0) return true
-  const name = commandName(words)
+  const { name, args } = simpleCommandParts(segment)
   if (!name || name === "cd") return true
+  if (name === "file") {
+    return !args.some((word) => word === "--compile" || /^-[^-]*C/.test(word))
+  }
   return SAFE_COMMANDS.has(name)
 }
 
@@ -685,14 +791,56 @@ const ARGUMENT_INJECTION_PATTERNS: Array<{ pattern: RegExp; reason: string }> = 
   },
 ]
 
+const INLINE_STRING_ESCAPE = /^(?:[xX][0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|u\{[0-9a-fA-F]{1,6}\}|[0-7]{1,3})/
+
+function normalizeShellEscapes(command: string): string {
+  let result = ""
+  let quote: "'" | '"' | undefined
+  for (let index = 0; index < command.length; index++) {
+    const char = command[index]
+    if ((char === "'" || char === '"') && (!quote || quote === char)) {
+      quote = quote ? undefined : char
+      result += char
+      continue
+    }
+    if (char !== "\\" || index + 1 >= command.length) {
+      result += char
+      continue
+    }
+    if (quote === "'") {
+      result += char
+      continue
+    }
+    const next = command[index + 1]
+    if (quote === '"' && (next === "$" || next === "`" || next === '"' || next === "\\")) {
+      result += char + next
+      index++
+      continue
+    }
+    if (next === "\\") {
+      result += "\\"
+      index++
+      continue
+    }
+    if (INLINE_STRING_ESCAPE.test(command.slice(index + 1)) || command.startsWith("N{", index + 1)) {
+      result += "\\"
+      continue
+    }
+    result += next
+    index++
+  }
+  return result
+}
+
 function normalizeCommand(command: string): string {
-  return command
-    .replace(/\x1B\[[0-9;]*[a-zA-Z]/g, "") // strip ANSI
-    .replace(/\x00/g, "") // strip null bytes
-    .normalize("NFKC") // Unicode normalization
-    .replace(/\\(.)/g, "$1") // collapse backslash escapes
-    .replace(/""/g, "") // strip empty string literals
-    .replace(/[ \t]+/g, " ") // normalize whitespace
+  const normalized = command
+    .replace(/\x1B\[[0-9;]*[a-zA-Z]/g, "")
+    .replace(/\x00/g, "")
+    .normalize("NFKC")
+    .replace(/\\\r?\n/g, "")
+  return normalizeShellEscapes(normalized)
+    .replace(/""/g, "")
+    .replace(/[ \t]+/g, " ")
     .trim()
 }
 
@@ -722,6 +870,2097 @@ function checkHardline(command: string): boolean {
   return false
 }
 
+export interface DirectoryChangeAnalysis {
+  targets: string[]
+  opaque: boolean
+}
+
+const CLASSIFICATION_BUDGET_MS = 200
+const CLASSIFICATION_MAX_INPUT_CHARS = 256 * 1024
+
+interface ClassificationState {
+  deadline: number
+  activeInputs: Set<string>
+}
+
+function newClassificationState(): ClassificationState {
+  return {
+    deadline: Date.now() + CLASSIFICATION_BUDGET_MS,
+    activeInputs: new Set(),
+  }
+}
+
+function classificationExhausted(state: ClassificationState, input?: string): boolean {
+  return Date.now() > state.deadline || (input?.length ?? 0) > CLASSIFICATION_MAX_INPUT_CHARS
+}
+
+const DIRECTORY_CHANGE_MAX_DEPTH = 4
+const SHELL_PAYLOAD_COMMANDS = new Set(["fish", "nu", "rc", "es"])
+const SHELL_COMMAND_EXCLUSIONS = new Set(["ssh", "mosh"])
+const MULTICALL_COMMANDS = new Set(["busybox", "toybox"])
+const INLINE_EVAL_COMMANDS = new Set([
+  "node",
+  "nodejs",
+  "ruby",
+  "perl",
+  "bun",
+  "lua",
+  "luajit",
+  "groovy",
+  "swift",
+  "r",
+  "rscript",
+])
+const DIRECTORY_WRAPPER_COMMANDS = new Set([
+  "exec",
+  "nice",
+  "nohup",
+  "script",
+  "setsid",
+  "stdbuf",
+  "sudo",
+  "time",
+  "timeout",
+  "watch",
+  "xargs",
+])
+const EXECFAIL_TRANSPARENT_WRAPPERS = new Set([
+  "exec",
+  "nice",
+  "nohup",
+  "setsid",
+  "stdbuf",
+  "time",
+  "timeout",
+  "watch",
+  "xargs",
+])
+const SHELL_BUILTIN_COMMANDS = new Set([
+  ".",
+  "alias",
+  "bg",
+  "bind",
+  "break",
+  "builtin",
+  "caller",
+  "cd",
+  "command",
+  "compgen",
+  "complete",
+  "continue",
+  "declare",
+  "dirs",
+  "disown",
+  "echo",
+  "enable",
+  "eval",
+  "exec",
+  "exit",
+  "export",
+  "false",
+  "fc",
+  "fg",
+  "getopts",
+  "hash",
+  "help",
+  "history",
+  "jobs",
+  "kill",
+  "let",
+  "local",
+  "logout",
+  "mapfile",
+  "popd",
+  "printf",
+  "pushd",
+  "pwd",
+  "read",
+  "readarray",
+  "readonly",
+  "return",
+  "set",
+  "shift",
+  "shopt",
+  "source",
+  "suspend",
+  "test",
+  "times",
+  "trap",
+  "true",
+  "type",
+  "typeset",
+  "ulimit",
+  "umask",
+  "unalias",
+  "unset",
+  "wait",
+])
+
+const WRAPPER_VALUE_OPTIONS: Record<string, Set<string>> = {
+  nice: new Set(["-n", "--adjustment"]),
+  sudo: new Set([
+    "-U",
+    "--other-user",
+    "-a",
+    "--auth-type",
+    "-C",
+    "--close-from",
+    "-D",
+    "--chdir",
+    "-r",
+    "--role",
+    "-t",
+    "--type",
+    "-g",
+    "--group",
+    "-h",
+    "--host",
+    "-p",
+    "--prompt",
+    "-R",
+    "--chroot",
+    "-T",
+    "--command-timeout",
+    "-u",
+    "--user",
+  ]),
+  script: new Set(["-c", "--command"]),
+  stdbuf: new Set(["-i", "--input", "-o", "--output", "-e", "--error"]),
+  time: new Set(["-f", "--format", "-o", "--output"]),
+  timeout: new Set(["-k", "--kill-after", "-s", "--signal"]),
+  watch: new Set(["-n", "--interval"]),
+  xargs: new Set([
+    "-a",
+    "--arg-file",
+    "-E",
+    "--eof",
+    "-I",
+    "--replace",
+    "-L",
+    "--max-lines",
+    "-n",
+    "--max-args",
+    "-P",
+    "--max-procs",
+    "-s",
+    "--max-chars",
+  ]),
+}
+
+function mergeDirectoryChangeAnalysis(
+  target: DirectoryChangeAnalysis,
+  source: DirectoryChangeAnalysis,
+): DirectoryChangeAnalysis {
+  target.targets.push(...source.targets.filter((path) => !target.targets.includes(path)))
+  target.opaque ||= source.opaque
+  return target
+}
+
+function dynamicDirectoryTarget(target: string | undefined): boolean {
+  return !target || target === "-" || target.includes("$") || target.includes("`")
+}
+
+function cdpathDependentDirectoryTarget(target: string | undefined): boolean {
+  return Boolean(target && !target.startsWith("/") && !target.startsWith("~") && !target.startsWith("."))
+}
+function hasEscapedAnsiCQuote(command: string): boolean {
+  let quote: "'" | '"' | undefined
+  for (let index = 0; index < command.length; index++) {
+    const char = command[index]
+    if (char === "\\" && quote !== "'") {
+      index++
+      continue
+    }
+    if (quote) {
+      if (char === quote) quote = undefined
+      continue
+    }
+    if (char === '"' || (char === "'" && command[index - 1] !== "$")) {
+      quote = char
+      continue
+    }
+    if (char !== "$" || command[index + 1] !== "'") continue
+    for (index += 2; index < command.length; index++) {
+      if (command[index] === "'") break
+      if (command[index] === "\\" && index + 1 < command.length) return true
+    }
+  }
+  return false
+}
+
+function hasReparsedEscapedAnsiCQuote(command: string): boolean {
+  const compound = lexCompoundCommands(command)
+  const segments = compound.segments.length > 0 ? compound.segments : [command]
+  return segments.some((segment) => {
+    if (!hasAnsiCEscapeSyntax(segment)) return false
+    const text = unquotedShellText(segment)
+    return (
+      /(?:^|[^A-Za-z0-9_])(?:[^\s;&|()]+\/)?(?!(?:ssh|mosh)(?:\.exe)?\b)(?:[A-Za-z0-9_.-]*sh|fish|nu|rc|es)(?:\.exe)?\b[^;&|]*\s-[^-]*c\b/.test(
+        text,
+      ) ||
+      /\b(?:eval|trap)\b/.test(text) ||
+      /\benv\b[^;&|]*(?:\s-S\b|--split-string)/.test(text)
+    )
+  })
+}
+
+function hasAnsiCEscapeSyntax(command: string): boolean {
+  for (let start = command.indexOf("$'"); start !== -1; start = command.indexOf("$'", start + 2)) {
+    for (let index = start + 2; index < command.length; index++) {
+      if (command[index] === "'") break
+      if (command[index] === "\\" && index + 1 < command.length) return true
+    }
+  }
+  return false
+}
+
+const FUNCTION_NAME_PATTERN = "[A-Za-z_][A-Za-z0-9_.:-]*"
+const FUNCTION_PREFIX_PATTERN = "(?:^|[;&|(){}\\n]|\\b(?:if|then|elif|else|do|while|until)\\b\\s+)"
+
+function functionDefinitionBody(command: string): string | undefined {
+  const match = new RegExp(
+    `${FUNCTION_PREFIX_PATTERN}\\s*(?:function\\s+${FUNCTION_NAME_PATTERN}(?:\\s*\\(\\s*\\))?|${FUNCTION_NAME_PATTERN}\\s*\\(\\s*\\))\\s*\\{`,
+  ).exec(executableShellSyntaxText(command))
+  if (!match) return
+  return command.slice(match.index + match[0].length).trim()
+}
+
+function hasFunctionDefinition(command: string): boolean {
+  return functionDefinitionBody(command) !== undefined
+}
+
+function commandBasename(name: string): string {
+  return (name.split(/[\\/]/).pop() || name).toLowerCase().replace(/\.exe$/, "")
+}
+
+function dynamicCommandName(name: string): boolean {
+  return name.includes("$") || name.includes("`")
+}
+
+function isShellPayloadCommand(name: string): boolean {
+  return SHELL_PAYLOAD_COMMANDS.has(name) || (name.endsWith("sh") && !SHELL_COMMAND_EXCLUSIONS.has(name))
+}
+function isInlineInterpreterCommand(command: string): boolean {
+  return (
+    /^(?:python|pypy)(?:\d+(?:\.\d+)*)?$/.test(command) ||
+    INLINE_EVAL_COMMANDS.has(command) ||
+    command === "php" ||
+    command === "deno" ||
+    command === "bun" ||
+    /^(?:awk|gawk|mawk|nawk)$/.test(command)
+  )
+}
+
+function hasOpaqueCaseDirectorySyntax(command: string): boolean {
+  const text = unquotedShellText(command)
+  if (!/\bcase\b[\s\S]*\bin\b/.test(text)) return false
+  return (
+    /\b(?:cd|pushd|popd|eval|trap)\b/.test(text) ||
+    /\benv\b[\s\S]*(?:\s-C\b|--chdir|\s-S\b|--split-string)/.test(text) ||
+    /\b(?:(?!(?:ssh|mosh)\b)[A-Za-z0-9_.-]*sh|fish|nu|rc|es)\b[\s\S]*\s-[^-]*c\b/.test(text) ||
+    /\b(?:busybox|toybox)\b[\s\S]*\b(?:(?!(?:ssh|mosh)\b)[A-Za-z0-9_.-]*sh|fish|nu|rc|es)\b[\s\S]*\s-[^-]*c\b/.test(
+      text,
+    ) ||
+    /\b(?:python|pypy)(?:\d+(?:\.\d+)*)?\b[\s\S]*\s-[^-]*c\b/.test(text) ||
+    /\b(?:node|nodejs|ruby|perl|bun|lua|luajit|groovy|swift|r|rscript)\b[\s\S]*(?:\s-[^-]*e\b|\s--eval\b|\s--print\b)/.test(
+      text,
+    ) ||
+    /\bphp\b[\s\S]*(?:\s-[^-]*[rBRE]\b|\s--(?:run|process-begin|process-code|process-end)\b)/.test(text) ||
+    /\b(?:pwsh|powershell)(?:\.exe)?\b[\s\S]*\s-(?:c|command|commandwithargs|e|ec|enc|encodedcommand)\b/i.test(text) ||
+    /\bdeno\b[\s\S]*\beval\b/.test(text) ||
+    /\b(?:awk|gawk|mawk|nawk)\b[\s\S]*\bsystem\s*\(/.test(text)
+  )
+}
+
+function hasInlineInterpreterPayload(name: string, args: string[]): boolean {
+  if (/^(?:python|pypy)(?:\d+(?:\.\d+)*)?$/.test(name)) {
+    return args.some((word) => /^-[^-]*c/.test(word))
+  }
+  if (INLINE_EVAL_COMMANDS.has(name)) {
+    return args.some((word) => {
+      const lower = word.toLowerCase()
+      return (
+        /^-[^-]*e/.test(lower) ||
+        lower === "--eval" ||
+        lower.startsWith("--eval=") ||
+        ((name === "node" || name === "nodejs" || name === "bun") &&
+          (lower === "--print" || lower.startsWith("--print=") || /^-[^-]*p/.test(lower)))
+      )
+    })
+  }
+  if (name === "php") {
+    return args.some(
+      (word) =>
+        /^-[^-]*[rBRE]/.test(word) ||
+        /^--(?:run|process-begin|process-code|process-end)(?:=|$)/.test(word.toLowerCase()),
+    )
+  }
+  if (name === "pwsh" || name === "powershell") {
+    return args.some((word) => {
+      const option = word.split("=", 1)[0]?.toLowerCase()
+      return ["-c", "-command", "-commandwithargs", "-e", "-ec", "-enc", "-encodedcommand"].includes(option)
+    })
+  }
+  if (name === "deno") return args.includes("eval")
+  if (/^(?:awk|gawk|mawk|nawk)$/.test(name)) return args.some((word) => /\bsystem\s*\(/.test(word))
+  return false
+}
+
+function multicallCommandParts(args: string[]): { name?: string; args: string[] } {
+  let index = 0
+  while (args[index]?.startsWith("-")) {
+    if (args[index++] === "--") break
+  }
+  return { name: args[index], args: args.slice(index + 1) }
+}
+const REMOTE_COMMAND_VALUE_OPTIONS = new Set([
+  "-p",
+  "-P",
+  "-i",
+  "-l",
+  "-o",
+  "-b",
+  "-c",
+  "-e",
+  "-F",
+  "-J",
+  "-L",
+  "-R",
+  "-D",
+  "-w",
+  "-m",
+  "-E",
+  "-S",
+  "-I",
+])
+function remoteCommandPayload(args: string[]): string | undefined {
+  let index = 0
+  while (index < args.length) {
+    const word = args[index]
+    if (!word) break
+    if (REMOTE_COMMAND_VALUE_OPTIONS.has(word)) {
+      index += 2
+      continue
+    }
+    if (word.startsWith("-")) {
+      index++
+      continue
+    }
+    break
+  }
+  const host = args[index]
+  if (!host) return
+  const remote = args.slice(index + 1)
+  if (remote.length === 0) return
+  return remote.join(" ")
+}
+
+function xargsReplacementToken(args: string[]): string | undefined {
+  for (let index = 0; index < args.length; index++) {
+    const word = args[index]
+    if (word === "-I" || word === "--replace") return args[index + 1] ?? "{}"
+    if (word.startsWith("-I") && word.length > 2) return word.slice(2)
+    if (word.startsWith("--replace=")) return word.slice("--replace=".length) || "{}"
+  }
+}
+
+function positionalDirectoryTarget(args: string[]): string | undefined {
+  let index = 0
+  while (args[index]?.startsWith("-") && args[index] !== "-") {
+    if (args[index++] === "--") break
+  }
+  return args[index]
+}
+
+function envDirectoryChange(args: string[]): { target?: string; commandIndex: number; opaque: boolean } {
+  let target: string | undefined
+  let opaque = false
+  let index = 0
+  let options = true
+  while (index < args.length) {
+    const word = args[index]
+    if (!word) break
+    if (options && word === "--") {
+      options = false
+      index++
+      continue
+    }
+    if (word.includes("=") && !word.startsWith("-")) {
+      index++
+      continue
+    }
+    if (options && (word === "-C" || word === "--chdir")) {
+      target = args[index + 1]
+      opaque ||= dynamicDirectoryTarget(target)
+      index += 2
+      continue
+    }
+    if (options && word.startsWith("--chdir=")) {
+      target = word.slice("--chdir=".length)
+      opaque ||= dynamicDirectoryTarget(target)
+      index++
+      continue
+    }
+    if (options && word.startsWith("-C") && word.length > 2) {
+      target = word.slice(2)
+      opaque ||= dynamicDirectoryTarget(target)
+      index++
+      continue
+    }
+    if (options && (word === "-u" || word === "--unset")) {
+      index += 2
+      continue
+    }
+    if (options && word.startsWith("-")) {
+      index++
+      continue
+    }
+    break
+  }
+  return { target, commandIndex: index, opaque }
+}
+
+function sudoDirectoryChange(args: string[]): { target?: string; opaque: boolean } {
+  let target: string | undefined
+  let opaque = false
+  let index = 0
+  while (index < args.length) {
+    const word = args[index]
+    if (!word || word === "--") break
+    if (word === "-D" || word === "--chdir") {
+      target = args[index + 1]
+      opaque ||= dynamicDirectoryTarget(target)
+      index += 2
+      continue
+    }
+    if (word.startsWith("--chdir=")) {
+      target = word.slice("--chdir=".length)
+      opaque ||= dynamicDirectoryTarget(target)
+      index++
+      continue
+    }
+    if (word.startsWith("-D") && word.length > 2) {
+      target = word.slice(2)
+      opaque ||= dynamicDirectoryTarget(target)
+      index++
+      continue
+    }
+    if (WRAPPER_VALUE_OPTIONS.sudo.has(word)) {
+      index += 2
+      continue
+    }
+    if (word.startsWith("-")) {
+      index++
+      continue
+    }
+    break
+  }
+  return { target, opaque }
+}
+
+function shellPayload(args: string[]): string | undefined {
+  for (let index = 0; index < args.length; index++) {
+    const word = args[index]
+    if (word === "--command") return args[index + 1]
+    if (word?.startsWith("--command=")) return word.slice("--command=".length)
+    if (!word || !/^-[^-]/.test(word)) continue
+    const commandIndex = word.indexOf("c", 1)
+    if (commandIndex === -1) continue
+    return word.slice(commandIndex + 1) || args[index + 1]
+  }
+}
+
+function shellHerestringPayload(args: string[]): string | undefined {
+  for (let index = 0; index < args.length; index++) {
+    const word = args[index]
+    const match = /^(?:\d*)<<<(.*)$/.exec(word ?? "")
+    if (!match) continue
+    return match[1] || args[index + 1]
+  }
+}
+
+function normalizeFileDescriptor(fd: string): string {
+  return fd.replace(/^0+(?=\d)/, "")
+}
+
+interface ShellRedirect {
+  fd: string
+  operator: string
+  target?: string
+  consumesNext: boolean
+}
+
+function shellRedirect(word: string, next?: string): ShellRedirect | undefined {
+  const match = /^(\d*)(&>>|&>|<<<|<<-|<<|<&|<>|<|>>|>\||>&|>)(.*)$/.exec(word)
+  if (!match || ((match[2] === "<" || match[2] === ">") && match[3].startsWith("("))) return
+  const input = match[2].startsWith("<")
+  const consumesNext = match[3] === ""
+  return {
+    fd: normalizeFileDescriptor(match[1] || (input ? "0" : "1")),
+    operator: match[2],
+    target: consumesNext ? next : match[3],
+    consumesNext,
+  }
+}
+
+function shellRedirects(args: string[]): ShellRedirect[] {
+  const redirects: ShellRedirect[] = []
+  for (let index = 0; index < args.length; index++) {
+    const redirect = shellRedirect(args[index] ?? "", args[index + 1])
+    if (!redirect) continue
+    redirects.push(redirect)
+    if (redirect.consumesNext) index++
+  }
+  return redirects
+}
+
+const PYTHON_STDIN_CONFIG_VALUE_OPTIONS = new Set(["-W", "-X", "--check-hash-based-pycs"])
+const BASH_STDIN_CONFIG_VALUE_OPTIONS = new Set(["-O", "+O", "-o", "+o", "--rcfile", "--init-file"])
+const NODE_CODE_VALUE_OPTIONS = new Set(["-r", "--require"])
+const BASH_CODE_VALUE_OPTIONS = new Set(["--rcfile", "--init-file"])
+const NO_STDIN_CODE_VALUE_OPTIONS = new Set<string>()
+
+function stdinConfigValueOptions(name: string | undefined): Set<string> {
+  const command = commandBasename(name ?? "")
+  if (/^(?:python|pypy)(?:\d+(?:\.\d+)*)?$/.test(command)) return PYTHON_STDIN_CONFIG_VALUE_OPTIONS
+  if (command === "bash") return BASH_STDIN_CONFIG_VALUE_OPTIONS
+  return NO_STDIN_CODE_VALUE_OPTIONS
+}
+
+function bashOptionRegionEnd(args: string[]): number {
+  return args.findIndex((word) => word === "--" || word === "-c" || word === "--command" || /^-[^-]*c/.test(word ?? ""))
+}
+
+function bashInteractiveOption(args: string[]): boolean {
+  const end = bashOptionRegionEnd(args)
+  return args.slice(0, end === -1 ? args.length : end + 1).some((word) => /^-[^-]*i/.test(word))
+}
+
+function codeValueOptions(name: string | undefined, args: string[]): Set<string> {
+  const command = commandBasename(name ?? "")
+  if (command === "node" || command === "nodejs") return NODE_CODE_VALUE_OPTIONS
+  if (command === "bash" && bashInteractiveOption(args)) return BASH_CODE_VALUE_OPTIONS
+  return NO_STDIN_CODE_VALUE_OPTIONS
+}
+
+interface ParsedOptionValue {
+  value?: string
+  consumesNext: boolean
+}
+
+function parsedOptionValue(
+  word: string,
+  next: string | undefined,
+  options: Set<string>,
+): ParsedOptionValue | undefined {
+  for (const option of options) {
+    if (word === option) return { value: next, consumesNext: true }
+    if (option.startsWith("--") && word.startsWith(`${option}=`)) {
+      return { value: word.slice(option.length + 1), consumesNext: false }
+    }
+    if ((option.startsWith("-") || option.startsWith("+")) && word.startsWith(option) && word.length > option.length) {
+      return { value: word.slice(option.length), consumesNext: false }
+    }
+  }
+}
+
+interface StdinCodeArguments {
+  positionals: string[]
+  codeOptionTargets: string[]
+  stdinRedirected: boolean
+  stdinTarget?: string
+}
+
+function stdinCodeArguments(name: string | undefined, args: string[]): StdinCodeArguments {
+  const configOptions = stdinConfigValueOptions(name)
+  const codeOptions = codeValueOptions(name, args)
+  const positionals: string[] = []
+  const codeOptionTargets: string[] = []
+  let stdinRedirected = false
+  let stdinTarget: string | undefined
+  let options = true
+  for (let index = 0; index < args.length; index++) {
+    const word = args[index]
+    if (!word) continue
+    const redirect = shellRedirect(word, args[index + 1])
+    if (redirect) {
+      if (redirect.fd === "0" && redirect.operator.startsWith("<")) {
+        stdinRedirected = true
+        stdinTarget = redirect.operator === "<" || redirect.operator === "<>" ? redirect.target : undefined
+      }
+      if (redirect.consumesNext) index++
+      continue
+    }
+    if (word === "-" || word === "/dev/stdin") continue
+    if (options && word === "--") {
+      options = false
+      continue
+    }
+    if (options) {
+      const codeOption = parsedOptionValue(word, args[index + 1], codeOptions)
+      if (codeOption) {
+        if (codeOption.value !== undefined) codeOptionTargets.push(codeOption.value)
+        if (codeOption.consumesNext) index++
+        continue
+      }
+      const configOption = parsedOptionValue(word, args[index + 1], configOptions)
+      if (configOption) {
+        if (configOption.consumesNext) index++
+        continue
+      }
+      if (word.startsWith("-") || word.startsWith("+")) continue
+      options = false
+    }
+    positionals.push(word)
+  }
+  return { positionals, codeOptionTargets, stdinRedirected, stdinTarget }
+}
+
+function stdinCodePositionals(name: string | undefined, args: string[]): string[] {
+  return stdinCodeArguments(name, args).positionals
+}
+function stdinCodeConsumesTarget(name: string | undefined, args: string[], target: string): boolean {
+  const command = commandBasename(name ?? "")
+  if (hasInlineInterpreterPayload(command, args)) return false
+  const input = stdinCodeArguments(name, args)
+  if (input.codeOptionTargets.includes(target)) return true
+  if (input.stdinTarget === target) return args.includes("-") || input.positionals.length === 0
+  return !args.includes("-") && input.positionals[0] === target
+}
+
+function shellConsumesCodeFile(name: string | undefined, args: string[], target: string): boolean {
+  if (shellPayload(args)) return false
+  const input = stdinCodeArguments(name, args)
+  if (input.codeOptionTargets.includes(target)) return true
+  if (args.includes("-s")) return input.stdinTarget === target
+  return (input.positionals[0] ?? input.stdinTarget) === target
+}
+
+function executesStdinAsCode(name: string | undefined, args: string[]): boolean {
+  const command = commandBasename(name ?? "")
+  if ((command === "source" || command === ".") && args[0] === "/dev/stdin") return true
+
+  const input = stdinCodeArguments(name, args)
+  if (isShellPayloadCommand(command)) {
+    return !shellPayload(args) && (args.includes("-s") || input.positionals.length === 0)
+  }
+  if (!/^(?:python|pypy)(?:\d+(?:\.\d+)*)?$/.test(command) && !INLINE_EVAL_COMMANDS.has(command) && command !== "php") {
+    return false
+  }
+  if (hasInlineInterpreterPayload(command, args)) return false
+  return args.includes("-") || input.positionals.length === 0
+}
+
+function commandExecutesStdinAsCode(name: string | undefined, args: string[], depth = 0): boolean {
+  if (depth > DIRECTORY_CHANGE_MAX_DEPTH) return true
+  if (executesStdinAsCode(name, args)) return true
+
+  const command = commandBasename(name ?? "")
+  if (command === "env") {
+    const expanded = expandEnvSplitString([command, ...args], 0)
+    if (expanded) return commandExecutesStdinAsCode(expanded[0], expanded.slice(1), depth + 1)
+    const commandIndex = envDirectoryChange(args).commandIndex
+    return commandExecutesStdinAsCode(args[commandIndex], args.slice(commandIndex + 1), depth + 1)
+  }
+  if (MULTICALL_COMMANDS.has(command)) {
+    const applet = multicallCommandParts(args)
+    return commandExecutesStdinAsCode(applet.name, applet.args, depth + 1)
+  }
+  if (!DIRECTORY_WRAPPER_COMMANDS.has(command)) return false
+  const wrapped = wrapperCommandParts(command, args)
+  return commandExecutesStdinAsCode(wrapped.name, wrapped.args, depth + 1)
+}
+
+function heredocHeaderExecutesStdin(header: string): boolean {
+  const compound = lexCompoundCommands(header)
+  const segments = compound.segments.length > 0 ? compound.segments : [header]
+  return segments.some((segment) => {
+    const parsed = simpleCommandParts(controlCommandSegment(segment))
+    return commandExecutesStdinAsCode(parsed.name, parsed.args)
+  })
+}
+
+function stdinHeredocMayInvokeSudo(command: string, state: ClassificationState, depth: number): boolean {
+  for (const heredoc of extractShellHeredocBodies(command)) {
+    if (
+      !heredoc.effective ||
+      normalizeFileDescriptor(heredoc.fd) !== "0" ||
+      !heredocHeaderExecutesStdin(heredoc.header)
+    )
+      continue
+    if (
+      hasInlineSudoExecution(heredoc.body, state, depth) ||
+      hasSudoInvocationRecursive(heredoc.body, state, depth + 1)
+    ) {
+      return true
+    }
+  }
+  return false
+}
+function payloadMayInvokeSudo(payload: string, state: ClassificationState, depth: number): boolean {
+  return hasInlineSudoExecution(payload, state, depth) || hasSudoInvocationRecursive(payload, state, depth + 1)
+}
+
+function processSubstitutionPayloads(
+  command: string,
+  state: ClassificationState,
+): Array<{ payload: string; start: number; end: number }> | undefined {
+  const payloads: Array<{ payload: string; start: number; end: number }> = []
+  let exhausted = false
+  walkShellChars(
+    command,
+    (char, index, quote, context) => {
+      if (classificationExhausted(state)) {
+        exhausted = true
+        return false
+      }
+      if (
+        quote ||
+        context.inBacktick ||
+        context.commandSubstitutionDepth > 0 ||
+        (char !== "<" && char !== ">") ||
+        command[index + 1] !== "("
+      ) {
+        return
+      }
+      const extracted = parenthesizedShellPayload(command, index + 2, state)
+      if (!extracted) return
+      payloads.push({ payload: extracted.payload, start: index, end: extracted.end })
+      return extracted.end
+    },
+    { comments: true, backticks: true },
+  )
+  return exhausted ? undefined : payloads
+}
+
+const PROCESS_SUBSTITUTION_SENTINEL = "__synergy_process_substitution__"
+
+function maskProcessSubstitutions(command: string, state: ClassificationState): string | undefined {
+  const substitutions = processSubstitutionPayloads(command, state)
+  if (!substitutions) return
+
+  let masked = ""
+  let start = 0
+  for (const substitution of substitutions) {
+    masked += command.slice(start, substitution.start) + PROCESS_SUBSTITUTION_SENTINEL
+    start = substitution.end + 1
+  }
+  return masked + command.slice(start)
+}
+
+function shellConsumesProcessSubstitution(
+  name: string | undefined,
+  args: string[],
+  target: string,
+  depth = 0,
+): boolean {
+  if (depth > DIRECTORY_CHANGE_MAX_DEPTH) return true
+  const command = commandBasename(name ?? "")
+  if (isShellPayloadCommand(command)) return shellConsumesCodeFile(name, args, target)
+  if (command === "source" || command === ".") {
+    return stdinCodePositionals(name, args)[0] === target
+  }
+  if (isInlineInterpreterCommand(command)) {
+    return stdinCodeConsumesTarget(name, args, target)
+  }
+  if (command === "env") {
+    const expanded = expandEnvSplitString([command, ...args], 0)
+    if (expanded) return shellConsumesProcessSubstitution(expanded[0], expanded.slice(1), target, depth + 1)
+    const commandIndex = envDirectoryChange(args).commandIndex
+    return shellConsumesProcessSubstitution(args[commandIndex], args.slice(commandIndex + 1), target, depth + 1)
+  }
+  if (MULTICALL_COMMANDS.has(command)) {
+    const applet = multicallCommandParts(args)
+    return shellConsumesProcessSubstitution(applet.name, applet.args, target, depth + 1)
+  }
+  if (!DIRECTORY_WRAPPER_COMMANDS.has(command)) return false
+  const wrapped = wrapperCommandParts(command, args)
+  return shellConsumesProcessSubstitution(wrapped.name, wrapped.args, target, depth + 1)
+}
+
+function processOutputMayInvokeSudo(payload: string, state: ClassificationState, depth: number): boolean {
+  for (const heredoc of extractShellHeredocBodies(payload)) {
+    if (
+      heredoc.effective &&
+      normalizeFileDescriptor(heredoc.fd) === "0" &&
+      payloadMayInvokeSudo(heredoc.body, state, depth)
+    )
+      return true
+  }
+
+  const compound = lexCompoundCommands(payload)
+  const segments = compound.segments.length > 0 ? compound.segments : [payload]
+  return segments.some((segment) => {
+    const parsed = simpleCommandParts(controlCommandSegment(segment))
+    const command = commandBasename(parsed.name ?? "")
+    if (command === "echo") return payloadMayInvokeSudo(parsed.args.join(" "), state, depth)
+    if (command !== "printf") return false
+    return parsed.args.some((argument) => payloadMayInvokeSudo(argument, state, depth))
+  })
+}
+
+function processSubstitutionMayFeedExecutable(command: string, state: ClassificationState, depth: number): boolean {
+  const substitutions = processSubstitutionPayloads(command, state)
+  if (!substitutions) return true
+  for (const substitution of substitutions) {
+    if (classificationExhausted(state)) return true
+    const prefix = `${command.slice(0, substitution.start)}${PROCESS_SUBSTITUTION_SENTINEL}`
+    const compound = lexCompoundCommands(prefix)
+    const segment = compound.segments[compound.segments.length - 1] ?? prefix
+    const parsed = simpleCommandParts(controlCommandSegment(segment))
+    if (!shellConsumesProcessSubstitution(parsed.name, parsed.args, PROCESS_SUBSTITUTION_SENTINEL)) continue
+    if (processOutputMayInvokeSudo(substitution.payload, state, depth + 1)) return true
+  }
+  return false
+}
+
+function heredocFdTarget(heredoc: ShellHeredocBody): string | undefined {
+  const parsed = simpleCommandParts(controlCommandSegment(heredoc.header))
+  if (commandBasename(parsed.name ?? "") !== "exec" || !heredoc.explicitFd || !heredoc.effective) return
+  return normalizeFileDescriptor(heredoc.fd)
+}
+
+function heredocWriteTarget(heredoc: ShellHeredocBody): string | undefined {
+  if (normalizeFileDescriptor(heredoc.fd) !== "0" || !heredoc.effective) return
+  const words = shellWords(normalizeCommand(separateAttachedInputRedirects(heredoc.header)))
+  if (words[0] === "tee") {
+    const heredocIndex = words.findIndex((word) => word.startsWith("<<"))
+    const candidates = heredocIndex === -1 ? words.slice(1) : words.slice(1, heredocIndex)
+    return candidates.find(
+      (word) => word !== "-" && !word.startsWith("-") && !word.startsWith("<") && !word.startsWith(">"),
+    )
+  }
+  let target: string | undefined
+  for (let index = 0; index < words.length; index++) {
+    const redirect = words[index]?.match(/^(?:1)?(>>?)(.*)$/)
+    if (!redirect) continue
+    if (redirect[2].startsWith("&")) continue
+    target = redirect[2] || words[++index]
+  }
+  return target
+}
+
+function fdRedirectSource(redirect: ShellRedirect): { fd: string; move: boolean } | undefined {
+  if (redirect.operator !== "<&") return
+  const match = /^(\d+)(-?)$/.exec(redirect.target ?? "")
+  return match ? { fd: normalizeFileDescriptor(match[1]), move: match[2] === "-" } : undefined
+}
+
+function fdAliasesAfterRedirects(aliases: Set<string>, args: string[]): Set<string> {
+  const result = new Set(aliases)
+  for (const redirect of shellRedirects(args)) {
+    const source = fdRedirectSource(redirect)
+    if (!source || !result.has(source.fd)) continue
+    result.add(redirect.fd)
+    if (source.move) result.delete(source.fd)
+  }
+  return result
+}
+
+function shellPayloadConsumesFdAsCode(payload: string, fd: string, depth: number): boolean {
+  const compound = lexCompoundCommands(payload)
+  const segments = compound.segments.length > 0 ? compound.segments : [payload]
+  return segments.some((segment) => {
+    const parsed = simpleCommandParts(controlCommandSegment(segment))
+    return commandConsumesFdAsCode(parsed.name, parsed.args, fd, depth + 1)
+  })
+}
+
+function commandConsumesFdAsCode(name: string | undefined, args: string[], fd: string, depth = 0): boolean {
+  if (depth > DIRECTORY_CHANGE_MAX_DEPTH) return true
+  const aliases = fdAliasesAfterRedirects(new Set([fd]), args)
+  if (aliases.has("0") && executesStdinAsCode(name, args)) return true
+  const command = commandBasename(name ?? "")
+  if (isShellPayloadCommand(command)) {
+    const payload = shellPayload(args)
+    if (payload && [...aliases].some((alias) => shellPayloadConsumesFdAsCode(payload, alias, depth))) return true
+  }
+  if (command === "env") {
+    const expanded = expandEnvSplitString([command, ...args], 0)
+    if (expanded)
+      return [...aliases].some((alias) => commandConsumesFdAsCode(expanded[0], expanded.slice(1), alias, depth + 1))
+    const commandIndex = envDirectoryChange(args).commandIndex
+    return [...aliases].some((alias) =>
+      commandConsumesFdAsCode(args[commandIndex], args.slice(commandIndex + 1), alias, depth + 1),
+    )
+  }
+  if (MULTICALL_COMMANDS.has(command)) {
+    const applet = multicallCommandParts(args)
+    return [...aliases].some((alias) => commandConsumesFdAsCode(applet.name, applet.args, alias, depth + 1))
+  }
+  if (!DIRECTORY_WRAPPER_COMMANDS.has(command)) return false
+  const wrapped = wrapperCommandParts(command, args)
+  return [...aliases].some((alias) => commandConsumesFdAsCode(wrapped.name, wrapped.args, alias, depth + 1))
+}
+
+function commandExecutesFileAsCode(name: string | undefined, args: string[], target: string, depth = 0): boolean {
+  if (depth > DIRECTORY_CHANGE_MAX_DEPTH) return true
+  const command = commandBasename(name ?? "")
+  if (isShellPayloadCommand(command)) return shellConsumesCodeFile(name, args, target)
+  if (isInlineInterpreterCommand(command)) {
+    return stdinCodeConsumesTarget(name, args, target)
+  }
+  if (command === "env") {
+    const expanded = expandEnvSplitString([command, ...args], 0)
+    if (expanded) return commandExecutesFileAsCode(expanded[0], expanded.slice(1), target, depth + 1)
+    const commandIndex = envDirectoryChange(args).commandIndex
+    return commandExecutesFileAsCode(args[commandIndex], args.slice(commandIndex + 1), target, depth + 1)
+  }
+  if (MULTICALL_COMMANDS.has(command)) {
+    const applet = multicallCommandParts(args)
+    return commandExecutesFileAsCode(applet.name, applet.args, target, depth + 1)
+  }
+  if (!DIRECTORY_WRAPPER_COMMANDS.has(command)) return false
+  const wrapped = wrapperCommandParts(command, args)
+  return commandExecutesFileAsCode(wrapped.name, wrapped.args, target, depth + 1)
+}
+
+function execCommandParts(args: string[]): { name?: string; args: string[] } {
+  const operands: string[] = []
+  const redirections: string[] = []
+  for (let index = 0; index < args.length; index++) {
+    const word = args[index] ?? ""
+    const redirect = shellRedirect(word, args[index + 1])
+    const combinedOutput = /^&>>?(.*)$/.exec(word)
+    if (!redirect && !combinedOutput) {
+      operands.push(word)
+      continue
+    }
+
+    redirections.push(word)
+    if (redirect?.consumesNext || (combinedOutput && !combinedOutput[1])) {
+      const operand = args[++index]
+      if (operand !== undefined) redirections.push(operand)
+    }
+  }
+
+  let options = true
+  for (let index = 0; index < operands.length; index++) {
+    const word = operands[index] ?? ""
+    if (options && word === "--") {
+      options = false
+      continue
+    }
+    if (options && word === "-a") {
+      index++
+      continue
+    }
+    if (options && (/^-[acl]+$/.test(word) || /^-a.+$/.test(word) || word.startsWith("-"))) continue
+    if (word.includes("$") || word.includes("`")) continue
+    return {
+      name: word,
+      args: [...redirections, ...operands.slice(index + 1)],
+    }
+  }
+  return { args: redirections }
+}
+
+function fdReplayConsumed(segments: string[], sourceIndex: number, fd: string): boolean {
+  const source = simpleCommandParts(controlCommandSegment(segments[sourceIndex] ?? ""))
+  let aliases = fdAliasesAfterRedirects(new Set([fd]), source.args)
+  return segments.slice(sourceIndex + 1).some((segment) => {
+    const parsed = simpleCommandParts(controlCommandSegment(segment))
+    const input = stdinCodeArguments(parsed.name, parsed.args)
+    if (aliases.has("0") && !input.stdinRedirected && commandExecutesStdinAsCode(parsed.name, parsed.args)) return true
+    if ([...aliases].some((alias) => commandConsumesFdAsCode(parsed.name, parsed.args, alias))) return true
+    if (commandBasename(parsed.name ?? "") !== "exec") return false
+    aliases = fdAliasesAfterRedirects(aliases, parsed.args)
+    return false
+  })
+}
+
+type ExecfailMutation = "enable" | "disable" | "unknown" | undefined
+
+function shoptExecfailMutation(args: string[]): ExecfailMutation {
+  const mode = args[0]
+  const optionNames = args.slice(1)
+  if (
+    (mode === "-s" || mode === "-u") &&
+    optionNames.length > 0 &&
+    optionNames.every((word) => !word.startsWith("-") && !word.includes("$") && !word.includes("`"))
+  ) {
+    if (!optionNames.includes("execfail")) return
+    return mode === "-s" ? "enable" : "disable"
+  }
+
+  const mayChange = args.some((word) => /^-[^-]*[su]/.test(word))
+  const mayNameExecfail = args.some(
+    (word) => word === "execfail" || word.includes("$") || word.includes("`") || word.includes("*"),
+  )
+  return mayChange && mayNameExecfail ? "unknown" : undefined
+}
+
+function segmentExecfailMutation(segment: string, name: string, args: string[]): ExecfailMutation {
+  if (name === "shopt") return shoptExecfailMutation(args)
+  if (name === "eval") {
+    const reparsed = simpleCommandParts(args.join(" "))
+    if (commandBasename(reparsed.name ?? "") === "shopt") return shoptExecfailMutation(reparsed.args) ?? "unknown"
+    return args.some((word) => word.includes("execfail") || word.includes("$") || word.includes("`"))
+      ? "unknown"
+      : undefined
+  }
+  if (name === "source" || name === ".") return "unknown"
+  if (name === "trap" && trapPayload(args)?.includes("execfail")) return "unknown"
+  if (functionDefinitionBody(segment)?.includes("execfail")) return "unknown"
+}
+
+function execfailDisableDefinitelyRuns(segments: string[], operators: string[], index: number, name: string): boolean {
+  if (name !== "shopt") return false
+  const segment = segments[index]?.trim() ?? ""
+  const nextOperator = operators[index]
+  if (nextOperator === "|" || nextOperator === "|&" || nextOperator === "&") return false
+
+  if (/^shopt(?:\s|$)/.test(segment)) return index === 0 || operators[index - 1] === ";"
+  if (!/^then\s+shopt(?:\s|$)/.test(segment)) return false
+
+  const conditionIndex = index - 1
+  const condition = segments[conditionIndex]?.trim() ?? ""
+  if (!/^if\s+(?:true|:)(?:\s|$)/.test(condition)) return false
+  return conditionIndex === 0 || operators[conditionIndex - 1] === ";"
+}
+
+function execfailMayBeEnabledBefore(segments: string[], operators: string[], sourceIndex: number): boolean {
+  let mayBeEnabled = false
+  for (let index = 0; index < sourceIndex; index++) {
+    const segment = segments[index]?.trim() ?? ""
+    const parsed = simpleCommandParts(controlCommandSegment(segment))
+    const name = commandBasename(parsed.name ?? "")
+    const mutation = segmentExecfailMutation(segment, name, parsed.args)
+    if (mutation === "enable" || mutation === "unknown") {
+      mayBeEnabled = true
+      continue
+    }
+    if (mutation !== "disable") continue
+
+    if (execfailDisableDefinitelyRuns(segments, operators, index, name)) mayBeEnabled = false
+  }
+  return mayBeEnabled
+}
+
+function fdReplayMayInvokeSudo(command: string, state: ClassificationState, depth: number): boolean {
+  const maskedCommand = maskProcessSubstitutions(command, state)
+  if (maskedCommand === undefined) return true
+  const compound = lexCompoundCommands(maskedCommand)
+  const segments = compound.segments.length > 0 ? compound.segments : [maskedCommand]
+  const replayConsumed = (sourceIndex: number, fd: string): boolean => fdReplayConsumed(segments, sourceIndex, fd)
+  const execHerestrings = (segment: string): Array<{ fd: string; payload: string }> => {
+    const herestrings: Array<{ fd: string; payload: string }> = []
+    walkShellChars(
+      segment,
+      (char, index, quote, context) => {
+        if (
+          quote ||
+          context.inBacktick ||
+          context.arithmetic ||
+          context.commandSubstitutionDepth > 0 ||
+          char !== "<" ||
+          !segment.startsWith("<<<", index) ||
+          segment[index - 1] === "<"
+        ) {
+          return
+        }
+
+        let fdStart = index
+        while (fdStart > 0 && /\d/.test(segment[fdStart - 1] ?? "")) fdStart--
+        const fdCandidate = segment.slice(fdStart, index)
+        const explicitFd = fdCandidate.length > 0 && (fdStart === 0 || /[\s;&|()<>]/.test(segment[fdStart - 1] ?? ""))
+        let payloadStart = index + 3
+        while (segment[payloadStart] === " " || segment[payloadStart] === "\t") payloadStart++
+        const payload = shellWords(segment.slice(payloadStart))[0]
+        if (payload !== undefined) {
+          herestrings.push({ fd: explicitFd ? normalizeFileDescriptor(fdCandidate) : "0", payload })
+        }
+        return index + 2
+      },
+      { comments: true, backticks: true },
+    )
+    return herestrings
+  }
+
+  {
+    const sourceIndexes = new Map<number, number>()
+    let searchFrom = 0
+    for (const heredoc of extractShellHeredocBodies(command)) {
+      const fd = heredocFdTarget(heredoc)
+      if (!fd) continue
+      let sourceIndex = sourceIndexes.get(heredoc.headerLine)
+      if (sourceIndex === undefined) {
+        const maskedHeader = maskProcessSubstitutions(heredoc.header, state)
+        if (maskedHeader === undefined) return true
+        sourceIndex = segments.findIndex(
+          (segment, segmentIndex) => segmentIndex >= searchFrom && segment.includes(maskedHeader),
+        )
+        if (sourceIndex === -1) continue
+        sourceIndexes.set(heredoc.headerLine, sourceIndex)
+        searchFrom = sourceIndex + 1
+      }
+      if (replayConsumed(sourceIndex, fd) && payloadMayInvokeSudo(heredoc.body, state, depth)) return true
+    }
+  }
+
+  for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+    const segment = controlCommandSegment(segments[segmentIndex])
+    const parsed = simpleCommandParts(segment)
+    if (commandBasename(parsed.name ?? "") !== "exec") continue
+    const herestrings = execHerestrings(segment)
+    const execCommand = execCommandParts(parsed.args)
+    for (const { fd, payload } of herestrings) {
+      if (!payloadMayInvokeSudo(payload, state, depth)) continue
+      const consumedInSource =
+        fd === "0"
+          ? commandExecutesStdinAsCode(execCommand.name, execCommand.args)
+          : commandConsumesFdAsCode(execCommand.name, execCommand.args, fd)
+      if (consumedInSource) return true
+      if (execCommand.name && !execfailMayBeEnabledBefore(segments, compound.operators, segmentIndex)) continue
+      if (replayConsumed(segmentIndex, fd)) return true
+    }
+  }
+  return false
+}
+
+function heredocDataFlowMayInvokeSudo(command: string, state: ClassificationState, depth: number): boolean {
+  if (fdReplayMayInvokeSudo(command, state, depth)) return true
+  const maskedCommand = maskProcessSubstitutions(command, state)
+  if (maskedCommand === undefined) return true
+  const compound = lexCompoundCommands(maskedCommand)
+  const segments = compound.segments.length > 0 ? compound.segments : [maskedCommand]
+  const sourceIndexes = new Map<number, number>()
+  let searchFrom = 0
+  for (const heredoc of extractShellHeredocBodies(command)) {
+    const target = heredocWriteTarget(heredoc)
+    if (!target) continue
+    let sourceIndex = sourceIndexes.get(heredoc.headerLine)
+    if (sourceIndex === undefined) {
+      sourceIndex = segments.findIndex((segment, index) => index >= searchFrom && segment.includes(heredoc.header))
+      if (sourceIndex === -1) continue
+      sourceIndexes.set(heredoc.headerLine, sourceIndex)
+      searchFrom = sourceIndex + 1
+    }
+    const consumed = segments.slice(sourceIndex + 1).some((segment, offset) => {
+      const segmentIndex = sourceIndex + offset + 1
+      const parsed = simpleCommandParts(controlCommandSegment(segment))
+      if (commandExecutesFileAsCode(parsed.name, parsed.args, target)) return true
+      if (commandBasename(parsed.name ?? "") !== "exec") return false
+
+      const execCommand = execCommandParts(parsed.args)
+      return shellRedirects(parsed.args).some((redirect) => {
+        if ((redirect.operator !== "<" && redirect.operator !== "<>") || redirect.target !== target) return false
+        const consumedInSource =
+          redirect.fd === "0"
+            ? commandExecutesStdinAsCode(execCommand.name, execCommand.args)
+            : commandConsumesFdAsCode(execCommand.name, execCommand.args, redirect.fd)
+        if (consumedInSource) return true
+        if (execCommand.name && !execfailMayBeEnabledBefore(segments, compound.operators, segmentIndex)) return false
+        return fdReplayConsumed(segments, segmentIndex, redirect.fd)
+      })
+    })
+    if (consumed && payloadMayInvokeSudo(heredoc.body, state, depth)) return true
+  }
+  return false
+}
+
+function wrapperCommandArgs(name: string, args: string[]): { commandIndex: number; name?: string } {
+  const valueOptions = WRAPPER_VALUE_OPTIONS[name] ?? new Set<string>()
+  let index = 0
+  while (index < args.length) {
+    const word = args[index]
+    if (!word) break
+    if (word === "--") {
+      index++
+      break
+    }
+    if (valueOptions.has(word)) {
+      index += 2
+      continue
+    }
+    const redirect = shellRedirect(word, args[index + 1])
+    // Heredoc (`<<`, `<<-`) bodies are data, never the wrapped command, so
+    // stop at them; herestrings and file redirects can precede the command.
+    if (redirect && redirect.operator !== "<<" && redirect.operator !== "<<-") {
+      index += redirect.consumesNext ? 2 : 1
+      continue
+    }
+    if (word.startsWith("-")) {
+      index++
+      continue
+    }
+    break
+  }
+  if (name === "timeout" && index < args.length) index++
+  return { commandIndex: index, name: args[index] }
+}
+
+function wrapperCommandParts(name: string, args: string[]): { name?: string; args: string[] } {
+  const { commandIndex, name: wrappedName } = wrapperCommandArgs(name, args)
+  return { name: wrappedName, args: args.slice(commandIndex + 1) }
+}
+
+function trapPayload(args: string[]): string | undefined {
+  const payloadArgs = args[0] === "--" ? args.slice(1) : args
+  if (payloadArgs.length < 2 || payloadArgs[0]?.startsWith("-")) return undefined
+  return payloadArgs[0]
+}
+
+function controlCommandSegment(segment: string): string {
+  let current = segment.trim()
+  current = current.replace(/^case\b[\s\S]*?\bin\b\s*[^()]*\)\s*/, "")
+  current = current.replace(/^[^(){};&|]+\)\s*/, "")
+  current = current.replace(/^[({]+\s*/, "")
+  while (/^(?:if|then|elif|else|do|while|until|!)\b/.test(current)) {
+    current = current.replace(/^(?:if|then|elif|else|do|while|until|!)\b\s*/, "")
+  }
+  return current.replace(/(?:\)+|\s+}+)$/, "").trim()
+}
+
+function executableShellSyntaxText(command: string): string {
+  const result = Array<string>(command.length).fill(" ")
+  for (let index = 0; index < command.length; index++) {
+    if (command[index] === "\n") result[index] = "\n"
+  }
+  walkShellChars(
+    command,
+    (char, index, quote, context) => {
+      if (!quote && !context.inBacktick && context.commandSubstitutionDepth === 0) result[index] = char
+    },
+    { comments: true, backticks: true },
+  )
+  return result.join("")
+}
+
+function unquotedShellText(command: string): string {
+  let result = ""
+  let quote: "'" | '"' | undefined
+  for (let index = 0; index < command.length; index++) {
+    const char = command[index]
+    if (char === "\\" && quote !== "'") {
+      result += quote ? "  " : command.slice(index, index + 2)
+      index++
+      continue
+    }
+    if ((char === "'" || char === '"') && (!quote || quote === char)) {
+      quote = quote ? undefined : char
+      result += " "
+      continue
+    }
+    result += quote ? " " : char
+  }
+  return result
+}
+
+function hasLastArgumentReference(command: string): boolean {
+  let found = false
+  walkShellChars(
+    command,
+    (char, index, quote) => {
+      if (quote === "'" || char !== "$") return
+      if (command.startsWith("${_", index)) {
+        const following = command[index + 3]
+        if (!following || following === "}" || !/[A-Za-z0-9_]/.test(following)) {
+          found = true
+          return false
+        }
+      }
+      if (command[index + 1] !== "_") return
+      const following = command[index + 2]
+      if (following && /[A-Za-z0-9_]/.test(following)) return
+      found = true
+      return false
+    },
+    { comments: true },
+  )
+  return found
+}
+
+function parenthesizedShellPayload(
+  command: string,
+  start: number,
+  state: ClassificationState,
+): { payload: string; end: number } | undefined {
+  let depth = 1
+  let end: number | undefined
+  walkShellChars(
+    command.slice(start),
+    (char, offset, quote, context) => {
+      if (classificationExhausted(state)) return false
+      if (quote || context.inBacktick) return
+      if (char === "(") depth++
+      if (char === ")" && --depth === 0) {
+        end = start + offset
+        return false
+      }
+    },
+    { comments: true, backticks: true },
+  )
+  return end === undefined ? undefined : { payload: command.slice(start, end), end }
+}
+function commandSubstitutionPayloads(command: string, state: ClassificationState): string[] | undefined {
+  const payloads: string[] = []
+  let exhausted = false
+  walkShellChars(
+    command,
+    (char, index, quote) => {
+      if (classificationExhausted(state)) {
+        exhausted = true
+        return false
+      }
+      if (quote !== "'" && char === "`") {
+        const start = index + 1
+        let end: number | undefined
+        walkShellChars(
+          command.slice(start),
+          (inner, offset, innerQuote) => {
+            if (classificationExhausted(state)) {
+              exhausted = true
+              return false
+            }
+            if (!innerQuote && inner === "`") {
+              end = start + offset
+              return false
+            }
+          },
+          { comments: true },
+        )
+        if (exhausted) return false
+        if (end === undefined) return
+        payloads.push(command.slice(start, end))
+        return end
+      }
+      let start: number | undefined
+      if (quote !== "'" && char === "$" && command[index + 1] === "(" && command[index + 2] !== "(") {
+        start = index + 2
+      } else if (!quote && (char === ">" || char === "<") && command[index + 1] === "(") {
+        start = index + 2
+      }
+      if (start === undefined) return
+
+      const extracted = parenthesizedShellPayload(command, start, state)
+      if (classificationExhausted(state)) {
+        exhausted = true
+        return false
+      }
+      if (!extracted) return
+      payloads.push(extracted.payload)
+      return extracted.end
+    },
+    { comments: true },
+  )
+  if (exhausted) return
+  return payloads
+}
+
+const DISPLAY_ONLY_LAST_ARGUMENT_COMMANDS = new Set(["echo", "printf"])
+
+function hasReparsedLastArgumentReference(command: string, state: ClassificationState, depth: number): boolean {
+  if (classificationExhausted(state, command) || depth > DIRECTORY_CHANGE_MAX_DEPTH) return true
+
+  const normalized = normalizeCommand(command)
+  if (state.activeInputs.has(normalized)) return true
+  state.activeInputs.add(normalized)
+  try {
+    const substitutions = commandSubstitutionPayloads(normalized, state)
+    if (!substitutions) return true
+    if (substitutions.some((payload) => hasReparsedLastArgumentReference(payload, state, depth + 1))) return true
+
+    const compound = lexCompoundCommands(normalized)
+    const segments = compound.segments.length > 0 ? compound.segments : [normalized]
+    return segments.some((segment) => {
+      const parsed = simpleCommandParts(controlCommandSegment(segment))
+      const name = commandBasename(parsed.name ?? "")
+      const payload = name === "eval" ? parsed.args.join(" ") : name === "trap" ? trapPayload(parsed.args) : undefined
+      if (payload && hasReparsedLastArgumentReference(payload, state, depth + 1)) return true
+      return hasLastArgumentReference(segment) && !DISPLAY_ONLY_LAST_ARGUMENT_COMMANDS.has(name)
+    })
+  } finally {
+    state.activeInputs.delete(normalized)
+  }
+}
+
+function analyzeDirectoryCommandParts(
+  name: string | undefined,
+  args: string[],
+  state: ClassificationState,
+  depth: number,
+): DirectoryChangeAnalysis {
+  const result: DirectoryChangeAnalysis = { targets: [], opaque: false }
+  if (classificationExhausted(state)) return { targets: [], opaque: true }
+  if (!name) return result
+  if (dynamicCommandName(name)) return { targets: [], opaque: true }
+
+  const command = commandBasename(name)
+  if (depth > DIRECTORY_CHANGE_MAX_DEPTH) {
+    return {
+      targets: [],
+      opaque:
+        command === "cd" ||
+        command === "pushd" ||
+        command === "popd" ||
+        command === "env" ||
+        command === "eval" ||
+        command === "trap" ||
+        isShellPayloadCommand(command) ||
+        hasInlineInterpreterPayload(command, args) ||
+        MULTICALL_COMMANDS.has(command) ||
+        DIRECTORY_WRAPPER_COMMANDS.has(command),
+    }
+  }
+  if (command === "cd" || command === "pushd") {
+    const target = positionalDirectoryTarget(args)
+    if (
+      dynamicDirectoryTarget(target) ||
+      cdpathDependentDirectoryTarget(target) ||
+      (command === "pushd" && /^[+-]\d+$/.test(target ?? ""))
+    ) {
+      result.opaque = true
+    } else {
+      result.targets.push(target!)
+    }
+    return result
+  }
+  if (command === "popd") {
+    result.opaque = true
+    return result
+  }
+  if (command === "env") {
+    const env = envDirectoryChange(args)
+    if (env.target && !dynamicDirectoryTarget(env.target)) result.targets.push(env.target)
+    result.opaque ||= env.opaque
+    const expanded = expandEnvSplitString([command, ...args], 0)
+    if (expanded) {
+      mergeDirectoryChangeAnalysis(
+        result,
+        analyzeDirectoryCommandParts(expanded[0], expanded.slice(1), state, depth + 1),
+      )
+    } else if (env.commandIndex < args.length) {
+      mergeDirectoryChangeAnalysis(
+        result,
+        analyzeDirectoryCommandParts(args[env.commandIndex], args.slice(env.commandIndex + 1), state, depth + 1),
+      )
+    }
+    return result
+  }
+  if (MULTICALL_COMMANDS.has(command)) {
+    const applet = multicallCommandParts(args)
+    mergeDirectoryChangeAnalysis(result, analyzeDirectoryCommandParts(applet.name, applet.args, state, depth + 1))
+    return result
+  }
+  if (hasInlineInterpreterPayload(command, args)) return { targets: [], opaque: true }
+  if (isShellPayloadCommand(command)) {
+    const payload = shellPayload(args)
+    if (payload) mergeDirectoryChangeAnalysis(result, analyzeDirectoryChangesRecursive(payload, state, depth + 1))
+    return result
+  }
+  if (command === "eval" && args.length > 0) {
+    mergeDirectoryChangeAnalysis(result, analyzeDirectoryChangesRecursive(args.join(" "), state, depth + 1))
+  }
+  if (command === "trap") {
+    const payload = trapPayload(args)
+    if (payload) mergeDirectoryChangeAnalysis(result, analyzeDirectoryChangesRecursive(payload, state, depth + 1))
+    return result
+  }
+  if (DIRECTORY_WRAPPER_COMMANDS.has(command)) {
+    if (command === "sudo") {
+      const directoryChange = sudoDirectoryChange(args)
+      if (directoryChange.target && !dynamicDirectoryTarget(directoryChange.target)) {
+        result.targets.push(directoryChange.target)
+      }
+      result.opaque ||= directoryChange.opaque
+    }
+    const replacement = command === "xargs" ? xargsReplacementToken(args) : undefined
+    const wrapped = wrapperCommandParts(command, args)
+    const wrappedAnalysis = analyzeDirectoryCommandParts(wrapped.name, wrapped.args, state, depth + 1)
+    if (replacement && wrappedAnalysis.targets.some((target) => target.includes(replacement))) {
+      wrappedAnalysis.opaque = true
+    }
+    mergeDirectoryChangeAnalysis(result, wrappedAnalysis)
+    return result
+  }
+  return result
+}
+
+function analyzeDirectoryChangesRecursive(
+  command: string,
+  state: ClassificationState,
+  depth: number,
+): DirectoryChangeAnalysis {
+  if (classificationExhausted(state, command)) return { targets: [], opaque: true }
+
+  const normalized = normalizeCommand(command)
+  if (state.activeInputs.has(normalized)) return { targets: [], opaque: true }
+  state.activeInputs.add(normalized)
+
+  try {
+    const result: DirectoryChangeAnalysis = { targets: [], opaque: false }
+    if (hasEscapedAnsiCQuote(command) || hasReparsedEscapedAnsiCQuote(command)) result.opaque = true
+
+    const potentialChange = /\b(?:cd|pushd|popd)\b|\benv\b[^\n]*(?:\s-C\b|--chdir)/.test(unquotedShellText(normalized))
+    if (depth > DIRECTORY_CHANGE_MAX_DEPTH) return { targets: [], opaque: potentialChange || result.opaque }
+    if (normalized.includes("\n") && potentialChange) result.opaque = true
+    if (hasFunctionDefinition(normalized) || hasOpaqueCaseDirectorySyntax(normalized)) result.opaque = true
+
+    const payloads = commandSubstitutionPayloads(normalized, state)
+    if (!payloads) return { targets: result.targets, opaque: true }
+    for (const payload of payloads) {
+      if (classificationExhausted(state)) return { targets: result.targets, opaque: true }
+      mergeDirectoryChangeAnalysis(result, analyzeDirectoryChangesRecursive(payload, state, depth + 1))
+    }
+
+    const compound = lexCompoundCommands(normalized)
+    const segments = compound.segments.length > 0 ? compound.segments : [normalized]
+    for (const segment of segments) {
+      if (classificationExhausted(state)) return { targets: result.targets, opaque: true }
+      if (commandLookupOnly(segment)) continue
+      const controlled = controlCommandSegment(segment)
+      const parsed = simpleCommandParts(controlled)
+      const direct = analyzeDirectoryCommandParts(parsed.name, parsed.args, state, depth)
+      mergeDirectoryChangeAnalysis(result, direct)
+
+      if (direct.targets.length === 0 && !direct.opaque) {
+        const stripped = stripWrappers(controlled)
+        if (stripped !== controlled) {
+          const wrapped = simpleCommandParts(stripped)
+          mergeDirectoryChangeAnalysis(result, analyzeDirectoryCommandParts(wrapped.name, wrapped.args, state, depth))
+        }
+      }
+
+      const hidden = unquotedShellText(segment)
+      if (/(?:^|[({)]|\b(?:if|then|elif|else|do|while|until)\b)\s*(?:cd|pushd|popd)\b/.test(hidden)) {
+        if (direct.targets.length === 0 && !direct.opaque) result.opaque = true
+      }
+    }
+    return result
+  } finally {
+    state.activeInputs.delete(normalized)
+  }
+}
+
+function commandNameWithoutEmptySubstitutions(name: string | undefined): string | undefined {
+  return name?.replace(/\$\(\)/g, "")
+}
+
+const INLINE_EXECUTION_API =
+  "(?:system|popen|check_(?:call|output)|get(?:status)?output|exec(?:file)?(?:sync)?|spawn(?:sync|lpe|lp|le|l|vpe|vp|ve|v)?|run|call|shell_exec|passthru|proc_open)"
+
+function inlineCodeSyntaxText(payload: string): string {
+  const result = Array<string>(payload.length).fill(" ")
+  let quote: "'" | '"' | "`" | undefined
+  for (let index = 0; index < payload.length; index++) {
+    const char = payload[index]
+    if (quote) {
+      if (char === "\\" && index + 1 < payload.length) index++
+      else if (char === quote) quote = undefined
+      continue
+    }
+    if (char === "'" || char === '"' || char === "`") {
+      quote = char
+      continue
+    }
+    result[index] = char
+  }
+  return result.join("")
+}
+
+interface InlineStringValue {
+  value: string
+  opaque: boolean
+}
+
+function inlineStringSequence(payload: string, start: number): InlineStringValue | undefined {
+  let index = start
+  let value = ""
+  let found = false
+  let opaque = false
+  while (index < payload.length && /\s/.test(payload[index] ?? "")) index++
+  if (payload[index] === "[") {
+    index++
+    while (index < payload.length && /\s/.test(payload[index] ?? "")) index++
+  }
+
+  while (index < payload.length) {
+    while (index < payload.length && (/\s/.test(payload[index] ?? "") || payload[index] === "+")) index++
+    const prefixStart = index
+    while (/[rubf]/i.test(payload[index] ?? "")) index++
+    const raw = payload.slice(prefixStart, index).toLowerCase().includes("r")
+    const quote = payload[index]
+    if (quote !== "'" && quote !== '"' && quote !== "`") {
+      index = prefixStart
+      break
+    }
+    found = true
+    index++
+    while (index < payload.length) {
+      const char = payload[index++]
+      if (char === "\\" && index < payload.length) {
+        if (!raw && payload.startsWith("N{", index)) {
+          const close = payload.indexOf("}", index + 2)
+          if (close !== -1) {
+            opaque = true
+            index = close + 1
+            continue
+          }
+        }
+        const sequence = raw ? undefined : INLINE_STRING_ESCAPE.exec(payload.slice(index))?.[0]
+        if (sequence) {
+          let codePoint: number
+          if (sequence[0] === "x" || sequence[0] === "X") codePoint = parseInt(sequence.slice(1), 16)
+          else if (sequence.startsWith("u{")) codePoint = parseInt(sequence.slice(2, -1), 16)
+          else if (sequence[0] === "u" || sequence[0] === "U") codePoint = parseInt(sequence.slice(1), 16)
+          else codePoint = parseInt(sequence, 8)
+          if (codePoint <= 0x10ffff) {
+            value += String.fromCodePoint(codePoint)
+            index += sequence.length
+            continue
+          }
+        }
+        value += `\\${payload[index]}`
+        index++
+        continue
+      }
+      if (char === quote) break
+      value += char
+    }
+  }
+  return found ? { value, opaque } : undefined
+}
+
+function inlineArgumentInvokesSudo(payload: string, start: number, state: ClassificationState, depth: number): boolean {
+  const sequence = inlineStringSequence(payload, start)
+  return Boolean(
+    sequence && (sequence.opaque || (sequence.value && hasSudoInvocationRecursive(sequence.value, state, depth + 1))),
+  )
+}
+
+function hasInlineSudoExecution(payload: string, state: ClassificationState, depth: number): boolean {
+  const syntax = inlineCodeSyntaxText(payload)
+  const parenthesized = new RegExp(`\\b${INLINE_EXECUTION_API}\\s*\\(`, "gi")
+  for (let match = parenthesized.exec(syntax); match; match = parenthesized.exec(syntax)) {
+    if (inlineArgumentInvokesSudo(payload, match.index + match[0].length, state, depth)) return true
+  }
+
+  const parenthesiless = /\b(?:system|popen|exec)\b/gi
+  for (let match = parenthesiless.exec(syntax); match; match = parenthesiless.exec(syntax)) {
+    let start = match.index + match[0].length
+    while (/\s/.test(payload[start] ?? "")) start++
+    if (payload[start] !== "(" && inlineArgumentInvokesSudo(payload, start, state, depth)) return true
+  }
+  return false
+}
+
+function reparsePayloadMayInvokeSudo(payload: string, state: ClassificationState, depth: number): boolean {
+  return hasSudoInvocationRecursive(payload, state, depth)
+}
+
+function commandLookupOnly(segment: string): boolean {
+  const words = shellWords(normalizeCommand(segment))
+  let index = 0
+  while (words[index]?.includes("=") && !words[index]?.startsWith("-")) index++
+  if (words[index] !== "command") return false
+  index++
+  return words.slice(index).some((word) => /^-[pP]*[vV]/.test(word))
+}
+
+const RUNUSER_VALUE_OPTIONS = new Set(["-u", "--user", "-g", "--group", "-G", "--supp-group", "-s", "--shell"])
+const PKEXEC_VALUE_OPTIONS = new Set(["-u", "--user"])
+const NSENTER_VALUE_OPTIONS = new Set([
+  "-t",
+  "--target",
+  "-S",
+  "--setuid",
+  "-G",
+  "--setgid",
+  "-r",
+  "--root",
+  "-w",
+  "--wd",
+  "--wdns",
+])
+const CONTAINER_EXEC_VALUE_OPTIONS = new Set([
+  "--detach-keys",
+  "-e",
+  "--env",
+  "--env-file",
+  "--preserve-fd",
+  "--preserve-fds",
+  "-u",
+  "--user",
+  "-w",
+  "--workdir",
+])
+const CONTAINER_RUN_VALUE_OPTIONS = new Set([
+  "--entrypoint",
+  "--env",
+  "--env-file",
+  "--mount",
+  "--name",
+  "--network",
+  "--platform",
+  "--publish",
+  "--user",
+  "--volume",
+  "--workdir",
+  "-e",
+  "-p",
+  "-u",
+  "-v",
+  "-w",
+])
+const CONTAINER_FLAG_OPTIONS = new Set([
+  "--detach",
+  "--init",
+  "--interactive",
+  "--privileged",
+  "--read-only",
+  "--rm",
+  "--tty",
+  "-d",
+  "-i",
+  "-t",
+])
+const SCRIPT_VALUE_OPTIONS = new Set([
+  "-c",
+  "--command",
+  "-t",
+  "--log-in",
+  "--log-out",
+  "--log-io",
+  "--log-timing",
+  "--output-limit",
+])
+
+function optionConsumesValue(word: string, valueOptions: Set<string>): boolean {
+  return valueOptions.has(word)
+}
+
+function attachedOptionValue(word: string, valueOptions: Set<string>): boolean {
+  return [...valueOptions].some((option) => {
+    if (option.startsWith("--")) return word.startsWith(`${option}=`)
+    return option.startsWith("-") && word.startsWith(option) && word.length > option.length
+  })
+}
+
+function commandAfterOptions(args: string[], valueOptions: Set<string>): string[] | undefined {
+  let index = 0
+  while (index < args.length) {
+    const word = args[index]
+    if (!word) return
+    if (word === "--") return args.slice(index + 1)
+    if (optionConsumesValue(word, valueOptions)) {
+      if (!args[index + 1]) return
+      index += 2
+      continue
+    }
+    if (attachedOptionValue(word, valueOptions) || word.startsWith("-")) {
+      index++
+      continue
+    }
+    return args.slice(index)
+  }
+}
+
+interface ContainerCommand {
+  executable?: string[]
+  entrypoint?: string
+  opaque: boolean
+}
+
+function containerCommandAfterOptions(args: string[], valueOptions: Set<string>): ContainerCommand {
+  let index = 0
+  let entrypoint: string | undefined
+  while (index < args.length) {
+    const word = args[index]
+    if (!word) return { opaque: true }
+    if (word === "--") return { executable: args.slice(index + 1), entrypoint, opaque: false }
+    if (word === "--entrypoint" && valueOptions.has("--entrypoint")) {
+      if (args[index + 1] === undefined) return { opaque: true }
+      entrypoint = args[index + 1] || undefined
+      index += 2
+      continue
+    }
+    if (word.startsWith("--entrypoint=") && valueOptions.has("--entrypoint")) {
+      entrypoint = word.slice("--entrypoint=".length) || undefined
+      index++
+      continue
+    }
+    if (optionConsumesValue(word, valueOptions)) {
+      if (args[index + 1] === undefined) return { opaque: true }
+      index += 2
+      continue
+    }
+    if (attachedOptionValue(word, valueOptions) || CONTAINER_FLAG_OPTIONS.has(word) || /^-[dit]+$/.test(word)) {
+      index++
+      continue
+    }
+    if (word.startsWith("-")) {
+      if (word.startsWith("--") && word.includes("=")) {
+        index++
+        continue
+      }
+      return { opaque: true }
+    }
+    return { executable: args.slice(index), entrypoint, opaque: false }
+  }
+  return { opaque: false }
+}
+
+type IndirectExecution = { payload: string; reparsed: boolean } | { opaque: true }
+function indirectExecutionPayload(command: string, args: string[]): IndirectExecution | undefined {
+  if (command === "su" || command === "sg") {
+    const payload = shellPayload(args)
+    return payload ? { payload, reparsed: true } : undefined
+  }
+  if (command === "script") {
+    const payload = shellPayload(args)
+    if (payload) return { payload, reparsed: true }
+    const positionals = commandAfterOptions(args, SCRIPT_VALUE_OPTIONS)
+    const executable = positionals?.slice(1)
+    return executable?.length ? { payload: executable.join(" "), reparsed: false } : undefined
+  }
+  if (command === "watch") {
+    const executable = commandAfterOptions(args, WRAPPER_VALUE_OPTIONS.watch)
+    return executable?.length ? { payload: executable.join(" "), reparsed: true } : undefined
+  }
+  if (command === "runuser") {
+    const directMode = args.some(
+      (word) => word === "-u" || word === "--user" || word.startsWith("-u") || word.startsWith("--user="),
+    )
+    if (!directMode) {
+      const payload = shellPayload(args)
+      return payload ? { payload, reparsed: true } : undefined
+    }
+    const executable = commandAfterOptions(args, RUNUSER_VALUE_OPTIONS)
+    return executable?.length ? { payload: executable.join(" "), reparsed: false } : undefined
+  }
+  if (command === "pkexec") {
+    const executable = commandAfterOptions(args, PKEXEC_VALUE_OPTIONS)
+    return executable?.length ? { payload: executable.join(" "), reparsed: false } : undefined
+  }
+  if (command === "nsenter") {
+    const executable = commandAfterOptions(args, NSENTER_VALUE_OPTIONS)
+    return executable?.length ? { payload: executable.join(" "), reparsed: false } : undefined
+  }
+  if (command === "docker" || command === "podman") {
+    const subcommandIndex = args.findIndex((word) => word === "exec" || word === "run" || word === "create")
+    if (subcommandIndex === -1) return
+    const subcommand = args[subcommandIndex]
+    const valueOptions = subcommand === "exec" ? CONTAINER_EXEC_VALUE_OPTIONS : CONTAINER_RUN_VALUE_OPTIONS
+    const containerArgs = args.slice(subcommandIndex + 1)
+    const parsed = containerCommandAfterOptions(containerArgs, valueOptions)
+    if (parsed.opaque) return { opaque: true }
+    if (!parsed.executable?.length) return
+    const executable = parsed.executable.slice(1)
+    if (executable[0] === "--") executable.shift()
+    const entrypoint = subcommand === "exec" ? undefined : parsed.entrypoint
+    const payload = entrypoint ? [entrypoint, ...executable] : executable
+    return payload.length ? { payload: payload.join(" "), reparsed: false } : undefined
+  }
+}
+
+function indirectPayloadMayInvokeSudo(
+  payload: string,
+  reparsed: boolean,
+  state: ClassificationState,
+  depth: number,
+): boolean {
+  if (reparsed) return reparsePayloadMayInvokeSudo(payload, state, depth)
+  const parsed = simpleCommandParts(controlCommandSegment(payload))
+  if (parsed.name && dynamicCommandName(parsed.name)) return true
+  return hasSudoInvocationRecursive(payload, state, depth)
+}
+
+function shellPayloadWithEnabledExecfail(segment: string): string | undefined {
+  let words = shellWords(normalizeCommand(separateAttachedInputRedirects(segment)))
+  let index = 0
+  let enabled = false
+  const inspectAssignments = (assignments: string[]): void => {
+    enabled ||= assignments.some((assignment) => /^BASHOPTS=(?:[^:]*:)*execfail(?:[:]|$)/.test(assignment))
+  }
+
+  while (words[index]?.includes("=") && !words[index]?.startsWith("-")) index++
+  inspectAssignments(words.slice(0, index))
+
+  // Lookup-only `command -v` / `-V` never executes, and `builtin <name>` errors
+  // for non-builtin targets, so both stay inert. Transparent wrappers (`exec`,
+  // `nice`, `timeout`, ...) forward the wrapped command unchanged, so
+  // `bash -O execfail` behind them still activates replay analysis.
+  for (let depth = 0; depth < DIRECTORY_CHANGE_MAX_DEPTH; depth++) {
+    while (words[index] === "command" || words[index] === "builtin") {
+      const prefix = words[index++]
+      if (prefix === "command") {
+        while (index < words.length) {
+          const option = words[index]
+          if (option === "--path") {
+            index += 2
+            continue
+          }
+          if (option?.startsWith("--path=")) {
+            index++
+            continue
+          }
+          if (/^-[pP]+$/.test(option ?? "")) {
+            index++
+            continue
+          }
+          if (/^-[pPvV]+$/.test(option ?? "")) return undefined
+          break
+        }
+      } else if (!SHELL_BUILTIN_COMMANDS.has(commandBasename(words[index] ?? ""))) {
+        return undefined
+      }
+      if (words[index] === "--") index++
+    }
+
+    const name = commandBasename(words[index] ?? "")
+    if (name === "env") {
+      const expanded = expandEnvSplitString(words, index)
+      if (expanded) {
+        words = expanded
+        let assignmentEnd = index
+        while (words[assignmentEnd]?.includes("=") && !words[assignmentEnd]?.startsWith("-")) assignmentEnd++
+        inspectAssignments(words.slice(index, assignmentEnd))
+        index = assignmentEnd
+        continue
+      }
+      const envArgs = words.slice(index + 1)
+      const commandIndex = envDirectoryChange(envArgs).commandIndex
+      inspectAssignments(envArgs.slice(0, commandIndex))
+      index += commandIndex + 1
+      continue
+    }
+
+    if (name === "script") {
+      // BSD/macOS positional form: `script [options] file command ...`.
+      // The first positional is the output file; the wrapped command follows.
+      const after = wrapperCommandArgs(name, words.slice(index + 1))
+      if (!words[index + 2 + after.commandIndex]) return undefined
+      index += 2 + after.commandIndex
+      continue
+    }
+
+    if (MULTICALL_COMMANDS.has(name)) {
+      const rest = words.slice(index + 1)
+      const applet = multicallCommandParts(rest)
+      if (!applet.name) return undefined
+      index += rest.length - applet.args.length
+      continue
+    }
+
+    if (!EXECFAIL_TRANSPARENT_WRAPPERS.has(name)) break
+    const wrapped = wrapperCommandArgs(name, words.slice(index + 1))
+    if (!wrapped.name) return undefined
+    index += 1 + wrapped.commandIndex
+  }
+
+  const shellName = commandBasename(words[index] ?? "")
+  if (!isShellPayloadCommand(shellName)) return
+  const args = words.slice(index + 1)
+  const optionEnd = bashOptionRegionEnd(args)
+  const optionRegion = args.slice(0, optionEnd === -1 ? args.length : optionEnd + 1)
+  for (let optionIndex = 0; optionIndex < optionRegion.length; optionIndex++) {
+    const word = optionRegion[optionIndex]
+    // `-Oexecfail` is rejected by bash 3.2 (the `-O` value is taken from the
+    // next word) but kept conservative here for version portability.
+    if (word === "-Oexecfail") enabled = true
+    if (word === "-O" && optionRegion[optionIndex + 1] === "execfail") enabled = true
+  }
+  // Interactive shells keep running after a failed `exec`, so fd replay after
+  // it is executable regardless of execfail.
+  if (bashInteractiveOption(args)) enabled = true
+  const payload = shellPayload(args)
+  return enabled ? payload : undefined
+}
+
+function hasSudoCommandParts(
+  name: string | undefined,
+  args: string[],
+  state: ClassificationState,
+  depth: number,
+): boolean {
+  if (classificationExhausted(state) || depth > DIRECTORY_CHANGE_MAX_DEPTH) return true
+  if (!name) return false
+  if (dynamicCommandName(name)) return true
+  const command = commandBasename(commandNameWithoutEmptySubstitutions(name) ?? "")
+  if (command === "sudo" || command === "sudoedit" || command === "doas") return true
+  if (command === "env") {
+    const expanded = expandEnvSplitString([command, ...args], 0)
+    if (expanded) return hasSudoCommandParts(expanded[0], expanded.slice(1), state, depth + 1)
+    const commandIndex = envDirectoryChange(args).commandIndex
+    return hasSudoCommandParts(args[commandIndex], args.slice(commandIndex + 1), state, depth + 1)
+  }
+  if (MULTICALL_COMMANDS.has(command)) {
+    const applet = multicallCommandParts(args)
+    return hasSudoCommandParts(applet.name, applet.args, state, depth + 1)
+  }
+  if (command === "ssh" || command === "mosh") {
+    const remote = remoteCommandPayload(args)
+    return Boolean(remote && reparsePayloadMayInvokeSudo(remote, state, depth + 1))
+  }
+  if (isShellPayloadCommand(command)) {
+    const payload = shellPayload(args)
+    if (payload) return reparsePayloadMayInvokeSudo(payload, state, depth + 1)
+    const stdinPayload = shellHerestringPayload(args)
+    return Boolean(stdinPayload && reparsePayloadMayInvokeSudo(stdinPayload, state, depth + 1))
+  }
+  if (command === "eval" && args.length > 0) {
+    return reparsePayloadMayInvokeSudo(args.join(" "), state, depth + 1)
+  }
+  if (command === "trap") {
+    const payload = trapPayload(args)
+    return Boolean(payload && reparsePayloadMayInvokeSudo(payload, state, depth + 1))
+  }
+  const stdinPayload = shellHerestringPayload(args)
+  if (stdinPayload && executesStdinAsCode(command, args)) {
+    return (
+      hasInlineSudoExecution(stdinPayload, state, depth) || hasSudoInvocationRecursive(stdinPayload, state, depth + 1)
+    )
+  }
+  if (hasInlineInterpreterPayload(command, args)) {
+    const payload = args.join(" ")
+    return hasInlineSudoExecution(payload, state, depth) || hasSudoInvocationRecursive(payload, state, depth + 1)
+  }
+  const indirect = indirectExecutionPayload(command, args)
+  if (indirect) {
+    if ("opaque" in indirect) return true
+    return indirectPayloadMayInvokeSudo(indirect.payload, indirect.reparsed, state, depth + 1)
+  }
+  if (!DIRECTORY_WRAPPER_COMMANDS.has(command)) return false
+  const wrapped = wrapperCommandParts(command, args)
+  return hasSudoCommandParts(wrapped.name, wrapped.args, state, depth + 1)
+}
+
+function hasSudoInvocationRecursive(command: string, state: ClassificationState, depth: number): boolean {
+  if (classificationExhausted(state, command) || depth > DIRECTORY_CHANGE_MAX_DEPTH) return true
+
+  const normalized = normalizeCommand(command)
+  if (state.activeInputs.has(normalized)) return true
+  state.activeInputs.add(normalized)
+  try {
+    if (stdinHeredocMayInvokeSudo(command, state, depth)) return true
+    if (heredocDataFlowMayInvokeSudo(command, state, depth)) return true
+    if (processSubstitutionMayFeedExecutable(command, state, depth)) return true
+
+    const substitutions = commandSubstitutionPayloads(normalized, state)
+    if (!substitutions) return true
+    if (substitutions.some((payload) => hasSudoInvocationRecursive(payload, state, depth + 1))) return true
+
+    const compound = lexCompoundCommands(normalized)
+    const segments = compound.segments.length > 0 ? compound.segments : [normalized]
+    return segments.some((segment) => {
+      const execfailPayload = shellPayloadWithEnabledExecfail(segment)
+      if (execfailPayload && reparsePayloadMayInvokeSudo(`shopt -s execfail\n${execfailPayload}`, state, depth + 1)) {
+        return true
+      }
+      const functionBody = functionDefinitionBody(segment)
+      if (functionBody !== undefined) {
+        return functionBody ? hasSudoInvocationRecursive(functionBody, state, depth + 1) : false
+      }
+      if (commandLookupOnly(segment)) return false
+      const parsed = simpleCommandParts(controlCommandSegment(segment))
+      return hasSudoCommandParts(parsed.name, parsed.args, state, depth)
+    })
+  } finally {
+    state.activeInputs.delete(normalized)
+  }
+}
+
 export type BashRisk =
   | "shell_read"
   | "shell"
@@ -732,14 +2971,37 @@ export type BashRisk =
   | "shell_hardline"
 export namespace ShellSafety {
   export function isReadOnly(command: string): boolean {
-    const padded = " " + normalizeCommand(command).toLowerCase() + " "
+    const padded = " " + normalizeCommand(command) + " "
     const normalized = stripAllowedRedirects(padded)
-    if (UNSAFE_SHELL_TOKENS.some((token) => normalized.includes(token))) return false
+    const lower = normalized.toLowerCase()
+    if (UNSAFE_SHELL_TOKENS.some((token) => lower.includes(token))) return false
 
     const segments = lexCompoundCommands(normalized.trim()).segments
 
     if (segments.length === 0) return true
     return segments.every(isSafeSimpleCommand)
+  }
+
+  export function analyzeDirectoryChanges(command: string): DirectoryChangeAnalysis {
+    return analyzeDirectoryChangesRecursive(command, newClassificationState(), 0)
+  }
+
+  export function hasCompoundShellStateDependency(command: string): boolean {
+    const compound = lexCompoundCommands(normalizeCommand(command))
+    const state = newClassificationState()
+    return compound.segments.some((segment, index) => {
+      if (index > 0) return hasReparsedLastArgumentReference(segment, state, 0)
+      if (compound.segments.length < 2) return false
+
+      const parsed = simpleCommandParts(controlCommandSegment(segment))
+      if (commandBasename(parsed.name ?? "") !== "trap") return false
+      const payload = trapPayload(parsed.args)
+      return Boolean(payload && hasReparsedLastArgumentReference(payload, state, 0))
+    })
+  }
+
+  export function hasSudoInvocation(command: string): boolean {
+    return hasSudoInvocationRecursive(command, newClassificationState(), 0)
   }
 
   export function capability(command: string): "shell_read" | "shell" {
@@ -800,19 +3062,6 @@ export namespace ShellSafety {
   }
 
   const MAX_COMPOUND_DEPTH = 5
-  const CLASSIFICATION_BUDGET_MS = 200
-
-  interface ClassificationState {
-    deadline: number
-    activeInputs: Set<string>
-  }
-
-  function newClassificationState(): ClassificationState {
-    return {
-      deadline: Date.now() + CLASSIFICATION_BUDGET_MS,
-      activeInputs: new Set(),
-    }
-  }
 
   function conservativeRisk(): BashRisk {
     return "shell"
@@ -824,33 +3073,17 @@ export namespace ShellSafety {
 
   // ── heredoc scanning ─────────────────────────────────────────────────
 
-  const HEREDOC_DATA_TOOLS = new Set(["cat", "tee", "grep", "sed", "awk", "jq", "head", "tail"])
-
-  function escapeRegExp(str: string): string {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-  }
-
   function scanHeredocBody(command: string, state: ClassificationState, depth: number): BashRisk | null {
-    const HEREDOC_RE = /(python3?|python2|ruby|perl|node|bash|sh|zsh|ksh|dash)\s+<<\s*(\w+)\b/gi
-
-    let match: RegExpExecArray | null
-    while ((match = HEREDOC_RE.exec(command)) !== null) {
+    for (const heredoc of extractShellHeredocBodies(command)) {
       if (Date.now() > state.deadline) return conservativeRisk()
-      const interpreter = match[1].toLowerCase()
-      const delim = match[2]
+      if (
+        !heredoc.effective ||
+        normalizeFileDescriptor(heredoc.fd) !== "0" ||
+        !heredocHeaderExecutesStdin(heredoc.header)
+      )
+        continue
 
-      if (HEREDOC_DATA_TOOLS.has(interpreter)) continue
-
-      const bodyStart = match.index + match[0].length
-      const remaining = command.slice(bodyStart)
-      const bodyEndRe = new RegExp(`\\n${escapeRegExp(delim)}\\b`)
-      const bodyEndMatch = bodyEndRe.exec(remaining)
-
-      if (!bodyEndMatch) continue
-
-      const body = remaining.slice(0, bodyEndMatch.index)
-      const bodyRisk = depth >= MAX_COMPOUND_DEPTH ? conservativeRisk() : classifyRisk(body, state, depth + 1)
-
+      const bodyRisk = depth >= MAX_COMPOUND_DEPTH ? conservativeRisk() : classifyRisk(heredoc.body, state, depth + 1)
       if (bodyRisk !== "shell_read") {
         return bodyRisk === "shell_hardline" ? "shell_hardline" : "shell_destructive"
       }

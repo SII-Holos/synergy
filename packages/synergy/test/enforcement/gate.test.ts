@@ -353,6 +353,23 @@ describe("EnforcementGate path classification", () => {
     expect(paths).toContain("src/a.ts")
     expect(paths).toContain("src/b.ts")
   })
+
+  test("resolve_conflicts classifies its filePath as a write target", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("resolve_conflicts", {
+      filePath: "/tmp/conflict.ts",
+      tag: "A1B2",
+      resolutions: [{ conflict: 1, strategy: "ours" }],
+    })
+
+    const external = result.capabilities.find((capability: any) => capability.class === "file_external_write")
+    expect(external).toBeDefined()
+    expect(external?.nonBypassable).toBe(true)
+  })
 })
 
 // ------------------------------------------------------------------
@@ -478,6 +495,316 @@ describe("EnforcementGate shell classification", () => {
     expect(external.nonBypassable).toBe(false)
     expect(external.paths).toContain("/etc/passwd")
   })
+  test("compound attachment inspection keeps external paths read-only", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    for (const attachmentPath of [
+      "/Users/test/synergy/downloads/trace.bin",
+      "/Users/test/.synergy/data/assets/0123456789abcdef.bin",
+    ]) {
+      const envelope = gate.evaluate("bash", {
+        command: `file "${attachmentPath}"; echo inspected`,
+      })
+
+      expect(envelope.decision).toBe("allow")
+      expect(envelope.capabilities.some((cap) => cap.class === "file_external_write")).toBe(false)
+      expect(
+        envelope.capabilities.some(
+          (cap) =>
+            (cap.class === "file_read" || cap.class === "file_external_read") && cap.paths?.includes(attachmentPath),
+        ),
+      ).toBe(true)
+    }
+  })
+
+  test("executing an external attachment as a script remains an external write boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("bash", {
+      command: "python3 /Users/test/.synergy/data/assets/0123456789abcdef.py",
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.capabilities.some((cap) => cap.class === "file_external_write")).toBe(true)
+  })
+  test("piping an external attachment into an interpreter remains an external execution boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+    const attachmentPath = "/Users/test/.synergy/data/assets/0123456789abcdef.py"
+
+    for (const interpreter of ["python3", "node"]) {
+      const envelope = gate.evaluate("bash", {
+        command: `cat "${attachmentPath}" | ${interpreter}`,
+      })
+
+      expect(envelope.decision).toBe("deny")
+      expect(
+        envelope.capabilities.some((cap) => cap.class === "file_external_write" && cap.paths?.includes(attachmentPath)),
+      ).toBe(true)
+    }
+  })
+
+  test("changing to the original checkout keeps later relative writes outside the workspace boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("bash", {
+      command: "cd /Users/test/synergy && touch changed.txt",
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.capabilities.some((cap) => cap.class === "file_external_write")).toBe(true)
+  })
+
+  test("changing to an external directory keeps derived outputs outside the workspace boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("bash", {
+      command: "cd /Users/test/.synergy/data/assets && file -C",
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.capabilities.some((cap) => cap.class === "file_external_write")).toBe(true)
+  })
+  test("alternate cd spellings keep later relative writes outside the workspace boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    for (const command of [
+      '"cd" /Users/test/synergy && touch changed.txt',
+      "\\cd /Users/test/synergy && touch changed.txt",
+      "cd && touch changed.txt",
+      "target=/Users/test/synergy; cd $target && touch changed.txt",
+      "cd -L ../.. && touch changed.txt",
+      "cd -P ~/repo && touch changed.txt",
+      "cd -- ../.. && touch changed.txt",
+      "cd /Users/test/synergy/.synergy/worktrees/feature-x/../.. && touch changed.txt",
+    ]) {
+      const envelope = gate.evaluate("bash", { command })
+
+      expect(envelope.decision).toBe("deny")
+      expect(envelope.capabilities.some((cap) => cap.class === "file_external_write")).toBe(true)
+    }
+  })
+
+  test("hidden directory state changes cannot escape the workspace boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    for (const command of [
+      "{ cd ../..; } && touch changed.txt",
+      "(cd ../.. && touch changed.txt)",
+      "if cd ../..; then touch changed.txt; fi",
+      "pushd ../.. && touch changed.txt",
+      "env -C ../.. touch changed.txt",
+      "env --chdir=../.. touch changed.txt",
+      "sudo -D ../.. touch changed.txt",
+      "sudo --chdir=../.. touch changed.txt",
+      "command -p env -C ../.. touch changed.txt",
+      "sudo -r role -D ../.. touch changed.txt",
+      "sudo\t-t type -D ../.. touch changed.txt",
+      "sudo -U root -D ../.. touch changed.txt",
+      "sudo -a type -D ../.. touch changed.txt",
+      "sudo -A -D ../.. touch changed.txt",
+      "bash -c 'cd ../.. && touch changed.txt'",
+      "eval 'cd ../.. && touch changed.txt'",
+      'touch "$(cd ../..; pwd)/changed.txt"',
+      'touch "`cd ../..; pwd`/changed.txt"',
+      "trap 'cd ../..; touch changed.txt' EXIT",
+      "env -S \"bash -c 'cd ../.. && touch changed.txt'\"",
+      "nice -n 10 bash -c 'cd ../.. && touch changed.txt'",
+      "sudo -u nobody bash -c 'cd ../.. && touch changed.txt'",
+      "cd ../..\ntouch changed.txt",
+      'file "/Users/test/synergy/payload.py"; python3 "$_"',
+      'file "/Users/test/synergy/payload"; eval \'sh "$_"\'',
+      'file "/Users/test/synergy/payload"; trap \'python3 "$_"\' EXIT',
+      'file "/Users/test/synergy/payload"; echo $(eval \'sh "$_"\')',
+      'file "/Users/test/synergy/payload"\nsh "/Users/test/synergy/payload"',
+      'file "/Users/test/synergy/payload.sh"; sh "${_:0}"',
+      'file "/Users/test/synergy/payload.sh"; eval \'sh "${_:0}"\'',
+      'file "/Users/test/synergy/payload.sh"; echo $(sh "${_:0}")',
+      'trap \'python3 "$_"\' EXIT; file "/Users/test/synergy/payload.py"',
+      'echo $((a << b))\nfile ../payload.sh; sh "$_"',
+      "ksh -c 'cd ../.. && touch changed.txt'",
+      "tcsh -c 'cd ../.. && touch changed.txt'",
+      "csh -c 'cd ../.. && touch changed.txt'",
+      "nu -c 'cd ../.. && touch changed.txt'",
+      "rc -c 'cd ../.. && touch changed.txt'",
+      "es -c 'cd ../.. && touch changed.txt'",
+      "fish -c 'cd ../.. && touch changed.txt'",
+      "nice -n 10 ksh -c 'cd ../.. && touch changed.txt'",
+      "exec ksh -c 'cd ../.. && touch changed.txt'",
+      "command ksh -c 'cd ../.. && touch changed.txt'",
+      "env -S \"ksh -c 'cd ../.. && touch changed.txt'\"",
+      "/bin/sh -c 'cd ../.. && touch changed.txt'",
+      "bash -c $'cd ../.. && touch changed.txt'",
+      "bash -c $'cd ../..\\ntouch changed.txt'",
+      "printf '../..' | xargs -I{} sh -c 'cd {} && touch changed.txt'",
+      "c'd' ../.. && touch changed.txt",
+      "x=cd; $x ../.. && touch changed.txt",
+      'python3 -c \'import os; os.chdir("../.."); open("changed.txt", "w").close()\'',
+      'ruby -e \'Dir.chdir("../.."); File.write("changed.txt", "changed")\'',
+      'node -e \'process.chdir("../.."); require("fs").writeFileSync("changed.txt", "changed")\'',
+      "f() { command cd ../..; }; f; touch changed.txt",
+      "f() { builtin cd ../..; }; f; touch changed.txt",
+      "f() { eval 'cd ../..'; }; f; touch changed.txt",
+      "f() { bash -c 'cd ../..'; }; f; touch changed.txt",
+      "f() { env -C ../.. touch changed.txt; }; f",
+      "function f { command cd ../..; }; f; touch changed.txt",
+      "f() { cmd=cd; $cmd ../..; }; f; touch changed.txt",
+      "CDPATH=/Users/test/synergy cd node_modules && touch changed.txt",
+      "cd node_modules && touch changed.txt",
+      "$'\\x63\\x64' ../.. && touch changed.txt",
+      "$'\\143\\144' ../.. && touch changed.txt",
+      "bash -c $'\\x63\\x64 ../.. && touch changed.txt'",
+      "bash -c $'\\143\\144 ../.. && touch changed.txt'",
+      "bash -c \"$'\\x63\\x64 ../.. && touch changed.txt'\"",
+      "bash -c \"$'\\143\\144 ../.. && touch changed.txt'\"",
+      "eval \"$'\\x63\\x64 ../.. && touch changed.txt'\"",
+      "trap \"$'\\x63\\x64 ../.. && touch changed.txt'\" EXIT",
+      "if true; then bash -c \"$'\\x63\\x64 ../.. && touch changed.txt'\"; fi",
+      'bash -c "bash -c \\"$\'\\x63\\x64 ../.. && touch changed.txt\'\\""',
+      "ash -c 'cd ../.. && touch changed.txt'",
+      "mksh -c 'cd ../.. && touch changed.txt'",
+      "yash -c 'cd ../.. && touch changed.txt'",
+      "busybox sh -c 'cd ../.. && touch changed.txt'",
+      "busybox ash -c 'cd ../.. && touch changed.txt'",
+      'php -r \'chdir("../.."); touch("changed.txt")\'',
+      "pwsh -Command 'cd ../..; New-Item changed.txt'",
+      'deno eval \'Deno.chdir("../.."); Deno.writeTextFileSync("changed.txt", "changed")\'',
+      'pypy -c \'import os; os.chdir("../.."); open("changed.txt", "w").close()\'',
+      "awk 'BEGIN{system(\"cd ../.. && touch changed.txt\")}'",
+      "/usr/local/bin/mksh -lc 'cd ../.. && touch changed.txt'",
+      "toybox /bin/sh -c 'cd ../.. && touch changed.txt'",
+      'php -n -r \'chdir("../.."); touch("changed.txt")\'',
+      "\"C:/Program Files/PowerShell/7/pwsh.exe\" -Command 'cd ../..; New-Item changed.txt'",
+      "deno --quiet eval --ext ts 'Deno.chdir(\"../..\")'",
+      "pypy3.10 -c 'import os; os.chdir(\"../..\")'",
+      "gawk 'BEGIN{system(\"cd ../.. && touch changed.txt\")}'",
+      "env -C $'\\x2e\\x2e' touch changed.txt",
+      "if true; then f() { env -C ../.. touch changed.txt; }; fi; f",
+      "case x in x) bash -c 'cd ../.. && touch changed.txt';; esac",
+    ]) {
+      const envelope = gate.evaluate("bash", { command })
+
+      expect(envelope.decision).toBe("deny")
+      expect(envelope.capabilities.some((cap) => cap.class === "file_external_write")).toBe(true)
+    }
+  })
+
+  test("non-executed cd text and workspace-local env chdir stay allowed", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    for (const command of [
+      "echo 'cd ../..'",
+      "echo \"$'\\x63\\x64'\"",
+      "env -C . pwd",
+      "bash -c 'pwd'",
+      "python3 script.py",
+      "php script.php",
+      "pwsh -File script.ps1",
+      "deno run script.ts",
+      "pypy script.py",
+      "awk '{print $1}' input.txt",
+      "busybox ls",
+      "ssh -c aes256-gcm user@example.com",
+      'printf "%s" "$?"; touch local.txt',
+      'printf "%s" "$_"; touch local.txt',
+      'echo hi; echo "$_"',
+      'git status; printf "%s" "$_"',
+      "command -v cd; touch local.txt",
+      "command -V pushd; touch local.txt",
+    ]) {
+      const envelope = gate.evaluate("bash", { command })
+
+      expect(envelope.decision).toBe("allow")
+      expect(envelope.capabilities.some((cap) => cap.class === "file_external_write")).toBe(false)
+    }
+  })
+
+  test("write-capable commands treat an external workdir as an external write boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    for (const command of ["file -C", "sh ./attachment.sh"]) {
+      const envelope = gate.evaluate("bash", {
+        command,
+        workdir: "/Users/test/synergy",
+      })
+
+      expect(envelope.decision).toBe("deny")
+      expect(envelope.capabilities.some((cap) => cap.class === "file_external_write")).toBe(true)
+    }
+  })
+
+  test("compiling an external magic database remains an external write boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+    const magicPath = "/Users/test/.synergy/data/assets/custom.magic"
+
+    const envelope = gate.evaluate("bash", {
+      command: `file --compile --magic-file "${magicPath}"`,
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(
+      envelope.capabilities.some((cap) => cap.class === "file_external_write" && cap.paths?.includes(magicPath)),
+    ).toBe(true)
+  })
 })
 
 describe("EnforcementGate Synergy Link classification", () => {
@@ -547,6 +874,348 @@ describe("isDestructive boundary correctness", () => {
     const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeDefined()
     expect(destructive.nonBypassable).toBe(true)
+  })
+
+  test("sudo with tab whitespace is destructive", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("bash", { command: "sudo\t-r role make install" })
+
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
+    expect(destructive).toBeDefined()
+    expect(destructive.nonBypassable).toBe(true)
+  })
+
+  test.each(["s'u'do make install", String.raw`s\udo make install`, "s$()udo make install"])(
+    "quoted, escaped, or substituted sudo is destructive: %s",
+    async (command) => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+      })
+
+      const result = gate.classify("bash", { command })
+
+      const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
+      expect(destructive).toBeDefined()
+      expect(destructive.nonBypassable).toBe(true)
+    },
+  )
+  test.each([
+    "sh -c 'sudo make install'",
+    "eval 'sudo make install'",
+    "env -S 'sudo make install'",
+    "trap 'sudo make install' EXIT",
+    "echo $(sudo make install)",
+    "echo `sudo make install`",
+    "echo >(sudo make install)",
+    "diff <(sudo cat /etc/hosts) out.txt",
+    `python3 -c 'import os; os.system("sudo make install")'`,
+    `eval "$(echo 'sudo make install')"`,
+    `sh -c "$(echo 'sudo make install')"`,
+    `env -S "$(echo 'sudo make install')"`,
+    `trap "$(echo 'sudo make install')" EXIT`,
+    "su --command 'sudo make install'",
+    "sg wheel --command='sudo make install'",
+    "runuser --command 'sudo make install'",
+    "sh -c'sudo make install'",
+    `python3 -c 'import os; os.system("su" "do make install")'`,
+    String.raw`su\
+do make install`,
+    `python3 -c 'import subprocess; subprocess.check_output("sudo make install")'`,
+    `python3 -c 'import subprocess; subprocess.check_call("sudo make install")'`,
+    `python3 -c 'import subprocess; subprocess.getoutput("sudo make install")'`,
+    `python3 -c 'import os; os.system("echo hi && sudo make install")'`,
+    `python3 -c 'import os; os.system("sudo " + "make install")'`,
+    "su -c 'sudo make install'",
+    "runuser -u root -- sudo make install",
+    "pkexec sudo make install",
+    "sg wheel -c 'sudo make install'",
+    "docker exec c sudo make install",
+    "docker run image sudo make install",
+    "podman create image sudo make install",
+    "docker run --entrypoint sudo image make install",
+    "podman create --entrypoint=sudo image make install",
+    "command --path /bin -p sudo make install",
+    "command --path=/bin -p sudo make install",
+    "docker exec c -- sudo make install",
+    "docker exec --entrypoint sudo c make install",
+    "docker run -m 512m image sudo make install",
+    "docker run --cpus 2 image sudo make install",
+    "docker run --entrypoint echo --entrypoint sudo image make install",
+    "podman create --entrypoint=echo --entrypoint=sudo image make install",
+    "nsenter -t 1 -m sudo make install",
+    "sudoedit /etc/hosts",
+    "echo $((a << b))\nsudo make install",
+    "echo $((\n1 << 2\n))\nsudo make install",
+    "((\n1 << 2\n))\nsudo make install",
+    "echo $[\n1 << 2\n]\nsudo make install",
+    "if :; then((a << b)); fi\nsudo make install",
+    "echo 'a\n<< b'\nsudo make install",
+    'echo "a\n<< b"\nsudo make install',
+    "echo hi # << EOF\nsudo make install",
+    "# note << EOF\nsudo make install",
+    "echo hi # << EOF body\nsudoedit /etc/hosts",
+    "echo $(echo x # << EOF\nsudo make install)",
+    "((1))# << EOF\nsudo make install",
+    "(printf x)# << EOF\nsudo make install",
+    "cat <<EOF # <<FAKE\nsudo make install\nEOF\nsudoedit /etc/hosts",
+    "sh <<'EOF'\nsudo make install\nEOF",
+    'sh <<"EOF"\nsudo make install\nEOF',
+    String.raw`sh <<\EOF
+sudo make install
+EOF`,
+    "sh <<-'EOF'\n\tsudo make install\n\tEOF",
+    "sh -s <<'EOF'\nsudo make install\nEOF",
+    "bash -s <<'EOF'\nsudo make install\nEOF",
+    `python3 - <<'EOF'\nimport os\nos.system("sudo make install")\nEOF`,
+    `node - <<'EOF'\nrequire("child_process").execSync("sudo make install")\nEOF`,
+    "sh <<< 'sudo make install'",
+    "source /dev/stdin <<'EOF'\nsudo make install\nEOF",
+    "sh << EOF\nsudo make install\nEOF",
+    "bash /dev/stdin <<'EOF'\nsudo make install\nEOF",
+    "python3 <<< 'import os; os.system(\"sudo make install\")'",
+    "sh 0<<'EOF'\nsudo make install\nEOF",
+    "sh 0<<<'sudo make install'",
+    "sh<<'EOF'\nsudo make install\nEOF",
+    "sh<<<'sudo make install'",
+    "timeout 5 sh <<'EOF'\nsudo make install\nEOF",
+    "env sh <<'EOF'\nsudo make install\nEOF",
+    "exec 3<<'EOF'\nsudo make install\nEOF\nsh <&3",
+    "sh <(cat <<'EOF'\nsudo make install\nEOF\n)",
+    `bash <(printf '%s' 'sudo make install')`,
+    "cat <<'EOF' > .payload.sh\nsudo make install\nEOF\nsh .payload.sh",
+    "cat <<'EOF' > .payload.sh\nsudo make install\nEOF\nsh -s < .payload.sh",
+    "cat <<'EOF' > .payload.sh\nsudo make install\nEOF\nsh -s .payload.sh < .payload.sh",
+    "exec 3<<A 4<<B\necho safe\nA\nsudo make install\nB\nsh <&4",
+    "cat <<EOF >> .payload.sh\nsudo make install\nEOF\nsh .payload.sh",
+    "cat <<EOF 1> .payload.sh\nsudo make install\nEOF\nsh .payload.sh",
+    "exec 3<<EOF\nsudo make install\nEOF\nbusybox sh <&3",
+    "cat <<EOF > .payload.sh\nsudo make install\nEOF\nbusybox sh .payload.sh",
+    "script -q /dev/null -c 'sudo make install'",
+    "script -q /dev/null sudo make install",
+    "script --command 'sudo make install' /dev/null",
+    "script --command='sudo make install' /dev/null",
+    "setsid sudo make install",
+    "stdbuf -o0 sudo make install",
+    "watch -n1 sudo make install",
+    "doas make install",
+    "f() { sudo make install; }; f",
+    "function f { sudo make install; }; f",
+    `ruby -e 'system "sudo make install"'`,
+    `perl -e 'system "sudo make install"'`,
+    `perl -e 'exec "sudo make install"'`,
+    `php -r 'shell_exec("sudo make install");'`,
+    `php -r 'passthru("sudo make install");'`,
+    `python3 -c 'import os; os.system("su" + "do make install")'`,
+    "ssh host sudo make install",
+    "ssh user@host 'sudo make install'",
+    "mosh host sudo make install",
+    `bash < <(printf '%s\n' 'sudo make install')`,
+    `sh -s < <(printf '%s\n' 'sudo make install')`,
+    `bash -s <(printf 'echo safe') < <(printf 'sudo make install')`,
+    "bash < <(cat <<'EOF'\nsudo make install\nEOF\n)",
+    `source <(printf '%s\n' 'sudo make install')`,
+    `. <(printf '%s\n' 'sudo make install')`,
+    "exec 3<<'EOF'\nsudo make install\nEOF\nexec 4<&3\nsh <&4",
+    "tee .payload.sh <<'EOF'\nsudo make install\nEOF\nsh .payload.sh",
+    `cat <<'EOF' > .payload.py\nimport os; os.system("sudo make install")\nEOF\npython3 .payload.py`,
+    `cat <<'EOF' > .payload.js\nrequire("child_process").execSync("sudo make install")\nEOF\nnode .payload.js`,
+    String.raw`python3 -c 'import os; os.system("\x73\x75\x64\x6f make install")'`,
+    String.raw`node -e 'require("child_process").execSync("\x73\x75\x64\x6f make install")'`,
+    `python3 <(printf 'import os; os.system("sudo make install")\n')`,
+    `python3 < <(printf 'import os; os.system("sudo make install")\n')`,
+    `node <(printf 'require("child_process").execSync("sudo make install")\n')`,
+    `node < <(printf 'require("child_process").execSync("sudo make install")\n')`,
+    `python3 -W ignore <(printf 'import os; os.system("sudo make install")\n')`,
+    `node -r fs <(printf 'require("child_process").execSync("sudo make install")\n')`,
+    `bash -O extglob <(printf '%s\n' 'sudo make install')`,
+    `python3 -W ignore <<'EOF'\nimport os; os.system("sudo make install")\nEOF`,
+    `node -r fs <<'EOF'\nrequire("child_process").execSync("sudo make install")\nEOF`,
+    "bash -O extglob <<'EOF'\nsudo make install\nEOF",
+    "exec 3<<<'sudo make install'\nsh <&3",
+    `exec 3<<<'import os; os.system("sudo make install")'\npython3 <&3`,
+    "exec 3<<< 'sudo make install'\nsh <&3",
+    "exec 3<<<'s''udo make install'\nsh <&3",
+    "exec <<<'sudo make install'\nsh",
+    "exec 0<<<'sudo make install'\nsh",
+    "exec 3<<<'sudo make install'\nexec 4<<'EOF'\necho safe\nEOF\nsh <&3\nsh <&4",
+    "exec -a renamed 3<<<'sudo make install'\nsh <&3",
+    "exec -c 3<<<'sudo make install'\nsh <&3",
+    "exec 3<<<'sudo make install' 4< <(printf safe)\nsh <&3",
+    "exec -ac 3<<<'sudo make install'\nsh <&3",
+    "exec -afoo 3<<<'sudo make install'\nsh <&3",
+    "exec -acl 3<<<'sudo make install'\nsh <&3",
+    "exec -ca 3<<<'sudo make install'\nsh <&3",
+    "exec -la 3<<<'sudo make install'\nsh <&3",
+    "exec 3<<<'sudo make install' $(true)\nsh <&3",
+    "exec 3<<<'sudo make install' $EMPTY\nsh <&3",
+    "shopt -s execfail\nexec ./definitely-missing 3<<<'sudo make install'\nsh <&3",
+    "shopt -s execfail\nexec ./definitely-missing <<<'sudo make install'\nsh",
+    "shopt -s execfail\nfalse && shopt -u execfail\nexec ./definitely-missing <<<'sudo make install'\nsh",
+    "exec sh <<<'sudo make install'",
+    "exec bash -s <<<'sudo make install'",
+    "exec 0<<<'sudo make install' sh",
+    "exec <<<'sudo make install' sh",
+    "exec 3<<<'sudo make install' sh <&3",
+    `exec 3<<<'import os; os.system("sudo make install")' python3 - <&3`,
+    "exec -ac 3<<<'sudo make install' sh <&3",
+    "exec -ca 3<<<'sudo make install' sh <&3",
+    "exec -c 3<<<'sudo make install' sh <&3",
+    "exec -a renamed 3<<<'sudo make install' sh <&3",
+    String.raw`python3 -c 'import os; os.system("\163\165\144\157 make install")'`,
+    String.raw`python3 -c 'import os; os.system("\U00000073\U00000075\U00000064\U0000006f make install")'`,
+    String.raw`node -e 'require("child_process").execSync("\u{73}\u{75}\u{64}\u{6f} make install")'`,
+    String.raw`python3 -c "import os; os.system(\"\\x73\\x75\\x64\\x6f make install\")"`,
+    "cat <<'EOF' > .payload.sh\nsudo make install\nEOF\nsh 0< .payload.sh",
+    "cat <<'EOF' > .payload.sh\nsudo make install\nEOF\nbash -s 0<.payload.sh",
+    `node -r <(printf 'require("child_process").execSync("sudo make install")\n')`,
+    `node --require=<(printf 'require("child_process").execSync("sudo make install")\n')`,
+    `node -r <(printf 'require("child_process").execSync("sudo make install")\n') -e 'console.log("safe")'`,
+    `python3 <(printf 'import os; os.system("sudo make install")\n') -c 'print("safe")'`,
+    `node <(printf 'require("child_process").execSync("sudo make install")\n') -e 'console.log("safe")'`,
+    `bash -i --rcfile <(printf '%s\n' 'sudo make install')`,
+    `bash -i --init-file=<(printf '%s\n' 'sudo make install')`,
+    `bash -i --rcfile <(printf '%s\n' 'sudo make install') -c 'printf safe'`,
+    `python3 - < <(printf 'import os; os.system("sudo make install")\n')`,
+    "eval 'shopt -s execfail'\nexec ./definitely-missing <<<'sudo make install'\nsh",
+    "eval 'shopt -s execfail; :'\nexec ./definitely-missing <<<'sudo make install'\nsh",
+    "eval \"shopt -s execfail; true\"\nexec ./definitely-missing <<<'sudo make install'\nsh",
+    "shopt -s execfail\nif false; then shopt -u execfail; fi\nexec ./definitely-missing 3<<<'sudo make install'\nsh <&3",
+    "shopt -s execfail\n( shopt -u execfail )\nexec ./definitely-missing 3<<<'sudo make install'\nsh <&3",
+    "source <(printf 'shopt -s execfail\\n')\nexec ./definitely-missing <<<'sudo make install'\nsh",
+    "cat <<'EOF' > .payload.sh\nsudo make install\nEOF\nexec 3< .payload.sh\nsh <&3",
+    "cat <<'EOF' > .payload.sh\nsudo make install\nEOF\nexec 0<.payload.sh\nsh",
+    "cat <<'EOF' > .payload.sh\nsudo make install\nEOF\nshopt -s execfail\nexec ./definitely-missing 3< .payload.sh\nsh <&3",
+    String.raw`python3 -c 'import os; os.system("\N{LATIN SMALL LETTER S}\N{LATIN SMALL LETTER U}\N{LATIN SMALL LETTER D}\N{LATIN SMALL LETTER O} make install")'`,
+    "trap 'shopt -s execfail' DEBUG\nexec ./definitely-missing 3<<<'sudo make install'\nsh <&3",
+    "f() { shopt -s execfail; }\nf\nexec ./definitely-missing 3<<<'sudo make install'\nsh <&3",
+    `bash -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `BASHOPTS=execfail bash -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `env BASHOPTS=execfail bash -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `env -- BASHOPTS=execfail bash -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `env -S 'BASHOPTS=execfail bash -c' 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `command bash -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `command -p bash -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `nice bash -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `timeout 5 bash -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `nohup bash -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `setsid bash -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `stdbuf -o0 bash -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `exec bash -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `timeout 5 nice bash -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `bash -i -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `sh -i -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `script /dev/null bash -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `exec < /dev/null bash -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `exec 3<<<'x' bash -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `busybox nice bash -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `python3 - script.py <<'EOF'\nimport os; os.system("sudo make install")\nEOF`,
+    `exec 3<<<'import os; os.system("sudo make install")'\npython3 - script.py <&3`,
+    "exec 3<<<'sudo make install'\nsh 0<&3",
+    "exec 3<<<'sudo make install'\nexec 4<&3-\nsh <&4",
+    "exec 3<<<'sudo make install' 4<&3\nsh <&4",
+    "exec 03<<<'sudo make install'\nsh <&3",
+    "exec 3<<<'sudo make install'\nbash -c 'sh <&3'",
+    "cat <<'EOF' > .payload.sh\nsudo make install\nEOF\nsh < .payload.sh &>/dev/null",
+    `bash < <(printf '%s\n' 'sudo make install') &>/dev/null`,
+    String.raw`python3 -c "import os; os.system(\"\N{LATIN SMALL LETTER S}\N{LATIN SMALL LETTER U}\N{LATIN SMALL LETTER D}\N{LATIN SMALL LETTER O} make install\")"`,
+  ])("sudo across a shell reparse boundary is destructive: %s", async (command) => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("bash", { command })
+
+    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
+    expect(destructive).toBeDefined()
+    expect(destructive.nonBypassable).toBe(true)
+  })
+
+  test.each([
+    "command -v sudo",
+    "command -V sudo",
+    `python3 -c 'print("sudo")'`,
+    "su -c 'echo sudo'",
+    "runuser -u root -- echo sudo",
+    "pkexec echo sudo",
+    "sg wheel -c 'echo sudo'",
+    "docker exec c echo sudo",
+    "podman exec c echo sudo",
+    "docker run image echo sudo",
+    "podman create image echo sudo",
+    "f() { echo sudo; }; f",
+    "function f { printf '%s' sudo; }; f",
+    "echo done # note; function f { sudo make install; }; f",
+    "docker run --entrypoint echo image sudo",
+    "podman create --entrypoint=printf image sudo",
+    "docker run --entrypoint sudo --entrypoint echo image make install",
+    "podman create --entrypoint=sudo --entrypoint=printf image make install",
+    "docker run --entrypoint sudo --entrypoint '' image make install",
+    `python3 -c 'print("run(\\"sudo make install\\")")'`,
+    `node -e 'console.log("spawn(\\"sudo\\")")'`,
+    `python3 -c 'print("check_output(\\"sudo make install\\")")'`,
+    `python3 -c 'import subprocess; subprocess.check_output("echo sudo")'`,
+    "sh 0 <<'EOF'\nsudo make install\nEOF",
+    "exec 3<<'EOF'\nsudo make install\nEOF\ncat <&3",
+    `sh <(printf '%s' 'echo sudo')`,
+    "cat <<'EOF' > .payload.txt\nsudo make install\nEOF\ncat .payload.txt",
+    "cat <<'EOF' > .payload.sh\nsudo make install\nEOF\nbash -s .payload.sh",
+    String.raw`echo su\
+do make install`,
+    "exec 3<<A 4<<B\nsudo make install\nA\necho safe\nB\nsh <&4",
+    "cat <<A <<B > .payload.sh\nsudo make install\nA\necho safe\nB\nsh .payload.sh",
+    "nsenter -t 1 -m echo sudo",
+    "cat <<EOF\n# << INNER\nsudo make install\nEOF",
+    "echo $((1))# <<EOF\nsudo make install\nEOF",
+    "echo $(printf x)# <<EOF\nsudo make install\nEOF",
+    "sh -c 'echo $(pwd)'",
+    "eval 'echo $(date)'",
+    "env -S \"sh -c 'echo $(pwd)'\"",
+    "trap 'echo $(date)' EXIT",
+    "su -c 'echo $(date)'",
+    "sg wheel -c 'echo $(date)'",
+    "echo done # note $(sudo make install)",
+    "echo done # note `sudo make install`",
+    "exec 3<<<'sudo make install'",
+    "exec 3 <<< 'sudo make install'\nsh <&3",
+    "exec 3<<<'sudo make install'\ncat <&3",
+    `python3 -c 'print(1)' <(printf 'sudo make install')`,
+    `python3 script.py <(printf 'sudo make install')`,
+    `python3 - <(printf 'sudo make install')`,
+    `node -e 'console.log(1)' <(printf 'sudo make install')`,
+    `python3 -- -W <(printf 'sudo make install')`,
+    `bash -s <(printf 'sudo make install')`,
+    String.raw`python3 -c 'import os; os.system("\\x73\\x75\\x64\\x6f make install")'`,
+    "exec echo '3<<<sudo make install'\nsh <&3",
+    "shopt -s execfail\nshopt -u execfail\nexec ./definitely-missing <<<'sudo make install'\nsh",
+    "shopt -s execfail\nif true; then shopt -u execfail; fi\nexec ./definitely-missing 3<<<'sudo make install'\nsh <&3",
+    "set -o execfail\nexec ./definitely-missing <<<'sudo make install'\nsh",
+    "exec ./definitely-missing 3<<<'sudo make install'\nsh <&3",
+    "cat <<'EOF' > .payload.sh\nsudo make install\nEOF\nexec ./definitely-missing 3< .payload.sh\nsh <&3",
+    `bash --rcfile <(printf '%s\n' 'sudo make install') /dev/null`,
+    `bash --rcfile <(printf '%s\n' 'sudo make install') -c 'printf safe'`,
+    `command BASHOPTS=execfail bash -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `nice BASHOPTS=execfail bash -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `command -v bash -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `command -V bash -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `command -pv bash -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `bash -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3' -O execfail`,
+    `bash -- -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+    `builtin bash -O execfail -c 'exec ./definitely-missing 3<<<"sudo make install"; sh <&3'`,
+  ])("sudo lookup or inert interpreter text is not destructive: %s", async (command) => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("bash", { command })
+
+    expect(result.capabilities.some((capability: any) => capability.class === "shell_destructive")).toBe(false)
   })
 
   test("dd if=/dev/zero of=foo is destructive", async () => {
@@ -730,6 +1399,39 @@ describe("EnforcementGate network classification", () => {
 
     const inspire = gate.classify("inspire_submit", {}).capabilities
     expect(inspire).toContainEqual({ class: "network_request", nonBypassable: true })
+  })
+
+  test("github_deliver_fix classifies as platform control plus network request", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const caps = gate.classify("github_deliver_fix", {
+      branch: "synergy/fix/1-x",
+      title: "Fix",
+      body: "Fixed",
+    }).capabilities
+    expect(caps).toContainEqual({ class: "platform_control", nonBypassable: true })
+    expect(caps).toContainEqual({ class: "network_request", nonBypassable: true })
+
+    // The external write must be visible to the gate: guarded asks before the
+    // platform write; autonomous allows it (platform_control is in
+    // AUTONOMOUS_HIGH_ALLOWED, so the unattended GitHub channel agent can
+    // still deliver fixes) while explicit policy denies still apply.
+    const guarded = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "guarded",
+    })
+    expect(guarded.evaluate("github_deliver_fix", {}).decision).toBe("ask")
+
+    const autonomous = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    expect(autonomous.evaluate("github_deliver_fix", {}).decision).toBe("allow")
   })
 
   //  test("agora collaboration tools classify as external network and platform control", async () => {

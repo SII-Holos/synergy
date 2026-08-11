@@ -18,6 +18,7 @@ export type EnsureInitParams = {
   initialized: () => boolean
   initializedForSet: string | undefined
   sendShortcut: () => SendShortcut
+  colorScheme: () => SettingsState["general"]["colorScheme"]
   setSettings: SetStoreFunction<SettingsState>
   setInitialized: (value: boolean) => void
   originalMcpsRef: { current: Record<string, Record<string, unknown>> }
@@ -31,10 +32,12 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   if (params.initialized() && params.initializedForSet === setName) return undefined
 
   params.setSettings("general", {
+    colorScheme: params.colorScheme(),
     snapshot: cfg.snapshot ?? UI_DEFAULTS.snapshot,
     username: cfg.username ?? UI_DEFAULTS.username,
     theme: cfg.theme ?? UI_DEFAULTS.theme,
     locale: cfg.locale ?? UI_DEFAULTS.locale,
+    activityDisplay: cfg.activityDisplay ?? UI_DEFAULTS.activityDisplay,
     mutedToasts: cfg.toast?.muted ?? [],
     toastDurations: formatToastDurations(cfg.toast?.durationOverrides),
     sendShortcut: params.sendShortcut(),

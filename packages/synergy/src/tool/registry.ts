@@ -9,6 +9,7 @@ import { ReadTool } from "./read"
 import { ViewFileTool } from "./view-file"
 import { ViewImageTool } from "./view-image"
 import { ReviseFileTool } from "./revise-file"
+import { ResolveConflictsTool } from "./resolve-conflicts"
 import { SaveFileTool } from "./save-file"
 import { ScanFilesTool } from "./scan-files"
 import { ParseCodeTool } from "./parse-code"
@@ -42,6 +43,11 @@ import { SessionReadTool } from "./session-read"
 import { SessionSearchTool } from "./session-search"
 import { SessionSendTool } from "./session-send"
 import { SessionControlTool } from "./session-control"
+import { BossSpawnTool } from "./boss-spawn"
+import { BossAssignTool } from "./boss-assign"
+import { BossReportTool } from "./boss-report"
+import { BossStatusTool } from "./boss-status"
+import { BossCancelTool } from "./boss-cancel"
 import { ScopeListTool } from "./scope-list"
 import { AgendaScheduleTool } from "./agenda-schedule"
 import { AgendaWatchTool } from "./agenda-watch"
@@ -341,6 +347,7 @@ export namespace ToolRegistry {
       FileSearchTool,
       ParseCodeTool,
       ReviseFileTool,
+      ResolveConflictsTool,
       SaveFileTool,
       GlobTool,
       GrepTool,
@@ -385,6 +392,11 @@ export namespace ToolRegistry {
       PathwayReadTool,
       PathwayWriteTool,
       LatticeSubmitTool,
+      BossSpawnTool,
+      BossAssignTool,
+      BossReportTool,
+      BossStatusTool,
+      BossCancelTool,
       SessionListTool,
       SessionReadTool,
       SessionSearchTool,

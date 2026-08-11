@@ -61,6 +61,8 @@ export namespace SessionModePolicy {
   ])
 
   const LATTICE_PARENT_TOOLS = new Set(["pathway_read", "pathway_write", "lattice_submit"])
+  const BOSS_TOOLS = new Set(["boss_spawn", "boss_assign", "boss_report", "boss_status", "boss_cancel"])
+  const BOSS_WORKER_ONLY_TOOLS = new Set(["boss_report"])
 
   export function isPlan(session?: Pick<SessionInfo, "workflow">) {
     return session?.workflow?.kind === "plan"
@@ -68,6 +70,33 @@ export namespace SessionModePolicy {
 
   export function isLattice(session?: Pick<SessionInfo, "workflow">) {
     return session?.workflow?.kind === "lattice"
+  }
+
+  export function isBoss(session?: Pick<SessionInfo, "workflow">) {
+    return session?.workflow?.kind === "boss"
+  }
+
+  function bossVisibility(
+    toolName: string,
+    session?: Pick<SessionInfo, "workflow" | "blueprint">,
+  ): ToolDiagnostic | undefined {
+    if (!BOSS_TOOLS.has(toolName)) return undefined
+    const workflow = session?.workflow
+    if (workflow?.kind !== "boss") {
+      return {
+        code: "tool_unavailable",
+        toolName,
+        message: `The "${toolName}" tool is only available while this session is in Boss Mode.`,
+      }
+    }
+    if (BOSS_WORKER_ONLY_TOOLS.has(toolName) && workflow.role !== "worker") {
+      return {
+        code: "tool_unavailable",
+        toolName,
+        message: `The "${toolName}" tool is only available to Boss Mode workers.`,
+      }
+    }
+    return undefined
   }
 
   export function visibility(input: {
@@ -83,8 +112,22 @@ export namespace SessionModePolicy {
       }
     }
 
+    if (
+      input.toolName === "github_deliver_fix" &&
+      (input.session?.endpoint?.kind !== "channel" || input.session?.endpoint?.channel?.type !== "github")
+    ) {
+      return {
+        code: "tool_unavailable",
+        toolName: input.toolName,
+        message: `The "${input.toolName}" tool is only available in GitHub Channel sessions.`,
+        metadata: { requiredEndpoint: "github" },
+      }
+    }
+
     const latticeDiagnostic = latticeVisibility(input.toolName, input.session)
     if (latticeDiagnostic) return latticeDiagnostic
+    const bossDiagnostic = bossVisibility(input.toolName, input.session)
+    if (bossDiagnostic) return bossDiagnostic
     if (!isPlan(input.session)) return undefined
     if (PLAN_EXPLICIT_ALLOW.has(input.toolName)) return undefined
 

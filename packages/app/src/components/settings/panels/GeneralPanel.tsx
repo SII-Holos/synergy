@@ -4,10 +4,9 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
-import { setToastConfig, showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { useProductUpdate } from "@/context/product-update"
-import { useLocale, type LocalePreference } from "@/context/locale"
+import type { LocalePreference } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import type { DesktopUpdateMode } from "@/context/platform"
 import { SettingRow } from "../components/SettingRow"
@@ -26,11 +25,11 @@ import {
   TOAST_DURATION_STOPS,
   TOAST_TYPES,
   snapToastDuration,
+  type ActivityDisplay,
   type GeneralStore,
   type ToastType,
 } from "../types"
-import { nextMutedToasts, toastConfigFromPreferences } from "../toast-preferences"
-import { applyLocalePreference } from "./locale-preference-change"
+import { nextMutedToasts } from "../toast-preferences"
 import { LANGUAGE_SELF_NAMES } from "./language-self-names"
 import { useFontPreference, type FontKind } from "@/context/font-preference"
 
@@ -62,23 +61,17 @@ const copy = {
     message: "Choose the language used by Synergy controls and accessibility labels",
   },
   languageSystem: { id: "settings.general.language.system", message: "Follow System" },
-  languageFailedTitle: { id: "settings.general.language.failed.title", message: "Language change failed" },
-  languageFailedDescription: {
-    id: "settings.general.language.failed.description",
-    message: "The selected language catalog could not be loaded. The previous language is still active.",
-  },
   fontTitle: { id: "settings.general.font.title", message: "Interface font" },
   fontDescription: {
     id: "settings.general.font.description",
-    message: "Check loads the fonts installed on this device, then pick one and Apply it.",
+    message: "Check loads the fonts installed on this device. Save Changes applies your selection.",
   },
   fontSelectPlaceholder: { id: "settings.general.font.select.placeholder", message: "Select a font" },
   fontCheck: { id: "settings.general.font.check", message: "Check" },
   fontChecking: { id: "settings.general.font.checking", message: "Loading..." },
-  fontApply: { id: "settings.general.font.apply", message: "Apply" },
   fontReset: { id: "settings.general.font.reset", message: "Use default" },
   fontApplied: { id: "settings.general.font.applied", message: "Applied" },
-  fontReady: { id: "settings.general.font.ready", message: "Select a font, then Apply" },
+  fontReady: { id: "settings.general.font.ready", message: "Unsaved selection" },
   fontUnsupported: {
     id: "settings.general.font.unsupported",
     message: "This browser cannot scan local fonts; using default",
@@ -95,6 +88,14 @@ const copy = {
   },
   behaviorTitle: { id: "settings.general.behavior.title", message: "Behavior" },
   snapshotsTitle: { id: "settings.general.snapshots.title", message: "File snapshots" },
+  activityDisplayTitle: { id: "settings.general.activityDisplay.title", message: "Activity display" },
+  activityDisplayDescription: {
+    id: "settings.general.activityDisplay.description",
+    message: "Choose how much activity detail Synergy shows in the interface",
+  },
+  activityFull: { id: "settings.general.activityDisplay.full", message: "Full" },
+  activityBalanced: { id: "settings.general.activityDisplay.balanced", message: "Balanced" },
+  activityMinimal: { id: "settings.general.activityDisplay.minimal", message: "Minimal" },
   snapshotsDescription: {
     id: "settings.general.snapshots.description",
     message: "Keep restore points when Synergy edits files",
@@ -171,13 +172,14 @@ function secondsLabel(value: number) {
 
 export function GeneralPanel(props: {
   general: GeneralStore
+  desktopUpdateMode?: DesktopUpdateMode
   onGeneralChange: <K extends keyof GeneralStore>(key: K, value: GeneralStore[K]) => void
+  onDesktopUpdateModeChange: (mode: DesktopUpdateMode) => void
   popoverLayer?: HTMLElement
 }) {
   const theme = useTheme()
   const selectedThemeId = () => props.general.theme || "synergy"
   const { _ } = useLingui()
-  const locale = useLocale()
   const colorSchemeOptions = () => [
     {
       value: "light" as const,
@@ -200,38 +202,18 @@ export function GeneralPanel(props: {
   ]
 
   function setThemeId(themeId: string) {
-    const next = themeId === "synergy" ? "" : themeId
-    props.onGeneralChange("theme", next)
-    theme.setThemeId(themeId)
-  }
-
-  async function setLocalePreference(preference: LocalePreference) {
-    const result = await applyLocalePreference({
-      preference,
-      controller: locale.controller,
-      onChange: (next) => props.onGeneralChange("locale", next),
-    })
-    if (result.status !== "failed") return
-    showToast({
-      type: "error",
-      title: _(copy.languageFailedTitle),
-      description: _(copy.languageFailedDescription),
-    })
+    props.onGeneralChange("theme", themeId === "synergy" ? "" : themeId)
   }
 
   function toggleMutedToast(type: ToastType, mutedEnabled: boolean) {
-    const next = nextMutedToasts(props.general.mutedToasts, type, mutedEnabled)
-    props.onGeneralChange("mutedToasts", next)
-    setToastConfig(toastConfigFromPreferences(next, props.general.toastDurations))
+    props.onGeneralChange("mutedToasts", nextMutedToasts(props.general.mutedToasts, type, mutedEnabled))
   }
 
   function setToastDuration(type: ToastType, value: string) {
-    const next = {
+    props.onGeneralChange("toastDurations", {
       ...props.general.toastDurations,
       [type]: value,
-    }
-    props.onGeneralChange("toastDurations", next)
-    setToastConfig(toastConfigFromPreferences(props.general.mutedToasts, next))
+    })
   }
 
   return (
@@ -256,10 +238,10 @@ export function GeneralPanel(props: {
               <button
                 type="button"
                 role="radio"
-                aria-checked={theme.colorScheme() === option.value}
+                aria-checked={props.general.colorScheme === option.value}
                 class="settings-color-card"
-                classList={{ "settings-color-card-active": theme.colorScheme() === option.value }}
-                onClick={() => theme.setColorScheme(option.value)}
+                classList={{ "settings-color-card-active": props.general.colorScheme === option.value }}
+                onClick={() => props.onGeneralChange("colorScheme", option.value)}
               >
                 <span class="settings-color-icon">
                   <Icon name={getSemanticIcon(option.iconToken)} size="normal" />
@@ -283,7 +265,22 @@ export function GeneralPanel(props: {
                 { value: "en", label: LANGUAGE_SELF_NAMES.en },
                 { value: "zh-CN", label: LANGUAGE_SELF_NAMES["zh-CN"] },
               ]}
-              onChange={(value) => void setLocalePreference(value as LocalePreference)}
+              onChange={(value) => props.onGeneralChange("locale", value as LocalePreference)}
+            />
+          }
+        />
+        <SettingRow
+          title={_(copy.activityDisplayTitle)}
+          description={_(copy.activityDisplayDescription)}
+          trailing={
+            <SegmentPill
+              value={props.general.activityDisplay}
+              options={[
+                { value: "full", label: _(copy.activityFull) },
+                { value: "balanced", label: _(copy.activityBalanced) },
+                { value: "minimal", label: _(copy.activityMinimal) },
+              ]}
+              onChange={(value) => props.onGeneralChange("activityDisplay", value as ActivityDisplay)}
             />
           }
         />
@@ -309,7 +306,7 @@ export function GeneralPanel(props: {
             <Switch checked={props.general.snapshot} onChange={(value) => props.onGeneralChange("snapshot", value)} />
           }
         />
-        <ProductUpdates />
+        <ProductUpdates mode={props.desktopUpdateMode} onModeChange={props.onDesktopUpdateModeChange} />
       </SettingsSection>
 
       <SettingsSection title={_(copy.notificationsTitle)} description={_(copy.notificationsDescription)}>
@@ -341,21 +338,18 @@ function FontPreferenceRow(props: { kind: FontKind; title: string; description: 
   const selectedFamily = () => font.selected(props.kind)
   const appliedFamily = () => font.appliedFamily(props.kind)
   const hasCustomFont = () => Boolean(appliedFamily())
+  const hasFontChoice = () => Boolean(selectedFamily() || appliedFamily())
   const options = () => font.fontList(props.kind).map((family) => ({ value: family, label: family }))
-  // One action button with two phases: Check loads the local font list,
-  // Apply uses the selected family. Loading keeps the same slot disabled.
-  // Check must stay clickable while idle (and for retry after
-  // unsupported/denied); only loading and ready-without-selection disable it.
-  const actionDisabled = () => loading() || (ready() && !selectedFamily().trim())
-  const actionLabel = () => (loading() ? _(copy.fontChecking) : ready() ? _(copy.fontApply) : _(copy.fontCheck))
+  const actionDisabled = () => loading()
+  const actionLabel = () => (loading() ? _(copy.fontChecking) : _(copy.fontCheck))
 
   function statusLabel() {
     const phaseValue = phase()
     if (phaseValue === "loading") return _(copy.fontChecking)
     if (phaseValue === "unsupported") return _(copy.fontUnsupported)
     if (phaseValue === "denied") return _(copy.fontDenied)
+    if (font.dirty(props.kind)) return _(copy.fontReady)
     if (hasCustomFont()) return _(copy.fontApplied)
-    if (phaseValue === "ready") return _(copy.fontReady)
     return _(copy.fontDefault)
   }
 
@@ -370,7 +364,7 @@ function FontPreferenceRow(props: { kind: FontKind; title: string; description: 
             type="button"
             variant="ghost"
             size="small"
-            disabled={!hasCustomFont()}
+            disabled={!hasFontChoice()}
             onClick={() => font.reset(props.kind)}
           >
             {_(copy.fontReset)}
@@ -384,28 +378,30 @@ function FontPreferenceRow(props: { kind: FontKind; title: string; description: 
             disabled={!ready()}
             onChange={(value) => font.select(props.kind, value)}
           />
-          <Button
-            type="button"
-            variant="secondary"
-            size="small"
-            disabled={actionDisabled()}
-            onClick={() => void (ready() ? font.apply(props.kind) : font.check(props.kind))}
-          >
-            {actionLabel()}
-          </Button>
+          <Show when={!ready()}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="small"
+              disabled={actionDisabled()}
+              onClick={() => void font.check(props.kind)}
+            >
+              {actionLabel()}
+            </Button>
+          </Show>
         </div>
       }
     />
   )
 }
 
-function ProductUpdates() {
+function ProductUpdates(props: { mode?: DesktopUpdateMode; onModeChange: (mode: DesktopUpdateMode) => void }) {
   const update = useProductUpdate()
   const { _, i18n } = useLingui()
   const status = update.desktopStatus
   const serverStatus = update.serverStatus
   const isDesktop = () => update.surface === "desktop"
-  const mode = () => status()?.mode ?? "auto"
+  const mode = () => props.mode ?? status()?.mode ?? "auto"
   const phase = () => status()?.phase ?? "idle"
   const serverActionState = () => serverUpdateActionState(serverStatus())
   const busy = () => Boolean(update.busy())
@@ -450,7 +446,7 @@ function ProductUpdates() {
               { value: "manual", label: _(copy.modeManual) },
               { value: "none", label: _(copy.modeOff) },
             ]}
-            onChange={(value) => void update.setDesktopMode(value as DesktopUpdateMode)}
+            onChange={(value) => props.onModeChange(value as DesktopUpdateMode)}
           />
         </Show>
       </div>

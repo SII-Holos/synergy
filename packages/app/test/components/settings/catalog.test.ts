@@ -2,11 +2,9 @@ import { describe, expect, test } from "bun:test"
 import {
   BUILTIN_SETTINGS_IDS,
   BUILTIN_SETTINGS_SECTIONS,
-  FIELD_SAVE_STRATEGY,
   SETTINGS_GROUP_ORDER,
   settingsGroupOrder,
 } from "../../../src/components/settings/catalog"
-import { MODEL_ROLES } from "../../../src/components/settings/types"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 const canonicalDomains = [
@@ -67,8 +65,6 @@ describe("settings catalog", () => {
     expect(codeChecks.rowLabels).toContain("Diagnostic Scope")
     expect(codeChecks.domainIds).toEqual(["runtime"])
     expect(codeChecks.visibility).not.toBe("developer")
-    expect(FIELD_SAVE_STRATEGY.lspWriteDiagnostics).toBe("background")
-    expect(FIELD_SAVE_STRATEGY.lspDiagnostics).toBe("background")
   })
   test("places Personalize in the Personal group with custom instruction search terms", () => {
     const personalize = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "personalize")
@@ -87,18 +83,10 @@ describe("settings catalog", () => {
     }
   })
 
-  test("field save strategies are metadata-only and cover editable fields", () => {
-    expect(FIELD_SAVE_STRATEGY.snapshot).toBe("auto")
-    expect(FIELD_SAVE_STRATEGY.locale).toBe("background")
-    expect(FIELD_SAVE_STRATEGY.controlProfile).toBe("explicit")
-    expect(FIELD_SAVE_STRATEGY.experimental).toBe("background")
-    expect(FIELD_SAVE_STRATEGY.email).toBe("explicit")
-    expect(FIELD_SAVE_STRATEGY.default_agent).toBe("explicit")
-    expect(FIELD_SAVE_STRATEGY.cortex).toBe("background")
-    expect(FIELD_SAVE_STRATEGY.execution).toBe("background")
-    for (const role of MODEL_ROLES) {
-      expect(FIELD_SAVE_STRATEGY[role.key]).toBe("explicit")
-    }
+  test("keeps activity display metadata discoverable", () => {
+    const general = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "general")!
+    expect(general.rowLabels).toContain("Activity display")
+    expect(general.keywords).toContain("activity")
   })
 
   test("unknown groups sort after built-ins for plugin compatibility", () => {

@@ -23,6 +23,38 @@ test("loads config with defaults when no files exist", async () => {
     },
   })
 })
+test("defaults activity display to full without materializing a preference", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const config = await Config.current()
+      expect(config.activityDisplay).toBe("full")
+      expect((await Config.globalRaw()).activityDisplay).toBeUndefined()
+    },
+  })
+})
+
+test("loads explicit activity display preferences", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          $schema: "file:///test/config.schema.json",
+          activityDisplay: "minimal",
+        }),
+      )
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const config = await Config.current()
+      expect(config.activityDisplay).toBe("minimal")
+    },
+  })
+})
 
 test("serializes domain mutations with ordinary domain updates", async () => {
   const before = await Config.domainGet("providers")

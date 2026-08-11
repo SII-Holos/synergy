@@ -12,7 +12,6 @@ import {
   type JSX,
 } from "solid-js"
 import { Dynamic } from "solid-js/web"
-import { createStore, reconcile } from "solid-js/store"
 import {
   AssistantMessage,
   AttachmentPart,
@@ -21,9 +20,6 @@ import {
   ReasoningPart,
   TextPart,
   ToolPart,
-  ToolStateCompleted,
-  ToolStateError,
-  ToolStateGenerating,
   UserMessage,
   Todo,
 } from "@ericsanchezok/synergy-sdk"
@@ -32,7 +28,6 @@ import { useResourceOpen } from "../context/resource-open"
 import { useDiffComponent } from "../context/diff"
 import { useCodeComponent } from "../context/code"
 import { BasicTool } from "./basic-tool"
-import { SmartTool } from "./basic-tool"
 import { Card } from "./card"
 import { createCopyController } from "./clipboard"
 import { Icon } from "./icon"
@@ -41,15 +36,14 @@ import { Checkbox } from "./checkbox"
 import { DagGraph } from "./dag-graph"
 import { DiffChanges } from "./diff-changes"
 import { Markdown } from "./markdown"
-import { AttachmentGallery, type AttachmentFile } from "./attachment-card"
-import { ErrorCard } from "./error-card"
+import { AttachmentGallery } from "./attachment-card"
 import { getDirectory as _getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
-import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
-import { createAutoScroll, createAnimatedNumber } from "../hooks"
+import { createAutoScroll } from "../hooks"
 import { getApprovalAudit } from "../utils/approval-audit"
 import { getSemanticIcon } from "./semantic-icon"
 import { isToolCardHidden } from "./tool-result-presentation"
+import { ToolResultBody } from "./tool-result-body"
 import { hasVisibleUserMessageContent, shouldCollapseUserMessage, visibleUserMessageText } from "./user-message-utils"
 import { CompactionCard } from "./compaction-card"
 import { getAnysearchToolInfo, isAnysearchToolName } from "./tool/anysearch-info"
@@ -133,46 +127,11 @@ export type PartComponent = Component<MessagePartProps>
 
 export const PART_MAPPING: Record<string, PartComponent | undefined> = {}
 
-const TEXT_RENDER_THROTTLE_MS = 100
-
 function same<T>(a: readonly T[] | undefined, b: readonly T[] | undefined) {
   if (a === b) return true
   if (!a || !b) return false
   if (a.length !== b.length) return false
   return a.every((x, i) => x === b[i])
-}
-
-function createThrottledValue(getValue: () => string) {
-  const [value, setValue] = createSignal(getValue())
-  let timeout: ReturnType<typeof setTimeout> | undefined
-  let last = 0
-
-  createEffect(() => {
-    const next = getValue()
-    const now = Date.now()
-    const remaining = TEXT_RENDER_THROTTLE_MS - (now - last)
-    if (remaining <= 0) {
-      if (timeout) {
-        clearTimeout(timeout)
-        timeout = undefined
-      }
-      last = now
-      setValue(next)
-      return
-    }
-    if (timeout) clearTimeout(timeout)
-    timeout = setTimeout(() => {
-      last = Date.now()
-      setValue(next)
-      timeout = undefined
-    }, remaining)
-  })
-
-  onCleanup(() => {
-    if (timeout) clearTimeout(timeout)
-  })
-
-  return value
 }
 
 function relativizeProjectPaths(text: string, directory?: string) {
@@ -648,6 +607,14 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "file-pen",
         title: TOOL_TITLE_DESC["revise_file"],
+        subtitle: path ? getDirectory(path) + getFilename(path) : undefined,
+      }
+    }
+    case "resolve_conflicts": {
+      const path = metadata.path || metadata.filepath || input.filePath
+      return {
+        icon: "file-pen",
+        title: TOOL_TITLE_DESC["resolve_conflicts"],
         subtitle: path ? getDirectory(path) + getFilename(path) : undefined,
       }
     }
@@ -1992,9 +1959,6 @@ import {
   setExternalFallbackLookup,
   notifyExternalToolLoaded,
   resolveToolRenderer,
-  externalLookup,
-  externalFallbackLookup,
-  externalLoadNotify,
 } from "./tool-registry-lazy"
 export {
   registerTool,
@@ -2004,27 +1968,6 @@ export {
   setExternalFallbackLookup,
   notifyExternalToolLoaded,
   resolveToolRenderer,
-}
-
-function ToolAttachments(props: { attachments: AttachmentPart[] }) {
-  const data = useData()
-  const files = createMemo(() =>
-    props.attachments.map(
-      (f): AttachmentFile => ({
-        id: f.id,
-        sessionID: f.sessionID,
-        messageID: f.messageID,
-        mime: f.mime,
-        filename: f.filename,
-        url: f.url,
-        localPath: f.localPath,
-        presentation: f.presentation,
-        metadata: f.metadata,
-        source: f.source,
-      }),
-    ),
-  )
-  return <AttachmentGallery files={files()} serverUrl={data.serverUrl} />
 }
 
 PART_MAPPING["attachment"] = function AttachmentPartDisplay(props) {
@@ -2064,7 +2007,7 @@ PART_MAPPING["attachment"] = function AttachmentPartDisplay(props) {
 PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const data = useData()
   const part = () => props.part as ToolPart
-  if (isToolCardHidden(part())) return null
+  if (isToolCardHidden(part()) && part().state.status !== "error") return null
 
   const permission = createMemo(() => {
     const next = data.store.permission?.[props.message.sessionID]?.[0]
@@ -2073,57 +2016,9 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
     return next
   })
 
-  const throttledRaw = createThrottledValue(() => {
-    const s = part().state
-    return s.status === "pending" ? s.raw : s.status === "generating" ? s.raw : ""
-  })
-  const [streamInput, setStreamInput] = createStore<Record<string, any>>({})
-  createEffect(() => {
-    const raw = throttledRaw()
-    if (raw) {
-      const parsed = parsePartialJson(raw)
-      setStreamInput(reconcile(parsed))
-    }
-  })
-  const input = () => {
-    const raw = throttledRaw()
-    if (raw) return streamInput
-    return part().state?.input ?? {}
-  }
   const metadata = () => part().state?.metadata ?? {}
   const approval = createMemo(() => metadata().approval as Record<string, any> | undefined)
   const audit = createMemo(() => getApprovalAudit(approval()))
-
-  const render = createMemo(() =>
-    resolveToolRenderer(part().tool, ToolRegistry, { externalLookup, externalLoadNotify }),
-  )
-
-  // Smoothly animate charsReceived so tool cards don't jump
-  const charsAnimated = createAnimatedNumber(() => {
-    const s = part().state
-    return s.status === "generating" ? (s as ToolStateGenerating).charsReceived : 0
-  })
-
-  // For unregistered tools (external agents, MCP, etc.), use SmartTool
-  // which classifies by semantic category for appropriate icon/title/subtitle.
-  // When plugin Tier 1 declarative fallback metadata is available, it overrides
-  // the auto-classified icon/title/subtitle.
-  const fallbackRender = (p: any) => (
-    <SmartTool
-      tool={p.tool}
-      input={p.input}
-      title={p.title}
-      output={p.output}
-      status={p.status}
-      charsReceived={p.charsReceived}
-      metadata={p.metadata}
-      time={p.time}
-      hideDetails={p.hideDetails}
-      fallbackMeta={externalFallbackLookup?.(p.tool)}
-    />
-  )
-
-  const component = createMemo(() => render() ?? fallbackRender)
 
   return (
     <div data-component="tool-part-wrapper" data-permission={!!permission()}>
@@ -2145,48 +2040,14 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
         </Tooltip>
       </Show>
       <div data-component="tool-card-area">
-        <Switch>
-          <Match when={part().state.status === "error" && (part().state as ToolStateError).error}>
-            {(error) => (
-              <ErrorCard
-                error={error()}
-                input={(part().state as ToolStateError).input as Record<string, unknown> | undefined}
-              />
-            )}
-          </Match>
-          <Match when={true}>
-            <Dynamic
-              component={component()}
-              input={input()}
-              tool={part().tool}
-              metadata={metadata()}
-              title={part().state.status === "completed" ? (part().state as ToolStateCompleted).title : undefined}
-              // @ts-expect-error — output exists on completed state
-              output={part().state.output}
-              status={part().state.status}
-              // @ts-expect-error — time exists on running/completed/error states
-              time={part().state.time}
-              raw={part().state.status === "generating" ? (part().state as ToolStateGenerating).raw : undefined}
-              charsReceived={charsAnimated()}
-              hideDetails={props.hideDetails}
-              defaultOpen={props.defaultOpen}
-              sessionId={props.message.sessionID}
-              messageId={props.message.id}
-              attachments={
-                part().state.status === "completed" ? (part().state as ToolStateCompleted).attachments : undefined
-              }
-            />
-          </Match>
-        </Switch>
-        <Show
-          when={
-            part().tool !== "attach" &&
-            part().state.status === "completed" &&
-            (part().state as ToolStateCompleted).attachments?.length
-          }
-        >
-          <ToolAttachments attachments={(part().state as ToolStateCompleted).attachments!} />
-        </Show>
+        <ToolResultBody
+          part={part()}
+          serverUrl={data.serverUrl}
+          sessionId={props.message.sessionID}
+          messageId={props.message.id}
+          hideDetails={props.hideDetails}
+          defaultOpen={props.defaultOpen}
+        />
       </div>
     </div>
   )

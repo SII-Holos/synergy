@@ -58,6 +58,7 @@ const builtinIconNames = [
   "corner-down-left",
   "cpu",
   "crosshair",
+  "crown",
   "database",
   "diamond",
   "diff",
