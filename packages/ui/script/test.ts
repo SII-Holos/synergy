@@ -13,12 +13,14 @@ const isolated = new Set([
   "test/components/session-turn-projection.test.ts",
   "test/components/tool/renders/task.test.tsx",
   "test/components/tool/renders/standard.test.tsx",
-  // Chromium-launching tests: run one per process so concurrent browser
-  // instances cannot be closed under CI runner resource pressure.
-  "test/components/tooltip.test.ts",
-  "test/components/provider-icon.test.ts",
   "test/components/tool/renders/file-ops.test.tsx",
 ])
+// Chromium suites launch a browser and a Vite fixture server. bun test runs
+// files in parallel worker processes and reaps dangling children when a
+// worker exits, which can kill a sibling suite's freshly launched browser.
+// Run every Chromium suite serially after the main batch with a raised
+// timeout (same policy as packages/app/script/test.ts).
+const chromiumIsolated = ["test/components/tooltip.test.ts", "test/components/provider-icon.test.ts"]
 const browserOnly = new Set(["test/hooks/use-filtered-list.test.tsx"])
 
 async function collectTests(directory: string): Promise<string[]> {
@@ -34,10 +36,18 @@ async function collectTests(directory: string): Promise<string[]> {
   return nested.flat()
 }
 
-async function run(files: string[], options: { browser?: boolean } = {}) {
+async function run(files: string[], options: { browser?: boolean; timeoutMs?: number } = {}) {
   if (files.length === 0) return
+  const timeout = options.timeoutMs ?? 30000
   const child = Bun.spawn(
-    [process.execPath, "test", "--timeout", "30000", ...(options.browser ? ["--conditions=browser"] : []), ...files],
+    [
+      process.execPath,
+      "test",
+      "--timeout",
+      String(timeout),
+      ...(options.browser ? ["--conditions=browser"] : []),
+      ...files,
+    ],
     {
       cwd: root,
       stdin: "inherit",
@@ -50,8 +60,9 @@ async function run(files: string[], options: { browser?: boolean } = {}) {
 }
 
 const files = (await collectTests("test")).toSorted()
-await run(files.filter((file) => !isolated.has(file) && !browserOnly.has(file)))
+await run(files.filter((file) => !isolated.has(file) && !browserOnly.has(file) && !chromiumIsolated.includes(file)))
 for (const file of files.filter((file) => isolated.has(file))) await run([file])
+for (const file of chromiumIsolated) await run([file], { timeoutMs: 60000 })
 await run(
   files.filter((file) => browserOnly.has(file)),
   { browser: true },
