@@ -123,21 +123,34 @@ export namespace QuestionCardRuntime {
     const runtime = state()
     const registration = runtime.registrations.get(callback.requestId)
     if (!registration) {
-      return runtime.accepted.get(callback.requestId)?.eventId === callback.eventId
-        ? { status: "duplicate" }
-        : { status: "expired" }
+      const status = runtime.accepted.get(callback.requestId)?.eventId === callback.eventId ? "duplicate" : "expired"
+      log.info("question card callback not accepted", { requestId: callback.requestId, status })
+      return { status }
     }
-    if (registration.status !== "active" || !matchesOwner(registration, input, callback)) {
+    if (registration.status !== "active") {
+      log.info("question card callback rejected", { requestId: callback.requestId, reason: "registration not active" })
+      return { status: "rejected" }
+    }
+    if (!matchesOwner(registration, input, callback)) {
+      log.info("question card callback rejected", { requestId: callback.requestId, reason: "owner mismatch" })
       return { status: "rejected" }
     }
 
     const answers = resolveAnswers(registration.questions, callback)
-    if (!answers) return { status: "rejected" }
+    if (!answers) {
+      log.info("question card callback rejected", { requestId: callback.requestId, reason: "invalid answers" })
+      return { status: "rejected" }
+    }
 
     const { Question } = await import("@/question")
     const replied = await Question.tryReply({ requestID: callback.requestId, answers })
     if (!replied) {
       runtime.registrations.delete(callback.requestId)
+      log.info("question card callback not accepted", {
+        requestId: callback.requestId,
+        status: "expired",
+        reason: "question no longer pending",
+      })
       return { status: "expired" }
     }
     runtime.registrations.delete(callback.requestId)

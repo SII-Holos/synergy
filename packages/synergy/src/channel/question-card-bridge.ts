@@ -80,11 +80,12 @@ export namespace QuestionCardBridge {
         await rejectWithoutBinding(request, channel.type)
         return
       }
+      const chatId = normalize(root?.info.metadata?.channelChatId) ?? channel.chatId
 
       await QuestionCardRuntime.deliver({
         provider,
         accountId: channel.accountId,
-        chatId: channel.chatId,
+        chatId,
         chatType: channel.chatType,
         scopeKey: channel.scopeKey,
         replyToMessageId,
