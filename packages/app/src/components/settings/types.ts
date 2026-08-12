@@ -1,6 +1,7 @@
 import type { MessageDescriptor } from "@lingui/core"
 
 import type { LocalePreference } from "@/context/locale/types"
+import type { ColorScheme } from "@ericsanchezok/synergy-ui/theme"
 import type { SendShortcut } from "@/context/input"
 
 export type ProviderModel = {
@@ -275,6 +276,7 @@ export function groupByProvider(list: ProviderModel[]): ProviderGroup[] {
 }
 
 export type GeneralStore = {
+  colorScheme: ColorScheme
   snapshot: boolean
   username: string
   theme: string
@@ -383,9 +385,10 @@ export type SettingsState = {
   roleVariant: Record<string, string>
 }
 
-export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState {
+export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: ColorScheme = "system"): SettingsState {
   return {
     general: {
+      colorScheme,
       snapshot: UI_DEFAULTS.snapshot,
       username: UI_DEFAULTS.username,
       theme: UI_DEFAULTS.theme,

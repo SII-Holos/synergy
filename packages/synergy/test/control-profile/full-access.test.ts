@@ -74,7 +74,7 @@ test("full_access profile — decidePermission returns allow for medium-risk too
     scope: await tmp.scope(),
     fn: async () => {
       const profile = await fullAccessProfile()
-      const mediumRiskTools = ["bash", "edit", "write", "revise_file", "save_file"]
+      const mediumRiskTools = ["bash", "edit", "write", "revise_file", "resolve_conflicts", "save_file"]
       for (const tool of mediumRiskTools) {
         const decision = ApprovalPolicy.decidePermission(profile, tool, {})
         expect(decision.action, `tool: ${tool}`).toBe("allow")

@@ -28,6 +28,10 @@ const viewFileTitleDescriptor = { id: "ui.anchoredTool.viewFile", message: "View
 const scanFilesTitleDescriptor = { id: "ui.anchoredTool.scanFiles", message: "Scan Files" }
 const parseCodeTitleDescriptor = { id: "ui.anchoredTool.parseCode", message: "Parse Code" }
 const reviseFileTitleDescriptor = { id: "ui.anchoredTool.reviseFile", message: "Revise File" }
+const resolveConflictsTitleDescriptor = { id: "ui.anchoredTool.resolveConflicts", message: "Resolve Conflicts" }
+const resolvedConflictCountDescriptor = { id: "ui.anchoredTool.resolvedConflictCount", message: "{count} resolved" }
+const summaryLabelResolvedDescriptor = { id: "ui.anchoredTool.summary.resolved", message: "Resolved" }
+const summaryLabelStrategiesDescriptor = { id: "ui.anchoredTool.summary.strategies", message: "Strategies" }
 const saveFileTitleDescriptor = { id: "ui.anchoredTool.saveFile", message: "Save File" }
 const ANCHORED_TAG_HEX_DESC = { id: "ui.anchoredTool.tagLabel", message: "tag" }
 const createFileTitleDescriptor = { id: "ui.anchoredTool.createFile", message: "Create File" }
@@ -400,6 +404,56 @@ export function AnchoredReviseTool(props: ToolProps) {
           { label: _(summaryLabelOperationsDescriptor), value: operations().join(" · ") },
           props.metadata?.recovered
             ? { label: _(summaryLabelRecoveryDescriptor), value: _(recoverySafelyMappedDescriptor) }
+            : undefined,
+        ]}
+      />
+      <DiagnosticsPanel diagnostics={props.metadata?.diagnostics} path={props.metadata?.filepath || filePath()} />
+      <Show when={filediff()} fallback={<RawOutput output={props.output} />}>
+        {(diff) => {
+          const patch = () => (props.metadata?.diff as string | undefined) ?? (diff().preview as string | undefined)
+          return (
+            <Show when={canRenderPatch(patch())} fallback={<ToolDiffPreview diff={diff()} />}>
+              <DiffPatch patch={patch()!} diffStyle="unified" />
+            </Show>
+          )
+        }}
+      </Show>
+    </BasicTool>
+  )
+}
+
+export function AnchoredResolveConflictsTool(props: ToolProps) {
+  const { _ } = useLingui()
+  const filePath = () => pathFromProps(props)
+  const filediff = () => props.metadata?.filediff as FileDiff | undefined
+  const resolvedCount = () => props.metadata?.resolvedConflicts as number | undefined
+  const strategies = () => (props.metadata?.strategies ?? []) as string[]
+  const diagnostics = () => diagnosticCount(props.metadata)
+  const chips = () => [
+    resolvedCount() != null
+      ? {
+          label: _({ ...resolvedConflictCountDescriptor, values: { count: resolvedCount()! } }),
+          tone: "success" as const,
+        }
+      : undefined,
+    diagnostics() > 0 ? { label: `diagnostics ${diagnostics()}`, tone: "danger" as const } : undefined,
+  ]
+  return (
+    <BasicTool
+      {...props}
+      trigger={{
+        icon: "file-pen",
+        title: _(resolveConflictsTitleDescriptor),
+        subtitlePath: filePath(),
+        tags: chips().filter(Boolean) as Array<{ label: string; tone?: "default" | "success" | "warning" | "danger" }>,
+        changes: changeSummary(props),
+      }}
+    >
+      <SummaryGrid
+        rows={[
+          { label: _(summaryLabelResolvedDescriptor), value: resolvedCount() },
+          strategies().length > 0
+            ? { label: _(summaryLabelStrategiesDescriptor), value: strategies().join(" · ") }
             : undefined,
         ]}
       />

@@ -17,6 +17,7 @@ const isolated = new Set([
   // instances cannot be closed under CI runner resource pressure.
   "test/components/tooltip.test.ts",
   "test/components/provider-icon.test.ts",
+  "test/components/tool/renders/file-ops.test.tsx",
 ])
 const browserOnly = new Set(["test/hooks/use-filtered-list.test.tsx"])
 

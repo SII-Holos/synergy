@@ -131,6 +131,7 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   scan_document: "analyze",
   edit: "file-write",
   revise_file: "file-write",
+  resolve_conflicts: "file-write",
   write: "file-write",
   save_file: "file-write",
   bash: "shell",

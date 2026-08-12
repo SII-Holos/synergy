@@ -67,6 +67,18 @@ export namespace ConfigDomainOpen {
     throw new UnsupportedPlatformError(filepath, platform)
   }
 
+  export function openerCommandsForPlatform(
+    filepath: string,
+    platform = process.platform,
+    resolve: CommandResolver = Bun.which,
+  ): string[][] {
+    const primary = commandForPlatform(filepath, platform, resolve)
+    if (platform !== "darwin") return [primary]
+    // `open <file>` fails when LaunchServices has no default app for the .jsonc
+    // extension; `open -t` opens it in the default text editor instead.
+    return [primary, [primary[0], "-t", filepath]]
+  }
+
   export async function materialize(id: ConfigDomain.Id, root = Global.Path.config): Promise<string> {
     const filepath = ConfigDomain.filepath(id, root)
     await fs.mkdir(path.dirname(filepath), { recursive: true })
@@ -78,16 +90,17 @@ export namespace ConfigDomainOpen {
 
   export async function open(id: ConfigDomain.Id): Promise<OpenResult> {
     const filepath = await materialize(id)
-    const cmd = commandForPlatform(filepath)
-    const proc = Bun.spawn(cmd, {
-      stdout: "pipe",
-      stderr: "pipe",
-    })
-    const code = await proc.exited
-    if (code !== 0) {
+    let failure: OpenFailedError | undefined
+    for (const cmd of openerCommandsForPlatform(filepath)) {
+      const proc = Bun.spawn(cmd, {
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const code = await proc.exited
+      if (code === 0) return { success: true, path: filepath }
       const stderr = proc.stderr ? (await readableStreamToText(proc.stderr)).trim() : undefined
-      throw new OpenFailedError(filepath, code, stderr)
+      failure ??= new OpenFailedError(filepath, code, stderr)
     }
-    return { success: true, path: filepath }
+    throw failure
   }
 }

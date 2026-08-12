@@ -38,7 +38,7 @@ afterEach(() => {
   delete (window as unknown as { queryLocalFonts?: unknown }).queryLocalFonts
 })
 
-describe("font preference provider interaction model (check/apply)", () => {
+describe("font preference provider staged save model", () => {
   test("migrates the legacy localStorage key into the global persisted store", () => {
     localStorage.setItem(
       "font-preference.v1",
@@ -64,13 +64,12 @@ describe("font preference provider interaction model (check/apply)", () => {
     const font = currentApi as FontApi
 
     expect(font.phase("sans")).toBe("idle")
-    const phase = await font.check("sans")
-    expect(phase).toBe("ready")
+    expect(await font.check("sans")).toBe("ready")
     expect(font.phase("sans")).toBe("ready")
     expect(font.fontList("sans")).toEqual(["Arial", "LXGW WenKai", "Zapf Dingbats"])
   })
 
-  test("select then apply persists and applies the chosen font", async () => {
+  test("selection is staged until save applies and persists it", async () => {
     let events = 0
     document.addEventListener("synergy:font-change", () => events++)
     setLocalFonts([{ family: "Arial", fullName: "Arial" }])
@@ -79,49 +78,63 @@ describe("font preference provider interaction model (check/apply)", () => {
     await font.check("sans")
 
     font.select("sans", "Arial")
-    const applied = font.apply("sans")
-    expect(applied).toBe(true)
+    expect(font.dirty("sans")).toBe(true)
+    expect(font.appliedFamily("sans")).toBe("")
+    expect(document.documentElement.style.getPropertyValue("--font-family-sans")).toBe("")
+    expect(events).toBe(0)
+
+    expect(font.save()).toBe(true)
+    expect(font.dirty("sans")).toBe(false)
     expect(font.appliedFamily("sans")).toBe("Arial")
-    expect(font.phase("sans")).toBe("ready")
     expect(document.documentElement.style.getPropertyValue("--font-family-sans")).toContain('"Arial"')
     expect(events).toBe(1)
   })
 
-  test("apply is a no-op before check or without a selection", async () => {
-    setLocalFonts([{ family: "Arial", fullName: "Arial" }])
+  test("save rejects a non-empty selection before fonts are checked", () => {
     mountProvider()
     const font = currentApi as FontApi
 
-    // idle: apply must not apply anything
     font.select("sans", "Arial")
-    expect(font.apply("sans")).toBe(false)
-    expect(font.appliedFamily("sans")).toBe("")
-
-    await font.check("sans")
-    // ready but nothing selected
-    font.select("sans", "")
-    expect(font.apply("sans")).toBe(false)
+    expect(font.save()).toBe(false)
+    expect(font.dirty("sans")).toBe(true)
     expect(font.appliedFamily("sans")).toBe("")
   })
 
-  test("reset clears applied font, list, selection, and returns to idle", async () => {
+  test("discard restores the applied selection without changing CSS", async () => {
     setLocalFonts([{ family: "Arial", fullName: "Arial" }])
     mountProvider()
     const font = currentApi as FontApi
     await font.check("sans")
-    font.select("sans", "Arial")
-    font.apply("sans")
-    expect(font.appliedFamily("sans")).toBe("Arial")
 
-    font.reset("sans")
-    expect(font.appliedFamily("sans")).toBe("")
-    expect(font.phase("sans")).toBe("idle")
-    expect(font.fontList("sans")).toEqual([])
+    font.select("sans", "Arial")
+    font.discard()
+
     expect(font.selected("sans")).toBe("")
+    expect(font.dirty()).toBe(false)
     expect(document.documentElement.style.getPropertyValue("--font-family-sans")).toBe("")
   })
 
-  test("a stale check result does not clobber a reset", async () => {
+  test("reset stages the default font until save", async () => {
+    setLocalFonts([{ family: "Arial", fullName: "Arial" }])
+    mountProvider()
+    const font = currentApi as FontApi
+    await font.check("sans")
+    font.select("sans", "Arial")
+    font.save()
+
+    font.reset("sans")
+    expect(font.appliedFamily("sans")).toBe("Arial")
+    expect(font.selected("sans")).toBe("")
+    expect(font.dirty("sans")).toBe(true)
+    expect(document.documentElement.style.getPropertyValue("--font-family-sans")).toContain('"Arial"')
+
+    expect(font.save()).toBe(true)
+    expect(font.appliedFamily("sans")).toBe("")
+    expect(font.dirty("sans")).toBe(false)
+    expect(document.documentElement.style.getPropertyValue("--font-family-sans")).toBe("")
+  })
+
+  test("a stale check result does not clobber a staged reset", async () => {
     let resolveFonts!: (fonts: Array<{ family?: string; fullName?: string }>) => void
     window.queryLocalFonts = () =>
       new Promise((resolve) => {
@@ -134,9 +147,7 @@ describe("font preference provider interaction model (check/apply)", () => {
     expect(font.phase("sans")).toBe("idle")
 
     resolveFonts([{ family: "Arial", fullName: "Arial" }])
-    const phase = await pending
-    // The reset invalidated the in-flight check; its result is discarded.
-    expect(phase).toBe("idle")
+    expect(await pending).toBe("idle")
     expect(font.phase("sans")).toBe("idle")
     expect(font.fontList("sans")).toEqual([])
   })
@@ -147,9 +158,8 @@ describe("font preference provider interaction model (check/apply)", () => {
     const font = currentApi as FontApi
     await font.check("sans")
     font.select("sans", "Arial")
-    font.apply("sans")
+    font.save()
 
-    // Re-check: applied family must still be selected and present.
     setLocalFonts([
       { family: "Arial", fullName: "Arial" },
       { family: "Helvetica", fullName: "Helvetica" },
@@ -163,8 +173,7 @@ describe("font preference provider interaction model (check/apply)", () => {
     delete (window as unknown as { queryLocalFonts?: unknown }).queryLocalFonts
     mountProvider()
     const font = currentApi as FontApi
-    const phase = await font.check("sans")
-    expect(phase).toBe("unsupported")
+    expect(await font.check("sans")).toBe("unsupported")
     expect(font.phase("sans")).toBe("unsupported")
   })
 
@@ -174,24 +183,25 @@ describe("font preference provider interaction model (check/apply)", () => {
     }
     mountProvider()
     const font = currentApi as FontApi
-    const phase = await font.check("sans")
-    expect(phase).toBe("denied")
+    expect(await font.check("sans")).toBe("denied")
     expect(font.phase("sans")).toBe("denied")
   })
 
-  test("applying a custom font resets font-feature-settings for third-party families", async () => {
+  test("saving a custom font resets feature settings for third-party families", async () => {
     setLocalFonts([{ family: "Custom Font", fullName: "Custom Font" }])
     mountProvider()
     const font = currentApi as FontApi
     await font.check("sans")
     font.select("sans", "Custom Font")
-    font.apply("sans")
+    font.save()
 
     const root = document.documentElement
     expect(root.style.getPropertyValue("--font-family-sans")).toContain('"Custom Font"')
     expect(root.style.getPropertyValue("--font-family-sans--font-feature-settings")).toBe("normal")
 
     font.reset("sans")
+    expect(root.style.getPropertyValue("--font-family-sans")).toContain('"Custom Font"')
+    font.save()
     expect(root.style.getPropertyValue("--font-family-sans")).toBe("")
     expect(root.style.getPropertyValue("--font-family-sans--font-feature-settings")).toBe("")
   })
@@ -202,11 +212,9 @@ describe("font preference provider interaction model (check/apply)", () => {
     const first = currentApi as FontApi
     await first.check("sans")
     first.select("sans", "Arial")
-    first.apply("sans")
+    first.save()
     expect(first.appliedFamily("sans")).toBe("Arial")
 
-    // A second provider instance starts from the persisted preference: the
-    // applied family is restored (and pre-selected) without any action.
     currentApi = undefined
     mountProvider()
     const second = currentApi as FontApi

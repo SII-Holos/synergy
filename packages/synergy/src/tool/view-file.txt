@@ -1,6 +1,6 @@
 Read a file through the anchored coding harness.
 
-Use this instead of `read` when the content may feed `revise_file`. The output starts with a real `[path#TAG]` header followed by `LINE:TEXT` rows. Pass the latest header back to `revise_file`.
+Use this instead of `read` when the content may feed `revise_file` or `resolve_conflicts`. The output starts with a real `[path#TAG]` header followed by `LINE:TEXT` rows. Pass the latest header back to the anchored write tool.
 
 Use this tool when you need to inspect exact line numbers before editing, confirm the file is safe to edit, or gather multiple regions from one file without multiple tool calls.
 Rules:
@@ -11,8 +11,8 @@ Rules:
 - Very large files may be shown without a `[path#TAG]` header. That output is for inspection only and cannot feed `revise_file`; narrow the target with `scan_files` or a smaller `view_file` range first.
 - Long lines may be shortened in displayed output. Inspect the exact region again before editing shortened lines.
 - If output is truncated or a region was not displayed, call `view_file` again with an explicit `offset` or `ranges` entry before editing that region. Editing unseen lines will fail.
-- If the output contains a conflict warning, do not use `revise_file` on that file until the conflict markers are resolved. Use `save_file` only when intentionally replacing the whole conflicted file.
-- After `revise_file` or `save_file`, previous tags for that file are stale. Use the new returned tag or call `view_file` again.
+- If the output contains a conflict warning, do not use `revise_file` on that file until the conflict markers are resolved. Use `resolve_conflicts` with this view's tag; use `save_file` only when intentionally replacing the whole conflicted file.
+- After `revise_file`, `resolve_conflicts`, or `save_file`, previous tags for that file are stale. Use the new returned tag or call `view_file` again.
 - After a failed `revise_file` attempt, re-run `view_file` to get a fresh tag before retrying. Never reuse a stale tag.
 
 For document files (PDF, DOCX, XLSX, PPTX, HTML, EPUB, IPYNB, etc.), use `scan_document` instead. `view_file` does not support binary document extraction — those files are blocked with a clear error message directing you to `scan_document`.

@@ -6445,10 +6445,6 @@ msgid "app.plugin.permissionGroup.ui"
 msgstr "UI"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.settings.saveFailed"
-msgstr "设置未保存"
-
-#. js-lingui-explicit-id
 msgid "app.plugin.settings.stateOff"
 msgstr "关闭"
 
@@ -14498,7 +14494,7 @@ msgstr "等待传输连接"
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.desc"
-msgstr "在 write、edit、save_file 和 revise_file 后返回语言服务器反馈。"
+msgstr "在 write、edit、save_file、revise_file 和 resolve_conflicts 后返回语言服务器反馈。"
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.title"
@@ -14893,10 +14889,6 @@ msgid "settings.general.font.applied"
 msgstr "已应用"
 
 #. js-lingui-explicit-id
-msgid "settings.general.font.apply"
-msgstr "应用"
-
-#. js-lingui-explicit-id
 msgid "settings.general.font.check"
 msgstr "检查"
 
@@ -14914,11 +14906,11 @@ msgstr "字体访问被拒绝；使用默认字体"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.description"
-msgstr "点击“检查”加载本机已安装的字体，选择一个后点击“应用”。"
+msgstr "点击“检查”加载本机已安装的字体。点击“保存更改”应用所选字体。"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.ready"
-msgstr "选择字体，然后点击“应用”"
+msgstr "有未保存的字体选择"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.reset"
@@ -14939,14 +14931,6 @@ msgstr "此浏览器无法扫描本地字体；使用默认字体"
 #. js-lingui-explicit-id
 msgid "settings.general.language.description"
 msgstr "选择 Synergy 控件和无障碍标签使用的语言"
-
-#. js-lingui-explicit-id
-msgid "settings.general.language.failed.description"
-msgstr "无法加载所选语言目录。上一种语言仍处于活动状态。"
-
-#. js-lingui-explicit-id
-msgid "settings.general.language.failed.title"
-msgstr "切换语言失败"
 
 #. js-lingui-explicit-id
 msgid "settings.general.language.system"
@@ -16585,6 +16569,14 @@ msgid "settings.panel.reference.lspTitle"
 msgstr "LSP"
 
 #. js-lingui-explicit-id
+msgid "settings.panel.save.partialFailure"
+msgstr "部分设置未能保存"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.save.partialFailure.description"
+msgstr "请检查保存失败的设置，然后重试。"
+
+#. js-lingui-explicit-id
 msgid "settings.panel.search.empty"
 msgstr "未找到设置"
 
@@ -16674,11 +16666,11 @@ msgstr "保留覆盖"
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.confirmReset.confirm"
-msgstr "重置为 AGENTS.md"
+msgstr "暂存重置为 AGENTS.md"
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.confirmReset.description"
-msgstr "移除 AGENTS.override.md，并恢复为全局 AGENTS.md 内容。"
+msgstr "清空当前草稿并暂存移除 AGENTS.override.md。点击“保存更改”后才会提交重置。"
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.confirmReset.title"
@@ -16713,48 +16705,8 @@ msgid "settings.personalize.page.title"
 msgstr "个性化"
 
 #. js-lingui-explicit-id
-msgid "settings.personalize.reset.description"
-msgstr "Synergy 将改用全局 AGENTS.md 文件。"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.reset.title"
-msgstr "自定义指令已重置"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.resetError.description"
-msgstr "请重试。"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.resetError.title"
-msgstr "重置失败"
-
-#. js-lingui-explicit-id
 msgid "settings.personalize.retry"
 msgstr "重试"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.save.label"
-msgstr "保存自定义指令"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveError.description"
-msgstr "检查自定义指令内容后重试。"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveError.title"
-msgstr "自定义指令未保存"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveSuccess.description"
-msgstr "Synergy 会在后续提示组装中使用 AGENTS.override.md。"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saveSuccess.title"
-msgstr "自定义指令已保存"
-
-#. js-lingui-explicit-id
-msgid "settings.personalize.saving"
-msgstr "正在保存…"
 
 #. js-lingui-explicit-id
 msgid "settings.personalize.section.description"
@@ -17567,18 +17519,6 @@ msgstr "{backend} 不可用，将按降级策略处理。"
 #. js-lingui-explicit-id
 msgid "settings.sandbox.warn"
 msgstr "提醒"
-
-#. js-lingui-explicit-id
-msgid "settings.save.auto.failed"
-msgstr "自动保存失败"
-
-#. js-lingui-explicit-id
-msgid "settings.save.background.failed"
-msgstr "后台保存失败"
-
-#. js-lingui-explicit-id
-msgid "settings.save.background.updated"
-msgstr "已更新：{fields}"
 
 #. js-lingui-explicit-id
 msgid "settings.save.explicit.changed"
@@ -18765,6 +18705,10 @@ msgid "tool.title.research-state"
 msgstr "管理研究状态"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.resolve-conflicts"
+msgstr "解决冲突"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.resolve-library"
 msgstr "查找软件库"
 
@@ -19033,6 +18977,14 @@ msgid "ui.anchoredTool.recovery.safelyMapped"
 msgstr "已根据当前文件重新定位"
 
 #. js-lingui-explicit-id
+msgid "ui.anchoredTool.resolveConflicts"
+msgstr "解决冲突"
+
+#. js-lingui-explicit-id
+msgid "ui.anchoredTool.resolvedConflictCount"
+msgstr "{count} 个已解决"
+
+#. js-lingui-explicit-id
 msgid "ui.anchoredTool.reviseFile"
 msgstr "修改文件"
 
@@ -19077,12 +19029,20 @@ msgid "ui.anchoredTool.summary.regex"
 msgstr "正则表达式"
 
 #. js-lingui-explicit-id
+msgid "ui.anchoredTool.summary.resolved"
+msgstr "已解决"
+
+#. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.result"
 msgstr "结果"
 
 #. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.searchPath"
 msgstr "搜索路径"
+
+#. js-lingui-explicit-id
+msgid "ui.anchoredTool.summary.strategies"
+msgstr "策略"
 
 #. js-lingui-explicit-id
 msgid "ui.anchoredTool.summary.tag"

@@ -21,6 +21,40 @@ describe("ConfigDomainOpen", () => {
     expect(cmd.slice(1)).toEqual(["/c", "start", "", "C:\\Users\\test\\00-general.jsonc"])
   })
 
+  test("resolves macOS opener with text-editor fallback", () => {
+    const cmds = ConfigDomainOpen.openerCommandsForPlatform(
+      "/tmp/00-general.jsonc",
+      "darwin",
+      (name) => `/usr/bin/${name}`,
+    )
+    expect(cmds).toEqual([
+      ["/usr/bin/open", "/tmp/00-general.jsonc"],
+      ["/usr/bin/open", "-t", "/tmp/00-general.jsonc"],
+    ])
+  })
+
+  test("keeps a single opener command on Linux and Windows", () => {
+    const linux = ConfigDomainOpen.openerCommandsForPlatform(
+      "/tmp/00-general.jsonc",
+      "linux",
+      (name) => `/usr/bin/${name}`,
+    )
+    expect(linux).toEqual([["/usr/bin/xdg-open", "/tmp/00-general.jsonc"]])
+
+    const win32 = ConfigDomainOpen.openerCommandsForPlatform(
+      "C:\\Users\\test\\00-general.jsonc",
+      "win32",
+      () => undefined,
+    )
+    expect(win32).toEqual([["cmd.exe", "/c", "start", "", "C:\\Users\\test\\00-general.jsonc"]])
+  })
+
+  test("throws when the macOS opener is missing before fallback", () => {
+    expect(() =>
+      ConfigDomainOpen.openerCommandsForPlatform("/tmp/00-general.jsonc", "darwin", () => undefined),
+    ).toThrow(ConfigDomainOpen.OpenerMissingError)
+  })
+
   test("returns the config path when the platform opener is missing", () => {
     const filepath = "/tmp/00-general.jsonc"
     expect(() => ConfigDomainOpen.commandForPlatform(filepath, "linux", () => undefined)).toThrow(

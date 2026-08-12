@@ -85,6 +85,7 @@ function anchoredWriteTools(): PermissionNext.Ruleset {
     edit: "deny",
     write: "deny",
     revise_file: "ask",
+    resolve_conflicts: "ask",
     save_file: "ask",
   })
 }

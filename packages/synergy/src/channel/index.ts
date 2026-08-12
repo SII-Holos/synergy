@@ -371,6 +371,13 @@ export namespace Channel {
   export async function reload() {
     log.info("reloading channel state")
     await state.resetAll()
+    // resetAll() only disposes connections; rebuild them eagerly in the home
+    // scope so a reload never leaves channels destroyed-but-not-reconnected.
+    // Channels are a global resource: the server starts them under the home
+    // scope, so the rebuilt state must land there regardless of the caller's
+    // ambient scope, or the next home-scoped access would create a second
+    // state and duplicate connections.
+    await ScopeContext.provide({ scope: Scope.home(), fn: () => state() })
     log.info("channel state reloaded")
   }
 
