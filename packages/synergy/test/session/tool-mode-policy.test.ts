@@ -168,9 +168,13 @@ describe("SessionModePolicy Boss visibility", () => {
     })
   })
 
-  test("exposes all boss tools including boss_report to workers", () => {
-    for (const tool of ["boss_spawn", "boss_assign", "boss_report", "boss_status", "boss_cancel", "boss_project"]) {
+  test("exposes boss tools to workers except boss_project (boss-only)", () => {
+    for (const tool of ["boss_spawn", "boss_assign", "boss_report", "boss_status", "boss_cancel"]) {
       expect(SessionModePolicy.visibility({ toolName: tool, session: workerSession })).toBeUndefined()
     }
+    expect(SessionModePolicy.visibility({ toolName: "boss_project", session: workerSession })).toMatchObject({
+      code: "tool_unavailable",
+      toolName: "boss_project",
+    })
   })
 })

@@ -42,9 +42,9 @@ export const BossProjectTool = Tool.define("boss_project", {
     }
 
     const caller = await Session.get(ctx.sessionID)
-    const isBoss = caller?.workflow?.kind === "boss"
-    if (!isBoss) {
-      throw new Error("boss_project: only boss sessions may create project bosses")
+    const isBossRole = caller?.workflow?.kind === "boss" && caller?.workflow?.role === "boss"
+    if (!isBossRole) {
+      throw new Error("boss_project: only boss-role sessions may create project bosses")
     }
 
     // 1. Create the directory when missing.

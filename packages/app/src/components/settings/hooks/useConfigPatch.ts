@@ -271,8 +271,7 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
   const currentBossIdentityText = cfg.experimental?.boss_identity_text
   if (bossIdentityText !== currentBossIdentityText) experimental.boss_identity_text = bossIdentityText
 
-  const bossBriefingIntervalDays =
-    runtime.bossBriefingIntervalDays.trim() === "" ? undefined : Number(runtime.bossBriefingIntervalDays)
+  const bossBriefingIntervalDays = positiveInteger(runtime.bossBriefingIntervalDays)
   const currentBossBriefingIntervalDays = cfg.experimental?.boss_briefing_interval_days
   if (bossBriefingIntervalDays !== currentBossBriefingIntervalDays) {
     experimental.boss_briefing_interval_days = bossBriefingIntervalDays

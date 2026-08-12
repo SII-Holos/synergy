@@ -498,6 +498,38 @@ describe("settings config patch", () => {
     ).not.toHaveProperty("experimental")
   })
 
+  test("omits invalid boss briefing interval values instead of emitting them", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossMode = "true"
+    state.runtime.bossBriefingIntervalDays = "0"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({ boss_mode: true })
+
+    state.runtime.bossBriefingIntervalDays = "-3"
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({ boss_mode: true })
+
+    state.runtime.bossBriefingIntervalDays = "abc"
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({ boss_mode: true })
+  })
+
   test("does not re-save unchanged sandbox config when enabled is already explicit", () => {
     const state = defaultSettingsState("enter")
     state.safety.sandboxEnabled = "true"

@@ -6,6 +6,7 @@ import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionWorkflowService } from "../../src/session/workflow"
+import { BossService } from "../../src/session/boss"
 import { BossProjectTool, DEFAULT_PROJECT_BOSS_INSTRUCTIONS } from "../../src/tool/boss-project"
 import { ToolRegistry } from "../../src/tool/registry"
 import type { Tool } from "../../src/tool/tool"
@@ -104,7 +105,22 @@ describe("boss_project tool", () => {
         "boss-project-" + Math.random().toString(36).slice(2),
       )
       await expect(tool.execute({ directory: projectDir }, ctx(plain.id))).rejects.toThrow(
-        "only boss sessions may create project bosses",
+        "only boss-role sessions may create project bosses",
+      )
+    })
+  })
+
+  test("rejects worker-role callers (only the boss may create project bosses)", async () => {
+    await withScope(async () => {
+      const boss = await bossSession()
+      const worker = await BossService.spawn(boss.id, { role: "code" })
+      const tool = await BossProjectTool.init()
+      const projectDir = path.join(
+        process.env.SYNERGY_TEST_ROOT!,
+        "boss-project-" + Math.random().toString(36).slice(2),
+      )
+      await expect(tool.execute({ directory: projectDir }, ctx(worker.id))).rejects.toThrow(
+        "only boss-role sessions may create project bosses",
       )
     })
   })

@@ -193,9 +193,14 @@ describe("Feishu boss routing", () => {
             }
           }
 
-          // The boss session must keep its boss interaction after routing.
+          // The boss session must keep its boss interaction and provisioned
+          // display name after routing (multi-chat aggregation must not flap
+          // the chatName to whichever chat messaged last).
           const after = await Session.get(bossID)
           expect(after.interaction).toEqual({ mode: "interactive", source: "boss" })
+          if (after.endpoint?.kind === "channel") {
+            expect(after.endpoint.channel.chatName).toBe("Runtime Boss")
+          }
         } finally {
           await SessionManager.release(lease, { requestNextWork: false })
         }

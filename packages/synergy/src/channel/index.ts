@@ -722,7 +722,10 @@ export namespace Channel {
             accountId: ctx.accountId,
             chatId: ctx.chatId,
             chatType: ctx.chatType,
-            chatName: ctx.chatName,
+            // Boss-routed messages share one aggregated session: the boss
+            // session's display chatName must not flap to whichever chat
+            // messaged last, so keep the provisioned name ("Runtime Boss").
+            chatName: bossSessionID ? undefined : ctx.chatName,
             senderId: ctx.senderId,
             senderName: ctx.senderName,
             scopeKey: ctx.scopeKey,
