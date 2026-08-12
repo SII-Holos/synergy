@@ -224,7 +224,14 @@ export const QuestionCardCallback = z
   .meta({ ref: "ChannelQuestionCardCallback" })
 export type QuestionCardCallback = z.infer<typeof QuestionCardCallback>
 
-export type QuestionCardActionResult = ResponseCardActionResult
+export type QuestionCardActionResult = ResponseCardActionResult & {
+  /**
+   * Raw card JSON (schema 2.0) to replace the question form in the callback
+   * response. Feishu applies this immediately instead of rolling the form
+   * back; providers that render a read-only summary return it here.
+   */
+  card?: unknown
+}
 
 export const OutboundPart = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string() }),
@@ -422,6 +429,8 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
     requestId: string
     questions: Question.Info[]
   }): Promise<SendResult>
+
+  renderQuestionCardSummary?(input: { questions: Question.Info[]; answers: Question.Answer[] }): unknown
 
   addReaction?(input: { accountId: string; messageId: string; emoji: string }): Promise<{ reactionId: string } | void>
 

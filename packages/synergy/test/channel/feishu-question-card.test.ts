@@ -3,6 +3,8 @@ import {
   renderFeishuQuestionCard,
   parseFeishuQuestionCardAction,
   sendFeishuQuestionCard,
+  renderFeishuQuestionCardSummary,
+  renderFeishuQuestionCardSummarySafe,
 } from "../../src/channel/provider/feishu"
 import type { Question } from "../../src/question"
 
@@ -335,5 +337,56 @@ describe("Feishu question card size validation", () => {
     } finally {
       globalThis.fetch = originalFetch
     }
+  })
+})
+
+describe("Feishu question card summary", () => {
+  test("renders a read-only summary with each question and its submitted answers", () => {
+    const rendered = renderFeishuQuestionCardSummary(mixedQuestions, [["Staging"], ["Feature A", "Feature C"]])
+
+    expect(rendered.schema).toBe("2.0")
+    expect(rendered.header.title.content).toBe("回答已提交")
+    expect(rendered.config?.summary?.content).toBe("回答已提交")
+
+    const elements = rendered.body.elements as Array<Record<string, unknown>>
+    expect(elements.some((element) => element.tag === "form")).toBe(false)
+    expect(elements.every((element) => element.tag === "markdown")).toBe(true)
+
+    const content = elements.map((element) => String(element.content)).join("\n")
+    expect(content).toContain("Env")
+    expect(content).toContain("Which environment?")
+    expect(content).toContain("Staging")
+    expect(content).toContain("Select features to deploy")
+    expect(content).toContain("Feature A")
+    expect(content).toContain("Feature C")
+    expect(content).not.toContain("question_form")
+  })
+
+  test("bounded provider renderer returns a schema-valid summary", () => {
+    const rendered = renderFeishuQuestionCardSummarySafe(singleQuestions, [["Production"]])
+
+    expect(rendered).toBeDefined()
+    const card = rendered as { header: { title: { content: string } }; body: { elements: Array<{ tag: string }> } }
+    expect(card.header.title.content).toBe("回答已提交")
+    expect(card.body.elements.every((element) => element.tag === "markdown")).toBe(true)
+  })
+
+  test("bounded provider renderer returns undefined for an oversized summary", () => {
+    const manyQuestions: Question.Info[] = Array.from({ length: 60 }, (_, i) => ({
+      question: `Question number ${i} with padded text for size?`,
+      header: `Q${i}`,
+      options: Array.from({ length: 8 }, (_, j) => ({
+        label: `Option ${i}-${j} with extra padding label`,
+        description: `A very long description for option ${i}-${j} that adds significant byte weight to push past the 30KiB limit`,
+      })),
+      multiple: i % 2 === 0,
+    }))
+
+    expect(
+      renderFeishuQuestionCardSummarySafe(
+        manyQuestions,
+        manyQuestions.map(() => [`自定义长答案${"很长的用户自定义输入内容".repeat(60)}`]),
+      ),
+    ).toBeUndefined()
   })
 })

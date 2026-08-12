@@ -2,7 +2,12 @@ import type { Question } from "@/question"
 import { ScopedState } from "@/scope/scoped-state"
 import { Lock } from "@/util/lock"
 import { Log } from "@/util/log"
-import { QuestionCardCallback, type Provider, type QuestionCardCallback as QuestionCardCallbackType } from "./types"
+import {
+  QuestionCardCallback,
+  type Provider,
+  type QuestionCardActionResult,
+  type QuestionCardCallback as QuestionCardCallbackType,
+} from "./types"
 
 type Registration = {
   status: "pending" | "active"
@@ -13,6 +18,7 @@ type Registration = {
   chatId: string
   requesterId: string
   questions: Question.Info[]
+  provider?: Provider
   messageId?: string
 }
 
@@ -62,6 +68,7 @@ export namespace QuestionCardRuntime {
       chatId: input.chatId,
       requesterId: input.requesterId,
       questions: input.request.questions,
+      provider: input.provider,
     }
     {
       using _ = await Lock.write(lockKey(input.request.id))
@@ -114,7 +121,7 @@ export namespace QuestionCardRuntime {
     channelType: string
     accountId: string
     callback: QuestionCardCallbackType
-  }): Promise<{ status: "accepted" | "duplicate" | "expired" | "rejected" }> {
+  }): Promise<QuestionCardActionResult> {
     const parsed = QuestionCardCallback.safeParse(input.callback)
     if (!parsed.success) return { status: "rejected" }
     const callback = parsed.data
@@ -155,7 +162,11 @@ export namespace QuestionCardRuntime {
     }
     runtime.registrations.delete(callback.requestId)
     rememberAccepted({ requestId: callback.requestId, eventId: callback.eventId, sessionID: registration.sessionID })
-    return { status: "accepted" }
+    const summary = registration.provider?.renderQuestionCardSummary?.({
+      questions: registration.questions,
+      answers,
+    })
+    return summary ? { status: "accepted", card: summary } : { status: "accepted" }
   }
 
   export async function settle(requestId: string): Promise<void> {

@@ -27,13 +27,21 @@ import type { FeishuEventPayload, FeishuMessage, FeishuMention, FeishuSender } f
 import type { FeishuApiContext } from "./api-context"
 import { FeishuOutboundMedia } from "./outbound-media"
 import { parseFeishuResponseCardAction, renderFeishuResponseCard, sendFeishuResponseCard } from "./response-card"
-import { parseFeishuQuestionCardAction, renderFeishuQuestionCard, sendFeishuQuestionCard } from "./question-card"
+import {
+  parseFeishuQuestionCardAction,
+  renderFeishuQuestionCard,
+  renderFeishuQuestionCardSummary,
+  renderFeishuQuestionCardSummarySafe,
+  sendFeishuQuestionCard,
+} from "./question-card"
 import { sendFeishuMarkdownCard } from "./send-card"
 
 export {
   parseFeishuQuestionCardAction,
   parseFeishuResponseCardAction,
   renderFeishuQuestionCard,
+  renderFeishuQuestionCardSummary,
+  renderFeishuQuestionCardSummarySafe,
   renderFeishuResponseCard,
   sendFeishuQuestionCard,
 }
@@ -87,7 +95,11 @@ export async function routeFeishuCardAction(input: {
     }
     const result = await input.onQuestionCardAction(question.callback)
     if (result.status === "accepted") {
-      return { toast: { type: "success", content: "回答已提交" } }
+      const response: Record<string, unknown> = { toast: { type: "success", content: "回答已提交" } }
+      if (result.card) {
+        response.card = { type: "raw", data: result.card }
+      }
+      return response
     }
     if (result.status === "duplicate") {
       return { toast: { type: "info", content: "回答已提交" } }
@@ -1034,6 +1046,13 @@ export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeish
       questions: input.questions,
     })
     return this.bindThread(input, result)
+  }
+
+  renderQuestionCardSummary(input: {
+    questions: import("@/question").Question.Info[]
+    answers: import("@/question").Question.Answer[]
+  }): unknown {
+    return renderFeishuQuestionCardSummarySafe(input.questions, input.answers)
   }
 
   private async sendCreateMessage(accountId: string, chatId: string, payload: FeishuMessagePayload) {
