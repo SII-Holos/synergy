@@ -144,6 +144,12 @@ export namespace BossRuntime {
         })
         log.info("promoted existing endpoint session to runtime boss", { sessionID: existing.id, accountId })
       }
+      if (existing.agentOverride !== "boss-synergy") {
+        await Session.update(existing.id, (draft) => {
+          draft.agentOverride = "boss-synergy"
+        })
+        log.info("upgraded runtime boss session to boss-synergy agent", { sessionID: existing.id, accountId })
+      }
       await deliverIdentityBriefing(existing.id)
       return existing.id
     }

@@ -111,6 +111,36 @@ describe("BossRuntime", () => {
     })
   })
 
+  test("ensure() upgrades an existing pre-agent boss session to boss-synergy", async () => {
+    await withHomeScope(async () => {
+      stubConfig(FEISHU_ONE)
+      // Simulate a session created by older code (agentOverride: "synergy").
+      const legacy = await Session.create({
+        scope: Scope.home(),
+        endpoint: SessionEndpoint.fromChannel({
+          type: "feishu",
+          accountId: "acct1",
+          chatId: BossRuntime.BOSS_CHAT_ID,
+          chatType: "group",
+          chatName: BossRuntime.BOSS_SESSION_TITLE,
+          scopeKey: BossRuntime.BOSS_SCOPE_KEY,
+          createdAt: Date.now(),
+        }),
+        interaction: { mode: "interactive", source: "boss" },
+        title: BossRuntime.BOSS_SESSION_TITLE,
+        agentOverride: "synergy",
+        workflow: { kind: "boss", role: "boss" },
+      })
+
+      await BossRuntime.ensure()
+
+      const boss = await Session.get(legacy.id)
+      expect(boss.agentOverride).toBe("boss-synergy")
+      // Same session reused (no duplicate provisioned).
+      expect(BossRuntime.bossSessionForAccount("acct1")).toBe(legacy.id)
+    })
+  })
+
   test("sync(false) clears routing without deleting sessions", async () => {
     await withHomeScope(async () => {
       stubConfig(FEISHU_ONE)
