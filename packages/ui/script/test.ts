@@ -13,6 +13,10 @@ const isolated = new Set([
   "test/components/session-turn-projection.test.ts",
   "test/components/tool/renders/task.test.tsx",
   "test/components/tool/renders/standard.test.tsx",
+  // Chromium-launching tests: run one per process so concurrent browser
+  // instances cannot be closed under CI runner resource pressure.
+  "test/components/tooltip.test.ts",
+  "test/components/provider-icon.test.ts",
 ])
 const browserOnly = new Set(["test/hooks/use-filtered-list.test.tsx"])
 
