@@ -7,6 +7,7 @@ import {
   BOSS_DISCIPLINE_BLOCK,
   DEFAULT_IDENTITY_TEXT,
   buildBossContext,
+  buildBossDeliveryHint,
   buildRuntimeBossContext,
 } from "../../src/session/boss-prompt"
 import { tmpdir } from "../fixture/fixture"
@@ -80,5 +81,27 @@ describe("boss identity prompt", () => {
     expect(text).toContain("boss_spawn")
     expect(text).toContain("boss_assign")
     expect(text).toContain("boss_report")
+  })
+})
+
+describe("boss delivery hint", () => {
+  test("auto delivery hint warns against duplicate channel_push", () => {
+    const hint = buildBossDeliveryHint({ auto: true, replyToMessageId: "om_123" })
+    expect(hint).toContain("<boss-delivery>")
+    expect(hint).toContain("自动投递回飞书")
+    expect(hint).toContain("不要调用 channel_push")
+    expect(hint).toContain("om_123")
+  })
+
+  test("manual delivery hint instructs channel_push when not auto-bound", () => {
+    const hint = buildBossDeliveryHint({ auto: false })
+    expect(hint).toContain("<boss-delivery>")
+    expect(hint).toContain("不会自动投递回飞书")
+    expect(hint).toContain("channel_push")
+  })
+
+  test("undefined delivery falls back to manual hint", () => {
+    const hint = buildBossDeliveryHint(undefined)
+    expect(hint).toContain("不会自动投递回飞书")
   })
 })

@@ -81,7 +81,13 @@ import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
 import { BlueprintLoopStore } from "../blueprint/loop-store"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
-import { buildBossContext, buildRuntimeBossContext, buildWorkerContext, renderBossTree } from "./boss-prompt"
+import {
+  buildBossContext,
+  buildBossDeliveryHint,
+  buildRuntimeBossContext,
+  buildWorkerContext,
+  renderBossTree,
+} from "./boss-prompt"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { ObservabilitySpans } from "@/observability/spans"
 import { ObservabilityContext } from "@/observability/context"
@@ -766,6 +772,17 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
                   identityText,
                   instructions: bossWorkflow.instructions,
                 }),
+              )
+              // Tell the boss whether this turn's reply auto-delivers back to
+              // the originating Feishu message, so it neither duplicates with
+              // channel_push nor misses a receipt.
+              const bossDeliveryMetadata = channelDeliveryMetadata(msgs, lastFinishedIndex)
+              systemParts.push(
+                buildBossDeliveryHint(
+                  bossDeliveryMetadata?.channelPush
+                    ? { auto: true, replyToMessageId: bossDeliveryMetadata.channelReplyToMessageId }
+                    : { auto: false },
+                ),
               )
               const { BossService } = await import("./boss")
               const tree = await BossService.status(sessionID).catch(() => undefined)

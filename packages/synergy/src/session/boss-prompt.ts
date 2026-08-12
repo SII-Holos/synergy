@@ -56,6 +56,28 @@ export const DEFAULT_IDENTITY_TEXT = [
 ].join(" ")
 
 /**
+ * Per-turn delivery hint for the runtime boss: tells it whether the current
+ * turn's reply is automatically delivered back to the originating Feishu
+ * message (outbound bridge), so it neither duplicates with channel_push nor
+ * misses a receipt.
+ */
+export function buildBossDeliveryHint(delivery: { auto: boolean; replyToMessageId?: string } | undefined): string {
+  if (delivery?.auto) {
+    return [
+      "<boss-delivery>",
+      "本轮回复会自动投递回飞书(锚定原消息回复) — 不要调用 channel_push,否则会重复发送。",
+      ...(delivery.replyToMessageId ? [`自动回复锚定消息: ${delivery.replyToMessageId}`] : []),
+      "</boss-delivery>",
+    ].join("\n")
+  }
+  return [
+    "<boss-delivery>",
+    "本轮回复不会自动投递回飞书 — 若需要向用户回执,必须调用 channel_push(可带 chatId / replyToMessageId)。",
+    "</boss-delivery>",
+  ].join("\n")
+}
+
+/**
  * Full boss system context for runtime/project bosses: base boss role +
  * identity/discipline block (always present) + standing instructions
  * (project boss created via boss_project). `identityText` is resolved by the
