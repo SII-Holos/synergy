@@ -125,14 +125,20 @@ describe("boss_project tool", () => {
     })
   })
 
-  test("rejects directories inside the home directory", async () => {
+  test("allows directories inside the home directory (runtime colleague projects)", async () => {
     await withScope(async () => {
       const boss = await bossSession()
       const tool = await BossProjectTool.init()
       const homeDir = process.env.SYNERGY_TEST_HOME!
-      await expect(tool.execute({ directory: path.join(homeDir, "nested") }, ctx(boss.id))).rejects.toThrow(
-        "inside the home directory",
-      )
+      const nestedDir = path.join(homeDir, "boss-nested-" + Math.random().toString(36).slice(2))
+      const result = await tool.execute({ directory: nestedDir }, ctx(boss.id))
+
+      expect(result.metadata).toMatchObject({ directory: nestedDir })
+      const scopeID = result.metadata.scopeID as string
+      expect(scopeID).not.toBe("home")
+      const scope = await Scope.fromID(scopeID)
+      expect(scope?.type).toBe("project")
+      expect((scope as Scope.Project).directory).toBe(nestedDir)
     })
   })
 

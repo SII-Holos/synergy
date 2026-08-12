@@ -2,7 +2,6 @@ import path from "path"
 import { mkdir } from "fs/promises"
 import { existsSync } from "fs"
 import z from "zod"
-import { Global } from "@/global"
 import { Scope } from "@/scope"
 import { ScopeContext } from "@/scope/context"
 import { Session } from "../session"
@@ -36,10 +35,6 @@ export const BossProjectTool = Tool.define("boss_project", {
   parameters,
   async execute(params, ctx) {
     const directory = path.resolve(params.directory)
-    const home = Global.Path.home
-    if (FilesystemContains(home, directory)) {
-      throw new Error(`boss_project: directory "${directory}" is inside the home directory — refusing to bind`)
-    }
 
     const caller = await Session.get(ctx.sessionID)
     const isBossRole = caller?.workflow?.kind === "boss" && caller?.workflow?.role === "boss"
@@ -82,8 +77,3 @@ export const BossProjectTool = Tool.define("boss_project", {
     }
   },
 })
-
-function FilesystemContains(parent: string, child: string): boolean {
-  const rel = path.relative(parent, child)
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))
-}

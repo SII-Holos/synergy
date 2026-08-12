@@ -173,12 +173,16 @@ export function rootNavRequest(
   cursor?: { lastActivityAt: number; id: string },
 ) {
   if (category === "channel") return { source: "global" as const, query: channelNavQuery(limit, cursor) }
+  const parentOnly: "true" | "false" = category === "background" ? "false" : "true"
   return {
     source: "scope" as const,
     query: {
       scopeID: "home",
       category,
-      parentOnly: "true" as const,
+      // Background entries (boss workers, Cortex tasks, agenda sessions)
+      // carry a parentID; include them so boss workers appear in the
+      // sidebar Background section. Other sections stay parent-only.
+      parentOnly,
       limit,
       ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
     },
