@@ -68,6 +68,7 @@ for (const name of [
   "boss_status",
   "boss_cancel",
   "boss_project",
+  "channel_push",
 ] as const) {
   ToolRegistry.register({
     name,
@@ -85,6 +86,8 @@ for (const name of [
               props.input.status ||
               props.input.directory ||
               props.input.title ||
+              props.input.text ||
+              props.input.chatId ||
               "",
             tags:
               name === "boss_status" && props.metadata?.workerCount !== undefined

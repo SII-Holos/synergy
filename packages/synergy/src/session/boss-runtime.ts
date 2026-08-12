@@ -152,7 +152,7 @@ export namespace BossRuntime {
       endpoint,
       interaction: SessionInteraction.interactive("boss"),
       title: BOSS_SESSION_TITLE,
-      agentOverride: "synergy",
+      agentOverride: "boss-synergy",
       workflow: { kind: "boss", role: "boss" },
     })
     log.info("runtime boss session created", { sessionID: session.id, accountId })

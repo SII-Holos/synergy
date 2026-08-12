@@ -18321,6 +18321,10 @@ msgid "tool.title.cancel-agenda"
 msgstr "取消日程"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.channel-push"
+msgstr "推送到群"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.claim"
 msgstr "管理研究论点"
 

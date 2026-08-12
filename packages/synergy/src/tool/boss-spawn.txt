@@ -3,3 +3,5 @@ Spawn a persistent specialist worker session as a direct child of the current bo
 The worker is a real session that can be assigned tasks repeatedly via boss_assign. Workers are the execution arms of the Boss Mode tree: give them a short role label (e.g. "code", "review", "research") and optionally an agent.
 
 After spawning, use boss_assign to hand the worker its first task. The worker reports back through boss_report.
+
+The optional `workspace` parameter chooses where the worker operates: `main` (default) runs in the caller's checkout; `worktree` creates and binds a fresh git worktree for the worker, which requires the caller scope to be a Git project.

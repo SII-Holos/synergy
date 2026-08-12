@@ -18321,6 +18321,10 @@ msgid "tool.title.cancel-agenda"
 msgstr "Cancel Agenda"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.channel-push"
+msgstr "Push to channel"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.claim"
 msgstr "Manage research claims"
 

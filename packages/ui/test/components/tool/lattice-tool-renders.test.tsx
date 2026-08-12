@@ -45,6 +45,7 @@ describe("Lattice tool renderers", () => {
       "boss_report",
       "boss_spawn",
       "boss_status",
+      "channel_push",
       "lattice_submit",
       "pathway_read",
       "pathway_write",
@@ -62,6 +63,20 @@ describe("Lattice tool renderers", () => {
       icon: "crown",
       title: { id: "tool.title.boss-project", message: "Create project" },
       subtitle: "/work/projects/alpha",
+      tags: undefined,
+    })
+  })
+
+  test("renders channel_push with the crown glyph and text subtitle", () => {
+    registrations.get("channel_push")?.({
+      tool: "channel_push",
+      input: { text: "Done: task complete", chatId: "oc_test_group" },
+      metadata: {},
+    })
+    expect(capturedTrigger).toEqual({
+      icon: "crown",
+      title: { id: "tool.title.channel-push", message: "Push to channel" },
+      subtitle: "Done: task complete",
       tags: undefined,
     })
   })
