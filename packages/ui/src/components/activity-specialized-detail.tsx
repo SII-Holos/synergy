@@ -1,6 +1,6 @@
 import { Show } from "solid-js"
 import { DagGraph } from "./dag-graph"
-import { DiffPatch, canRenderPatch } from "./diff-patch"
+import { DiffPatchGate } from "./diff-patch"
 import type { SpecializedActivityDetail } from "./activity-specialized-detail-model"
 import { ToolDiffPreview } from "./tool/diff-preview"
 
@@ -16,9 +16,11 @@ export function ActivitySpecializedDetail(props: { detail: SpecializedActivityDe
         }
       >
         {(detail) => (
-          <Show when={canRenderPatch(detail().patch)} fallback={<ToolDiffPreview diff={detail().diff} />}>
-            <DiffPatch patch={detail().patch!} diffStyle="unified" />
-          </Show>
+          <DiffPatchGate
+            patch={detail().patch}
+            diffStyle="unified"
+            fallback={<ToolDiffPreview diff={detail().diff} />}
+          />
         )}
       </Show>
     </div>

@@ -26,6 +26,7 @@ export interface DiffPreviewProps {
 }
 
 export const TOOL_DIFF_PREVIEW_EMPTY_MESSAGE = "No text preview available."
+export const TOOL_DIFF_PREVIEW_OMITTED_MESSAGE = "Diff preview omitted in this view."
 
 export function classifyToolDiffLine(text: string): ToolDiffLineKind {
   if (text === "\\ No newline at end of file") return "note"
@@ -51,7 +52,10 @@ export function parseToolDiffPreview(preview: string | undefined): ToolDiffPrevi
 }
 
 export function formatToolDiffPreviewSummary(diff: ToolDiffPreviewFileDiff | undefined): string {
-  return diff?.truncated ? "Preview truncated" : ""
+  if (diff?.truncated) return "Preview truncated"
+  if (!diff?.preview && (diff?.beforeBytes !== undefined || diff?.afterBytes !== undefined))
+    return TOOL_DIFF_PREVIEW_OMITTED_MESSAGE
+  return ""
 }
 
 export function DiffPreview(props: DiffPreviewProps) {

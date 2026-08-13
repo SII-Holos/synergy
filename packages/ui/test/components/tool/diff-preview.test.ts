@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   TOOL_DIFF_PREVIEW_EMPTY_MESSAGE,
+  TOOL_DIFF_PREVIEW_OMITTED_MESSAGE,
   classifyToolDiffLine,
   formatToolDiffPreviewSummary,
   parseToolDiffPreview,
@@ -58,10 +59,11 @@ describe("tool diff preview", () => {
     expect(TOOL_DIFF_PREVIEW_EMPTY_MESSAGE).toBe("No text preview available.")
   })
 
-  test("formats truncation summary text", () => {
-    expect(formatToolDiffPreviewSummary({ beforeBytes: 134, afterBytes: 164 })).toBe("")
+  test("formats truncation and omitted-preview summary text", () => {
+    expect(formatToolDiffPreviewSummary({ beforeBytes: 134, afterBytes: 164 })).toBe(TOOL_DIFF_PREVIEW_OMITTED_MESSAGE)
     expect(formatToolDiffPreviewSummary({ beforeBytes: 134, afterBytes: 164, truncated: true })).toBe(
       "Preview truncated",
     )
+    expect(formatToolDiffPreviewSummary({ preview: "--- a\n+++ b", beforeBytes: 134, afterBytes: 164 })).toBe("")
   })
 })
