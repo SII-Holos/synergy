@@ -8,6 +8,7 @@ import { Session } from "../../src/session"
 import { SessionEndpoint } from "../../src/session/endpoint"
 import { ChannelPushTool } from "../../src/tool/channel-push"
 import { ToolRegistry } from "../../src/tool/registry"
+import { SessionWorkflowService } from "../../src/session/workflow"
 import type { Tool } from "../../src/tool/tool"
 import { tmpdir } from "../fixture/fixture"
 
@@ -98,6 +99,7 @@ describe("channel_push tool", () => {
           scopeKey: "scope-1",
         }),
       })
+      await SessionWorkflowService.enableBoss(session.id)
       const tool = await ChannelPushTool.init()
       const result = await tool.execute({ text: "hello" }, ctx(session.id))
 
@@ -124,6 +126,7 @@ describe("channel_push tool", () => {
           scopeKey: "scope-1",
         }),
       })
+      await SessionWorkflowService.enableBoss(session.id)
       const tool = await ChannelPushTool.init()
       const result = await tool.execute({ text: "reply", replyToMessageId: "msg-9" }, ctx(session.id))
 
@@ -150,6 +153,7 @@ describe("channel_push tool", () => {
           chatId: "chat-1",
         }),
       })
+      await SessionWorkflowService.enableBoss(session.id)
       const tool = await ChannelPushTool.init()
       const result = await tool.execute({ text: "hi", accountId: "account-2", chatId: "chat-2" }, ctx(session.id))
 
@@ -221,6 +225,7 @@ describe("channel_push tool", () => {
           chatType: "dm",
         }),
       })
+      await SessionWorkflowService.enableBoss(session.id)
       const tool = await ChannelPushTool.init()
       await tool.execute({ text: "push" }, ctx(session.id))
       await tool.execute({ text: "reply", replyToMessageId: "msg-1" }, ctx(session.id))

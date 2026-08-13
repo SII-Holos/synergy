@@ -57,13 +57,12 @@ describe("boss_project tool", () => {
       expect(result.metadata).toMatchObject({ directory: projectDir })
       const sessionID = result.metadata.sessionID as string
       const scopeID = result.metadata.scopeID as string
-
       const projectSession = await Session.get(sessionID)
-      expect(projectSession.workflow).toEqual({
-        kind: "boss",
-        role: "boss",
-        instructions: DEFAULT_PROJECT_BOSS_INSTRUCTIONS,
-      })
+
+      expect(projectSession.workflow).toMatchObject({ kind: "boss", role: "boss" })
+      const workflowInstructions = (projectSession.workflow as { instructions?: string }).instructions ?? ""
+      expect(workflowInstructions).toContain(DEFAULT_PROJECT_BOSS_INSTRUCTIONS)
+      expect(workflowInstructions).toContain(boss.id)
       expect(projectSession.interaction).toMatchObject({ mode: "interactive", source: "boss" })
       expect((projectSession.scope as Scope).id).toBe(scopeID)
       expect(scopeID).not.toBe("home")
@@ -158,11 +157,9 @@ describe("boss_project tool", () => {
       const session = await Session.get(result.metadata.sessionID as string)
       expect(session.title).toBe("My API Project")
       expect(session.agentOverride).toBe("synergy")
-      expect(session.workflow).toEqual({
-        kind: "boss",
-        role: "boss",
-        instructions: customInstructions,
-      })
+      const workflowInstructions = (session.workflow as { instructions?: string }).instructions ?? ""
+      expect(workflowInstructions).toContain(customInstructions)
+      expect(workflowInstructions).toContain(boss.id)
     })
   })
 })

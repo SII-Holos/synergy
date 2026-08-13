@@ -189,30 +189,36 @@ describe("BossRuntime", () => {
     })
   })
 
-  test("periodic briefing agenda item is created when boss_briefing_interval_days is set", async () => {
+  test("periodic briefing agenda item is created per account when boss_briefing_interval_days is set", async () => {
     await withHomeScope(async () => {
-      stubConfig({ ...FEISHU_ONE, experimental: { boss_mode: true, boss_briefing_interval_days: 7 } })
+      stubConfig({ ...FEISHU_CFG, experimental: { boss_mode: true, boss_briefing_interval_days: 7 } })
       await BossRuntime.ensure()
       const { AgendaStore } = await import("../../src/agenda/store")
-      const item = await AgendaStore.get("home", BossRuntime.BRIEFING_AGENDA_ID).catch(() => undefined)
+      const item = await AgendaStore.get("home", BossRuntime.briefingAgendaID("acct1")).catch(() => undefined)
       expect(item).toBeDefined()
       expect(item!.triggers).toContainEqual({ type: "every", interval: "7d" })
+      expect(item!.origin.sessionID).toBe(BossRuntime.bossSessionForAccount("acct1"))
+      // One item per enabled account — the second account gets its own item.
+      const item2 = await AgendaStore.get("home", BossRuntime.briefingAgendaID("acct2")).catch(() => undefined)
+      expect(item2).toBeDefined()
+      expect(item2!.origin.sessionID).toBe(BossRuntime.bossSessionForAccount("acct2"))
     })
   })
 
-  test("rescheduleBriefing updates the agenda item triggers to the new interval", async () => {
+  test("rescheduleBriefing updates each account's agenda item to the new interval", async () => {
     await withHomeScope(async () => {
       stubConfig({ ...FEISHU_ONE, experimental: { boss_mode: true, boss_briefing_interval_days: 7 } })
       await BossRuntime.ensure()
       const { AgendaStore } = await import("../../src/agenda/store")
-      const before = await AgendaStore.get("home", BossRuntime.BRIEFING_AGENDA_ID).catch(() => undefined)
+      const itemID = BossRuntime.briefingAgendaID("acct1")
+      const before = await AgendaStore.get("home", itemID).catch(() => undefined)
       expect(before).toBeDefined()
       expect(before!.triggers).toContainEqual({ type: "every", interval: "7d" })
 
-      // Interval change re-registers the same item with the new cadence.
+      // Interval change re-registers the same per-account item with the new cadence.
       stubConfig({ ...FEISHU_ONE, experimental: { boss_mode: true, boss_briefing_interval_days: 3 } })
       await BossRuntime.rescheduleBriefing()
-      const after = await AgendaStore.get("home", BossRuntime.BRIEFING_AGENDA_ID).catch(() => undefined)
+      const after = await AgendaStore.get("home", itemID).catch(() => undefined)
       expect(after).toBeDefined()
       expect(after!.triggers).toContainEqual({ type: "every", interval: "3d" })
       expect(after!.triggers).not.toContainEqual({ type: "every", interval: "7d" })

@@ -7,8 +7,9 @@ import { Scope } from "@/scope"
 import { ScopeContext } from "@/scope/context"
 import { Log } from "@/util/log"
 import { withTimeout } from "@/util/timeout"
-import { Session } from "."
+import { externalIdentityHash } from "../channel/identity"
 import { DEFAULT_IDENTITY_TEXT as DefaultIdentityText } from "./boss-prompt"
+import { Session } from "."
 import { SessionEndpoint } from "./endpoint"
 import { SessionInbox } from "./inbox"
 import { SessionInteraction } from "./interaction"
@@ -41,6 +42,10 @@ export namespace BossRuntime {
   export const BRIEFING_AGENDA_ID = "boss-briefing"
   const BRIEFING_DELIVERY_PREFIX = "boss-identity:"
   const BRIEFING_LIMIT = 50
+  /** Per-account periodic briefing Agenda item ID (safe for storage paths). */
+  export function briefingAgendaID(accountId: string): string {
+    return `${BRIEFING_AGENDA_ID}-${externalIdentityHash(accountId).slice(0, 12)}`
+  }
 
   /** Registered per-account boss sessions (accountId → sessionID). */
   const accountBossSessions = new Map<string, string>()
@@ -67,13 +72,13 @@ export namespace BossRuntime {
   export async function ensure(): Promise<void> {
     const config = await Config.current().catch(() => undefined)
     const enabled = config?.experimental?.boss_mode === true
-    if (!enabled) {
-      accountBossSessions.clear()
-      return
-    }
+    // Reconcile: start from an empty routing map so removed accounts (or a
+    // disabled mode) never leave stale entries behind. Re-provisioning is
+    // idempotent per account (existing endpoint sessions are reused).
+    accountBossSessions.clear()
+    if (!enabled) return
     const feishu = config?.channel?.feishu
     if (!feishu) return
-
     await ScopeContext.provide({
       scope: Scope.home(),
       fn: async () => {
@@ -81,7 +86,9 @@ export namespace BossRuntime {
           Object.entries(feishu.accounts ?? {}).map(async ([accountId, account]) => {
             if (account.enabled === false) return
             if (account.projectDir) {
-              log.warn("boss routing skipped for feishu account with projectDir (fail-closed)", { accountId })
+              log.warn("boss routing skipped for feishu account with projectDir (fail-closed)", {
+                accountHash: externalIdentityHash(accountId),
+              })
               return
             }
             const sessionID = await ensureBossSession(accountId)
@@ -142,13 +149,19 @@ export namespace BossRuntime {
         await Session.update(existing.id, (draft) => {
           draft.workflow = { kind: "boss", role: "boss" }
         })
-        log.info("promoted existing endpoint session to runtime boss", { sessionID: existing.id, accountId })
+        log.info("promoted existing endpoint session to runtime boss", {
+          sessionID: existing.id,
+          accountHash: externalIdentityHash(accountId),
+        })
       }
       if (existing.agentOverride !== "boss-synergy") {
         await Session.update(existing.id, (draft) => {
           draft.agentOverride = "boss-synergy"
         })
-        log.info("upgraded runtime boss session to boss-synergy agent", { sessionID: existing.id, accountId })
+        log.info("upgraded runtime boss session to boss-synergy agent", {
+          sessionID: existing.id,
+          accountHash: externalIdentityHash(accountId),
+        })
       }
       await deliverIdentityBriefing(existing.id)
       return existing.id
@@ -161,7 +174,10 @@ export namespace BossRuntime {
       agentOverride: "boss-synergy",
       workflow: { kind: "boss", role: "boss" },
     })
-    log.info("runtime boss session created", { sessionID: session.id, accountId })
+    log.info("runtime boss session created", {
+      sessionID: session.id,
+      accountHash: externalIdentityHash(accountId),
+    })
     await deliverIdentityBriefing(session.id)
     return session.id
   }
@@ -260,50 +276,62 @@ export namespace BossRuntime {
     return lines.join("\n")
   }
 
-  /** Register or update the periodic briefing Agenda item. */
+  /** Register or update one periodic briefing Agenda item per boss account. */
   async function syncBriefingSchedule(): Promise<void> {
     const config = await Config.current().catch(() => undefined)
     const days = config?.experimental?.boss_briefing_interval_days
-    const bossSessionID = accountBossSessions.values().next().value as string | undefined
-    if (!days || !bossSessionID) {
+    if (!days) {
       await removeBriefingSchedule()
       return
     }
-    try {
-      const existing = await AgendaStore.get("home", BRIEFING_AGENDA_ID).catch(() => undefined)
-      if (existing) {
-        await Agenda.update(BRIEFING_AGENDA_ID, {
-          prompt: BRIEFING_REFRESH_PROMPT,
-          triggers: [{ type: "every", interval: `${days}d` }],
-        })
-        log.info("boss briefing agenda item updated", { id: BRIEFING_AGENDA_ID, days })
-        return
+    // Migrate the legacy single-account item (pre-multi-account) away.
+    await Agenda.remove(BRIEFING_AGENDA_ID).catch(() => undefined)
+    const entries = [...accountBossSessions.entries()]
+    if (entries.length === 0) return
+    for (const [accountId, sessionID] of entries) {
+      const itemID = briefingAgendaID(accountId)
+      try {
+        const existing = await AgendaStore.get("home", itemID).catch(() => undefined)
+        if (existing) {
+          await Agenda.update(itemID, {
+            prompt: BRIEFING_REFRESH_PROMPT,
+            triggers: [{ type: "every", interval: `${days}d` }],
+          })
+          log.info("boss briefing agenda item updated", { id: itemID, days, sessionID })
+          continue
+        }
+        await Agenda.create(
+          {
+            title: "Runtime Boss 世界概况刷新",
+            prompt: BRIEFING_REFRESH_PROMPT,
+            triggers: [{ type: "every", interval: `${days}d` }],
+            deliveryMode: "session_guidance",
+            sessionID,
+            global: true,
+            tags: ["system"],
+            createdBy: "agent",
+          },
+          itemID,
+        )
+        log.info("boss briefing agenda item created", { id: itemID, days, sessionID })
+      } catch (error) {
+        log.warn("failed to sync boss briefing agenda item", { id: itemID, error })
       }
-      await Agenda.create(
-        {
-          title: "Runtime Boss 世界概况刷新",
-          prompt: BRIEFING_REFRESH_PROMPT,
-          triggers: [{ type: "every", interval: `${days}d` }],
-          deliveryMode: "session_guidance",
-          sessionID: bossSessionID,
-          global: true,
-          tags: ["system"],
-          createdBy: "agent",
-        },
-        BRIEFING_AGENDA_ID,
-      )
-      log.info("boss briefing agenda item created", { id: BRIEFING_AGENDA_ID, days })
-    } catch (error) {
-      log.warn("failed to sync boss briefing agenda item", { error })
     }
   }
 
   async function removeBriefingSchedule(): Promise<void> {
-    try {
-      await Agenda.remove(BRIEFING_AGENDA_ID)
-      log.info("boss briefing agenda item removed")
-    } catch {
-      // Not present — fine.
+    const items = await AgendaStore.listAll().catch(() => [])
+    const briefingItems = items.filter(
+      (item) => item.id === BRIEFING_AGENDA_ID || item.id.startsWith(`${BRIEFING_AGENDA_ID}-`),
+    )
+    for (const item of briefingItems) {
+      try {
+        await Agenda.remove(item.id)
+        log.info("boss briefing agenda item removed", { id: item.id })
+      } catch {
+        // Not present — fine.
+      }
     }
   }
 }

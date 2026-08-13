@@ -15,7 +15,9 @@ export const BossAssignTool = Tool.define("boss_assign", {
   description: DESCRIPTION,
   parameters,
   async execute(params, ctx) {
-    const result = await BossService.assign(ctx.sessionID, params)
+    const result = await BossService.assign(ctx.sessionID, params, {
+      anchorMessageID: typeof ctx.extra?.userMessageID === "string" ? ctx.extra.userMessageID : undefined,
+    })
     return {
       title: result.created ? `Task assigned to ${params.sessionID}` : `Task already assigned (${params.taskID})`,
       metadata: { sessionID: params.sessionID, taskID: params.taskID, created: result.created },

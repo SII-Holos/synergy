@@ -270,13 +270,34 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
   const currentBossMode = cfg.experimental?.boss_mode === true
   if (bossMode !== currentBossMode) experimental.boss_mode = bossMode
 
-  const bossIdentityText = runtime.bossIdentityText.trim() === "" ? undefined : runtime.bossIdentityText
+  // Clearing an optional value must send null (not undefined): the SDK JSON
+  // serializer drops undefined keys, so undefined would never reach the
+  // server and the stored value would survive the merge. Schema fields are
+  // nullable to accept the explicit clear.
+  const bossIdentityText = runtime.bossIdentityText.trim() === "" ? null : runtime.bossIdentityText
   const currentBossIdentityText = cfg.experimental?.boss_identity_text
-  if (bossIdentityText !== currentBossIdentityText) experimental.boss_identity_text = bossIdentityText
+  // Explicit null clears a stored value (the SDK JSON serializer drops
+  // undefined keys, so undefined would keep the old value server-side), but a
+  // null clear is only meaningful when the server actually has a value —
+  // otherwise the null would materialize an empty experimental block.
+  if (
+    bossIdentityText !== currentBossIdentityText &&
+    (bossIdentityText !== null || currentBossIdentityText !== undefined)
+  ) {
+    experimental.boss_identity_text = bossIdentityText
+  }
 
-  const bossBriefingIntervalDays = positiveInteger(runtime.bossBriefingIntervalDays)
+  const bossBriefingIntervalRaw = runtime.bossBriefingIntervalDays.trim()
+  const bossBriefingIntervalDays =
+    bossBriefingIntervalRaw === "" ? null : positiveInteger(runtime.bossBriefingIntervalDays)
   const currentBossBriefingIntervalDays = cfg.experimental?.boss_briefing_interval_days
-  if (bossBriefingIntervalDays !== currentBossBriefingIntervalDays) {
+  // Invalid input (undefined) carries no change intent; null clears a stored
+  // value; an explicit number always materializes.
+  if (
+    bossBriefingIntervalDays !== undefined &&
+    bossBriefingIntervalDays !== currentBossBriefingIntervalDays &&
+    (bossBriefingIntervalDays !== null || currentBossBriefingIntervalDays !== undefined)
+  ) {
     experimental.boss_briefing_interval_days = bossBriefingIntervalDays
   }
 

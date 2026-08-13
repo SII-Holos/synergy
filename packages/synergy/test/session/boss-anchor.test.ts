@@ -74,6 +74,37 @@ describe("boss channel anchor propagation", () => {
     })
   })
 
+  test("boss_assign prefers the explicit current-turn anchor over a newer history anchor", async () => {
+    await withScope(async () => {
+      const { boss, worker } = await bossAndWorker()
+      // Older anchor in the session history.
+      await injectChannelMessage(boss.id, { chatId: "oc_old", messageId: "om_old" })
+      // Current turn's user message with a different anchor.
+      const { createUserMessage } = await import("../../src/session/input")
+      const created = await createUserMessage({
+        sessionID: boss.id,
+        agent: "synergy",
+        model: { providerID: "test", modelID: "test-model" },
+        parts: [{ type: "text", text: "帮我看看这个" }],
+        metadata: {
+          channelReply: true,
+          channelReplyToMessageId: "om_current",
+          channelChatId: "oc_current",
+        },
+      })
+      await withWorkerLease(worker.id, async () => {
+        await BossService.assign(
+          boss.id,
+          { sessionID: worker.id, taskID: "t2", task: "干个活" },
+          { anchorMessageID: created.info.id },
+        )
+        const items = await SessionInbox.list(worker.id)
+        const bossMeta = (items[0]!.message!.metadata as { boss?: Record<string, unknown> }).boss
+        expect(bossMeta!.channel).toMatchObject({ chatId: "oc_current", replyToMessageId: "om_current" })
+      })
+    })
+  })
+
   test("boss_report carries the task's Feishu anchor back so the boss replies to the source chat", async () => {
     await withScope(async () => {
       const { boss, worker } = await bossAndWorker()

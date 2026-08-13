@@ -19,11 +19,12 @@ function action(agent: ReturnType<typeof createBuiltinPrimaryAgents>[string], pe
 describe("boss-synergy primary agent", () => {
   const agents = createBuiltinPrimaryAgents(ctx)
 
-  test("is a native primary agent with a coordination prompt", () => {
+  test("is a hidden native primary agent with a coordination prompt", () => {
     const agent = agents["boss-synergy"]
     expect(agent).toBeDefined()
     expect(agent.mode).toBe("primary")
     expect(agent.native).toBe(true)
+    expect(agent.hidden).toBe(true)
     expect(agent.prompt).toContain("协调者")
   })
 

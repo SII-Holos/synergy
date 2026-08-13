@@ -8,6 +8,7 @@ import { SessionManager } from "./manager"
 import { SessionInvoke } from "./invoke"
 import { SessionInteraction } from "./interaction"
 import { bossAssignmentMetadata } from "./boss-message"
+import { MessageV2 } from "./message-v2"
 
 /**
  * BossService — stateless orchestration for the Boss Mode workflow
@@ -118,6 +119,22 @@ export namespace BossService {
     return { boss: { from, to, ...extra } }
   }
 
+  /**
+   * Feishu anchor bound to the user message that started the current turn
+   * (the assistant's parent root). Prefer this over scanning the inbox/history,
+   * which can pick up an older requester when multiple channel requests
+   * accumulate in one session.
+   */
+  async function anchorFromUserMessage(
+    sessionID: string,
+    messageID: string | undefined,
+  ): Promise<{ chatId?: string; replyToMessageId?: string; senderId?: string } | undefined> {
+    if (!messageID) return undefined
+    const message = await MessageV2.get({ sessionID, messageID }).catch(() => undefined)
+    if (!message || message.info.role !== "user") return undefined
+    return channelAnchorFromMetadata(message.info.metadata)
+  }
+
   /** Most recent Feishu channel anchor seen by the caller: fresh channel messages (inbox) first, then history. */
   async function recentChannelAnchor(
     sessionID: string,
@@ -223,6 +240,7 @@ export namespace BossService {
   export async function assign(
     callerID: string,
     input: { sessionID: string; taskID: string; task: string; context?: string; acceptance?: string[] },
+    options: { anchorMessageID?: string } = {},
   ): Promise<AssignResult> {
     const caller = await requireBoss(callerID)
     const target = await assertDirectChild(caller, input.sessionID)
@@ -232,7 +250,8 @@ export namespace BossService {
 
     const deliveryKey = `boss:${caller.id}:${taskID}`
     const taskTitle = input.task.trim().slice(0, 80)
-    const channel = await recentChannelAnchor(caller.id)
+    const channel =
+      (await anchorFromUserMessage(caller.id, options.anchorMessageID)) ?? (await recentChannelAnchor(caller.id))
     const result = await SessionInbox.deliverUnique({
       sessionID: target.id,
       deliveryKey,
@@ -264,6 +283,7 @@ export namespace BossService {
   export async function report(
     callerID: string,
     input: { summary: string; status?: "completed" | "blocked" | "needs_input"; refs?: string[] },
+    options: { anchorMessageID?: string } = {},
   ): Promise<ReportResult> {
     const caller = await requireBoss(callerID)
     if (caller.workflow?.kind !== "boss" || caller.workflow.role !== "worker") {
@@ -288,7 +308,7 @@ export namespace BossService {
     ].join("\n")
     const reportID = Identifier.ascending("message")
     const currentTask = await currentTaskInfo(caller)
-    const channel = currentTask?.channel
+    const channel = currentTask?.channel ?? (await anchorFromUserMessage(caller.id, options.anchorMessageID))
     const result = await SessionInbox.deliver({
       sessionID: parent.id,
       mode: "steer",

@@ -138,6 +138,10 @@ export function createBuiltinPrimaryAgents(ctx: BuiltinAgentContext): Record<str
       permission: bossPrimaryPermission(ctx),
       mode: "primary",
       native: true,
+      // Hidden host-owned agent: not shown in agent menus or the Settings
+      // default-agent selector, and never selectable for ordinary sessions.
+      // It is only reachable through the boss session agentOverride.
+      hidden: true,
     },
   }
 }

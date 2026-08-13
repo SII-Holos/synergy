@@ -447,8 +447,10 @@ describe("settings config patch", () => {
       }).experimental,
     ).toEqual({
       boss_mode: false,
-      boss_identity_text: undefined,
-      boss_briefing_interval_days: undefined,
+      // Explicit null clears the stored value: the SDK JSON serializer drops
+      // undefined keys, so undefined would never reach the server merge.
+      boss_identity_text: null,
+      boss_briefing_interval_days: null,
     })
   })
 

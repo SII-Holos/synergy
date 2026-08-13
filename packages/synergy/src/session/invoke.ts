@@ -777,10 +777,17 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
               // the originating Feishu message, so it neither duplicates with
               // channel_push nor misses a receipt.
               const bossDeliveryMetadata = channelDeliveryMetadata(msgs, lastFinishedIndex)
+              // Treat delivery as automatic only when a single unambiguous
+              // reply anchor exists; conflicting anchors (multiple Feishu
+              // requests in one turn) cannot auto-deliver, so the boss must
+              // use channel_push explicitly per requester.
+              const autoDelivers =
+                bossDeliveryMetadata?.channelPush === true &&
+                typeof bossDeliveryMetadata.channelReplyToMessageId === "string"
               systemParts.push(
                 buildBossDeliveryHint(
-                  bossDeliveryMetadata?.channelPush
-                    ? { auto: true, replyToMessageId: bossDeliveryMetadata.channelReplyToMessageId }
+                  autoDelivers
+                    ? { auto: true, replyToMessageId: bossDeliveryMetadata!.channelReplyToMessageId }
                     : { auto: false },
                 ),
               )

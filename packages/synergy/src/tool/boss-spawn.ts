@@ -19,6 +19,15 @@ export const BossSpawnTool = Tool.define("boss_spawn", {
   description: DESCRIPTION,
   parameters,
   async execute(params, ctx) {
+    // Creating a git worktree crosses the workspace boundary; require an
+    // explicit permission decision before the worker session is created.
+    if (params.workspace === "worktree") {
+      await ctx.ask({
+        permission: "worktree_enter",
+        patterns: ["*"],
+        metadata: { reason: "boss_spawn workspace=worktree" },
+      })
+    }
     const session = await BossService.spawn(ctx.sessionID, params)
     return {
       title: `Worker spawned: ${session.title}`,

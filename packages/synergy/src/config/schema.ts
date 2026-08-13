@@ -1967,12 +1967,14 @@ export const Info = z
           ),
         boss_identity_text: z
           .string()
+          .nullable()
           .optional()
           .describe("Optional colleague identity description injected into the runtime boss session"),
         boss_briefing_interval_days: z
           .number()
           .int()
           .positive()
+          .nullable()
           .optional()
           .describe("Re-inject the versioned world-overview briefing every N days (default: disabled)"),
       })

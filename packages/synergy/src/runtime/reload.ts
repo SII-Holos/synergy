@@ -382,6 +382,23 @@ export namespace RuntimeReload {
             }
           }
         }
+        // Feishu account changes can add or remove boss-routed accounts;
+        // re-provision from the new config so the routing map never keeps
+        // stale accounts (ensure() rebuilds the map idempotently).
+        if (resolvedScope === "global" && changedFields.includes("channel")) {
+          const oldAccounts = oldConfig.channel?.feishu?.accounts
+          const newAccounts = result.config.channel?.feishu?.accounts
+          if (JSON.stringify(oldAccounts) !== JSON.stringify(newAccounts)) {
+            try {
+              const { BossRuntime } = await import("../session/boss-runtime")
+              await BossRuntime.sync(result.config.experimental?.boss_mode === true)
+            } catch (err) {
+              ctx.warnings.push(
+                `Failed to sync runtime boss mode after channel change: ${err instanceof Error ? err.message : String(err)}`,
+              )
+            }
+          }
+        }
         if (changedFields.includes("timeout")) {
           const { TimeoutConfig } = await import("@/util/timeout-config")
           TimeoutConfig.invalidate()

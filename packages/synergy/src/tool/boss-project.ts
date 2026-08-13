@@ -6,6 +6,7 @@ import { Scope } from "@/scope"
 import { ScopeContext } from "@/scope/context"
 import { Session } from "../session"
 import { SessionInteraction } from "../session/interaction"
+import { Agent } from "../agent/agent"
 import { Tool } from "./tool"
 import DESCRIPTION from "./boss-project.txt"
 
@@ -42,9 +43,11 @@ export const BossProjectTool = Tool.define("boss_project", {
       throw new Error("boss_project: only boss-role sessions may create project bosses")
     }
 
-    // 1. Create the directory when missing.
+    // 1. Authorize binding this directory as a project scope whether or not
+    // it already exists — an existing arbitrary absolute path otherwise
+    // becomes a trusted project scope with no permission decision.
+    await ctx.ask({ permission: "external_directory", patterns: [directory], metadata: { directory } })
     if (!existsSync(directory)) {
-      await ctx.ask({ permission: "edit", patterns: [directory], metadata: { directory } })
       await mkdir(directory, { recursive: true })
     }
 
@@ -56,8 +59,16 @@ export const BossProjectTool = Tool.define("boss_project", {
 
     // 3. Create the project boss session in that scope.
     const title = params.title?.trim() || path.basename(directory)
-    const instructions = params.instructions?.trim() || DEFAULT_PROJECT_BOSS_INSTRUCTIONS
     const agent = params.agent?.trim() || caller?.agentOverride || "synergy"
+    const agentInfo = await Agent.get(agent).catch(() => undefined)
+    if (!agentInfo) {
+      throw new Error(`boss_project: unknown agent "${agent}"`)
+    }
+    const instructions = [
+      params.instructions?.trim() || DEFAULT_PROJECT_BOSS_INSTRUCTIONS,
+      "",
+      `协调者(总 boss)sessionID: ${caller.id}。用 session_send 向它发送摘要;它用 session_read 深读你的会话。`,
+    ].join("\n")
     const session = await ScopeContext.provide({
       scope,
       fn: () =>
