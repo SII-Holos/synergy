@@ -221,6 +221,10 @@ describe("Browser native page pool", () => {
       "ready",
     ])
     expect(first.webContents.destroyed).toBe(true)
+    // The "ready" event is the availability contract: a consumer reacting to
+    // it must be able to issue CDP commands without racing the restarting
+    // guard.
+    await expect(handle.execute({ type: "reload" })).resolves.toBeDefined()
     await pool.destroy()
   })
 
