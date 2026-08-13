@@ -4,6 +4,7 @@ import type {
   AttachmentPart,
   Part as PartType,
   PermissionRequest,
+  ReasoningPart,
   ToolPart,
 } from "@ericsanchezok/synergy-sdk/client"
 import type { ActivityTimelineItem } from "../../src/components/session-turn-activity"
@@ -308,12 +309,27 @@ describe("balanced reasoning projection", () => {
       message: second,
     })
   })
+  test("replaces the Thinking status row with a live reasoning line while compact streaming", () => {
+    const first = assistant("assistant-a")
+    const part = reasoning("reason-a", first.id) as ReasoningPart
+    const projected = projectBalancedReasoningItems(
+      project({ message: first, parts: [part, text("answer-a", first.id)], working: true }),
+      "root-user",
+      true,
+      { anchorMessage: first, frontier: { message: first, partID: part.id }, compactReasoningPart: part },
+    )
+
+    expect(projected.some((item) => item.kind === "activity-reasoning-summary")).toBe(false)
+    const live = projected.find((item) => item.kind === "passthrough" && item.item.kind === "reasoning")
+    expect(live).toBeTruthy()
+    expect((live as { item: { part: { id: string } } }).item.part.id).toBe("reason-a")
+  })
 })
 
 describe("activity display preference", () => {
-  test("falls back missing and unknown values to full", () => {
-    expect(resolveActivityDisplay(undefined)).toBe("full")
-    expect(resolveActivityDisplay("unknown")).toBe("full")
+  test("falls back missing and unknown values to balanced", () => {
+    expect(resolveActivityDisplay(undefined)).toBe("balanced")
+    expect(resolveActivityDisplay("unknown")).toBe("balanced")
     expect(resolveActivityDisplay("full")).toBe("full")
     expect(resolveActivityDisplay("balanced")).toBe("balanced")
     expect(resolveActivityDisplay("minimal")).toBe("minimal")
