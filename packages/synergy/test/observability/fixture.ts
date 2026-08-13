@@ -7,11 +7,17 @@ import { ObservabilityResources } from "../../src/observability/resources"
 
 const homes: string[] = []
 const originalHome = process.env.SYNERGY_TEST_HOME
+const originalInline = process.env.SYNERGY_OBSERVABILITY_INLINE
 
 export function resetObservabilityHome(prefix = "synergy-observability-") {
   const home = mkdtempSync(path.join(tmpdir(), prefix))
   homes.push(home)
   process.env.SYNERGY_TEST_HOME = home
+  // Existing observability/performance tests exercise the store contract, not
+  // the worker transport; pin them to the inline write path so behavior is
+  // unchanged. Worker-mode coverage lives in telemetry-worker.test.ts and
+  // store-worker-mode.test.ts.
+  process.env.SYNERGY_OBSERVABILITY_INLINE = "1"
   mkdirSync(path.join(home, ".synergy", "config", "synergy.d"), { recursive: true })
   mkdirSync(path.join(home, ".synergy", "state"), { recursive: true })
   mkdirSync(path.join(home, ".synergy", "log"), { recursive: true })
@@ -26,5 +32,7 @@ export function cleanupObservabilityHomes() {
   ObservabilityStore.close()
   if (originalHome === undefined) delete process.env.SYNERGY_TEST_HOME
   else process.env.SYNERGY_TEST_HOME = originalHome
+  if (originalInline === undefined) delete process.env.SYNERGY_OBSERVABILITY_INLINE
+  else process.env.SYNERGY_OBSERVABILITY_INLINE = originalInline
   for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true })
 }

@@ -580,12 +580,26 @@ describe("AgentTurnProtocol", () => {
     expect(decoded.error.message).toBe("plain failure")
   })
 
+  test("parses ack-window messages and round-trips them through the HostToWorker schema", () => {
+    const message = { type: "ack-window" as const, requestId: "turn", ackSequence: 7 }
+
+    expect(AgentTurnProtocol.parseHostToWorker(message)).toEqual(message)
+    expect(AgentTurnProtocol.HostToWorkerSchema.parse(message)).toEqual(message)
+  })
+
   test("rejects unknown protocol fields and invalid frame counters", () => {
+    expect(() =>
+      AgentTurnProtocol.parseHostToWorker({
+        type: "ack-window",
+        requestId: "turn",
+        ackSequence: -1,
+      }),
+    ).toThrow()
     expect(() =>
       AgentTurnProtocol.parseHostToWorker({
         type: "ack",
         requestId: "turn",
-        sequence: -1,
+        sequence: 1,
       }),
     ).toThrow()
     expect(() =>

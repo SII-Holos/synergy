@@ -5,11 +5,13 @@ import { Runtime as ScopeRuntime } from "@/scope/types"
 import { Workspace } from "../workspace-schema"
 
 export namespace AgentTurnProtocol {
-  export const VERSION = 6
+  export const VERSION = 7
   export const REQUEST_MAX_BYTES = 64 * 1024 * 1024
   export const EVENT_MAX_BYTES = 2 * 1024 * 1024
   export const IPC_FRAME_MAX_BYTES = 2 * 1024 * 1024
   export const REQUEST_CHUNK_BYTES = 1024 * 1024
+  export const ACK_WINDOW_BYTES = 512 * 1024
+  export const ACK_FLUSH_MS = 100
   export const ERROR_MESSAGE_MAX_CHARS = 64 * 1024
   export const ERROR_STACK_MAX_CHARS = 16 * 1024
   export const ERROR_RESPONSE_MAX_CHARS = 256 * 1024
@@ -181,7 +183,7 @@ export namespace AgentTurnProtocol {
     | { type: "run-chunk"; requestId: string; index: number; data: Uint8Array }
     | { type: "run-commit"; requestId: string }
     | { type: "cancel"; requestId: string; reason?: string }
-    | { type: "ack"; requestId: string; sequence: number }
+    | { type: "ack-window"; requestId: string; ackSequence: number }
     | { type: "collect-memory"; requestId: string }
     | { type: "shutdown" }
     | { type: "ping" }
@@ -255,7 +257,13 @@ export namespace AgentTurnProtocol {
         reason: z.string().max(ERROR_MESSAGE_MAX_CHARS).optional(),
       })
       .strict(),
-    z.object({ type: z.literal("ack"), requestId: z.string(), sequence: z.number().int().nonnegative() }).strict(),
+    z
+      .object({
+        type: z.literal("ack-window"),
+        requestId: z.string(),
+        ackSequence: z.number().int().nonnegative(),
+      })
+      .strict(),
     z.object({ type: z.literal("collect-memory"), requestId: z.string() }).strict(),
     z.object({ type: z.literal("shutdown") }).strict(),
     z.object({ type: z.literal("ping") }).strict(),
