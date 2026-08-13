@@ -9281,6 +9281,14 @@ msgstr "Total"
 msgid "diff.file-diff-preview"
 msgstr "File diff preview"
 
+#. ── Diff preview ────────────────────────────────────────────────────
+msgid "diff.preview-omitted"
+msgstr "Diff preview omitted in this view."
+
+#. ── Diff preview ────────────────────────────────────────────────────
+msgid "diff.preview-truncated"
+msgstr "Preview truncated"
+
 #. js-lingui-explicit-id
 msgid "list.for-label"
 msgstr "for"
