@@ -142,27 +142,36 @@ describe("rootNavRequest", () => {
       },
     })
   })
-
-  test("includes child entries for the Background section so boss workers appear", () => {
-    expect(rootNavRequest("background", 100)).toEqual({
-      source: "scope",
-      query: {
-        scopeID: "home",
-        category: "background",
-        parentOnly: "false",
-        limit: 100,
-      },
-    })
-  })
 })
 
-test("includes child entries for the Background section so boss workers appear", () => {
-  expect(rootNavRequest("background", 100)).toEqual({
+test("includes child entries for the Background section only when boss mode is enabled", () => {
+  expect(rootNavRequest("background", 100, undefined, { includeBackgroundChildren: true })).toEqual({
     source: "scope",
     query: {
       scopeID: "home",
       category: "background",
       parentOnly: "false",
+      limit: 100,
+    },
+  })
+})
+
+test("keeps background parent-only when boss mode is disabled (pre-boss behavior)", () => {
+  expect(rootNavRequest("background", 100)).toEqual({
+    source: "scope",
+    query: {
+      scopeID: "home",
+      category: "background",
+      parentOnly: "true",
+      limit: 100,
+    },
+  })
+  expect(rootNavRequest("background", 100, undefined, { includeBackgroundChildren: false })).toEqual({
+    source: "scope",
+    query: {
+      scopeID: "home",
+      category: "background",
+      parentOnly: "true",
       limit: 100,
     },
   })
