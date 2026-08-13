@@ -30,6 +30,11 @@ describe("ObservabilityStore worker mode", () => {
     // runtime-ready gate must be released exactly like server/runtime.ts does
     // after ensureMigrations() completes.
     delete process.env.SYNERGY_OBSERVABILITY_INLINE
+    // Other test files reconfigure the module-level config singleton (e.g.
+    // walCheckpointIntervalMs: 1_234) without restoring it; mark it dirty so
+    // this file always derives fresh effective defaults regardless of the
+    // order test files run in a CI shard.
+    ObservabilityConfig.refresh()
     ObservabilityStore.markRuntimeReady()
     ObservabilityStore.close()
   })
