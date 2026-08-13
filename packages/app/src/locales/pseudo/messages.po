@@ -9281,6 +9281,14 @@ msgstr ""
 msgid "diff.file-diff-preview"
 msgstr ""
 
+#. ── Diff preview ────────────────────────────────────────────────────
+msgid "diff.preview-omitted"
+msgstr ""
+
+#. ── Diff preview ────────────────────────────────────────────────────
+msgid "diff.preview-truncated"
+msgstr ""
+
 #. js-lingui-explicit-id
 msgid "list.for-label"
 msgstr ""
@@ -11554,6 +11562,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session-status.working-with-notes"
+msgstr ""
+
+#. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.compact-reasoning-thinking"
 msgstr ""
 
 #. ── Session turn chrome ─────────────────────────────────────────────
@@ -14858,6 +14870,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.general.colorScheme.system.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.compactReasoning.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.compactReasoning.title"
 msgstr ""
 
 #. js-lingui-explicit-id

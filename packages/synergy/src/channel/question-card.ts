@@ -2,7 +2,12 @@ import type { Question } from "@/question"
 import { ScopedState } from "@/scope/scoped-state"
 import { Lock } from "@/util/lock"
 import { Log } from "@/util/log"
-import { QuestionCardCallback, type Provider, type QuestionCardCallback as QuestionCardCallbackType } from "./types"
+import {
+  QuestionCardCallback,
+  type Provider,
+  type QuestionCardActionResult,
+  type QuestionCardCallback as QuestionCardCallbackType,
+} from "./types"
 
 type Registration = {
   status: "pending" | "active"
@@ -13,6 +18,7 @@ type Registration = {
   chatId: string
   requesterId: string
   questions: Question.Info[]
+  provider?: Provider
   messageId?: string
 }
 
@@ -62,6 +68,7 @@ export namespace QuestionCardRuntime {
       chatId: input.chatId,
       requesterId: input.requesterId,
       questions: input.request.questions,
+      provider: input.provider,
     }
     {
       using _ = await Lock.write(lockKey(input.request.id))
@@ -114,7 +121,7 @@ export namespace QuestionCardRuntime {
     channelType: string
     accountId: string
     callback: QuestionCardCallbackType
-  }): Promise<{ status: "accepted" | "duplicate" | "expired" | "rejected" }> {
+  }): Promise<QuestionCardActionResult> {
     const parsed = QuestionCardCallback.safeParse(input.callback)
     if (!parsed.success) return { status: "rejected" }
     const callback = parsed.data
@@ -123,26 +130,43 @@ export namespace QuestionCardRuntime {
     const runtime = state()
     const registration = runtime.registrations.get(callback.requestId)
     if (!registration) {
-      return runtime.accepted.get(callback.requestId)?.eventId === callback.eventId
-        ? { status: "duplicate" }
-        : { status: "expired" }
+      const status = runtime.accepted.get(callback.requestId)?.eventId === callback.eventId ? "duplicate" : "expired"
+      log.info("question card callback not accepted", { requestId: callback.requestId, status })
+      return { status }
     }
-    if (registration.status !== "active" || !matchesOwner(registration, input, callback)) {
+    if (registration.status !== "active") {
+      log.info("question card callback rejected", { requestId: callback.requestId, reason: "registration not active" })
+      return { status: "rejected" }
+    }
+    if (!matchesOwner(registration, input, callback)) {
+      log.info("question card callback rejected", { requestId: callback.requestId, reason: "owner mismatch" })
       return { status: "rejected" }
     }
 
     const answers = resolveAnswers(registration.questions, callback)
-    if (!answers) return { status: "rejected" }
+    if (!answers) {
+      log.info("question card callback rejected", { requestId: callback.requestId, reason: "invalid answers" })
+      return { status: "rejected" }
+    }
 
     const { Question } = await import("@/question")
     const replied = await Question.tryReply({ requestID: callback.requestId, answers })
     if (!replied) {
       runtime.registrations.delete(callback.requestId)
+      log.info("question card callback not accepted", {
+        requestId: callback.requestId,
+        status: "expired",
+        reason: "question no longer pending",
+      })
       return { status: "expired" }
     }
     runtime.registrations.delete(callback.requestId)
     rememberAccepted({ requestId: callback.requestId, eventId: callback.eventId, sessionID: registration.sessionID })
-    return { status: "accepted" }
+    const summary = registration.provider?.renderQuestionCardSummary?.({
+      questions: registration.questions,
+      answers,
+    })
+    return summary ? { status: "accepted", card: summary } : { status: "accepted" }
   }
 
   export async function settle(requestId: string): Promise<void> {

@@ -48,7 +48,7 @@ type CallbackPayload = z.infer<typeof CallbackPayload>
 type CardJson = {
   schema: "2.0"
   config: { update_multi: true; summary: { content: string } }
-  header: { title: { tag: "plain_text"; content: string }; template: "blue" }
+  header: { title: { tag: "plain_text"; content: string }; template: string }
   body: { elements: unknown[] }
 }
 
@@ -168,7 +168,7 @@ export async function sendFeishuQuestionCard(
     requestId: string
     questions: Question.Info[]
   },
-): Promise<{ messageId: string }> {
+): Promise<{ messageId: string; threadId?: string }> {
   const cardJson = renderFeishuQuestionCard(input.questions, input.requestId)
   const cardBytes = new TextEncoder().encode(JSON.stringify(cardJson)).byteLength
   if (cardBytes + CARD_SIZE_RESERVE_BYTES > MAX_CARD_BYTES) {
@@ -221,4 +221,43 @@ function mergePayloads(outer: CallbackPayload, event: CallbackPayload): Callback
     header: outer.header,
     event_id: outer.event_id ?? event.event_id,
   }
+}
+
+/**
+ * Renders the read-only "submitted" summary card that replaces the question
+ * form in the card callback response. Feishu requires the replacement card
+ * to be returned synchronously from the callback (within 3 seconds); a
+ * background CardKit update is rolled back by the client.
+ */
+export function renderFeishuQuestionCardSummary(questions: Question.Info[], answers: Question.Answer[]): CardJson {
+  const elements = questions.map((question, index) => {
+    const answer = answers[index] ?? []
+    const answerText = answer.length > 0 ? answer.join("、") : "（未回答）"
+    return {
+      tag: "markdown",
+      content: sanitizeMarkdown(`**${question.header}**\n${question.question}\n\n**回答：** ${answerText}`),
+    }
+  })
+
+  return {
+    schema: "2.0",
+    config: { update_multi: true, summary: { content: "回答已提交" } },
+    header: { title: { tag: "plain_text", content: "回答已提交" }, template: "green" },
+    body: { elements },
+  }
+}
+
+/**
+ * Provider-level summary renderer with the 30 KiB CardKit bound. Returns
+ * undefined when the summary would exceed the limit so the callback can fall
+ * back to a plain toast instead of failing the interaction.
+ */
+export function renderFeishuQuestionCardSummarySafe(
+  questions: Question.Info[],
+  answers: Question.Answer[],
+): CardJson | undefined {
+  const cardJson = renderFeishuQuestionCardSummary(questions, answers)
+  const cardBytes = new TextEncoder().encode(JSON.stringify(cardJson)).byteLength
+  if (cardBytes + CARD_SIZE_RESERVE_BYTES > MAX_CARD_BYTES) return undefined
+  return cardJson
 }

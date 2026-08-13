@@ -32,6 +32,9 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
 function buildGeneralPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
   const { general } = state
   if (general.snapshot !== (cfg.snapshot ?? UI_DEFAULTS.snapshot)) patch.snapshot = general.snapshot
+  if (general.compactReasoning !== (cfg.compactReasoning ?? UI_DEFAULTS.compactReasoning)) {
+    patch.compactReasoning = general.compactReasoning
+  }
 
   const username = general.username.trim()
   if (username !== (cfg.username ?? UI_DEFAULTS.username)) patch.username = username || undefined

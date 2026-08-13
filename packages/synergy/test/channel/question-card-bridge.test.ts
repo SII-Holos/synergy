@@ -156,3 +156,119 @@ test("delivers continuation questions from durable channel root metadata after t
     },
   })
 })
+
+test("delivers to the durable root's real chatId when the session endpoint chatId is synthetic (Runtime Boss)", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const type = `question-bridge-boss-${crypto.randomUUID()}`
+      const sent = Promise.withResolvers<Parameters<NonNullable<Provider["sendQuestionCard"]>>[0]>()
+      const provider: Provider = {
+        type,
+        lifecycle: "self_connected",
+        async connect() {},
+        async replyMessage() {
+          return { messageId: "reply_sent" }
+        },
+        async pushMessage() {
+          return { messageId: "push_sent" }
+        },
+        async sendQuestionCard(input) {
+          sent.resolve(input)
+          return { messageId: "om_question_card" }
+        },
+        async addReaction() {},
+        createStreamingSession() {
+          return {
+            async start() {},
+            async update() {},
+            async updateToolProgress() {},
+            async close() {},
+            isActive: () => false,
+          }
+        },
+      }
+      Channel.registerProvider(provider)
+      const dispose = QuestionCardBridge.init()
+      // Runtime Boss aggregates every Feishu chat into one synthetic endpoint.
+      const session = await Session.create({
+        endpoint: SessionEndpoint.fromChannel({
+          type,
+          accountId: "acct_feishu",
+          chatId: "boss",
+          chatType: "group",
+          scopeKey: "boss",
+          senderId: "ou_stale_endpoint_user",
+        }),
+      })
+      const rootID = Identifier.ascending("message")
+      await Session.updateMessage({
+        id: rootID,
+        sessionID: session.id,
+        role: "user",
+        isRoot: true,
+        rootID,
+        agent: "synergy",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        time: { created: Date.now() },
+        metadata: {
+          channelReplyToMessageId: "om_real_topic",
+          channelRequesterId: "ou_real_requester",
+          channelChatId: "oc_real_group",
+        },
+      } as MessageV2.User)
+      const assistantID = Identifier.ascending("message")
+      await Session.updateMessage({
+        id: assistantID,
+        parentID: rootID,
+        rootID,
+        role: "assistant",
+        mode: "synergy",
+        agent: "synergy",
+        path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        modelID: "test-model",
+        providerID: "test-provider",
+        time: { created: Date.now() },
+        sessionID: session.id,
+      } as MessageV2.Assistant)
+
+      const answer = Question.ask({
+        sessionID: session.id,
+        questions,
+        tool: { messageID: assistantID, callID: "call_question" },
+      })
+      const delivery = await sent.promise
+      // The card must be sent to the real group and registered under it, not the synthetic "boss" endpoint.
+      expect(delivery.chatId).toBe("oc_real_group")
+
+      const callback = {
+        eventId: "evt_boss_card",
+        requestId: delivery.requestId,
+        messageId: "om_question_card",
+        chatId: "oc_real_group",
+        requesterId: "ou_real_requester",
+        formValues: [{ name: "question_0", selected: ["0"] }],
+      }
+      // deliver() flips the registration to active asynchronously after the
+      // provider resolves; poll until the callback is accepted (rejected
+      // paths never consume the registration, so retrying is safe).
+      let result: Awaited<ReturnType<typeof QuestionCardRuntime.acceptAction>> | undefined
+      const deadline = Date.now() + 2_000
+      while (Date.now() < deadline) {
+        result = await QuestionCardRuntime.acceptAction({
+          channelType: type,
+          accountId: "acct_feishu",
+          callback,
+        })
+        if (result.status !== "rejected") break
+        await Bun.sleep(10)
+      }
+      expect(result).toEqual({ status: "accepted" })
+      expect(await answer).toEqual([["Staging"]])
+      dispose()
+    },
+  })
+})
