@@ -98,6 +98,8 @@ const {
   collectMessagesForTurnDisplay,
   collectMessagesForTurnLifecycle,
   collectSessionTurnTimelineItems,
+  compactReasoningTimelineItems,
+  compactReasoningText,
   collectUserCompactionTimelineItems,
   isGuidedContextUserMessage,
   shouldShowTurnDiffs,
@@ -930,6 +932,52 @@ describe("session turn timeline", () => {
 
       expect(items.map((item) => item.kind)).toEqual(["media-pending"])
     }
+  })
+
+  test("compact reasoning keeps only the latest reasoning display item without changing source parts", () => {
+    const message = assistant("assistant-a")
+    const first = {
+      id: "reasoning-a",
+      sessionID: "session",
+      messageID: message.id,
+      type: "reasoning",
+      text: "First reasoning block.\nStill original.",
+    } as PartType
+    const latest = {
+      id: "reasoning-b",
+      sessionID: "session",
+      messageID: message.id,
+      type: "reasoning",
+      text: "Latest reasoning block.\nStill original.",
+    } as PartType
+    const text = {
+      id: "text-a",
+      sessionID: "session",
+      messageID: message.id,
+      type: "text",
+      text: "Visible answer",
+    } as PartType
+    const items = collectSessionTurnTimelineItems([message], { [message.id]: [first, latest, text] }, true)
+
+    const compact = compactReasoningTimelineItems(items)
+
+    expect(compact.map((item) => item.kind)).toEqual(["reasoning", "part"])
+    expect(compact[0]).toMatchObject({ kind: "reasoning", part: { id: "reasoning-b" } })
+    expect(first).toMatchObject({ text: "First reasoning block.\nStill original." })
+    expect(latest).toMatchObject({ text: "Latest reasoning block.\nStill original." })
+    expect(items.map((item) => item.kind)).toEqual(["reasoning", "reasoning", "part"])
+  })
+
+  test("compact reasoning projects a stable plain-text tail line from streaming markdown", () => {
+    const source = "Planning\n\n- Format: Chinese response, structured with short headers\n\n"
+
+    expect(compactReasoningText(source)).toBe("Format: Chinese response, structured with short headers")
+    expect(source).toBe("Planning\n\n- Format: Chinese response, structured with short headers\n\n")
+    expect(compactReasoningText("## Next step")).toBe("Next step")
+    expect(compactReasoningText("> checking evidence")).toBe("checking evidence")
+    expect(compactReasoningText("   \n\t")).toBe("")
+    expect(compactReasoningText("Evaluating result\n```")).toBe("Evaluating result")
+    expect(compactReasoningText("Checking another path\n---")).toBe("Checking another path")
   })
 
   test("hides completed-turn reasoning without moving later parts", () => {

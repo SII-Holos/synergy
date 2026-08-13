@@ -3512,7 +3512,7 @@ export type Config = {
    */
   theme?: string
   /**
-   * How much activity detail to show in the interface: full = everything and the default, balanced = semantic activity grouping, minimal = only essential activity (default: full)
+   * How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)
    */
   activityDisplay?: "full" | "balanced" | "minimal"
   keybinds?: KeybindsConfig
@@ -3701,6 +3701,10 @@ export type Config = {
   pluginRuntimePolicy?: PluginRuntimePolicyConfig
   pluginMarketplace?: PluginMarketplaceConfig
   snapshot?: boolean
+  /**
+   * Show live reasoning in a compact single-line viewport
+   */
+  compactReasoning?: boolean
   /**
    * Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters
    */

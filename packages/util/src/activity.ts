@@ -373,7 +373,7 @@ export function isActivityGroupableTool(tool: string, metadata: Record<string, u
 }
 
 export function resolveActivityDisplay(value: unknown): ActivityDisplayMode {
-  return value === "full" || value === "minimal" || value === "balanced" ? value : "full"
+  return value === "full" || value === "minimal" || value === "balanced" ? value : "balanced"
 }
 
 export function classifySemanticCategory(toolName: string, input: Record<string, unknown> = {}): SemanticCategory {

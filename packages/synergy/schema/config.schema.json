@@ -17,7 +17,7 @@
       "type": "string"
     },
     "activityDisplay": {
-      "description": "How much activity detail to show in the interface: full = everything and the default, balanced = semantic activity grouping, minimal = only essential activity (default: full)",
+      "description": "How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)",
       "type": "string",
       "enum": ["full", "balanced", "minimal"]
     },
@@ -539,6 +539,10 @@
       "additionalProperties": false
     },
     "snapshot": {
+      "type": "boolean"
+    },
+    "compactReasoning": {
+      "description": "Show live reasoning in a compact single-line viewport",
       "type": "boolean"
     },
     "disabled_providers": {

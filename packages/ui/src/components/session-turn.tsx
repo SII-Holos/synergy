@@ -40,6 +40,7 @@ import { CompactionCard } from "./compaction-card"
 import { createCopyController } from "./clipboard"
 import { hasVisibleUserMessageContent, isSystemPart } from "./user-message-utils"
 import { ActivityReasoningSummary, ActivityReceipt, ActivityTrace, MinimalActivitySummary } from "./activity-trace"
+import { CompactReasoningLine } from "./compact-reasoning"
 import {
   activityItemStableKey,
   isActivityTimelineItem,
@@ -331,6 +332,22 @@ export function collectSessionTurnTimelineItems(
 
   return items
 }
+
+export function compactReasoningTimelineItems<T extends { kind: string }>(items: readonly T[]): T[] {
+  const latestReasoning = items.findLastIndex((item) => item.kind === "reasoning")
+  if (latestReasoning < 0) return [...items]
+  return items.filter((item, index) => item.kind !== "reasoning" || index === latestReasoning)
+}
+
+export function compactReasoningText(text: string): string {
+  const lines = text.split(/\r?\n/)
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const line = lines[index]?.trim()
+    if (!line || /^(`{3,}|~{3,})\S*$/.test(line) || /^(?:-{3,}|\*{3,}|_{3,})$/.test(line)) continue
+    return line.replace(/^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)/, "").trim()
+  }
+  return ""
+}
 /** A non-root, visible user message rendered as an inline chip inside its turn. */
 export function isGuidedContextUserMessage(message: Pick<UserMessage, "isRoot" | "visible">): boolean {
   return message.isRoot === false && message.visible !== false
@@ -470,9 +487,12 @@ export function shouldShowProviderPrelude(input: {
   return input.latestAssistantTimelineItems.length === 0
 }
 
-function TimelineItemDisplay(props: { item: SessionTurnTimelineItem; serverUrl: string }) {
+function TimelineItemDisplay(props: { item: SessionTurnTimelineItem; serverUrl: string; compactReasoning?: boolean }) {
   if (props.item.kind === "compaction") {
     return <CompactionCard part={props.item.part} message={props.item.message} />
+  }
+  if (props.item.kind === "reasoning" && props.compactReasoning) {
+    return <CompactReasoningLine text={compactReasoningText(props.item.part.text)} />
   }
   if (props.item.kind === "part" || props.item.kind === "reasoning") {
     return <Part part={props.item.part} message={props.item.message} />
@@ -601,6 +621,7 @@ function TimelineDisplay(props: {
   serverUrl: string
   rollbackActive: boolean
   onRewind?: () => void
+  compactReasoning?: boolean
 }) {
   const { _ } = useLingui()
   const activityGroup = createMemo(() => {
@@ -663,7 +684,11 @@ function TimelineDisplay(props: {
           </div>
         )}
       </Match>
-      <Match when={timelineItem()}>{(item) => <TimelineItemDisplay item={item()} serverUrl={props.serverUrl} />}</Match>
+      <Match when={timelineItem()}>
+        {(item) => (
+          <TimelineItemDisplay item={item()} serverUrl={props.serverUrl} compactReasoning={props.compactReasoning} />
+        )}
+      </Match>
     </Switch>
   )
 }
@@ -746,6 +771,7 @@ export function SessionTurn(
     rollbackActive?: boolean
     onReviewChanges?: (input: { messageID: string; file?: string }) => void
     activityDisplay?: ActivityDisplayMode
+    compactReasoning?: boolean
     classes?: {
       root?: string
       content?: string
@@ -900,21 +926,22 @@ export function SessionTurn(
           (item): item is AssistantMessage =>
             item.role === "assistant" && !isCompactionAssistant(item as AssistantMessage),
         )
-        const frontier = assistants.reduce<{ message: AssistantMessage; partID: string } | undefined>(
+        const frontier = assistants.reduce<{ message: AssistantMessage; part: ReasoningPart } | undefined>(
           (latest, assistant) => {
             const reasoningPart = (data.store.part[assistant.id] ?? emptyParts).findLast(
               (part): part is ReasoningPart => part.type === "reasoning" && Boolean(part.text.trim()),
             )
-            return reasoningPart ? { message: assistant, partID: reasoningPart.id } : latest
+            return reasoningPart ? { message: assistant, part: reasoningPart } : latest
           },
           undefined,
         )
         return projectBalancedReasoningItems(result, msg?.id ?? props.messageID, working(), {
           anchorMessage: assistants[0],
-          frontier,
+          frontier: frontier ? { message: frontier.message, partID: frontier.part.id } : undefined,
+          compactReasoningPart: props.compactReasoning && working() ? frontier?.part : undefined,
         }) as SessionTurnDisplayItem[]
       }
-      return result
+      return props.compactReasoning && working() ? compactReasoningTimelineItems(result) : result
     },
     emptyDisplayItems,
     { equals: same },
@@ -1188,12 +1215,24 @@ export function SessionTurn(
                                       data-activity-continues={activityContinues() ? "" : undefined}
                                       data-activity-follows={activityFollows() ? "" : undefined}
                                       hidden={isActivityBoundaryDisplayItem(current())}
+                                      data-compact-reasoning={
+                                        props.compactReasoning &&
+                                        working() &&
+                                        displayItemVisualKind(current()) === "reasoning"
+                                          ? "true"
+                                          : undefined
+                                      }
                                     >
                                       <TimelineDisplay
                                         item={current()}
                                         serverUrl={data.serverUrl}
                                         rollbackActive={props.rollbackActive === true}
                                         onRewind={props.onRewind}
+                                        compactReasoning={
+                                          props.compactReasoning &&
+                                          working() &&
+                                          displayItemVisualKind(current()) === "reasoning"
+                                        }
                                       />
                                     </div>
                                     <Show when={index() === timelineSlotIndexes().lastReasoning}>

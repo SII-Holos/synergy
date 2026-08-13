@@ -370,6 +370,7 @@ export const SESSION_TURN_DESC = {
   cacheWrite: d("session-turn.token-cache-write", "cache write"),
   output: d("session-turn.token-output", "output"),
   reasoning: d("session-turn.token-reasoning", "reasoning"),
+  compactReasoningThinking: d("session-turn.compact-reasoning-thinking", "Thinking"),
   modelUnavailable: d(
     "session-turn.model-unavailable",
     "Model {modelID} is unavailable from {providerID}. Choose another model to continue.",

@@ -11557,6 +11557,10 @@ msgid "session-status.working-with-notes"
 msgstr "Working with notes"
 
 #. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.compact-reasoning-thinking"
+msgstr "Thinking"
+
+#. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.completed"
 msgstr "Completed"
 
@@ -14883,6 +14887,14 @@ msgstr "Auto"
 #. js-lingui-explicit-id
 msgid "settings.general.colorScheme.system.description"
 msgstr "Follow this device"
+
+#. js-lingui-explicit-id
+msgid "settings.general.compactReasoning.description"
+msgstr "Show live reasoning in a single-line view"
+
+#. js-lingui-explicit-id
+msgid "settings.general.compactReasoning.title"
+msgstr "Compact reasoning"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.applied"
