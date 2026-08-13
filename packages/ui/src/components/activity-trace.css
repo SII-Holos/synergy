@@ -68,13 +68,15 @@
   }
 
   [data-slot="activity-step-audit-icon"] {
-    position: static;
-    display: inline-flex;
-    flex: 0 0 auto;
+    position: absolute;
+    left: -28px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 18px;
+    width: 24px;
+    height: 24px;
     cursor: help;
     border-radius: var(--radius-full);
     animation: none;
