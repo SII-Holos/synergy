@@ -1,9 +1,9 @@
 [data-component="error-card"] {
   width: 100%;
   min-width: 0;
-  border: 1px solid color-mix(in oklch, var(--border-critical-base) 52%, var(--border-weaker-base));
+  border: 1px solid color-mix(in oklch, var(--border-critical-base) 24%, var(--border-weaker-base));
   border-radius: var(--radius-md);
-  background-color: var(--surface-critical-weak);
+  background-color: var(--surface-raised-base);
   overflow: hidden;
   transition:
     background-color var(--motion-duration-base) var(--motion-ease-standard),
@@ -11,7 +11,7 @@
 }
 
 [data-component="error-card"] [data-slot="error-card-header"]:hover {
-  background-color: color-mix(in srgb, var(--surface-critical-weak) 82%, var(--surface-raised-base-hover));
+  background-color: color-mix(in oklch, var(--surface-raised-base-hover) 94%, var(--surface-critical-weak));
 }
 
 [data-slot="error-card-header"] {
@@ -102,9 +102,9 @@
   margin: 0;
   overflow: auto;
   padding: 10px 12px;
-  border-left: 2px solid var(--border-critical-base);
+  border: 1px solid color-mix(in oklch, var(--border-critical-base) 18%, var(--border-weaker-base));
   border-radius: var(--radius-sm);
-  background-color: var(--surface-raised-base);
+  background-color: var(--surface-inset-base);
   color: var(--text-base);
   font-family: var(--font-family-mono);
   font-size: 0.75rem;
