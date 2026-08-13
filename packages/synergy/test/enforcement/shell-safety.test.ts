@@ -1107,6 +1107,47 @@ describe("ShellSafety GitHub CLI issue taxonomy", () => {
   })
 })
 
+describe("ShellSafety GitHub CLI api taxonomy", () => {
+  const { ShellSafety } = require("../../src/enforcement/shell-safety")
+
+  test("gh api default GET is shell_read", () => {
+    expect(ShellSafety.classifyBashRisk("gh api repos/foo/bar/pulls/1/comments")).toBe("shell_read")
+  })
+
+  test("gh api with jq and stderr redirect is shell_read", () => {
+    expect(
+      ShellSafety.classifyBashRisk(
+        "gh api repos/foo/bar/pulls/1/comments --jq '.[] | \"FILE: \\(.path) LINE: \\(.line // .original_line)\\n---\\n\\(.body)\\n====' 2>&1",
+      ),
+    ).toBe("shell_read")
+  })
+
+  test("gh api explicit GET with fields is shell_read (fields become query string)", () => {
+    expect(ShellSafety.classifyBashRisk("gh api -X GET search/issues -f q='repo:foo is:open'")).toBe("shell_read")
+  })
+
+  test("gh api fields without a method are remote write (gh auto-switches to POST)", () => {
+    expect(ShellSafety.classifyBashRisk("gh api repos/foo/bar/issues/1/comments -f body=hi")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh api repos/foo/bar/issues/1 -F state=closed")).toBe("shell_remote_write")
+  })
+
+  test("gh api --input body is remote write", () => {
+    expect(ShellSafety.classifyBashRisk("gh api repos/foo/bar/rulesets --input file.json")).toBe("shell_remote_write")
+  })
+
+  test("gh api explicit write methods are remote write", () => {
+    expect(ShellSafety.classifyBashRisk("gh api -X POST repos/foo/bar/issues")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh api -X PATCH repos/foo/bar -F title=x")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh api --method DELETE repos/foo/bar")).toBe("shell_remote_write")
+  })
+
+  test("gh api graphql is remote write (mutations cannot be ruled out statically)", () => {
+    expect(ShellSafety.classifyBashRisk("gh api graphql -f query='query { viewer { login } }'")).toBe(
+      "shell_remote_write",
+    )
+  })
+})
+
 // ------------------------------------------------------------------
 // 15. Git subcommand taxonomy — destructive
 // ------------------------------------------------------------------

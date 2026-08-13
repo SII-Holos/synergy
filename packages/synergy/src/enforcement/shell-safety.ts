@@ -411,6 +411,28 @@ function classifyGitHubCommand(words: string[]): BashRisk | null {
     return "shell_remote_write"
   }
 
+  // ── gh api ─────────────────────────────────────────────────
+  // gh api is an authenticated HTTP client: the default method is GET, but
+  // -f/-F/--raw-field/--field/--input auto-switch the request to POST and
+  // -X/--method can select any verb. Only statically confirmed GET/HEAD
+  // requests are read-only; GraphQL and anything else stay remote writes.
+  if (sub === "api") {
+    const after = words.slice(idx + 2)
+    const endpoint = after.find((word) => !word.startsWith("-"))
+    const methodIndex = after.findIndex((word) => word === "-X" || word === "--method")
+    const explicitMethod = methodIndex >= 0 ? after[methodIndex + 1]?.toUpperCase() : undefined
+    const hasFields = after.some(
+      (word) => word === "-f" || word === "--raw-field" || word === "-F" || word === "--field",
+    )
+    const hasInput = after.some((word) => word === "--input")
+    const readOnly =
+      endpoint !== "graphql" &&
+      (explicitMethod === "GET" ||
+        explicitMethod === "HEAD" ||
+        (explicitMethod === undefined && !hasFields && !hasInput))
+    return readOnly ? "shell_read" : "shell_remote_write"
+  }
+
   // ── gh issue ───────────────────────────────────────────────
   if (sub === "issue") {
     const subsub = words[idx + 2]

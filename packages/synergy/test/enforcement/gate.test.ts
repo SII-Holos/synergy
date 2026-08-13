@@ -3746,6 +3746,41 @@ describe("security invariants: nonBypassable permission boundaries", () => {
     expect(envelope.capabilities.some((cap: any) => cap.class === "shell")).toBe(false)
   })
 
+  test("gh api jq null-coalescing does not produce file_external_write", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const result = gate.classify("bash", {
+      command: "gh api repos/foo/bar/pulls/1/comments --jq '.[] | .line // .original_line' 2>&1",
+    })
+    expect(result.capabilities.some((cap: any) => cap.class === "file_external_write")).toBe(false)
+  })
+
+  test("autonomous allows a read-only gh api command", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", {
+      command: "gh api repos/foo/bar/pulls/1/comments --jq '.[] | .body'",
+    })
+    expect(envelope.decision).toBe("allow")
+  })
+
+  test("autonomous denies a mutating gh api command", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "gh api repos/foo/bar/issues/1/comments -f body=hi" })
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "shell_remote_write")).toBe(true)
+  })
+
   test("classifyBashRisk shell_destructive path sets nonBypassable=true", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test",

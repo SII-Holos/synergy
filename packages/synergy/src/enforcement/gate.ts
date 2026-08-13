@@ -326,6 +326,7 @@ function extractAbsolutePaths(command: string): string[] {
     /^\/bin\/[^/]+$/,
     /^\/sbin\/[^/]+$/,
     /:\/\//,
+    /^\/\/+$/,
   ]
   return paths.filter((p) => !NON_PATH_PATTERNS.some((pat) => pat.test(p)))
 }
