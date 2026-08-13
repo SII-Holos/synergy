@@ -15,23 +15,29 @@ const copyFailureDescriptor = { id: "ui.errorCard.copyFailure", message: "Unable
 
 export interface ErrorCardProps {
   error: string
-  compact?: boolean
+  defaultOpen?: boolean
   input?: Record<string, unknown>
 }
 
 export function ErrorCard(props: ErrorCardProps) {
   const { _ } = useLingui()
-  const [local] = splitProps(props, ["error", "input", "compact"])
+  const [local] = splitProps(props, ["error", "input", "defaultOpen"])
   const copy = createCopyController({
     text: () => errorDetailsText(local.error, local.input),
-    copyLabel: _(copyDetailsDescriptor),
-    copiedLabel: _(copiedDescriptor),
-    failureDescription: _(copyFailureDescriptor),
+    get copyLabel() {
+      return _(copyDetailsDescriptor)
+    },
+    get copiedLabel() {
+      return _(copiedDescriptor)
+    },
+    get failureDescription() {
+      return _(copyFailureDescriptor)
+    },
     copyIcon: getSemanticIcon("action.copy"),
     copiedIcon: getSemanticIcon("state.success"),
     failedIcon: getSemanticIcon("state.error"),
   })
-  const [open, setOpen] = createSignal(!local.compact)
+  const [open, setOpen] = createSignal(local.defaultOpen ?? false)
   const expandIcon = createMemo(() =>
     open() ? getSemanticIcon("navigation.collapse") : getSemanticIcon("navigation.expand"),
   )

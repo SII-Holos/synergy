@@ -135,7 +135,13 @@ export function ToolResultBody(props: {
         />
       }
     >
-      {(message) => <ErrorCard error={message()} input={error()?.input as Record<string, unknown> | undefined} />}
+      {(message) => (
+        <ErrorCard
+          error={message()}
+          input={error()?.input as Record<string, unknown> | undefined}
+          defaultOpen={props.defaultOpen}
+        />
+      )}
     </Show>
   )
 

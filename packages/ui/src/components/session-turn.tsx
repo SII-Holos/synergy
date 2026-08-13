@@ -1317,7 +1317,7 @@ export function SessionTurn(
                       </div>
                     </Show>
                     <Show when={error()}>
-                      <ErrorCard error={errorMessage()} compact />
+                      <ErrorCard error={errorMessage()} />
                     </Show>
                     {renderMessageSlot("message.after-message")}
                   </Match>

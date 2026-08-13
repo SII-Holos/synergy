@@ -174,7 +174,10 @@
 @media (prefers-reduced-motion: reduce) {
   [data-component="error-card"],
   [data-component="error-card"] [data-slot="error-card-header"],
-  [data-component="error-card"] [data-slot="error-card-arrow"] {
+  [data-component="error-card"] [data-slot="error-card-arrow"],
+  [data-component="error-card"] [data-slot="error-card-copy-button"],
+  [data-component="error-card"] [data-slot="error-card-copy-button"] [data-slot="icon-svg"] {
     transition: none;
+    animation: none;
   }
 }
