@@ -33568,6 +33568,20 @@
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991
+              },
+              "boss_mode": {
+                "description": "Enable Runtime Boss Mode: auto-provision a home-scope runtime boss session and route all Feishu messages to it",
+                "type": "boolean"
+              },
+              "boss_identity_text": {
+                "description": "Optional colleague identity description injected into the runtime boss session",
+                "type": "string"
+              },
+              "boss_briefing_interval_days": {
+                "description": "Re-inject the versioned world-overview briefing every N days (default: disabled)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
               }
             }
           },

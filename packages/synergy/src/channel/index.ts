@@ -64,6 +64,9 @@ export namespace Channel {
   const MAX_RECONNECT_DELAY_MS = 30_000
   const MAX_RECONNECT_ATTEMPTS = 50
 
+  /** Runtime Boss Mode normalized scopeKey for Feishu routing (see BossRuntime.BOSS_SCOPE_KEY). */
+  const BOSS_ROUTE_SCOPE_KEY = "boss"
+
   export const Info = InfoSchema
   export const Status = StatusSchema
   export const Mention = MentionSchema
@@ -629,7 +632,6 @@ export namespace Channel {
     const addReaction = conversation.addReaction?.bind(conversation)
     const removeReaction = conversation.removeReaction?.bind(conversation)
     const createStreamingSession = conversation.createStreamingSession?.bind(conversation)
-    const replyToMessageId = ctx.replyToMessageId ?? ctx.rootId ?? ctx.messageId
 
     // Providers may resolve a per-message Scope (e.g. a dedicated checkout
     // directory for a GitHub pull request thread). The account-level Scope
@@ -700,12 +702,37 @@ export namespace Channel {
             ctx.text = cmdResult.text
           }
 
+          // Runtime Boss Mode routing: when enabled for this Feishu account,
+          // all accepted messages (group + DM) are routed to the account's
+          // runtime boss session by normalizing the scopeKey, and the reply is
+          // anchored to the original message so the outbound bridge never
+          // misroutes across chats. A source header is prepended so the boss
+          // can attribute the message (group, sender, time).
+          const bossSessionID = await resolveBossRoutingSession(ctx)
+          if (bossSessionID) {
+            ctx.scopeKey = BOSS_ROUTE_SCOPE_KEY
+            ctx.replyToMessageId = ctx.messageId
+            const senderLabel = ctx.senderName?.trim() || ctx.senderId
+            const chatLabel = ctx.chatName?.trim() || ctx.chatId
+            const timeLabel = new Date(ctx.timestamp).toLocaleString("zh-CN", { hour12: false })
+            const header = `[群: ${chatLabel} | 发送者: ${senderLabel} | ${timeLabel}]`
+            if (!ctx.text.startsWith(header)) {
+              ctx.text = `${header}\n\n${ctx.text}`
+            }
+          }
+          // Resolve the reply anchor after boss routing so the forced
+          // `ctx.replyToMessageId = ctx.messageId` (boss mode) is honored.
+          const replyToMessageId = ctx.replyToMessageId ?? ctx.rootId ?? ctx.messageId
+
           const endpoint = SessionEndpoint.fromChannel({
             type: ctx.channelType,
             accountId: ctx.accountId,
             chatId: ctx.chatId,
             chatType: ctx.chatType,
-            chatName: ctx.chatName,
+            // Boss-routed messages share one aggregated session: the boss
+            // session's display chatName must not flap to whichever chat
+            // messaged last, so keep the provisioned name ("Runtime Boss").
+            chatName: bossSessionID ? undefined : ctx.chatName,
             senderId: ctx.senderId,
             senderName: ctx.senderName,
             scopeKey: ctx.scopeKey,
@@ -713,7 +740,11 @@ export namespace Channel {
           })
           const session = await Session.getOrCreateForEndpoint(endpoint, {
             scope: conversationScope,
-            interaction: ChannelInteraction.forType(ctx.channelType),
+            // Boss-routed messages must not rewrite the runtime boss session's
+            // interaction (source "boss") into a plain channel interaction.
+            interaction: bossSessionID
+              ? SessionInteraction.interactive("boss")
+              : ChannelInteraction.forType(ctx.channelType),
             ...(provider.defaultAgent
               ? { agentOverride: resolveChannelAccountAgent(accountConfig) ?? provider.defaultAgent }
               : {}),
@@ -733,6 +764,9 @@ export namespace Channel {
             channelReplyToMessageId: replyToMessageId,
             channelRequesterId: ctx.senderId,
             channelChatId: ctx.chatId,
+            channelChatName: ctx.chatName,
+            channelSenderId: ctx.senderId,
+            channelSenderName: ctx.senderName,
           }
 
           const acceptance = await ChannelConversationAcceptance.accept({
@@ -1278,5 +1312,12 @@ export namespace Channel {
   }
   export async function init(): Promise<void> {
     await state()
+  }
+
+  /** Runtime Boss Mode routing helper (see handleMessage). */
+  async function resolveBossRoutingSession(ctx: MessageContext): Promise<string | undefined> {
+    if (ctx.channelType !== "feishu") return undefined
+    const { BossRuntime } = await import("@/session/boss-runtime")
+    return BossRuntime.bossSessionForAccount(ctx.accountId)
   }
 }

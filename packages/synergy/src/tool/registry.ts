@@ -48,6 +48,8 @@ import { BossAssignTool } from "./boss-assign"
 import { BossReportTool } from "./boss-report"
 import { BossStatusTool } from "./boss-status"
 import { BossCancelTool } from "./boss-cancel"
+import { BossProjectTool } from "./boss-project"
+import { ChannelPushTool } from "./channel-push"
 import { ScopeListTool } from "./scope-list"
 import { AgendaScheduleTool } from "./agenda-schedule"
 import { AgendaWatchTool } from "./agenda-watch"
@@ -397,6 +399,8 @@ export namespace ToolRegistry {
       BossReportTool,
       BossStatusTool,
       BossCancelTool,
+      BossProjectTool,
+      ChannelPushTool,
       SessionListTool,
       SessionReadTool,
       SessionSearchTool,

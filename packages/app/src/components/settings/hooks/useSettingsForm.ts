@@ -145,6 +145,10 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     watcherIgnore: formatList(cfg.watcher?.ignore),
     logLevel: cfg.logLevel ?? UI_DEFAULTS.logLevel,
     coauthorReminder: cfg.experimental?.coauthor_reminder !== false ? "true" : "false",
+    bossMode: cfg.experimental?.boss_mode === true ? "true" : "false",
+    bossIdentityText: cfg.experimental?.boss_identity_text ?? "",
+    bossBriefingIntervalDays:
+      cfg.experimental?.boss_briefing_interval_days != null ? String(cfg.experimental.boss_briefing_interval_days) : "",
   })
 
   params.setSettings("email", {

@@ -13,6 +13,9 @@ import { Storage } from "../../src/storage/storage"
 import { SynergyLinkExecution } from "../../src/tool/synergy-link-execution"
 
 afterEach(async () => {
+  // Client registry is module-global; clear it so a "client exists" case in
+  // this file cannot leak availability state into sibling test files.
+  SynergyLinkExecution.setClient(null)
   await Storage.removeTree(StoragePath.synergyLinkTargetsRoot())
 })
 

@@ -74,6 +74,9 @@ export const UI_DEFAULTS = {
   watcherIgnore: "" as string,
   logLevel: "" as string,
   coauthorReminder: "true" as string,
+  bossMode: "false" as "true" | "false",
+  bossIdentityText: "" as string,
+  bossBriefingIntervalDays: "" as string,
   lspWriteDiagnostics: "true" as string,
   lspDiagnosticsSeverity: "error" as string,
   lspDiagnosticsScope: "project" as string,
@@ -361,6 +364,9 @@ export type RuntimeStore = {
   watcherIgnore: string
   logLevel: string
   coauthorReminder: string
+  bossMode: "true" | "false"
+  bossIdentityText: string
+  bossBriefingIntervalDays: string
   lspWriteDiagnostics: string
   lspDiagnosticsSeverity: string
   lspDiagnosticsScope: string
@@ -455,6 +461,9 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
       watcherIgnore: UI_DEFAULTS.watcherIgnore,
       logLevel: UI_DEFAULTS.logLevel,
       coauthorReminder: UI_DEFAULTS.coauthorReminder,
+      bossMode: UI_DEFAULTS.bossMode,
+      bossIdentityText: UI_DEFAULTS.bossIdentityText,
+      bossBriefingIntervalDays: UI_DEFAULTS.bossBriefingIntervalDays,
       lspWriteDiagnostics: UI_DEFAULTS.lspWriteDiagnostics,
       lspDiagnosticsSeverity: UI_DEFAULTS.lspDiagnosticsSeverity,
       lspDiagnosticsScope: UI_DEFAULTS.lspDiagnosticsScope,

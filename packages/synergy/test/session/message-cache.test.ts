@@ -13,8 +13,7 @@ function part(id: string, messageID: string, text = ""): MessageV2.Part {
 
 describe("SessionMessageCache", () => {
   beforeEach(() => {
-    SessionMessageCache.disable(SID)
-    SessionMessageCache.resetStatsForTest()
+    SessionMessageCache.resetForTest()
   })
 
   test("reports bounded footprint and hit/miss counters", () => {

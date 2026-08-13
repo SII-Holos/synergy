@@ -13805,6 +13805,30 @@ msgid "settings.catalog.archivedSessions.searchTerms"
 msgstr "归档 | 已归档 | 会话 | 删除 | 历史 | 项目"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.boss.description"
+msgstr "将本机 Synergy 变为一个同事：自动创建运行时 boss 会话并把所有飞书消息路由给它。"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.label"
+msgstr "Boss Mode（同事模式）"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.row.bossMode"
+msgstr "Boss Mode（同事模式）"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.row.identity"
+msgstr "同事身份描述"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.row.interval"
+msgstr "世界概况简报间隔（天）"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.searchTerms"
+msgstr "boss | 同事 | 飞书 | 路由 | 运行时"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.channels.description"
 msgstr "外部消息频道账号。"
 
@@ -17233,6 +17257,38 @@ msgid "settings.runtime.agents.wall.title"
 msgstr "总超时"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.boss.desc"
+msgstr "将本机 Synergy 变为一个同事：自动创建运行时 boss 会话并把所有飞书消息路由给它。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.enabled.desc"
+msgstr "把所有飞书消息路由到运行时 boss 会话"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.identity"
+msgstr "同事身份描述"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.identity.desc"
+msgstr "可选的同事身份说明，会注入 boss 会话。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.identity.placeholder"
+msgstr "例如：具备产品思维的运营人员，负责分拣飞书请求"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.interval"
+msgstr "世界概况刷新间隔（天）"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.interval.desc"
+msgstr "按天重新投递世界概况简报，留空关闭。"
+
+#. Boss Mode
+msgid "settings.runtime.boss.title"
+msgstr "Boss Mode（同事模式）"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.compaction.autoCompact.desc"
 msgstr "上下文空间不足时自动整理会话内容"
 
@@ -18205,6 +18261,10 @@ msgid "tool.title.boss-cancel"
 msgstr "取消任务"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-project"
+msgstr "创建项目"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.boss-report"
 msgstr "汇报结果"
 
@@ -18219,6 +18279,10 @@ msgstr "查看 worker 树"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.cancel-agenda"
 msgstr "取消日程"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.channel-push"
+msgstr "推送到群"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.claim"

@@ -8,6 +8,7 @@ import { SessionManager } from "./manager"
 import { SessionInvoke } from "./invoke"
 import { SessionInteraction } from "./interaction"
 import { bossAssignmentMetadata } from "./boss-message"
+import { MessageV2 } from "./message-v2"
 
 /**
  * BossService — stateless orchestration for the Boss Mode workflow
@@ -118,6 +119,55 @@ export namespace BossService {
     return { boss: { from, to, ...extra } }
   }
 
+  /**
+   * Feishu anchor bound to the user message that started the current turn
+   * (the assistant's parent root). Prefer this over scanning the inbox/history,
+   * which can pick up an older requester when multiple channel requests
+   * accumulate in one session.
+   */
+  async function anchorFromUserMessage(
+    sessionID: string,
+    messageID: string | undefined,
+  ): Promise<{ chatId?: string; replyToMessageId?: string; senderId?: string } | undefined> {
+    if (!messageID) return undefined
+    const message = await MessageV2.get({ sessionID, messageID }).catch(() => undefined)
+    if (!message || message.info.role !== "user") return undefined
+    return channelAnchorFromMetadata(message.info.metadata)
+  }
+
+  /** Most recent Feishu channel anchor seen by the caller: fresh channel messages (inbox) first, then history. */
+  async function recentChannelAnchor(
+    sessionID: string,
+  ): Promise<{ chatId?: string; replyToMessageId?: string; senderId?: string } | undefined> {
+    const items = await SessionInbox.list(sessionID).catch(() => [])
+    for (let index = items.length - 1; index >= 0; index--) {
+      const metadata = items[index].message?.metadata
+      const anchor = channelAnchorFromMetadata(metadata)
+      if (anchor) return anchor
+    }
+    const messages = await Session.messages({ sessionID, limit: 20 }).catch(() => [])
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const info = messages[index].info
+      if (info.role !== "user") continue
+      const anchor = channelAnchorFromMetadata(info.metadata)
+      if (anchor) return anchor
+    }
+    return undefined
+  }
+
+  function channelAnchorFromMetadata(
+    metadata: Record<string, unknown> | undefined,
+  ): { chatId?: string; replyToMessageId?: string; senderId?: string } | undefined {
+    if (!metadata) return undefined
+    if (!metadata.channelReply && !metadata.channelChatId) return undefined
+    return {
+      chatId: typeof metadata.channelChatId === "string" ? metadata.channelChatId : undefined,
+      replyToMessageId:
+        typeof metadata.channelReplyToMessageId === "string" ? metadata.channelReplyToMessageId : undefined,
+      senderId: typeof metadata.channelSenderId === "string" ? metadata.channelSenderId : undefined,
+    }
+  }
+
   function buildTaskText(input: { task: string; context?: string; acceptance?: string[] }): string {
     const lines = [input.task.trim()]
     if (input.context?.trim()) lines.push("", "Context:", input.context.trim())
@@ -136,7 +186,7 @@ export namespace BossService {
    */
   export async function spawn(
     callerID: string,
-    input: { role: string; agent?: string; instructions?: string },
+    input: { role: string; agent?: string; instructions?: string; workspace?: "main" | "worktree" },
   ): Promise<Session.Info> {
     const caller = await requireBoss(callerID)
     const role = input.role.trim()
@@ -152,7 +202,7 @@ export namespace BossService {
     }
 
     const instructions = input.instructions?.trim()
-    return Session.create({
+    const session = await Session.create({
       parentID: caller.id,
       title: `${caller.title} · ${role}`,
       agentOverride: agent,
@@ -165,6 +215,22 @@ export namespace BossService {
         ...(instructions ? { instructions } : {}),
       },
     })
+
+    if (input.workspace === "worktree") {
+      try {
+        const { Worktree } = await import("../project/worktree")
+        await Worktree.create({ sessionID: session.id, baseRef: "current", bind: true })
+        return await Session.get(session.id)
+      } catch (error) {
+        await Session.remove(session.id).catch(() => undefined)
+        const message = error instanceof Error ? error.message : String(error)
+        throw new BossError(
+          "worktree_failed",
+          `Failed to create worker worktree (the caller scope must be a Git project): ${message}`,
+        )
+      }
+    }
+    return session
   }
 
   /**
@@ -174,6 +240,7 @@ export namespace BossService {
   export async function assign(
     callerID: string,
     input: { sessionID: string; taskID: string; task: string; context?: string; acceptance?: string[] },
+    options: { anchorMessageID?: string } = {},
   ): Promise<AssignResult> {
     const caller = await requireBoss(callerID)
     const target = await assertDirectChild(caller, input.sessionID)
@@ -183,6 +250,8 @@ export namespace BossService {
 
     const deliveryKey = `boss:${caller.id}:${taskID}`
     const taskTitle = input.task.trim().slice(0, 80)
+    const channel =
+      (await anchorFromUserMessage(caller.id, options.anchorMessageID)) ?? (await recentChannelAnchor(caller.id))
     const result = await SessionInbox.deliverUnique({
       sessionID: target.id,
       deliveryKey,
@@ -193,7 +262,11 @@ export namespace BossService {
         origin: { type: "system", detail: "boss_assign" },
         visible: true,
         parts: [{ type: "text", text: buildTaskText(input) }],
-        metadata: bossMetadata(caller.id, target.id, { taskID, taskTitle }),
+        metadata: bossMetadata(caller.id, target.id, {
+          taskID,
+          taskTitle,
+          ...(channel ? { channel } : {}),
+        }),
         summary: { title: `Task: ${taskTitle}` },
       },
     })
@@ -210,6 +283,7 @@ export namespace BossService {
   export async function report(
     callerID: string,
     input: { summary: string; status?: "completed" | "blocked" | "needs_input"; refs?: string[] },
+    options: { anchorMessageID?: string } = {},
   ): Promise<ReportResult> {
     const caller = await requireBoss(callerID)
     if (caller.workflow?.kind !== "boss" || caller.workflow.role !== "worker") {
@@ -233,7 +307,8 @@ export namespace BossService {
       ...(refs.length > 0 ? ["", "References:", ...refs.map((ref) => `- ${ref}`)] : []),
     ].join("\n")
     const reportID = Identifier.ascending("message")
-    const currentTask = await latestAssignedTask(caller)
+    const currentTask = await currentTaskInfo(caller)
+    const channel = currentTask?.channel ?? (await anchorFromUserMessage(caller.id, options.anchorMessageID))
     const result = await SessionInbox.deliver({
       sessionID: parent.id,
       mode: "steer",
@@ -242,11 +317,19 @@ export namespace BossService {
         origin: { type: "system", detail: "boss_report" },
         visible: true,
         parts: [{ type: "text", text }],
-        metadata: bossMetadata(caller.id, parent.id, {
-          reportID,
-          status,
-          ...(currentTask ? { taskID: currentTask.taskID } : {}),
-        }),
+        metadata: {
+          ...bossMetadata(caller.id, parent.id, {
+            reportID,
+            status,
+            ...(currentTask ? { taskID: currentTask.taskID } : {}),
+          }),
+          // Carry the originating Feishu anchor forward so the parent's
+          // reply turn auto-delivers back to the source chat.
+          ...(channel?.replyToMessageId
+            ? { channelReply: true, channelReplyToMessageId: channel.replyToMessageId }
+            : {}),
+          ...(channel?.chatId ? { channelChatId: channel.chatId } : {}),
+        },
         summary: { title: `Report from ${caller.title}` },
       },
     })
@@ -289,35 +372,54 @@ export namespace BossService {
   /** The most recently assigned task, from message history (materialized tasks). */
   async function latestAssignedTask(
     session: Pick<Session.Info, "id" | "parentID">,
-  ): Promise<{ taskID: string; taskTitle?: string } | undefined> {
+  ): Promise<
+    { taskID: string; taskTitle?: string; channel?: { chatId?: string; replyToMessageId?: string } } | undefined
+  > {
     const messages = await Session.messages({ sessionID: session.id, limit: 20 }).catch(() => [])
     for (let index = messages.length - 1; index >= 0; index--) {
       const info = messages[index].info
       if (info.role !== "user") continue
       const boss = bossAssignmentMetadata(info, session, { requireRoot: true })
-      if (boss) {
-        return {
-          taskID: boss.taskID,
-          taskTitle: typeof boss.taskTitle === "string" ? boss.taskTitle : undefined,
-        }
-      }
+      if (boss) return taskWithChannel(boss)
     }
     return undefined
   }
 
-  /** Derive the current task from pending inbox items, then message history. */
-  async function currentTask(session: Session.Info): Promise<{ taskID: string; taskTitle?: string } | undefined> {
+  /** The most recently assigned task, from pending inbox items, then message history. */
+  async function currentTaskInfo(
+    session: Session.Info,
+  ): Promise<
+    { taskID: string; taskTitle?: string; channel?: { chatId?: string; replyToMessageId?: string } } | undefined
+  > {
     const items = await SessionInbox.list(session.id).catch(() => [])
     for (let index = items.length - 1; index >= 0; index--) {
       const boss = bossAssignmentMetadata(items[index].message, session)
-      if (boss) {
-        return {
-          taskID: boss.taskID,
-          taskTitle: typeof boss.taskTitle === "string" ? boss.taskTitle : undefined,
-        }
-      }
+      if (boss) return taskWithChannel(boss)
     }
     return latestAssignedTask(session)
+  }
+
+  function taskWithChannel(boss: { taskID: string; taskTitle?: unknown; channel?: unknown }): {
+    taskID: string
+    taskTitle?: string
+    channel?: { chatId?: string; replyToMessageId?: string }
+  } {
+    const channel = boss.channel
+    if (!channel || typeof channel !== "object") {
+      return {
+        taskID: boss.taskID,
+        taskTitle: typeof boss.taskTitle === "string" ? boss.taskTitle : undefined,
+      }
+    }
+    const record = channel as Record<string, unknown>
+    return {
+      taskID: boss.taskID,
+      taskTitle: typeof boss.taskTitle === "string" ? boss.taskTitle : undefined,
+      channel: {
+        chatId: typeof record.chatId === "string" ? record.chatId : undefined,
+        replyToMessageId: typeof record.replyToMessageId === "string" ? record.replyToMessageId : undefined,
+      },
+    }
   }
 
   /** Recursively derive the caller's subtree, skipping archived children. */
@@ -328,7 +430,7 @@ export namespace BossService {
   }
 
   async function buildNode(session: Session.Info, remainingDepth: number): Promise<BossTreeNode> {
-    const task = await currentTask(session)
+    const task = await currentTaskInfo(session)
     const hasQueuedTask = await SessionInbox.hasRunnableItem(session.id, { allowSteer: false }).catch(() => false)
     const node: BossTreeNode = {
       sessionID: session.id,

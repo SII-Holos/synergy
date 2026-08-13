@@ -82,6 +82,8 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   boss_report: d("tool.title.boss-report", "Report result"),
   boss_status: d("tool.title.boss-status", "View worker tree"),
   boss_cancel: d("tool.title.boss-cancel", "Cancel task"),
+  boss_project: d("tool.title.boss-project", "Create project"),
+  channel_push: d("tool.title.channel-push", "Push to channel"),
 
   // Knowledge / memory / notes
   memory_search: d("tool.title.memory-search", "Search memories"),

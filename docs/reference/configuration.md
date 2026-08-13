@@ -485,6 +485,28 @@ Compaction settings are owned by the Runtime domain (`120-runtime.jsonc`):
 
 The soft budget is `floor(inputEnvelope * overflowThreshold)`. The input envelope is the usable input for models with an explicit input limit, and `context - output - margin` for shared-context models only when reserving output and margin leaves a positive remainder; fully shared or near-window output declarations otherwise use the model's usable input. The margin is `min(32000, max(2048, ceil(context * 0.05)))`. See [LLM loop and compaction](../architecture/llm-loop.md#prompt-budget) for the full budgeting model. When automatic compaction is enabled, a prompt with no response space receives one root-scoped compaction attempt before Synergy stops locally with an actionable error; when automatic compaction is disabled, it stops immediately. An explicit per-request output limit remains effective when model context metadata is unavailable. `SYNERGY_DISABLE_AUTOCOMPACT=1` and `SYNERGY_DISABLE_PRUNE=1` force `auto` and `prune` off for the process.
 
+## Runtime Boss Mode
+
+Runtime Boss Mode is an experimental Runtime-domain feature: when enabled, the runtime auto-provisions a home-scope runtime boss session per enabled Feishu account and routes all accepted Feishu group and direct messages to it. All keys are optional, experimental, and live under `experimental` in `120-runtime.jsonc`:
+
+```jsonc
+{
+  "experimental": {
+    "boss_mode": true,
+    "boss_identity_text": "...",
+    "boss_briefing_interval_days": 7,
+  },
+}
+```
+
+| Key                                        | Type             | Default         | Behavior                                                                                                                                                                                                                                               |
+| ------------------------------------------ | ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `experimental.boss_mode`                   | boolean          | `false`         | Enables Runtime Boss Mode: auto-provisions one home-scope runtime boss session per enabled Feishu account and routes all accepted Feishu group and direct messages to it.                                                                              |
+| `experimental.boss_identity_text`          | string           | default persona | Optional colleague-identity description injected into the runtime boss session briefing and per-turn `<boss-identity>` context; when omitted, a default colleague persona is used and the collaboration discipline block is still injected every turn. |
+| `experimental.boss_briefing_interval_days` | positive integer | disabled        | Periodically delivers a refresh instruction to the runtime boss to re-enumerate sessions, projects, agenda, memory, and experience; omitted or non-positive disables periodic re-injection.                                                            |
+
+Disabling `boss_mode` reverts Feishu routing to per-chat sessions; the boss session and its history remain. See [Workflows](../architecture/workflows.md) and [Connections](../product/connections.md) for routing and governance details.
+
 ## GitHub Channel
 
 The GitHub Channel connects a GitHub App installation as a Channel (like Feishu or Clarus). Synergy polls configured repositories outbound using GitHub App installation tokens — no public inbound listener is required. Repository events are synthesized into conversation messages that run the agentic `github-channel-agent` inside a per-thread checkout, and results are posted back as GitHub comments.
