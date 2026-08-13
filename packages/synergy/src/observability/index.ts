@@ -8,6 +8,7 @@ import { ObservabilitySchema } from "./schema"
 import { ObservabilitySpans } from "./spans"
 import { ObservabilityStore } from "./store"
 import { ObservabilityWriter } from "./writer"
+import { ObservabilityTelemetryClient } from "./telemetry-client"
 
 export { ObservabilityContext } from "./context"
 export { ObservabilityEvents } from "./events"
@@ -52,6 +53,7 @@ export namespace Observability {
 
   export async function flush() {
     ObservabilityStore.flush()
+    await ObservabilityTelemetryClient.flushAndWait()
     await ObservabilityWriter.flush()
   }
 
