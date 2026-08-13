@@ -1,5 +1,5 @@
 import type { MessageDescriptor } from "@lingui/core"
-import type { AssistantMessage, PermissionRequest, ToolPart } from "@ericsanchezok/synergy-sdk/client"
+import type { AssistantMessage, PermissionRequest, ReasoningPart, ToolPart } from "@ericsanchezok/synergy-sdk/client"
 import {
   ACTIVITY_FAMILY_ORDER,
   ActivityDerivedMetadataSchema,
@@ -362,6 +362,8 @@ export function projectBalancedReasoningItems<T>(
   options?: {
     anchorMessage?: AssistantMessage
     frontier?: BalancedReasoningFrontier
+    /** Latest live reasoning part; when working, replaces the Thinking… status row with one streaming reasoning line. */
+    compactReasoningPart?: ReasoningPart
   },
 ): (ActivityTimelineItem | T)[] {
   const activityItems = items.filter(isActivityTimelineItem)
@@ -376,8 +378,17 @@ export function projectBalancedReasoningItems<T>(
 
   const anchorMessage = options?.anchorMessage ?? activityItems[0]?.message ?? frontier.message
   const hasOutput = activityItems.some(isBalancedTurnOutput)
-  const summary: ActivityReasoningSummaryItem | undefined =
-    working || !hasOutput
+  const liveItem: ActivityPassthroughItem | undefined =
+    working && options?.compactReasoningPart
+      ? {
+          kind: "passthrough",
+          item: { kind: "reasoning", message: anchorMessage, part: options.compactReasoningPart },
+          message: anchorMessage,
+        }
+      : undefined
+  const summary: ActivityReasoningSummaryItem | undefined = liveItem
+    ? undefined
+    : working || !hasOutput
       ? {
           kind: "activity-reasoning-summary",
           key: `activity-reasoning:${rootMessageID}`,
@@ -390,15 +401,18 @@ export function projectBalancedReasoningItems<T>(
     activityItems.flatMap((item) => (item.kind === "activity-reasoning-summary" ? [] : [item.message.id])),
   )
   if (summary) keptMessageIDs.add(summary.message.id)
+  if (liveItem) keptMessageIDs.add(liveItem.message.id)
 
   const result: (ActivityTimelineItem | T)[] = []
   const boundaryMessageIDs = new Set<string>()
-  let insertedSummary = false
+  const inserted = summary ?? liveItem
+  const insertedMessageID = inserted?.message.id
+  let insertedFlag = false
   for (const item of items) {
     if (isActivityTimelineItem(item)) {
-      if (!insertedSummary && summary && item.message.id === summary.message.id) {
-        result.push(summary)
-        insertedSummary = true
+      if (!insertedFlag && inserted && item.message.id === insertedMessageID) {
+        result.push(inserted)
+        insertedFlag = true
       }
       if (item.kind === "activity-reasoning-summary") {
         if (!keptMessageIDs.has(item.message.id) && !boundaryMessageIDs.has(item.message.id)) {
@@ -414,7 +428,7 @@ export function projectBalancedReasoningItems<T>(
     }
     result.push(item)
   }
-  if (summary && !insertedSummary) result.push(summary)
+  if (inserted && !insertedFlag) result.push(inserted)
   return result
 }
 

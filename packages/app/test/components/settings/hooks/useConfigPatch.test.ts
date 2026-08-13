@@ -705,29 +705,29 @@ describe("settings config patch locale", () => {
 })
 
 describe("settings config patch activity display", () => {
-  test("does not emit activityDisplay when the form is at the full default", () => {
+  test("does not emit activityDisplay when the form is at the balanced default", () => {
     const state = defaultSettingsState("enter")
     expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} })).not.toHaveProperty("activityDisplay")
   })
 
   test("emits activityDisplay when the form diverges from an absent server value", () => {
     const state = defaultSettingsState("enter")
-    state.general.activityDisplay = "balanced"
-    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).activityDisplay).toBe("balanced")
+    state.general.activityDisplay = "full"
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).activityDisplay).toBe("full")
   })
 
   test("emits activityDisplay when the form diverges from an explicit server value", () => {
     const state = defaultSettingsState("enter")
     state.general.activityDisplay = "minimal"
-    expect(buildPatch({ cfg: { activityDisplay: "full" } as Config, state, originalMcps: {} }).activityDisplay).toBe(
-      "minimal",
-    )
+    expect(
+      buildPatch({ cfg: { activityDisplay: "balanced" } as Config, state, originalMcps: {} }).activityDisplay,
+    ).toBe("minimal")
   })
 
   test("does not emit activityDisplay when the form matches the server value", () => {
     const state = defaultSettingsState("enter")
-    state.general.activityDisplay = "balanced"
-    expect(buildPatch({ cfg: { activityDisplay: "balanced" } as Config, state, originalMcps: {} })).not.toHaveProperty(
+    state.general.activityDisplay = "full"
+    expect(buildPatch({ cfg: { activityDisplay: "full" } as Config, state, originalMcps: {} })).not.toHaveProperty(
       "activityDisplay",
     )
   })

@@ -16,7 +16,7 @@ import {
 import { ToolRegistry, getDiagnostics, DiagnosticsDisplay } from "../../message-part"
 import { ToolTextOutput } from "../../tool-output-text"
 import { ToolDiffPreview } from "../diff-preview"
-import { DiffPatch, canRenderPatch } from "../../diff-patch"
+import { DiffPatchGate } from "../../diff-patch"
 
 ToolRegistry.register({ name: "view_file", render: AnchoredViewTool })
 ToolRegistry.register({ name: "scan_files", render: AnchoredScanFilesTool })
@@ -74,9 +74,7 @@ ToolRegistry.register({
             const patch = () =>
               (props.metadata.diff as string | undefined) ?? (filediff().preview as string | undefined)
             return (
-              <Show when={canRenderPatch(patch())} fallback={<ToolDiffPreview diff={filediff()} />}>
-                <DiffPatch patch={patch()!} diffStyle="unified" />
-              </Show>
+              <DiffPatchGate patch={patch()} diffStyle="unified" fallback={<ToolDiffPreview diff={filediff()} />} />
             )
           }}
         </Show>
@@ -143,9 +141,11 @@ ToolRegistry.register({
                   const patch = () =>
                     (lastResult?.diff as string | undefined) ?? (filediff().preview as string | undefined)
                   return (
-                    <Show when={canRenderPatch(patch())} fallback={<ToolDiffPreview diff={filediff()} />}>
-                      <DiffPatch patch={patch()!} diffStyle="unified" />
-                    </Show>
+                    <DiffPatchGate
+                      patch={patch()}
+                      diffStyle="unified"
+                      fallback={<ToolDiffPreview diff={filediff()} />}
+                    />
                   )
                 }}
               </Show>

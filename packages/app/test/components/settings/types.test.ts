@@ -19,8 +19,8 @@ describe("settings types", () => {
     expect(defaultSettingsState("enter").runtime.cortexConcurrency).toBe("8")
   })
 
-  test("defaults activity display to full in the general store", () => {
-    expect(UI_DEFAULTS.activityDisplay).toBe("full")
-    expect(defaultSettingsState("enter").general.activityDisplay).toBe("full")
+  test("defaults activity display to balanced in the general store", () => {
+    expect(UI_DEFAULTS.activityDisplay).toBe("balanced")
+    expect(defaultSettingsState("enter").general.activityDisplay).toBe("balanced")
   })
 })

@@ -314,6 +314,11 @@
     margin-top: 0;
   }
 
+  [data-slot="session-turn-timeline-item"][data-compact-reasoning="true"] {
+    overflow: hidden;
+    overflow-anchor: none;
+  }
+
   /* ── Assistant message footer (Copy Markdown + timestamp) ────── */
   [data-slot="assistant-message-meta"] {
     max-width: min(54rem, 100%);

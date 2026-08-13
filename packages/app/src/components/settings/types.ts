@@ -40,9 +40,10 @@ export const MODEL_DEFAULTS: Record<ModelKey, string> = {
 export const UI_DEFAULTS = {
   locale: "system" as LocalePreference,
   theme: "" as string,
-  activityDisplay: "full" as ActivityDisplay,
+  activityDisplay: "balanced" as ActivityDisplay,
   username: "" as string,
   snapshot: true,
+  compactReasoning: false,
   permission: "ask" as string, // resolved from backend { "*": "ask" } object
   sandboxEnabled: "true" as string,
   sandboxFallbackPolicy: "warn" as string,
@@ -278,6 +279,7 @@ export function groupByProvider(list: ProviderModel[]): ProviderGroup[] {
 export type GeneralStore = {
   colorScheme: ColorScheme
   snapshot: boolean
+  compactReasoning: boolean
   username: string
   theme: string
   locale: LocalePreference
@@ -390,6 +392,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
     general: {
       colorScheme,
       snapshot: UI_DEFAULTS.snapshot,
+      compactReasoning: UI_DEFAULTS.compactReasoning,
       username: UI_DEFAULTS.username,
       theme: UI_DEFAULTS.theme,
       locale: UI_DEFAULTS.locale,
