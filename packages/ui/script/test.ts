@@ -8,6 +8,7 @@ const isolated = new Set([
   "test/components/message-part-error-boundary.test.ts",
   "test/components/activity-trace.dom.test.ts",
   "test/components/diff-patch.dom.test.ts",
+  "test/components/compact-reasoning.dom.test.ts",
   "test/components/session-turn-activity.test.ts",
   "test/components/session-turn-activity-switch.dom.test.ts",
   "test/components/session-turn-timeline.test.ts",

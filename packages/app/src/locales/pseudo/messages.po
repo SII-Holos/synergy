@@ -11557,6 +11557,10 @@ msgid "session-status.working-with-notes"
 msgstr ""
 
 #. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.compact-reasoning-thinking"
+msgstr ""
+
+#. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.completed"
 msgstr ""
 
@@ -14858,6 +14862,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.general.colorScheme.system.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.compactReasoning.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.compactReasoning.title"
 msgstr ""
 
 #. js-lingui-explicit-id
