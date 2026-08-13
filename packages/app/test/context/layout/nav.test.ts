@@ -156,6 +156,18 @@ describe("rootNavRequest", () => {
   })
 })
 
+test("includes child entries for the Background section so boss workers appear", () => {
+  expect(rootNavRequest("background", 100)).toEqual({
+    source: "scope",
+    query: {
+      scopeID: "home",
+      category: "background",
+      parentOnly: "false",
+      limit: 100,
+    },
+  })
+})
+
 describe("loadNavListToDepth", () => {
   test("refreshes loaded depth through requests bounded by the API page limit", async () => {
     const source = Array.from({ length: 350 }, (_, index) =>
