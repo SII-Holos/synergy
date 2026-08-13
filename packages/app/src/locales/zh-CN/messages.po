@@ -14898,7 +14898,7 @@ msgstr "跟随此设备"
 
 #. js-lingui-explicit-id
 msgid "settings.general.compactReasoning.description"
-msgstr "以单行视图显示实时推理"
+msgstr "以单行视图显示实时推理；已完成的回合保留可展开的推理行"
 
 #. js-lingui-explicit-id
 msgid "settings.general.compactReasoning.title"

@@ -14898,7 +14898,7 @@ msgstr "Follow this device"
 
 #. js-lingui-explicit-id
 msgid "settings.general.compactReasoning.description"
-msgstr "Show live reasoning in a single-line view"
+msgstr "Show live reasoning in a single line; completed turns keep an expandable reasoning row"
 
 #. js-lingui-explicit-id
 msgid "settings.general.compactReasoning.title"

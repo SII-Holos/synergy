@@ -593,46 +593,102 @@ function isCompactionDisplayItem(item: SessionTurnDisplayItem): boolean {
   return timelineItem ? timelineVisualKind(timelineItem) === "compaction" : false
 }
 
+function persistedReasoningRow(entry: { message: AssistantMessage; part: ReasoningPart }): SessionTurnDisplayItem {
+  return {
+    kind: "passthrough",
+    item: { kind: "reasoning", message: entry.message, part: entry.part },
+    message: entry.message,
+  }
+}
+
 export function injectPersistedReasoningItems(
   items: readonly SessionTurnDisplayItem[],
   assistants: readonly AssistantMessage[],
   partsByMessage: Record<string, PartType[] | undefined>,
 ): SessionTurnDisplayItem[] {
   const persisted = new Map<string, { message: AssistantMessage; part: ReasoningPart }>()
+  const partPositions = new Map<string, number>()
   for (const assistant of assistants) {
-    const part = (partsByMessage[assistant.id] ?? []).findLast(
+    const parts = partsByMessage[assistant.id] ?? []
+    parts.forEach((part, index) => partPositions.set(part.id, index))
+    const part = parts.findLast(
       (candidate): candidate is ReasoningPart => candidate.type === "reasoning" && Boolean(candidate.text.trim()),
     )
     if (part) persisted.set(assistant.id, { message: assistant, part })
   }
   if (persisted.size === 0) return [...items]
+
+  const itemPartPosition = (item: SessionTurnDisplayItem): number | undefined => {
+    if (!isAssistantTimelineDisplayItem(item)) return undefined
+    if (isActivityTimelineItem(item)) {
+      if (item.kind === "activity-reasoning-summary") return partPositions.get(item.partID)
+      if (item.kind === "activity-group" || item.kind === "activity-receipt") {
+        const steps = item.kind === "activity-group" ? item.steps : item.group.steps
+        let position: number | undefined
+        for (const step of steps) {
+          const candidate = partPositions.get(step.part.id)
+          if (candidate === undefined) continue
+          position = position === undefined ? candidate : Math.min(position, candidate)
+        }
+        return position
+      }
+      if (item.kind === "passthrough") {
+        const part = item.item.part
+        return part ? partPositions.get(part.id) : undefined
+      }
+      return undefined
+    }
+    return item.part ? partPositions.get(item.part.id) : undefined
+  }
+
+  const isPromotedReasoningPart = (item: SessionTurnDisplayItem): boolean => {
+    if (!isAssistantTimelineDisplayItem(item) || isActivityTimelineItem(item)) return false
+    return item.kind === "part" && item.part.type === "reasoning"
+  }
+
+  const lastIndexByMessage = new Map<string, number>()
+  items.forEach((item, index) => lastIndexByMessage.set(item.message.id, index))
+
+  // Reasoning-representing items are replaced by the compact row: the root
+  // reasoning summary (balanced fallback) yields to the row in place, the
+  // latest promoted reasoning part yields to the row at its part position,
+  // and any earlier reasoning part is dropped.
   const result: SessionTurnDisplayItem[] = []
-  const handled = new Set<string>()
-  for (const item of items) {
-    const messageID = item.message.id
-    const entry = persisted.get(messageID)
-    if (entry && !handled.has(messageID)) {
-      result.push({
-        kind: "passthrough",
-        item: { kind: "reasoning", message: entry.message, part: entry.part },
-        message: entry.message,
-      })
-      handled.add(messageID)
+  const inserted = new Set<string>()
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index]
+    const entry = persisted.get(item.message.id)
+    if (!entry) {
+      result.push(item)
+      continue
     }
-    if (handled.has(messageID)) {
-      if (isReasoningDisplayItem(item)) continue
-      const timelineItem = isAssistantTimelineDisplayItem(item) ? displayItemTimelineItem(item) : undefined
-      if (timelineItem?.kind === "part" && timelineItem.part.type === "reasoning") continue
+    if (inserted.has(item.message.id)) {
+      if (!isReasoningDisplayItem(item) && !isPromotedReasoningPart(item)) result.push(item)
+      continue
     }
-    result.push(item)
+    if (isReasoningDisplayItem(item) || isPromotedReasoningPart(item)) {
+      const isSummary = isActivityTimelineItem(item) && item.kind === "activity-reasoning-summary"
+      if (isSummary || itemPartPosition(item) === partPositions.get(entry.part.id)) {
+        result.push(persistedReasoningRow(entry))
+        inserted.add(item.message.id)
+      }
+    } else {
+      const itemPosition = itemPartPosition(item)
+      const reasoningPosition = partPositions.get(entry.part.id)
+      if (itemPosition !== undefined && reasoningPosition !== undefined && itemPosition > reasoningPosition) {
+        result.push(persistedReasoningRow(entry))
+        inserted.add(item.message.id)
+      }
+      result.push(item)
+    }
+    if (index === lastIndexByMessage.get(item.message.id) && !inserted.has(item.message.id)) {
+      result.push(persistedReasoningRow(entry))
+      inserted.add(item.message.id)
+    }
   }
   for (const entry of persisted.values()) {
-    if (handled.has(entry.message.id)) continue
-    result.push({
-      kind: "passthrough",
-      item: { kind: "reasoning", message: entry.message, part: entry.part },
-      message: entry.message,
-    })
+    if (inserted.has(entry.message.id)) continue
+    result.push(persistedReasoningRow(entry))
   }
   return result
 }
@@ -977,20 +1033,19 @@ export function SessionTurn(
         return projectMinimalActivityItems(result, msg?.id ?? props.messageID, !working()) as SessionTurnDisplayItem[]
       }
       if (activityDisplay() === "balanced") {
-        let frontier: { message: AssistantMessage; part: ReasoningPart } | undefined
-        const liveReasoningParts = new Map<string, ReasoningPart>()
-        for (const assistant of assistants) {
-          const reasoningPart = (data.store.part[assistant.id] ?? emptyParts).findLast(
-            (part): part is ReasoningPart => part.type === "reasoning" && Boolean(part.text.trim()),
-          )
-          if (!reasoningPart) continue
-          frontier = { message: assistant, part: reasoningPart }
-          liveReasoningParts.set(assistant.id, reasoningPart)
-        }
+        const frontier = assistants.reduce<{ message: AssistantMessage; part: ReasoningPart } | undefined>(
+          (latest, assistant) => {
+            const reasoningPart = (data.store.part[assistant.id] ?? emptyParts).findLast(
+              (part): part is ReasoningPart => part.type === "reasoning" && Boolean(part.text.trim()),
+            )
+            return reasoningPart ? { message: assistant, part: reasoningPart } : latest
+          },
+          undefined,
+        )
         const projected = projectBalancedReasoningItems(result, msg?.id ?? props.messageID, working(), {
           anchorMessage: assistants[0],
           frontier: frontier ? { message: frontier.message, partID: frontier.part.id } : undefined,
-          compactReasoningParts: props.compactReasoning && working() ? liveReasoningParts : undefined,
+          compactReasoningPart: props.compactReasoning && working() ? frontier?.part : undefined,
         }) as SessionTurnDisplayItem[]
         return props.compactReasoning && !working()
           ? injectPersistedReasoningItems(projected, assistants, data.store.part)
