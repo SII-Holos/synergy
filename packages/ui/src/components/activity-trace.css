@@ -67,6 +67,21 @@
     color: var(--icon-weak-base);
   }
 
+  [data-slot="activity-step-audit-icon"] {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    cursor: help;
+    border-radius: var(--radius-full);
+  }
+
+  [data-slot="activity-step-audit-icon"]:hover {
+    background: var(--surface-raised-base-hover);
+  }
+
   [data-slot="activity-step-copy"] {
     display: flex;
     flex: 1 1 auto;

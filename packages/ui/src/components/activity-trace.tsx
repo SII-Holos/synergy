@@ -8,10 +8,11 @@ import {
 } from "./activity-count-transition"
 import { Collapsible } from "./collapsible"
 import { specializedActivityDetail } from "./activity-specialized-detail-model"
-import { Icon } from "./icon"
+import { Icon, type IconName } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import { Spinner } from "./spinner"
 import { ToolResultBody } from "./tool-result-body"
+import { getApprovalAudit } from "../utils/approval-audit"
 import type {
   ActivityFamily,
   ActivityGroupItem,
@@ -191,10 +192,21 @@ function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }
   const familyLabel = createMemo(() => localize(familyDescriptor(props.step.family), _))
   const title = createMemo(() => localize(props.step.title, _))
   const stateLabel = createMemo(() => _(stateDescriptor(props.step.state)))
+  const approval = createMemo(() => {
+    const metadata = props.step.part.state.metadata
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return undefined
+    return (metadata as Record<string, unknown>).approval as Record<string, unknown> | undefined
+  })
+  const audit = createMemo(() => getApprovalAudit(approval()))
   return (
     <li data-slot="activity-step" data-family={props.step.family} data-state={props.step.state}>
       <Collapsible open={open()} onOpenChange={setOpen} variant="ghost">
         <Collapsible.Trigger data-slot="activity-step-trigger" type="button">
+          <Show when={audit().icon}>
+            <span data-component="tool-audit-icon" data-slot="activity-step-audit-icon" title={audit().tooltip}>
+              <Icon name={audit().icon as IconName} size="small" class={audit().iconClass} />
+            </span>
+          </Show>
           <span data-slot="activity-step-icon" aria-hidden="true">
             <Icon name={props.step.icon} size="small" />
           </span>
