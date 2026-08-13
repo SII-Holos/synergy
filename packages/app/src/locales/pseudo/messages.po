@@ -19173,19 +19173,11 @@ msgid "ui.errorCard.detailsTitle"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "ui.errorCard.errorMessage"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "ui.errorCard.toolInput"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "ui.errorCard.unknownError"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "ui.errorCard.viewDetails"
 msgstr ""
 
 #. js-lingui-explicit-id
