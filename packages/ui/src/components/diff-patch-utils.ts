@@ -1,4 +1,4 @@
-import { parsePatchFiles } from "@pierre/diffs"
+import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs"
 
 /**
  * Returns true when `patch` is a parseable unified diff for exactly one real
@@ -18,15 +18,22 @@ function hasUnrenderableTrailingBlankLine(lines: readonly string[]): boolean {
   return /^\r?\n$/.test(lines.at(-1) ?? "")
 }
 
-export function canRenderPatch(patch: string | undefined | null): boolean {
-  if (!patch || !patch.trim()) return false
+/**
+ * Parses `patch` once and returns the single-file metadata when pierre can
+ * render it, or `undefined` otherwise. Callers use the same result for both
+ * the renderability decision and the render itself so streaming projections
+ * that rebuild wrapper objects around an unchanged patch string do not pay a
+ * fresh `parsePatchFiles` cost per chunk.
+ */
+export function parseRenderablePatch(patch: string | undefined | null): FileDiffMetadata | undefined {
+  if (!patch || !patch.trim()) return undefined
   // Truncated previews (middle-omitted by SessionBounds) still parse as valid
   // unified diffs but render as broken/incomplete hunks — keep them on the
   // lightweight fallback that surfaces the truncation notice.
-  if (TRUNCATION_MARKER.test(patch)) return false
+  if (TRUNCATION_MARKER.test(patch)) return undefined
   try {
     const parsed = parsePatchFiles(patch)
-    if (parsed.length !== 1 || parsed[0].files.length !== 1) return false
+    if (parsed.length !== 1 || parsed[0].files.length !== 1) return undefined
     const metadata = parsed[0].files[0]
     // The combined revise_file diff embeds `=== path ===` section headers in
     // the hunk content lines (each section's before/after is concatenated
@@ -38,7 +45,7 @@ export function canRenderPatch(patch: string | undefined | null): boolean {
       metadata.deletionLines?.some((line) => SECTION_MARKER.test(line)) ||
       metadata.additionLines?.some((line) => SECTION_MARKER.test(line))
     ) {
-      return false
+      return undefined
     }
     // Pierre strips the final newline before highlighting, so an empty final
     // hunk line leaves its renderer with a line index but no highlighted row.
@@ -46,10 +53,14 @@ export function canRenderPatch(patch: string | undefined | null): boolean {
       hasUnrenderableTrailingBlankLine(metadata.deletionLines) ||
       hasUnrenderableTrailingBlankLine(metadata.additionLines)
     ) {
-      return false
+      return undefined
     }
-    return true
+    return metadata
   } catch {
-    return false
+    return undefined
   }
+}
+
+export function canRenderPatch(patch: string | undefined | null): boolean {
+  return parseRenderablePatch(patch) !== undefined
 }

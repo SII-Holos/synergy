@@ -49,8 +49,7 @@ beforeAll(async () => {
   mock.module("../../../../src/components/tool-output-text", () => ({ ToolTextOutput: () => null }))
   mock.module("../../../../src/components/tool/diff-preview", () => ({ ToolDiffPreview: () => null }))
   mock.module("../../../../src/components/diff-patch", () => ({
-    DiffPatch: () => null,
-    canRenderPatch: () => false,
+    DiffPatchGate: () => null,
   }))
   mock.module("../../../../src/components/tool/save-file-preview", () => ({
     hasSaveFileContentInput: () => false,

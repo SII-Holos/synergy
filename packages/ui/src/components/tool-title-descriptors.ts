@@ -458,6 +458,8 @@ export const DIAGRAM_DESC = {
 // ── Diff preview ────────────────────────────────────────────────────
 export const DIFF_DESC = {
   fileDiffPreview: d("diff.file-diff-preview", "File diff preview"),
+  previewTruncated: d("diff.preview-truncated", "Preview truncated"),
+  previewOmitted: d("diff.preview-omitted", "Diff preview omitted in this view."),
 } as const
 
 // ── Anchored-tool chip labels ──────────────────────────────────────
