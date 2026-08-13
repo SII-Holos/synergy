@@ -218,6 +218,7 @@ function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }
             sessionId={props.step.part.sessionID}
             messageId={props.step.part.messageID}
             resultOnly
+            defaultOpen
           />
         </Collapsible.Content>
       </Collapsible>
