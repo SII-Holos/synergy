@@ -1,25 +1,21 @@
 import { Database } from "bun:sqlite"
 import fsSync from "fs"
-import path from "path"
-import { Global } from "@/global"
 import { ObservabilityConfig } from "@/observability/config"
 import { ObservabilitySchema } from "./schema"
 import { ObservabilitySqliteMaintenance } from "./sqlite-maintenance"
-import { ObservabilityResourceSchema } from "./resource-schema"
+import { ObservabilityDbSchema } from "./db-schema"
+import { ObservabilityPaths } from "./paths"
+import { ObservabilityDbWrites } from "./db-writes"
+import { ObservabilityTelemetryClient } from "./telemetry-client"
+import { TelemetryProtocol } from "./telemetry-protocol"
 
 export namespace ObservabilityStore {
-  export const schemaVersion = 5
+  export const schemaVersion = ObservabilityDbSchema.schemaVersion
   const MAX_PENDING = 10_000
   const FLUSH_MS = 1000
-  const SIZE_CAP_TABLES = [
-    { table: "obs_metrics", orderBy: "time" },
-    { table: "obs_events", orderBy: "time" },
-    { table: "obs_resource_samples", orderBy: "time" },
-    { table: "obs_browser_batches", orderBy: "received_time" },
-    { table: "obs_spans", orderBy: "start_time", where: "status != 'running'" },
-    { table: "obs_issues", orderBy: "last_seen_time", where: "status != 'open'" },
-  ] as const
   let db: Database | undefined
+  let readonlyDb: Database | undefined
+  let clientActive = false
   let checkpointTimer: ReturnType<typeof setInterval> | undefined
   let compactTimer: ReturnType<typeof setInterval> | undefined
   let retentionTimer: ReturnType<typeof setInterval> | undefined
@@ -29,18 +25,62 @@ export namespace ObservabilityStore {
   let lastOpenError: string | undefined
   let openFailed = false
   let capExceededBytes = 0
+  let maintenanceDeferred = false
   let checkpointIntervalMs: number | undefined
   let retentionIntervalMs: number | undefined
   const pending: Array<() => void> = []
   const beforeFlushHooks = new Set<() => void>()
 
+  function inlineMode() {
+    return process.env.SYNERGY_OBSERVABILITY_INLINE === "1"
+  }
+
+  function workerConfigFrom(config: ReturnType<typeof ObservabilityConfig.current>): TelemetryProtocol.WorkerConfig {
+    return {
+      maxSqliteBytes: config.storage.maxSqliteBytes,
+      walCheckpointIntervalMs: config.storage.walCheckpointIntervalMs,
+      metricRetentionMs: config.metricRetentionMs,
+      traceRetentionMs: config.traceRetentionMs,
+      maintenanceBudgetMs: 500,
+    }
+  }
+
+  function queryConnection(): Database | undefined {
+    if (!inlineMode()) {
+      if (!readonlyDb) {
+        try {
+          readonlyDb = new Database(pathName(), { readonly: true })
+        } catch {
+          return undefined
+        }
+      }
+      return readonlyDb
+    }
+    return open()
+  }
+
   export function stats() {
+    if (!inlineMode()) {
+      const client = ObservabilityTelemetryClient.stats()
+      const config = ObservabilityConfig.current()
+      return {
+        pending: client.pending,
+        dropped: droppedJobs + client.dropped,
+        available: queryConnection() !== undefined,
+        lastOpenError,
+        capExceededBytes: client.capExceededBytes,
+        maintenanceDeferred: client.maintenanceDeferred,
+        checkpointIntervalMs: config.storage.walCheckpointIntervalMs,
+        retentionIntervalMs: Math.max(config.metricRetentionMs / 4, 60_000),
+      }
+    }
     return {
       pending: pending.length,
       dropped: droppedJobs,
       available: !!db,
       lastOpenError,
       capExceededBytes,
+      maintenanceDeferred,
       checkpointIntervalMs,
       retentionIntervalMs,
     }
@@ -52,18 +92,27 @@ export namespace ObservabilityStore {
   }
 
   export function dir() {
-    return path.join(Global.Path.state, "observability")
+    return ObservabilityPaths.dir()
   }
 
   export function pathName() {
-    return path.join(dir(), "observability.sqlite")
+    return ObservabilityPaths.pathName()
   }
 
   export function legacyPerformancePath() {
-    return path.join(dir(), "performance", "performance.sqlite")
+    return ObservabilityPaths.legacyPerformancePath()
   }
 
   export function open(): Database | undefined {
+    if (!inlineMode()) {
+      const config = ObservabilityConfig.current()
+      if (!config.enabled || !config.storage.sqliteEnabled) return undefined
+      if (!clientActive) {
+        ObservabilityTelemetryClient.start({ dbPath: pathName(), config: workerConfigFrom(config) })
+        clientActive = true
+      }
+      return queryConnection()
+    }
     if (db) return db
     const config = ObservabilityConfig.current()
     if (!config.enabled || !config.storage.sqliteEnabled) return undefined
@@ -85,6 +134,10 @@ export namespace ObservabilityStore {
     const config = ObservabilityConfig.current()
     if (!config.enabled || !config.storage.sqliteEnabled) {
       close()
+      return
+    }
+    if (!inlineMode()) {
+      ObservabilityTelemetryClient.sendReconfigure(workerConfigFrom(config))
       return
     }
     clearTimers()
@@ -109,6 +162,15 @@ export namespace ObservabilityStore {
   }
 
   export function close() {
+    if (!inlineMode()) {
+      clearTimers()
+      flush()
+      readonlyDb?.close(false)
+      readonlyDb = undefined
+      void ObservabilityTelemetryClient.stop()
+      clientActive = false
+      return
+    }
     // Stop every producer before draining the queue. A timer firing between
     // flush() and close() can otherwise retain a statement and make SQLite's
     // strict close report SQLITE_BUSY during shutdown.
@@ -139,33 +201,72 @@ export namespace ObservabilityStore {
   }
 
   export function checkpoint() {
+    if (!inlineMode()) {
+      ObservabilityTelemetryClient.sendCheckpoint()
+      return
+    }
     const conn = open()
     if (!conn) return
     checkpointConnection(conn)
   }
 
   export function insertMetric(metric: ObservabilitySchema.Metric) {
-    enqueue(() => insertMetricSync(metric))
+    if (!inlineMode()) {
+      ObservabilityTelemetryClient.enqueue({ kind: "metric", row: metric })
+      return
+    }
+    enqueue(() => {
+      const conn = open()
+      if (conn) ObservabilityDbWrites.insertMetric(conn, metric)
+    })
   }
 
   export function insertSpan(span: ObservabilitySchema.Span) {
-    enqueue(() => upsertSpanSync(span))
+    if (!inlineMode()) {
+      ObservabilityTelemetryClient.enqueue({ kind: "span", row: span })
+      return
+    }
+    enqueue(() => {
+      const conn = open()
+      if (conn) ObservabilityDbWrites.upsertSpan(conn, span)
+    })
   }
 
   export function updateSpan(span: ObservabilitySchema.Span) {
-    enqueue(() => upsertSpanSync(span))
+    insertSpan(span)
   }
 
   export function insertEvent(event: ObservabilitySchema.Event) {
-    enqueue(() => insertEventSync(event))
+    if (!inlineMode()) {
+      ObservabilityTelemetryClient.enqueue({ kind: "event", row: event })
+      return
+    }
+    enqueue(() => {
+      const conn = open()
+      if (conn) ObservabilityDbWrites.insertEvent(conn, event)
+    })
   }
 
   export function insertResource(sample: ObservabilitySchema.ResourceSample) {
-    enqueue(() => insertResourceSync(sample))
+    if (!inlineMode()) {
+      ObservabilityTelemetryClient.enqueue({ kind: "resource", row: sample })
+      return
+    }
+    enqueue(() => {
+      const conn = open()
+      if (conn) ObservabilityDbWrites.insertResource(conn, sample)
+    })
   }
 
   export function insertIssue(issue: ObservabilitySchema.Issue) {
-    enqueue(() => insertIssueSync(issue))
+    if (!inlineMode()) {
+      ObservabilityTelemetryClient.enqueue({ kind: "issue", row: issue })
+      return
+    }
+    enqueue(() => {
+      const conn = open()
+      if (conn) ObservabilityDbWrites.insertIssue(conn, issue)
+    })
   }
 
   export function insertBrowserBatch(input: {
@@ -176,12 +277,19 @@ export namespace ObservabilityStore {
     rejected: number
     page: Record<string, unknown>
   }) {
-    enqueue(() => insertBrowserBatchSync(input))
+    if (!inlineMode()) {
+      ObservabilityTelemetryClient.enqueue({ kind: "browser-batch", row: input })
+      return
+    }
+    enqueue(() => {
+      const conn = open()
+      if (conn) ObservabilityDbWrites.insertBrowserBatch(conn, input)
+    })
   }
 
   export function queryEvents(input: ObservabilitySchema.Query = {}) {
     flush()
-    const conn = open()
+    const conn = queryConnection()
     if (!conn) return [] as StoredEvent[]
     const filters: string[] = []
     const params: Array<string | number> = []
@@ -240,7 +348,7 @@ export namespace ObservabilityStore {
     newestFirst?: boolean
   }) {
     flush()
-    const conn = open()
+    const conn = queryConnection()
     if (!conn) return [] as StoredMetric[]
     const filters = ["time >= ?"]
     const params: Array<string | number> = [opts.since]
@@ -315,7 +423,7 @@ export namespace ObservabilityStore {
     distinctTrace?: boolean
   }) {
     flush()
-    const conn = open()
+    const conn = queryConnection()
     if (!conn) return [] as StoredSpan[]
     const filters: string[] = []
     const params: Array<string | number> = []
@@ -406,21 +514,15 @@ export namespace ObservabilityStore {
   }
 
   export function interruptRunningSpans(opts: { reason: "previous_runtime_ended" | "runtime_shutdown" }) {
+    if (!inlineMode()) {
+      flush()
+      ObservabilityTelemetryClient.sendInterruptSpans(opts.reason)
+      return 0
+    }
     flush()
     const conn = open()
     if (!conn) return 0
-    return conn
-      .query(
-        `UPDATE obs_spans
-         SET end_time = COALESCE(last_activity_time, start_time),
-             duration_ms = MAX(0, COALESCE(last_activity_time, start_time) - start_time),
-             last_activity_time = COALESCE(last_activity_time, start_time),
-             status = 'interrupted',
-             error_code = 'PROCESS_INTERRUPTED',
-             error_message = ?
-         WHERE status = 'running'`,
-      )
-      .run(opts.reason).changes
+    return ObservabilityDbWrites.interruptRunningSpans(conn, opts.reason)
   }
 
   export function queryIssues(
@@ -436,7 +538,7 @@ export namespace ObservabilityStore {
     } = {},
   ) {
     flush()
-    const conn = open()
+    const conn = queryConnection()
     if (!conn) return [] as StoredIssue[]
     const filters: string[] = []
     const params: Array<string | number> = []
@@ -477,7 +579,7 @@ export namespace ObservabilityStore {
   }
   export function countIssues(opts: { status?: string; scopeID?: string; since?: number; until?: number } = {}) {
     flush()
-    const conn = open()
+    const conn = queryConnection()
     if (!conn) return { total: 0, info: 0, warning: 0, error: 0, critical: 0 }
     const filters: string[] = []
     const params: Array<string | number> = []
@@ -512,7 +614,7 @@ export namespace ObservabilityStore {
 
   export function latestResource(opts: { scopeID?: string } = {}) {
     flush()
-    const conn = open()
+    const conn = queryConnection()
     if (!conn) return undefined
     if (opts.scopeID) {
       return getRow<StoredResource>(
@@ -527,7 +629,7 @@ export namespace ObservabilityStore {
   export function resourceSince(since: number, opts: { scopeID?: string; limit?: number; newestFirst?: boolean } = {}) {
     flush()
     const limit = opts.limit ?? 10_000
-    const conn = open()
+    const conn = queryConnection()
     if (!conn) return []
     if (opts.scopeID) {
       return allRows<StoredResource>(
@@ -547,23 +649,26 @@ export namespace ObservabilityStore {
   }
 
   export function retain(now = Date.now()) {
+    if (!inlineMode()) {
+      flush()
+      ObservabilityTelemetryClient.sendRetainNow()
+      return
+    }
     const conn = open()
     if (!conn) return
     const config = ObservabilityConfig.current()
-    const metricCutoff = now - config.metricRetentionMs
-    const traceCutoff = now - config.traceRetentionMs
-    conn.query("DELETE FROM obs_metrics WHERE time < ?").run(metricCutoff)
-    conn.query("DELETE FROM obs_events WHERE time < ?").run(traceCutoff)
-    conn.query("DELETE FROM obs_resource_samples WHERE time < ?").run(metricCutoff)
-    conn.query("DELETE FROM obs_spans WHERE start_time < ? AND status != 'running'").run(traceCutoff)
-    conn.query("DELETE FROM obs_browser_batches WHERE received_time < ?").run(metricCutoff)
-    conn.query("DELETE FROM obs_issues WHERE status != 'open' AND time < ?").run(traceCutoff)
-    conn.query("INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('lastRetentionRunAt', ?)").run(String(now))
+    ObservabilityDbWrites.retain(conn, now, now - config.metricRetentionMs, now - config.traceRetentionMs)
     enforceMaxSize(conn, config.storage.maxSqliteBytes)
   }
 
   export function flush() {
     for (const hook of beforeFlushHooks) hook()
+    if (!inlineMode()) {
+      if (flushTimer) clearTimeout(flushTimer)
+      flushTimer = undefined
+      ObservabilityTelemetryClient.flushPending()
+      return
+    }
     if (flushTimer) clearTimeout(flushTimer)
     flushTimer = undefined
     if (!pending.length) return
@@ -591,11 +696,13 @@ export namespace ObservabilityStore {
   }
 
   export function meta() {
-    const conn = open()
+    const conn = queryConnection()
     return conn ? allRows<ObservabilityMetaRow>(conn, "SELECT key,value FROM obs_meta ORDER BY key ASC") : []
   }
 
   export function initializeForMigration() {
+    // Migration runs before the worker starts, so it always uses the inline
+    // write connection regardless of the runtime mode.
     if (db) return db
     const conn = createConnection()
     db = conn
@@ -608,15 +715,10 @@ export namespace ObservabilityStore {
   }
 
   function createConnection() {
-    fsSync.mkdirSync(dir(), { recursive: true })
-    const fresh = !fsSync.existsSync(pathName())
-    const conn = new Database(pathName(), { create: true })
-    if (fresh) conn.exec("PRAGMA auto_vacuum=INCREMENTAL")
-    conn.exec("PRAGMA journal_mode=WAL")
-    conn.exec("PRAGMA busy_timeout=5000")
-    conn.exec("PRAGMA foreign_keys=ON")
-    initialize(conn)
-    if (fresh) ObservabilityResourceSchema.applyV5(conn)
+    fsSync.mkdirSync(ObservabilityPaths.dir(), { recursive: true })
+    const fresh = !fsSync.existsSync(ObservabilityPaths.pathName())
+    const conn = new Database(ObservabilityPaths.pathName(), { create: true })
+    ObservabilityDbSchema.configureWriteConnection(conn, fresh)
     return conn
   }
 
@@ -641,8 +743,7 @@ export namespace ObservabilityStore {
   }
 
   function checkpointConnection(conn: Database) {
-    conn.query("INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('lastWalCheckpointAt', ?)").run(String(Date.now()))
-    conn.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+    ObservabilityDbWrites.checkpoint(conn)
   }
 
   function enqueue(job: () => void) {
@@ -667,227 +768,18 @@ export namespace ObservabilityStore {
     }
   }
 
-  function insertMetricSync(metric: ObservabilitySchema.Metric) {
-    open()
-      ?.query(
-        `INSERT OR REPLACE INTO obs_metrics (metric_id,time,iso,name,value,unit,source,module,correlation_id,scope_id,session_id,message_id,call_id,trace_id,span_id,parent_span_id,rid,process_id,pid,tool,labels_json,sample_rate,redaction_json)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23)`,
-      )
-      .run(
-        metric.metricId,
-        metric.time,
-        metric.iso,
-        metric.name,
-        metric.value,
-        metric.unit,
-        metric.source,
-        metric.module,
-        metric.correlationId ?? null,
-        metric.scopeID ?? null,
-        metric.sessionID ?? null,
-        metric.messageID ?? null,
-        metric.callID ?? null,
-        metric.traceId ?? null,
-        metric.spanId ?? null,
-        metric.parentSpanId ?? null,
-        metric.rid ?? null,
-        metric.processId ?? null,
-        metric.pid ?? null,
-        metric.tool ?? null,
-        JSON.stringify(metric.labels ?? {}),
-        metric.sampleRate,
-        JSON.stringify(metric.redaction),
-      )
-  }
-
-  function upsertSpanSync(span: ObservabilitySchema.Span) {
-    open()
-      ?.query(
-        `INSERT INTO obs_spans (trace_id,correlation_id,span_id,parent_span_id,kind,name,module,source,start_time,end_time,duration_ms,last_activity_time,heartbeat_time,heartbeat_count,stalled,status,error_code,error_message,scope_id,session_id,message_id,call_id,rid,process_id,pid,tool,attributes_json,redaction_json)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28)
-         ON CONFLICT(span_id) DO UPDATE SET trace_id=excluded.trace_id,correlation_id=excluded.correlation_id,parent_span_id=excluded.parent_span_id,kind=excluded.kind,name=excluded.name,module=excluded.module,source=excluded.source,start_time=excluded.start_time,end_time=excluded.end_time,duration_ms=excluded.duration_ms,last_activity_time=excluded.last_activity_time,heartbeat_time=excluded.heartbeat_time,heartbeat_count=excluded.heartbeat_count,stalled=excluded.stalled,status=excluded.status,error_code=excluded.error_code,error_message=excluded.error_message,scope_id=excluded.scope_id,session_id=excluded.session_id,message_id=excluded.message_id,call_id=excluded.call_id,rid=excluded.rid,process_id=excluded.process_id,pid=excluded.pid,tool=excluded.tool,attributes_json=excluded.attributes_json,redaction_json=excluded.redaction_json`,
-      )
-      .run(
-        span.traceId,
-        span.correlationId ?? null,
-        span.spanId,
-        span.parentSpanId ?? null,
-        span.kind,
-        span.name,
-        span.module,
-        span.source,
-        span.startTime,
-        span.endTime ?? null,
-        span.durationMs ?? null,
-        span.lastActivityTime,
-        span.heartbeatTime ?? null,
-        span.heartbeatCount,
-        span.stalled ? 1 : 0,
-        span.status,
-        span.errorCode ?? null,
-        span.errorMessage ?? null,
-        span.scopeID ?? null,
-        span.sessionID ?? null,
-        span.messageID ?? null,
-        span.callID ?? null,
-        span.rid ?? null,
-        span.processId ?? null,
-        span.pid ?? null,
-        span.tool ?? null,
-        JSON.stringify(span.attributes ?? {}),
-        JSON.stringify(span.redaction),
-      )
-  }
-
-  function insertEventSync(event: ObservabilitySchema.Event) {
-    open()
-      ?.query(
-        `INSERT OR REPLACE INTO obs_events (event_id,time,iso,type,level,correlation_id,trace_id,span_id,parent_span_id,session_id,message_id,call_id,tool,process_id,pid,cwd,scope_id,rid,source,module,data_json,redaction_json)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)`,
-      )
-      .run(
-        event.eventId,
-        event.time,
-        event.iso,
-        event.type,
-        event.level ?? null,
-        event.correlationId ?? null,
-        event.traceId ?? null,
-        event.spanId ?? null,
-        event.parentSpanId ?? null,
-        event.sessionID ?? null,
-        event.messageID ?? null,
-        event.callID ?? null,
-        event.tool ?? null,
-        event.processId ?? null,
-        event.pid ?? null,
-        event.cwd ?? null,
-        event.scopeID ?? null,
-        event.rid ?? null,
-        event.source,
-        event.module,
-        JSON.stringify(event.data ?? {}),
-        JSON.stringify(event.redaction),
-      )
-  }
-
-  function insertResourceSync(sample: ObservabilitySchema.ResourceSample) {
-    open()
-      ?.query(
-        `INSERT OR REPLACE INTO obs_resource_samples (sample_id,time,iso,source,correlation_id,trace_id,scope_id,session_id,pid,process_id,process_role,cpu_user_micros,cpu_system_micros,cpu_utilization_ratio,memory_rss_bytes,memory_heap_total_bytes,memory_heap_used_bytes,memory_external_bytes,memory_array_buffers_bytes,event_loop_lag_ms,event_loop_sample_window_ms,app_read_bytes,app_written_bytes,app_read_ops,app_write_ops,os_read_bytes,os_written_bytes,os_available,cgroup_current_bytes,cgroup_high_bytes,cgroup_max_bytes,cgroup_peak_bytes,cgroup_oom_count,cgroup_oom_kill_count,service_memory_rss_bytes,service_memory_source,service_memory_completeness,labels_json,redaction_json)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,?34,?35,?36,?37,?38,?39)`,
-      )
-      .run(
-        sample.sampleId,
-        sample.time,
-        sample.iso,
-        sample.source,
-        sample.correlationId ?? null,
-        sample.traceId ?? null,
-        sample.scopeID ?? null,
-        sample.sessionID ?? null,
-        sample.process.pid ?? null,
-        sample.process.processId ?? null,
-        sample.process.role,
-        sample.cpu.userMicros ?? null,
-        sample.cpu.systemMicros ?? null,
-        sample.cpu.utilizationRatio ?? null,
-        sample.memory.rssBytes ?? null,
-        sample.memory.heapTotalBytes ?? null,
-        sample.memory.heapUsedBytes ?? null,
-        sample.memory.externalBytes ?? null,
-        sample.memory.arrayBuffersBytes ?? null,
-        sample.eventLoop.lagMs ?? null,
-        sample.eventLoop.sampleWindowMs,
-        sample.io.appReadBytes ?? null,
-        sample.io.appWrittenBytes ?? null,
-        sample.io.appReadOps ?? null,
-        sample.io.appWriteOps ?? null,
-        sample.io.osReadBytes ?? null,
-        sample.io.osWrittenBytes ?? null,
-        sample.io.osAvailable ? 1 : 0,
-        sample.cgroup?.currentBytes ?? null,
-        sample.cgroup?.highBytes ?? null,
-        sample.cgroup?.maxBytes ?? null,
-        sample.cgroup?.peakBytes ?? null,
-        sample.cgroup?.oomCount ?? null,
-        sample.cgroup?.oomKillCount ?? null,
-        sample.serviceMemory?.rssBytes ?? null,
-        sample.serviceMemory?.source ?? null,
-        sample.serviceMemory?.completeness ?? null,
-        JSON.stringify(sample.labels ?? {}),
-        JSON.stringify(sample.redaction),
-      )
-  }
-
-  function insertIssueSync(issue: ObservabilitySchema.Issue) {
-    open()
-      ?.query(
-        `INSERT INTO obs_issues (issue_id,time,iso,severity,status,code,title,message,recommendation,module,correlation_id,trace_id,span_id,scope_id,session_id,message_id,call_id,rid,evidence_json,first_seen_time,last_seen_time,occurrence_count,fingerprint,redaction_json)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24)
-         ON CONFLICT(fingerprint) WHERE status = 'open' DO UPDATE SET last_seen_time=excluded.last_seen_time, occurrence_count=obs_issues.occurrence_count+1, evidence_json=excluded.evidence_json, redaction_json=excluded.redaction_json`,
-      )
-      .run(
-        issue.issueId,
-        issue.time,
-        issue.iso,
-        issue.severity,
-        issue.status,
-        issue.code,
-        issue.title,
-        issue.message,
-        issue.recommendation ?? null,
-        issue.module,
-        issue.correlationId ?? null,
-        issue.traceId ?? null,
-        issue.spanId ?? null,
-        issue.scopeID ?? null,
-        issue.sessionID ?? null,
-        issue.messageID ?? null,
-        issue.callID ?? null,
-        issue.rid ?? null,
-        JSON.stringify(issue.evidence ?? {}),
-        issue.firstSeenTime,
-        issue.lastSeenTime,
-        issue.occurrenceCount,
-        issue.fingerprint,
-        JSON.stringify(issue.redaction),
-      )
-  }
-
-  function insertBrowserBatchSync(input: {
-    batchId: string
-    receivedTime: number
-    sentAt: number
-    accepted: number
-    rejected: number
-    page: Record<string, unknown>
-  }) {
-    open()
-      ?.query(
-        `INSERT OR REPLACE INTO obs_browser_batches (batch_id,received_time,sent_at,source,accepted,rejected,page_json) VALUES (?1,?2,?3,'browser',?4,?5,?6)`,
-      )
-      .run(input.batchId, input.receivedTime, input.sentAt, input.accepted, input.rejected, JSON.stringify(input.page))
-  }
-
   function enforceMaxSize(conn: Database, maxBytes: number) {
     try {
-      capExceededBytes = ObservabilitySqliteMaintenance.enforce({
+      const result = ObservabilitySqliteMaintenance.enforce({
         db: conn,
         path: pathName(),
         maxBytes,
-        tables: SIZE_CAP_TABLES,
-      }).capExceededBytes
+        tables: ObservabilityDbSchema.SIZE_CAP_TABLES,
+        budgetMs: 500,
+      })
+      capExceededBytes = result.capExceededBytes
+      maintenanceDeferred = result.deferred ?? false
     } catch {}
-  }
-
-  function initialize(conn: Database) {
-    const now = Date.now()
-    conn.exec(SQL)
-    conn.query("INSERT OR IGNORE INTO obs_meta (key,value) VALUES ('schemaVersion', ?)").run(String(schemaVersion))
-    conn.query("INSERT OR IGNORE INTO obs_meta (key,value) VALUES ('createdAt', ?)").run(new Date(now).toISOString())
-    conn.query("INSERT OR IGNORE INTO obs_meta (key,value) VALUES ('lastRetentionRunAt', ?)").run(String(now))
-    conn.query("INSERT OR IGNORE INTO obs_meta (key,value) VALUES ('lastWalCheckpointAt', ?)").run(String(now))
   }
 
   type SqlBinding = string | number | bigint | boolean | null | Uint8Array
@@ -1065,47 +957,4 @@ export namespace ObservabilityStore {
     key: string
     value: string
   }
-
-  const SQL = `
-CREATE TABLE IF NOT EXISTS obs_metrics (metric_id TEXT PRIMARY KEY,time INTEGER NOT NULL,iso TEXT NOT NULL,name TEXT NOT NULL,value REAL NOT NULL,unit TEXT NOT NULL,source TEXT NOT NULL,module TEXT NOT NULL,correlation_id TEXT,scope_id TEXT,session_id TEXT,message_id TEXT,call_id TEXT,trace_id TEXT,span_id TEXT,parent_span_id TEXT,rid TEXT,process_id TEXT,pid INTEGER,tool TEXT,labels_json TEXT NOT NULL DEFAULT '{}',sample_rate REAL NOT NULL DEFAULT 1,redaction_json TEXT NOT NULL DEFAULT '{}');
-CREATE INDEX IF NOT EXISTS idx_obs_metrics_time ON obs_metrics(time);
-CREATE INDEX IF NOT EXISTS idx_obs_metrics_name_time ON obs_metrics(name,time);
-CREATE INDEX IF NOT EXISTS idx_obs_metrics_module_time ON obs_metrics(module,time);
-CREATE INDEX IF NOT EXISTS idx_obs_metrics_trace_time ON obs_metrics(trace_id,time);
-CREATE INDEX IF NOT EXISTS idx_obs_metrics_correlation_time ON obs_metrics(correlation_id,time);
-CREATE INDEX IF NOT EXISTS idx_obs_metrics_session_time ON obs_metrics(session_id,time);
-CREATE INDEX IF NOT EXISTS idx_obs_metrics_scope_time ON obs_metrics(scope_id,time);
-CREATE TABLE IF NOT EXISTS obs_spans (trace_id TEXT NOT NULL,correlation_id TEXT,span_id TEXT PRIMARY KEY,parent_span_id TEXT,kind TEXT NOT NULL DEFAULT 'runtime',name TEXT NOT NULL,module TEXT NOT NULL,source TEXT NOT NULL,start_time INTEGER NOT NULL,end_time INTEGER,duration_ms REAL,last_activity_time INTEGER NOT NULL,heartbeat_time INTEGER,heartbeat_count INTEGER NOT NULL DEFAULT 0,stalled INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'running',error_code TEXT,error_message TEXT,scope_id TEXT,session_id TEXT,message_id TEXT,call_id TEXT,rid TEXT,process_id TEXT,pid INTEGER,tool TEXT,attributes_json TEXT NOT NULL DEFAULT '{}',redaction_json TEXT NOT NULL DEFAULT '{}');
-CREATE INDEX IF NOT EXISTS idx_obs_spans_trace ON obs_spans(trace_id);
-CREATE INDEX IF NOT EXISTS idx_obs_spans_correlation_time ON obs_spans(correlation_id,start_time);
-CREATE INDEX IF NOT EXISTS idx_obs_spans_start_time ON obs_spans(start_time);
-CREATE INDEX IF NOT EXISTS idx_obs_spans_status_start ON obs_spans(status,start_time);
-CREATE INDEX IF NOT EXISTS idx_obs_spans_last_activity ON obs_spans(last_activity_time);
-CREATE INDEX IF NOT EXISTS idx_obs_spans_module_start ON obs_spans(module,start_time);
-CREATE INDEX IF NOT EXISTS idx_obs_spans_session_start ON obs_spans(session_id,start_time);
-CREATE INDEX IF NOT EXISTS idx_obs_spans_scope_start ON obs_spans(scope_id,start_time);
-CREATE TABLE IF NOT EXISTS obs_events (event_id TEXT PRIMARY KEY,time INTEGER NOT NULL,iso TEXT NOT NULL,type TEXT NOT NULL,level TEXT,correlation_id TEXT,trace_id TEXT,span_id TEXT,parent_span_id TEXT,session_id TEXT,message_id TEXT,call_id TEXT,tool TEXT,process_id TEXT,pid INTEGER,cwd TEXT,scope_id TEXT,rid TEXT,source TEXT NOT NULL,module TEXT NOT NULL,data_json TEXT NOT NULL DEFAULT '{}',redaction_json TEXT NOT NULL DEFAULT '{}');
-CREATE INDEX IF NOT EXISTS idx_obs_events_time ON obs_events(time);
-CREATE INDEX IF NOT EXISTS idx_obs_events_type_time ON obs_events(type,time);
-CREATE INDEX IF NOT EXISTS idx_obs_events_trace_time ON obs_events(trace_id,time);
-CREATE INDEX IF NOT EXISTS idx_obs_events_correlation_time ON obs_events(correlation_id,time);
-CREATE INDEX IF NOT EXISTS idx_obs_events_session_time ON obs_events(session_id,time);
-CREATE INDEX IF NOT EXISTS idx_obs_events_scope_time ON obs_events(scope_id,time);
-CREATE TABLE IF NOT EXISTS obs_resource_samples (sample_id TEXT PRIMARY KEY,time INTEGER NOT NULL,iso TEXT NOT NULL,source TEXT NOT NULL,correlation_id TEXT,trace_id TEXT,scope_id TEXT,session_id TEXT,pid INTEGER,process_id TEXT,process_role TEXT NOT NULL DEFAULT 'unknown',cpu_user_micros REAL,cpu_system_micros REAL,cpu_utilization_ratio REAL,memory_rss_bytes INTEGER,memory_heap_total_bytes INTEGER,memory_heap_used_bytes INTEGER,memory_external_bytes INTEGER,memory_array_buffers_bytes INTEGER,event_loop_lag_ms REAL,event_loop_sample_window_ms INTEGER,app_read_bytes INTEGER,app_written_bytes INTEGER,app_read_ops INTEGER,app_write_ops INTEGER,os_read_bytes INTEGER,os_written_bytes INTEGER,os_available INTEGER NOT NULL DEFAULT 0,labels_json TEXT NOT NULL DEFAULT '{}',redaction_json TEXT NOT NULL DEFAULT '{}');
-CREATE INDEX IF NOT EXISTS idx_obs_resource_time ON obs_resource_samples(time);
-CREATE INDEX IF NOT EXISTS idx_obs_resource_role_time ON obs_resource_samples(process_role,time);
-CREATE INDEX IF NOT EXISTS idx_obs_resource_trace_time ON obs_resource_samples(trace_id,time);
-CREATE INDEX IF NOT EXISTS idx_obs_resource_correlation_time ON obs_resource_samples(correlation_id,time);
-CREATE INDEX IF NOT EXISTS idx_obs_resource_scope_time ON obs_resource_samples(scope_id,time);
-CREATE TABLE IF NOT EXISTS obs_issues (issue_id TEXT PRIMARY KEY,time INTEGER NOT NULL,iso TEXT NOT NULL,severity TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'open',code TEXT NOT NULL,title TEXT NOT NULL,message TEXT NOT NULL,recommendation TEXT,module TEXT NOT NULL,correlation_id TEXT,trace_id TEXT,span_id TEXT,scope_id TEXT,session_id TEXT,message_id TEXT,call_id TEXT,rid TEXT,evidence_json TEXT NOT NULL DEFAULT '{}',first_seen_time INTEGER NOT NULL,last_seen_time INTEGER NOT NULL,occurrence_count INTEGER NOT NULL DEFAULT 1,fingerprint TEXT NOT NULL,redaction_json TEXT NOT NULL DEFAULT '{}');
-CREATE UNIQUE INDEX IF NOT EXISTS idx_obs_issues_fingerprint_open ON obs_issues(fingerprint) WHERE status = 'open';
-CREATE INDEX IF NOT EXISTS idx_obs_issues_time ON obs_issues(time);
-CREATE INDEX IF NOT EXISTS idx_obs_issues_status_severity_time ON obs_issues(status,severity,time);
-CREATE INDEX IF NOT EXISTS idx_obs_issues_trace_time ON obs_issues(trace_id,time);
-CREATE INDEX IF NOT EXISTS idx_obs_issues_correlation_time ON obs_issues(correlation_id,time);
-CREATE INDEX IF NOT EXISTS idx_obs_issues_module_time ON obs_issues(module,time);
-CREATE TABLE IF NOT EXISTS obs_browser_batches (batch_id TEXT PRIMARY KEY,received_time INTEGER NOT NULL,sent_at INTEGER NOT NULL,source TEXT NOT NULL,accepted INTEGER NOT NULL,rejected INTEGER NOT NULL,page_json TEXT NOT NULL DEFAULT '{}');
-CREATE INDEX IF NOT EXISTS idx_obs_browser_batches_time ON obs_browser_batches(received_time);
-CREATE TABLE IF NOT EXISTS obs_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL);
-`
 }

@@ -37,6 +37,10 @@ delete process.env["SYNERGY_HOME"]
 const testHome = path.join(dir, "home")
 await fs.mkdir(testHome, { recursive: true })
 process.env["SYNERGY_TEST_HOME"] = testHome
+// Existing observability/performance tests exercise the store contract with
+// synchronous flush-then-query semantics; pin them to the inline write path so
+// behavior is unchanged. Worker-mode coverage explicitly deletes this env var.
+process.env["SYNERGY_OBSERVABILITY_INLINE"] = "1"
 
 // Always seed the model catalog from the checked-in fixture rather than fetching
 // models.dev live. The live catalog drifts (models get renamed/removed), which
