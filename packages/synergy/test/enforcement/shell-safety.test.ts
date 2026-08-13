@@ -1146,6 +1146,28 @@ describe("ShellSafety GitHub CLI api taxonomy", () => {
       "shell_remote_write",
     )
   })
+
+  test("gh api attached write flags are remote write", () => {
+    expect(ShellSafety.classifyBashRisk("gh api repos/foo/bar --method=DELETE")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh api repos/foo/bar -XDELETE")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh api repos/foo/bar/issues -Fbody=hi")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh api repos/foo/bar/issues -fbody=hi")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh api repos/foo/bar --field=body=hi")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh api repos/foo/bar --raw-field=body=hi")).toBe("shell_remote_write")
+    expect(ShellSafety.classifyBashRisk("gh api repos/foo/bar --input=file.json")).toBe("shell_remote_write")
+  })
+
+  test("gh api attached GET and HEAD flags are shell_read", () => {
+    expect(ShellSafety.classifyBashRisk("gh api -XGET repos/foo/bar/pulls")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("gh api --method=GET repos/foo/bar/pulls")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("gh api -XHEAD repos/foo/bar")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("gh api --method=HEAD repos/foo/bar")).toBe("shell_read")
+  })
+
+  test("gh api -q jq expression is not a field", () => {
+    expect(ShellSafety.classifyBashRisk("gh api repos/foo/bar --jq '.[] | .line'")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk("gh api repos/foo/bar -q '.body'")).toBe("shell_read")
+  })
 })
 
 // ------------------------------------------------------------------

@@ -313,8 +313,19 @@ function isDestructive(command: string): string | null {
 function extractAbsolutePaths(command: string): string[] {
   const paths: string[] = []
   const pathPattern = /(?:\s|"|'|>|<|^|\|)(\/[^\s"'|;&]+)/g
+  // Mask gh api jq expression values before extracting absolute paths:
+  // jq syntax such as the null-coalescing operator (//) is not a filesystem
+  // path. Masking only jq arguments (--jq/-q) inside gh api invocations keeps
+  // genuine slash-only targets (e.g. `rsync file //`, which writes to the
+  // filesystem root) classified as external writes instead of dropping them
+  // globally.
+  let masked = command
+  if (/\bgh\s+api\b/.test(command)) {
+    masked = masked.replace(/--jq(?:=|\s+)(?:"[^"]*"|'[^']*'|\S+)/g, " ")
+    masked = masked.replace(/\s+-q(?:=|\s+)(?:"[^"]*"|'[^']*'|\S+)/g, " ")
+  }
   let match: RegExpExecArray | null
-  while ((match = pathPattern.exec(command)) !== null) {
+  while ((match = pathPattern.exec(masked)) !== null) {
     const candidate = match[1]
     if (candidate.includes("/") && !SAFE_PSEUDO_PATHS.has(candidate)) paths.push(candidate)
   }
@@ -326,7 +337,6 @@ function extractAbsolutePaths(command: string): string[] {
     /^\/bin\/[^/]+$/,
     /^\/sbin\/[^/]+$/,
     /:\/\//,
-    /^\/\/+$/,
   ]
   return paths.filter((p) => !NON_PATH_PATTERNS.some((pat) => pat.test(p)))
 }

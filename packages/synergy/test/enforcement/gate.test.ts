@@ -3781,6 +3781,33 @@ describe("security invariants: nonBypassable permission boundaries", () => {
     expect(envelope.capabilities.some((cap: any) => cap.class === "shell_remote_write")).toBe(true)
   })
 
+  test("rsync to // keeps file_external_write under autonomous", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const result = gate.classify("bash", { command: "rsync file //" })
+    const external = result.capabilities.find((cap: any) => cap.class === "file_external_write")
+    expect(external).toBeDefined()
+    expect(external!.paths).toContain("//")
+    expect(gate.evaluate("bash", { command: "rsync file //" }).decision).toBe("deny")
+  })
+
+  test("gh api jq slash-only operator stays read-only while // paths remain", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const result = gate.classify("bash", {
+      command: "gh api repos/foo/bar/pulls/1/comments --jq '.[] | .line // .original_line' 2>&1",
+    })
+    expect(result.capabilities.some((cap: any) => cap.class === "file_external_write")).toBe(false)
+    expect(gate.evaluate("bash", { command: "gh api repos/foo/bar/pulls/1/comments --jq '.body'" }).decision).toBe(
+      "allow",
+    )
+  })
   test("classifyBashRisk shell_destructive path sets nonBypassable=true", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test",
