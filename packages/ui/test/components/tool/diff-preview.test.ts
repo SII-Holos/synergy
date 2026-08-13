@@ -58,10 +58,15 @@ describe("tool diff preview", () => {
     expect(TOOL_DIFF_PREVIEW_EMPTY_MESSAGE).toBe("No text preview available.")
   })
 
-  test("formats truncation summary text", () => {
-    expect(formatToolDiffPreviewSummary({ beforeBytes: 134, afterBytes: 164 })).toBe("")
-    expect(formatToolDiffPreviewSummary({ beforeBytes: 134, afterBytes: 164, truncated: true })).toBe(
-      "Preview truncated",
-    )
+  test("classifies truncation and omitted-preview summary states", () => {
+    // Aggregate-capped: preview dropped with the truncation marker.
+    expect(
+      formatToolDiffPreviewSummary({ truncated: true, preview: undefined, beforeBytes: 134, afterBytes: 164 }),
+    ).toBe("omitted")
+    // Shortened but still present.
+    expect(formatToolDiffPreviewSummary({ truncated: true, preview: "--- a\n+++ b" })).toBe("truncated")
+    // Byte counts without the truncation marker (binary diffs) are neither.
+    expect(formatToolDiffPreviewSummary({ beforeBytes: 134, afterBytes: 164 })).toBeUndefined()
+    expect(formatToolDiffPreviewSummary(undefined)).toBeUndefined()
   })
 })

@@ -732,6 +732,7 @@ export namespace Channel {
             channelReply: true,
             channelReplyToMessageId: replyToMessageId,
             channelRequesterId: ctx.senderId,
+            channelChatId: ctx.chatId,
           }
 
           const acceptance = await ChannelConversationAcceptance.accept({

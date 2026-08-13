@@ -34,6 +34,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   params.setSettings("general", {
     colorScheme: params.colorScheme(),
     snapshot: cfg.snapshot ?? UI_DEFAULTS.snapshot,
+    compactReasoning: cfg.compactReasoning ?? UI_DEFAULTS.compactReasoning,
     username: cfg.username ?? UI_DEFAULTS.username,
     theme: cfg.theme ?? UI_DEFAULTS.theme,
     locale: cfg.locale ?? UI_DEFAULTS.locale,

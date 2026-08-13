@@ -239,7 +239,7 @@ describe("Feishu response cards", () => {
         card,
       })
 
-      expect(sent).toEqual({ messageId: "om_response_card" })
+      expect(sent).toEqual({ messageId: "om_response_card", threadId: undefined })
       expect(requests.map((request) => request.url)).toEqual([
         "https://open.feishu.test/open-apis/cardkit/v1/cards",
         "https://open.feishu.test/open-apis/im/v1/messages/om_topic/reply",

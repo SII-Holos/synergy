@@ -9281,6 +9281,14 @@ msgstr "总计"
 msgid "diff.file-diff-preview"
 msgstr "文件差异预览"
 
+#. ── Diff preview ────────────────────────────────────────────────────
+msgid "diff.preview-omitted"
+msgstr "此视图中已省略差异预览。"
+
+#. ── Diff preview ────────────────────────────────────────────────────
+msgid "diff.preview-truncated"
+msgstr "预览已截断"
+
 #. js-lingui-explicit-id
 msgid "list.for-label"
 msgstr "用于"
@@ -11555,6 +11563,10 @@ msgstr "正在处理蓝图"
 #. js-lingui-explicit-id
 msgid "session-status.working-with-notes"
 msgstr "正在处理笔记"
+
+#. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.compact-reasoning-thinking"
+msgstr "思考中"
 
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.completed"
@@ -14859,6 +14871,14 @@ msgstr "自动"
 #. js-lingui-explicit-id
 msgid "settings.general.colorScheme.system.description"
 msgstr "跟随此设备"
+
+#. js-lingui-explicit-id
+msgid "settings.general.compactReasoning.description"
+msgstr "以单行视图显示实时推理"
+
+#. js-lingui-explicit-id
+msgid "settings.general.compactReasoning.title"
+msgstr "紧凑推理"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.applied"
