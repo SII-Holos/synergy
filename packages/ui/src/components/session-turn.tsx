@@ -339,15 +339,7 @@ export function compactReasoningTimelineItems<T extends { kind: string }>(items:
   return items.filter((item, index) => item.kind !== "reasoning" || index === latestReasoning)
 }
 
-export function compactReasoningText(text: string): string {
-  const lines = text.split(/\r?\n/)
-  for (let index = lines.length - 1; index >= 0; index--) {
-    const line = lines[index]?.trim()
-    if (!line || /^(`{3,}|~{3,})\S*$/.test(line) || /^(?:-{3,}|\*{3,}|_{3,})$/.test(line)) continue
-    return line.replace(/^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)/, "").trim()
-  }
-  return ""
-}
+export { compactReasoningText } from "./compact-reasoning-text"
 /** A non-root, visible user message rendered as an inline chip inside its turn. */
 export function isGuidedContextUserMessage(message: Pick<UserMessage, "isRoot" | "visible">): boolean {
   return message.isRoot === false && message.visible !== false
@@ -487,12 +479,21 @@ export function shouldShowProviderPrelude(input: {
   return input.latestAssistantTimelineItems.length === 0
 }
 
-function TimelineItemDisplay(props: { item: SessionTurnTimelineItem; serverUrl: string; compactReasoning?: boolean }) {
+function TimelineItemDisplay(props: {
+  item: SessionTurnTimelineItem
+  serverUrl: string
+  working?: boolean
+  compactReasoning?: boolean
+}) {
+  const running = createMemo(() => {
+    if (props.item.kind !== "reasoning") return false
+    return props.working === true && props.item.message.time.completed == null && props.item.part.time?.end == null
+  })
   if (props.item.kind === "compaction") {
     return <CompactionCard part={props.item.part} message={props.item.message} />
   }
   if (props.item.kind === "reasoning" && props.compactReasoning) {
-    return <CompactReasoningLine text={compactReasoningText(props.item.part.text)} />
+    return <CompactReasoningLine fullText={props.item.part.text} running={running()} />
   }
   if (props.item.kind === "part" || props.item.kind === "reasoning") {
     return <Part part={props.item.part} message={props.item.message} />
@@ -592,6 +593,50 @@ function isCompactionDisplayItem(item: SessionTurnDisplayItem): boolean {
   return timelineItem ? timelineVisualKind(timelineItem) === "compaction" : false
 }
 
+export function injectPersistedReasoningItems(
+  items: readonly SessionTurnDisplayItem[],
+  assistants: readonly AssistantMessage[],
+  partsByMessage: Record<string, PartType[] | undefined>,
+): SessionTurnDisplayItem[] {
+  const persisted = new Map<string, { message: AssistantMessage; part: ReasoningPart }>()
+  for (const assistant of assistants) {
+    const part = (partsByMessage[assistant.id] ?? []).findLast(
+      (candidate): candidate is ReasoningPart => candidate.type === "reasoning" && Boolean(candidate.text.trim()),
+    )
+    if (part) persisted.set(assistant.id, { message: assistant, part })
+  }
+  if (persisted.size === 0) return [...items]
+  const result: SessionTurnDisplayItem[] = []
+  const handled = new Set<string>()
+  for (const item of items) {
+    const messageID = item.message.id
+    const entry = persisted.get(messageID)
+    if (entry && !handled.has(messageID)) {
+      result.push({
+        kind: "passthrough",
+        item: { kind: "reasoning", message: entry.message, part: entry.part },
+        message: entry.message,
+      })
+      handled.add(messageID)
+    }
+    if (handled.has(messageID)) {
+      if (isReasoningDisplayItem(item)) continue
+      const timelineItem = isAssistantTimelineDisplayItem(item) ? displayItemTimelineItem(item) : undefined
+      if (timelineItem?.kind === "part" && timelineItem.part.type === "reasoning") continue
+    }
+    result.push(item)
+  }
+  for (const entry of persisted.values()) {
+    if (handled.has(entry.message.id)) continue
+    result.push({
+      kind: "passthrough",
+      item: { kind: "reasoning", message: entry.message, part: entry.part },
+      message: entry.message,
+    })
+  }
+  return result
+}
+
 function originIconToken(origin: { type: string; label?: string; detail?: string } | undefined): SemanticIconTokenName {
   if (!origin || !origin.type) return "session.default"
   switch (origin.type) {
@@ -621,6 +666,7 @@ function TimelineDisplay(props: {
   serverUrl: string
   rollbackActive: boolean
   onRewind?: () => void
+  working: boolean
   compactReasoning?: boolean
 }) {
   const { _ } = useLingui()
@@ -686,7 +732,12 @@ function TimelineDisplay(props: {
       </Match>
       <Match when={timelineItem()}>
         {(item) => (
-          <TimelineItemDisplay item={item()} serverUrl={props.serverUrl} compactReasoning={props.compactReasoning} />
+          <TimelineItemDisplay
+            item={item()}
+            serverUrl={props.serverUrl}
+            working={props.working}
+            compactReasoning={props.compactReasoning}
+          />
         )}
       </Match>
     </Switch>
@@ -918,30 +969,38 @@ export function SessionTurn(
         }
         result.push(...projectAssistantMessage(item))
       }
+      const assistants = display.filter(
+        (item): item is AssistantMessage =>
+          item.role === "assistant" && !isCompactionAssistant(item as AssistantMessage),
+      )
       if (activityDisplay() === "minimal") {
         return projectMinimalActivityItems(result, msg?.id ?? props.messageID, !working()) as SessionTurnDisplayItem[]
       }
       if (activityDisplay() === "balanced") {
-        const assistants = display.filter(
-          (item): item is AssistantMessage =>
-            item.role === "assistant" && !isCompactionAssistant(item as AssistantMessage),
-        )
-        const frontier = assistants.reduce<{ message: AssistantMessage; part: ReasoningPart } | undefined>(
-          (latest, assistant) => {
-            const reasoningPart = (data.store.part[assistant.id] ?? emptyParts).findLast(
-              (part): part is ReasoningPart => part.type === "reasoning" && Boolean(part.text.trim()),
-            )
-            return reasoningPart ? { message: assistant, part: reasoningPart } : latest
-          },
-          undefined,
-        )
-        return projectBalancedReasoningItems(result, msg?.id ?? props.messageID, working(), {
+        let frontier: { message: AssistantMessage; part: ReasoningPart } | undefined
+        const liveReasoningParts = new Map<string, ReasoningPart>()
+        for (const assistant of assistants) {
+          const reasoningPart = (data.store.part[assistant.id] ?? emptyParts).findLast(
+            (part): part is ReasoningPart => part.type === "reasoning" && Boolean(part.text.trim()),
+          )
+          if (!reasoningPart) continue
+          frontier = { message: assistant, part: reasoningPart }
+          liveReasoningParts.set(assistant.id, reasoningPart)
+        }
+        const projected = projectBalancedReasoningItems(result, msg?.id ?? props.messageID, working(), {
           anchorMessage: assistants[0],
           frontier: frontier ? { message: frontier.message, partID: frontier.part.id } : undefined,
-          compactReasoningPart: props.compactReasoning && working() ? frontier?.part : undefined,
+          compactReasoningParts: props.compactReasoning && working() ? liveReasoningParts : undefined,
         }) as SessionTurnDisplayItem[]
+        return props.compactReasoning && !working()
+          ? injectPersistedReasoningItems(projected, assistants, data.store.part)
+          : projected
       }
-      return props.compactReasoning && working() ? compactReasoningTimelineItems(result) : result
+      if (props.compactReasoning) {
+        if (working()) return compactReasoningTimelineItems(result)
+        return injectPersistedReasoningItems(result, assistants, data.store.part)
+      }
+      return result
     },
     emptyDisplayItems,
     { equals: same },
@@ -1216,9 +1275,7 @@ export function SessionTurn(
                                       data-activity-follows={activityFollows() ? "" : undefined}
                                       hidden={isActivityBoundaryDisplayItem(current())}
                                       data-compact-reasoning={
-                                        props.compactReasoning &&
-                                        working() &&
-                                        displayItemVisualKind(current()) === "reasoning"
+                                        props.compactReasoning && displayItemVisualKind(current()) === "reasoning"
                                           ? "true"
                                           : undefined
                                       }
@@ -1228,10 +1285,9 @@ export function SessionTurn(
                                         serverUrl={data.serverUrl}
                                         rollbackActive={props.rollbackActive === true}
                                         onRewind={props.onRewind}
+                                        working={working()}
                                         compactReasoning={
-                                          props.compactReasoning &&
-                                          working() &&
-                                          displayItemVisualKind(current()) === "reasoning"
+                                          props.compactReasoning && displayItemVisualKind(current()) === "reasoning"
                                         }
                                       />
                                     </div>

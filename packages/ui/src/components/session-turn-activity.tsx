@@ -362,11 +362,34 @@ export function projectBalancedReasoningItems<T>(
   options?: {
     anchorMessage?: AssistantMessage
     frontier?: BalancedReasoningFrontier
-    /** Latest live reasoning part; when working, replaces the Thinking… status row with one streaming reasoning line. */
-    compactReasoningPart?: ReasoningPart
+    /** Live reasoning part per assistant message; while working, replaces each message's Thinking… row with its own streaming reasoning line. */
+    compactReasoningParts?: ReadonlyMap<string, ReasoningPart>
   },
 ): (ActivityTimelineItem | T)[] {
   const activityItems = items.filter(isActivityTimelineItem)
+
+  if (working) {
+    const liveParts = options?.compactReasoningParts
+    const result: (ActivityTimelineItem | T)[] = []
+    for (const item of items) {
+      if (!isActivityTimelineItem(item) || item.kind !== "activity-reasoning-summary") {
+        result.push(item)
+        continue
+      }
+      const livePart = liveParts?.get(item.message.id)
+      if (!livePart) {
+        result.push(item)
+        continue
+      }
+      result.push({
+        kind: "passthrough",
+        item: { kind: "reasoning", message: item.message, part: livePart },
+        message: item.message,
+      })
+    }
+    return result
+  }
+
   const reasoningItems = activityItems.filter(
     (item): item is ActivityReasoningSummaryItem => item.kind === "activity-reasoning-summary",
   )
@@ -378,17 +401,8 @@ export function projectBalancedReasoningItems<T>(
 
   const anchorMessage = options?.anchorMessage ?? activityItems[0]?.message ?? frontier.message
   const hasOutput = activityItems.some(isBalancedTurnOutput)
-  const liveItem: ActivityPassthroughItem | undefined =
-    working && options?.compactReasoningPart
-      ? {
-          kind: "passthrough",
-          item: { kind: "reasoning", message: anchorMessage, part: options.compactReasoningPart },
-          message: anchorMessage,
-        }
-      : undefined
-  const summary: ActivityReasoningSummaryItem | undefined = liveItem
-    ? undefined
-    : working || !hasOutput
+  const summary: ActivityReasoningSummaryItem | undefined =
+    working || !hasOutput
       ? {
           kind: "activity-reasoning-summary",
           key: `activity-reasoning:${rootMessageID}`,
@@ -401,11 +415,10 @@ export function projectBalancedReasoningItems<T>(
     activityItems.flatMap((item) => (item.kind === "activity-reasoning-summary" ? [] : [item.message.id])),
   )
   if (summary) keptMessageIDs.add(summary.message.id)
-  if (liveItem) keptMessageIDs.add(liveItem.message.id)
 
   const result: (ActivityTimelineItem | T)[] = []
   const boundaryMessageIDs = new Set<string>()
-  const inserted = summary ?? liveItem
+  const inserted = summary
   const insertedMessageID = inserted?.message.id
   let insertedFlag = false
   for (const item of items) {
