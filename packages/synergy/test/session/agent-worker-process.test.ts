@@ -392,6 +392,12 @@ test(
         false,
       )
 
+      // A zero-coverage ack must NOT release the window: ackSequence is
+      // honored, so bytes stay unacknowledged and the worker stays paused.
+      worker.send({ type: "ack-window", requestId: resumed, ackSequence: 0 })
+      await Bun.sleep(300)
+      expect(eventsOf(resumed).length).toBe(framesAtPause)
+
       worker.send({
         type: "ack-window",
         requestId: resumed,

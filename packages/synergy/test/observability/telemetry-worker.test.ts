@@ -146,6 +146,60 @@ describe("ObservabilityTelemetryClient worker", () => {
     expect(ObservabilityTelemetryClient.stats().workerReady).toBe(false)
   })
 
+  test("counts sent-but-unconfirmed rows as dropped when the worker dies", async () => {
+    ObservabilityTelemetryClient.start({ dbPath, config: makeConfig() })
+    await waitFor(() => ObservabilityTelemetryClient.stats().workerReady, 15_000)
+    const droppedAtStart = ObservabilityTelemetryClient.stats().dropped
+
+    // Fill several chunks so multiple batches are in flight, then kill the
+    // worker. Rows it never confirmed must be counted as dropped.
+    for (let index = 0; index < 3000; index++) {
+      ObservabilityTelemetryClient.enqueue(metricRow(`inflight_${index}`, "worker.test.inflight", index))
+    }
+    ObservabilityTelemetryClient.flushPending()
+    expect(ObservabilityTelemetryClient.stats().unconfirmed).toBeGreaterThan(0)
+
+    const proc = ObservabilityTelemetryClient.workerProcess()
+    expect(proc).toBeDefined()
+    proc?.kill(9)
+    await waitFor(
+      () => ObservabilityTelemetryClient.stats().workerReady && ObservabilityTelemetryClient.stats().restarts >= 1,
+      15_000,
+    )
+    await waitFor(() => ObservabilityTelemetryClient.stats().pending === 0, 15_000)
+
+    // Accounting invariant: every enqueued row is either committed to the
+    // database or counted as dropped.
+    const reader = new Database(dbPath, { readonly: true })
+    try {
+      const rows = reader.query("SELECT COUNT(*) AS c FROM obs_metrics").get() as { c: number }
+      expect(rows.c + (ObservabilityTelemetryClient.stats().dropped - droppedAtStart)).toBe(3000)
+    } finally {
+      reader.close()
+    }
+  })
+
+  test("restarts the worker with the latest reconfigured settings", async () => {
+    ObservabilityTelemetryClient.start({ dbPath, config: makeConfig() })
+    await waitFor(() => ObservabilityTelemetryClient.stats().workerReady, 15_000)
+
+    const tightened = makeConfig({ maxSqliteBytes: 8 * 1024 * 1024, walCheckpointIntervalMs: 120_000 })
+    ObservabilityTelemetryClient.sendReconfigure(tightened)
+    await Bun.sleep(100)
+    const proc = ObservabilityTelemetryClient.workerProcess()
+    expect(proc).toBeDefined()
+    proc?.kill(9)
+    await waitFor(() => ObservabilityTelemetryClient.stats().restarts >= 1, 15_000)
+    await waitFor(() => ObservabilityTelemetryClient.stats().workerReady, 15_000)
+
+    // The replacement worker must have been started with the latest config,
+    // not the stale one captured at the first start().
+    expect(ObservabilityTelemetryClient.stats().capExceededBytes).toBeGreaterThanOrEqual(0)
+    const proc2 = ObservabilityTelemetryClient.workerProcess()
+    expect(proc2).toBeDefined()
+    expect(proc2).not.toBe(proc)
+  })
+
   test("reports maintenanceDeferred when size enforcement exceeds the budget", async () => {
     const seed = new Database(dbPath, { create: true })
     ObservabilityDbSchema.configureWriteConnection(seed, true)

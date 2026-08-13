@@ -17,17 +17,18 @@ let dbPathValue: string | undefined
 
 const counters: {
   dropped: number
+  committed: number
   capExceededBytes: number
   maintenanceDeferred: boolean
   lastFlushDurationMs: number
   lastError?: string
 } = {
   dropped: 0,
+  committed: 0,
   capExceededBytes: 0,
   maintenanceDeferred: false,
   lastFlushDurationMs: 0,
 }
-
 function send(message: TelemetryProtocol.WorkerToHost): void {
   process.send?.(message)
 }
@@ -152,6 +153,7 @@ function handle(message: TelemetryProtocol.HostToWorker): void {
           for (const row of message.rows) applyRow(row)
         })()
         counters.lastFlushDurationMs = performance.now() - started
+        counters.committed += message.rows.length
       } catch (error) {
         counters.dropped += message.rows.length
         counters.lastError = error instanceof Error ? error.message : String(error)

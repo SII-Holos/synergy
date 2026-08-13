@@ -52,12 +52,19 @@ describe("TelemetryProtocol", () => {
       { type: "ack", ackId: 12 },
       {
         type: "status",
-        counters: { dropped: 3, capExceededBytes: 4096, maintenanceDeferred: true, lastFlushDurationMs: 12 },
+        counters: {
+          dropped: 3,
+          committed: 17,
+          capExceededBytes: 4096,
+          maintenanceDeferred: true,
+          lastFlushDurationMs: 12,
+        },
       },
       {
         type: "status",
         counters: {
           dropped: 0,
+          committed: 0,
           capExceededBytes: 0,
           maintenanceDeferred: false,
           lastFlushDurationMs: 4,
@@ -173,5 +180,27 @@ describe("TelemetryProtocol", () => {
 
   test("BATCH_CHUNK_ROWS is 1000", () => {
     expect(TelemetryProtocol.BATCH_CHUNK_ROWS).toBe(1000)
+  })
+  test("estimates row bytes without serializing rows", () => {
+    expect(TelemetryProtocol.estimateRowBytes(metricRow("m_size"))).toBeGreaterThan(100)
+    // Attribute strings are capped at 4096 chars by the redaction schema, so
+    // stay within that bound while still proving large payloads inflate the
+    // estimated batch size.
+    const bigEvent: TelemetryProtocol.BatchRow = {
+      kind: "event",
+      row: ObservabilitySchema.Event.parse({
+        eventId: "e_big",
+        time: 1_700_000_000_000,
+        iso: "2023-11-14T22:13:20.000Z",
+        type: "test",
+        source: "backend",
+        module: "observability",
+        data: { payload: "x".repeat(4096) },
+      }),
+    }
+    expect(TelemetryProtocol.estimateRowBytes(bigEvent)).toBeGreaterThan(8000)
+  })
+  test("BATCH_MAX_BYTES is bounded to 2 MiB", () => {
+    expect(TelemetryProtocol.BATCH_MAX_BYTES).toBe(2 * 1024 * 1024)
   })
 })

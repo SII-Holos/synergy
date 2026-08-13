@@ -51,6 +51,11 @@ export async function run(options: RuntimeOptions) {
   reporter?.migration(migration)
 
   const processLock = await ServerProcessLock.acquire()
+  // The telemetry worker may only start after migrations release the inline
+  // write connection; the module-level store.open() ran earlier and no-oped.
+  ObservabilityStore.releaseMigrationConnection()
+  ObservabilityStore.markRuntimeReady()
+  ObservabilityStore.open()
   ObservabilityStore.interruptRunningSpans({ reason: "previous_runtime_ended" })
   await Observability.cleanup().catch(() => {})
   await Observability.emit("server.start", {

@@ -26,10 +26,12 @@ describe("ObservabilityStore worker mode", () => {
     homes.push(home)
     process.env.SYNERGY_TEST_HOME = home
     mkdirSync(path.join(home, ".synergy", "state"), { recursive: true })
-    // Worker mode: SYNERGY_OBSERVABILITY_INLINE must be unset.
+    // Worker mode: SYNERGY_OBSERVABILITY_INLINE must be unset, and the
+    // runtime-ready gate must be released exactly like server/runtime.ts does
+    // after ensureMigrations() completes.
     delete process.env.SYNERGY_OBSERVABILITY_INLINE
+    ObservabilityStore.markRuntimeReady()
     ObservabilityStore.close()
-    ObservabilityConfig.refresh()
   })
 
   afterEach(async () => {
@@ -80,5 +82,38 @@ describe("ObservabilityStore worker mode", () => {
     await waitFor(() => ObservabilityTelemetryClient.stats().workerReady, 15_000)
     ObservabilityStore.close()
     await waitFor(() => ObservabilityTelemetryClient.stats().workerReady === false, 10_000)
+  })
+  test("re-enabling after close restarts the worker via reconfigure", async () => {
+    ObservabilityStore.open()
+    await waitFor(() => ObservabilityTelemetryClient.stats().workerReady, 15_000)
+    ObservabilityStore.close()
+    await waitFor(() => ObservabilityTelemetryClient.stats().workerReady === false, 10_000)
+
+    // Disable, then re-enable through the config path; reconfigure() must
+    // start the worker again instead of buffering a control message forever.
+    ObservabilityConfig.refresh({ observability: { enabled: true } })
+    ObservabilityStore.reconfigure()
+    await waitFor(() => ObservabilityTelemetryClient.stats().workerReady, 15_000)
+    expect(ObservabilityStore.stats().available).toBe(true)
+  })
+
+  test("drops telemetry while observability is disabled", async () => {
+    ObservabilityStore.open()
+    await waitFor(() => ObservabilityTelemetryClient.stats().workerReady, 15_000)
+    ObservabilityConfig.refresh({ observability: { enabled: false } })
+    ObservabilityStore.insertMetric({
+      metricId: "disabled_metric",
+      time: Date.now(),
+      iso: new Date().toISOString(),
+      name: "disabled.metric",
+      value: 1,
+      unit: "count",
+      source: "backend",
+      module: "observability",
+      labels: {},
+      sampleRate: 1,
+      redaction: { applied: true, omittedKeys: 0, truncatedValues: 0 },
+    })
+    expect(ObservabilityTelemetryClient.stats().pending).toBe(0)
   })
 })

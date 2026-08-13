@@ -20,9 +20,13 @@ export namespace ObservabilityTelemetryClient {
   let nextAckId = 0
   let dropped = 0
   let lastError: string | undefined
+  let currentInput: { dbPath: string; config: TelemetryProtocol.WorkerConfig } | undefined
   const pending: TelemetryProtocol.BatchRow[] = []
+  const sentBatches: number[] = []
   const ackWaiters = new Map<number, () => void>()
   const bufferedControls: Array<() => void> = []
+  let lastWorkerCommitted = 0
+  let lastWorkerDropped = 0
   const statusMirror = {
     capExceededBytes: 0,
     maintenanceDeferred: false,
@@ -32,6 +36,11 @@ export namespace ObservabilityTelemetryClient {
   export function start(input: { dbPath: string; config: TelemetryProtocol.WorkerConfig }): void {
     if (started) return
     started = true
+    // Fresh client lifecycles reset the counters so tests and long-running
+    // re-enables observe restart behavior from a clean baseline.
+    restarts = 0
+    failures = 0
+    currentInput = input
     spawnWorker(input)
   }
 
@@ -55,7 +64,15 @@ export namespace ObservabilityTelemetryClient {
     }
     if (!workerReady || !started) return
     while (pending.length) {
-      const chunk = pending.splice(0, TelemetryProtocol.BATCH_CHUNK_ROWS)
+      const chunk: TelemetryProtocol.BatchRow[] = []
+      let chunkBytes = 0
+      while (pending.length && chunk.length < TelemetryProtocol.BATCH_CHUNK_ROWS) {
+        const rowBytes = TelemetryProtocol.estimateRowBytes(pending[0])
+        if (chunk.length > 0 && chunkBytes + rowBytes > TelemetryProtocol.BATCH_MAX_BYTES) break
+        chunk.push(pending.shift()!)
+        chunkBytes += rowBytes
+      }
+      sentBatches.push(chunk.length)
       send({ type: "batch", rows: chunk })
     }
   }
@@ -103,40 +120,51 @@ export namespace ObservabilityTelemetryClient {
   }
 
   export function sendReconfigure(config: TelemetryProtocol.WorkerConfig): void {
+    if (currentInput) currentInput = { ...currentInput, config }
     enqueueControl({ type: "reconfigure", config })
   }
 
   export async function stop(graceMs = 5000): Promise<void> {
     if (!started) return
-    started = false
     if (restartTimer) {
       clearTimeout(restartTimer)
       restartTimer = undefined
     }
+    if (flushTimer) {
+      clearTimeout(flushTimer)
+      flushTimer = undefined
+    }
     bufferedControls.length = 0
+    // Drain while the client is still active; flushPending() checks `started`.
+    flushPending()
+    started = false
     const active = worker
-    if (!active) {
-      workerReady = false
-      return
+    if (active && workerReady) {
+      try {
+        active.send({ type: "shutdown" } satisfies TelemetryProtocol.HostToWorker)
+      } catch {
+        active.kill()
+        await active.exited.catch(() => undefined)
+        worker = undefined
+        workerReady = false
+        failAllWaiters()
+      }
     }
-    try {
-      active.send({ type: "shutdown" } satisfies TelemetryProtocol.HostToWorker)
-    } catch {
-      active.kill()
-      await active.exited.catch(() => undefined)
-      worker = undefined
-      workerReady = false
-      failAllWaiters()
-      return
+    if (active) {
+      const exited = await Promise.race([
+        active.exited.then(() => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), graceMs)),
+      ])
+      if (!exited) {
+        active.kill()
+        await active.exited.catch(() => undefined)
+      }
     }
-    const exited = await Promise.race([
-      active.exited.then(() => true),
-      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), graceMs)),
-    ])
-    if (!exited) {
-      active.kill()
-      await active.exited.catch(() => undefined)
-    }
+    dropped += pending.length + sentBatches.reduce((total, rows) => total + rows, 0)
+    pending.length = 0
+    sentBatches.length = 0
+    lastWorkerCommitted = 0
+    lastWorkerDropped = 0
     if (worker === active) {
       worker = undefined
       workerReady = false
@@ -147,6 +175,7 @@ export namespace ObservabilityTelemetryClient {
   export function stats() {
     return {
       pending: pending.length,
+      unconfirmed: sentBatches.reduce((total, rows) => total + rows, 0),
       dropped,
       workerReady,
       restarts,
@@ -195,11 +224,17 @@ export namespace ObservabilityTelemetryClient {
         if (worker !== processHandle) return
         worker = undefined
         workerReady = false
+        // Batches that left the queue but were never confirmed by this
+        // worker are lost: count them as dropped so diagnostics stay honest.
+        dropped += sentBatches.reduce((total, rows) => total + rows, 0)
+        sentBatches.length = 0
+        lastWorkerCommitted = 0
+        lastWorkerDropped = 0
         failAllWaiters()
         if (!started) return
         restarts++
         failures++
-        scheduleRestart(input)
+        scheduleRestart()
       },
     })
     worker = processHandle
@@ -214,6 +249,8 @@ export namespace ObservabilityTelemetryClient {
       case "ready":
         workerReady = true
         failures = 0
+        lastWorkerCommitted = 0
+        lastWorkerDropped = 0
         flushPending()
         for (const control of bufferedControls.splice(0)) control()
         break
@@ -228,7 +265,29 @@ export namespace ObservabilityTelemetryClient {
         statusMirror.maintenanceDeferred = message.counters.maintenanceDeferred
         statusMirror.lastFlushDurationMs = message.counters.lastFlushDurationMs
         if (message.counters.lastError) lastError = message.counters.lastError
+        confirmSentRows(
+          message.counters.committed - lastWorkerCommitted + (message.counters.dropped - lastWorkerDropped),
+        )
+        lastWorkerCommitted = message.counters.committed
+        lastWorkerDropped = message.counters.dropped
         break
+    }
+  }
+
+  // Release sent-but-unconfirmed batches as the worker's cumulative
+  // committed/dropped counters advance. Batches are processed in send order,
+  // so the queue head always matches the next unconfirmed batch.
+  function confirmSentRows(confirmed: number): void {
+    let remaining = confirmed
+    while (remaining > 0 && sentBatches.length) {
+      const head = sentBatches[0]
+      if (head <= remaining) {
+        sentBatches.shift()
+        remaining -= head
+      } else {
+        sentBatches[0] = head - remaining
+        remaining = 0
+      }
     }
   }
 
@@ -249,12 +308,12 @@ export namespace ObservabilityTelemetryClient {
     ackWaiters.clear()
   }
 
-  function scheduleRestart(input: { dbPath: string; config: TelemetryProtocol.WorkerConfig }): void {
+  function scheduleRestart(): void {
     if (restartTimer) return
     const delay = Math.min(RESTART_BACKOFF_MAX_MS, RESTART_BACKOFF_BASE_MS * 2 ** failures)
     restartTimer = setTimeout(() => {
       restartTimer = undefined
-      spawnWorker(input)
+      if (currentInput) spawnWorker(currentInput)
     }, delay)
     restartTimer.unref()
   }

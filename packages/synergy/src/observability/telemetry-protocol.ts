@@ -3,6 +3,7 @@ import { ObservabilitySchema } from "./schema"
 
 export namespace TelemetryProtocol {
   export const BATCH_CHUNK_ROWS = 1000
+  export const BATCH_MAX_BYTES = 2 * 1024 * 1024
 
   export const WorkerConfigSchema = z
     .object({
@@ -57,6 +58,7 @@ export namespace TelemetryProtocol {
       type: z.literal("status"),
       counters: z.object({
         dropped: z.number().int().nonnegative(),
+        committed: z.number().int().nonnegative(),
         capExceededBytes: z.number().nonnegative(),
         maintenanceDeferred: z.boolean(),
         lastFlushDurationMs: z.number().nonnegative(),
@@ -65,6 +67,33 @@ export namespace TelemetryProtocol {
     }),
   ])
   export type WorkerToHost = z.infer<typeof WorkerToHostSchema>
+
+  // Approximates the structured-clone payload size of a batch row without
+  // serializing it: stringify on the enqueue/flush hot path would re-introduce
+  // the event-loop stalls this worker split exists to prevent. String lengths
+  // are doubled as a UTF-8 upper bound and traversal stops at two nested
+  // levels, which bounds typical rows within a small factor.
+  export function estimateRowBytes(row: BatchRow): number {
+    let bytes = 96
+    const flat = row.row as Record<string, unknown>
+    for (const value of Object.values(flat)) {
+      if (typeof value === "string") bytes += value.length * 2 + 16
+      else if (typeof value === "number" || typeof value === "boolean") bytes += 8
+      else if (value && typeof value === "object") {
+        const nested = value as Record<string, unknown>
+        for (const inner of Object.values(nested)) {
+          if (typeof inner === "string") bytes += inner.length * 2 + 8
+          else if (typeof inner === "number" || typeof inner === "boolean") bytes += 8
+          else if (inner && typeof inner === "object") {
+            for (const leaf of Object.values(inner as Record<string, unknown>)) {
+              if (typeof leaf === "string") bytes += leaf.length * 2 + 4
+            }
+          }
+        }
+      }
+    }
+    return bytes
+  }
 
   export function parseHostToWorker(input: unknown): HostToWorker | undefined {
     const result = HostToWorkerSchema.safeParse(input)

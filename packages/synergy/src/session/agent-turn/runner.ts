@@ -14,6 +14,9 @@ interface ActiveTurn {
   controller: AbortController
   windowWaiter: (() => void) | undefined
   unackedBytes: number
+  // Per-frame byte weights keyed by sequence, retained until the host
+  // acknowledges them so partial ack-windows only credit covered frames.
+  unackedFrames: Array<{ sequence: number; bytes: number }>
 }
 
 let active: ActiveTurn | undefined
@@ -116,8 +119,10 @@ async function sendEvents(turn: ActiveTurn, events: AgentSDKStreamPart[]): Promi
     events: AgentTurnProtocol.encodeEvents(events),
   }
   AgentTurnProtocol.assertEventFrameBound(frame)
+  const bytes = AgentTurnProtocol.byteLength(frame)
   send(frame)
-  turn.unackedBytes += AgentTurnProtocol.byteLength(frame)
+  turn.unackedFrames.push({ sequence: frame.sequence, bytes })
+  turn.unackedBytes += bytes
   if (turn.unackedBytes >= AgentTurnProtocol.ACK_WINDOW_BYTES) {
     await waitForAckWindow(turn)
   }
@@ -213,6 +218,7 @@ async function run(requestId: string, envelope: AgentTurnProtocol.TurnEnvelope |
     controller: new AbortController(),
     windowWaiter: undefined,
     unackedBytes: 0,
+    unackedFrames: [],
   }
   active = turn
   const terminal = await executeTurn(turn, envelope!)
@@ -289,10 +295,18 @@ process.on("message", (raw: unknown) => {
   }
   if (message.type === "ack-window") {
     if (!active || active.requestId !== message.requestId) return
-    active.unackedBytes = 0
-    const waiter = active.windowWaiter
-    active.windowWaiter = undefined
-    waiter?.()
+    // Credit only frames covered by the acknowledged sequence; frames sent
+    // after it remain unacknowledged and keep counting toward the window.
+    active.unackedFrames = active.unackedFrames.filter((frame) => frame.sequence > message.ackSequence)
+    active.unackedBytes = active.unackedFrames.reduce((total, frame) => total + frame.bytes, 0)
+    // A partial acknowledgement that does not bring the worker back under the
+    // window must not release the pause: the waiter stays armed until the
+    // host acknowledges enough bytes for the stream to safely continue.
+    if (active.unackedBytes < AgentTurnProtocol.ACK_WINDOW_BYTES) {
+      const waiter = active.windowWaiter
+      active.windowWaiter = undefined
+      waiter?.()
+    }
     return
   }
   if (message.type === "cancel") {

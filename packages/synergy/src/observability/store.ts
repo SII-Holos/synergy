@@ -35,6 +35,24 @@ export namespace ObservabilityStore {
     return process.env.SYNERGY_OBSERVABILITY_INLINE === "1"
   }
 
+  // Set once migrations complete. Before that, runtime reconfiguration must
+  // not start the telemetry worker: the migration window still needs the
+  // inline write connection, and a second write connection would race it.
+  let runtimeReady = false
+
+  export function markRuntimeReady() {
+    runtimeReady = true
+  }
+
+  // In worker mode the migration window is the only time the Control Plane
+  // writes directly; release that connection before the worker takes over.
+  export function releaseMigrationConnection() {
+    if (!inlineMode() && db) {
+      db.close(false)
+      db = undefined
+    }
+  }
+
   function workerConfigFrom(config: ReturnType<typeof ObservabilityConfig.current>): TelemetryProtocol.WorkerConfig {
     return {
       maxSqliteBytes: config.storage.maxSqliteBytes,
@@ -43,6 +61,14 @@ export namespace ObservabilityStore {
       traceRetentionMs: config.traceRetentionMs,
       maintenanceBudgetMs: 500,
     }
+  }
+
+  // Worker-mode enqueue must honor the same enabled guard as the inline
+  // enqueue: telemetry produced while observability is disabled is dropped,
+  // not buffered for a later re-enable.
+  function workerEnqueue(row: TelemetryProtocol.BatchRow) {
+    if (!ObservabilityConfig.current().enabled) return
+    ObservabilityTelemetryClient.enqueue(row)
   }
 
   function queryConnection(): Database | undefined {
@@ -107,6 +133,7 @@ export namespace ObservabilityStore {
     if (!inlineMode()) {
       const config = ObservabilityConfig.current()
       if (!config.enabled || !config.storage.sqliteEnabled) return undefined
+      if (!runtimeReady) return undefined
       if (!clientActive) {
         ObservabilityTelemetryClient.start({ dbPath: pathName(), config: workerConfigFrom(config) })
         clientActive = true
@@ -137,7 +164,13 @@ export namespace ObservabilityStore {
       return
     }
     if (!inlineMode()) {
-      ObservabilityTelemetryClient.sendReconfigure(workerConfigFrom(config))
+      if (!runtimeReady) return
+      if (!clientActive) {
+        ObservabilityTelemetryClient.start({ dbPath: pathName(), config: workerConfigFrom(config) })
+        clientActive = true
+      } else {
+        ObservabilityTelemetryClient.sendReconfigure(workerConfigFrom(config))
+      }
       return
     }
     clearTimers()
@@ -212,7 +245,7 @@ export namespace ObservabilityStore {
 
   export function insertMetric(metric: ObservabilitySchema.Metric) {
     if (!inlineMode()) {
-      ObservabilityTelemetryClient.enqueue({ kind: "metric", row: metric })
+      workerEnqueue({ kind: "metric", row: metric })
       return
     }
     enqueue(() => {
@@ -223,7 +256,7 @@ export namespace ObservabilityStore {
 
   export function insertSpan(span: ObservabilitySchema.Span) {
     if (!inlineMode()) {
-      ObservabilityTelemetryClient.enqueue({ kind: "span", row: span })
+      workerEnqueue({ kind: "span", row: span })
       return
     }
     enqueue(() => {
@@ -238,7 +271,7 @@ export namespace ObservabilityStore {
 
   export function insertEvent(event: ObservabilitySchema.Event) {
     if (!inlineMode()) {
-      ObservabilityTelemetryClient.enqueue({ kind: "event", row: event })
+      workerEnqueue({ kind: "event", row: event })
       return
     }
     enqueue(() => {
@@ -249,7 +282,7 @@ export namespace ObservabilityStore {
 
   export function insertResource(sample: ObservabilitySchema.ResourceSample) {
     if (!inlineMode()) {
-      ObservabilityTelemetryClient.enqueue({ kind: "resource", row: sample })
+      workerEnqueue({ kind: "resource", row: sample })
       return
     }
     enqueue(() => {
@@ -260,7 +293,7 @@ export namespace ObservabilityStore {
 
   export function insertIssue(issue: ObservabilitySchema.Issue) {
     if (!inlineMode()) {
-      ObservabilityTelemetryClient.enqueue({ kind: "issue", row: issue })
+      workerEnqueue({ kind: "issue", row: issue })
       return
     }
     enqueue(() => {
@@ -278,7 +311,7 @@ export namespace ObservabilityStore {
     page: Record<string, unknown>
   }) {
     if (!inlineMode()) {
-      ObservabilityTelemetryClient.enqueue({ kind: "browser-batch", row: input })
+      workerEnqueue({ kind: "browser-batch", row: input })
       return
     }
     enqueue(() => {
