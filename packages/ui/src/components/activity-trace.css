@@ -11,6 +11,10 @@
 }
 
 [data-component="activity-trace"] {
+  [data-component="collapsible"] {
+    overflow: visible;
+  }
+
   [data-slot="activity-step-trigger"] {
     position: relative;
     display: flex;
