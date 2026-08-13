@@ -24,7 +24,7 @@ const originalProviderReload = Provider.reload
 const originalProviderAuthReload = ProviderAuth.reload
 const originalChannelReload = Channel.reload
 
-afterEach(() => {
+afterEach(async () => {
   Config.reload = originalConfigReload
   ;(Plugin as any).notifyConfigHooks = originalNotifyConfigHooks
   ;(AgentTurn as any).resize = originalAgentTurnResize
@@ -34,6 +34,7 @@ afterEach(() => {
   Channel.reload = originalChannelReload
   GlobalBus.removeAllListeners("event")
   CortexConcurrency.reset()
+  await Embedding.resetForTest()
 })
 
 test("post-write diagnostics settings are live-applied without restarting LSP", () => {
@@ -608,6 +609,7 @@ describe("runtime.reload", () => {
           isCached: mock(async () => true),
           configure() {},
         }))
+        await Embedding.resetForTest()
         Embedding.setLocalRuntimeControlsForTest({ loadRuntime })
         await Embedding.warmup()
         expect(loadRuntime).toHaveBeenCalledTimes(1)
