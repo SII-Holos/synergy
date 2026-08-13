@@ -12,7 +12,8 @@ type AgentSDKStreamPart = LLM.StreamOutput["fullStream"] extends AsyncIterable<i
 interface ActiveTurn {
   requestId: string
   controller: AbortController
-  acknowledgements: Map<number, () => void>
+  windowWaiter: (() => void) | undefined
+  unackedBytes: number
 }
 
 let active: ActiveTurn | undefined
@@ -88,6 +89,24 @@ function reject(requestId: string, error: unknown): void {
   })
 }
 
+function waitForAckWindow(turn: ActiveTurn): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (turn.controller.signal.aborted) {
+      reject(turn.controller.signal.reason)
+      return
+    }
+    const onAbort = () => {
+      turn.windowWaiter = undefined
+      reject(turn.controller.signal.reason)
+    }
+    turn.controller.signal.addEventListener("abort", onAbort, { once: true })
+    turn.windowWaiter = () => {
+      turn.controller.signal.removeEventListener("abort", onAbort)
+      resolve()
+    }
+  })
+}
+
 async function sendEvents(turn: ActiveTurn, events: AgentSDKStreamPart[]): Promise<void> {
   if (events.length === 0) return
   const frame = {
@@ -97,22 +116,11 @@ async function sendEvents(turn: ActiveTurn, events: AgentSDKStreamPart[]): Promi
     events: AgentTurnProtocol.encodeEvents(events),
   }
   AgentTurnProtocol.assertEventFrameBound(frame)
-  await new Promise<void>((resolve, reject) => {
-    if (turn.controller.signal.aborted) {
-      reject(turn.controller.signal.reason)
-      return
-    }
-    const onAbort = () => {
-      turn.acknowledgements.delete(frame.sequence)
-      reject(turn.controller.signal.reason)
-    }
-    turn.controller.signal.addEventListener("abort", onAbort, { once: true })
-    turn.acknowledgements.set(frame.sequence, () => {
-      turn.controller.signal.removeEventListener("abort", onAbort)
-      resolve()
-    })
-    send(frame)
-  })
+  send(frame)
+  turn.unackedBytes += AgentTurnProtocol.byteLength(frame)
+  if (turn.unackedBytes >= AgentTurnProtocol.ACK_WINDOW_BYTES) {
+    await waitForAckWindow(turn)
+  }
 }
 
 async function streamEvents(turn: ActiveTurn, stream: AsyncIterable<AgentSDKStreamPart>): Promise<void> {
@@ -186,7 +194,8 @@ async function executeTurn(turn: ActiveTurn, envelope: AgentTurnProtocol.TurnEnv
   }
   const memoryBeforeDispose = memory()
   await ownedStream?.dispose().catch(() => {})
-  for (const acknowledge of turn.acknowledgements.values()) acknowledge()
+  turn.windowWaiter?.()
+  turn.windowWaiter = undefined
   return {
     ...result!,
     memoryBeforeDispose,
@@ -202,7 +211,8 @@ async function run(requestId: string, envelope: AgentTurnProtocol.TurnEnvelope |
   const turn: ActiveTurn = {
     requestId,
     controller: new AbortController(),
-    acknowledgements: new Map(),
+    windowWaiter: undefined,
+    unackedBytes: 0,
   }
   active = turn
   const terminal = await executeTurn(turn, envelope!)
@@ -277,12 +287,12 @@ process.on("message", (raw: unknown) => {
     }
     return
   }
-  if (message.type === "ack") {
+  if (message.type === "ack-window") {
     if (!active || active.requestId !== message.requestId) return
-    const acknowledge = active.acknowledgements.get(message.sequence)
-    if (!acknowledge) return
-    active.acknowledgements.delete(message.sequence)
-    acknowledge()
+    active.unackedBytes = 0
+    const waiter = active.windowWaiter
+    active.windowWaiter = undefined
+    waiter?.()
     return
   }
   if (message.type === "cancel") {
