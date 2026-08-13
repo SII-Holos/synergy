@@ -23,13 +23,13 @@ test("loads config with defaults when no files exist", async () => {
     },
   })
 })
-test("defaults activity display to full without materializing a preference", async () => {
+test("defaults activity display to balanced without materializing a preference", async () => {
   await using tmp = await tmpdir()
   await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const config = await Config.current()
-      expect(config.activityDisplay).toBe("full")
+      expect(config.activityDisplay).toBe("balanced")
       expect((await Config.globalRaw()).activityDisplay).toBeUndefined()
     },
   })
