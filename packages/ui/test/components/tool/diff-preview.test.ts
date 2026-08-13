@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
   TOOL_DIFF_PREVIEW_EMPTY_MESSAGE,
-  TOOL_DIFF_PREVIEW_OMITTED_MESSAGE,
   classifyToolDiffLine,
   formatToolDiffPreviewSummary,
   parseToolDiffPreview,
@@ -59,11 +58,15 @@ describe("tool diff preview", () => {
     expect(TOOL_DIFF_PREVIEW_EMPTY_MESSAGE).toBe("No text preview available.")
   })
 
-  test("formats truncation and omitted-preview summary text", () => {
-    expect(formatToolDiffPreviewSummary({ beforeBytes: 134, afterBytes: 164 })).toBe(TOOL_DIFF_PREVIEW_OMITTED_MESSAGE)
-    expect(formatToolDiffPreviewSummary({ beforeBytes: 134, afterBytes: 164, truncated: true })).toBe(
-      "Preview truncated",
-    )
-    expect(formatToolDiffPreviewSummary({ preview: "--- a\n+++ b", beforeBytes: 134, afterBytes: 164 })).toBe("")
+  test("classifies truncation and omitted-preview summary states", () => {
+    // Aggregate-capped: preview dropped with the truncation marker.
+    expect(
+      formatToolDiffPreviewSummary({ truncated: true, preview: undefined, beforeBytes: 134, afterBytes: 164 }),
+    ).toBe("omitted")
+    // Shortened but still present.
+    expect(formatToolDiffPreviewSummary({ truncated: true, preview: "--- a\n+++ b" })).toBe("truncated")
+    // Byte counts without the truncation marker (binary diffs) are neither.
+    expect(formatToolDiffPreviewSummary({ beforeBytes: 134, afterBytes: 164 })).toBeUndefined()
+    expect(formatToolDiffPreviewSummary(undefined)).toBeUndefined()
   })
 })

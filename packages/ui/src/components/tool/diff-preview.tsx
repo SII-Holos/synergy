@@ -26,7 +26,6 @@ export interface DiffPreviewProps {
 }
 
 export const TOOL_DIFF_PREVIEW_EMPTY_MESSAGE = "No text preview available."
-export const TOOL_DIFF_PREVIEW_OMITTED_MESSAGE = "Diff preview omitted in this view."
 
 export function classifyToolDiffLine(text: string): ToolDiffLineKind {
   if (text === "\\ No newline at end of file") return "note"
@@ -51,11 +50,17 @@ export function parseToolDiffPreview(preview: string | undefined): ToolDiffPrevi
   }))
 }
 
-export function formatToolDiffPreviewSummary(diff: ToolDiffPreviewFileDiff | undefined): string {
-  if (diff?.truncated) return "Preview truncated"
-  if (!diff?.preview && (diff?.beforeBytes !== undefined || diff?.afterBytes !== undefined))
-    return TOOL_DIFF_PREVIEW_OMITTED_MESSAGE
-  return ""
+export type ToolDiffPreviewSummaryKind = "truncated" | "omitted"
+
+export function formatToolDiffPreviewSummary(
+  diff: ToolDiffPreviewFileDiff | undefined,
+): ToolDiffPreviewSummaryKind | undefined {
+  // Only summarize explicitly-truncated diffs. Missing previews without the
+  // truncation marker (e.g. binary diffs with byte counts) are not "omitted".
+  if (!diff?.truncated) return undefined
+  // A dropped preview (snapshot aggregate cap) reads as omitted; a shortened
+  // preview that is still present reads as truncated.
+  return diff.preview ? "truncated" : "omitted"
 }
 
 export function DiffPreview(props: DiffPreviewProps) {
@@ -67,7 +72,11 @@ export function DiffPreview(props: DiffPreviewProps) {
   return (
     <div data-component="diff-preview" data-variant={variant()}>
       <Show keyed when={summary()}>
-        {(text) => <div data-slot="diff-preview-summary">{text}</div>}
+        {(kind) => (
+          <div data-slot="diff-preview-summary">
+            {_(kind === "omitted" ? DIFF_DESC.previewOmitted : DIFF_DESC.previewTruncated)}
+          </div>
+        )}
       </Show>
       <Show
         when={lines().length > 0}
