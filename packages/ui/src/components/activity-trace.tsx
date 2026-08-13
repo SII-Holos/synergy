@@ -12,6 +12,7 @@ import { Icon, type IconName } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import { Spinner } from "./spinner"
 import { ToolResultBody } from "./tool-result-body"
+import { Tooltip } from "./tooltip"
 import { getApprovalAudit } from "../utils/approval-audit"
 import type {
   ActivityFamily,
@@ -187,7 +188,7 @@ function ActivityState(props: { state: ActivityGroupState; label: string }) {
 }
 
 function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }) {
-  const { _ } = useLingui()
+  const { i18n, _ } = useLingui()
   const [open, setOpen] = createSignal(false)
   const familyLabel = createMemo(() => localize(familyDescriptor(props.step.family), _))
   const title = createMemo(() => localize(props.step.title, _))
@@ -197,16 +198,35 @@ function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }
     if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return undefined
     return (metadata as Record<string, unknown>).approval as Record<string, unknown> | undefined
   })
-  const audit = createMemo(() => getApprovalAudit(approval()))
+  const audit = createMemo(() => getApprovalAudit(approval(), i18n()))
   return (
     <li data-slot="activity-step" data-family={props.step.family} data-state={props.step.state}>
+      <Show when={audit().icon}>
+        <Tooltip
+          placement="right"
+          class="activity-step-audit-trigger"
+          value={
+            <div class="max-w-72">
+              <div class="text-12-medium text-text-base">{audit().tooltip.split("\n")[0]}</div>
+              <Show when={audit().tooltip.includes("\n")}>
+                <div class="mt-1 text-11-regular text-text-weak">{audit().tooltip.split("\n").slice(1).join("\n")}</div>
+              </Show>
+            </div>
+          }
+        >
+          <span
+            data-component="tool-audit-icon"
+            data-slot="activity-step-audit-icon"
+            tabindex="0"
+            role="img"
+            aria-label={audit().tooltip}
+          >
+            <Icon name={audit().icon as IconName} size="small" class={audit().iconClass} />
+          </span>
+        </Tooltip>
+      </Show>
       <Collapsible open={open()} onOpenChange={setOpen} variant="ghost">
         <Collapsible.Trigger data-slot="activity-step-trigger" type="button">
-          <Show when={audit().icon}>
-            <span data-component="tool-audit-icon" data-slot="activity-step-audit-icon" title={audit().tooltip}>
-              <Icon name={audit().icon as IconName} size="small" class={audit().iconClass} />
-            </span>
-          </Show>
           <span data-slot="activity-step-icon" aria-hidden="true">
             <Icon name={props.step.icon} size="small" />
           </span>
