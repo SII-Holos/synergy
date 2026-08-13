@@ -181,7 +181,14 @@ beforeAll(async () => {
                 status: "error",
                 input: { command: "bash build.sh" },
                 error: "bash: build.sh: command not found\\nexit code 127",
-                metadata: {},
+                metadata: {
+                  approval: {
+                    status: "auto_allowed",
+                    mode: "autonomous",
+                    risk: "medium",
+                    audit: { visible: true },
+                  },
+                },
                 time: { start: 1, end: 2 },
               },
             },
@@ -676,6 +683,13 @@ describe("ActivityTrace DOM behavior", () => {
     expect(host.querySelector('[data-component="error-card"]')).not.toBeNull()
     expect(host.textContent).toContain("command not found")
     expect(host.textContent).toContain("exit code 127")
+  })
+
+  test("renders the approval audit icon for an auto-allowed step", () => {
+    const host = document.querySelector("#error-host") as HTMLElement
+    const audit = host.querySelector('[data-component="tool-audit-icon"]')
+    expect(audit).not.toBeNull()
+    expect(audit?.querySelector('[data-slot="icon-svg"]')).not.toBeNull()
   })
 })
 
