@@ -18,11 +18,15 @@ function loadStandaloneOnnxRuntime(): Promise<typeof import("onnxruntime-web/was
   standaloneOnnxRuntime ??= (async () => {
     const runtime = await import("onnxruntime-web/wasm")
     const assetRoot = path.resolve(path.dirname(process.execPath), "..", EMBEDDING_RUNTIME_PATH)
-    const modulePath = path.join(assetRoot, EMBEDDING_RUNTIME_MODULE)
-    const wasmPath = path.join(assetRoot, EMBEDDING_RUNTIME_WASM)
+    const moduleUrl = pathToFileURL(path.join(assetRoot, EMBEDDING_RUNTIME_MODULE))
+    const wasmUrl = pathToFileURL(path.join(assetRoot, EMBEDDING_RUNTIME_WASM))
     runtime.env.wasm.numThreads = 1
-    runtime.env.wasm.wasmPaths = { mjs: pathToFileURL(modulePath).href }
-    runtime.env.wasm.wasmBinary = new Uint8Array(await Bun.file(wasmPath).arrayBuffer())
+    // transformers.js v4 only preloads the WASM binary and factory when both
+    // wasmPaths.wasm and wasmPaths.mjs are set; without them it falls back to
+    // importing the factory from import.meta.url, which resolves inside the
+    // bundled filesystem ($bunfs) where fetch() rejects the URL.
+    runtime.env.wasm.wasmPaths = { mjs: moduleUrl.href, wasm: wasmUrl.href }
+    runtime.env.wasm.wasmBinary = new Uint8Array(await Bun.file(wasmUrl).arrayBuffer())
     return runtime
   })()
   return standaloneOnnxRuntime

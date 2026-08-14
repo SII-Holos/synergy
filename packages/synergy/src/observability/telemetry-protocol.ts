@@ -4,6 +4,10 @@ import { ObservabilitySchema } from "./schema"
 export namespace TelemetryProtocol {
   export const BATCH_CHUNK_ROWS = 1000
   export const BATCH_MAX_BYTES = 2 * 1024 * 1024
+  // Fixed retention cadence owned by the telemetry worker. Host-side stats
+  // report this value so diagnostics match the worker's actual timer instead
+  // of deriving a fraction of the (24h-default) data retention window.
+  export const RETENTION_INTERVAL_MS = 15 * 60_000
 
   export const WorkerConfigSchema = z
     .object({

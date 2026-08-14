@@ -71,7 +71,7 @@ describe("ObservabilityMigration", () => {
     const summary = await runMigrations({ output: "silent", targetDomain: "observability" })
     const status = await getMigrationStatus("observability")
 
-    expect(summary.completed).toBe(5)
+    expect(summary.completed).toBe(6)
     expect(status.observability.pending).toHaveLength(0)
     expect(status.observability.completed.map((migration) => migration.id)).toContain(ObservabilityMigration.id)
   })
@@ -158,7 +158,7 @@ describe("ObservabilityMigration", () => {
     )
     expect(indexes).toContain("idx_obs_issues_status_last_seen")
     const row = getRow<{ value: string }>(db, "SELECT value FROM obs_meta WHERE key = 'schemaVersion'")
-    expect(row.value).toBe("5")
+    expect(row.value).toBe("6")
   })
 
   test("backfills redaction across previously written canonical tables idempotently", async () => {
@@ -167,7 +167,7 @@ describe("ObservabilityMigration", () => {
     const db = ObservabilityStore.initializeForMigration()
     runStatement(
       db,
-      "UPDATE obs_metrics SET labels_json = ?, redaction_json = '{}' WHERE metric_id = 'legacy_metric_1'",
+      "UPDATE obs_metrics SET labels_json = ? WHERE metric_id = 'legacy_metric_1'",
       '{"authorization":"Bearer canonical-secret","path":"/?token=tok_canonical_metric_secret"}',
     )
     runStatement(
@@ -202,7 +202,7 @@ describe("ObservabilityMigration", () => {
     await ObservabilityMigration.redactCanonicalTelemetry()
 
     const canonical = JSON.stringify({
-      metrics: allRows(db, "SELECT labels_json,redaction_json FROM obs_metrics"),
+      metrics: allRows(db, "SELECT labels_json FROM obs_metrics"),
       spans: allRows(db, "SELECT error_message,attributes_json,redaction_json FROM obs_spans"),
       resources: allRows(db, "SELECT labels_json,redaction_json FROM obs_resource_samples"),
       issues: allRows(db, "SELECT title,evidence_json,redaction_json FROM obs_issues"),
