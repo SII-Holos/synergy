@@ -81,7 +81,7 @@
 
 [data-slot="error-card-content"] {
   max-height: min(44vh, 32rem);
-  padding: 2px 12px 12px 40px;
+  padding: 2px 12px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;

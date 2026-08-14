@@ -86,4 +86,13 @@ describe("activity trace expanded details", () => {
 
     expect(backgroundColor).toBe("rgb(28, 28, 30)")
   })
+
+  test("balances the error card content padding with the card edge", async () => {
+    const padding = await page.locator('[data-slot="error-card-content"]').evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { left: style.paddingLeft, right: style.paddingRight }
+    })
+
+    expect(padding.left).toBe(padding.right)
+  })
 })
