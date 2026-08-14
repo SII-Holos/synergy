@@ -97,6 +97,12 @@ export class ToolTaskScheduler {
     }
     this.tasks.set(key, result)
     void result.then(() => {
+      // A settled task belongs to a finished execution. Stop deduplicating on
+      // this key once it completes so a later dispatch with the same key
+      // (retry, replay, or a fresh processor instance) is a new attempt that
+      // must run again instead of returning the stale result. In-flight
+      // dedup above still collapses duplicate dispatches of a running call.
+      if (this.tasks.get(key) === result) this.tasks.delete(key)
       this.terminalTasks.push({ key, promise: result, completedAt: Date.now() })
     })
     input.onState?.("queued")
