@@ -9,6 +9,7 @@ import { ConfigDomainOpen } from "../config/domain-open"
 import { ConfigInstructions } from "../config/instructions"
 import { Provider } from "../provider/provider"
 import { RuntimeReload } from "../runtime/reload"
+import { GlobalBus } from "../bus/global"
 import { Log } from "../util/log"
 import { BadRequestError, errors } from "./error"
 import { requestWithinLimit } from "./request-body-limit"
@@ -21,6 +22,13 @@ const DomainUpdateInput = z
     mode: ConfigDomain.MergeMode.optional(),
   })
   .meta({ ref: "ConfigDomainUpdateInput" })
+
+const DomainUpdateResponse = z
+  .object({
+    config: Config.Info,
+    changedFields: z.array(z.string()),
+  })
+  .meta({ ref: "ConfigDomainUpdateResponse" })
 
 const DomainOpenResponse = z
   .object({
@@ -261,8 +269,8 @@ export const ConfigRoute = new Hono()
       operationId: "config.domain.update",
       responses: {
         200: {
-          description: "Updated config domain fragment",
-          content: { "application/json": { schema: resolver(Config.Info) } },
+          description: "Updated config domain fragment with the fields that changed",
+          content: { "application/json": { schema: resolver(DomainUpdateResponse) } },
         },
         ...errors(400),
       },
@@ -274,7 +282,7 @@ export const ConfigRoute = new Hono()
       const body = c.req.valid("json")
       const { result, change } = await Config.domainUpdateWithChange(domain, body.config, { mode: body.mode })
       await reloadAfterConfigChange(change, `config.domain.update:${domain}`)
-      return c.json(result)
+      return c.json({ config: result, changedFields: change.changedFields })
     },
   )
   .post(
@@ -405,9 +413,18 @@ async function reloadAfterConfigChange(configChange: Config.Change, reason: stri
     return
   }
   const allClientSide = [...changedFields].every((field) => RuntimeReload.CONFIG_CLIENT_SIDE.has(field))
-
   if (allClientSide) {
     log.info("config updated (client-side only, skipping reload)", { changedFields: [...changedFields] })
+    // Client-side fields never reach RuntimeReload.reload, so no
+    // runtime.reloaded event fires; emit config.updated so clients refresh
+    // their global sync store (toast/keybinds/layout/theme/locale) anyway.
+    GlobalBus.emit("event", {
+      directory: "global",
+      payload: {
+        type: Config.Event.Updated.type,
+        properties: { scope: "global", changedFields: [...changedFields] },
+      },
+    })
     return
   }
   const result = await RuntimeReload.reload(

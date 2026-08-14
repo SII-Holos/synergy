@@ -3938,11 +3938,11 @@ export type Config = {
     /**
      * Optional colleague identity description injected into the runtime boss session
      */
-    boss_identity_text?: string
+    boss_identity_text?: string | null
     /**
      * Re-inject the versioned world-overview briefing every N days (default: disabled)
      */
-    boss_briefing_interval_days?: number
+    boss_briefing_interval_days?: number | null
   }
   /**
    * Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.
@@ -4585,6 +4585,11 @@ export type ConfigDomainSummary = {
   uiSection: string
   importable: boolean
   config?: Config
+}
+
+export type ConfigDomainUpdateResponse = {
+  config: Config
+  changedFields: Array<string>
 }
 
 export type ConfigDomainUpdateInput = {
@@ -8576,27 +8581,6 @@ export type EventAgendaItemDeleted = {
   }
 }
 
-export type EventSynergyLinkTargetCreated = {
-  type: "synergy_link.target.created"
-  properties: {
-    target: SynergyLinkTarget
-  }
-}
-
-export type EventSynergyLinkTargetUpdated = {
-  type: "synergy_link.target.updated"
-  properties: {
-    target: SynergyLinkTarget
-  }
-}
-
-export type EventSynergyLinkTargetRemoved = {
-  type: "synergy_link.target.removed"
-  properties: {
-    id: string
-  }
-}
-
 export type EventChannelCommandExecuted = {
   type: "channel.command.executed"
   properties: {
@@ -8632,6 +8616,27 @@ export type EventChannelMessageReceived = {
     accountId: string
     chatId: string
     text: string
+  }
+}
+
+export type EventSynergyLinkTargetCreated = {
+  type: "synergy_link.target.created"
+  properties: {
+    target: SynergyLinkTarget
+  }
+}
+
+export type EventSynergyLinkTargetUpdated = {
+  type: "synergy_link.target.updated"
+  properties: {
+    target: SynergyLinkTarget
+  }
+}
+
+export type EventSynergyLinkTargetRemoved = {
+  type: "synergy_link.target.removed"
+  properties: {
+    id: string
   }
 }
 
@@ -8845,13 +8850,13 @@ export type Event =
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
   | EventAgendaItemDeleted
-  | EventSynergyLinkTargetCreated
-  | EventSynergyLinkTargetUpdated
-  | EventSynergyLinkTargetRemoved
   | EventChannelCommandExecuted
   | EventChannelConnected
   | EventChannelDisconnected
   | EventChannelMessageReceived
+  | EventSynergyLinkTargetCreated
+  | EventSynergyLinkTargetUpdated
+  | EventSynergyLinkTargetRemoved
   | EventHolosContactAdded
   | EventHolosContactRemoved
   | EventHolosContactUpdated
@@ -11022,12 +11027,12 @@ export type ConfigDomainUpdateError = ConfigDomainUpdateErrors[keyof ConfigDomai
 
 export type ConfigDomainUpdateResponses = {
   /**
-   * Updated config domain fragment
+   * Updated config domain fragment with the fields that changed
    */
-  200: Config
+  200: ConfigDomainUpdateResponse
 }
 
-export type ConfigDomainUpdateResponse = ConfigDomainUpdateResponses[keyof ConfigDomainUpdateResponses]
+export type ConfigDomainUpdateResponse2 = ConfigDomainUpdateResponses[keyof ConfigDomainUpdateResponses]
 
 export type ConfigDomainOpenData = {
   body?: never
