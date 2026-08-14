@@ -30,6 +30,13 @@ export namespace ObservabilityStore {
   let retentionIntervalMs: number | undefined
   const pending: Array<() => void> = []
   const beforeFlushHooks = new Set<() => void>()
+  let dataVersionCounter = 0
+
+  // Monotonic write counter so read-side caches (e.g. the dashboard summary)
+  // can invalidate when new telemetry lands instead of serving stale rows.
+  export function dataVersion() {
+    return dataVersionCounter
+  }
 
   function inlineMode() {
     return process.env.SYNERGY_OBSERVABILITY_INLINE === "1"
@@ -75,7 +82,9 @@ export namespace ObservabilityStore {
     if (!inlineMode()) {
       if (!readonlyDb) {
         try {
-          readonlyDb = new Database(pathName(), { readonly: true })
+          const conn = new Database(pathName(), { readonly: true })
+          conn.exec("PRAGMA busy_timeout=5000")
+          readonlyDb = conn
         } catch {
           return undefined
         }
@@ -244,6 +253,7 @@ export namespace ObservabilityStore {
   }
 
   export function insertMetric(metric: ObservabilitySchema.Metric) {
+    dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "metric", row: metric })
       return
@@ -255,6 +265,7 @@ export namespace ObservabilityStore {
   }
 
   export function insertSpan(span: ObservabilitySchema.Span) {
+    dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "span", row: span })
       return
@@ -270,6 +281,7 @@ export namespace ObservabilityStore {
   }
 
   export function insertEvent(event: ObservabilitySchema.Event) {
+    dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "event", row: event })
       return
@@ -281,6 +293,7 @@ export namespace ObservabilityStore {
   }
 
   export function insertResource(sample: ObservabilitySchema.ResourceSample) {
+    dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "resource", row: sample })
       return
@@ -292,6 +305,7 @@ export namespace ObservabilityStore {
   }
 
   export function insertIssue(issue: ObservabilitySchema.Issue) {
+    dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "issue", row: issue })
       return
@@ -310,6 +324,7 @@ export namespace ObservabilityStore {
     rejected: number
     page: Record<string, unknown>
   }) {
+    dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "browser-batch", row: input })
       return
@@ -838,7 +853,6 @@ export namespace ObservabilityStore {
   export interface StoredMetric {
     metric_id: string
     time: number
-    iso: string
     name: string
     value: number
     unit: ObservabilitySchema.Unit
@@ -858,7 +872,6 @@ export namespace ObservabilityStore {
     tool?: string | null
     labels_json: string
     sample_rate: number
-    redaction_json?: string | null
   }
 
   export interface StoredSpan {

@@ -252,6 +252,8 @@ export namespace Log {
     return "observability"
   }
 
+  // Only warnings and errors are mirrored into the observability store; debug
+  // and info logs stay file-only so every log line is not duplicated in SQLite.
   function mirror(level: Level, tags: Record<string, any>, message: any, extra?: Record<string, any>) {
     if (mirroring || tags["mirror"] === false || extra?.["mirror"] === false) return
     mirroring = true
@@ -304,13 +306,11 @@ export namespace Log {
       debug(message?: any, extra?: Record<string, any>) {
         if (shouldLog("DEBUG")) {
           write("DEBUG " + build(message, extra))
-          mirror("DEBUG", frozen, message, extra)
         }
       },
       info(message?: any, extra?: Record<string, any>) {
         if (shouldLog("INFO")) {
           write("INFO  " + build(message, extra))
-          mirror("INFO", frozen, message, extra)
         }
       },
       error(message?: any, extra?: Record<string, any>) {

@@ -51,8 +51,6 @@ export namespace PerformanceCatalog {
     metric("agent.queue.depth", "Agent queue depth", "count", "gauge", "latest", "session", "backend", []),
     metric("agent.queue.wait", "Agent queue wait", "ms", "duration", "p95", "session", "backend", []),
     metric("agent.turn.duration", "Agent turn latency", "ms", "duration", "p95", "session", "backend", ["reason"]),
-    metric("agent.ipc.request_bytes", "Agent IPC request bytes", "bytes", "size", "avg", "session", "backend", []),
-    metric("agent.ipc.event_bytes", "Agent IPC event bytes", "bytes", "size", "avg", "session", "backend", []),
     metric("agent.worker.rss", "Agent worker RSS", "bytes", "gauge", "latest", "session", "process", [
       "phase",
       "turns",

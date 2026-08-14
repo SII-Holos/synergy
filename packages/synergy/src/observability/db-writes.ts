@@ -5,13 +5,12 @@ export namespace ObservabilityDbWrites {
   export function insertMetric(conn: Database, metric: ObservabilitySchema.Metric) {
     conn
       .query(
-        `INSERT OR REPLACE INTO obs_metrics (metric_id,time,iso,name,value,unit,source,module,correlation_id,scope_id,session_id,message_id,call_id,trace_id,span_id,parent_span_id,rid,process_id,pid,tool,labels_json,sample_rate,redaction_json)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23)`,
+        `INSERT OR REPLACE INTO obs_metrics (metric_id,time,name,value,unit,source,module,correlation_id,scope_id,session_id,message_id,call_id,trace_id,span_id,parent_span_id,rid,process_id,pid,tool,labels_json,sample_rate)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21)`,
       )
       .run(
         metric.metricId,
         metric.time,
-        metric.iso,
         metric.name,
         metric.value,
         metric.unit,
@@ -31,7 +30,6 @@ export namespace ObservabilityDbWrites {
         metric.tool ?? null,
         JSON.stringify(metric.labels ?? {}),
         metric.sampleRate,
-        JSON.stringify(metric.redaction),
       )
   }
 

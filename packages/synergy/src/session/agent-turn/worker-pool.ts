@@ -374,14 +374,6 @@ export class AgentWorkerPool {
         module: "session",
         sessionID: input.sessionID,
       })
-      ObservabilityMetrics.record({
-        name: "agent.ipc.request_bytes",
-        value: requestBytes,
-        unit: "bytes",
-        module: "session",
-        sessionID: input.sessionID,
-        messageID: input.user.id,
-      })
       this.ensureWorkers()
       this.drain()
     })
@@ -647,16 +639,6 @@ export class AgentWorkerPool {
       }
       AgentTurnProtocol.assertEventFrameBound(message)
       worker.lastEventSequence = message.sequence
-      ObservabilityMetrics.record({
-        name: "agent.ipc.event_bytes",
-        value: AgentTurnProtocol.byteLength(message),
-        unit: "bytes",
-        module: "session",
-        sessionID: task.sessionID,
-        messageID: task.messageID,
-        processId: worker.id,
-        pid: worker.pid,
-      })
       const accepted = task.stream.push({
         sequence: message.sequence,
         events: AgentTurnProtocol.decodeEvents(message.events) as AgentTurnStreamPart[],
