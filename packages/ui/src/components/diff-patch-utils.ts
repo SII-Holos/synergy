@@ -14,10 +14,6 @@ import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs"
 const TRUNCATION_MARKER = /\[\d[\d,]* characters omitted\]/
 const SECTION_MARKER = /^=== .+ ===\s*$/
 
-function hasUnrenderableTrailingBlankLine(lines: readonly string[]): boolean {
-  return /^\r?\n$/.test(lines.at(-1) ?? "")
-}
-
 /**
  * Parses `patch` once and returns the single-file metadata when pierre can
  * render it, or `undefined` otherwise. Callers use the same result for both
@@ -44,14 +40,6 @@ export function parseRenderablePatch(patch: string | undefined | null): FileDiff
     if (
       metadata.deletionLines?.some((line) => SECTION_MARKER.test(line)) ||
       metadata.additionLines?.some((line) => SECTION_MARKER.test(line))
-    ) {
-      return undefined
-    }
-    // Pierre strips the final newline before highlighting, so an empty final
-    // hunk line leaves its renderer with a line index but no highlighted row.
-    if (
-      hasUnrenderableTrailingBlankLine(metadata.deletionLines) ||
-      hasUnrenderableTrailingBlankLine(metadata.additionLines)
     ) {
       return undefined
     }

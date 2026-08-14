@@ -2,20 +2,28 @@ import { describe, expect, test } from "bun:test"
 import { shouldRefreshGlobalConfig } from "../../src/context/global-config-sync"
 
 describe("global config snapshot refresh", () => {
-  test("refreshes the global authority for global locale updates", () => {
-    expect(
-      shouldRefreshGlobalConfig({
-        scope: "global",
-        changedFields: ["locale"],
-      }),
-    ).toBe(true)
+  test("refreshes the global authority for global client-side field updates", () => {
+    for (const field of ["locale", "theme", "keybinds", "layout", "toast"]) {
+      expect(
+        shouldRefreshGlobalConfig({
+          scope: "global",
+          changedFields: [field],
+        }),
+      ).toBe(true)
+    }
   })
 
-  test("ignores unrelated global config fields", () => {
+  test("ignores server-side global config fields", () => {
     expect(
       shouldRefreshGlobalConfig({
         scope: "global",
-        changedFields: ["theme"],
+        changedFields: ["model"],
+      }),
+    ).toBe(false)
+    expect(
+      shouldRefreshGlobalConfig({
+        scope: "global",
+        changedFields: ["toast", "model"],
       }),
     ).toBe(false)
   })

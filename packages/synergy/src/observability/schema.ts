@@ -69,7 +69,6 @@ export namespace ObservabilitySchema {
     .object({
       metricId: z.string(),
       time: z.number(),
-      iso: z.string(),
       name: z.string(),
       value: z.number(),
       unit: Unit,
@@ -89,7 +88,6 @@ export namespace ObservabilitySchema {
       tool: z.string().optional(),
       labels: Labels,
       sampleRate: z.number().min(0).max(1).default(1),
-      redaction: RedactionSummary.default({ applied: true, omittedKeys: 0, truncatedValues: 0 }),
     })
     .meta({ ref: "TelemetryMetric" })
   export type Metric = z.infer<typeof Metric>

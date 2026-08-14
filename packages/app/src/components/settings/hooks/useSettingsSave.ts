@@ -24,7 +24,7 @@ export type SaveContext<TDraft> = {
   domainSummaries: () => ConfigDomainSummary[]
   hasAnyChanges: () => boolean
   editingLabel: () => string
-  refreshAfterConfigChange: (submittedDraft: TDraft) => Promise<void>
+  refreshAfterConfigChange: (changedFields: string[], submittedDraft: TDraft) => Promise<void>
   onPatchSaved?: (patch: Record<string, unknown>, submittedDraft: TDraft) => void | Promise<void>
   preparePatchSave?: (patch: Record<string, unknown>, submittedDraft: TDraft) => void | Promise<void>
   rejectPatchSave?: (patch: Record<string, unknown>, submittedDraft: TDraft) => void | Promise<void>
@@ -45,9 +45,9 @@ export function useSettingsSave<TDraft>(ctx: SaveContext<TDraft>) {
     if (dirty && status() === "saved") setStatus("idle")
   })
 
-  async function saveServerPatch(patch: Record<string, unknown>) {
+  async function saveServerPatch(patch: Record<string, unknown>): Promise<string[]> {
     const grouped = groupPatchByDomain(patch, ctx.domainSummaries())
-    await Promise.all(
+    const responses = await Promise.all(
       [...grouped.entries()].map(([domain, config]) =>
         globalSDK.client.config.domain.update({
           domain,
@@ -55,6 +55,10 @@ export function useSettingsSave<TDraft>(ctx: SaveContext<TDraft>) {
         }),
       ),
     )
+    // The server reports which top-level config fields actually changed;
+    // the panel uses this to refresh only the affected data instead of
+    // re-fetching every resource across every scope.
+    return responses.flatMap((response) => response.data?.changedFields ?? [])
   }
 
   async function saveServerChanges() {
@@ -66,9 +70,9 @@ export function useSettingsSave<TDraft>(ctx: SaveContext<TDraft>) {
     let persisted = false
     try {
       await ctx.preparePatchSave?.(patch, submittedDraft)
-      await saveServerPatch(patch)
+      const changedFields = await saveServerPatch(patch)
       persisted = true
-      await ctx.refreshAfterConfigChange(submittedDraft)
+      await ctx.refreshAfterConfigChange(changedFields, submittedDraft)
       await ctx.onPatchSaved?.(patch, submittedDraft)
       setExplicitDirty(Object.keys(ctx.serverPatch()).length > 0)
       setStatus("saved")

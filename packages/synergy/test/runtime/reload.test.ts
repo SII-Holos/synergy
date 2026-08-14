@@ -287,7 +287,7 @@ describe("runtime.reload", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const configReloadMock = mock(async (scope: "global" | "project") => ({
+        const configReloadMock = mock(async (scope: "global" | "project", options?: { files?: string[] }) => ({
           config: {},
           changedFields: [] as string[],
           oldConfig: {},
@@ -300,7 +300,7 @@ describe("runtime.reload", () => {
         const result = await RuntimeReload.reload({ targets: ["config"], reason: "auto-scope" })
 
         // Verify auto-scope resolved to project because a project domain config exists
-        expect(configReloadMock).toHaveBeenCalledWith("project")
+        expect(configReloadMock).toHaveBeenCalledWith("project", { files: undefined })
         expect(result.executed).toContain("config")
         const reloadedEvent = events.find((e) => e.payload?.type === RuntimeReload.Event.Reloaded.type)
         expect(reloadedEvent).toBeDefined()
@@ -374,6 +374,10 @@ describe("runtime.reload", () => {
           { configChange: { oldConfig, config, changedFields: ["thinking_model"] } },
         )
 
+        // The writer already reset and re-loaded the Config cache, so the
+        // reload must reuse the writer-provided transition instead of
+        // re-reading every domain file again.
+        expect(Config.reload).not.toHaveBeenCalled()
         expect(result.changedFields).toEqual(["thinking_model"])
         expect(result.liveApplied).toContain("thinking_model")
         expect(result.cascaded).toContain("agent")
@@ -473,8 +477,11 @@ describe("runtime.reload", () => {
           { configChange: { oldConfig, config, changedFields: ["category"] } },
         )
 
-        expect(order).toEqual(["provider:start", "provider:end", "agent"])
-        expect(result.cascaded).toEqual(expect.arrayContaining(["provider", "agent"]))
+        // category reads dynamically via Config.current(), so it cascades to
+        // agent only — provider state does not need a rebuild.
+        expect(order).toEqual(["agent"])
+        expect(result.cascaded).toEqual(expect.arrayContaining(["agent"]))
+        expect(result.cascaded).not.toContain("provider")
       },
     })
   })
@@ -525,10 +532,15 @@ describe("runtime.reload", () => {
     expect(visionModelCascade).not.toContain("provider")
     expect(visionModelCascade).toContain("agent")
 
-    // Verify category changes cascade to provider + agent
+    // Verify category changes cascade to agent only (provider reads category
+    // dynamically via Config.current(), so no provider rebuild is needed)
     const categoryCascade = RuntimeReload.inferConfigCascades(["category"])
-    expect(categoryCascade).toContain("provider")
+    expect(categoryCascade).not.toContain("provider")
     expect(categoryCascade).toContain("agent")
+
+    // Verify timeout changes do not cascade to provider (timeouts are
+    // resolved dynamically via TimeoutConfig.resolve())
+    expect(RuntimeReload.inferConfigCascades(["timeout"])).not.toContain("provider")
 
     // Verify default_agent and instruction file settings cascade to agent
     const defaultAgentCascade = RuntimeReload.inferConfigCascades(["default_agent"])

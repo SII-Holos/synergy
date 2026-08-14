@@ -269,8 +269,8 @@ describe("performance routes", () => {
     const conn = ObservabilityStore.open()
     expect(conn).toBeDefined()
     const insert = conn!.prepare(
-      `INSERT INTO obs_metrics (metric_id,time,iso,name,value,unit,source,module,labels_json,sample_rate)
-       VALUES (?1,?2,?3,'http.request.duration',?4,'ms','backend','server',?5,1)`,
+      `INSERT INTO obs_metrics (metric_id,time,name,value,unit,source,module,labels_json,sample_rate)
+       VALUES (?1,?2,'http.request.duration',?3,'ms','backend','server',?4,1)`,
     )
     const insertMetrics = conn!.transaction(() => {
       for (let index = 0; index < 50_002; index++) {
@@ -278,7 +278,6 @@ describe("performance routes", () => {
         insert.run(
           `met-cap-${index.toString().padStart(5, "0")}`,
           time,
-          new Date(time).toISOString(),
           index,
           JSON.stringify({ path: `/route-${index}` }),
         )
