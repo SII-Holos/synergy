@@ -112,6 +112,16 @@ export namespace SessionMessageCache {
     protectedOverbudget = 0
   }
 
+  /** Full teardown for tests: clears windows, entries, and counters. */
+  export function resetForTest() {
+    active.clear()
+    cache.clear()
+    sizes.clear()
+    lru.length = 0
+    totalBytes = 0
+    resetStatsForTest()
+  }
+
   /** Seed from a fresh compaction-aware disk read (no-op outside the window). */
   export function set(sessionID: string, messages: MessageV2.WithParts[]) {
     if (!active.has(sessionID)) return

@@ -1,5 +1,5 @@
 import { SynergyLinkRemoteError } from "../../src/remote/client"
-import { describe, expect, test } from "bun:test"
+import { beforeEach, describe, expect, test } from "bun:test"
 import type {
   SynergyLinkClient,
   SynergyLinkBash,
@@ -28,8 +28,13 @@ const fakeClient = (result: SynergyLinkSession.Result): SynergyLinkClient.Execut
   },
   executeSession: async (): Promise<SynergyLinkSession.Result> => result,
 })
-
 describe("tool.connect", () => {
+  // Client registry is module-global across files in the same test worker;
+  // restore the no-client baseline so availability assertions are stable.
+  beforeEach(() => {
+    SynergyLinkExecution.setClient(null)
+  })
+
   test("lists persisted targets available to the current agent", async () => {
     const { SynergyLinkTargetStore } = await import("../../src/synergy-link/target-store")
     const target = await SynergyLinkTargetStore.create({

@@ -380,7 +380,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       if (navPending.has(key)) return
       navPending.add(key)
       try {
-        const request = rootNavRequest(category, ROOT_NAV_SECTION_LIMIT, cursor)
+        const request = rootNavRequest(category, ROOT_NAV_SECTION_LIMIT, cursor, {
+          includeBackgroundChildren: globalSync.data.config.experimental?.boss_mode === true,
+        })
         const res =
           request.source === "global"
             ? await globalSdk.client.global.nav.recent(request.query)
@@ -581,7 +583,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           depth: Math.max(ROOT_NAV_SECTION_LIMIT, existing?.items.length ?? 0),
           pageLimit: NAV_REFRESH_PAGE_LIMIT,
           fetchPage: async (limit, cursor) => {
-            const request = rootNavRequest(category, limit, cursor)
+            const request = rootNavRequest(category, limit, cursor, {
+              includeBackgroundChildren: globalSync.data.config.experimental?.boss_mode === true,
+            })
             const response =
               request.source === "global"
                 ? await globalSdk.client.global.nav.recent(request.query)

@@ -12,7 +12,11 @@ type AgentSDKStreamPart = LLM.StreamOutput["fullStream"] extends AsyncIterable<i
 interface ActiveTurn {
   requestId: string
   controller: AbortController
-  acknowledgements: Map<number, () => void>
+  windowWaiter: (() => void) | undefined
+  unackedBytes: number
+  // Per-frame byte weights keyed by sequence, retained until the host
+  // acknowledges them so partial ack-windows only credit covered frames.
+  unackedFrames: Array<{ sequence: number; bytes: number }>
 }
 
 let active: ActiveTurn | undefined
@@ -88,6 +92,24 @@ function reject(requestId: string, error: unknown): void {
   })
 }
 
+function waitForAckWindow(turn: ActiveTurn): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (turn.controller.signal.aborted) {
+      reject(turn.controller.signal.reason)
+      return
+    }
+    const onAbort = () => {
+      turn.windowWaiter = undefined
+      reject(turn.controller.signal.reason)
+    }
+    turn.controller.signal.addEventListener("abort", onAbort, { once: true })
+    turn.windowWaiter = () => {
+      turn.controller.signal.removeEventListener("abort", onAbort)
+      resolve()
+    }
+  })
+}
+
 async function sendEvents(turn: ActiveTurn, events: AgentSDKStreamPart[]): Promise<void> {
   if (events.length === 0) return
   const frame = {
@@ -97,22 +119,13 @@ async function sendEvents(turn: ActiveTurn, events: AgentSDKStreamPart[]): Promi
     events: AgentTurnProtocol.encodeEvents(events),
   }
   AgentTurnProtocol.assertEventFrameBound(frame)
-  await new Promise<void>((resolve, reject) => {
-    if (turn.controller.signal.aborted) {
-      reject(turn.controller.signal.reason)
-      return
-    }
-    const onAbort = () => {
-      turn.acknowledgements.delete(frame.sequence)
-      reject(turn.controller.signal.reason)
-    }
-    turn.controller.signal.addEventListener("abort", onAbort, { once: true })
-    turn.acknowledgements.set(frame.sequence, () => {
-      turn.controller.signal.removeEventListener("abort", onAbort)
-      resolve()
-    })
-    send(frame)
-  })
+  const bytes = AgentTurnProtocol.byteLength(frame)
+  send(frame)
+  turn.unackedFrames.push({ sequence: frame.sequence, bytes })
+  turn.unackedBytes += bytes
+  if (turn.unackedBytes >= AgentTurnProtocol.ACK_WINDOW_BYTES) {
+    await waitForAckWindow(turn)
+  }
 }
 
 async function streamEvents(turn: ActiveTurn, stream: AsyncIterable<AgentSDKStreamPart>): Promise<void> {
@@ -186,7 +199,8 @@ async function executeTurn(turn: ActiveTurn, envelope: AgentTurnProtocol.TurnEnv
   }
   const memoryBeforeDispose = memory()
   await ownedStream?.dispose().catch(() => {})
-  for (const acknowledge of turn.acknowledgements.values()) acknowledge()
+  turn.windowWaiter?.()
+  turn.windowWaiter = undefined
   return {
     ...result!,
     memoryBeforeDispose,
@@ -202,7 +216,9 @@ async function run(requestId: string, envelope: AgentTurnProtocol.TurnEnvelope |
   const turn: ActiveTurn = {
     requestId,
     controller: new AbortController(),
-    acknowledgements: new Map(),
+    windowWaiter: undefined,
+    unackedBytes: 0,
+    unackedFrames: [],
   }
   active = turn
   const terminal = await executeTurn(turn, envelope!)
@@ -277,12 +293,20 @@ process.on("message", (raw: unknown) => {
     }
     return
   }
-  if (message.type === "ack") {
+  if (message.type === "ack-window") {
     if (!active || active.requestId !== message.requestId) return
-    const acknowledge = active.acknowledgements.get(message.sequence)
-    if (!acknowledge) return
-    active.acknowledgements.delete(message.sequence)
-    acknowledge()
+    // Credit only frames covered by the acknowledged sequence; frames sent
+    // after it remain unacknowledged and keep counting toward the window.
+    active.unackedFrames = active.unackedFrames.filter((frame) => frame.sequence > message.ackSequence)
+    active.unackedBytes = active.unackedFrames.reduce((total, frame) => total + frame.bytes, 0)
+    // A partial acknowledgement that does not bring the worker back under the
+    // window must not release the pause: the waiter stays armed until the
+    // host acknowledges enough bytes for the stream to safely continue.
+    if (active.unackedBytes < AgentTurnProtocol.ACK_WINDOW_BYTES) {
+      const waiter = active.windowWaiter
+      active.windowWaiter = undefined
+      waiter?.()
+    }
     return
   }
   if (message.type === "cancel") {

@@ -1,3 +1,5 @@
+import PROMPT_BOSS_SYNERGY from "./prompt/boss-synergy/base.txt"
+
 import { PermissionNext } from "@/permission/next"
 import type { Agent } from "./agent"
 import type { BuiltinAgentContext } from "./builtin-context"
@@ -24,6 +26,54 @@ function classicPrimaryPermission(ctx: BuiltinAgentContext): PermissionNext.Rule
       memory_write: "allow",
       memory_edit: "allow",
       ...(ctx.evolutionActive ? {} : { memory_search: "deny", memory_get: "deny" }),
+    }),
+    ctx.user,
+  )
+}
+
+function bossPrimaryPermission(ctx: BuiltinAgentContext): PermissionNext.Ruleset {
+  return PermissionNext.merge(
+    ctx.defaults,
+    PermissionNext.fromConfig({
+      "*": "deny",
+      boss_spawn: "allow",
+      boss_assign: "allow",
+      boss_status: "allow",
+      boss_cancel: "allow",
+      boss_project: "allow",
+      channel_push: "allow",
+      session_send: "allow",
+      session_read: "allow",
+      session_list: "allow",
+      session_search: "allow",
+      scope_list: "allow",
+      agenda_list: "allow",
+      memory_write: "allow",
+      memory_edit: "allow",
+      memory_search: "allow",
+      question: "allow",
+      bash: "allow",
+      process: "allow",
+      task: "deny",
+      task_list: "deny",
+      task_output: "deny",
+      task_cancel: "deny",
+      view_file: "deny",
+      revise_file: "deny",
+      save_file: "deny",
+      scan_files: "deny",
+      parse_code: "deny",
+      read: "deny",
+      edit: "deny",
+      write: "deny",
+      grep: "deny",
+      ast_grep: "deny",
+      runtime_reload: "deny",
+      dagwrite: "deny",
+      dagread: "deny",
+      dagpatch: "deny",
+      note_write: "deny",
+      note_edit: "deny",
     }),
     ctx.user,
   )
@@ -78,6 +128,20 @@ export function createBuiltinPrimaryAgents(ctx: BuiltinAgentContext): Record<str
       permission: maxPrimaryPermission(ctx),
       mode: "primary",
       native: true,
+    },
+    "boss-synergy": {
+      name: "boss-synergy",
+      description:
+        "Primary coordination-only agent for Runtime Boss Mode. Dispatches and checks worker and project-boss sessions, creates projects, and replies over channels; never executes tasks itself, never spawns subagents, and never edits files.",
+      prompt: PROMPT_BOSS_SYNERGY,
+      options: {},
+      permission: bossPrimaryPermission(ctx),
+      mode: "primary",
+      native: true,
+      // Hidden host-owned agent: not shown in agent menus or the Settings
+      // default-agent selector, and never selectable for ordinary sessions.
+      // It is only reachable through the boss session agentOverride.
+      hidden: true,
     },
   }
 }

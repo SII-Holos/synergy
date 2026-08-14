@@ -9281,6 +9281,14 @@ msgstr ""
 msgid "diff.file-diff-preview"
 msgstr ""
 
+#. ── Diff preview ────────────────────────────────────────────────────
+msgid "diff.preview-omitted"
+msgstr ""
+
+#. ── Diff preview ────────────────────────────────────────────────────
+msgid "diff.preview-truncated"
+msgstr ""
+
 #. js-lingui-explicit-id
 msgid "list.for-label"
 msgstr ""
@@ -11557,6 +11565,10 @@ msgid "session-status.working-with-notes"
 msgstr ""
 
 #. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.compact-reasoning-thinking"
+msgstr ""
+
+#. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.completed"
 msgstr ""
 
@@ -13793,6 +13805,30 @@ msgid "settings.catalog.archivedSessions.searchTerms"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.boss.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.row.bossMode"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.row.identity"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.row.interval"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.searchTerms"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.channels.description"
 msgstr ""
 
@@ -14858,6 +14894,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.general.colorScheme.system.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.compactReasoning.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.compactReasoning.title"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17213,6 +17257,38 @@ msgid "settings.runtime.agents.wall.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.boss.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.enabled.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.identity"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.identity.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.identity.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.interval"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.interval.desc"
+msgstr ""
+
+#. Boss Mode
+msgid "settings.runtime.boss.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.compaction.autoCompact.desc"
 msgstr ""
 
@@ -18185,6 +18261,10 @@ msgid "tool.title.boss-cancel"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-project"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.boss-report"
 msgstr ""
 
@@ -18198,6 +18278,10 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.cancel-agenda"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.channel-push"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
@@ -19089,19 +19173,11 @@ msgid "ui.errorCard.detailsTitle"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "ui.errorCard.errorMessage"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "ui.errorCard.toolInput"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "ui.errorCard.unknownError"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "ui.errorCard.viewDetails"
 msgstr ""
 
 #. js-lingui-explicit-id

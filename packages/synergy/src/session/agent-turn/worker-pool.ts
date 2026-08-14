@@ -143,47 +143,61 @@ type HardMemoryReason = "rss_hard" | "heap_hard"
 interface Frame {
   sequence: number
   events: AgentTurnStreamPart[]
-  acknowledge(): void
+  bytes: number
 }
 
 class FrameStream {
-  private frame: Frame | undefined
+  private readonly sendAck: (ackSequence: number) => void
+  private frames: Frame[] = []
   private waiter: (() => void) | undefined
   private done = false
   private failure: unknown
+  private unackedBytes = 0
+  private ackPendingBytes = 0
+  private lastConsumedSequence = 0
+  private ackTimer: ReturnType<typeof setTimeout> | undefined
+
+  constructor(sendAck: (ackSequence: number) => void) {
+    this.sendAck = sendAck
+  }
 
   push(frame: Frame): boolean {
     if (this.done) return false
-    if (this.frame) {
-      this.fail(new Error("Agent worker sent a second event frame before the first was acknowledged"))
+    if (this.unackedBytes + frame.bytes > AgentTurnProtocol.ACK_WINDOW_BYTES + AgentTurnProtocol.EVENT_MAX_BYTES) {
+      this.fail(new Error("Agent worker exceeded the unacknowledged event byte window"))
       return false
     }
-    this.frame = frame
+    this.frames.push(frame)
+    this.unackedBytes += frame.bytes
     this.wake()
     return true
   }
 
   complete(): void {
     this.done = true
+    this.flushFinalAck()
     this.wake()
   }
 
   fail(error: unknown): void {
     this.failure = error
     this.done = true
+    this.flushFinalAck()
     this.wake()
   }
 
   async *iterate(): AsyncGenerator<AgentTurnStreamPart> {
     while (true) {
       if (this.failure) throw this.failure
-      const frame = this.frame
+      const frame = this.frames.shift()
       if (frame) {
         try {
           for (const event of frame.events) yield event
         } finally {
-          this.frame = undefined
-          frame.acknowledge()
+          this.unackedBytes -= frame.bytes
+          this.lastConsumedSequence = frame.sequence
+          this.ackPendingBytes += frame.bytes
+          this.maybeAck()
         }
         continue
       }
@@ -192,6 +206,36 @@ class FrameStream {
         this.waiter = resolve
       })
     }
+  }
+
+  private maybeAck(): void {
+    if (this.ackPendingBytes >= AgentTurnProtocol.ACK_WINDOW_BYTES) {
+      this.clearAckTimer()
+      this.sendAck(this.lastConsumedSequence)
+      this.ackPendingBytes = 0
+      return
+    }
+    if (this.ackTimer) return
+    this.ackTimer = setTimeout(() => {
+      this.ackTimer = undefined
+      if (this.ackPendingBytes <= 0) return
+      this.sendAck(this.lastConsumedSequence)
+      this.ackPendingBytes = 0
+    }, AgentTurnProtocol.ACK_FLUSH_MS)
+    this.ackTimer.unref?.()
+  }
+
+  private flushFinalAck(): void {
+    this.clearAckTimer()
+    if (this.ackPendingBytes <= 0) return
+    this.sendAck(this.lastConsumedSequence)
+    this.ackPendingBytes = 0
+  }
+
+  private clearAckTimer(): void {
+    if (!this.ackTimer) return
+    clearTimeout(this.ackTimer)
+    this.ackTimer = undefined
   }
 
   private wake(): void {
@@ -289,14 +333,19 @@ export class AgentWorkerPool {
     }
 
     return new Promise<AgentTurnStream>((resolve, reject) => {
-      const stream = new FrameStream()
+      let task!: PoolTask
+      const stream = new FrameStream((ackSequence) => {
+        const ownedWorker = task.worker
+        if (!ownedWorker || ownedWorker.task !== task || task.completed) return
+        this.send(ownedWorker, { type: "ack-window", requestId: task.requestId, ackSequence })
+      })
       let resolveUsage!: (usage: Awaited<LLM.StreamOutput["usage"]> | undefined) => void
       const usage = new Promise<Awaited<LLM.StreamOutput["usage"]> | undefined>((resolve) => {
         resolveUsage = resolve
       })
       const onAbort = () => this.cancel(requestId, signal.reason)
       signal.addEventListener("abort", onAbort, { once: true })
-      const task: PoolTask = {
+      task = {
         requestId,
         queuedAt: Date.now(),
         requestBytes,
@@ -611,12 +660,9 @@ export class AgentWorkerPool {
       const accepted = task.stream.push({
         sequence: message.sequence,
         events: AgentTurnProtocol.decodeEvents(message.events) as AgentTurnStreamPart[],
-        acknowledge: () => {
-          if (worker.task !== task || task.completed) return
-          this.send(worker, { type: "ack", requestId: task.requestId, sequence: message.sequence })
-        },
+        bytes: AgentTurnProtocol.byteLength(message),
       })
-      if (!accepted) this.terminateForProtocol(worker, "event frame sent before acknowledgement")
+      if (!accepted) this.terminateForProtocol(worker, "event frame exceeded the unacknowledged byte window")
       return
     }
     if (message.type === "error") {

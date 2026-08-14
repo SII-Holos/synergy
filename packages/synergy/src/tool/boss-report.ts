@@ -13,7 +13,9 @@ export const BossReportTool = Tool.define("boss_report", {
   description: DESCRIPTION,
   parameters,
   async execute(params, ctx) {
-    const result = await BossService.report(ctx.sessionID, params)
+    const result = await BossService.report(ctx.sessionID, params, {
+      anchorMessageID: typeof ctx.extra?.userMessageID === "string" ? ctx.extra.userMessageID : undefined,
+    })
     return {
       title: `Report sent (${params.status ?? "completed"})`,
       metadata: { messageID: result.messageID, status: params.status ?? "completed" },

@@ -396,6 +396,142 @@ describe("settings config patch", () => {
     ).toEqual({ coauthor_reminder: true })
   })
 
+  test("boss mode defaults off without materializing experimental config", () => {
+    const state = defaultSettingsState("enter")
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toBeUndefined()
+  })
+
+  test("boss mode fields materialize in experimental config when enabled", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossMode = "true"
+    state.runtime.bossIdentityText = "Ops lead"
+    state.runtime.bossBriefingIntervalDays = "7"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({
+      boss_mode: true,
+      boss_identity_text: "Ops lead",
+      boss_briefing_interval_days: 7,
+    })
+  })
+
+  test("boss mode can be disabled and clears identity and briefing interval", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossMode = "false"
+    state.runtime.bossIdentityText = ""
+    state.runtime.bossBriefingIntervalDays = ""
+
+    expect(
+      buildPatch({
+        cfg: {
+          experimental: {
+            boss_mode: true,
+            boss_identity_text: "Ops lead",
+            boss_briefing_interval_days: 7,
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({
+      boss_mode: false,
+      // Explicit null clears the stored value: the SDK JSON serializer drops
+      // undefined keys, so undefined would never reach the server merge.
+      boss_identity_text: null,
+      boss_briefing_interval_days: null,
+    })
+  })
+
+  test("boss identity and briefing interval can be re-added from explicit values", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossMode = "true"
+    state.runtime.bossIdentityText = "Ops lead"
+    state.runtime.bossBriefingIntervalDays = "7"
+
+    expect(
+      buildPatch({
+        cfg: {
+          experimental: {
+            boss_mode: false,
+            boss_identity_text: undefined,
+            boss_briefing_interval_days: undefined,
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({
+      boss_mode: true,
+      boss_identity_text: "Ops lead",
+      boss_briefing_interval_days: 7,
+    })
+  })
+
+  test("does not re-save unchanged boss mode experimental config", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossMode = "true"
+    state.runtime.bossIdentityText = "Ops lead"
+    state.runtime.bossBriefingIntervalDays = "7"
+
+    expect(
+      buildPatch({
+        cfg: {
+          experimental: {
+            boss_mode: true,
+            boss_identity_text: "Ops lead",
+            boss_briefing_interval_days: 7,
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("experimental")
+  })
+
+  test("omits invalid boss briefing interval values instead of emitting them", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossMode = "true"
+    state.runtime.bossBriefingIntervalDays = "0"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({ boss_mode: true })
+
+    state.runtime.bossBriefingIntervalDays = "-3"
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({ boss_mode: true })
+
+    state.runtime.bossBriefingIntervalDays = "abc"
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({ boss_mode: true })
+  })
+
   test("does not re-save unchanged sandbox config when enabled is already explicit", () => {
     const state = defaultSettingsState("enter")
     state.safety.sandboxEnabled = "true"
@@ -571,29 +707,29 @@ describe("settings config patch locale", () => {
 })
 
 describe("settings config patch activity display", () => {
-  test("does not emit activityDisplay when the form is at the full default", () => {
+  test("does not emit activityDisplay when the form is at the balanced default", () => {
     const state = defaultSettingsState("enter")
     expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} })).not.toHaveProperty("activityDisplay")
   })
 
   test("emits activityDisplay when the form diverges from an absent server value", () => {
     const state = defaultSettingsState("enter")
-    state.general.activityDisplay = "balanced"
-    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).activityDisplay).toBe("balanced")
+    state.general.activityDisplay = "full"
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).activityDisplay).toBe("full")
   })
 
   test("emits activityDisplay when the form diverges from an explicit server value", () => {
     const state = defaultSettingsState("enter")
     state.general.activityDisplay = "minimal"
-    expect(buildPatch({ cfg: { activityDisplay: "full" } as Config, state, originalMcps: {} }).activityDisplay).toBe(
-      "minimal",
-    )
+    expect(
+      buildPatch({ cfg: { activityDisplay: "balanced" } as Config, state, originalMcps: {} }).activityDisplay,
+    ).toBe("minimal")
   })
 
   test("does not emit activityDisplay when the form matches the server value", () => {
     const state = defaultSettingsState("enter")
-    state.general.activityDisplay = "balanced"
-    expect(buildPatch({ cfg: { activityDisplay: "balanced" } as Config, state, originalMcps: {} })).not.toHaveProperty(
+    state.general.activityDisplay = "full"
+    expect(buildPatch({ cfg: { activityDisplay: "full" } as Config, state, originalMcps: {} })).not.toHaveProperty(
       "activityDisplay",
     )
   })

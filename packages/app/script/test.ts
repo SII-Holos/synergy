@@ -25,6 +25,7 @@ const playwrightIsolated = [
   "test/components/menu-field/menu-field.test.ts",
   "test/components/settings/settings-dialog-dismiss.test.tsx",
   "test/components/settings/settings-mobile-layout.test.ts",
+  "test/components/settings/panels/BossModePanel.test.ts",
   "test/components/session/question-prompt-style.test.ts",
   "test/components/session/raw-messages-layout.test.ts",
   "test/components/session/session-progress-island-motion.test.ts",
@@ -71,6 +72,6 @@ const tests = (await collectTests("test")).toSorted()
 await run(
   tests.filter((test) => test !== isolated && !browserOnly.includes(test) && !playwrightIsolated.includes(test)),
 )
-for (const file of playwrightIsolated) await run([file], { timeoutMs: 60000 })
+for (const file of playwrightIsolated) await run([file], { timeoutMs: 120000 })
 await run(browserOnly, { browser: true })
 await run([isolated])

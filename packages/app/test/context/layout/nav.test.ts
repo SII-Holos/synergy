@@ -144,6 +144,39 @@ describe("rootNavRequest", () => {
   })
 })
 
+test("includes child entries for the Background section only when boss mode is enabled", () => {
+  expect(rootNavRequest("background", 100, undefined, { includeBackgroundChildren: true })).toEqual({
+    source: "scope",
+    query: {
+      scopeID: "home",
+      category: "background",
+      parentOnly: "false",
+      limit: 100,
+    },
+  })
+})
+
+test("keeps background parent-only when boss mode is disabled (pre-boss behavior)", () => {
+  expect(rootNavRequest("background", 100)).toEqual({
+    source: "scope",
+    query: {
+      scopeID: "home",
+      category: "background",
+      parentOnly: "true",
+      limit: 100,
+    },
+  })
+  expect(rootNavRequest("background", 100, undefined, { includeBackgroundChildren: false })).toEqual({
+    source: "scope",
+    query: {
+      scopeID: "home",
+      category: "background",
+      parentOnly: "true",
+      limit: 100,
+    },
+  })
+})
+
 describe("loadNavListToDepth", () => {
   test("refreshes loaded depth through requests bounded by the API page limit", async () => {
     const source = Array.from({ length: 350 }, (_, index) =>

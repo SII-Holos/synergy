@@ -349,6 +349,56 @@ export namespace RuntimeReload {
             }
           }
         }
+        // Runtime Boss Mode: react to experimental toggle / identity text / briefing interval changes.
+        if (resolvedScope === "global" && changedFields.includes("experimental")) {
+          const oldExp = oldConfig.experimental ?? {}
+          const newExp = result.config.experimental ?? {}
+          if (oldExp.boss_mode !== newExp.boss_mode) {
+            try {
+              const { BossRuntime } = await import("../session/boss-runtime")
+              await BossRuntime.sync(newExp.boss_mode === true)
+            } catch (err) {
+              ctx.warnings.push(`Failed to sync runtime boss mode: ${err instanceof Error ? err.message : String(err)}`)
+            }
+          }
+          if (newExp.boss_mode === true && oldExp.boss_identity_text !== newExp.boss_identity_text) {
+            try {
+              const { BossRuntime } = await import("../session/boss-runtime")
+              await BossRuntime.refreshIdentity({ versioned: true })
+            } catch (err) {
+              ctx.warnings.push(
+                `Failed to refresh runtime boss identity: ${err instanceof Error ? err.message : String(err)}`,
+              )
+            }
+          }
+          if (newExp.boss_mode === true && oldExp.boss_briefing_interval_days !== newExp.boss_briefing_interval_days) {
+            try {
+              const { BossRuntime } = await import("../session/boss-runtime")
+              await BossRuntime.rescheduleBriefing()
+            } catch (err) {
+              ctx.warnings.push(
+                `Failed to reschedule runtime boss briefing: ${err instanceof Error ? err.message : String(err)}`,
+              )
+            }
+          }
+        }
+        // Feishu account changes can add or remove boss-routed accounts;
+        // re-provision from the new config so the routing map never keeps
+        // stale accounts (ensure() rebuilds the map idempotently).
+        if (resolvedScope === "global" && changedFields.includes("channel")) {
+          const oldAccounts = oldConfig.channel?.feishu?.accounts
+          const newAccounts = result.config.channel?.feishu?.accounts
+          if (JSON.stringify(oldAccounts) !== JSON.stringify(newAccounts)) {
+            try {
+              const { BossRuntime } = await import("../session/boss-runtime")
+              await BossRuntime.sync(result.config.experimental?.boss_mode === true)
+            } catch (err) {
+              ctx.warnings.push(
+                `Failed to sync runtime boss mode after channel change: ${err instanceof Error ? err.message : String(err)}`,
+              )
+            }
+          }
+        }
         if (changedFields.includes("timeout")) {
           const { TimeoutConfig } = await import("@/util/timeout-config")
           TimeoutConfig.invalidate()

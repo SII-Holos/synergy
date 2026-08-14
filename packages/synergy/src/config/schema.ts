@@ -1396,7 +1396,7 @@ export const Info = z
       .enum(["full", "balanced", "minimal"])
       .optional()
       .describe(
-        "How much activity detail to show in the interface: full = everything and the default, balanced = semantic activity grouping, minimal = only essential activity (default: full)",
+        "How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)",
       ),
     keybinds: Keybinds.optional().describe("Custom keybind configurations"),
     logLevel: Log.Level.optional().describe("Log level"),
@@ -1684,6 +1684,7 @@ export const Info = z
     pluginRuntimePolicy: PluginRuntimePolicy.optional().describe("Plugin runtime isolation policy configuration"),
     pluginMarketplace: PluginMarketplace.optional().describe("Public plugin marketplace registry configuration"),
     snapshot: z.boolean().optional(),
+    compactReasoning: z.boolean().optional().describe("Show live reasoning in a compact single-line viewport"),
     disabled_providers: z
       .array(z.string())
       .optional()
@@ -1958,6 +1959,24 @@ export const Info = z
           .positive()
           .optional()
           .describe("Timeout in milliseconds for model context protocol (MCP) requests"),
+        boss_mode: z
+          .boolean()
+          .optional()
+          .describe(
+            "Enable Runtime Boss Mode: auto-provision a home-scope runtime boss session and route all Feishu messages to it",
+          ),
+        boss_identity_text: z
+          .string()
+          .nullable()
+          .optional()
+          .describe("Optional colleague identity description injected into the runtime boss session"),
+        boss_briefing_interval_days: z
+          .number()
+          .int()
+          .positive()
+          .nullable()
+          .optional()
+          .describe("Re-inject the versioned world-overview briefing every N days (default: disabled)"),
       })
       .optional(),
     pluginConfig: z

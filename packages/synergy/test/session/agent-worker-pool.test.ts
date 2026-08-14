@@ -243,7 +243,7 @@ describe("AgentWorkerPool", () => {
     await pool.stop()
   })
 
-  test("acknowledges a frame only after its final event has been consumed", async () => {
+  test("acks a consumed frame only after its final event and flushes the partial window on the flush interval", async () => {
     const fake = fakeWorkers()
     const pool = new AgentWorkerPool(options, fake.spawn)
     const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
@@ -263,16 +263,16 @@ describe("AgentWorkerPool", () => {
 
     const iterator = stream.fullStream[Symbol.asyncIterator]()
     expect((await iterator.next()).value).toMatchObject({ text: "a" })
-    expect(fake.workers[0].sent.some((message) => message.type === "ack")).toBe(false)
+    expect(fake.workers[0].sent.some((message) => message.type === "ack-window")).toBe(false)
     expect((await iterator.next()).value).toMatchObject({ text: "b" })
-    expect(fake.workers[0].sent.some((message) => message.type === "ack")).toBe(false)
+    expect(fake.workers[0].sent.some((message) => message.type === "ack-window")).toBe(false)
 
     const done = iterator.next()
-    await Bun.sleep(0)
+    await Bun.sleep(AgentTurnProtocol.ACK_FLUSH_MS + 100)
     expect(fake.workers[0].sent).toContainEqual({
-      type: "ack",
+      type: "ack-window",
       requestId: run.requestId,
-      sequence: 1,
+      ackSequence: 1,
     })
     fake.workers[0].receive({
       type: "complete",
@@ -282,6 +282,107 @@ describe("AgentWorkerPool", () => {
       memory: workerMemory(),
     })
     expect((await done).done).toBe(true)
+    await pool.stop()
+  })
+
+  test("sends an ack-window immediately once consumed bytes reach the window", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+    const text = "x".repeat(600_000)
+    fake.workers[0].receive({
+      type: "events",
+      requestId: run.requestId,
+      sequence: 1,
+      events: [{ type: "text-delta", id: "text", text }],
+    })
+
+    const iterator = stream.fullStream[Symbol.asyncIterator]()
+    expect((await iterator.next()).value).toMatchObject({ text })
+    const done = iterator.next()
+    expect(fake.workers[0].sent).toContainEqual({
+      type: "ack-window",
+      requestId: run.requestId,
+      ackSequence: 1,
+    })
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: run.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
+    })
+    expect((await done).done).toBe(true)
+    await pool.stop()
+  })
+
+  test("sends a terminal ack-window when a turn completes with consumed-but-unacked bytes", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+    fake.workers[0].receive({
+      type: "events",
+      requestId: run.requestId,
+      sequence: 1,
+      events: [{ type: "text-delta", id: "text", text: "hello" }],
+    })
+    const iterator = stream.fullStream[Symbol.asyncIterator]()
+    expect((await iterator.next()).value).toMatchObject({ text: "hello" })
+    const done = iterator.next()
+    expect(fake.workers[0].sent.some((message) => message.type === "ack-window")).toBe(false)
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: run.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
+    })
+    expect(fake.workers[0].sent).toContainEqual({
+      type: "ack-window",
+      requestId: run.requestId,
+      ackSequence: 1,
+    })
+    expect((await done).done).toBe(true)
+    await pool.stop()
+  })
+
+  test("sends a terminal ack-window when a turn fails with consumed-but-unacked bytes", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+    fake.workers[0].receive({
+      type: "events",
+      requestId: run.requestId,
+      sequence: 1,
+      events: [{ type: "text-delta", id: "text", text: "hello" }],
+    })
+    const iterator = stream.fullStream[Symbol.asyncIterator]()
+    expect((await iterator.next()).value).toMatchObject({ text: "hello" })
+    const done = iterator.next()
+    expect(fake.workers[0].sent.some((message) => message.type === "ack-window")).toBe(false)
+    fake.workers[0].receive({
+      type: "error",
+      requestId: run.requestId,
+      error: { name: "Error", message: "boom" },
+    })
+    expect(fake.workers[0].sent).toContainEqual({
+      type: "ack-window",
+      requestId: run.requestId,
+      ackSequence: 1,
+    })
+    await expect(done).rejects.toThrow("boom")
     await pool.stop()
   })
 
@@ -651,7 +752,7 @@ describe("AgentWorkerPool", () => {
     }
   })
 
-  test("contains an event-frame backpressure protocol violation to one worker", async () => {
+  test("contains an event-frame byte-window protocol violation to one worker", async () => {
     const fake = fakeWorkers()
     const pool = new AgentWorkerPool(options, fake.spawn)
     const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
@@ -663,16 +764,16 @@ describe("AgentWorkerPool", () => {
       type: "events",
       requestId: run.requestId,
       sequence: 1,
-      events: [{ type: "text-delta", id: "text", text: "first" }],
+      events: [{ type: "text-delta", id: "text", text: "x".repeat(1_950_000) }],
     })
     fake.workers[0].receive({
       type: "events",
       requestId: run.requestId,
       sequence: 2,
-      events: [{ type: "text-delta", id: "text", text: "second" }],
+      events: [{ type: "text-delta", id: "text", text: "x".repeat(700_000) }],
     })
 
-    await expect(stream.fullStream[Symbol.asyncIterator]().next()).rejects.toThrow()
+    await expect(stream.fullStream[Symbol.asyncIterator]().next()).rejects.toThrow("Agent worker exited")
     expect(fake.workers).toHaveLength(1)
     await pool.stop()
   })

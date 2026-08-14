@@ -94,6 +94,7 @@ import { ArchivedSessionsPanel } from "./panels/ArchivedSessionsPanel"
 import { WorktreesPanel } from "./panels/WorktreesPanel"
 import { ControlProfilePanel, PermissionsPanel, SandboxPanel } from "./panels/SafetyPanels"
 import { CompactionPanel, QuestionsPanel, TimeoutsPanel, ObservabilityPanel } from "./panels/RuntimePanels"
+import { BossModePanel } from "./panels/BossModePanel"
 import { CodeChecksPanel } from "./panels/CodeChecksPanel"
 import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
 import { filterSettingsSections, SETTINGS_DEVELOPER_MODE_STORAGE_KEY } from "./settings-visibility"
@@ -896,6 +897,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
         shellEnvironment={desktopServerStatus()?.shellEnvironment}
         onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
       />
+    ),
+    boss: () => (
+      <BossModePanel runtime={settings.runtime} onRuntimeChange={(key, value) => setSettings("runtime", key, value)} />
     ),
     import: () => (
       <ImportPanel

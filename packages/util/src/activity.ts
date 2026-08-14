@@ -178,6 +178,8 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   boss_report: "session",
   boss_status: "session",
   boss_cancel: "session-control",
+  boss_project: "session",
+  channel_push: "communication",
   agenda_schedule: "schedule",
   agenda_watch: "schedule",
   agenda_list: "schedule",
@@ -371,7 +373,7 @@ export function isActivityGroupableTool(tool: string, metadata: Record<string, u
 }
 
 export function resolveActivityDisplay(value: unknown): ActivityDisplayMode {
-  return value === "full" || value === "minimal" || value === "balanced" ? value : "full"
+  return value === "full" || value === "minimal" || value === "balanced" ? value : "balanced"
 }
 
 export function classifySemanticCategory(toolName: string, input: Record<string, unknown> = {}): SemanticCategory {

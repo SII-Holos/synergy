@@ -40,9 +40,10 @@ export const MODEL_DEFAULTS: Record<ModelKey, string> = {
 export const UI_DEFAULTS = {
   locale: "system" as LocalePreference,
   theme: "" as string,
-  activityDisplay: "full" as ActivityDisplay,
+  activityDisplay: "balanced" as ActivityDisplay,
   username: "" as string,
   snapshot: true,
+  compactReasoning: false,
   permission: "ask" as string, // resolved from backend { "*": "ask" } object
   sandboxEnabled: "true" as string,
   sandboxFallbackPolicy: "warn" as string,
@@ -73,6 +74,9 @@ export const UI_DEFAULTS = {
   watcherIgnore: "" as string,
   logLevel: "" as string,
   coauthorReminder: "true" as string,
+  bossMode: "false" as "true" | "false",
+  bossIdentityText: "" as string,
+  bossBriefingIntervalDays: "" as string,
   lspWriteDiagnostics: "true" as string,
   lspDiagnosticsSeverity: "error" as string,
   lspDiagnosticsScope: "project" as string,
@@ -275,6 +279,7 @@ export function groupByProvider(list: ProviderModel[]): ProviderGroup[] {
 export type GeneralStore = {
   colorScheme: ColorScheme
   snapshot: boolean
+  compactReasoning: boolean
   username: string
   theme: string
   locale: LocalePreference
@@ -359,6 +364,9 @@ export type RuntimeStore = {
   watcherIgnore: string
   logLevel: string
   coauthorReminder: string
+  bossMode: "true" | "false"
+  bossIdentityText: string
+  bossBriefingIntervalDays: string
   lspWriteDiagnostics: string
   lspDiagnosticsSeverity: string
   lspDiagnosticsScope: string
@@ -384,6 +392,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
     general: {
       colorScheme,
       snapshot: UI_DEFAULTS.snapshot,
+      compactReasoning: UI_DEFAULTS.compactReasoning,
       username: UI_DEFAULTS.username,
       theme: UI_DEFAULTS.theme,
       locale: UI_DEFAULTS.locale,
@@ -452,6 +461,9 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
       watcherIgnore: UI_DEFAULTS.watcherIgnore,
       logLevel: UI_DEFAULTS.logLevel,
       coauthorReminder: UI_DEFAULTS.coauthorReminder,
+      bossMode: UI_DEFAULTS.bossMode,
+      bossIdentityText: UI_DEFAULTS.bossIdentityText,
+      bossBriefingIntervalDays: UI_DEFAULTS.bossBriefingIntervalDays,
       lspWriteDiagnostics: UI_DEFAULTS.lspWriteDiagnostics,
       lspDiagnosticsSeverity: UI_DEFAULTS.lspDiagnosticsSeverity,
       lspDiagnosticsScope: UI_DEFAULTS.lspDiagnosticsScope,

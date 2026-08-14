@@ -100,6 +100,11 @@ const copy = {
     id: "settings.general.snapshots.description",
     message: "Keep restore points when Synergy edits files",
   },
+  compactReasoningTitle: { id: "settings.general.compactReasoning.title", message: "Compact reasoning" },
+  compactReasoningDescription: {
+    id: "settings.general.compactReasoning.description",
+    message: "Show live reasoning in a single line; completed turns keep an expandable reasoning row",
+  },
   notificationsTitle: { id: "settings.general.notifications.title", message: "Notifications" },
   notificationsDescription: {
     id: "settings.general.notifications.description",
@@ -304,6 +309,16 @@ export function GeneralPanel(props: {
           description={_(copy.snapshotsDescription)}
           trailing={
             <Switch checked={props.general.snapshot} onChange={(value) => props.onGeneralChange("snapshot", value)} />
+          }
+        />
+        <SettingRow
+          title={_(copy.compactReasoningTitle)}
+          description={_(copy.compactReasoningDescription)}
+          trailing={
+            <Switch
+              checked={props.general.compactReasoning}
+              onChange={(value) => props.onGeneralChange("compactReasoning", value)}
+            />
           }
         />
         <ProductUpdates mode={props.desktopUpdateMode} onModeChange={props.onDesktopUpdateModeChange} />

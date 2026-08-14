@@ -61,7 +61,15 @@ for (const name of ["pathway_read", "pathway_write", "lattice_submit"] as const)
   })
 }
 
-for (const name of ["boss_spawn", "boss_assign", "boss_report", "boss_status", "boss_cancel"] as const) {
+for (const name of [
+  "boss_spawn",
+  "boss_assign",
+  "boss_report",
+  "boss_status",
+  "boss_cancel",
+  "boss_project",
+  "channel_push",
+] as const) {
   ToolRegistry.register({
     name,
     render(props) {
@@ -71,7 +79,16 @@ for (const name of ["boss_spawn", "boss_assign", "boss_report", "boss_status", "
           trigger={{
             icon: getSemanticIcon("prompt.boss"),
             title: TOOL_TITLE_DESC[name],
-            subtitle: props.input.role || props.input.sessionID || props.input.taskID || props.input.status || "",
+            subtitle:
+              props.input.role ||
+              props.input.sessionID ||
+              props.input.taskID ||
+              props.input.status ||
+              props.input.directory ||
+              props.input.title ||
+              props.input.text ||
+              props.input.chatId ||
+              "",
             tags:
               name === "boss_status" && props.metadata?.workerCount !== undefined
                 ? [{ label: String(props.metadata.workerCount) }]

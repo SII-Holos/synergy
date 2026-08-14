@@ -11,6 +11,10 @@
 }
 
 [data-component="activity-trace"] {
+  [data-component="collapsible"] {
+    overflow: visible;
+  }
+
   [data-slot="activity-step-trigger"] {
     position: relative;
     display: flex;
@@ -40,7 +44,7 @@
 
   [data-component="tool-result-body"] {
     min-width: 0;
-    margin: 6px 0 0 26px;
+    margin-top: 6px;
   }
 
   [data-component="tool-result-body"] > :first-child {
@@ -57,7 +61,22 @@
   }
 
   [data-slot="activity-step"] {
+    position: relative;
     min-width: 0;
+  }
+
+  .activity-step-audit-trigger {
+    position: absolute;
+    left: -28px;
+    top: 4px;
+    width: 24px;
+    height: 24px;
+    cursor: help;
+    border-radius: var(--radius-full);
+  }
+
+  .activity-step-audit-trigger:hover {
+    background: var(--surface-raised-base-hover);
   }
 
   [data-slot="activity-step-icon"] {
@@ -65,6 +84,18 @@
     flex: 0 0 18px;
     place-items: center;
     color: var(--icon-weak-base);
+  }
+
+  [data-slot="activity-step-audit-icon"] {
+    position: static;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    cursor: help;
+    border-radius: var(--radius-full);
+    animation: none;
   }
 
   [data-slot="activity-step-copy"] {

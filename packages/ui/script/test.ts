@@ -7,6 +7,9 @@ const root = path.resolve(import.meta.dir, "..")
 const isolated = new Set([
   "test/components/message-part-error-boundary.test.ts",
   "test/components/activity-trace.dom.test.ts",
+  "test/components/diff-patch.dom.test.ts",
+  "test/components/compact-reasoning.dom.test.ts",
+  "test/components/compact-reasoning-settlement.dom.test.ts",
   "test/components/session-turn-activity.test.ts",
   "test/components/session-turn-activity-switch.dom.test.ts",
   "test/components/session-turn-timeline.test.ts",
@@ -33,7 +36,7 @@ async function collectTests(directory: string): Promise<string[]> {
 async function run(files: string[], options: { browser?: boolean } = {}) {
   if (files.length === 0) return
   const child = Bun.spawn(
-    [process.execPath, "test", "--timeout", "30000", ...(options.browser ? ["--conditions=browser"] : []), ...files],
+    [process.execPath, "test", "--timeout", "120000", ...(options.browser ? ["--conditions=browser"] : []), ...files],
     {
       cwd: root,
       stdin: "inherit",

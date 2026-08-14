@@ -165,6 +165,43 @@ beforeAll(async () => {
         ],
         topic: { state: "stable", text: "Read the Activity Trace source" },
       }
+      const errorGroup = {
+        kind: "activity-group",
+        key: "group-error",
+        message,
+        family: "execute",
+        scopeKey: "build.sh",
+        state: "error",
+        steps: [
+          {
+            part: {
+              id: "p-error",
+              tool: "bash",
+              state: {
+                status: "error",
+                input: { command: "bash build.sh" },
+                error: "bash: build.sh: command not found\\nexit code 127",
+                metadata: {
+                  approval: {
+                    status: "auto_allowed",
+                    mode: "autonomous",
+                    risk: "medium",
+                    audit: { visible: true },
+                  },
+                },
+                time: { start: 1, end: 2 },
+              },
+            },
+            family: "execute",
+            scopeKey: "build.sh",
+            icon: "terminal",
+            title: "Run build.sh",
+            subtitle: "build.sh",
+            state: "error",
+          },
+        ],
+        receipt: false,
+      }
       function CodeFixture(props: { file: { contents: string } }) {
         return <pre data-component="code-fixture">{props.file.contents}</pre>
       }
@@ -247,6 +284,9 @@ beforeAll(async () => {
               </div>
               <div id="view-file-host">
                 <ActivityTrace group={viewFileGroup} serverUrl="http://localhost" />
+              </div>
+              <div id="error-host">
+                <ActivityTrace group={errorGroup} serverUrl="http://localhost" />
               </div>
               <ActivityReceipt item={dagReceipt} serverUrl="http://localhost" />
               <div id="reasoning-summary-host">
@@ -542,7 +582,7 @@ describe("ActivityTrace DOM behavior", () => {
 
   test("each child activity is a keyboard-accessible result toggle", async () => {
     const triggers = stepTriggers()
-    expect(triggers).toHaveLength(5)
+    expect(triggers).toHaveLength(6)
     expect(triggers[0]?.tagName).toBe("BUTTON")
     expect(triggers[0]?.getAttribute("type")).toBe("button")
     expect(triggers[0]?.getAttribute("aria-expanded")).toBe("false")
@@ -628,6 +668,28 @@ describe("ActivityTrace DOM behavior", () => {
     expect(viewHost.querySelector('[data-component="code-fixture"]')?.textContent).toBe("const parity = true")
     expect(viewHost.querySelector('[data-component="tool-output-text"]')).toBeNull()
     expect(viewHost.querySelector('[data-component="collapsible"][data-variant="tool"]')).toBeNull()
+  })
+
+  test("keeps a failed step collapsed by default and reveals the full error inline after one click", async () => {
+    const host = document.querySelector("#error-host") as HTMLElement
+    const trigger = host.querySelector('[data-slot="activity-step-trigger"]') as HTMLButtonElement
+    expect(trigger.getAttribute("aria-expanded")).toBe("false")
+    expect(host.querySelector('[data-component="error-card"]')).toBeNull()
+
+    trigger.click()
+    await wait(0)
+
+    expect(trigger.getAttribute("aria-expanded")).toBe("true")
+    expect(host.querySelector('[data-component="error-card"]')).not.toBeNull()
+    expect(host.textContent).toContain("command not found")
+    expect(host.textContent).toContain("exit code 127")
+  })
+
+  test("renders the approval audit icon for an auto-allowed step", () => {
+    const host = document.querySelector("#error-host") as HTMLElement
+    const audit = host.querySelector('[data-component="tool-audit-icon"]')
+    expect(audit).not.toBeNull()
+    expect(audit?.querySelector('[data-slot="icon-svg"]')).not.toBeNull()
   })
 })
 

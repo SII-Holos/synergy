@@ -171,14 +171,21 @@ export function rootNavRequest(
   category: RootNavSectionKey,
   limit: number,
   cursor?: { lastActivityAt: number; id: string },
+  options?: { includeBackgroundChildren?: boolean },
 ) {
   if (category === "channel") return { source: "global" as const, query: channelNavQuery(limit, cursor) }
+  // Background entries (boss workers, Cortex tasks, agenda sessions) carry a
+  // parentID; include them only while Runtime Boss Mode is enabled so the
+  // sidebar shows boss workers — other sections stay parent-only, and
+  // non-boss deployments keep the pre-boss background filtering.
+  const parentOnly: "true" | "false" =
+    category === "background" && options?.includeBackgroundChildren ? "false" : "true"
   return {
     source: "scope" as const,
     query: {
       scopeID: "home",
       category,
-      parentOnly: "true" as const,
+      parentOnly,
       limit,
       ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
     },

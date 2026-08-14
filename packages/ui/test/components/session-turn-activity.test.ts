@@ -4,6 +4,7 @@ import type {
   AttachmentPart,
   Part as PartType,
   PermissionRequest,
+  ReasoningPart,
   ToolPart,
 } from "@ericsanchezok/synergy-sdk/client"
 import type { ActivityTimelineItem } from "../../src/components/session-turn-activity"
@@ -32,6 +33,7 @@ mock.module("solid-js", () => ({
     let value = initial
     return [() => value, (next: unknown) => (value = typeof next === "function" ? next(value) : next)]
   },
+  createUniqueId: () => "mock-unique-id",
   ErrorBoundary: Empty,
   For: Empty,
   Match: Empty,
@@ -308,12 +310,45 @@ describe("balanced reasoning projection", () => {
       message: second,
     })
   })
+  test("replaces the Thinking status row with a live reasoning line while compact streaming", () => {
+    const first = assistant("assistant-a")
+    const part = reasoning("reason-a", first.id) as ReasoningPart
+    const projected = projectBalancedReasoningItems(
+      project({ message: first, parts: [part, text("answer-a", first.id)], working: true }),
+      "root-user",
+      true,
+      { anchorMessage: first, frontier: { message: first, partID: part.id }, compactReasoningPart: part },
+    )
+
+    expect(projected.some((item) => item.kind === "activity-reasoning-summary")).toBe(false)
+    const live = projected.find((item) => item.kind === "passthrough" && item.item.kind === "reasoning")
+    expect(live).toBeTruthy()
+    expect((live as { item: { part: { id: string } } }).item.part.id).toBe("reason-a")
+  })
+  test("keeps one live line when one message emits reasoning around tool calls", () => {
+    const message = assistant("assistant-a")
+    const latestPart = reasoning("reason-b", message.id) as ReasoningPart
+    const projected = projectBalancedReasoningItems(
+      project({
+        message,
+        parts: [reasoning("reason-a", message.id), text("answer-a", message.id), latestPart],
+        working: true,
+      }),
+      "root-user",
+      true,
+      { anchorMessage: message, frontier: { message, partID: latestPart.id }, compactReasoningPart: latestPart },
+    )
+
+    const live = projected.filter((item) => item.kind === "passthrough" && item.item.kind === "reasoning")
+    expect(live).toHaveLength(1)
+    expect((live[0] as { item: { part: { id: string } } }).item.part.id).toBe("reason-b")
+  })
 })
 
 describe("activity display preference", () => {
-  test("falls back missing and unknown values to full", () => {
-    expect(resolveActivityDisplay(undefined)).toBe("full")
-    expect(resolveActivityDisplay("unknown")).toBe("full")
+  test("falls back missing and unknown values to balanced", () => {
+    expect(resolveActivityDisplay(undefined)).toBe("balanced")
+    expect(resolveActivityDisplay("unknown")).toBe("balanced")
     expect(resolveActivityDisplay("full")).toBe("full")
     expect(resolveActivityDisplay("balanced")).toBe("balanced")
     expect(resolveActivityDisplay("minimal")).toBe("minimal")

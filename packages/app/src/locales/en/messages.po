@@ -9281,6 +9281,14 @@ msgstr "Total"
 msgid "diff.file-diff-preview"
 msgstr "File diff preview"
 
+#. ── Diff preview ────────────────────────────────────────────────────
+msgid "diff.preview-omitted"
+msgstr "Diff preview omitted in this view."
+
+#. ── Diff preview ────────────────────────────────────────────────────
+msgid "diff.preview-truncated"
+msgstr "Preview truncated"
+
 #. js-lingui-explicit-id
 msgid "list.for-label"
 msgstr "for"
@@ -11557,6 +11565,10 @@ msgid "session-status.working-with-notes"
 msgstr "Working with notes"
 
 #. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.compact-reasoning-thinking"
+msgstr "Thinking"
+
+#. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.completed"
 msgstr "Completed"
 
@@ -13793,6 +13805,30 @@ msgid "settings.catalog.archivedSessions.searchTerms"
 msgstr "archive | archived | session | delete | history | project"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.boss.description"
+msgstr "Turn this Synergy instance into a colleague: auto-create a runtime boss session and route all Feishu messages to it."
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.label"
+msgstr "Boss Mode"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.row.bossMode"
+msgstr "Boss Mode"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.row.identity"
+msgstr "Colleague Identity"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.row.interval"
+msgstr "World Overview Briefing Interval (days)"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.boss.searchTerms"
+msgstr "boss | colleague | feishu | routing | runtime"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.channels.description"
 msgstr "External messaging channel accounts."
 
@@ -14859,6 +14895,14 @@ msgstr "Auto"
 #. js-lingui-explicit-id
 msgid "settings.general.colorScheme.system.description"
 msgstr "Follow this device"
+
+#. js-lingui-explicit-id
+msgid "settings.general.compactReasoning.description"
+msgstr "Show live reasoning in a single line; completed turns keep an expandable reasoning row"
+
+#. js-lingui-explicit-id
+msgid "settings.general.compactReasoning.title"
+msgstr "Compact reasoning"
 
 #. js-lingui-explicit-id
 msgid "settings.general.font.applied"
@@ -17213,6 +17257,38 @@ msgid "settings.runtime.agents.wall.title"
 msgstr "Wall Timeout"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.boss.desc"
+msgstr "Turn this Synergy instance into a colleague: auto-create a runtime boss session and route all Feishu messages to it."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.enabled.desc"
+msgstr "Route all Feishu messages to the runtime boss session"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.identity"
+msgstr "Colleague Identity"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.identity.desc"
+msgstr "Optional colleague identity description injected into the runtime boss session."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.identity.placeholder"
+msgstr "e.g. Product-minded operator who triages Feishu requests"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.interval"
+msgstr "World Overview Briefing Interval (days)"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.interval.desc"
+msgstr "Re-inject the versioned world-overview briefing every N days; leave empty to disable."
+
+#. Boss Mode
+msgid "settings.runtime.boss.title"
+msgstr "Boss Mode"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.compaction.autoCompact.desc"
 msgstr "Compact sessions when context is full"
 
@@ -18185,6 +18261,10 @@ msgid "tool.title.boss-cancel"
 msgstr "Cancel task"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.boss-project"
+msgstr "Create project"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.boss-report"
 msgstr "Report result"
 
@@ -18199,6 +18279,10 @@ msgstr "View worker tree"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.cancel-agenda"
 msgstr "Cancel Agenda"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.channel-push"
+msgstr "Push to channel"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.claim"
@@ -19089,20 +19173,12 @@ msgid "ui.errorCard.detailsTitle"
 msgstr "Error details"
 
 #. js-lingui-explicit-id
-msgid "ui.errorCard.errorMessage"
-msgstr "Error message"
-
-#. js-lingui-explicit-id
 msgid "ui.errorCard.toolInput"
 msgstr "Tool input"
 
 #. js-lingui-explicit-id
 msgid "ui.errorCard.unknownError"
 msgstr "Unknown error"
-
-#. js-lingui-explicit-id
-msgid "ui.errorCard.viewDetails"
-msgstr "View details"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.close"

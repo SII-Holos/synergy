@@ -30,6 +30,7 @@ mock.module("solid-js", () => ({
     let value = initial
     return [() => value, (next: unknown) => (value = typeof next === "function" ? next(value) : next)]
   },
+  createUniqueId: () => "mock-unique-id",
   ErrorBoundary: Empty,
   For: Empty,
   Match: Empty,
@@ -98,6 +99,9 @@ const {
   collectMessagesForTurnDisplay,
   collectMessagesForTurnLifecycle,
   collectSessionTurnTimelineItems,
+  compactReasoningTimelineItems,
+  compactReasoningText,
+  injectPersistedReasoningItems,
   collectUserCompactionTimelineItems,
   isGuidedContextUserMessage,
   shouldShowTurnDiffs,
@@ -932,6 +936,52 @@ describe("session turn timeline", () => {
     }
   })
 
+  test("compact reasoning keeps only the latest reasoning display item without changing source parts", () => {
+    const message = assistant("assistant-a")
+    const first = {
+      id: "reasoning-a",
+      sessionID: "session",
+      messageID: message.id,
+      type: "reasoning",
+      text: "First reasoning block.\nStill original.",
+    } as PartType
+    const latest = {
+      id: "reasoning-b",
+      sessionID: "session",
+      messageID: message.id,
+      type: "reasoning",
+      text: "Latest reasoning block.\nStill original.",
+    } as PartType
+    const text = {
+      id: "text-a",
+      sessionID: "session",
+      messageID: message.id,
+      type: "text",
+      text: "Visible answer",
+    } as PartType
+    const items = collectSessionTurnTimelineItems([message], { [message.id]: [first, latest, text] }, true)
+
+    const compact = compactReasoningTimelineItems(items)
+
+    expect(compact.map((item) => item.kind)).toEqual(["reasoning", "part"])
+    expect(compact[0]).toMatchObject({ kind: "reasoning", part: { id: "reasoning-b" } })
+    expect(first).toMatchObject({ text: "First reasoning block.\nStill original." })
+    expect(latest).toMatchObject({ text: "Latest reasoning block.\nStill original." })
+    expect(items.map((item) => item.kind)).toEqual(["reasoning", "reasoning", "part"])
+  })
+
+  test("compact reasoning projects a stable plain-text tail line from streaming markdown", () => {
+    const source = "Planning\n\n- Format: Chinese response, structured with short headers\n\n"
+
+    expect(compactReasoningText(source)).toBe("Format: Chinese response, structured with short headers")
+    expect(source).toBe("Planning\n\n- Format: Chinese response, structured with short headers\n\n")
+    expect(compactReasoningText("## Next step")).toBe("Next step")
+    expect(compactReasoningText("> checking evidence")).toBe("checking evidence")
+    expect(compactReasoningText("   \n\t")).toBe("")
+    expect(compactReasoningText("Evaluating result\n```")).toBe("Evaluating result")
+    expect(compactReasoningText("Checking another path\n---")).toBe("Checking another path")
+  })
+
   test("hides completed-turn reasoning without moving later parts", () => {
     const message = assistant("assistant-a")
     const parts: PartType[] = [
@@ -1216,5 +1266,78 @@ describe("session turn timeline", () => {
 
     expect(timelineItemStableKey(pending[0])).toBe("media-pending:assistant-a:tool-a")
     expect(timelineItemStableKey(completed[0])).toBe("tool-attachments:assistant-a:tool-a")
+  })
+})
+
+describe("persisted reasoning injection", () => {
+  const reasoningPart = (id: string, messageID: string): PartType =>
+    ({
+      id,
+      sessionID: "session",
+      messageID,
+      type: "reasoning",
+      text: "Persisted thinking.",
+    }) as PartType
+
+  test("anchors the compact row at the reasoning part position in a settled turn", () => {
+    const message = assistant("assistant-a")
+    const parts = [reasoningPart("reason-a", message.id), textPart("text-a", message.id)]
+    const items = collectSessionTurnTimelineItems([message], { [message.id]: parts }, false)
+
+    const injected = injectPersistedReasoningItems(items, [message], { [message.id]: parts })
+
+    expect(injected).toHaveLength(2)
+    expect(injected[0]).toMatchObject({ kind: "passthrough", item: { kind: "reasoning", part: { id: "reason-a" } } })
+    expect(injected[1]).toMatchObject({ kind: "part", part: { id: "text-a" } })
+  })
+
+  test("keeps the row between earlier tool work and later text when reasoning sits between them", () => {
+    const message = assistant("assistant-a")
+    const parts = [
+      ordinaryTool({ id: "tool-a", messageID: message.id, status: "completed" }),
+      reasoningPart("reason-a", message.id),
+      textPart("text-a", message.id),
+    ]
+    const items = collectSessionTurnTimelineItems([message], { [message.id]: parts }, false)
+
+    const injected = injectPersistedReasoningItems(items, [message], { [message.id]: parts })
+
+    expect(injected.map((item) => item.kind)).toEqual(["part", "passthrough", "part"])
+    expect(injected[1]).toMatchObject({ kind: "passthrough", item: { part: { id: "reason-a" } } })
+  })
+
+  test("replaces the promoted reasoning part in place for a reasoning-only turn", () => {
+    const message = assistant("assistant-a")
+    const parts = [reasoningPart("reason-a", message.id)]
+    const items = collectSessionTurnTimelineItems([message], { [message.id]: parts }, false)
+
+    const injected = injectPersistedReasoningItems(items, [message], { [message.id]: parts })
+
+    expect(injected).toHaveLength(1)
+    expect(injected[0]).toMatchObject({ kind: "passthrough", item: { kind: "reasoning", part: { id: "reason-a" } } })
+  })
+
+  test("injects one row per assistant message in persisted part order", () => {
+    const first = assistant("assistant-a")
+    const second = assistant("assistant-b")
+    const partsByMessage = {
+      [first.id]: [reasoningPart("reason-a", first.id), textPart("text-a", first.id)],
+      [second.id]: [reasoningPart("reason-b", second.id), textPart("text-b", second.id)],
+    }
+    const items = collectSessionTurnTimelineItems([first, second], partsByMessage, false)
+
+    const injected = injectPersistedReasoningItems(items, [first, second], partsByMessage)
+
+    expect(injected.map((item) => item.kind)).toEqual(["passthrough", "part", "passthrough", "part"])
+    expect(injected[0]).toMatchObject({ item: { part: { id: "reason-a" } } })
+    expect(injected[2]).toMatchObject({ item: { part: { id: "reason-b" } } })
+  })
+
+  test("leaves a settled turn without reasoning parts unchanged", () => {
+    const message = assistant("assistant-a")
+    const parts = [textPart("text-a", message.id)]
+    const items = collectSessionTurnTimelineItems([message], { [message.id]: parts }, false)
+
+    expect(injectPersistedReasoningItems(items, [message], { [message.id]: parts })).toEqual(items)
   })
 })
