@@ -103,7 +103,7 @@ const copy = {
   compactReasoningTitle: { id: "settings.general.compactReasoning.title", message: "Compact reasoning" },
   compactReasoningDescription: {
     id: "settings.general.compactReasoning.description",
-    message: "Show live reasoning in a single-line view",
+    message: "Show live reasoning in a single line; completed turns keep an expandable reasoning row",
   },
   notificationsTitle: { id: "settings.general.notifications.title", message: "Notifications" },
   notificationsDescription: {

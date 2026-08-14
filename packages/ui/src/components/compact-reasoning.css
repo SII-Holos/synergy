@@ -40,8 +40,85 @@
   }
 
   [data-slot="compact-reasoning-text"] {
-    font-style: italic;
+    display: inline-block;
     white-space: nowrap;
+    font-style: italic;
     padding-inline-end: 6px;
+  }
+
+  &[data-state="settled"] {
+    [data-slot="compact-reasoning-settled"] {
+      width: 100%;
+      min-width: 0;
+    }
+
+    [data-slot="compact-reasoning-trigger"] {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      width: 100%;
+      min-width: 0;
+      padding: 2px 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font-family: inherit;
+      font-size: inherit;
+      font-style: normal;
+      line-height: inherit;
+      text-align: start;
+      cursor: pointer;
+
+      &:hover {
+        color: var(--text-base);
+      }
+
+      &:focus-visible {
+        outline: none;
+        box-shadow: var(--shadow-xs-border-focus);
+      }
+    }
+
+    [data-slot="compact-reasoning-summary"] {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      font-style: italic;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    [data-slot="compact-reasoning-trigger"][aria-expanded="true"] [data-slot="compact-reasoning-summary"] {
+      display: none;
+    }
+
+    [data-slot="compact-reasoning-trigger"][aria-expanded="true"] [data-slot="compact-reasoning-label"] {
+      flex: 1 1 auto;
+    }
+
+    [data-slot="compact-reasoning-chevron"] {
+      display: grid;
+      flex: 0 0 auto;
+      place-items: center;
+      color: var(--icon-weak-base);
+    }
+
+    [data-slot="compact-reasoning-detail"] {
+      margin: 2px 0 4px 26px;
+      border-inline-start: 2px solid var(--border-weaker-base);
+      padding-inline-start: 10px;
+      color: var(--text-weak);
+      font-size: var(--font-size-small);
+      line-height: 1.55;
+    }
+
+    [data-slot="compact-reasoning-detail-text"] {
+      margin: 0;
+      max-height: 320px;
+      overflow-y: auto;
+      overflow-wrap: break-word;
+      white-space: pre-wrap;
+      font-family: inherit;
+    }
   }
 }

@@ -7,11 +7,12 @@ import { build } from "vite"
 import solidPlugin from "vite-plugin-solid"
 
 // The fixture compiles the real CompactReasoningLine through Vite before
-// exercising the scroll-follow behavior, matching the activity-trace DOM
-// harness. JSDOM has no layout engine, so scroll geometry is stubbed on the
-// scroller element.
+// exercising the scroll-follow and settled-expansion behavior, matching the
+// activity-trace DOM harness. JSDOM has no layout engine, so scroll geometry
+// is stubbed on the scroller element.
 interface CompactReasoningHarness {
   setText: (text: string) => void
+  setRunning: (running: boolean) => void
 }
 
 let fixtureDirectory: string
@@ -53,16 +54,20 @@ beforeAll(async () => {
 
       const i18n = setupI18n()
       const [text, setText] = createSignal("Planning the reply")
+      const [running, setRunning] = createSignal(true)
       const root = document.getElementById("root")
       render(
         () => (
           <I18nProvider i18n={i18n}>
-            <CompactReasoningLine text={text()} />
+            <CompactReasoningLine fullText={text()} running={running()} />
           </I18nProvider>
         ),
         root,
       )
-      ;(globalThis as unknown as { __compactReasoningHarness: unknown }).__compactReasoningHarness = { setText }
+      ;(globalThis as unknown as { __compactReasoningHarness: unknown }).__compactReasoningHarness = {
+        setText,
+        setRunning,
+      }
     `,
   )
 
@@ -112,10 +117,11 @@ afterAll(async () => {
 })
 
 describe("CompactReasoningLine DOM behavior", () => {
-  test("renders a Thinking prefix with spinner and the streamed text", () => {
+  test("renders a Thinking prefix with spinner and the streamed text while running", () => {
     expect(document.querySelector('[data-slot="compact-reasoning-leading"] [data-component="spinner"]')).not.toBeNull()
     expect(document.querySelector('[data-slot="compact-reasoning-label"]')?.textContent).toBe("Thinking")
     expect(document.querySelector('[data-slot="compact-reasoning-text"]')?.textContent).toBe("Planning the reply")
+    expect(document.querySelector('[data-slot="compact-reasoning-trigger"]')).toBeNull()
   })
 
   test("follows the newest text to the tail when the line overflows", async () => {
@@ -136,5 +142,33 @@ describe("CompactReasoningLine DOM behavior", () => {
     harness.setText("The user returned to the tail, so follow again")
     await wait(20)
     expect(scroller().scrollLeft).toBe(400)
+  })
+
+  test("settles into a persistent expandable Thinking row", async () => {
+    harness.setText("## Planning\nFirst reasoning line.\n- Second reasoning line.")
+    harness.setRunning(false)
+    await wait(20)
+
+    const trigger = document.querySelector('[data-slot="compact-reasoning-trigger"]') as HTMLButtonElement
+    expect(trigger).not.toBeNull()
+    expect(document.querySelector('[data-slot="compact-reasoning-leading"] [data-component="spinner"]')).toBeNull()
+    expect(document.querySelector('[data-slot="compact-reasoning-label"]')?.textContent).toBe("Thinking")
+    expect(document.querySelector('[data-slot="compact-reasoning-summary"]')?.textContent).toBe("Planning")
+    expect(document.querySelector('[data-slot="compact-reasoning-detail"]')).toBeNull()
+    expect(trigger.getAttribute("aria-expanded")).toBe("false")
+
+    trigger.click()
+    await wait(20)
+
+    expect(trigger.getAttribute("aria-expanded")).toBe("true")
+    const detail = document.querySelector('[data-slot="compact-reasoning-detail"]')
+    expect(detail?.getAttribute("id")).toBe(trigger.getAttribute("aria-controls"))
+    expect(document.querySelector('[data-slot="compact-reasoning-detail-text"]')?.textContent).toBe(
+      "## Planning\nFirst reasoning line.\n- Second reasoning line.",
+    )
+
+    trigger.click()
+    await wait(20)
+    expect(document.querySelector('[data-slot="compact-reasoning-detail"]')).toBeNull()
   })
 })
