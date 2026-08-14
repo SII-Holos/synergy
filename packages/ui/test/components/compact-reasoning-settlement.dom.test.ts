@@ -258,6 +258,10 @@ describe("Compact reasoning settlement transition", () => {
     expect(trigger.getAttribute("aria-expanded")).toBe("true")
     const detail = document.querySelector('[data-slot="compact-reasoning-detail"]')
     expect(detail).not.toBeNull()
-    expect(detail?.getAttribute("id")).toBe(trigger.getAttribute("aria-controls"))
+    // aria-controls points at the collapsible content root, which wraps the
+    // detail region (Kobalte owns the content id).
+    const controls = trigger.getAttribute("aria-controls")
+    expect(controls).toBeTruthy()
+    expect(document.getElementById(controls!)?.contains(detail)).toBe(true)
   })
 })

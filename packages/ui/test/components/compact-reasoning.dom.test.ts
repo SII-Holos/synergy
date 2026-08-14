@@ -95,6 +95,15 @@ beforeAll(async () => {
     url: "http://localhost/",
   })
   const window = dom.window
+  const realGetComputedStyle = window.getComputedStyle.bind(window)
+  window.getComputedStyle = ((element: Element) => {
+    const style = realGetComputedStyle(element)
+    // Kobalte Collapsible's presence tracking treats a non-"none" animation
+    // name as an in-flight close animation; JSDOM has no layout engine, so
+    // pin it to "none" to keep open/close transitions deterministic.
+    Object.defineProperty(style, "animationName", { configurable: true, value: "none" })
+    return style
+  }) as typeof window.getComputedStyle
 
   Object.assign(globalThis, {
     window,
@@ -103,6 +112,7 @@ beforeAll(async () => {
     Node: window.Node,
     Element: window.Element,
     HTMLElement: window.HTMLElement,
+    getComputedStyle: window.getComputedStyle.bind(window),
     requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0),
     cancelAnimationFrame: (id: number) => clearTimeout(id),
   })
@@ -159,10 +169,14 @@ describe("CompactReasoningLine DOM behavior", () => {
 
     trigger.click()
     await wait(20)
-
     expect(trigger.getAttribute("aria-expanded")).toBe("true")
     const detail = document.querySelector('[data-slot="compact-reasoning-detail"]')
-    expect(detail?.getAttribute("id")).toBe(trigger.getAttribute("aria-controls"))
+    expect(detail).not.toBeNull()
+    // aria-controls points at the collapsible content root, which wraps the
+    // detail region (Kobalte owns the content id).
+    const controls = trigger.getAttribute("aria-controls")
+    expect(controls).toBeTruthy()
+    expect(document.getElementById(controls!)?.contains(detail)).toBe(true)
     expect(document.querySelector('[data-slot="compact-reasoning-detail-text"]')?.textContent).toBe(
       "## Planning\nFirst reasoning line.\n- Second reasoning line.",
     )

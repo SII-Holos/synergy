@@ -47,20 +47,20 @@
   }
 
   &[data-state="settled"] {
-    [data-slot="compact-reasoning-settled"] {
+    > [data-component="collapsible"] {
       width: 100%;
       min-width: 0;
+      overflow: visible;
     }
 
     [data-slot="compact-reasoning-trigger"] {
+      all: unset;
       display: flex;
       align-items: center;
       gap: 7px;
       width: 100%;
       min-width: 0;
       padding: 2px 0;
-      border: 0;
-      background: transparent;
       color: inherit;
       font-family: inherit;
       font-size: inherit;
@@ -120,5 +120,15 @@
       white-space: pre-wrap;
       font-family: inherit;
     }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-component="compact-reasoning"],
+  [data-component="compact-reasoning"] [data-slot="collapsible-content"],
+  [data-component="compact-reasoning"] [data-slot="compact-reasoning-trigger"],
+  [data-component="compact-reasoning"] [data-component="spinner"] rect {
+    animation: none;
+    transition: none;
   }
 }
