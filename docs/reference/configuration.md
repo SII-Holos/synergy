@@ -186,11 +186,11 @@ The mode changes only activity presentation. It never hides permission requests,
 
 ```jsonc
 {
-  "compactReasoning": false,
+  "compactReasoning": true,
 }
 ```
 
-`false` is the default when the field is absent. Settings → General manages the preference in the installation config. If the key is declared manually in project config, ordinary project-over-global precedence still applies.
+`true` is the default when the field is absent. Settings → General manages the preference in the installation config. If the key is declared manually in project config, ordinary project-over-global precedence still applies.
 
 While the assistant turn is streaming, the working turn shows only the latest reasoning block projected to one stable plain-text line: the most recent non-structural line of the reasoning markdown, skipping blank lines, code fences, and horizontal rules, and stripping markdown list, quote, and heading prefixes. When the turn settles, each assistant message keeps one collapsed expandable reasoning row anchored at its original part position, exposing the complete reasoning on expansion. Complete reasoning data is never modified — compact mode changes presentation only, and complete reasoning text remains available after the turn settles.
 In `balanced` activity display, the preference upgrades the `Thinking…` status row into the live one-line reasoning row while streaming; the status row remains when the preference is off. In `full` activity display the preference keeps only the latest reasoning block while streaming and restores the complete reasoning blocks once the turn settles. In both modes, a settled turn keeps one collapsed expandable reasoning row per assistant message instead of dropping the reasoning.
