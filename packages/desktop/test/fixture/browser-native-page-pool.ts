@@ -14,6 +14,7 @@ async function run() {
   await app.whenReady()
   try {
     const pool = new BrowserNativePagePool()
+    let hostReady = false
     const input = {
       ownerKey: "scope:native-smoke:session:native-smoke",
       page: {
@@ -25,7 +26,9 @@ async function run() {
       },
       networkProxy: { server: "direct://", username: "unused", password: "unused" },
       downloadDir: directory,
-      emit() {},
+      emit(event: { type: string; status?: string }) {
+        if (event.type === "host.status" && event.status === "ready") hostReady = true
+      },
     }
     const first = await pool.create(input)
     const window = new BrowserWindow({ show: false })
@@ -108,7 +111,10 @@ async function run() {
       throw new Error("Native page did not receive an isolated renderer process.")
     }
     process.kill(rendererProcessId, "SIGKILL")
-    await waitFor(() => recovered, 10_000, "native renderer recovery")
+    // host.status "ready" is emitted only after the pool clears its recovery
+    // guard, so waiting for it guarantees the recovered page accepts CDP
+    // commands without racing the restarting guard.
+    await waitFor(() => recovered && hostReady, 10_000, "native renderer recovery readiness")
     const recoveredPage = first.state()
     if (recoveredPage.id !== input.page.id) throw new Error("Native renderer recovery changed the stable page ID.")
     const recoveredEvaluation = await first.execute({

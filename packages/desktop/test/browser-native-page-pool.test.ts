@@ -156,6 +156,8 @@ mock.module("../src/browser-webcontents-control.js", () => ({
   },
 }))
 
+import type { BrowserNativePageHandle } from "../src/browser-native-page-pool.js"
+
 const { BrowserNativePagePool, MAX_RECOVERY_BUDGET } = await import("../src/browser-native-page-pool.js")
 
 function input(ownerKey: string, emit: (event: any) => void = () => undefined) {
@@ -205,8 +207,22 @@ describe("Browser native page pool", () => {
     views.length = 0
     partitions.length = 0
     const events: any[] = []
+    let executeAtReady: Promise<unknown> | null = null
+    let handle!: BrowserNativePageHandle
     const pool = new BrowserNativePagePool({ recoveryDelaysMs: [0] })
-    const handle = await pool.create(input("crash", (event) => events.push(event)))
+    handle = await pool.create(
+      input("crash", (event) => {
+        events.push(event)
+        if (event.type === "host.status" && event.status === "ready") {
+          // The ready event is the availability contract: a consumer reacting
+          // to it must be able to issue CDP commands without racing the
+          // restarting guard. Capturing the command synchronously from the
+          // emit callback makes this test fail on the parent implementation,
+          // where ready fired before the recovery guard cleared.
+          executeAtReady = handle.execute({ type: "reload" })
+        }
+      }),
+    )
     const first = views.at(-1)!
 
     first.webContents.emit("render-process-gone")
@@ -221,6 +237,7 @@ describe("Browser native page pool", () => {
       "ready",
     ])
     expect(first.webContents.destroyed).toBe(true)
+    await expect(executeAtReady).resolves.toBeDefined()
     await pool.destroy()
   })
 
