@@ -411,6 +411,54 @@ function classifyGitHubCommand(words: string[]): BashRisk | null {
     return "shell_remote_write"
   }
 
+  // ── gh api ─────────────────────────────────────────────────
+  // gh api is an authenticated HTTP client: the default method is GET, but
+  // -f/-F/--raw-field/--field/--input auto-switch the request to POST and
+  // -X/--method can select any verb. Only statically confirmed GET/HEAD
+  // requests are read-only; GraphQL and anything else stay remote writes.
+  // Both separated and attached option forms (--method=DELETE, -XDELETE,
+  // -Fbody=hi, --input=file.json) are recognized, matching gh's pflag parsing.
+  if (sub === "api") {
+    const after = words.slice(idx + 2)
+    const endpoint = after.find((word) => !word.startsWith("-"))
+    const methodIndex = after.findIndex(
+      (word) =>
+        word === "-X" ||
+        word === "--method" ||
+        word.startsWith("--method=") ||
+        (word.startsWith("-X") && word.length > 2),
+    )
+    let explicitMethod: string | undefined
+    if (methodIndex >= 0) {
+      const word = after[methodIndex]!
+      if (word === "-X" || word === "--method") {
+        explicitMethod = after[methodIndex + 1]?.toUpperCase()
+      } else if (word.startsWith("--method=")) {
+        explicitMethod = word.slice("--method=".length).toUpperCase()
+      } else {
+        explicitMethod = word.slice(2).replace(/^=/, "").toUpperCase()
+      }
+    }
+    const hasFields = after.some(
+      (word) =>
+        word === "-f" ||
+        word === "--raw-field" ||
+        word === "-F" ||
+        word === "--field" ||
+        word.startsWith("--field=") ||
+        word.startsWith("--raw-field=") ||
+        (word.startsWith("-f") && word.length > 2) ||
+        (word.startsWith("-F") && word.length > 2),
+    )
+    const hasInput = after.some((word) => word === "--input" || word.startsWith("--input="))
+    const readOnly =
+      endpoint !== "graphql" &&
+      (explicitMethod === "GET" ||
+        explicitMethod === "HEAD" ||
+        (explicitMethod === undefined && !hasFields && !hasInput))
+    return readOnly ? "shell_read" : "shell_remote_write"
+  }
+
   // ── gh issue ───────────────────────────────────────────────
   if (sub === "issue") {
     const subsub = words[idx + 2]

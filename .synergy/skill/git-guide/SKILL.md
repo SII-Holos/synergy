@@ -120,6 +120,11 @@ The permission system classifies `gh` commands before applying the active contro
 | `gh issue create/comment`            | `shell_remote_publish` | ⚠️ ask   | ✅ allow   | ✅ allow    |
 | `gh issue edit/close/reopen`         | `shell_remote_write`   | ⚠️ ask   | ❌ deny    | ✅ allow    |
 | `gh pr merge/close/reopen`           | `shell_destructive`    | ⚠️ ask   | ❌ deny    | ✅ allow    |
+| `gh api <endpoint>` (GET, no fields) | `shell_read`           | ✅ allow | ✅ allow   | ✅ allow    |
+| `gh api -X GET` / `-X HEAD`          | `shell_read`           | ✅ allow | ✅ allow   | ✅ allow    |
+| `gh api -f/-F/--input` (auto-POST)   | `shell_remote_write`   | ⚠️ ask   | ❌ deny    | ✅ allow    |
+| `gh api -X POST/PATCH/PUT/DELETE`    | `shell_remote_write`   | ⚠️ ask   | ❌ deny    | ✅ allow    |
+| `gh api graphql` (mutation possible) | `shell_remote_write`   | ⚠️ ask   | ❌ deny    | ✅ allow    |
 
 Checkout type does not change ordinary `shell_remote_publish` into `shell_remote_write`. Unknown write-capable `gh` subcommands default to `shell_remote_write`. Full Access silently allows permission-system capabilities but does not override task authorization, protected-branch rules, GitHub permissions, validation failures, or network/runtime errors.
 

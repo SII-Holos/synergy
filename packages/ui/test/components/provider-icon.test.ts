@@ -51,15 +51,25 @@ beforeAll(async () => {
       strictPort: false,
       fs: { allow: [path.resolve(import.meta.dir, "../../..")] },
     },
+    // This suite runs in the main parallel batch next to tooltip; both
+    // share packages/ui/node_modules/.vite by default, so concurrent
+    // dependency optimization corrupts the shared cache. Give each suite its
+    // own stable cache directory under the fixture root.
+    cacheDir: path.join(fixtureDirectory, ".vite-cache"),
   })
   await server.listen()
 
   const url = server.resolvedUrls?.local[0]
   if (!url) throw new Error("Expected Vite test server URL")
 
+  // Warm up dependency optimization and module transforms before launching the
+  // browser so the first navigation does not pay for Vite re-optimization
+  // inside Playwright's goto budget (CI cold starts exceeded 30s).
+  await server.transformRequest("/main.ts")
+
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 800, height: 600 } })
-  await page.goto(url)
+  await page.goto(url, { timeout: 60_000, waitUntil: "domcontentloaded" })
 })
 
 afterAll(async () => {

@@ -33,6 +33,7 @@ mock.module("solid-js", () => ({
     let value = initial
     return [() => value, (next: unknown) => (value = typeof next === "function" ? next(value) : next)]
   },
+  createUniqueId: () => "mock-unique-id",
   ErrorBoundary: Empty,
   For: Empty,
   Match: Empty,
@@ -323,6 +324,24 @@ describe("balanced reasoning projection", () => {
     const live = projected.find((item) => item.kind === "passthrough" && item.item.kind === "reasoning")
     expect(live).toBeTruthy()
     expect((live as { item: { part: { id: string } } }).item.part.id).toBe("reason-a")
+  })
+  test("keeps one live line when one message emits reasoning around tool calls", () => {
+    const message = assistant("assistant-a")
+    const latestPart = reasoning("reason-b", message.id) as ReasoningPart
+    const projected = projectBalancedReasoningItems(
+      project({
+        message,
+        parts: [reasoning("reason-a", message.id), text("answer-a", message.id), latestPart],
+        working: true,
+      }),
+      "root-user",
+      true,
+      { anchorMessage: message, frontier: { message, partID: latestPart.id }, compactReasoningPart: latestPart },
+    )
+
+    const live = projected.filter((item) => item.kind === "passthrough" && item.item.kind === "reasoning")
+    expect(live).toHaveLength(1)
+    expect((live[0] as { item: { part: { id: string } } }).item.part.id).toBe("reason-b")
   })
 })
 

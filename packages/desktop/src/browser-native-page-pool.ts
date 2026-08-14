@@ -377,9 +377,19 @@ export class BrowserNativePagePool {
   private recover(entry: Entry, reason: string): Promise<void> {
     if (entry.closing) return Promise.resolve()
     if (entry.recovery) return entry.recovery
-    const operation = this.recoverEntry(entry, reason).finally(() => {
-      if (entry.recovery === operation) entry.recovery = null
-    })
+    const operation = this.recoverEntry(entry, reason)
+      .then(() => {
+        if (entry.recovery === operation) entry.recovery = null
+        if (entry.closing) return
+        // Signal readiness only after the recovery guard clears so a consumer
+        // reacting to host.status "ready" can immediately issue CDP commands
+        // without racing the restarting guard.
+        entry.input.emit({ type: "host.status", pageId: entry.state().id, status: "ready" })
+      })
+      .catch((error) => {
+        if (entry.recovery === operation) entry.recovery = null
+        throw error
+      })
     entry.recovery = operation
     return operation
   }
@@ -418,7 +428,6 @@ export class BrowserNativePagePool {
           await this.closeGeneration(previous).catch((error) => {
             console.error("Native Browser previous generation cleanup failed.", error)
           })
-          entry.input.emit({ type: "host.status", pageId, status: "ready" })
           return
         } catch (error) {
           lastError = error

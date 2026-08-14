@@ -367,6 +367,7 @@ export function projectBalancedReasoningItems<T>(
   },
 ): (ActivityTimelineItem | T)[] {
   const activityItems = items.filter(isActivityTimelineItem)
+
   const reasoningItems = activityItems.filter(
     (item): item is ActivityReasoningSummaryItem => item.kind === "activity-reasoning-summary",
   )

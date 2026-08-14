@@ -4,6 +4,14 @@ import { Log } from "../../src/util/log"
 
 Log.init({ print: false })
 
+beforeEach(async () => {
+  await Embedding.resetForTest()
+})
+
+afterEach(async () => {
+  await Embedding.resetForTest()
+})
+
 function createExtractor(): LocalExtractor {
   return Object.assign(async () => ({ data: new Float32Array([1]) }), {
     dispose: mock(async () => {}),

@@ -44,7 +44,7 @@
 
   [data-component="tool-result-body"] {
     min-width: 0;
-    margin: 6px 0 0 26px;
+    margin-top: 6px;
   }
 
   [data-component="tool-result-body"] > :first-child {

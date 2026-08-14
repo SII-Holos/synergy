@@ -1,5 +1,4 @@
 import * as fs from "fs/promises"
-import os from "os"
 import path from "path"
 import type { Config } from "../../src/config/config"
 import { ConfigDomain } from "../../src/config/domain"
@@ -68,7 +67,14 @@ export async function initializeGitFixture(dirpath: string, run: GitFixtureRunne
   )
 }
 export async function tmpdir<T>(options?: TmpDirOptions<T>) {
-  const root = process.env["SYNERGY_TEST_ROOT"] ?? os.tmpdir()
+  const root = process.env["SYNERGY_TEST_ROOT"]
+  if (!root) {
+    throw new Error(
+      "tmpdir() requires SYNERGY_TEST_ROOT to be set. The test preload (test/preload.ts) is not active — " +
+        "running bun test with --isolate (or without the bunfig [test] preload) bypasses isolation and would " +
+        "write fixtures into the real home directory.",
+    )
+  }
   const dirpath = Filesystem.sanitizePath(path.join(root, "synergy-test-" + Math.random().toString(36).slice(2)))
   await fs.mkdir(dirpath, { recursive: true })
   if (options?.git) await initializeGitFixture(dirpath)

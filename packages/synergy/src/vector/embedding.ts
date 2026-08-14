@@ -507,6 +507,14 @@ export namespace Embedding {
     runtimeControls = { ...defaultRuntimeControls(), ...controls }
   }
 
+  /** Test-only: restore default runtime controls and drop any cached local runtime state. */
+  export async function resetForTest(): Promise<void> {
+    runtimeControls = defaultRuntimeControls()
+    loadState = { phase: "unloaded" }
+    loadGeneration++
+    await localRuntime.dispose()
+  }
+
   async function resolveModel() {
     const config = await Config.current()
     const ec = config.embedding
