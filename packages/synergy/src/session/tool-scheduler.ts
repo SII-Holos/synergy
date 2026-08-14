@@ -246,7 +246,6 @@ export class ToolTaskScheduler {
         const remaining = (this.activeByExecutor.get(executor) ?? 1) - 1
         if (remaining > 0) this.activeByExecutor.set(executor, remaining)
         else this.activeByExecutor.delete(executor)
-        this.activeControllers.delete(task.key)
         this.drain()
       })
     }
@@ -323,7 +322,11 @@ export class ToolTaskScheduler {
         labels: { executor: task.input.executor ?? "control_plane" },
       })
       task.input.signal.removeEventListener("abort", onAbort)
-      this.activeTasks.delete(task.key)
+      // A settled key is released for re-dispatch immediately, so a same-key
+      // replay may have installed a newer task/controller while this call was
+      // finishing. Only clear the entries this invocation owns.
+      if (this.activeTasks.get(task.key) === task) this.activeTasks.delete(task.key)
+      if (this.activeControllers.get(task.key) === controller) this.activeControllers.delete(task.key)
       const memory = SessionMemoryPressure.currentSnapshot()
       const thresholds = SessionMemoryPressure.resolveThresholds(process.env, memory)
       if (SessionMemoryPressure.processPressureLevel(memory, thresholds) !== "normal") {
