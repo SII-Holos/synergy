@@ -105,7 +105,35 @@ describe("diff-patch canRenderPatch", () => {
     ["addition", ["--- a/foo.ts", "+++ b/foo.ts", "@@ -1 +1,2 @@", " existing", "+"]],
     ["deletion", ["--- a/foo.ts", "+++ b/foo.ts", "@@ -1,2 +1 @@", " existing", "-"]],
     ["context", ["--- a/foo.ts", "+++ b/foo.ts", "@@ -1,2 +1,2 @@", "-old", "+new", " "]],
-  ])("rejects a trailing empty %s line that pierre cannot render", (_kind, lines) => {
-    expect(canRenderPatch(lines.join("\n"))).toBe(false)
+  ])("accepts a trailing empty %s line (pierre renders it aligned)", (_kind, lines) => {
+    expect(canRenderPatch(lines.join("\n"))).toBe(true)
+  })
+
+  test("accepts a real file whose diff ends with a context blank line (file ends with empty line)", () => {
+    // File content ends with an empty line: the unified diff's final hunk line
+    // is a context blank line (" "), which parsePatchFiles turns into "\n".
+    // The shiki pipeline renders this with aligned line counts, so the patch
+    // must stay on the rich pierre renderer instead of the fallback.
+    const patch = [
+      "Index: file",
+      "===================================================================",
+      "--- file",
+      "+++ file",
+      "@@ -370,11 +370,13 @@",
+      "       'color': '#00f',",
+      "       'desc': '技术讨论',",
+      "     },",
+      "   ],",
+      "+  'courses': [],",
+      "   'total': 1,",
+      "   'usersTotal': 1,",
+      "   'categoriesTotal': 1,",
+      "+  'coursesTotal': 0,",
+      "   'totalPages': 1,",
+      "   'pagination': {'page': 1, 'nextPage': 1, 'hasNext': false, 'nextUrl': ''},",
+      " });",
+      " ",
+    ].join("\n")
+    expect(canRenderPatch(patch)).toBe(true)
   })
 })
