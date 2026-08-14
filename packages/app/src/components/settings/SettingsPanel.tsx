@@ -921,7 +921,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       <ImportPanel
         domains={domainSummaries() ?? []}
         scopes={globalSync.data.scope}
-        onImported={() => refreshAfterConfigChange([], undefined)}
+        onImported={(changedFields) => refreshAfterConfigChange(changedFields, undefined)}
         popoverLayer={settingsPopoverLayer()}
       />
     ),

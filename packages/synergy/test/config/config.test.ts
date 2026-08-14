@@ -2152,3 +2152,61 @@ test("locale is optional and absent configs remain valid", async () => {
     },
   })
 })
+
+test("hinted reload does not resurrect domain-defined agents from the previous snapshot", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      // Domain file defines an agent entry...
+      const synergyDir = path.join(dir, ".synergy")
+      const domainDir = path.join(synergyDir, "synergy.d")
+      await fs.mkdir(domainDir, { recursive: true })
+      await Bun.write(
+        path.join(domainDir, "60-agents.jsonc"),
+        JSON.stringify({ agent: { json_agent: { description: "from domain file" } } }),
+      )
+      // ...and a markdown file defines another.
+      const agentDir = path.join(synergyDir, "agent")
+      await fs.mkdir(agentDir, { recursive: true })
+      await Bun.write(
+        path.join(agentDir, "md_agent.md"),
+        `---
+description: from markdown
+---
+Markdown agent prompt`,
+      )
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      // Warm the full scan.
+      await Config.state.reset()
+      const before = await Config.current()
+      expect(before.agent?.["json_agent"]).toBeDefined()
+      expect(before.agent?.["md_agent"]).toBeDefined()
+
+      // Delete the JSON-defined agent from the domain file, then reload with
+      // a hint naming only that domain file. The markdown definition must
+      // survive and the deleted JSON entry must NOT be resurrected.
+      await Bun.write(path.join(tmp.path, ".synergy", "synergy.d", "60-agents.jsonc"), JSON.stringify({ agent: {} }))
+      await Config.reload("project", {
+        files: [path.join(tmp.path, ".synergy", "synergy.d", "60-agents.jsonc")],
+      })
+      const after = await Config.current()
+      expect(after.agent?.["json_agent"]).toBeUndefined()
+      expect(after.agent?.["md_agent"]).toBeDefined()
+    },
+  })
+})
+
+test("isWriteRecentlyHandled consumes the marker after the first watcher event", async () => {
+  await using tmp = await tmpdir()
+  const filepath = path.join(tmp.path, "60-agents.jsonc")
+  await Bun.write(filepath, JSON.stringify({ agent: {} }))
+  await Config.markWriteHandled(filepath)
+
+  // First call within the window suppresses the handled write.
+  expect(await Config.isWriteRecentlyHandled(filepath)).toBe(true)
+  // The marker is consumed, so a genuine second edit is not suppressed.
+  expect(await Config.isWriteRecentlyHandled(filepath)).toBe(false)
+})

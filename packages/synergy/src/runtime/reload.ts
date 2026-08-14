@@ -300,12 +300,19 @@ export namespace RuntimeReload {
         // reuse the writer-provided transition instead of re-reading every
         // domain file a second time. External file edits still reload fully.
         const result = ctx.configChange
-          ? {
-              config: ctx.configChange.config,
-              changedFields: ctx.configChange.changedFields,
-              oldConfig: ctx.configChange.oldConfig,
-              issues: Config.diagnostics(),
-            }
+          ? (() => {
+              // The writer re-loaded Config internally, but that path does
+              // not clear the diagnostic registry the way Config.reload()
+              // does; clear it here so a recovered config stops reporting
+              // ghost failures from a previous broken load.
+              Config.resetDiagnostics()
+              return {
+                config: ctx.configChange.config,
+                changedFields: ctx.configChange.changedFields,
+                oldConfig: ctx.configChange.oldConfig,
+                issues: Config.diagnostics(),
+              }
+            })()
           : await Config.reload(resolvedScope, { files: ctx.files })
         for (const issue of result.issues ?? []) {
           ctx.diagnostics.push({
@@ -754,11 +761,11 @@ export namespace RuntimeReload {
     debounceTimers.set(key, { timer, targets: mergedTargets, files: mergedFiles })
   }
 
-  function handleGlobalConfigEvent(event: { file: string; event: string }) {
+  async function handleGlobalConfigEvent(event: { file: string; event: string }) {
     // Settings saves already run their full reload inside the write
     // transaction; skip the watcher's follow-up reload for those writes so a
     // save never triggers a second full config reload.
-    if (Config.isWriteRecentlyHandled(event.file)) {
+    if (await Config.isWriteRecentlyHandled(event.file)) {
       reloadLog.info("skipping auto-reload for recently handled config write", { file: event.file })
       return
     }
@@ -784,7 +791,7 @@ export namespace RuntimeReload {
       if (event.payload?.type !== "global.config.file.changed") return
       const properties = event.payload.properties as { file: string; event: string } | undefined
       if (!properties) return
-      handleGlobalConfigEvent(properties)
+      void handleGlobalConfigEvent(properties)
     })
     reloadLog.info("auto-reload listener started")
   }

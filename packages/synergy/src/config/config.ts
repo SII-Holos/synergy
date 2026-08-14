@@ -212,15 +212,21 @@ export namespace Config {
   // Consumed synchronously by the next state load: when a reload knows the
   // exact domain files that changed (watcher hints), the load skips the
   // command/agent markdown scans that cannot be affected by those files.
-  let reloadHintFiles: string[] | undefined
+  // Keyed by scope id so concurrent global/project reloads cannot overwrite
+  // each other's hint.
+  const reloadHintFilesByScope = new Map<string, string[]>()
+  // Cached command/agent markdown scans per directory, refreshed on full
+  // scans and reused by hinted reloads so domain-file edits never resurrect
+  // stale domain-defined entries from the previous resolved snapshot.
+  const commandDefinitionsByDir = new Map<string, Record<string, Command>>()
+  const agentDefinitionsByDir = new Map<string, Record<string, Agent>>()
 
   async function loadStateValue(): Promise<StateValue> {
     const scopeKey = ScopeContext.current.scope.id
-    const files = reloadHintFiles
-    reloadHintFiles = undefined
-    const previous = lastGoodByScope.get(scopeKey)
+    const files = reloadHintFilesByScope.get(scopeKey)
+    reloadHintFilesByScope.delete(scopeKey)
     try {
-      const value = await loadStateValueInner(files, previous)
+      const value = await loadStateValueInner(files)
       lastGoodByScope.set(scopeKey, value)
       return value
     } catch (error) {
@@ -241,7 +247,7 @@ export namespace Config {
     }
   }
 
-  async function loadStateValueInner(files?: string[], previous?: StateValue): Promise<StateValue> {
+  async function loadStateValueInner(files?: string[]): Promise<StateValue> {
     // A reload hint that names only synergy.d domain files cannot affect
     // command/agent markdown definitions, so skip those scans entirely and
     // reuse the previously loaded definitions instead of dropping them.
@@ -336,11 +342,20 @@ export namespace Config {
       }
 
       if (!skipMarkdownScan) {
-        result.command = mergeDeep(result.command ?? {}, await loadCommand(dir))
-        result.agent = mergeDeep(result.agent, await loadAgent(dir))
-      } else if (previous) {
-        result.command = mergeDeep(result.command ?? {}, previous.config.command ?? {})
-        result.agent = mergeDeep(result.agent, previous.config.agent ?? {})
+        // Full scan: refresh the cached markdown definitions and merge them.
+        const commands = await loadCommand(dir)
+        const agents = await loadAgent(dir)
+        commandDefinitionsByDir.set(dir, commands)
+        agentDefinitionsByDir.set(dir, agents)
+        result.command = mergeDeep(result.command ?? {}, commands)
+        result.agent = mergeDeep(result.agent, agents)
+      } else {
+        // Hinted reload: the changed files are domain files only, so the
+        // markdown definitions are unchanged. Reuse the cached scan instead
+        // of merging the whole previous snapshot, which would resurrect
+        // domain-defined entries deleted by the edit.
+        result.command = mergeDeep(result.command ?? {}, commandDefinitionsByDir.get(dir) ?? (await loadCommand(dir)))
+        result.agent = mergeDeep(result.agent, agentDefinitionsByDir.get(dir) ?? (await loadAgent(dir)))
       }
     }
 
@@ -468,7 +483,15 @@ export namespace Config {
   function refreshWellKnown(key: string) {
     if (wellKnownRefreshInFlight.has(key)) return
     wellKnownRefreshInFlight.add(key)
-    void loadWellKnown(key).finally(() => wellKnownRefreshInFlight.delete(key))
+    void loadWellKnown(key)
+      .then((loaded) => {
+        if (!loaded) return
+        // The org config changed while we were serving the stale value.
+        // Re-resolve every scope so the next Config.current() sees it —
+        // otherwise the change would only apply on some unrelated reload.
+        void state.resetAll()
+      })
+      .finally(() => wellKnownRefreshInFlight.delete(key))
   }
 
   const COMMAND_GLOB = new Bun.Glob("{command,commands}/**/*.md")
@@ -1241,7 +1264,7 @@ export namespace Config {
       .catch(() => ({}) as Info)
 
     global.reset()
-    reloadHintFiles = options.files
+    reloadHintFilesByScope.set(ScopeContext.current.scope.id, options.files ?? [])
     try {
       if (scope === "global") {
         await state.resetAll()
@@ -1264,7 +1287,7 @@ export namespace Config {
 
       return { config: newConfig, changedFields, oldConfig, issues: diagnostics() }
     } finally {
-      reloadHintFiles = undefined
+      reloadHintFilesByScope.delete(ScopeContext.current.scope.id)
     }
   }
 
@@ -1398,16 +1421,30 @@ export namespace Config {
   // the file watcher consults this registry to avoid re-reloading them.
   const HANDLED_WRITE_WINDOW_MS = 3_000
   const handledWrites = new Map<string, number>()
+  // mtime skew tolerated when matching a watcher event to the handled write
+  // (the event is dispatched after the write completed).
+  const HANDLED_WRITE_MTIME_SKEW_MS = 100
 
   export function markWriteHandled(filepath: string) {
     handledWrites.set(filepath, Date.now())
   }
 
-  export function isWriteRecentlyHandled(filepath: string): boolean {
+  export async function isWriteRecentlyHandled(filepath: string): Promise<boolean> {
     const handledAt = handledWrites.get(filepath)
     if (handledAt === undefined) return false
-    if (Date.now() - handledAt > HANDLED_WRITE_WINDOW_MS) {
-      handledWrites.delete(filepath)
+    // Consume the marker on every check: only the first watcher event for
+    // this write is suppressed, so a genuine external edit inside the window
+    // is never silently discarded.
+    handledWrites.delete(filepath)
+    if (Date.now() - handledAt > HANDLED_WRITE_WINDOW_MS) return false
+    // Tie the suppression to the handled write's own mtime: a genuine
+    // external edit in the window gets a newer mtime and must trigger a
+    // reload. A missing file means the write was replaced/deleted — let the
+    // watcher reload.
+    try {
+      const stat = await fs.stat(filepath)
+      if (stat.mtimeMs > handledAt + HANDLED_WRITE_MTIME_SKEW_MS) return false
+    } catch {
       return false
     }
     return true

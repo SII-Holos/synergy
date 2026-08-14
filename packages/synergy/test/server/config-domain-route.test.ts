@@ -66,7 +66,9 @@ describe.serial("global General config route locale", () => {
     for (const locale of ["system", "en", "zh-CN"] as const) {
       const response = await patchGeneral({ locale })
       expect(response.status).toBe(200)
-      expect(await response.json()).toMatchObject({ locale })
+      const body = (await response.json()) as { config: Config.Info; changedFields: string[] }
+      expect(body.config).toMatchObject({ locale })
+      expect(body.changedFields).toContain("locale")
       expect(await Config.domainGet("general")).toMatchObject({ locale })
     }
   })

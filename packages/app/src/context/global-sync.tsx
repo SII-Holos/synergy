@@ -1200,7 +1200,12 @@ function createGlobalSync() {
     if (event?.type === "config.updated") {
       const properties = event.properties as ConfigUpdatedProperties
       if (shouldRefreshGlobalConfig(properties)) {
-        void loadGlobalConfig()
+        // Client-side fields (theme/keybinds/layout/toast/locale) are not
+        // reloaded by the server runtime, so no runtime.reloaded event fires
+        // after a save. Refresh every scope's config store so UI derived from
+        // it (e.g. toast preferences in pages/layout.tsx) picks up the saved
+        // values instead of staying stale until some unrelated reload.
+        void refreshTargeted(["config"])
         return
       }
       void refreshAllConfigs()
