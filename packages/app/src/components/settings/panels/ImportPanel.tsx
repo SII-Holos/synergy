@@ -101,7 +101,7 @@ function detectedDomains(count: number) {
 export function ImportPanel(props: {
   domains: ConfigDomainSummary[]
   scopes: Scope[]
-  onImported: () => Promise<void>
+  onImported: (changedFields: string[]) => Promise<void>
   popoverLayer?: HTMLElement
 }) {
   const { _ } = useLingui()
@@ -239,7 +239,7 @@ export function ImportPanel(props: {
         title: response.data.reload.success ? _(configImportedTitle) : _(configImportedWarnTitle),
         description: _(updatedDomainsDesc(response.data.plan.domains.length)),
       })
-      await props.onImported()
+      await props.onImported(response.data.reload.changedFields)
     } catch (error) {
       if (isConfigImportRevisionConflict(error)) {
         const refreshed = await createPlan(input, sourceLabel(), only)

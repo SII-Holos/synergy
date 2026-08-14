@@ -19,19 +19,45 @@ import { ProcessRegistry } from "@/process/registry"
 import { SessionMemoryPressure } from "@/session/memory-pressure"
 
 export namespace PerformanceDashboard {
-  type MetricRow = ObservabilityStore.StoredMetric & { labels: Record<string, unknown> }
+  type MetricRow = ObservabilityStore.StoredMetric
 
-  export async function summary(
+  const SUMMARY_CACHE_MS = 1000
+  let cached: { key: string; at: number; value: Promise<PerformanceSchema.DashboardSummary> } | undefined
+  const labelsCache = new WeakMap<object, Record<string, unknown>>()
+
+  // Labels are parsed lazily and memoized per row: the dashboard inspects
+  // labels on only a few metric families, so parsing all 50k rows eagerly on
+  // every refresh is wasted work on the Control Plane hot path.
+  function metricLabels(row: object): Record<string, unknown> {
+    const cachedLabels = labelsCache.get(row)
+    if (cachedLabels) return cachedLabels
+    const labels = parseJson((row as { labels_json: string }).labels_json)
+    labelsCache.set(row, labels)
+    return labels
+  }
+
+  export function summary(
+    input: { windowMs?: number; scopeID?: string } = {},
+  ): Promise<PerformanceSchema.DashboardSummary> {
+    const key = `${input.windowMs ?? 300_000}:${input.scopeID ?? ""}:${ObservabilityStore.dataVersion()}`
+    const now = Date.now()
+    if (cached && cached.key === key && now - cached.at < SUMMARY_CACHE_MS) return cached.value
+    const value = computeSummary(input)
+    const wrapped = value.catch((error) => {
+      if (cached?.value === wrapped) cached = undefined
+      throw error
+    })
+    cached = { key, at: now, value: wrapped }
+    return wrapped
+  }
+  async function computeSummary(
     input: { windowMs?: number; scopeID?: string } = {},
   ): Promise<PerformanceSchema.DashboardSummary> {
     const windowMs = Math.max(1000, Math.min(input.windowMs ?? 300_000, 86_400_000))
     const since = Date.now() - windowMs
     const rows = ObservabilityStore.queryMetrics({ since, scopeID: input.scopeID, limit: 50_001, newestFirst: true })
     const truncated = rows.length > 50_000
-    const metrics = (truncated ? rows.slice(0, 50_000) : rows).map((row) => ({
-      ...row,
-      labels: parseJson(row.labels_json),
-    }))
+    const metrics = truncated ? rows.slice(0, 50_000) : rows
     const resourceRows = ObservabilityStore.resourceSince(since, { scopeID: input.scopeID })
     const serverResourceRows = resourceRows.filter((row) => row.process_role === "server")
     const resources = serverResourceRows.at(-1)
@@ -86,7 +112,10 @@ export namespace PerformanceDashboard {
     }
     const http = metrics.filter((row) => row.name === "http.request.duration")
     const httpDurations = http.map((row) => row.value)
-    const httpErrors = http.filter((row) => row.labels.status && Number(row.labels.status) >= 500).length
+    const httpErrors = http.filter((row) => {
+      const labels = metricLabels(row)
+      return labels.status && Number(labels.status) >= 500
+    }).length
     const turns = metrics.filter((row) => row.name === "session.turn.duration")
     const llm = metrics.filter((row) => row.module === "llm" && row.name.endsWith(".duration"))
     const tools = metrics.filter((row) => row.name === "tool.execution.duration")
@@ -96,7 +125,7 @@ export namespace PerformanceDashboard {
     const frontendResources = metrics.filter((row) => row.name === "frontend.resource.duration")
     const frontendLongTasks = metrics.filter((row) => row.name === "frontend.long_task.duration")
     const frontendVital = (name: string) =>
-      metrics.find((row) => row.name === "frontend.web_vital" && row.labels.name === name)?.value
+      metrics.find((row) => row.name === "frontend.web_vital" && metricLabels(row).name === name)?.value
     const criticalIssueCount = issueCounts.critical
     const score = Math.max(0, 100 - criticalIssueCount * 40 - issueCounts.error * 20 - issueCounts.warning * 8)
     const status = criticalIssueCount > 0 ? "critical" : issueCounts.total > 0 ? "degraded" : "healthy"
@@ -389,7 +418,7 @@ export namespace PerformanceDashboard {
       .sort((a, b) => b.value - a.value)
       .slice(0, 5)
       .map((row, index) => {
-        const label = String(firstLabel(row.labels, labelKeys) ?? row.tool ?? row.session_id ?? row.name)
+        const label = String(firstLabel(metricLabels(row), labelKeys) ?? row.tool ?? row.session_id ?? row.name)
         return {
           id: `${row.metric_id}-${index}`,
           label,
@@ -407,14 +436,14 @@ export namespace PerformanceDashboard {
     const tools = new Map<string, { callCount: number; errorCount: number; categories: Map<string, number> }>()
     for (const row of rows) {
       if (row.name !== "tool.execution.count" && row.name !== "tool.execution.error") continue
-      const tool = row.tool ?? stringLabel(row.labels.tool)
+      const tool = row.tool ?? stringLabel(metricLabels(row).tool)
       if (!tool) continue
       const entry = tools.get(tool) ?? { callCount: 0, errorCount: 0, categories: new Map<string, number>() }
       if (row.name === "tool.execution.count") {
         entry.callCount += row.value
       } else {
         entry.errorCount += row.value
-        const errorClass = stringLabel(row.labels.errorName) ?? "UnknownError"
+        const errorClass = stringLabel(metricLabels(row).errorName) ?? "UnknownError"
         entry.categories.set(errorClass, (entry.categories.get(errorClass) ?? 0) + row.value)
       }
       tools.set(tool, entry)
@@ -451,7 +480,7 @@ export namespace PerformanceDashboard {
       .sort((a, b) => (b.memory_rss_bytes ?? 0) - (a.memory_rss_bytes ?? 0))
       .slice(0, 5)
       .map((row, index) => {
-        const labels = parseJson(row.labels_json)
+        const labels = metricLabels(row)
         return {
           id: `${row.sample_id}-${index}`,
           label: String(labels.command ?? labels.description ?? row.process_id ?? row.pid ?? "tool child process"),

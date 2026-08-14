@@ -445,17 +445,33 @@ export function SettingsPanel(props: SettingsPanelProps) {
     initializedForSet = undefined
   }
 
-  async function refreshAfterConfigChange(submittedDraft?: SettingsState) {
+  async function refreshAfterConfigChange(changedFields: string[], submittedDraft?: SettingsState) {
     setRefreshing(true)
     resetEditor()
-    await globalSync.refreshAllConfigs()
+    const changed = new Set(changedFields)
+    // Refresh only the panel resources affected by the fields that actually
+    // changed. The global sync store (provider/agent/command across scopes)
+    // is refreshed by the runtime.reloaded event via refreshTargeted, so we
+    // no longer trigger a full refreshAllConfigs() on every save.
+    const modelFields = [
+      "model",
+      "nano_model",
+      "mini_model",
+      "mid_model",
+      "thinking_model",
+      "long_context_model",
+      "creative_model",
+      "vision_model",
+      "role_variant",
+    ]
+    const agentFields = ["agent", "default_agent", "external_agent", "category", "permission", "library"]
     await Promise.all([
       refetchConfig(),
       refetchDomains(),
-      refetchModelRoleSummaries(),
-      refetchAgents(),
-      refetchCortexConcurrencyStatus(),
-      refetchChannelStatuses(),
+      ...(modelFields.some((field) => changed.has(field)) ? [refetchModelRoleSummaries()] : []),
+      ...(agentFields.some((field) => changed.has(field)) ? [refetchAgents()] : []),
+      ...(changed.has("cortex") ? [refetchCortexConcurrencyStatus()] : []),
+      ...(changed.has("channel") ? [refetchChannelStatuses()] : []),
     ])
     const currentDraft = submittedDraft ? snapshotSettingsDraft(settings) : undefined
     setRefreshing(false)
@@ -905,7 +921,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       <ImportPanel
         domains={domainSummaries() ?? []}
         scopes={globalSync.data.scope}
-        onImported={refreshAfterConfigChange}
+        onImported={(changedFields) => refreshAfterConfigChange(changedFields, undefined)}
         popoverLayer={settingsPopoverLayer()}
       />
     ),

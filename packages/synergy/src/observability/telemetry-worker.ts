@@ -61,7 +61,7 @@ function applyRow(row: TelemetryProtocol.BatchRow): void {
   }
 }
 
-function enforceSize(budgetMs: number): void {
+function enforceSize(budgetMs: number, vacuumAlways = false): void {
   if (!db || !config) return
   if (deferredRetryTimer) {
     clearTimeout(deferredRetryTimer)
@@ -73,11 +73,12 @@ function enforceSize(budgetMs: number): void {
     maxBytes: config.maxSqliteBytes,
     tables: ObservabilityDbSchema.SIZE_CAP_TABLES,
     budgetMs,
+    vacuumAlways,
   })
   counters.capExceededBytes = result.capExceededBytes
   counters.maintenanceDeferred = result.deferred ?? false
   if (result.deferred) {
-    deferredRetryTimer = setTimeout(() => enforceSize(budgetMs), 5_000)
+    deferredRetryTimer = setTimeout(() => enforceSize(budgetMs, vacuumAlways), 5_000)
     deferredRetryTimer.unref()
   }
 }
@@ -99,19 +100,16 @@ function scheduleTimers(): void {
     Math.min(config.walCheckpointIntervalMs * 10, 600_000),
   )
   compactTimer.unref()
-  retentionTimer = setInterval(
-    () => {
-      if (!db || !config) return
-      const now = Date.now()
-      try {
-        ObservabilityDbWrites.retain(db, now, now - config.metricRetentionMs, now - config.traceRetentionMs)
-        enforceSize(config.maintenanceBudgetMs)
-      } catch (error) {
-        counters.lastError = error instanceof Error ? error.message : String(error)
-      }
-    },
-    Math.max(config.metricRetentionMs / 4, 60_000),
-  )
+  retentionTimer = setInterval(() => {
+    if (!db || !config) return
+    const now = Date.now()
+    try {
+      ObservabilityDbWrites.retain(db, now, now - config.metricRetentionMs, now - config.traceRetentionMs)
+      enforceSize(config.maintenanceBudgetMs, true)
+    } catch (error) {
+      counters.lastError = error instanceof Error ? error.message : String(error)
+    }
+  }, TelemetryProtocol.RETENTION_INTERVAL_MS)
   retentionTimer.unref()
 }
 

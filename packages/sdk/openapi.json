@@ -4155,11 +4155,11 @@
         "description": "Update one canonical global config domain fragment.",
         "responses": {
           "200": {
-            "description": "Updated config domain fragment",
+            "description": "Updated config domain fragment with the fields that changed",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Config"
+                  "$ref": "#/components/schemas/ConfigDomainUpdateResponse"
                 }
               }
             }
@@ -33575,13 +33575,27 @@
               },
               "boss_identity_text": {
                 "description": "Optional colleague identity description injected into the runtime boss session",
-                "type": "string"
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "boss_briefing_interval_days": {
                 "description": "Re-inject the versioned world-overview briefing every N days (default: disabled)",
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             }
           },
@@ -35506,6 +35520,21 @@
           "uiSection",
           "importable"
         ]
+      },
+      "ConfigDomainUpdateResponse": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/Config"
+          },
+          "changedFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["config", "changedFields"]
       },
       "ConfigDomainUpdateInput": {
         "type": "object",
@@ -47320,64 +47349,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.synergy_link.target.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.target.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "target": {
-                "$ref": "#/components/schemas/SynergyLinkTarget"
-              }
-            },
-            "required": ["target"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.synergy_link.target.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.target.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "target": {
-                "$ref": "#/components/schemas/SynergyLinkTarget"
-              }
-            },
-            "required": ["target"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.synergy_link.target.removed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.target.removed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "pattern": "^target_[0-9a-f-]{36}$"
-              }
-            },
-            "required": ["id"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.channel.command.executed": {
         "type": "object",
         "properties": {
@@ -47480,6 +47451,64 @@
               }
             },
             "required": ["channelType", "accountId", "chatId", "text"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.synergy_link.target.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "$ref": "#/components/schemas/SynergyLinkTarget"
+              }
+            },
+            "required": ["target"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.synergy_link.target.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "$ref": "#/components/schemas/SynergyLinkTarget"
+              }
+            },
+            "required": ["target"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.synergy_link.target.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^target_[0-9a-f-]{36}$"
+              }
+            },
+            "required": ["id"]
           }
         },
         "required": ["type", "properties"]
@@ -48083,15 +48112,6 @@
             "$ref": "#/components/schemas/Event.agenda.item.deleted"
           },
           {
-            "$ref": "#/components/schemas/Event.synergy_link.target.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.synergy_link.target.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.synergy_link.target.removed"
-          },
-          {
             "$ref": "#/components/schemas/Event.channel.command.executed"
           },
           {
@@ -48102,6 +48122,15 @@
           },
           {
             "$ref": "#/components/schemas/Event.channel.message.received"
+          },
+          {
+            "$ref": "#/components/schemas/Event.synergy_link.target.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.synergy_link.target.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.synergy_link.target.removed"
           },
           {
             "$ref": "#/components/schemas/Event.holos.contact.added"

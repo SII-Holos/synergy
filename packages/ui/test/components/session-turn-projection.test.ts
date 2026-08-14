@@ -23,6 +23,7 @@ mock.module("solid-js", () => ({
     let value = initial
     return [() => value, (next: unknown) => (value = typeof next === "function" ? next(value) : next)]
   },
+  createUniqueId: () => "mock-unique-id",
   ErrorBoundary: Empty,
   For: Empty,
   Match: Empty,

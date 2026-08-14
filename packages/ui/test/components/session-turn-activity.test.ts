@@ -236,7 +236,7 @@ function activities(items: readonly ActivityTimelineItem[]) {
 }
 
 describe("balanced reasoning projection", () => {
-  test("keeps one root-turn Thinking status across assistant messages", () => {
+  test("keeps a Thinking status row per assistant message while working", () => {
     const first = assistant("assistant-a")
     const second = assistant("assistant-b")
     const firstItems = project({
@@ -250,20 +250,26 @@ describe("balanced reasoning projection", () => {
       working: true,
     })
 
-    const projected = projectBalancedReasoningItems([...firstItems, ...secondItems], "root-user", true)
+    const projected = projectBalancedReasoningItems([...firstItems, ...secondItems], true)
     const summaries = projected.filter((item) => item.kind === "activity-reasoning-summary")
 
-    expect(summaries).toHaveLength(1)
+    expect(summaries).toHaveLength(2)
     expect(summaries[0]).toMatchObject({
-      key: "activity-reasoning:root-user",
-      partID: "reason-b",
+      key: "activity-reasoning:assistant-a:reason-a",
+      partID: "reason-a",
       state: "pending",
       message: { id: "assistant-a" },
+    })
+    expect(summaries[1]).toMatchObject({
+      key: "activity-reasoning:assistant-b:reason-b",
+      partID: "reason-b",
+      state: "pending",
+      message: { id: "assistant-b" },
     })
     expect(projected.some((item) => item.kind === "passthrough" && item.item.part?.id === "answer-a")).toBe(true)
   })
 
-  test("drops generic reasoning after the completed turn has output", () => {
+  test("keeps a Reasoning fallback for a reasoning-only assistant beside an output-bearing one", () => {
     const first = assistant("assistant-a")
     const second = assistant("assistant-b")
     const projected = projectBalancedReasoningItems(
@@ -271,20 +277,22 @@ describe("balanced reasoning projection", () => {
         ...project({ message: first, parts: [text("answer-a", first.id)], working: false }),
         ...project({ message: second, parts: [reasoning("reason-b", second.id)], working: false }),
       ],
-      "root-user",
       false,
     )
+    const summaries = projected.filter((item) => item.kind === "activity-reasoning-summary")
 
-    expect(projected.some((item) => item.kind === "activity-reasoning-summary")).toBe(false)
-    expect(projected.some((item) => item.kind === "passthrough" && item.item.part?.id === "answer-a")).toBe(true)
-    expect(projected).toContainEqual({
-      kind: "activity-boundary",
-      key: "activity-boundary:assistant-b",
-      message: second,
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]).toMatchObject({
+      key: "activity-reasoning:assistant-b:reason-b",
+      partID: "reason-b",
+      state: "fallback",
+      message: { id: "assistant-b" },
     })
+    expect(projected.some((item) => item.kind === "activity-boundary")).toBe(false)
+    expect(projected.some((item) => item.kind === "passthrough" && item.item.part?.id === "answer-a")).toBe(true)
   })
 
-  test("keeps one Reasoning fallback for a completed reasoning-only turn", () => {
+  test("keeps one Reasoning fallback per reasoning-only assistant message", () => {
     const first = assistant("assistant-a")
     const second = assistant("assistant-b")
     const projected = projectBalancedReasoningItems(
@@ -292,38 +300,49 @@ describe("balanced reasoning projection", () => {
         ...project({ message: first, parts: [reasoning("reason-a", first.id)], working: false }),
         ...project({ message: second, parts: [reasoning("reason-b", second.id)], working: false }),
       ],
-      "root-user",
       false,
     )
     const summaries = projected.filter((item) => item.kind === "activity-reasoning-summary")
 
-    expect(summaries).toHaveLength(1)
+    expect(summaries).toHaveLength(2)
     expect(summaries[0]).toMatchObject({
-      key: "activity-reasoning:root-user",
-      partID: "reason-b",
+      key: "activity-reasoning:assistant-a:reason-a",
+      partID: "reason-a",
       state: "fallback",
       message: { id: "assistant-a" },
     })
-    expect(projected).toContainEqual({
-      kind: "activity-boundary",
-      key: "activity-boundary:assistant-b",
-      message: second,
+    expect(summaries[1]).toMatchObject({
+      key: "activity-reasoning:assistant-b:reason-b",
+      partID: "reason-b",
+      state: "fallback",
+      message: { id: "assistant-b" },
     })
   })
-  test("replaces the Thinking status row with a live reasoning line while compact streaming", () => {
+  test("replaces each Thinking status row with its own live reasoning line while compact streaming", () => {
     const first = assistant("assistant-a")
-    const part = reasoning("reason-a", first.id) as ReasoningPart
+    const second = assistant("assistant-b")
+    const firstPart = reasoning("reason-a", first.id) as ReasoningPart
+    const secondPart = reasoning("reason-b", second.id) as ReasoningPart
     const projected = projectBalancedReasoningItems(
-      project({ message: first, parts: [part, text("answer-a", first.id)], working: true }),
-      "root-user",
+      [
+        ...project({ message: first, parts: [firstPart, text("answer-a", first.id)], working: true }),
+        ...project({ message: second, parts: [secondPart], working: true }),
+      ],
       true,
-      { anchorMessage: first, frontier: { message: first, partID: part.id }, compactReasoningPart: part },
+      {
+        compactReasoningParts: new Map([
+          [first.id, firstPart],
+          [second.id, secondPart],
+        ]),
+      },
     )
 
     expect(projected.some((item) => item.kind === "activity-reasoning-summary")).toBe(false)
-    const live = projected.find((item) => item.kind === "passthrough" && item.item.kind === "reasoning")
-    expect(live).toBeTruthy()
-    expect((live as { item: { part: { id: string } } }).item.part.id).toBe("reason-a")
+    const live = projected.filter((item) => item.kind === "passthrough" && item.item.kind === "reasoning")
+    expect(live.map((item) => (item as { item: { part: { id: string } } }).item.part.id)).toEqual([
+      "reason-a",
+      "reason-b",
+    ])
   })
   test("keeps one live line when one message emits reasoning around tool calls", () => {
     const message = assistant("assistant-a")
@@ -334,14 +353,58 @@ describe("balanced reasoning projection", () => {
         parts: [reasoning("reason-a", message.id), text("answer-a", message.id), latestPart],
         working: true,
       }),
-      "root-user",
       true,
-      { anchorMessage: message, frontier: { message, partID: latestPart.id }, compactReasoningPart: latestPart },
+      { compactReasoningParts: new Map([[message.id, latestPart]]) },
     )
 
     const live = projected.filter((item) => item.kind === "passthrough" && item.item.kind === "reasoning")
     expect(live).toHaveLength(1)
     expect((live[0] as { item: { part: { id: string } } }).item.part.id).toBe("reason-b")
+  })
+
+  test("keeps one Thinking row per message when reasoning repeats without compact", () => {
+    const message = assistant("assistant-a")
+    const projected = projectBalancedReasoningItems(
+      project({
+        message,
+        parts: [reasoning("reason-a", message.id), text("answer-a", message.id), reasoning("reason-b", message.id)],
+        working: true,
+      }),
+      true,
+    )
+    const summaries = projected.filter((item) => item.kind === "activity-reasoning-summary")
+
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]).toMatchObject({
+      partID: "reason-a",
+      state: "pending",
+      message: { id: "assistant-a" },
+    })
+    expect(projected.some((item) => item.kind === "passthrough" && item.item.part?.id === "answer-a")).toBe(true)
+  })
+
+  test("anchors a completed assistant's compact row at its latest reasoning part while working", () => {
+    const message = assistant("assistant-a")
+    message.time.completed = 5000
+    const latestPart = reasoning("reason-b", message.id) as ReasoningPart
+    const projected = projectBalancedReasoningItems(
+      project({
+        message,
+        parts: [reasoning("reason-a", message.id), text("answer-a", message.id), latestPart],
+        working: true,
+      }),
+      true,
+      { compactReasoningParts: new Map([[message.id, latestPart]]) },
+    )
+    const live = projected.filter((item) => item.kind === "passthrough" && item.item.kind === "reasoning")
+    const answerIndex = projected.findIndex((item) => item.kind === "passthrough" && item.item.part?.id === "answer-a")
+    const liveIndex = projected.findIndex((item) => item.kind === "passthrough" && item.item.kind === "reasoning")
+
+    expect(live).toHaveLength(1)
+    expect((live[0] as { item: { part: { id: string } } }).item.part.id).toBe("reason-b")
+    expect(answerIndex).toBeGreaterThanOrEqual(0)
+    expect(liveIndex).toBe(answerIndex + 1)
+    expect(projected.filter((item) => item.kind === "activity-reasoning-summary")).toHaveLength(0)
   })
 })
 
