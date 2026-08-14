@@ -51,6 +51,29 @@ function findSide(node: Node | null): SelectionSide | undefined {
   return "additions"
 }
 
+function sameFileContents(a: FileContents | undefined, b: FileContents | undefined): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  return (
+    a.name === b.name &&
+    a.contents === b.contents &&
+    a.cacheKey === b.cacheKey &&
+    a.lang === b.lang &&
+    a.header === b.header
+  )
+}
+
+function sameRenderRange(a: RenderRange | undefined, b: RenderRange | undefined): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  return (
+    a.startingLine === b.startingLine &&
+    a.totalLines === b.totalLines &&
+    a.bufferBefore === b.bufferBefore &&
+    a.bufferAfter === b.bufferAfter
+  )
+}
+
 export function Code<T>(props: CodeProps<T>) {
   let container!: HTMLDivElement
 
@@ -117,6 +140,14 @@ export function Code<T>(props: CodeProps<T>) {
     file().setSelectedLines(range)
   }
 
+  // Value-stable gates: streaming projections rebuild wrapper objects around
+  // unchanged file contents and render ranges. The equality memos stop that
+  // churn from re-running the render effect, which would otherwise wipe and
+  // rebuild the pierre view on every projection (same pattern as
+  // DiffPatch.patchText).
+  const fileContents = createMemo(() => local.file, undefined, { equals: sameFileContents })
+  const renderRange = createMemo(() => local.renderRange, undefined, { equals: sameRenderRange })
+
   createEffect(() => {
     const current = file()
 
@@ -128,10 +159,10 @@ export function Code<T>(props: CodeProps<T>) {
   createEffect(() => {
     container.innerHTML = ""
     file().render({
-      file: local.file,
+      file: fileContents(),
       lineAnnotations: local.annotations,
       containerWrapper: container,
-      renderRange: local.renderRange,
+      renderRange: renderRange(),
     })
   })
 
