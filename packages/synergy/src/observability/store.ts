@@ -106,7 +106,7 @@ export namespace ObservabilityStore {
         capExceededBytes: client.capExceededBytes,
         maintenanceDeferred: client.maintenanceDeferred,
         checkpointIntervalMs: config.storage.walCheckpointIntervalMs,
-        retentionIntervalMs: Math.max(config.metricRetentionMs / 4, 60_000),
+        retentionIntervalMs: TelemetryProtocol.RETENTION_INTERVAL_MS,
       }
     }
     return {

@@ -7,7 +7,6 @@ import { ObservabilityDbWrites } from "./db-writes"
 import { ObservabilitySqliteMaintenance } from "./sqlite-maintenance"
 import { TelemetryProtocol } from "./telemetry-protocol"
 
-const RETENTION_INTERVAL_MS = 15 * 60_000
 let db: Database | undefined
 let config: TelemetryProtocol.WorkerConfig | undefined
 let checkpointTimer: ReturnType<typeof setInterval> | undefined
@@ -110,7 +109,7 @@ function scheduleTimers(): void {
     } catch (error) {
       counters.lastError = error instanceof Error ? error.message : String(error)
     }
-  }, RETENTION_INTERVAL_MS)
+  }, TelemetryProtocol.RETENTION_INTERVAL_MS)
   retentionTimer.unref()
 }
 
