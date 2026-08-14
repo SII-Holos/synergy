@@ -68,8 +68,7 @@
   .activity-step-audit-trigger {
     position: absolute;
     left: -28px;
-    top: 50%;
-    transform: translateY(-50%);
+    top: 4px;
     width: 24px;
     height: 24px;
     cursor: help;
