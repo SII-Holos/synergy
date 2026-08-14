@@ -1034,20 +1034,13 @@ export function SessionTurn(
       }
       if (activityDisplay() === "balanced") {
         const liveReasoningParts = new Map<string, ReasoningPart>()
-        const frontier = assistants.reduce<{ message: AssistantMessage; part: ReasoningPart } | undefined>(
-          (latest, assistant) => {
-            const reasoningPart = (data.store.part[assistant.id] ?? emptyParts).findLast(
-              (part): part is ReasoningPart => part.type === "reasoning" && Boolean(part.text.trim()),
-            )
-            if (!reasoningPart) return latest
-            liveReasoningParts.set(assistant.id, reasoningPart)
-            return { message: assistant, part: reasoningPart }
-          },
-          undefined,
-        )
-        const projected = projectBalancedReasoningItems(result, msg?.id ?? props.messageID, working(), {
-          anchorMessage: assistants[0],
-          frontier: frontier ? { message: frontier.message, partID: frontier.part.id } : undefined,
+        for (const assistant of assistants) {
+          const reasoningPart = (data.store.part[assistant.id] ?? emptyParts).findLast(
+            (part): part is ReasoningPart => part.type === "reasoning" && Boolean(part.text.trim()),
+          )
+          if (reasoningPart) liveReasoningParts.set(assistant.id, reasoningPart)
+        }
+        const projected = projectBalancedReasoningItems(result, working(), {
           compactReasoningParts: props.compactReasoning && working() ? liveReasoningParts : undefined,
         }) as SessionTurnDisplayItem[]
         return props.compactReasoning && !working()

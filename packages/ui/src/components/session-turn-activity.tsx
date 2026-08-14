@@ -345,107 +345,82 @@ export function isActivityTimelineItem(value: ActivityTimelineItem | unknown): v
   )
 }
 
-export type BalancedReasoningFrontier = {
-  message: AssistantMessage
-  partID: string
+function messageHasBalancedOutput(items: readonly unknown[], messageID: string): boolean {
+  return items.some(
+    (item) =>
+      isActivityTimelineItem(item) &&
+      item.message.id === messageID &&
+      (item.kind === "activity-group" ||
+        item.kind === "activity-receipt" ||
+        (item.kind === "passthrough" && item.item.kind !== "compaction")),
+  )
 }
 
-function isBalancedTurnOutput(item: ActivityTimelineItem): boolean {
-  if (item.kind === "activity-group" || item.kind === "activity-receipt") return true
-  return item.kind === "passthrough" && item.item.kind !== "compaction"
-}
-
+/**
+ * Balanced reasoning projection, applied per assistant message. While a
+ * message streams, its first `Thinking…` status row stays in place (upgraded
+ * to its own live reasoning line under compact reasoning) and repeated
+ * reasoning rows for the same message are dropped. A completed message
+ * follows settled semantics even while the turn still works: compact
+ * reasoning anchors one settled row at the latest reasoning part's position,
+ * while non-compact reasoning is hidden when the message produced output and
+ * becomes one `Reasoning` fallback when the message is reasoning-only.
+ */
 export function projectBalancedReasoningItems<T>(
   items: readonly (ActivityTimelineItem | T)[],
-  rootMessageID: string,
   working: boolean,
   options?: {
-    anchorMessage?: AssistantMessage
-    frontier?: BalancedReasoningFrontier
     /** Live reasoning part per assistant message; while working, replaces each message's Thinking… row with its own streaming reasoning line. */
     compactReasoningParts?: ReadonlyMap<string, ReasoningPart>
   },
 ): (ActivityTimelineItem | T)[] {
-  const activityItems = items.filter(isActivityTimelineItem)
+  const liveParts = options?.compactReasoningParts
+  const summariesByMessage = new Map<string, { item: ActivityReasoningSummaryItem; index: number }[]>()
+  items.forEach((item, index) => {
+    if (!isActivityTimelineItem(item) || item.kind !== "activity-reasoning-summary") return
+    const list = summariesByMessage.get(item.message.id) ?? []
+    list.push({ item, index })
+    summariesByMessage.set(item.message.id, list)
+  })
+  if (summariesByMessage.size === 0) return [...items]
 
-  if (working) {
-    const liveParts = options?.compactReasoningParts
-    const result: (ActivityTimelineItem | T)[] = []
-    const replacedMessageIDs = new Set<string>()
-    for (const item of items) {
-      if (!isActivityTimelineItem(item) || item.kind !== "activity-reasoning-summary") {
-        result.push(item)
-        continue
-      }
-      const livePart = liveParts?.get(item.message.id)
-      if (!livePart) {
-        result.push(item)
-        continue
-      }
-      // One live line per message: the earliest Thinking row is upgraded in
-      // place and any later reasoning rows for the same message are dropped.
-      if (replacedMessageIDs.has(item.message.id)) continue
-      result.push({
+  const replace = new Map<number, ActivityTimelineItem>()
+  const drop = new Set<number>()
+  for (const [messageID, summaries] of summariesByMessage) {
+    const message = summaries[0].item.message
+    const completed = !working || message.time.completed != null
+    const livePart = liveParts?.get(messageID)
+    if (livePart) {
+      // Compact: a streaming message anchors its live line at the first
+      // Thinking row; a completed message anchors its settled row at the
+      // latest reasoning part's position.
+      const anchor = completed ? summaries[summaries.length - 1]! : summaries[0]!
+      replace.set(anchor.index, {
         kind: "passthrough",
-        item: { kind: "reasoning", message: item.message, part: livePart },
-        message: item.message,
+        item: { kind: "reasoning", message, part: livePart },
+        message,
       })
-      replacedMessageIDs.add(item.message.id)
-    }
-    return result
-  }
-
-  const reasoningItems = activityItems.filter(
-    (item): item is ActivityReasoningSummaryItem => item.kind === "activity-reasoning-summary",
-  )
-  const fallbackFrontier = reasoningItems.at(-1)
-  const frontier =
-    options?.frontier ??
-    (fallbackFrontier ? { message: fallbackFrontier.message, partID: fallbackFrontier.partID } : undefined)
-  if (!frontier) return [...items]
-
-  const anchorMessage = options?.anchorMessage ?? activityItems[0]?.message ?? frontier.message
-  const hasOutput = activityItems.some(isBalancedTurnOutput)
-  const summary: ActivityReasoningSummaryItem | undefined = !hasOutput
-    ? {
-        kind: "activity-reasoning-summary",
-        key: `activity-reasoning:${rootMessageID}`,
-        message: anchorMessage,
-        partID: frontier.partID,
-        state: "fallback",
+      for (const summary of summaries) {
+        if (summary !== anchor) drop.add(summary.index)
       }
-    : undefined
-  const keptMessageIDs = new Set(
-    activityItems.flatMap((item) => (item.kind === "activity-reasoning-summary" ? [] : [item.message.id])),
-  )
-  if (summary) keptMessageIDs.add(summary.message.id)
+      continue
+    }
+    if (completed && messageHasBalancedOutput(items, messageID)) {
+      for (const summary of summaries) drop.add(summary.index)
+      continue
+    }
+    const keep = summaries[0]!
+    if (completed) replace.set(keep.index, { ...keep.item, state: "fallback" })
+    for (const summary of summaries) {
+      if (summary !== keep) drop.add(summary.index)
+    }
+  }
 
   const result: (ActivityTimelineItem | T)[] = []
-  const boundaryMessageIDs = new Set<string>()
-  const inserted = summary
-  const insertedMessageID = inserted?.message.id
-  let insertedFlag = false
-  for (const item of items) {
-    if (isActivityTimelineItem(item)) {
-      if (!insertedFlag && inserted && item.message.id === insertedMessageID) {
-        result.push(inserted)
-        insertedFlag = true
-      }
-      if (item.kind === "activity-reasoning-summary") {
-        if (!keptMessageIDs.has(item.message.id) && !boundaryMessageIDs.has(item.message.id)) {
-          result.push({
-            kind: "activity-boundary",
-            key: `activity-boundary:${item.message.id}`,
-            message: item.message,
-          })
-          boundaryMessageIDs.add(item.message.id)
-        }
-        continue
-      }
-    }
-    result.push(item)
-  }
-  if (inserted && !insertedFlag) result.push(inserted)
+  items.forEach((item, index) => {
+    if (drop.has(index)) return
+    result.push(replace.get(index) ?? item)
+  })
   return result
 }
 
