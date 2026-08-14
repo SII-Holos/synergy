@@ -22,6 +22,13 @@ const DomainUpdateInput = z
   })
   .meta({ ref: "ConfigDomainUpdateInput" })
 
+const DomainUpdateResponse = z
+  .object({
+    config: Config.Info,
+    changedFields: z.array(z.string()),
+  })
+  .meta({ ref: "ConfigDomainUpdateResponse" })
+
 const DomainOpenResponse = z
   .object({
     success: z.literal(true),
@@ -261,8 +268,8 @@ export const ConfigRoute = new Hono()
       operationId: "config.domain.update",
       responses: {
         200: {
-          description: "Updated config domain fragment",
-          content: { "application/json": { schema: resolver(Config.Info) } },
+          description: "Updated config domain fragment with the fields that changed",
+          content: { "application/json": { schema: resolver(DomainUpdateResponse) } },
         },
         ...errors(400),
       },
@@ -274,7 +281,7 @@ export const ConfigRoute = new Hono()
       const body = c.req.valid("json")
       const { result, change } = await Config.domainUpdateWithChange(domain, body.config, { mode: body.mode })
       await reloadAfterConfigChange(change, `config.domain.update:${domain}`)
-      return c.json(result)
+      return c.json({ config: result, changedFields: change.changedFields })
     },
   )
   .post(

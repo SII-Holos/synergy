@@ -81,6 +81,8 @@ export namespace RuntimeReload {
     eventDirectory?: string
     includePrerequisites?: boolean
     useCurrentDirectory?: boolean
+    /** File paths that triggered the reload; lets Config.reload skip unaffected markdown scans. */
+    files?: string[]
   }
 
   // ─── Target dependency map ───────────────────────────────────────────
@@ -155,6 +157,7 @@ export namespace RuntimeReload {
       liveApplied,
       warnings,
       configChange: options.configChange,
+      files: options.files,
       includePrerequisites: options.includePrerequisites !== false,
     }
 
@@ -228,6 +231,7 @@ export namespace RuntimeReload {
     restartRequired: Set<string>
     liveApplied: Set<string>
     warnings: string[]
+    files?: string[]
     includePrerequisites: boolean
     configChange?: Config.Change
   }
@@ -291,7 +295,18 @@ export namespace RuntimeReload {
     switch (target) {
       case "config": {
         const resolvedScope = resolveConfigScope(ctx.scope)
-        const result = await Config.reload(resolvedScope)
+        // When the writer already reset and re-loaded the Config cache
+        // (domainUpdateWithChange does state.resetAll() + globalResolved()),
+        // reuse the writer-provided transition instead of re-reading every
+        // domain file a second time. External file edits still reload fully.
+        const result = ctx.configChange
+          ? {
+              config: ctx.configChange.config,
+              changedFields: ctx.configChange.changedFields,
+              oldConfig: ctx.configChange.oldConfig,
+              issues: Config.diagnostics(),
+            }
+          : await Config.reload(resolvedScope, { files: ctx.files })
         for (const issue of result.issues ?? []) {
           ctx.diagnostics.push({
             target: "config",
@@ -536,11 +551,14 @@ export namespace RuntimeReload {
 
   // ─── Config cascade inference ────────────────────────────────────────
   // P10: Ensured all config fields cascade correctly.
-  // - model role changes → provider + agent (model may reference unloaded provider)
-  // - category changes → provider + agent (category.model may reference different provider)
+  // - provider changes → provider + agent (provider state rebuild)
+  // - model role changes → agent (agent prompts reference the resolved role)
   // - default_agent, instruction files → agent
   // - tools → tool_registry
-
+  // Timeout and category changes are intentionally NOT cascaded here:
+  // timeout is read dynamically via TimeoutConfig.resolve() and category is
+  // read dynamically via Config.current(), so neither requires a subsystem
+  // state rebuild.
   export function inferConfigCascades(fields: string[]) {
     const cascaded = [] as Target[]
     const changed = new Set(fields)
@@ -568,8 +586,9 @@ export namespace RuntimeReload {
       cascaded.push("agent")
     }
     if (changed.has("category")) {
-      // Category configs can specify model overrides that reference different providers
-      cascaded.push("provider", "agent")
+      // Category configs are read dynamically by Cortex and connection
+      // resolution (Config.current()), not baked into provider/agent state.
+      cascaded.push("agent")
     }
     if (changed.has("agent") || changed.has("permission") || changed.has("library") || changed.has("external_agent")) {
       cascaded.push("agent")
@@ -613,7 +632,8 @@ export namespace RuntimeReload {
       cascaded.push("tool_registry")
     }
     if (changed.has("timeout")) {
-      cascaded.push("provider")
+      // Timeout values are resolved dynamically at call time via
+      // TimeoutConfig.resolve(); no subsystem state embeds them.
     }
 
     return unique(cascaded)
@@ -688,10 +708,12 @@ export namespace RuntimeReload {
 
   // P12: Debounce per scope rather than per file.
   // Multiple file changes within the same scope during the debounce window
-  // are merged into a single reload with the union of their targets.
-  let debounceTimers = new Map<string, { timer: ReturnType<typeof setTimeout>; targets: Set<Target> }>()
+  let debounceTimers = new Map<
+    string,
+    { timer: ReturnType<typeof setTimeout>; targets: Set<Target>; files: Set<string> }
+  >()
 
-  function debounceReload(_file: string, scope: "global" | "project", targets: Target[]) {
+  function debounceReload(file: string, scope: "global" | "project", targets: Target[]) {
     const key = scope
     const existing = debounceTimers.get(key)
     if (existing) {
@@ -700,6 +722,8 @@ export namespace RuntimeReload {
     }
     const mergedTargets = existing?.targets ?? new Set<Target>(targets)
     for (const t of targets) mergedTargets.add(t)
+    const mergedFiles = existing?.files ?? new Set<string>()
+    if (file) mergedFiles.add(file)
 
     const timer = setTimeout(async () => {
       debounceTimers.delete(key)
@@ -707,11 +731,16 @@ export namespace RuntimeReload {
       if (finalTargets.length === 0) return
       reloadLog.info("auto-reloading", { scope, targets: finalTargets })
       try {
-        const result = await reload({
-          targets: finalTargets,
-          scope,
-          reason: `auto-reload: file changed in ${scope} scope`,
-        })
+        const result = await reload(
+          {
+            targets: finalTargets,
+            scope,
+            reason: `auto-reload: file changed in ${scope} scope`,
+          },
+          // Pass the changed file paths so Config.reload can skip
+          // command/agent markdown scans unaffected by domain edits.
+          { files: [...mergedFiles] },
+        )
         reloadLog.info("auto-reload complete", {
           executed: result.executed,
           cascaded: result.cascaded,
@@ -722,10 +751,17 @@ export namespace RuntimeReload {
       }
     }, DEFAULT_DEBOUNCE_MS)
 
-    debounceTimers.set(key, { timer, targets: mergedTargets })
+    debounceTimers.set(key, { timer, targets: mergedTargets, files: mergedFiles })
   }
 
   function handleGlobalConfigEvent(event: { file: string; event: string }) {
+    // Settings saves already run their full reload inside the write
+    // transaction; skip the watcher's follow-up reload for those writes so a
+    // save never triggers a second full config reload.
+    if (Config.isWriteRecentlyHandled(event.file)) {
+      reloadLog.info("skipping auto-reload for recently handled config write", { file: event.file })
+      return
+    }
     const targets = detectTargetsForFile(event.file)
     if (targets.length === 0) {
       reloadLog.info("no targets detected for file, skipping", { file: event.file })

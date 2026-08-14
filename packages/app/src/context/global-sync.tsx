@@ -1898,6 +1898,7 @@ function createGlobalSync() {
     loadGlobalAgenda,
     refreshConfig,
     refreshAllConfigs,
+    refreshTargeted,
     refreshProviders: () => refreshTargeted(["provider"]),
     scope: {
       loadSessions,
