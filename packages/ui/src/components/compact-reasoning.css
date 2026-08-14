@@ -122,3 +122,13 @@
     }
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-component="compact-reasoning"],
+  [data-component="compact-reasoning"] [data-slot="collapsible-content"],
+  [data-component="compact-reasoning"] [data-slot="compact-reasoning-trigger"],
+  [data-component="compact-reasoning"] [data-component="spinner"] rect {
+    animation: none;
+    transition: none;
+  }
+}
