@@ -16,7 +16,6 @@ function metricRow(id: string): TelemetryProtocol.BatchRow {
     row: ObservabilitySchema.Metric.parse({
       metricId: id,
       time: 1_700_000_000_000,
-      iso: "2023-11-14T22:13:20.000Z",
       name: "test.metric",
       value: 1,
       unit: "count",

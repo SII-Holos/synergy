@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite"
 import { ObservabilityResourceSchema } from "./resource-schema"
 
 export namespace ObservabilityDbSchema {
-  export const schemaVersion = 5
+  export const schemaVersion = 6
   export const SIZE_CAP_TABLES = [
     { table: "obs_metrics", orderBy: "time" },
     { table: "obs_events", orderBy: "time" },
@@ -31,14 +31,11 @@ export namespace ObservabilityDbSchema {
   }
 
   const SQL = `
-CREATE TABLE IF NOT EXISTS obs_metrics (metric_id TEXT PRIMARY KEY,time INTEGER NOT NULL,iso TEXT NOT NULL,name TEXT NOT NULL,value REAL NOT NULL,unit TEXT NOT NULL,source TEXT NOT NULL,module TEXT NOT NULL,correlation_id TEXT,scope_id TEXT,session_id TEXT,message_id TEXT,call_id TEXT,trace_id TEXT,span_id TEXT,parent_span_id TEXT,rid TEXT,process_id TEXT,pid INTEGER,tool TEXT,labels_json TEXT NOT NULL DEFAULT '{}',sample_rate REAL NOT NULL DEFAULT 1,redaction_json TEXT NOT NULL DEFAULT '{}');
+CREATE TABLE IF NOT EXISTS obs_metrics (metric_id TEXT PRIMARY KEY,time INTEGER NOT NULL,name TEXT NOT NULL,value REAL NOT NULL,unit TEXT NOT NULL,source TEXT NOT NULL,module TEXT NOT NULL,correlation_id TEXT,scope_id TEXT,session_id TEXT,message_id TEXT,call_id TEXT,trace_id TEXT,span_id TEXT,parent_span_id TEXT,rid TEXT,process_id TEXT,pid INTEGER,tool TEXT,labels_json TEXT NOT NULL DEFAULT '{}',sample_rate REAL NOT NULL DEFAULT 1);
 CREATE INDEX IF NOT EXISTS idx_obs_metrics_time ON obs_metrics(time);
 CREATE INDEX IF NOT EXISTS idx_obs_metrics_name_time ON obs_metrics(name,time);
-CREATE INDEX IF NOT EXISTS idx_obs_metrics_module_time ON obs_metrics(module,time);
 CREATE INDEX IF NOT EXISTS idx_obs_metrics_trace_time ON obs_metrics(trace_id,time);
-CREATE INDEX IF NOT EXISTS idx_obs_metrics_correlation_time ON obs_metrics(correlation_id,time);
 CREATE INDEX IF NOT EXISTS idx_obs_metrics_session_time ON obs_metrics(session_id,time);
-CREATE INDEX IF NOT EXISTS idx_obs_metrics_scope_time ON obs_metrics(scope_id,time);
 CREATE TABLE IF NOT EXISTS obs_spans (trace_id TEXT NOT NULL,correlation_id TEXT,span_id TEXT PRIMARY KEY,parent_span_id TEXT,kind TEXT NOT NULL DEFAULT 'runtime',name TEXT NOT NULL,module TEXT NOT NULL,source TEXT NOT NULL,start_time INTEGER NOT NULL,end_time INTEGER,duration_ms REAL,last_activity_time INTEGER NOT NULL,heartbeat_time INTEGER,heartbeat_count INTEGER NOT NULL DEFAULT 0,stalled INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'running',error_code TEXT,error_message TEXT,scope_id TEXT,session_id TEXT,message_id TEXT,call_id TEXT,rid TEXT,process_id TEXT,pid INTEGER,tool TEXT,attributes_json TEXT NOT NULL DEFAULT '{}',redaction_json TEXT NOT NULL DEFAULT '{}');
 CREATE INDEX IF NOT EXISTS idx_obs_spans_trace ON obs_spans(trace_id);
 CREATE INDEX IF NOT EXISTS idx_obs_spans_correlation_time ON obs_spans(correlation_id,start_time);

@@ -24,10 +24,19 @@ export namespace ObservabilitySqliteMaintenance {
     maxBytes: number
     tables: ReadonlyArray<Table>
     budgetMs?: number
+    vacuumAlways?: boolean
   }): EnforceResult {
     const deadline = performance.now() + (input.budgetMs ?? DEFAULT_BUDGET_MS)
     if (input.maxBytes <= 0) return { capExceededBytes: 0 }
-    if (physicalFootprint(input.path) <= input.maxBytes) return { capExceededBytes: 0 }
+    if (input.vacuumAlways) {
+      // Reclaim freelist pages unconditionally so retention-triggered runs
+      // shrink the file back toward the cap instead of only reacting once
+      // the physical footprint has already exceeded it.
+      reclaimFreePages(input.db, input.path, input.maxBytes, deadline)
+      if (physicalFootprint(input.path) <= input.maxBytes) return { capExceededBytes: 0 }
+    } else if (physicalFootprint(input.path) <= input.maxBytes) {
+      return { capExceededBytes: 0 }
+    }
     input.db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
     reclaimFreePages(input.db, input.path, input.maxBytes, deadline)
     if (physicalFootprint(input.path) <= input.maxBytes) return { capExceededBytes: 0 }

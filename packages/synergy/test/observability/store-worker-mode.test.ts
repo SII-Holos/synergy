@@ -109,7 +109,6 @@ describe("ObservabilityStore worker mode", () => {
     ObservabilityStore.insertMetric({
       metricId: "disabled_metric",
       time: Date.now(),
-      iso: new Date().toISOString(),
       name: "disabled.metric",
       value: 1,
       unit: "count",
@@ -117,7 +116,6 @@ describe("ObservabilityStore worker mode", () => {
       module: "observability",
       labels: {},
       sampleRate: 1,
-      redaction: { applied: true, omittedKeys: 0, truncatedValues: 0 },
     })
     expect(ObservabilityTelemetryClient.stats().pending).toBe(0)
   })

@@ -84,7 +84,6 @@ export namespace ObservabilityMetrics {
     const metric: ObservabilitySchema.Metric = {
       metricId: ObservabilityClock.id("met"),
       time,
-      iso: ObservabilityClock.iso(time),
       name: input.name,
       value: input.value,
       unit: input.unit,
@@ -104,7 +103,6 @@ export namespace ObservabilityMetrics {
       pid: input.pid,
       tool: input.tool,
       sampleRate: input.sampleRate,
-      redaction: redacted.summary,
     }
     ObservabilityStore.insertMetric(metric)
   }

@@ -39,7 +39,6 @@ function metricRow(metricId: string, name: string, value: number): TelemetryProt
     row: ObservabilitySchema.Metric.parse({
       metricId,
       time: now,
-      iso: new Date(now).toISOString(),
       name,
       value,
       unit: "count",
@@ -204,14 +203,12 @@ describe("ObservabilityTelemetryClient worker", () => {
     const seed = new Database(dbPath, { create: true })
     ObservabilityDbSchema.configureWriteConnection(seed, true)
     const now = Date.now()
-    const iso = new Date(now).toISOString()
     for (let index = 0; index < 4000; index++) {
       ObservabilityDbWrites.insertMetric(
         seed,
         ObservabilitySchema.Metric.parse({
           metricId: `seed_${index}`,
           time: now,
-          iso,
           name: "seed.metric",
           value: index,
           unit: "count",
