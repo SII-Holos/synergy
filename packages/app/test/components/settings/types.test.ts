@@ -23,4 +23,9 @@ describe("settings types", () => {
     expect(UI_DEFAULTS.activityDisplay).toBe("balanced")
     expect(defaultSettingsState("enter").general.activityDisplay).toBe("balanced")
   })
+
+  test("defaults compact reasoning to enabled in the general store", () => {
+    expect(UI_DEFAULTS.compactReasoning).toBe(true)
+    expect(defaultSettingsState("enter").general.compactReasoning).toBe(true)
+  })
 })
