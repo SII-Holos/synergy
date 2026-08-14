@@ -252,8 +252,12 @@ export namespace Log {
     return "observability"
   }
 
+  // Only warnings and errors are mirrored into the observability store; debug
+  // and info logs stay file-only unless the caller explicitly opts in with
+  // `mirror: true` (used by deliberately bounded hot-path audit telemetry).
   function mirror(level: Level, tags: Record<string, any>, message: any, extra?: Record<string, any>) {
     if (mirroring || tags["mirror"] === false || extra?.["mirror"] === false) return
+    if ((level === "DEBUG" || level === "INFO") && tags["mirror"] !== true && extra?.["mirror"] !== true) return
     mirroring = true
     try {
       const data: Record<string, unknown> = { ...tags, ...(extra ?? {}) }

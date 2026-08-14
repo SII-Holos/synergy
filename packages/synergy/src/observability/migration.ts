@@ -16,6 +16,7 @@ export namespace ObservabilityMigration {
   export const incrementalVacuumId = "20260711-observability-incremental-vacuum"
   export const schemaMetadataId = "20260712-observability-schema-metadata-v4"
   export const resourceCgroupId = "20260722-observability-resource-cgroup-v5"
+  export const metricSlimId = "20260814-observability-metric-slim-v6"
 
   export async function migrateLegacyPerformance(progress: (current: number, total: number) => void = () => {}) {
     const target = ObservabilityStore.initializeForMigration()
@@ -96,6 +97,31 @@ export namespace ObservabilityMigration {
     progress(1, 1)
   }
 
+  export async function slimMetrics(progress: (current: number, total: number) => void = () => {}) {
+    const target = ObservabilityStore.initializeForMigration()
+    target.transaction(() => {
+      for (const index of [
+        "idx_obs_metrics_module_time",
+        "idx_obs_metrics_correlation_time",
+        "idx_obs_metrics_scope_time",
+      ]) {
+        runStatement(target, `DROP INDEX IF EXISTS ${index}`)
+      }
+      const columns = new Set(allRows<{ name: string }>(target, "PRAGMA table_info(obs_metrics)").map((r) => r.name))
+      for (const column of ["iso", "redaction_json"]) {
+        if (columns.has(column)) {
+          runStatement(target, `ALTER TABLE obs_metrics DROP COLUMN ${column}`)
+        }
+      }
+      runStatement(
+        target,
+        "INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('schemaVersion', ?)",
+        String(schemaVersion),
+      )
+    })()
+    progress(1, 1)
+  }
+
   function hasTable(db: Database, table: string) {
     const row = getRow<{ name?: string }>(db, "SELECT name FROM sqlite_master WHERE type='table' AND name=?", table)
     return !!row?.name
@@ -131,11 +157,11 @@ export namespace ObservabilityMigration {
   function copyMetrics(legacy: Database, target: Database) {
     if (!hasTable(legacy, "perf_metrics")) return
     const select = legacy.prepare(
-      `SELECT metric_id,time,iso,${legacyMetricNameSql()} AS name,value,unit,source,module,scope_id,session_id,message_id,call_id,${legacyMetricTraceSql(legacy)} AS trace_id,span_id,parent_span_id,rid,process_id,pid,tool,labels_json,sample_rate FROM perf_metrics`,
+      `SELECT metric_id,time,${legacyMetricNameSql()} AS name,value,unit,source,module,scope_id,session_id,message_id,call_id,${legacyMetricTraceSql(legacy)} AS trace_id,span_id,parent_span_id,rid,process_id,pid,tool,labels_json,sample_rate FROM perf_metrics`,
     )
     const insert = target.prepare(
-      `INSERT OR IGNORE INTO obs_metrics (metric_id,time,iso,name,value,unit,source,module,scope_id,session_id,message_id,call_id,trace_id,span_id,parent_span_id,rid,process_id,pid,tool,labels_json,sample_rate,redaction_json)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)`,
+      `INSERT OR IGNORE INTO obs_metrics (metric_id,time,name,value,unit,source,module,scope_id,session_id,message_id,call_id,trace_id,span_id,parent_span_id,rid,process_id,pid,tool,labels_json,sample_rate)
+       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)`,
     )
     try {
       for (const row of select.iterate() as IterableIterator<LegacyMetricRow>) {
@@ -143,7 +169,6 @@ export namespace ObservabilityMigration {
         insert.run(
           row.metric_id,
           row.time,
-          row.iso,
           row.name,
           row.value,
           row.unit,
@@ -162,7 +187,6 @@ export namespace ObservabilityMigration {
           row.tool ?? null,
           JSON.stringify(labels.value),
           row.sample_rate,
-          JSON.stringify(labels.summary),
         )
       }
     } finally {
@@ -404,14 +428,14 @@ export namespace ObservabilityMigration {
   }
 
   function redactMetrics(target: Database) {
-    const update = target.prepare("UPDATE obs_metrics SET labels_json = ?, redaction_json = ? WHERE metric_id = ?")
+    const update = target.prepare("UPDATE obs_metrics SET labels_json = ? WHERE metric_id = ?")
     try {
       forEachBatch<{ migration_id: string; labels_json?: string | null }>(
         target,
         "SELECT metric_id AS migration_id,labels_json FROM obs_metrics WHERE (?1 IS NULL OR metric_id > ?1) ORDER BY metric_id LIMIT ?2",
         (row) => {
           const labels = ObservabilityRedaction.redactRecord(parseJsonRecord(row.labels_json))
-          update.run(JSON.stringify(labels.value), JSON.stringify(labels.summary), row.migration_id)
+          update.run(JSON.stringify(labels.value), row.migration_id)
         },
       )
     } finally {
@@ -733,6 +757,16 @@ const migrations: Migration[] = [
     dependsOn: [ObservabilityMigration.schemaMetadataId],
     async up(progress) {
       await ObservabilityMigration.addResourceCgroupColumns(progress)
+    },
+  },
+  {
+    id: ObservabilityMigration.metricSlimId,
+    description: "Drop low-value metric columns and indexes to bound storage growth",
+    domain: "observability",
+    version: String(ObservabilityMigration.schemaVersion),
+    dependsOn: [ObservabilityMigration.resourceCgroupId],
+    async up(progress) {
+      await ObservabilityMigration.slimMetrics(progress)
     },
   },
 ]

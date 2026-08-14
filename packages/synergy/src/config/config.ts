@@ -384,7 +384,7 @@ export namespace Config {
     // These fill undefined values only — user-set values are preserved.
     if (result.snapshot === undefined) result.snapshot = true
     if (result.activityDisplay === undefined) result.activityDisplay = "balanced"
-    if (result.compactReasoning === undefined) result.compactReasoning = false
+    if (result.compactReasoning === undefined) result.compactReasoning = true
     if (result.lspWriteDiagnostics === undefined) result.lspWriteDiagnostics = true
     if (result.default_agent === undefined) result.default_agent = "synergy"
     if (result.project_doc_fallback_filenames === undefined) result.project_doc_fallback_filenames = []

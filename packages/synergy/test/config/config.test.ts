@@ -34,6 +34,17 @@ test("defaults activity display to balanced without materializing a preference",
     },
   })
 })
+test("defaults compact reasoning to true without materializing a preference", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const config = await Config.current()
+      expect(config.compactReasoning).toBe(true)
+      expect((await Config.globalRaw()).compactReasoning).toBeUndefined()
+    },
+  })
+})
 
 test("loads explicit activity display preferences", async () => {
   await using tmp = await tmpdir({
