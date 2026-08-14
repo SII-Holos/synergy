@@ -1,15 +1,15 @@
-import { createEffect, createMemo, createSignal, createUniqueId, on, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { compactReasoningFirstLine, compactReasoningText } from "./compact-reasoning-text"
 import { Icon } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import { Spinner } from "./spinner"
+import { Collapsible } from "./collapsible"
 import { SESSION_TURN_DESC } from "./tool-title-descriptors"
 import "./compact-reasoning.css"
 
 export function CompactReasoningLine(props: { fullText: string; running: boolean }) {
   const { _ } = useLingui()
-  const detailID = createUniqueId()
   const [open, setOpen] = createSignal(false)
   const [userScrolled, setUserScrolled] = createSignal(false)
   let scroller: HTMLElement | undefined
@@ -51,14 +51,8 @@ export function CompactReasoningLine(props: { fullText: string; running: boolean
       <Show
         when={props.running}
         fallback={
-          <div data-slot="compact-reasoning-settled">
-            <button
-              type="button"
-              data-slot="compact-reasoning-trigger"
-              aria-expanded={open()}
-              aria-controls={detailID}
-              onClick={() => setOpen((value) => !value)}
-            >
+          <Collapsible open={open()} onOpenChange={setOpen} variant="ghost">
+            <Collapsible.Trigger data-slot="compact-reasoning-trigger" type="button">
               <span data-slot="compact-reasoning-leading" aria-hidden="true">
                 <Icon name={getSemanticIcon("performance.trace")} size="small" />
               </span>
@@ -67,13 +61,13 @@ export function CompactReasoningLine(props: { fullText: string; running: boolean
               <span data-slot="compact-reasoning-chevron" aria-hidden="true">
                 <Icon name={getSemanticIcon(open() ? "navigation.collapse" : "navigation.expand")} size="small" />
               </span>
-            </button>
-            <Show when={open()}>
-              <div data-slot="compact-reasoning-detail" id={detailID}>
+            </Collapsible.Trigger>
+            <Collapsible.Content>
+              <div data-slot="compact-reasoning-detail">
                 <pre data-slot="compact-reasoning-detail-text">{props.fullText}</pre>
               </div>
-            </Show>
-          </div>
+            </Collapsible.Content>
+          </Collapsible>
         }
       >
         <span data-slot="compact-reasoning-leading" aria-hidden="true">
