@@ -255,8 +255,9 @@ describe("Compact reasoning settlement transition", () => {
     expect(document.querySelector('[data-slot="compact-reasoning-detail"]')).toBeNull()
 
     trigger.click()
-    await waitForUpdate()
     expect(trigger.getAttribute("aria-expanded")).toBe("true")
-    expect(document.querySelector('[data-slot="compact-reasoning-detail"]')).not.toBeNull()
+    const detail = document.querySelector('[data-slot="compact-reasoning-detail"]')
+    expect(detail).not.toBeNull()
+    expect(detail?.getAttribute("id")).toBe(trigger.getAttribute("aria-controls"))
   })
 })

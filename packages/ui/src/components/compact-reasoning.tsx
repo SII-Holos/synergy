@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, createUniqueId, on, onCleanup, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { compactReasoningFirstLine, compactReasoningText } from "./compact-reasoning-text"
 import { Icon } from "./icon"
@@ -9,6 +9,7 @@ import "./compact-reasoning.css"
 
 export function CompactReasoningLine(props: { fullText: string; running: boolean }) {
   const { _ } = useLingui()
+  const detailID = createUniqueId()
   const [open, setOpen] = createSignal(false)
   const [userScrolled, setUserScrolled] = createSignal(false)
   let scroller: HTMLElement | undefined
@@ -55,6 +56,7 @@ export function CompactReasoningLine(props: { fullText: string; running: boolean
               type="button"
               data-slot="compact-reasoning-trigger"
               aria-expanded={open()}
+              aria-controls={detailID}
               onClick={() => setOpen((value) => !value)}
             >
               <span data-slot="compact-reasoning-leading" aria-hidden="true">
@@ -67,7 +69,7 @@ export function CompactReasoningLine(props: { fullText: string; running: boolean
               </span>
             </button>
             <Show when={open()}>
-              <div data-slot="compact-reasoning-detail">
+              <div data-slot="compact-reasoning-detail" id={detailID}>
                 <pre data-slot="compact-reasoning-detail-text">{props.fullText}</pre>
               </div>
             </Show>

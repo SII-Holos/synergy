@@ -161,6 +161,8 @@ describe("CompactReasoningLine DOM behavior", () => {
     await wait(20)
 
     expect(trigger.getAttribute("aria-expanded")).toBe("true")
+    const detail = document.querySelector('[data-slot="compact-reasoning-detail"]')
+    expect(detail?.getAttribute("id")).toBe(trigger.getAttribute("aria-controls"))
     expect(document.querySelector('[data-slot="compact-reasoning-detail-text"]')?.textContent).toBe(
       "## Planning\nFirst reasoning line.\n- Second reasoning line.",
     )
