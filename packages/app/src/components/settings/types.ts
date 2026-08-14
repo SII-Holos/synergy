@@ -43,7 +43,7 @@ export const UI_DEFAULTS = {
   activityDisplay: "balanced" as ActivityDisplay,
   username: "" as string,
   snapshot: true,
-  compactReasoning: false,
+  compactReasoning: true,
   permission: "ask" as string, // resolved from backend { "*": "ask" } object
   sandboxEnabled: "true" as string,
   sandboxFallbackPolicy: "warn" as string,
