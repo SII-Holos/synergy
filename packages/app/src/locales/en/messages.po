@@ -19173,20 +19173,12 @@ msgid "ui.errorCard.detailsTitle"
 msgstr "Error details"
 
 #. js-lingui-explicit-id
-msgid "ui.errorCard.errorMessage"
-msgstr "Error message"
-
-#. js-lingui-explicit-id
 msgid "ui.errorCard.toolInput"
 msgstr "Tool input"
 
 #. js-lingui-explicit-id
 msgid "ui.errorCard.unknownError"
 msgstr "Unknown error"
-
-#. js-lingui-explicit-id
-msgid "ui.errorCard.viewDetails"
-msgstr "View details"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.close"
