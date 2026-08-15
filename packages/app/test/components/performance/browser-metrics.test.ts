@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  browserPerformanceEnabled,
   buildSessionSwitchMetrics,
   buildTokenTimingMetric,
   fitBrowserMetricBatch,
@@ -7,6 +8,27 @@ import {
   pageContextFromUrl,
   shouldRetryBrowserMetricBatch,
 } from "../../../src/components/performance/browser-metrics"
+
+describe("browser performance effective enablement", () => {
+  test("defaults to enabled when no observability config is present", () => {
+    expect(browserPerformanceEnabled()).toBe(true)
+    expect(browserPerformanceEnabled({})).toBe(true)
+  })
+
+  test("honors explicit performance.enabled", () => {
+    expect(browserPerformanceEnabled({ observability: { performance: { enabled: false } } })).toBe(false)
+    expect(browserPerformanceEnabled({ observability: { performance: { enabled: true } } })).toBe(true)
+  })
+
+  test("falls back to the master observability.enabled switch", () => {
+    expect(browserPerformanceEnabled({ observability: { enabled: false } })).toBe(false)
+    expect(browserPerformanceEnabled({ observability: { enabled: true } })).toBe(true)
+  })
+
+  test("performance.enabled wins over the master switch", () => {
+    expect(browserPerformanceEnabled({ observability: { enabled: false, performance: { enabled: true } } })).toBe(true)
+  })
+})
 
 describe("browser performance metrics", () => {
   test("builds safe route and session context", () => {

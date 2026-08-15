@@ -54,6 +54,7 @@ export namespace RuntimeReload {
     "library",
     "external_agent",
     "email",
+    "observability",
   ])
   export const CONFIG_CLIENT_SIDE = new Set(["theme", "keybinds", "layout", "toast", "locale"])
 
@@ -355,6 +356,31 @@ export namespace RuntimeReload {
         if (resolvedScope === "global" && changedFields.includes("embedding")) {
           const { Embedding } = await import("../vector/embedding")
           await Embedding.dispose()
+        }
+        if (resolvedScope === "global" && changedFields.includes("observability")) {
+          const { ObservabilityConfig } = await import("../observability/config")
+          const { ObservabilityStore } = await import("../observability/store")
+          const { ObservabilityResources } = await import("../observability/resources")
+          // storage.sqliteEnabled is restart-required: performance-route.ts
+          // rejects it on PATCH (PERF_CONFIG_RESTART_REQUIRED). A config
+          // import or file edit must not reopen/close the telemetry store
+          // live, so only refresh the effective config (and resource
+          // sampling, which is store-independent) and flag the restart.
+          const oldSqlite =
+            oldConfig.observability?.performance?.storage?.sqliteEnabled ??
+            ObservabilityConfig.defaults.storage.sqliteEnabled
+          const newSqlite =
+            result.config.observability?.performance?.storage?.sqliteEnabled ??
+            ObservabilityConfig.defaults.storage.sqliteEnabled
+          ObservabilityConfig.refresh(result.config)
+          ObservabilityResources.reconfigure()
+          if (oldSqlite === newSqlite) {
+            ObservabilityStore.reconfigure()
+            ctx.liveApplied.add("observability")
+          } else {
+            ctx.restartRequired.add("observability.performance.storage.sqliteEnabled")
+            ctx.liveApplied.delete("observability")
+          }
         }
         // P11: Handle library → autonomy/anima sync (migrated from Config.reload)
         if (changedFields.includes("library")) {

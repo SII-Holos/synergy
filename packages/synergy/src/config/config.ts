@@ -1318,8 +1318,11 @@ export namespace Config {
   }
 
   export async function globalRaw() {
-    await migrateLegacyGlobalConfig()
-    return loadDomainDirectory(Global.Path.config)
+    // global() lazily loads and caches the merged domain directory. Every
+    // write path (reload, domain update, import, setup, watcher auto-reload)
+    // resets that cache, so reads are cheap without serving stale config
+    // after a commit. Clone on the way out so callers cannot mutate the cache.
+    return structuredClone(await global())
   }
 
   export const DomainSummary = z

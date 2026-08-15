@@ -24,7 +24,7 @@ export namespace Diagnostics {
     output?: string
   }
 
-  export async function summary(): Promise<Summary> {
+  export async function summary(input: { freshPendingSessions?: boolean } = {}): Promise<Summary> {
     const lock = await ServerProcessLock.read().catch(() => undefined)
     const inspection = lock ? await ServerProcessLock.inspect(lock).catch(() => undefined) : undefined
     const recentErrors = ObservabilityStore.queryEvents({ limit: 200 })
@@ -70,7 +70,7 @@ export namespace Diagnostics {
         finished: ProcessRegistry.listFinished().map(summarizeFinishedProcess),
       },
       sessions: {
-        pendingReply: await pendingSessions().catch(() => []),
+        pendingReply: await pendingSessions(input.freshPendingSessions).catch(() => []),
       },
     })
   }
@@ -84,7 +84,10 @@ export namespace Diagnostics {
     await fs.mkdir(path.join(root, "observability"), { recursive: true })
     await fs.mkdir(path.join(root, "runtime"), { recursive: true })
 
-    const info = await summary()
+    // Diagnostic packages are on-demand support snapshots: bypass the
+    // dashboard's pending-session cache so a stuck session that changed in
+    // the last 15s is still captured (or a finished one omitted).
+    const info = await summary({ freshPendingSessions: true })
     await fs.writeFile(path.join(root, "summary.json"), JSON.stringify(info, null, 2) + "\n")
 
     const logFiles = [info.logs.current, info.logs.dev, info.logs.daemon, ...info.logs.devArchives].filter(
@@ -380,9 +383,24 @@ export namespace Diagnostics {
     }
   }
 
-  async function pendingSessions() {
+  let pendingSessionsCache: { at: number; root: string; value: Summary["sessions"]["pendingReply"] } | undefined
+  const PENDING_SESSIONS_CACHE_MS = 15_000
+
+  async function pendingSessions(fresh = false) {
+    const now = Date.now()
     const root = path.join(Global.Path.data, "sessions")
+    if (
+      !fresh &&
+      pendingSessionsCache &&
+      pendingSessionsCache.root === root &&
+      now - pendingSessionsCache.at < PENDING_SESSIONS_CACHE_MS
+    ) {
+      return pendingSessionsCache.value
+    }
     const result: Summary["sessions"]["pendingReply"] = []
+    // Only session-level info.json files carry pendingReply; message-level
+    // files under messages/ never do. Skipping them turns an O(all messages)
+    // scan into an O(sessions) scan for the dashboard's 5s polling.
     await walk(root, async (file) => {
       if (!file.endsWith("info.json")) return
       const data = await fs.readFile(file, "utf8").catch(() => "")
@@ -391,7 +409,9 @@ export namespace Diagnostics {
       if (!json.pendingReply || !json.id) return
       result.push({ sessionID: json.id, path: file, updated: json.time?.updated })
     })
-    return result.sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0)).slice(0, 50)
+    const value = result.sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0)).slice(0, 50)
+    pendingSessionsCache = { at: now, root, value }
+    return value
   }
 
   async function walk(dir: string, visit: (file: string) => Promise<void>) {
@@ -399,7 +419,12 @@ export namespace Diagnostics {
     await Promise.all(
       entries.map(async (entry) => {
         const full = path.join(dir, entry.name)
-        if (entry.isDirectory()) return walk(full, visit)
+        // Message payloads live under messages/ and never carry pendingReply;
+        // skipping them bounds the scan to session-level info.json files.
+        if (entry.isDirectory()) {
+          if (entry.name === "messages") return
+          return walk(full, visit)
+        }
         if (entry.isFile()) return visit(full)
       }),
     )
