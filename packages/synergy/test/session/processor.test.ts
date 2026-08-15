@@ -1109,6 +1109,27 @@ describe("SessionProcessor execution slot settlement", () => {
       expect(issues[0]!.occurrence_count).toBe(1)
       expect(JSON.parse(issues[0]!.evidence_json)).toMatchObject({ owner: "builtin", phase: "tool.execute" })
     })
+    test("records an LLM tool-error only once when the stream repeats the same call", async () => {
+      const callID = "call_repeated_tool_error"
+      const tool = "hallucinated_tool"
+      const error = new Error("Model tried to call unavailable tool 'hallucinated_tool'")
+      await runSettlementScenario({
+        messageID: "msg_repeated_tool_error",
+        async *stream() {
+          yield { type: "start" }
+          yield { type: "tool-error", toolCallId: callID, toolName: tool, input: {}, error }
+          yield { type: "tool-error", toolCallId: callID, toolName: tool, input: {}, error }
+        },
+      })
+      ObservabilityStore.flush()
+
+      const metrics = ObservabilityStore.queryMetrics({
+        since: 0,
+        names: ["tool.execution.count", "tool.execution.error"],
+      })
+      expect(metrics.filter((row) => row.call_id === callID && row.name === "tool.execution.count")).toHaveLength(1)
+      expect(metrics.filter((row) => row.call_id === callID && row.name === "tool.execution.error")).toHaveLength(1)
+    })
   })
 
   test("settles a save_file create-file outcome without tool-result", async () => {
