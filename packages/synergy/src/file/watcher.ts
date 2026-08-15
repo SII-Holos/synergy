@@ -109,7 +109,7 @@ export namespace FileWatcher {
   }
 
   const watcher = lazy(() => {
-    const binding = require(FileWatcherBinding.packageName())
+    const binding = FileWatcherBinding.load()
     return createWrapper(binding) as typeof import("@parcel/watcher")
   })
 
@@ -356,11 +356,12 @@ export namespace FileWatcher {
   let reportedMissingBinding = false
 
   function bindingAvailable(): boolean {
-    if (FileWatcherBinding.resolvable(FileWatcherBinding.packageName())) return true
+    if (FileWatcherBinding.available()) return true
     if (!reportedMissingBinding) {
       reportedMissingBinding = true
       log.error("file watcher binding unavailable; file watching disabled", {
         package: FileWatcherBinding.packageName(),
+        packaged: FileWatcherBinding.packagedPath(),
       })
     }
     return false

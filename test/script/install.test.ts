@@ -27,6 +27,7 @@ const sharedRuntimeFiles = [
   "lib/holos-cli/vendor/clarus-shared/index.js",
   "lib/holos-cli/node_modules/ws/package.json",
   "lib/holos-cli/node_modules/zod/package.json",
+  "watcher.node",
 ]
 
 function runInstallFunction(command: string, args: string[] = [], env: Record<string, string> = {}) {
@@ -504,6 +505,7 @@ describe("CLI bundle installer", () => {
       "bin/synergy",
       "bin/ast-grep",
       "vec0.so",
+      "watcher.node",
       "app/index.html",
       "schema/config.schema.json",
       "browser-runtime/playwright-core/package.json",
@@ -544,6 +546,7 @@ describe("CLI bundle installer", () => {
         "bin/synergy",
         "bin/ast-grep",
         "vec0.so",
+        "watcher.node",
         "app/index.html",
         "schema/config.schema.json",
         "browser-runtime/playwright-core/package.json",

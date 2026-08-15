@@ -21,6 +21,9 @@ export function requiredRuntimeArtifactPaths(name: string): string[] {
   return [
     binary,
     ...(!target.musl ? [astGrep, sqliteVec] : []),
+    // The watcher binding ships for every target: @parcel/watcher publishes
+    // musl packages, so unlike ast-grep/sqlite-vec it is not glibc-only.
+    "watcher.node",
     "app/index.html",
     "schema/config.schema.json",
     ...PLAYWRIGHT_CORE_REQUIRED_PATHS,
