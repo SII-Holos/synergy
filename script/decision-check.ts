@@ -58,7 +58,13 @@ async function stagedFiles(root: string, cwd: string): Promise<string[]> {
     .text()
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line.startsWith(decisions) && line.endsWith(".md"))
+    .filter((line) => {
+      // Only records at {lifecycle}/{class}/yyyy-mm-dd-topic-title.md are
+      // staged-checked; docs/decisions/README.md is not a record.
+      if (!line.startsWith(decisions) || !line.endsWith(".md")) return false
+      const parts = line.slice(decisions.length).replace(/^\/+/, "").split("/")
+      return parts.length === 3
+    })
     .map((line) => path.join(cwd, line))
 }
 

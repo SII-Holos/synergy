@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { readdir } from "node:fs/promises"
+import { mkdir, readdir, rm } from "node:fs/promises"
 import path from "node:path"
 
 const root = path.resolve(import.meta.dir, "..")
@@ -36,10 +36,23 @@ async function collectTests(directory: string): Promise<string[]> {
   return nested.flat()
 }
 
-async function run(files: string[], options: { browser?: boolean } = {}) {
+async function run(files: string[], options: { browser?: boolean } = {}, shard = 0) {
   if (files.length === 0) return
+  const coverage = process.argv.includes("--coverage")
   const child = Bun.spawn(
-    [process.execPath, "test", "--timeout", "120000", ...(options.browser ? ["--conditions=browser"] : []), ...files],
+    [
+      process.execPath,
+      "test",
+      "--timeout",
+      "120000",
+      // Bun overwrites coverage/lcov.info on every invocation, so coverage
+      // mode writes each batch into its own shard directory; coverage:check
+      // merges them. Without this, the final serial batch would erase all
+      // coverage from the main batch.
+      ...(coverage ? ["--coverage", "--coverage-reporter=lcov", "--coverage-dir", `coverage/shards/${shard}`] : []),
+      ...(options.browser ? ["--conditions=browser"] : []),
+      ...files,
+    ],
     {
       cwd: root,
       stdin: "inherit",
@@ -51,10 +64,22 @@ async function run(files: string[], options: { browser?: boolean } = {}) {
   if (exitCode !== 0) globalThis.process.exit(exitCode)
 }
 
+const coverage = process.argv.includes("--coverage")
+if (coverage) {
+  await rm(path.join(root, "coverage", "shards"), { recursive: true, force: true })
+  await mkdir(path.join(root, "coverage", "shards"), { recursive: true })
+}
+
 const files = (await collectTests("test")).toSorted()
-await run(files.filter((file) => !isolated.has(file) && !browserOnly.has(file)))
-for (const file of files.filter((file) => isolated.has(file))) await run([file])
+await run(
+  files.filter((file) => !isolated.has(file) && !browserOnly.has(file)),
+  {},
+  0,
+)
+let shard = 1
+for (const file of files.filter((file) => isolated.has(file))) await run([file], {}, shard++)
 await run(
   files.filter((file) => browserOnly.has(file)),
   { browser: true },
+  shard++,
 )

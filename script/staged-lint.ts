@@ -10,7 +10,9 @@ import { $ } from "bun"
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..")
 
-const LINTABLE = /\.(ts|tsx|js|jsx|mjs|cjs|json|jsonc)$/
+// oxlint lints JS/TS only; passing it JSON/JSONC paths makes it exit 1 with
+// "No files found to lint", so JSON files are intentionally excluded.
+const LINTABLE = /\.(ts|tsx|js|jsx|mjs|cjs)$/
 
 async function stagedFiles(cwd: string): Promise<string[]> {
   const result = await $`git diff --cached --name-only --diff-filter=ACMR`.cwd(cwd).quiet()
