@@ -17405,6 +17405,14 @@ msgid "settings.runtime.observ.page.title"
 msgstr "可观测性"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.observ.performanceEnabled.desc"
+msgstr "收集本地性能指标、追踪与诊断信息。关闭后停止全部后台采样与写入。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.performanceEnabled.title"
+msgstr "性能监控"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.observ.shell.command.found"
 msgstr "已解析"
 
