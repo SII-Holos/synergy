@@ -93,6 +93,7 @@ async function createRuntimeFixture(platform: "darwin" | "linux" | "win32" = "da
     fs.writeFile(path.join(runtimeDir, "lib", "resvg-wasm", "fonts", "noto-sans-sc-latin-400-normal.woff2"), "font"),
     fs.writeFile(path.join(runtimeDir, "bin", astGrep), "runtime"),
     fs.writeFile(path.join(runtimeDir, sqliteVec), "runtime"),
+    fs.writeFile(path.join(runtimeDir, "watcher.node"), "runtime"),
     fs.writeFile(path.join(runtimeDir, "lib", "holos-cli", "index.js"), "runtime"),
     fs.writeFile(path.join(runtimeDir, "lib", "holos-cli", "vendor", "clarus-shared", "index.js"), "runtime"),
     fs.writeFile(path.join(runtimeDir, "lib", "holos-cli", "node_modules", "ws", "package.json"), "{}"),
