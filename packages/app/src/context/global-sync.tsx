@@ -90,7 +90,12 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
-import { recordTokenApply } from "@/components/performance/browser-metrics"
+import {
+  browserPerformanceEnabled,
+  recordTokenApply,
+  startBrowserPerformanceMetrics,
+  stopBrowserPerformanceMetrics,
+} from "@/components/performance/browser-metrics"
 
 type GlobalPaths = {
   home: string
@@ -1801,6 +1806,19 @@ function createGlobalSync() {
     if (isConnected && globalStore.ready) {
       void resyncInstances(Object.keys(children))
       void loadGlobalAgenda()
+    }
+  })
+
+  // Drive the browser performance collector from the effective config. The
+  // server drops batches when observability is disabled, but the collector
+  // itself (observers, timers, network) must stop too — start/stop on every
+  // config change so a live toggle applies immediately.
+  createEffect(() => {
+    if (!globalStore.ready) return
+    if (browserPerformanceEnabled(globalStore.config)) {
+      startBrowserPerformanceMetrics({ url: globalSDK.url, client: globalSDK.client })
+    } else {
+      stopBrowserPerformanceMetrics()
     }
   })
 

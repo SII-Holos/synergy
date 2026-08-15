@@ -17405,6 +17405,14 @@ msgid "settings.runtime.observ.page.title"
 msgstr "Observability"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.observ.performanceEnabled.desc"
+msgstr "Collect local performance metrics, traces, and diagnostics. Disable to stop all background sampling and writes."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.performanceEnabled.title"
+msgstr "Performance Monitoring"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.observ.shell.command.found"
 msgstr "Resolved"
 

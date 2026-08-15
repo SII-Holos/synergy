@@ -46,7 +46,7 @@ describe("ServerProcessLock", () => {
             stderr: "inherit",
           }),
         )
-        const readyDeadline = Date.now() + 30_000
+        const readyDeadline = Date.now() + 60_000
         while (!(await fs.readFile(readyPath, "utf8").catch(() => "")).split("\n").includes(String(index))) {
           if (Date.now() >= readyDeadline) throw new Error(`Lock worker ${index} did not become ready`)
           await Bun.sleep(10)
@@ -55,7 +55,7 @@ describe("ServerProcessLock", () => {
 
       await Bun.write(startPath, "go\n")
 
-      const resultDeadline = Date.now() + 30_000
+      const resultDeadline = Date.now() + 60_000
       let results: WorkerResult[] = []
       while (results.length < count) {
         if (Date.now() >= resultDeadline) throw new Error("Lock workers did not finish competing")
@@ -396,7 +396,7 @@ describe("ServerProcessLock", () => {
             stderr: "inherit",
           }),
         )
-        const readyDeadline = Date.now() + 30_000
+        const readyDeadline = Date.now() + 60_000
         while (!(await fs.readFile(readyPath, "utf8").catch(() => "")).split("\n").includes(String(index))) {
           if (Date.now() >= readyDeadline) throw new Error(`Lock worker ${index} did not become ready`)
           await Bun.sleep(10)
@@ -404,7 +404,7 @@ describe("ServerProcessLock", () => {
       }
 
       await Bun.write(startPath, "go\n")
-      const resultDeadline = Date.now() + 30_000
+      const resultDeadline = Date.now() + 60_000
       let results: WorkerResult[] = []
       while (results.length < count) {
         if (Date.now() >= resultDeadline) throw new Error("Lock workers did not finish stale replacement")

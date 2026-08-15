@@ -1,5 +1,5 @@
 import path from "node:path"
-import { pathToFileURL } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 declare const SYNERGY_STANDALONE: boolean | undefined
 
@@ -10,8 +10,38 @@ export const EMBEDDING_RUNTIME_WASM = "ort-wasm-simd-threaded.asyncify.wasm"
 type TransformersRuntime = typeof import("@huggingface/transformers")
 let standaloneOnnxRuntime: Promise<typeof import("onnxruntime-web/wasm")> | undefined
 
+const REMOTE_PROTOCOL = /^(https?|blob|data):/i
+const standaloneFetchInstalled = new WeakSet<object>()
+let localFileFetchInstalled = false
 function isStandalone(): boolean {
   return typeof SYNERGY_STANDALONE !== "undefined" && SYNERGY_STANDALONE
+}
+
+function localFilePath(target: string): string {
+  return target.startsWith("file:") ? fileURLToPath(target) : target
+}
+
+async function fetchLocalFile(target: string): Promise<Response> {
+  const filePath = localFilePath(target)
+  const file = Bun.file(filePath)
+  if (!(await file.exists())) throw new Error(`local embedding asset not found: ${filePath}`)
+  return new Response(file.stream(), { headers: { "content-length": String(file.size) } })
+}
+
+// onnxruntime-web's browser build reads model files through the global fetch,
+// passing raw local paths or file:// URLs after transformers returns a cached
+// model path. Bun's fetch rejects raw paths, and in compiled artifacts the
+// node:fs branch of onnxruntime-common is dead code, so every mode must serve
+// local files through fetch before any ONNX session is created.
+function installGlobalLocalFileFetch(): void {
+  if (localFileFetchInstalled) return
+  localFileFetchInstalled = true
+  const native = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const target = typeof input === "string" ? input : input instanceof URL ? input.href : undefined
+    if (typeof target === "string" && !REMOTE_PROTOCOL.test(target)) return fetchLocalFile(target)
+    return native(input, init)
+  }) as typeof globalThis.fetch
 }
 
 function loadStandaloneOnnxRuntime(): Promise<typeof import("onnxruntime-web/wasm")> {
@@ -32,15 +62,37 @@ function loadStandaloneOnnxRuntime(): Promise<typeof import("onnxruntime-web/was
   return standaloneOnnxRuntime
 }
 
+// transformers.js captures env.fetch when its module evaluates. Depending on
+// bundle evaluation order it may have captured the native fetch before the
+// global patch above, so wrap it explicitly to keep file:// WASM factory loads
+// working in every order.
+export function installLocalFileFetch(runtime: TransformersRuntime): void {
+  installGlobalLocalFileFetch()
+  if (standaloneFetchInstalled.has(runtime.env)) return
+  standaloneFetchInstalled.add(runtime.env)
+  const delegate = runtime.env.fetch
+  runtime.env.fetch = async (input, init) => {
+    const target = typeof input === "string" ? input : input instanceof URL ? input.href : undefined
+    if (typeof target === "string" && !REMOTE_PROTOCOL.test(target)) return fetchLocalFile(target)
+    return delegate(input, init)
+  }
+}
+
 export async function loadEmbeddingTransformersRuntime(): Promise<{
   runtime: TransformersRuntime
   device?: "cpu"
 }> {
-  if (!isStandalone()) return { runtime: await import("@huggingface/transformers") }
+  if (!isStandalone()) {
+    const runtime = await import("@huggingface/transformers")
+    installLocalFileFetch(runtime)
+    return { runtime }
+  }
   await loadStandaloneOnnxRuntime()
+  const runtime = await import("@huggingface/transformers")
+  installLocalFileFetch(runtime)
   // transformers.js v4 dropped "wasm" from its device enum; "cpu" maps to the
   // preloaded WASM execution provider in onnxruntime-web.
-  return { runtime: await import("@huggingface/transformers"), device: "cpu" }
+  return { runtime, device: "cpu" }
 }
 
 export async function verifyStandaloneEmbeddingRuntime(): Promise<void> {

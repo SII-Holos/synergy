@@ -4,6 +4,7 @@ import { ObservabilityRedaction } from "./redaction"
 import { ObservabilitySchema } from "./schema"
 import { ObservabilityStore } from "./store"
 import { parseJson } from "@/util/json-parse"
+import { ObservabilityConfig } from "./config"
 
 export namespace ObservabilityEvents {
   export async function emit(
@@ -12,6 +13,7 @@ export namespace ObservabilityEvents {
       data?: Record<string, unknown>
     } = {},
   ) {
+    if (!ObservabilityConfig.current().enabled) return undefined
     const context = ObservabilityContext.merge({
       correlationId: input.correlationId,
       traceId: input.traceId,
