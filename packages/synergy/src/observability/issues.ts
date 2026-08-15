@@ -5,6 +5,7 @@ import { ObservabilityRedaction } from "./redaction"
 import { ObservabilitySchema } from "./schema"
 import { parseJson } from "@/util/json-parse"
 import { ObservabilityStore } from "./store"
+import { ObservabilityConfig } from "./config"
 
 export namespace ObservabilityIssues {
   const publishedFingerprints = new Map<string, number>()
@@ -29,6 +30,11 @@ export namespace ObservabilityIssues {
     evidence?: Record<string, unknown>
     fingerprint?: string
   }) {
+    // When observability is disabled, skip construction, persistence, and
+    // live-event publishing entirely so the write path and the dashboard
+    // data version stay quiet (a growing data version would defeat the
+    // summary cache even when nothing is stored).
+    if (!ObservabilityConfig.current().enabled) return undefined
     const context = ObservabilityContext.merge({
       correlationId: input.correlationId,
       traceId: input.traceId,

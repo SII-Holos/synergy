@@ -312,6 +312,15 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
 
   const logLevel = runtime.logLevel.trim()
   if (logLevel !== (cfg.logLevel ?? UI_DEFAULTS.logLevel)) patch.logLevel = logLevel || undefined
+
+  const performanceEnabled = runtime.performanceEnabled !== "false"
+  const currentPerformanceEnabled = cfg.observability?.performance?.enabled !== false
+  if (performanceEnabled !== currentPerformanceEnabled) {
+    patch.observability = {
+      ...(cfg.observability ?? {}),
+      performance: { ...(cfg.observability?.performance ?? {}), enabled: performanceEnabled },
+    }
+  }
 }
 
 function buildTimeoutPatch(cfg: Config, runtime: SettingsState["runtime"]) {

@@ -144,6 +144,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     toolOverrides: formatRecord(cfg.timeout?.tool?.overrides),
     watcherIgnore: formatList(cfg.watcher?.ignore),
     logLevel: cfg.logLevel ?? UI_DEFAULTS.logLevel,
+    performanceEnabled: cfg.observability?.performance?.enabled !== false ? "true" : "false",
     coauthorReminder: cfg.experimental?.coauthor_reminder !== false ? "true" : "false",
     bossMode: cfg.experimental?.boss_mode === true ? "true" : "false",
     bossIdentityText: cfg.experimental?.boss_identity_text ?? "",

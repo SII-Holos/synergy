@@ -380,9 +380,23 @@ export namespace Diagnostics {
     }
   }
 
+  let pendingSessionsCache: { at: number; root: string; value: Summary["sessions"]["pendingReply"] } | undefined
+  const PENDING_SESSIONS_CACHE_MS = 15_000
+
   async function pendingSessions() {
+    const now = Date.now()
     const root = path.join(Global.Path.data, "sessions")
+    if (
+      pendingSessionsCache &&
+      pendingSessionsCache.root === root &&
+      now - pendingSessionsCache.at < PENDING_SESSIONS_CACHE_MS
+    ) {
+      return pendingSessionsCache.value
+    }
     const result: Summary["sessions"]["pendingReply"] = []
+    // Only session-level info.json files carry pendingReply; message-level
+    // files under messages/ never do. Skipping them turns an O(all messages)
+    // scan into an O(sessions) scan for the dashboard's 5s polling.
     await walk(root, async (file) => {
       if (!file.endsWith("info.json")) return
       const data = await fs.readFile(file, "utf8").catch(() => "")
@@ -391,7 +405,9 @@ export namespace Diagnostics {
       if (!json.pendingReply || !json.id) return
       result.push({ sessionID: json.id, path: file, updated: json.time?.updated })
     })
-    return result.sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0)).slice(0, 50)
+    const value = result.sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0)).slice(0, 50)
+    pendingSessionsCache = { at: now, root, value }
+    return value
   }
 
   async function walk(dir: string, visit: (file: string) => Promise<void>) {
@@ -399,7 +415,12 @@ export namespace Diagnostics {
     await Promise.all(
       entries.map(async (entry) => {
         const full = path.join(dir, entry.name)
-        if (entry.isDirectory()) return walk(full, visit)
+        // Message payloads live under messages/ and never carry pendingReply;
+        // skipping them bounds the scan to session-level info.json files.
+        if (entry.isDirectory()) {
+          if (entry.name === "messages") return
+          return walk(full, visit)
+        }
         if (entry.isFile()) return visit(full)
       }),
     )

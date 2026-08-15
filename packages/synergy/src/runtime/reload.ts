@@ -54,6 +54,7 @@ export namespace RuntimeReload {
     "library",
     "external_agent",
     "email",
+    "observability",
   ])
   export const CONFIG_CLIENT_SIDE = new Set(["theme", "keybinds", "layout", "toast", "locale"])
 
@@ -355,6 +356,15 @@ export namespace RuntimeReload {
         if (resolvedScope === "global" && changedFields.includes("embedding")) {
           const { Embedding } = await import("../vector/embedding")
           await Embedding.dispose()
+        }
+        if (resolvedScope === "global" && changedFields.includes("observability")) {
+          const { ObservabilityConfig } = await import("../observability/config")
+          const { ObservabilityStore } = await import("../observability/store")
+          const { ObservabilityResources } = await import("../observability/resources")
+          ObservabilityConfig.refresh(result.config)
+          ObservabilityStore.reconfigure()
+          ObservabilityResources.reconfigure()
+          ctx.liveApplied.add("observability")
         }
         // P11: Handle library → autonomy/anima sync (migrated from Config.reload)
         if (changedFields.includes("library")) {
