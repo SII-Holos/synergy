@@ -106,3 +106,38 @@ export function recoverSessionTransitionHandoff(input: {
       : { workspaceSelection: item.message.metadata.sessionTransition.workspaceSelection }),
   }
 }
+
+/**
+ * Schedules a one-shot stall check for a handoff attempt, anchored to the
+ * attempt identity (messageID + acceptedAt). A retry rewrites acceptedAt and
+ * therefore re-schedules a fresh window; the check is skipped when the
+ * attempt is no longer the live loading entry. Returns a cancel function.
+ */
+export function scheduleSessionTransitionHandoffDeadline(
+  attempt: { messageID: string; acceptedAt: number },
+  isCurrentAttempt: (attempt: { messageID: string; acceptedAt: number }) => boolean,
+  onDeadline: () => void,
+  options: {
+    schedule?: (fn: () => void, delay: number) => unknown
+    cancel?: (handle: unknown) => void
+    now?: () => number
+  } = {},
+): () => void {
+  const schedule = options.schedule ?? ((fn: () => void, delay: number) => setTimeout(fn, delay))
+  const cancel = options.cancel ?? ((handle: unknown) => clearTimeout(handle as ReturnType<typeof setTimeout>))
+  const now = options.now ?? Date.now
+  // A missing acceptedAt means the attempt was not anchored; count the window
+  // from the scheduling moment.
+  const acceptedAt = attempt.acceptedAt ?? now()
+  const delay = Math.max(0, acceptedAt + SESSION_TRANSITION_HANDOFF_TIMEOUT_MS - now())
+  let active = true
+  const handle = schedule(() => {
+    if (!active) return
+    if (isCurrentAttempt(attempt)) onDeadline()
+  }, delay)
+  return () => {
+    if (!active) return
+    active = false
+    cancel(handle)
+  }
+}
