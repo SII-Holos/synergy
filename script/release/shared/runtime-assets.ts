@@ -85,8 +85,9 @@ async function copyWatcherBinding(
   const packageName = watcherBindingPackageName(targetOs, targetArch, musl)
   const version = dependencies[packageName]
   if (!version) {
-    console.warn(`watcher binding package not declared for ${packageName}; file watching will be unavailable`)
-    return
+    // watcher.node is unconditionally required by the runtime manifest for
+    // every target (including musl), so a missing declaration is fatal.
+    throw new Error(`watcher binding package not declared for ${packageName}`)
   }
   const source = resolveDependencyAsset(packageName, version, "watcher.node")
   if (!source) {
