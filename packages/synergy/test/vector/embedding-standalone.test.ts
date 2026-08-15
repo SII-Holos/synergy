@@ -86,4 +86,33 @@ describe("standalone embedding runtime", () => {
     expect(code, stderr).toBe(0)
     expect(stdout).toContain("standalone embedding path shim ready")
   }, 30_000)
+
+  test("serves local model files through fetch inside a compiled artifact", async () => {
+    const runtimeDir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-embedding-standalone-fetch-"))
+    temporaryDirectories.push(runtimeDir)
+    const binary = path.join(runtimeDir, "bin", process.platform === "win32" ? "probe.exe" : "probe")
+    await fs.mkdir(path.dirname(binary), { recursive: true })
+    const probeFile = path.join(runtimeDir, "model.onnx")
+    await fs.writeFile(probeFile, "onnx-model-content")
+
+    const output = await Bun.build({
+      entrypoints: [path.join(import.meta.dir, "fixture/embedding-local-file-entry.ts")],
+      conditions: ["browser"],
+      plugins: [standaloneEmbeddingBuildPlugin()],
+      define: { SYNERGY_STANDALONE: "true" },
+      compile: { outfile: binary },
+    })
+    expect(output.success, output.logs.map((log) => log.message).join("\n")).toBe(true)
+    await stageEmbeddingRuntimeAssets({ runtimeDir })
+
+    const proc = Bun.spawn([binary, probeFile], { stdout: "pipe", stderr: "pipe" })
+    const [code, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ])
+
+    expect(code, stderr).toBe(0)
+    expect(stdout).toContain("standalone local file fetch ready")
+  }, 30_000)
 })

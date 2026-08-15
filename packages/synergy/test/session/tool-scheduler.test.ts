@@ -64,6 +64,45 @@ describe("ToolTaskScheduler", () => {
     await scheduler.stop()
   })
 
+  test("re-executes a settled call when the same key is dispatched again", async () => {
+    const scheduler = new ToolTaskScheduler({ maxConcurrent: 2, maxQueued: 8 })
+    const target = processor()
+    let executions = 0
+    const tool = {
+      async execute(input: unknown) {
+        executions++
+        target.beginExecution("call_again").complete(input, {
+          title: "done",
+          output: `executed-${executions}`,
+          metadata: {},
+        })
+        return { title: "done", output: `executed-${executions}`, metadata: {} }
+      },
+    } as unknown as AITool
+
+    const task = {
+      sessionID: "ses_test",
+      generation: 1,
+      messageID: "msg_test",
+      callID: "call_again",
+      toolName: "probe",
+      input: { value: 1 },
+      tool,
+      processor: target,
+      signal: new AbortController().signal,
+    }
+
+    const first = await scheduler.dispatch(task)
+    const second = await scheduler.dispatch(task)
+
+    // A settled task must not deduplicate a later dispatch with the same key:
+    // retries, replays, and fresh processor instances all need a new attempt.
+    expect(first.state).toBe("completed")
+    expect(second.state).toBe("completed")
+    expect(executions).toBe(2)
+    await scheduler.stop()
+  })
+
   test("cancels queued work without consuming an execution slot", async () => {
     const scheduler = new ToolTaskScheduler({ maxConcurrent: 1, maxQueued: 8 })
     const target = processor()

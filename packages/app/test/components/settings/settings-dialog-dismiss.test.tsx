@@ -71,8 +71,8 @@ beforeAll(async () => {
     plugins: [solidPlugin()],
     server: {
       host: "127.0.0.1",
-      port: 0,
-      strictPort: false,
+      port: 5204,
+      strictPort: true,
       fs: { allow: [path.resolve(import.meta.dir, "../../../..")] },
     },
   })

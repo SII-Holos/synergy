@@ -26,24 +26,6 @@ mock.module("@ericsanchezok/synergy-util/path", () => ({
 mock.module("@lingui/solid", () => ({
   useLingui: () => ({ _: (descriptor: { message?: string; id: string }) => descriptor.message ?? descriptor.id }),
 }))
-mock.module("solid-js", () => ({
-  createEffect: () => {},
-  createMemo: (fn: () => unknown) => fn,
-  createSignal: (initial: unknown) => {
-    let value = initial
-    return [() => value, (next: unknown) => (value = typeof next === "function" ? next(value) : next)]
-  },
-  createUniqueId: () => "mock-unique-id",
-  ErrorBoundary: Empty,
-  For: Empty,
-  Match: Empty,
-  on: (_source: unknown, fn: unknown) => fn,
-  onCleanup: () => {},
-  Show: Empty,
-  Switch: Empty,
-}))
-mock.module("solid-js/store", () => ({ createStore: (initial: unknown) => [initial, () => {}] }))
-mock.module("solid-js/web", () => ({ Dynamic: Empty }))
 mock.module("../../src/context", () => ({ useData: () => ({ store: {}, serverUrl: "" }) }))
 mock.module("../../src/context/diff", () => ({ useDiffComponent: () => Empty }))
 mock.module("../../src/hooks", () => ({
