@@ -38,7 +38,6 @@ afterEach(() => {
   if (platformDescriptor) Object.defineProperty(process, "platform", platformDescriptor)
 })
 
-
 describe("desktop app menu", () => {
   test("installs no application menu on non-macOS platforms", () => {
     platform = "linux"
