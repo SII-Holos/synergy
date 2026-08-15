@@ -314,7 +314,10 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
   if (logLevel !== (cfg.logLevel ?? UI_DEFAULTS.logLevel)) patch.logLevel = logLevel || undefined
 
   const performanceEnabled = runtime.performanceEnabled !== "false"
-  const currentPerformanceEnabled = cfg.observability?.performance?.enabled !== false
+  // The effective backend value honors the master observability.enabled flag
+  // when performance.enabled is unset; mirror that so the switch shows the
+  // real runtime state and one save can re-enable a master-disabled setup.
+  const currentPerformanceEnabled = cfg.observability?.performance?.enabled ?? cfg.observability?.enabled ?? true
   if (performanceEnabled !== currentPerformanceEnabled) {
     patch.observability = {
       ...(cfg.observability ?? {}),

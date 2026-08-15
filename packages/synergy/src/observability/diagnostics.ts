@@ -24,7 +24,7 @@ export namespace Diagnostics {
     output?: string
   }
 
-  export async function summary(): Promise<Summary> {
+  export async function summary(input: { freshPendingSessions?: boolean } = {}): Promise<Summary> {
     const lock = await ServerProcessLock.read().catch(() => undefined)
     const inspection = lock ? await ServerProcessLock.inspect(lock).catch(() => undefined) : undefined
     const recentErrors = ObservabilityStore.queryEvents({ limit: 200 })
@@ -70,7 +70,7 @@ export namespace Diagnostics {
         finished: ProcessRegistry.listFinished().map(summarizeFinishedProcess),
       },
       sessions: {
-        pendingReply: await pendingSessions().catch(() => []),
+        pendingReply: await pendingSessions(input.freshPendingSessions).catch(() => []),
       },
     })
   }
@@ -84,7 +84,10 @@ export namespace Diagnostics {
     await fs.mkdir(path.join(root, "observability"), { recursive: true })
     await fs.mkdir(path.join(root, "runtime"), { recursive: true })
 
-    const info = await summary()
+    // Diagnostic packages are on-demand support snapshots: bypass the
+    // dashboard's pending-session cache so a stuck session that changed in
+    // the last 15s is still captured (or a finished one omitted).
+    const info = await summary({ freshPendingSessions: true })
     await fs.writeFile(path.join(root, "summary.json"), JSON.stringify(info, null, 2) + "\n")
 
     const logFiles = [info.logs.current, info.logs.dev, info.logs.daemon, ...info.logs.devArchives].filter(
@@ -383,10 +386,11 @@ export namespace Diagnostics {
   let pendingSessionsCache: { at: number; root: string; value: Summary["sessions"]["pendingReply"] } | undefined
   const PENDING_SESSIONS_CACHE_MS = 15_000
 
-  async function pendingSessions() {
+  async function pendingSessions(fresh = false) {
     const now = Date.now()
     const root = path.join(Global.Path.data, "sessions")
     if (
+      !fresh &&
       pendingSessionsCache &&
       pendingSessionsCache.root === root &&
       now - pendingSessionsCache.at < PENDING_SESSIONS_CACHE_MS
