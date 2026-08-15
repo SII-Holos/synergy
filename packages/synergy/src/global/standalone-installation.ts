@@ -98,6 +98,7 @@ export namespace StandaloneInstallation {
       path.join(root, "sandbox"),
       path.join(root, "schema"),
       path.join(root, vec0),
+      path.join(root, "watcher.node"),
       path.join(root, "runtime-manifest.sha256"),
     ]
   }
@@ -391,6 +392,9 @@ export namespace StandaloneInstallation {
       ...(modern
         ? [
             ...(!isMusl ? nativeHelpers : []),
+            // The watcher binding ships for every target including musl:
+            // @parcel/watcher publishes musl packages.
+            "watcher.node",
             "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs",
             "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm",
             "lib/holos-cli/index.js",

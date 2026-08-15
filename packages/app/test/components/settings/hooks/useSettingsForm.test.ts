@@ -107,6 +107,21 @@ describe("settings form boss mode", () => {
   })
 })
 
+describe("settings form performance monitoring", () => {
+  test("defaults performance monitoring on when observability config is absent", () => {
+    expect(initializedRuntime({}).performanceEnabled).toBe("true")
+  })
+
+  test("hydrates explicit performance.enabled false", () => {
+    expect(initializedRuntime({ observability: { performance: { enabled: false } } }).performanceEnabled).toBe("false")
+  })
+
+  test("honors the master observability.enabled switch when performance.enabled is unset", () => {
+    expect(initializedRuntime({ observability: { enabled: false } }).performanceEnabled).toBe("false")
+    expect(initializedRuntime({ observability: { enabled: true } }).performanceEnabled).toBe("true")
+  })
+})
+
 describe("settings form channel accounts", () => {
   test("hydrates Feishu model overrides and Clarus enablement", () => {
     expect(

@@ -109,7 +109,7 @@ export namespace FileWatcher {
   }
 
   const watcher = lazy(() => {
-    const binding = require(FileWatcherBinding.packageName())
+    const binding = FileWatcherBinding.load()
     return createWrapper(binding) as typeof import("@parcel/watcher")
   })
 
@@ -339,6 +339,7 @@ export namespace FileWatcher {
   )
 
   export async function reload() {
+    if (!bindingAvailable()) return
     log.info("reloading file watcher state")
     await state.resetAll()
     log.info("file watcher state reloaded")
@@ -348,6 +349,21 @@ export namespace FileWatcher {
     if (Flag.SYNERGY_DISABLE_FILEWATCHER) {
       return
     }
+    if (!bindingAvailable()) return
     state()
+  }
+
+  let reportedMissingBinding = false
+
+  function bindingAvailable(): boolean {
+    if (FileWatcherBinding.available()) return true
+    if (!reportedMissingBinding) {
+      reportedMissingBinding = true
+      log.error("file watcher binding unavailable; file watching disabled", {
+        package: FileWatcherBinding.packageName(),
+        packaged: FileWatcherBinding.packagedPath(),
+      })
+    }
+    return false
   }
 }
