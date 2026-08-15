@@ -33,3 +33,20 @@ describe("BrowserStagingLeasePool", () => {
     await expect(pool.dispose()).rejects.toThrow("Browser staging files could not be fully removed")
   })
 })
+
+test("releases a lease when its TTL timer fires", async () => {
+  const released: number[] = []
+  const pool = new BrowserStagingLeasePool(5, 10)
+  pool.retain(() => {
+    released.push(1)
+  })
+  await Bun.sleep(30)
+  expect(released).toEqual([1])
+  await pool.dispose()
+})
+
+test("ignores undefined cleanups", async () => {
+  const pool = new BrowserStagingLeasePool(5, 10)
+  pool.retain(undefined)
+  await pool.dispose()
+})
