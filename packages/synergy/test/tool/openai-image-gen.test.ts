@@ -229,7 +229,12 @@ describe("tool.openai_image_gen", () => {
     await using tmp = await tmpdir({ git: true })
     await connectCodex()
     let fetchCalls = 0
-    globalThis.fetch = asFetch(async () => {
+    globalThis.fetch = asFetch(async (input) => {
+      // Test shards share globalThis.fetch, so unrelated requests must not
+      // affect the assertion that invalid image arguments make no image call.
+      if (!String(input).includes("/images/")) {
+        return jsonResponse({ error: { message: "unrelated" } }, { status: 200 })
+      }
       fetchCalls++
       return jsonResponse({})
     })
