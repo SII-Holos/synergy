@@ -3524,6 +3524,21 @@ msgstr ""
 msgid "app.layout.worktree.refreshFailed"
 msgstr ""
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.layout.zoom.in"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.layout.zoom.out"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.layout.zoom.reset"
+msgstr ""
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.category.asset"
 msgstr ""

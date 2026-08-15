@@ -25,6 +25,7 @@ import { AuthProvider } from "@/context/auth"
 import { HolosProvider } from "@/context/holos"
 import { InputProvider } from "@/context/input"
 import { FontPreferenceProvider } from "@/context/font-preference"
+import { ZoomController } from "@/context/zoom"
 import Layout from "@/pages/layout"
 import DirectoryLayout from "@/pages/directory-layout"
 import { FatalErrorPage } from "./pages/fatal-error"
@@ -122,6 +123,7 @@ export function AppBaseProviders(props: ParentProps) {
   return (
     <MetaProvider>
       <Font />
+      <ZoomController />
       <LocaleProvider>
         <FontPreferenceProvider>
           <ThemeProvider>

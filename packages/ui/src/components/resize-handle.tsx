@@ -11,6 +11,8 @@ export interface ResizeHandleProps extends Omit<JSX.HTMLAttributes<HTMLDivElemen
   onResizeEnd?: () => void
   onCollapse?: () => void
   collapseThreshold?: number
+  /** Scale applied by an ancestor CSS zoom when converting pointer deltas. */
+  coordinateScale?: number
 }
 
 export function ResizeHandle(props: ResizeHandleProps) {
@@ -25,6 +27,7 @@ export function ResizeHandle(props: ResizeHandleProps) {
     "onResizeEnd",
     "onCollapse",
     "collapseThreshold",
+    "coordinateScale",
     "class",
     "classList",
   ])
@@ -42,7 +45,10 @@ export function ResizeHandle(props: ResizeHandleProps) {
     const edge = local.edge ?? "end"
     const onMouseMove = (moveEvent: MouseEvent) => {
       const pos = local.direction === "horizontal" ? moveEvent.clientX : moveEvent.clientY
-      const delta = edge === "start" ? start - pos : pos - start
+      const rawDelta = edge === "start" ? start - pos : pos - start
+      const coordinateScale =
+        typeof local.coordinateScale === "number" && local.coordinateScale > 0 ? local.coordinateScale : 1
+      const delta = rawDelta / coordinateScale
       current = startSize + delta
       const clamped = Math.min(local.max, Math.max(local.min, current))
       local.onResize(clamped)

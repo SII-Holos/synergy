@@ -170,6 +170,9 @@ export const AP = {
     message: "Search sessions across all projects",
   },
   layoutColorSchemeUse: { id: "app.layout.colorScheme.use", message: "Use color scheme: {scheme}" },
+  layoutZoomIn: { id: "app.layout.zoom.in", message: "Zoom in" },
+  layoutZoomOut: { id: "app.layout.zoom.out", message: "Zoom out" },
+  layoutZoomReset: { id: "app.layout.zoom.reset", message: "Reset zoom" },
   layoutLeftWorktree: { id: "app.layout.worktree.left", message: "Left worktree" },
   layoutMovedToWorktree: { id: "app.layout.worktree.moved", message: "Moved to worktree" },
   layoutWorktreeDesc: {

@@ -26,6 +26,8 @@ import type {
 import "./workbench-surface.css"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { workspace as W } from "@/locales/messages"
+import { zoom } from "@/context/zoom"
+import { layoutSizeForZoom } from "@/context/zoom-layout"
 import {
   DragDropProvider,
   DragDropSensors,
@@ -293,14 +295,21 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
     onCleanup(() => document.removeEventListener("keydown", onKey, { capture: true }))
   })
 
-  const size = () => state().size()
   const isSide = () => props.surface === "side"
   const maxSideWidth = () =>
     Math.max(
       WORKSPACE_MIN_WIDTH,
-      computeMaxWorkspaceWidth(window.innerWidth, { sessionMinWidth: WORKSPACE_SESSION_MIN_WIDTH }),
+      computeMaxWorkspaceWidth(layoutSizeForZoom(window.innerWidth, zoom()), {
+        sessionMinWidth: WORKSPACE_SESSION_MIN_WIDTH,
+      }),
     )
-  const maxBottomHeight = () => window.innerHeight * 0.6
+  const maxBottomHeight = () => layoutSizeForZoom(window.innerHeight, zoom()) * 0.6
+
+  const maxSize = () => (isSide() ? maxSideWidth() : maxBottomHeight())
+  const size = () => {
+    const min = isSide() ? WORKSPACE_MIN_WIDTH : 120
+    return Math.min(maxSize(), Math.max(min, state().size()))
+  }
 
   const rootStyle = () =>
     isSide()
@@ -339,8 +348,9 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
         direction={isSide() ? "horizontal" : "vertical"}
         edge={isSide() ? "start" : undefined}
         size={size()}
+        coordinateScale={zoom()}
         min={isSide() ? WORKSPACE_MIN_WIDTH : 120}
-        max={isSide() ? maxSideWidth() : maxBottomHeight()}
+        max={maxSize()}
         collapseThreshold={isSide() ? 200 : 50}
         onResize={state().setSize}
         onResizeStart={() => setLocal("resizing", true)}

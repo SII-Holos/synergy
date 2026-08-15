@@ -8,6 +8,7 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { VList, type VListHandle } from "virtua/solid"
 import { useFile } from "@/context/file"
+import { zoom } from "@/context/zoom"
 import { fileExplorer as X } from "@/locales/messages"
 
 type TreeNodeRow = { kind: "node"; path: string; level: number; parent: string }
@@ -159,6 +160,7 @@ export function FileExplorer(props: { onClose: () => void }) {
         direction="horizontal"
         edge="start"
         size={file.explorer.width()}
+        coordinateScale={zoom()}
         min={220}
         max={420}
         collapseThreshold={180}

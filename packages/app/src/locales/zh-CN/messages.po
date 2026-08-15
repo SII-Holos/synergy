@@ -3524,6 +3524,21 @@ msgstr "无法移至隔离工作区"
 msgid "app.layout.worktree.refreshFailed"
 msgstr "工作区状态刷新失败"
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.layout.zoom.in"
+msgstr "放大"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.layout.zoom.out"
+msgstr "缩小"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.layout.zoom.reset"
+msgstr "重置缩放"
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.category.asset"
 msgstr "资产"

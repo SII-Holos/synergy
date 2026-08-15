@@ -3524,6 +3524,21 @@ msgstr "Move to worktree failed"
 msgid "app.layout.worktree.refreshFailed"
 msgstr "Workspace status refresh failed"
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.layout.zoom.in"
+msgstr "Zoom in"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.layout.zoom.out"
+msgstr "Zoom out"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.layout.zoom.reset"
+msgstr "Reset zoom"
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.category.asset"
 msgstr "Asset"

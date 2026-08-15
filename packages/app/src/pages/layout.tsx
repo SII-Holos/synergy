@@ -35,6 +35,7 @@ import {
 } from "@/components/app-shell"
 import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
 import { WorkbenchPanelsProvider } from "@/context/workbench"
+import { zoomIn, zoomOut, zoomReset } from "@/context/zoom"
 
 export default function Layout(props: ParentProps) {
   const [store, setStore] = createStore({
@@ -339,6 +340,27 @@ export default function Layout(props: ParentProps) {
         keybind: "mod+shift+t",
         slash: "theme",
         onSelect: () => cycleColorScheme(1),
+      },
+      {
+        id: "zoom.in",
+        title: i18n._(AP.layoutZoomIn.id),
+        category: "View",
+        keybind: "mod+=",
+        onSelect: () => zoomIn(),
+      },
+      {
+        id: "zoom.out",
+        title: i18n._(AP.layoutZoomOut.id),
+        category: "View",
+        keybind: "mod+-",
+        onSelect: () => zoomOut(),
+      },
+      {
+        id: "zoom.reset",
+        title: i18n._(AP.layoutZoomReset.id),
+        category: "View",
+        keybind: "mod+0",
+        onSelect: () => zoomReset(),
       },
       {
         id: "help.show",
