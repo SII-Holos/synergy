@@ -18,6 +18,8 @@ const isolated = new Set([
   "test/components/tool/renders/task.test.tsx",
   "test/components/tool/renders/standard.test.tsx",
   "test/components/tool/renders/file-ops.test.tsx",
+  "test/components/tooltip.test.ts",
+  "test/components/provider-icon.test.ts",
 ])
 const browserOnly = new Set(["test/hooks/use-filtered-list.test.tsx"])
 
