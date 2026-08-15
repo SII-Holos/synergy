@@ -34,18 +34,22 @@ export namespace Storage {
     })
   }
 
-  export async function read<T>(key: string[]) {
+  export async function read<T>(key: string[], options: { silentNotFound?: boolean } = {}) {
     const dir = resolveDir()
     const target = path.join(dir, ...key) + ".json"
-    return measureStorage("read", key, async () =>
-      withErrorHandling(async () => {
-        using _ = await Lock.read(target)
-        const file = Bun.file(target)
-        const result = await file.json()
-        const size = file.size
-        ObservabilityResources.addRead(size)
-        return result as T
-      }),
+    return measureStorage(
+      "read",
+      key,
+      async () =>
+        withErrorHandling(async () => {
+          using _ = await Lock.read(target)
+          const file = Bun.file(target)
+          const result = await file.json()
+          const size = file.size
+          ObservabilityResources.addRead(size)
+          return result as T
+        }),
+      options,
     )
   }
 
@@ -149,25 +153,38 @@ export namespace Storage {
     }
   }
 
-  async function measureStorage<T>(operation: string, key: string[], body: () => Promise<T>) {
+  async function measureStorage<T>(
+    operation: string,
+    key: string[],
+    body: () => Promise<T>,
+    options: { silentNotFound?: boolean } = {},
+  ) {
     const start = performance.now()
     let status = "ok"
     try {
       return await body()
     } catch (error) {
       status = "error"
-      ObservabilityIssues.raise({
-        code: "PERF_STORAGE_OPERATION_ERROR",
-        severity: "warning",
-        module: "storage",
-        title: "Storage operation failed",
-        message: `${operation} failed for ${key[0] ?? "root"}`,
-        evidence: {
-          operation,
-          keyPrefix: key[0] ?? "root",
-          errorName: error instanceof Error ? error.name : "unknown",
-        },
-      })
+      // Expected "file does not exist" paths (note scope probing, index
+      // rebuilds) used try/catch as control flow; every miss raised a
+      // PERF_STORAGE_OPERATION_ERROR issue and amplified telemetry writes.
+      // Keep the error metric (observability still counts it) but skip the
+      // issue when the caller declared the miss expected.
+      const isNotFound = error instanceof NotFoundError
+      if (!(options.silentNotFound && isNotFound)) {
+        ObservabilityIssues.raise({
+          code: "PERF_STORAGE_OPERATION_ERROR",
+          severity: "warning",
+          module: "storage",
+          title: "Storage operation failed",
+          message: `${operation} failed for ${key[0] ?? "root"}`,
+          evidence: {
+            operation,
+            keyPrefix: key[0] ?? "root",
+            errorName: error instanceof Error ? error.name : "unknown",
+          },
+        })
+      }
       throw error
     } finally {
       const durationMs = performance.now() - start

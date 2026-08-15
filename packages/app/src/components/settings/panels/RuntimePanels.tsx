@@ -162,6 +162,15 @@ const watcherRowDesc = {
   id: "settings.runtime.observ.watcher.desc",
   message: "Patterns the file watcher should skip, one per line.",
 }
+const performanceEnabledRowTitle = {
+  id: "settings.runtime.observ.performanceEnabled.title",
+  message: "Performance Monitoring",
+}
+const performanceEnabledRowDesc = {
+  id: "settings.runtime.observ.performanceEnabled.desc",
+  message:
+    "Collect local performance metrics, traces, and diagnostics. Disable to stop all background sampling and writes.",
+}
 const shellSectionTitle = { id: "settings.runtime.observ.shell.title", message: "Desktop Shell Environment" }
 const shellSectionDesc = {
   id: "settings.runtime.observ.shell.desc",
@@ -474,6 +483,16 @@ export function ObservabilityPanel(props: {
   return (
     <SettingsPage title={_(observPageTitle)} description={_(observPageDesc)}>
       <SettingsSection title={_(loggingSectionTitle)}>
+        <SettingRow
+          title={_(performanceEnabledRowTitle)}
+          description={_(performanceEnabledRowDesc)}
+          trailing={
+            <Switch
+              checked={props.runtime.performanceEnabled !== "false"}
+              onChange={(value) => props.onRuntimeChange("performanceEnabled", value ? "true" : "false")}
+            />
+          }
+        />
         <SettingRow
           title={_(logLevelRowTitle)}
           description={_(logLevelRowDesc)}

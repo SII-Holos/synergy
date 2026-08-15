@@ -47,6 +47,7 @@ export namespace Observability {
     } = {},
   ) {
     const event = await ObservabilityEvents.emit(type, input)
+    if (!event) return undefined
     ObservabilityWriter.append(fileForDate(new Date(event.time)), JSON.stringify(event) + "\n")
     return event
   }

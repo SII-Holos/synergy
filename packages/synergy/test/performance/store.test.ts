@@ -221,6 +221,18 @@ describe.serial("performance observability store", () => {
     }
   })
 
+  test("scoped dashboard summary keeps process resource coverage", async () => {
+    ObservabilityResources.snapshot()
+    ObservabilityStore.flush()
+
+    const summary = await PerformanceDashboard.summary({ windowMs: 300_000, scopeID: "d_scoped_dashboard" })
+    const controlPlane = summary.resources.owners.find((owner) => owner.owner === "control_plane")
+
+    expect(controlPlane?.completeness).toBe("full")
+    expect(controlPlane?.currentBytes).toBeGreaterThan(0)
+    expect(controlPlane?.measuredProcessCount).toBe(1)
+  })
+
   test("trace detail projects observability events without raw event data", async () => {
     const traceId = "perf_trace_safe_projection"
     await Observability.emit("tool.start", {

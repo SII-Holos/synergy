@@ -635,4 +635,42 @@ describe("runtime.reload", () => {
       },
     })
   })
+
+  test("observability sqliteEnabled changes stay restart-required instead of live-applying", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        Config.reload = mock(async () => ({
+          config: { observability: { performance: { storage: { sqliteEnabled: false } } } },
+          changedFields: ["observability"],
+          oldConfig: { observability: { performance: { storage: { sqliteEnabled: true } } } },
+        })) as typeof Config.reload
+
+        const result = await RuntimeReload.reload({ targets: ["config"], scope: "global", reason: "test" })
+
+        expect(result.restartRequired).toContain("observability.performance.storage.sqliteEnabled")
+        expect(result.liveApplied).not.toContain("observability")
+      },
+    })
+  })
+
+  test("observability changes without sqliteEnabled changes live-apply", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        Config.reload = mock(async () => ({
+          config: { observability: { performance: { enabled: false } } },
+          changedFields: ["observability"],
+          oldConfig: { observability: { performance: { enabled: true } } },
+        })) as typeof Config.reload
+
+        const result = await RuntimeReload.reload({ targets: ["config"], scope: "global", reason: "test" })
+
+        expect(result.restartRequired).not.toContain("observability.performance.storage.sqliteEnabled")
+        expect(result.liveApplied).toContain("observability")
+      },
+    })
+  })
 })

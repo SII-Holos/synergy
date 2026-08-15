@@ -71,6 +71,7 @@ import {
 import {
   decideSessionTransitionHandoff,
   recoverSessionTransitionHandoff,
+  scheduleSessionTransitionHandoffDeadline,
   type SessionTransitionHandoff,
 } from "@/components/session/session-transition-handoff"
 import { selectPendingTimelineItems } from "@/components/session/conversation-pending"
@@ -541,7 +542,6 @@ function SessionPageContent() {
   const dismissSessionTransitionHandoff = (sessionID: string, messageID: string) => {
     sessionTransition.dismissHandoff(sessionID, messageID)
   }
-  const [handoffNow, setHandoffNow] = createSignal(Date.now())
   const acceptedProgressForHandoff = (handoff: Pick<SessionTransitionHandoff, "workspaceSelection">) => {
     const selection = handoff.workspaceSelection
     return selection && isWorktreeWorkspaceSelection(selection)
@@ -623,23 +623,53 @@ function SessionPageContent() {
       success: successProgressForHandoff(recovered),
     })
   })
-  createEffect(() => {
-    const entry = visibleSessionTransitionEntry()
-    if (entry?.progress.phase !== "loading" || !entry.handoff) return
-    setHandoffNow(Date.now())
-    const timer = setInterval(() => setHandoffNow(Date.now()), 250)
-    onCleanup(() => clearInterval(timer))
-  })
+  // One-shot stall detection anchored to the attempt identity. A retry
+  // rewrites acceptedAt, which changes the entry and re-schedules a fresh
+  // window; the deadline skips itself when the attempt is no longer loading.
   createEffect(() => {
     const sessionID = params.id
     const entry = visibleSessionTransitionEntry()
     if (!sessionID || entry?.progress.phase !== "loading" || !entry.handoff) return
-    const acceptedAt = entry.handoff.acceptedAt ?? handoffNow()
+    const handoff = entry.handoff
+    const attempt = {
+      messageID: handoff.messageID,
+      acceptedAt: handoff.acceptedAt ?? Date.now(),
+    }
+    const cancel = scheduleSessionTransitionHandoffDeadline(
+      attempt,
+      (current) => {
+        const live = visibleSessionTransitionEntry()
+        return (
+          live?.progress.phase === "loading" &&
+          live.handoff?.messageID === current.messageID &&
+          // An unanchored attempt stays current by falling back to the
+          // scheduled identity; a retry writes a fresh acceptedAt, which
+          // changes identity and lets the old deadline expire silently.
+          (live.handoff.acceptedAt ?? current.acceptedAt) === current.acceptedAt
+        )
+      },
+      () => {
+        const live = visibleSessionTransitionEntry()
+        if (live?.handoff && live.progress.phase === "loading") {
+          showStalledHandoff(sessionID, live.handoff)
+        }
+      },
+    )
+    onCleanup(cancel)
+  })
+  // Event-driven handoff resolution: re-evaluates only when the message
+  // window, inbox, or transition entry changes. A message arriving in the
+  // window resolves the transition immediately — no polling required.
+  createEffect(() => {
+    const sessionID = params.id
+    const entry = visibleSessionTransitionEntry()
+    if (!sessionID || entry?.progress.phase !== "loading" || !entry.handoff) return
+    const acceptedAt = entry.handoff.acceptedAt ?? Date.now()
     const decision = decideSessionTransitionHandoff({
       messageID: entry.handoff.messageID,
       messages: messages(),
       inbox: sync.data.inbox[sessionID],
-      elapsedMs: Math.max(0, handoffNow() - acceptedAt),
+      elapsedMs: Math.max(0, Date.now() - acceptedAt),
       refreshAttempted: entry.handoff.refreshAttempted ?? false,
     })
     if (decision === "ready") {
