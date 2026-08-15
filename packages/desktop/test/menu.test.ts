@@ -1,13 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 
-const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform")
+let platformDescriptor: PropertyDescriptor | undefined
 let platform = process.platform
-Object.defineProperty(process, "platform", {
-  configurable: true,
-  get() {
-    return platform
-  },
-})
 
 const { electronMockState, registerElectronMock } = await import("./electron-mock")
 registerElectronMock()
@@ -23,6 +17,18 @@ function templateOf(index = 0) {
 }
 
 beforeEach(() => {
+  // Re-patch process.platform on every test. The previous afterEach restored
+  // the original descriptor, so a top-level-only patch would let later tests
+  // read the real platform (linux on CI) and silently skip the darwin branch.
+  platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform")
+  platform = process.platform
+  Object.defineProperty(process, "platform", {
+    configurable: true,
+    get() {
+      return platform
+    },
+  })
+
   electronMockState.applicationMenus = []
   electronMockState.builtTemplates = []
   electronMockState.aboutPanels = []
@@ -31,6 +37,7 @@ beforeEach(() => {
 afterEach(() => {
   if (platformDescriptor) Object.defineProperty(process, "platform", platformDescriptor)
 })
+
 
 describe("desktop app menu", () => {
   test("installs no application menu on non-macOS platforms", () => {
