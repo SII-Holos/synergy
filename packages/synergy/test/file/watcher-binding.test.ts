@@ -16,4 +16,8 @@ describe("FileWatcherBinding package name", () => {
     expect(FileWatcherBinding.packageName({ platform: "darwin", arch: "arm64" })).toBe("@parcel/watcher-darwin-arm64")
     expect(FileWatcherBinding.packageName({ platform: "win32", arch: "x64" })).toBe("@parcel/watcher-win32-x64")
   })
+  test("detects a missing watcher binding package without executing it", () => {
+    expect(FileWatcherBinding.resolvable("zod")).toBe(true)
+    expect(FileWatcherBinding.resolvable("@parcel/watcher-not-installed-4f8a2c")).toBe(false)
+  })
 })

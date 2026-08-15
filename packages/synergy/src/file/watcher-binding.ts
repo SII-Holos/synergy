@@ -14,4 +14,13 @@ export namespace FileWatcherBinding {
     const libc = input.libc ?? (typeof SYNERGY_LIBC === "string" ? SYNERGY_LIBC : "glibc")
     return `@parcel/watcher-${platform}-${arch}-${libc}`
   }
+
+  export function resolvable(name: string): boolean {
+    try {
+      require.resolve(name)
+      return true
+    } catch {
+      return false
+    }
+  }
 }
