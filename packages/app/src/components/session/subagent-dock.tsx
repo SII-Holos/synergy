@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal, onCleanup, type JSX } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js"
 import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
 import { useNavigateToSession } from "@/composables/use-navigate-to-session"
@@ -11,6 +11,7 @@ import { useLocale } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import { S } from "./session-i18n"
 import "./subagent-dock.css"
+import { sharedSecondTick } from "./second-tick"
 
 type RetrySessionStatus = Extract<SessionStatus, { type: "retry" }>
 
@@ -20,8 +21,9 @@ function isRetryStatus(status: SessionStatus | undefined): status is RetrySessio
 
 const HOLD_TO_CANCEL_MS = 2000
 const HOLD_RING_CIRCUMFERENCE = 2 * Math.PI * 19
-function formatElapsed(startedAt: number): string {
-  const seconds = Math.floor((Date.now() - startedAt) / 1000)
+function formatElapsed(startedAt: number, completedAt?: number): string {
+  const end = completedAt ?? Date.now()
+  const seconds = Math.max(0, Math.floor((end - startedAt) / 1000))
   if (seconds < 60) return `${seconds}s`
   const minutes = Math.floor(seconds / 60)
   const remaining = seconds % 60
@@ -44,7 +46,6 @@ function SubagentAvatar(props: SubagentAvatarProps) {
   const sessionStatus = createMemo<SessionStatus | undefined>(() => sync.data.session_status[props.task.sessionID])
   const runtimeState = createMemo(() => resolveRuntimeIconState(sessionStatus(), false, i18n))
   const isRetrying = () => sessionStatus()?.type === "retry"
-  const [elapsed, setElapsed] = createSignal(formatElapsed(props.task.startedAt))
   const [holdProgress, setHoldProgress] = createSignal(0)
   const [isHolding, setIsHolding] = createSignal(false)
 
@@ -53,7 +54,23 @@ function SubagentAvatar(props: SubagentAvatarProps) {
   let cancelledByHold = false
   let suppressClick = false
 
-  const timer = setInterval(() => setElapsed(formatElapsed(props.task.startedAt)), 1000)
+  const secondTick = sharedSecondTick()
+  // Elapsed clock runs only while the task is pending or active: the shared
+  // 1 Hz source stays alive while at least one running/queued avatar
+  // subscribes and the document is visible, so completed/error/cancelled
+  // tasks stop ticking entirely (their duration is frozen at completedAt).
+  createEffect(() => {
+    if (props.task.status !== "running" && props.task.status !== "queued") return
+    const unsubscribe = secondTick.subscribe()
+    onCleanup(unsubscribe)
+  })
+  const elapsed = createMemo(() => {
+    if (props.task.status !== "running" && props.task.status !== "queued") {
+      return formatElapsed(props.task.startedAt, props.task.completedAt)
+    }
+    secondTick.read()
+    return formatElapsed(props.task.startedAt)
+  })
 
   const stopHold = () => {
     if (holdFrame) cancelAnimationFrame(holdFrame)
@@ -64,7 +81,6 @@ function SubagentAvatar(props: SubagentAvatarProps) {
   }
 
   onCleanup(() => {
-    clearInterval(timer)
     if (holdFrame) cancelAnimationFrame(holdFrame)
   })
 

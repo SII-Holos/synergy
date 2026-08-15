@@ -1,6 +1,7 @@
-import { onCleanup, createSignal } from "solid-js"
+import { createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { useLocale, type IntlFormatter } from "@/context/locale"
 import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
+import { sharedSecondTick } from "./second-tick"
 
 const GREETINGS_MORNING = [
   "Rise and ship",
@@ -54,15 +55,23 @@ function getSubtitle(): string {
 
 export function NewSessionGreeting() {
   const { fmt } = useLocale()
-  const [clock, setClock] = createSignal(formatTime(new Date(), fmt))
+  const secondTick = sharedSecondTick()
+  // The live clock subscribes to the shared 1 Hz source, which pauses while
+  // the document is hidden, so the greeting stops ticking in the background.
+  createEffect(() => {
+    const unsubscribe = secondTick.subscribe()
+    onCleanup(unsubscribe)
+  })
+  const clock = createMemo(() => {
+    secondTick.read()
+    return formatTime(new Date(), fmt)
+  })
   const [greeting] = createSignal(getTimeGreeting())
   const [subtitle, setSubtitle] = createSignal(getSubtitle())
   const [transitioning, setTransitioning] = createSignal(false)
 
-  const clockInterval = setInterval(() => setClock(formatTime(new Date(), fmt)), 1000)
-  onCleanup(() => clearInterval(clockInterval))
-
   const subtitleInterval = setInterval(() => {
+    if (document.visibilityState === "hidden") return
     setTransitioning(true)
     setTimeout(() => {
       setSubtitle(getSubtitle())
