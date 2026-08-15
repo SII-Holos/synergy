@@ -29,6 +29,10 @@ log/
 .bun-version.info
 packages/synergy/coverage/
 
+# Test coverage artifacts
+coverage/
+coverage*/
+
 # Windows special device files
 nul
 **/nul
