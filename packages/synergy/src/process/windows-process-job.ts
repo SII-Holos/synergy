@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto"
-import { existsSync, unlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
+import { unlinkSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import type { ChildProcess } from "node:child_process"
 import type { Pointer } from "bun:ffi"
@@ -11,20 +11,6 @@ export namespace WindowsProcessJob {
   const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
   const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
   const BASIC_LIMIT_FLAGS_OFFSET = 16
-
-  const BOOTSTRAP = [
-    "$gate = $env:SYNERGY_WINDOWS_JOB_GATE",
-    "while (-not [System.IO.File]::Exists($gate)) { Start-Sleep -Milliseconds 5 }",
-    "$configPath = $env:SYNERGY_WINDOWS_JOB_CONFIG",
-    "$config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json",
-    "Remove-Item -LiteralPath $gate,$configPath -Force -ErrorAction SilentlyContinue",
-    "Remove-Item Env:SYNERGY_WINDOWS_JOB_GATE -ErrorAction SilentlyContinue",
-    "Remove-Item Env:SYNERGY_WINDOWS_JOB_CONFIG -ErrorAction SilentlyContinue",
-    "$target = [string]$config.command",
-    "$arguments = @($config.args)",
-    "& $target @arguments",
-    "exit $LASTEXITCODE",
-  ].join("; ")
 
   type Handle = number | Pointer
 
@@ -54,42 +40,63 @@ export namespace WindowsProcessJob {
 
   let runtimePromise: Promise<RuntimeForTest> | undefined
 
-  export function prepare(input: {
-    command: string
-    args: string[]
-    env: Record<string, string>
-  }): Prepared | undefined {
-    if (process.platform !== "win32") return
-    const token = `${process.pid}-${randomBytes(8).toString("hex")}`
-    const gatePath = path.join(tmpdir(), `synergy-process-job-${token}.gate`)
-    const configPath = path.join(tmpdir(), `synergy-process-job-${token}.json`)
-    writeFileSync(configPath, JSON.stringify({ command: input.command, args: input.args }), {
-      encoding: "utf8",
-      mode: 0o600,
-      flag: "wx",
-    })
-    const cleanup = () => {
-      for (const target of [gatePath, configPath]) {
-        if (!existsSync(target)) continue
+  export function prepare(
+    input: {
+      command: string
+      args: string[]
+      env: Record<string, string>
+    },
+    platform: NodeJS.Platform = process.platform,
+  ): Prepared | undefined {
+    if (platform !== "win32") return
+    // Pre-warm the FFI runtime so the Job Object attach right after spawn does
+    // not wait for the first kernel32.dll load (memoized, so a no-op on later
+    // commands). This keeps the spawn→attach window at a few milliseconds.
+    if (process.platform === "win32") void runtime().catch(() => {})
+    // Spawn the requested shell directly and attach the Job Object right
+    // after creation. The previous PowerShell bootstrap (cold start +
+    // gate-file polling) added hundreds of milliseconds of fixed latency to
+    // every command; the residual exposure is the spawn→attach window, during
+    // which a freshly created shell has not yet parsed or executed the
+    // command line, so it cannot leave an escaped descendant behind.
+    //
+    // cmd.exe /c mis-parses command lines containing nested quotes, so the
+    // cmd branch writes the command to a temporary batch file instead. Bash
+    // and PowerShell receive the command as a single argument and need no
+    // quoting workaround.
+    const shellName = path.win32.basename(input.command).toLowerCase()
+    let command = input.command
+    let args = input.args
+    let cleanup: () => void = () => {}
+    if (shellName === "cmd" || shellName === "cmd.exe") {
+      const token = `${process.pid}-${randomBytes(8).toString("hex")}`
+      const batchPath = path.join(tmpdir(), `synergy-process-job-${token}.cmd`)
+      const commandLine = input.args[input.args.length - 1] ?? ""
+      // %errorlevel% expands when this separate line is parsed, so it
+      // captures the exit code of the command line above it.
+      writeFileSync(batchPath, `@echo off\r\n${commandLine}\r\nexit /b %errorlevel%\r\n`, {
+        encoding: "utf8",
+        mode: 0o600,
+        flag: "wx",
+      })
+      command = "cmd.exe"
+      args = ["/d", "/c", batchPath]
+      cleanup = () => {
         try {
-          unlinkSync(target)
+          unlinkSync(batchPath)
         } catch {}
       }
     }
     return {
-      command: "powershell.exe",
-      args: ["-NoProfile", "-NonInteractive", "-Command", BOOTSTRAP],
-      env: {
-        ...input.env,
-        SYNERGY_WINDOWS_JOB_GATE: gatePath,
-        SYNERGY_WINDOWS_JOB_CONFIG: configPath,
-      },
+      command,
+      args,
+      env: input.env,
       activate(child) {
         return activate({
           child,
           cleanup,
           jobRuntime: runtime(),
-          openGate: () => Bun.write(gatePath, "ready"),
+          openGate: async () => {},
         })
       },
       cleanup,

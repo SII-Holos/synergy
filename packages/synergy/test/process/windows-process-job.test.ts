@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { existsSync } from "node:fs"
 import type { ChildProcess } from "node:child_process"
 import { WindowsProcessJob } from "../../src/process/windows-process-job"
 
@@ -260,5 +261,44 @@ describe("WindowsProcessJob", () => {
     })
     await expect(activation).rejects.toThrow("Windows process job activation and cleanup failed")
     expect(calls).toEqual(["close:2", "kill-child", "terminate", "close:1", "close:1", "cleanup"])
+  })
+})
+
+describe("WindowsProcessJob.prepare", () => {
+  test("returns undefined on non-win32 platforms", () => {
+    expect(WindowsProcessJob.prepare({ command: "bash", args: ["-c", "echo hi"], env: {} }, "darwin")).toBeUndefined()
+    expect(WindowsProcessJob.prepare({ command: "bash", args: ["-c", "echo hi"], env: {} }, "linux")).toBeUndefined()
+  })
+
+  test("spawns the requested shell directly without a PowerShell bootstrap", () => {
+    const prepared = WindowsProcessJob.prepare(
+      { command: "bash.exe", args: ["-c", "echo hi"], env: { PATH: "C:\\bin" } },
+      "win32",
+    )
+    expect(prepared).toBeDefined()
+    expect(prepared!.command).toBe("bash.exe")
+    expect(prepared!.args).toEqual(["-c", "echo hi"])
+    expect(prepared!.env).toEqual({ PATH: "C:\\bin" })
+    // No gate/config handshake files are created anymore.
+    expect(prepared!.cleanup).toBeDefined()
+  })
+
+  test("runs cmd commands through a temporary batch file to preserve quoting", () => {
+    const prepared = WindowsProcessJob.prepare(
+      { command: "cmd.exe", args: ["/c", `echo "nested" & dir`], env: {} },
+      "win32",
+    )
+    expect(prepared).toBeDefined()
+    expect(prepared!.command).toBe("cmd.exe")
+    expect(prepared!.args[0]).toBe("/d")
+    expect(prepared!.args[1]).toBe("/c")
+    const batchPath = prepared!.args[2]
+    expect(batchPath).toMatch(/synergy-process-job-.*\.cmd$/)
+    expect(prepared!.cleanup).toBeDefined()
+    try {
+      prepared!.cleanup()
+    } finally {
+      expect(existsSync(batchPath)).toBe(false)
+    }
   })
 })

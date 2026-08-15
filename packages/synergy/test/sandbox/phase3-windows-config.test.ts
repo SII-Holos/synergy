@@ -504,3 +504,37 @@ describe("Windows helper diagnostics", () => {
     }
   })
 })
+
+describe("Windows helper probe cache", () => {
+  test("memoizes the probe result by stat signature and re-probes on change", () => {
+    const { findHelperBinary, resetHelperCache } = require("../../src/sandbox/windows")
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "synergy-helper-cache-"))
+    const helperPath = path.join(root, "synergy-sandbox-windows.exe")
+    const contents = Buffer.alloc(4096)
+    contents.write("MZ", 0, "ascii")
+    contents.writeUInt32LE(0x80, 0x3c)
+    contents.write("PE\0\0", 0x80, "ascii")
+    contents.writeUInt16LE(0x8664, 0x84)
+    fs.writeFileSync(helperPath, contents)
+    const searchPaths = [() => helperPath]
+    try {
+      resetHelperCache()
+      const first = findHelperBinary(searchPaths)
+      expect(first).not.toBeNull()
+      // Same stat signature: the cached reference is returned without a re-probe.
+      expect(findHelperBinary(searchPaths)).toBe(first)
+
+      // Size change alters the stat signature and forces a fresh probe.
+      fs.writeFileSync(helperPath, Buffer.concat([contents, Buffer.alloc(16)]))
+      const third = findHelperBinary(searchPaths)
+      expect(third).not.toBe(first)
+
+      // Explicit reset forces a re-probe even when the signature is unchanged.
+      resetHelperCache()
+      expect(findHelperBinary(searchPaths)).not.toBe(third)
+    } finally {
+      resetHelperCache()
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
