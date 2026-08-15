@@ -182,46 +182,24 @@ export function inspectWindowsHelper(
   }
 }
 
-interface HelperCacheEntry {
-  signature: string
-  info: WindowsHelperInfo | null
-}
-
-let helperCache: HelperCacheEntry | undefined
-
 /**
  * Resolve the Windows helper and retain the first invalid candidate for diagnostics.
  * Returns null only when no helper binary exists at any search path.
  *
- * The probe result is memoized by the stat signature of every candidate path.
- * The helper binary only changes on install or upgrade, while the previous
- * per-invocation behavior re-read and SHA-256 hashed the binary on every bash
- * command — a fixed latency that Windows Defender's real-time scanning
- * amplified. Signature computation is a few stat calls, so the per-command
- * cost drops from multiple full binary reads to microseconds.
+ * The probe re-validates the binary on every call: the previous stat-signature
+ * cache (size + mtime) could be spoofed by replacing the helper with different
+ * bytes of the same length and restoring its modification time, which would
+ * skip the embedded SHA-256 integrity check and let a tampered binary execute
+ * sandboxed commands. Verification cost is a bounded read + digest per command;
+ * integrity wins over the small latency saving.
  */
 export function findHelperBinary(
   searchPaths: readonly ((homedir: string) => string)[] = WINDOWS_HELPER_SEARCH_PATHS,
 ): WindowsHelperInfo | null {
-  const homedir = os.homedir()
-  const signature = helperPathSignature(homedir, searchPaths)
-  if (helperCache && helperCache.signature === signature) return helperCache.info
-  const info = probeHelperBinary(homedir, searchPaths)
-  helperCache = { signature, info }
-  return info
-}
-
-export function resetHelperCache(): void {
-  helperCache = undefined
-}
-
-function probeHelperBinary(
-  homedir: string,
-  searchPaths: readonly ((homedir: string) => string)[],
-): WindowsHelperInfo | null {
   // Try tarball-relative installation before searching standard paths
   installTarballHelper()
 
+  const homedir = os.homedir()
   let firstInvalid: WindowsHelperInfo | null = null
   for (const getPath of searchPaths) {
     const p = getPath(homedir)
@@ -243,20 +221,6 @@ function probeHelperBinary(
     }
   }
   return firstInvalid
-}
-
-function helperPathSignature(homedir: string, searchPaths: readonly ((homedir: string) => string)[]): string {
-  return searchPaths
-    .map((getPath) => {
-      const p = getPath(homedir)
-      try {
-        const stat = fs.statSync(p)
-        return `${p}:${stat.size}:${stat.mtimeMs}`
-      } catch {
-        return `${p}:missing`
-      }
-    })
-    .join("|")
 }
 
 // ------------------------------------------------------------------

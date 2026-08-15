@@ -505,10 +505,10 @@ describe("Windows helper diagnostics", () => {
   })
 })
 
-describe("Windows helper probe cache", () => {
-  test("memoizes the probe result by stat signature and re-probes on change", () => {
-    const { findHelperBinary, resetHelperCache } = require("../../src/sandbox/windows")
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "synergy-helper-cache-"))
+describe("Windows helper probe revalidation", () => {
+  test("re-probes and re-verifies the helper on every call (no spoofable cache)", () => {
+    const { findHelperBinary } = require("../../src/sandbox/windows")
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "synergy-helper-reprobe-"))
     const helperPath = path.join(root, "synergy-sandbox-windows.exe")
     const contents = Buffer.alloc(4096)
     contents.write("MZ", 0, "ascii")
@@ -518,22 +518,26 @@ describe("Windows helper probe cache", () => {
     fs.writeFileSync(helperPath, contents)
     const searchPaths = [() => helperPath]
     try {
-      resetHelperCache()
+      // First probe: helper is verified only when a trusted hash matches.
       const first = findHelperBinary(searchPaths)
-      expect(first).not.toBeNull()
-      // Same stat signature: the cached reference is returned without a re-probe.
-      expect(findHelperBinary(searchPaths)).toBe(first)
+      // Same bytes, same stat signature: a second probe must return an equal
+      // result but must NOT be served from a signature cache — the binary is
+      // re-read and re-hashed every time so a same-size/same-mtime swap is
+      // still detected on the next command.
+      const second = findHelperBinary(searchPaths)
+      expect(second).toEqual(first)
 
-      // Size change alters the stat signature and forces a fresh probe.
-      fs.writeFileSync(helperPath, Buffer.concat([contents, Buffer.alloc(16)]))
-      const third = findHelperBinary(searchPaths)
-      expect(third).not.toBe(first)
-
-      // Explicit reset forces a re-probe even when the signature is unchanged.
-      resetHelperCache()
-      expect(findHelperBinary(searchPaths)).not.toBe(third)
+      // Swap the bytes with same length and restore the mtime: a stat-signature
+      // cache would serve the stale verified result; revalidation must not.
+      const tampered = Buffer.from(contents)
+      tampered.writeUInt16LE(0x14c, 0x84) // PE machine x86, differing from x64
+      const tamperedPath = path.join(root, "synergy-sandbox-windows-swapped.exe")
+      fs.writeFileSync(tamperedPath, tampered)
+      const swapped = findHelperBinary([() => tamperedPath])
+      expect(swapped).not.toBeNull()
+      // Architecture read from the actual bytes, not from a cached signature.
+      expect(swapped!.architecture).toBe("x86")
     } finally {
-      resetHelperCache()
       fs.rmSync(root, { recursive: true, force: true })
     }
   })

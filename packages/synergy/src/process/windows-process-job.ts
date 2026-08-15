@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto"
 import { tmpdir } from "node:os"
-import { unlinkSync, writeFileSync } from "node:fs"
+import { unlinkSync } from "node:fs"
 import path from "node:path"
 import type { ChildProcess } from "node:child_process"
 import type { Pointer } from "bun:ffi"
@@ -11,6 +11,29 @@ export namespace WindowsProcessJob {
   const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
   const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
   const BASIC_LIMIT_FLAGS_OFFSET = 16
+
+  // Gate command prefixes. Each keeps the user command on the target shell's
+  // command line — preserving its parsing semantics (e.g. cmd /c single `%`
+  // loop variables) — and waits for a gate file that `activate()` creates only
+  // after the kill-on-close Job Object owns the process. The user command
+  // therefore cannot run, nor spawn descendants such as `cmd /c start`,
+  // before job containment is in place. When attach wins the race (the common
+  // case, with the FFI runtime pre-warmed), the gate already exists and the
+  // prefix costs a few trivial existence checks.
+  //
+  // cmd has no sub-second sleep primitive, so its poll is a bounded `for /l`
+  // loop over `ping` (~5-15ms per attempt, ~2s worst case); if the gate never
+  // appears the post-loop check exits non-zero before the user command runs.
+  // A single `%i` is correct for a /c command line (batch files would need
+  // `%%i`), and the command itself is never moved into a batch file, so cmd
+  // parsing semantics — including single-percent loop variables — are intact.
+  const CMD_GATE_PREFIX =
+    '@for /l %i in (1,1,200) do @if not exist "%SYNERGY_WINDOWS_JOB_GATE%" ping -n 1 -w 1 127.0.0.1 >nul & @if not exist "%SYNERGY_WINDOWS_JOB_GATE%" exit /b 1 & @del /q "%SYNERGY_WINDOWS_JOB_GATE%" >nul 2>&1'
+  const POWERSHELL_GATE_PREFIX =
+    "$g=$env:SYNERGY_WINDOWS_JOB_GATE; $i=0; while((-not (Test-Path -LiteralPath $g)) -and ($i -lt 200)){ $i++; Start-Sleep -Milliseconds 5 }; if(-not (Test-Path -LiteralPath $g)){ exit 1 }; Remove-Item -LiteralPath $g -Force -ErrorAction SilentlyContinue; Remove-Item Env:SYNERGY_WINDOWS_JOB_GATE -ErrorAction SilentlyContinue"
+  const BASH_GATE_PREFIX =
+    'for i in {1..200}; do [ -f "$SYNERGY_WINDOWS_JOB_GATE" ] && break; sleep 0.005; done; [ -f "$SYNERGY_WINDOWS_JOB_GATE" ] || exit 1; rm -f "$SYNERGY_WINDOWS_JOB_GATE"; unset SYNERGY_WINDOWS_JOB_GATE'
+  let runtimePromise: Promise<RuntimeForTest> | undefined
 
   type Handle = number | Pointer
 
@@ -38,8 +61,6 @@ export namespace WindowsProcessJob {
     lastError(): number
   }
 
-  let runtimePromise: Promise<RuntimeForTest> | undefined
-
   export function prepare(
     input: {
       command: string
@@ -49,54 +70,36 @@ export namespace WindowsProcessJob {
     platform: NodeJS.Platform = process.platform,
   ): Prepared | undefined {
     if (platform !== "win32") return
-    // Pre-warm the FFI runtime so the Job Object attach right after spawn does
-    // not wait for the first kernel32.dll load (memoized, so a no-op on later
-    // commands). This keeps the spawn→attach window at a few milliseconds.
+    // Pre-warm the FFI runtime so the job attaches before the shell's gate
+    // poll completes (memoized, so a no-op on later commands).
     if (process.platform === "win32") void runtime().catch(() => {})
-    // Spawn the requested shell directly and attach the Job Object right
-    // after creation. The previous PowerShell bootstrap (cold start +
-    // gate-file polling) added hundreds of milliseconds of fixed latency to
-    // every command; the residual exposure is the spawn→attach window, during
-    // which a freshly created shell has not yet parsed or executed the
-    // command line, so it cannot leave an escaped descendant behind.
-    //
-    // cmd.exe /c mis-parses command lines containing nested quotes, so the
-    // cmd branch writes the command to a temporary batch file instead. Bash
-    // and PowerShell receive the command as a single argument and need no
-    // quoting workaround.
+    // Keep the caller-selected executable (e.g. a custom COMSPEC path) and
+    // rewrite only the command line: prepend the gate wait for the target
+    // shell's own syntax, then append the user command unchanged.
     const shellName = path.win32.basename(input.command).toLowerCase()
-    let command = input.command
-    let args = input.args
-    let cleanup: () => void = () => {}
-    if (shellName === "cmd" || shellName === "cmd.exe") {
-      const token = `${process.pid}-${randomBytes(8).toString("hex")}`
-      const batchPath = path.join(tmpdir(), `synergy-process-job-${token}.cmd`)
-      const commandLine = input.args[input.args.length - 1] ?? ""
-      // %errorlevel% expands when this separate line is parsed, so it
-      // captures the exit code of the command line above it.
-      writeFileSync(batchPath, `@echo off\r\n${commandLine}\r\nexit /b %errorlevel%\r\n`, {
-        encoding: "utf8",
-        mode: 0o600,
-        flag: "wx",
-      })
-      command = "cmd.exe"
-      args = ["/d", "/c", batchPath]
-      cleanup = () => {
-        try {
-          unlinkSync(batchPath)
-        } catch {}
-      }
+    const isCmd = shellName === "cmd" || shellName === "cmd.exe"
+    const isPowerShell =
+      shellName === "powershell" || shellName === "powershell.exe" || shellName === "pwsh" || shellName === "pwsh.exe"
+    const prefix = isCmd ? CMD_GATE_PREFIX : isPowerShell ? POWERSHELL_GATE_PREFIX : BASH_GATE_PREFIX
+    const separator = isPowerShell ? "; " : isCmd ? " & " : "; "
+    const token = `${process.pid}-${randomBytes(8).toString("hex")}`
+    const gatePath = path.join(tmpdir(), `synergy-process-job-${token}.gate`)
+    const commandLine = input.args[input.args.length - 1] ?? ""
+    const cleanup = () => {
+      try {
+        unlinkSync(gatePath)
+      } catch {}
     }
     return {
-      command,
-      args,
-      env: input.env,
+      command: input.command,
+      args: [...input.args.slice(0, -1), `${prefix}${separator}${commandLine}`],
+      env: { ...input.env, SYNERGY_WINDOWS_JOB_GATE: gatePath },
       activate(child) {
         return activate({
           child,
           cleanup,
           jobRuntime: runtime(),
-          openGate: async () => {},
+          openGate: () => Bun.write(gatePath, "ready"),
         })
       },
       cleanup,
