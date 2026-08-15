@@ -12,8 +12,7 @@ type LocalePreference = "system" | "en" | "zh-CN"
 
 `system` follows the client operating-system or browser locale. Any locale whose normalized language starts with `zh` resolves to `zh-CN`; all other unsupported locales resolve to `en`. The resolved active locale is always `en` or `zh-CN` and is written to `document.documentElement.lang`.
 
-The preference belongs to global General configuration. Project Scope changes do not change the interface language. A local-storage mirror may select the catalog before the server configuration arrives, but global configuration is authoritative after synchronization. The mirror stores the original preference rather than a resolved locale.
-Settings exposes the preference as a localized Follow System option plus the stable self-names English and 简体中文. The control is a global user preference, works without a page refresh, and must stay usable at narrow widths so a user can recover after choosing a language they do not read.
+The preference belongs to global General configuration. Project Scope changes do not change the interface language. A local-storage mirror may select the catalog before the server configuration arrives, but global configuration is authoritative after synchronization. The mirror stores the original preference rather than a resolved locale. Settings exposes the preference as a localized Follow System option plus the stable self-names English and 简体中文. The control is a global user preference, works without a page refresh, and must stay usable at narrow widths so a user can recover after choosing a language they do not read.
 
 ## Runtime ownership
 
@@ -30,8 +29,7 @@ Settings exposes the preference as a localized Follow System option plus the sta
 
 English is the source locale and the always-available fallback catalog. It is loaded with the initial application runtime. Simplified Chinese is a separate lazy catalog. A locale switch commits only after its target catalog loads; failed or stale loads cannot replace the current catalog. The product UI waits for bootstrap activation before rendering localized content so a Chinese startup does not flash English.
 
-Pseudo-localization uses a separate `pseudo` catalog so English production output is never transformed. It is available only in a development build opened with `?pseudoLocale=1`; the persisted preference and active product locale remain limited to `system`, `en`, and `zh-CN`. Production tree-shaking must remove the pseudo loader and catalog chunk.
-Locale reconciliation is two-phase: bootstrap uses the local mirror or system locale so the first rendered product chrome matches the intended catalog, then the pure global configuration snapshot becomes the authority. User changes keep a pending preference until global configuration confirms the same value; unrelated Scope configuration and project changes never reconcile locale.
+Pseudo-localization uses a separate `pseudo` catalog so English production output is never transformed. It is available only in a development build opened with `?pseudoLocale=1`; the persisted preference and active product locale remain limited to `system`, `en`, and `zh-CN`. Production tree-shaking must remove the pseudo loader and catalog chunk. Locale reconciliation is two-phase: bootstrap uses the local mirror or system locale so the first rendered product chrome matches the intended catalog, then the pure global configuration snapshot becomes the authority. User changes keep a pending preference until global configuration confirms the same value; unrelated Scope configuration and project changes never reconcile locale.
 
 ## Message contract
 
