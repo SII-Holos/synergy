@@ -58,7 +58,7 @@ export namespace PerformanceDashboard {
     const rows = ObservabilityStore.queryMetrics({ since, scopeID: input.scopeID, limit: 50_001, newestFirst: true })
     const truncated = rows.length > 50_000
     const metrics = truncated ? rows.slice(0, 50_000) : rows
-    const resourceRows = ObservabilityStore.resourceSince(since, { scopeID: input.scopeID })
+    const resourceRows = ObservabilityStore.resourceSince(since)
     const serverResourceRows = resourceRows.filter((row) => row.process_role === "server")
     const resources = serverResourceRows.at(-1)
     const currentChildRows = resources
