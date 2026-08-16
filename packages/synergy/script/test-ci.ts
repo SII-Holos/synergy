@@ -25,7 +25,10 @@ export function shardArgs(
     args.push("--coverage", "--coverage-reporter=lcov", `--coverage-dir=${path.join(coverageShardsDir, String(shard))}`)
   }
   if (reporterDirectory) {
-    args.push("--reporter=junit", `--reporter-outfile=${path.join(reporterDirectory, `synergy-test-shard-${shard}-of-${shardCount}.xml`)}`)
+    args.push(
+      "--reporter=junit",
+      `--reporter-outfile=${path.join(reporterDirectory, `synergy-test-shard-${shard}-of-${shardCount}.xml`)}`,
+    )
   }
   return args
 }
