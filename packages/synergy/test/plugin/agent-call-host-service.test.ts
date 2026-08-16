@@ -294,7 +294,7 @@ describe("plugin agent.call Host Service", () => {
       await Bun.sleep(1)
     }
     expect(pluginAgentCallRuntime.activeCount(manifest.id)).toBe(0)
-    for (let attempt = 0; attempt < 50; attempt++) {
+    for (let attempt = 0; attempt < 200; attempt++) {
       const event = ObservabilityStore.queryEvents({ type: "log.record" }).find((item) => {
         const data = JSON.parse(item.data_json)
         return (
@@ -302,7 +302,7 @@ describe("plugin agent.call Host Service", () => {
         )
       })
       if (event) break
-      await Bun.sleep(1)
+      await Bun.sleep(10)
     }
     const event = ObservabilityStore.queryEvents({ type: "log.record" }).find((item) => {
       const data = JSON.parse(item.data_json)

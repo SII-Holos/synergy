@@ -46,6 +46,7 @@ beforeAll(async () => {
   const toolRendersPath = path.resolve(import.meta.dir, "../../src/components/tool-renders.tsx")
   const codeContextPath = path.resolve(import.meta.dir, "../../src/context/code.tsx")
   const dataContextPath = path.resolve(import.meta.dir, "../../src/context/data.tsx")
+  const pluginThemePath = path.resolve(import.meta.dir, "../../../plugin/src/theme/index.ts")
   const entry = path.join(fixtureDirectory, "main.tsx")
 
   await Bun.write(
@@ -331,6 +332,14 @@ beforeAll(async () => {
     configFile: false,
     logLevel: "silent",
     plugins: [solidPlugin()],
+    resolve: {
+      // Vite resolves @ericsanchezok/synergy-plugin/* through the exports map's
+      // "import" condition, which points at dist/ artifacts that only exist
+      // after the plugin package is built. CI checks out a clean tree, so
+      // point the theme subpath at the plugin sources like the other fixture
+      // tests do.
+      alias: { "@ericsanchezok/synergy-plugin/theme": pluginThemePath },
+    },
     worker: { format: "es" },
     build: {
       outDir: path.join(fixtureDirectory, "dist"),

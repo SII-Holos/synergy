@@ -24,6 +24,7 @@ beforeAll(async () => {
   fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".message-part-error-boundary-fixture-"))
   const messagePartPath = path.resolve(import.meta.dir, "../../src/components/message-part.tsx")
   const i18nPath = path.resolve(import.meta.dir, "../../src/testing/i18n.tsx")
+  const pluginThemePath = path.resolve(import.meta.dir, "../../../plugin/src/theme/index.ts")
   const entry = path.join(fixtureDirectory, "main.ts")
 
   await Bun.write(
@@ -109,6 +110,14 @@ beforeAll(async () => {
     configFile: false,
     logLevel: "silent",
     plugins: [solidPlugin()],
+    resolve: {
+      // Vite resolves @ericsanchezok/synergy-plugin/* through the exports map's
+      // "import" condition, which points at dist/ artifacts that only exist
+      // after the plugin package is built. CI checks out a clean tree, so
+      // point the theme subpath at the plugin sources like the other fixture
+      // tests do.
+      alias: { "@ericsanchezok/synergy-plugin/theme": pluginThemePath },
+    },
     build: {
       outDir: path.join(fixtureDirectory, "dist"),
       emptyOutDir: true,

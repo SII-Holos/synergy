@@ -6,8 +6,7 @@
 
 ## 1. 背景与目标
 
-diffs.com 即开源库 **`@pierre/diffs`**（The Pierre Computer Co.，Apache-2.0，基于 Shiki）。
-Synergy 已集成 `@pierre/diffs@1.0.2`（catalog 锁定，2025-12-23），但：
+diffs.com 即开源库 **`@pierre/diffs`**（The Pierre Computer Co.，Apache-2.0，基于 Shiki）。 Synergy 已集成 `@pierre/diffs@1.0.2`（catalog 锁定，2025-12-23），但：
 
 1. **版本落后 7 个月 / 30+ 个版本**：latest 为 `1.3.3`（2026-08-05），新增虚拟化、merge conflict UI、annotations、编辑模式等能力。
 2. **覆盖不全**：富渲染只用于消息中的 diff part；Session Review 面板和工具卡片（save_file / revise_file / edit / multiedit）仍用手写纯文本预览（无语法高亮、无 split 视图）。

@@ -1,31 +1,30 @@
 # Synergy Repository Rules
 
-These rules apply to the Bun/TypeScript monorepo. Read the nearest package `AGENTS.md` before editing package code.
+These rules apply to the Bun/TypeScript monorepo. Read the nearest package `AGENTS.md` before editing package code. Each rule links the document holding its rationale. Placement and budgets follow [docs/AGENTS.md](docs/AGENTS.md).
 
 ## Work from Current Evidence
 
 - Verify the implementation, tests, schemas, generated contracts, and current CLI before changing code or docs.
 - Use `Scope` for workspace resolution/context and `Library` for the knowledge subsystem. Keep retired names inside `docs/migrations/` or `docs/research/` only.
-- Start architecture work at [docs/README.md](docs/README.md), then read only the relevant product, architecture, reference, plugin, or operations document.
-- Inspect adjacent domains before assuming a directory is the abstraction boundary.
-- Keep a nearest `AGENTS.md` in every workspace package and update it when that package's ownership, public boundary, or verification commands change.
+- Start architecture work at [docs/README.md](docs/README.md), then read only the relevant document.
+- Inspect adjacent domains before assuming a directory boundary.
+- Keep a nearest `AGENTS.md` in every workspace package; update it when that package's ownership, public boundary, or verification commands change.
 - Fix the root cause with a focused change; preserve unrelated user work and avoid opportunistic cleanup.
 
-The project-local `architecture` skill provides the code-tracing workflow. It links to the canonical documents rather than duplicating their contents.
+The project-local `architecture` skill provides the code-tracing workflow and links canonical documents instead of duplicating them.
 
 ## Protect Checkouts and Runtimes
 
 The primary checkout, pre-existing checkouts, and active Synergy runtime may be shared by concurrent sessions.
 
 - Inspect `git status`, the current branch, and the worktree list before editing or performing Git operations. Direct edits in the current checkout are allowed; preserve unrelated dirty and untracked files.
-- Do not run `git checkout`, `git switch`, or rebase a shared or pre-existing checkout unless the user explicitly requests that operation. These commands change repository state observed by every session using that directory.
-- A user may choose to create or use a topic branch directly in the primary checkout. Use a task-owned worktree when concurrent work needs branch or file isolation, not as a prerequisite for every repository change; reuse an existing task worktree when it already owns the branch.
-- Stage and commit only when the user requests it. Local commits on `dev` or `main` are permitted, but they advance a potentially shared branch and must never be pushed directly.
-- Never push directly to protected `dev` or `main`. Publish a topic branch and open its PR against `dev`; the release workflow is the only path from `dev` to `main`.
-- Preserve unrelated dirty and untracked files. Inspect status again before staging and stage only explicit files owned by the current task.
+- Do not run `git checkout`/`git switch` or rebase a shared checkout unless the user explicitly requests it; these change state observed by every session using that directory.
+- Use a task-owned worktree when concurrent work needs branch or file isolation; reuse an existing task worktree when it already owns the branch.
+- Stage and commit only when the user requests it. Local commits on `dev` or `main` are permitted but advance a shared branch and must never be pushed directly; publish a topic branch and open its PR against `dev`. Release is the only path from `dev` to `main`.
+- Preserve unrelated dirty and untracked files; inspect status again before staging and stage only files owned by the current task.
 - Do not use destructive Git commands, force pushes, or hook bypasses without explicit user authority and a reviewed recovery plan.
 - Push, open a PR, or mutate external systems only when the user requests that action.
-- Keep local/runtime paths, session or Scope IDs, logs, credentials, private endpoints, and internal config out of commit messages, PR bodies, comments, and reviews. Project-relative source paths are allowed. Every agent-created commit must use a concise conventional type and end with `Co-authored-by: synergy-agent <299070056+synergy-agent@users.noreply.github.com>`.
+- Keep local/runtime paths, session/Scope IDs, logs, credentials, and private endpoints out of commit messages, PR bodies, comments, and reviews. Every agent-created commit uses a concise conventional type and the `Co-authored-by: synergy-agent <299070056+synergy-agent@users.noreply.github.com>` footer.
 - Never stop, restart, signal, or modify the `SYNERGY_HOME` of the Synergy instance carrying the current task.
 - Run source changes in an isolated second home with explicit alternate ports. Load `develop-synergy` for the exact workflow.
 
@@ -45,13 +44,13 @@ bun dev desktop --managed
 bun dev send "request"
 ```
 
-See [Development reference](docs/reference/development.md) for modes, isolated instances, builds, tests, and SDK generation. Desktop production packaging and updates follow [Desktop release](docs/operations/desktop-release.md).
+See [Development reference](docs/reference/development.md) for modes, isolated instances, builds, tests, and SDK generation. Desktop packaging and updates follow [Desktop release](docs/operations/desktop-release.md).
 
 ## Implementation Discipline
 
 - Match established namespace/module patterns. Import `z` from `"zod"`; infer types from schemas and avoid `any`.
 - Prefer `const`, early returns, `async`/`await`, and real `Promise.all()` parallelism.
-- Preserve structured error data. Use `NamedError.create()` or local error classes where the owning domain already does; match tool-local patterns for tool errors.
+- Preserve structured error data. Use `NamedError.create()` or local error classes where the owning domain already does.
 - Use Bun file APIs where they improve clarity and match surrounding code.
 - Do not add inline comments, headers, adapters, fallbacks, or abstractions unless they explain a durable non-obvious constraint.
 
@@ -67,7 +66,7 @@ See [Development reference](docs/reference/development.md) for modes, isolated i
 - Add OpenAPI metadata to server routes and run `./script/generate.ts` after route or API-schema changes.
 - Use `createSynergyClient()` and generated methods for internal Web APIs. Reserve raw browser transports for streams, external URLs, browser file/blob flows, and platform-provided fetch injection.
 - Preserve auth, Scope/directory parameters, error semantics, and asset URL formats when changing a client call.
-- Product color utilities must follow [Frontend themes and color](docs/reference/frontend-theming.md) and resolve through the public canonical contract in `packages/plugin/src/theme`; `packages/ui/src/theme` is the compatibility/runtime application boundary. Do not add Tailwind palette colors, literal color utilities, or component-local light/dark palettes. Change seeds or typed overrides in a structured theme, run the theme generator, and never hand-edit generated Web/Desktop fallbacks or Tailwind color files. Plugin Kit and the host use the same validated Theme JSON parser rather than arbitrary CSS overrides.
+- Product color utilities must follow [Frontend themes and color](docs/reference/frontend-theming.md) and resolve through the public canonical contract in `packages/plugin/src/theme`; `packages/ui/src/theme` is the compatibility/runtime boundary. No Tailwind palette colors, literal color utilities, or component-local light/dark palettes. Change seeds or typed overrides in a structured theme, run the theme generator, and never hand-edit generated fallbacks. Plugin Kit and the host share the validated Theme JSON parser.
 
 ### Configuration and credentials
 
@@ -102,9 +101,9 @@ Do not create compatibility paths that violate those contracts. In particular:
 
 ## Testing and Quality
 
-Write a failing behavioral test first for new behavior and bug fixes. Test public invariants, not source text or incidental implementation. Use real temporary Scope/storage fixtures instead of broad mocks. Load `testing-guide` for detailed selection and isolation rules.
+Write a failing behavioral test first for new behavior and bug fixes. Test public invariants, not source text or incidental implementation. Use real temporary Scope/storage fixtures instead of broad mocks; load `testing-guide` for selection and isolation rules.
 
-Every test file must live under the `test/` directory of its owning package, mirroring the relevant source domain when useful. Repository-level script and policy tests belong under the root `test/` directory. Do not colocate `*.test.*` or `*.spec.*` files beside files in `src/`, `script/`, or other implementation directories; `bun run test-layout:check` enforces this boundary.
+Every test file must live under the `test/` directory of its owning package, mirroring the relevant source domain when useful; repository-level script and policy tests belong under the root `test/` directory. Do not colocate `*.test.*`/`*.spec.*` beside `src/`, `script/`, or implementation directories; `bun run test-layout:check` enforces this.
 
 Core tests run from `packages/synergy`:
 
@@ -117,46 +116,21 @@ bun run test:ci
 bun run test:coverage
 ```
 
-Frontend package suites run through `bun run --cwd packages/app test` and `bun run --cwd packages/ui test`; both are part of the Turbo test graph.
+Frontend package suites run through `bun run --cwd packages/app test` and `bun run --cwd packages/ui test`; both are part of the Turbo test graph. Browser capability or App bootstrap changes also run the browser crypto contract and the production-build private HTTP browser smoke documented in `packages/app/AGENTS.md`.
 
-Browser capability or App bootstrap changes also run the browser crypto contract and the production-build private HTTP browser smoke documented in `packages/app/AGENTS.md`.
+Coverage has a floor: `bun run coverage:check` enforces per-package thresholds with an auditable exemption list in `script/coverage-exempt.json`. Bun 1.3.14 supports no ignore comments, so exclusions happen only through that manifest; every entry carries a reason, and broad entries are rejected. Run the narrowest relevant check locally and let CI own the full matrix — never default to the full suite for a commit or push. `bun run quality:quick` runs the local static cluster; pre-commit hooks run staged fast checks; pre-push adds `doc:check` and `decision:check`. The complete local/CI matrix is in [Open-source quality](docs/operations/open-source-quality.md).
 
-Repository gates run from the root:
+## Documentation and Decision Records
 
-```bash
-bun run format:check
-bun run lint
-bun run localization:check
-bun run typecheck
-bun run monorepo:check
-bun run package:check
-bun run quality:quick
-bun run quality
-```
+Update documentation in the same task when behavior changes; placement follows the tier table in [docs/AGENTS.md](docs/AGENTS.md). Generated reference pages (`cli.md`, `configuration.md`, `tools.md`) must never be hand-edited; run their `script/gen/*` generators instead.
 
-Run the narrowest relevant test first, expand for shared abstractions, and report every relevant failure. Do not bypass hooks or weaken tests to make a gate pass. The complete local/CI matrix is in [Open-source quality](docs/operations/open-source-quality.md).
+Every non-trivial change MUST add or update an implemented decision record in `docs/decisions/` in the same PR; only mechanical or local edits are exempt. Records follow the path-encoded lifecycle/class scheme and format contract in [Decision records](docs/decisions/README.md); `bun run decision:check` gates them. Bugs go to postmortems, rationale to decision records, procedures to cookbooks — see [docs/AGENTS.md](docs/AGENTS.md).
 
-## Documentation Ownership
-
-Update documentation in the same task when behavior changes:
-
-- `README.md` — concise repository/product entry point
-- `docs/product/` — user-facing objects and flows
-- `packages/app/PRODUCT.md` — durable Web interaction and visual principles
-- `docs/architecture/` — current implementation invariants
-- `docs/reference/` — commands, config, paths, packages, and development procedures
-- `docs/plugins/` — public extension contract
-- `docs/operations/` — release, quality, and observability runbooks
-- `docs/research/` and `docs/migrations/` — investigations and history only
-- `.synergy/skill/` and `.synergy/command/` — executable repository workflows
-
-Write current state directly. Delete obsolete explanations instead of layering caveats. When code and docs conflict, verify code/tests, update the canonical document, and remove stale wording elsewhere.
-
-Review at least `README.md`, relevant setup/help text, and the owning Skill whenever a change affects CLI commands, agents, tools, config, paths, startup, logs, storage, tests, packages, release behavior, or user-facing product areas.
+Review at least `README.md`, relevant setup/help text, and the owning Skill when a change affects CLI, agents, tools, config, paths, startup, logs, storage, tests, packages, release, or user-facing product areas.
 
 ### Development standards live in Skills
 
-`.synergy/skill/` is the executable source-development handbook for this repository. When implementation or review reveals a reusable development rule that no Skill currently captures, update the focused owning Skill or create one in the same change. Keep `AGENTS.md` focused on safety, global invariants, and routing; keep step-by-step procedures, examples, and verification checklists in Skills. Load `development-standards` when ownership is unclear.
+`.synergy/skill/` is the executable source-development handbook for this repository. When implementation or review reveals a reusable development rule that no Skill captures, update the focused owning Skill or create one in the same change. Keep `AGENTS.md` focused on safety, global invariants, and routing; keep step-by-step procedures, examples, and verification checklists in Skills. Load `development-standards` when ownership is unclear.
 
 ## Release and Security
 
@@ -166,17 +140,4 @@ Review at least `README.md`, relevant setup/help text, and the owning Skill when
 
 ## Repository Skills
 
-- `development-standards` — route source changes and capture new development rules
-- `architecture` — trace ownership and cross-cutting flows
-- `develop-frontend`, `integrate-llm` — Web/shared UI and model-backed operation workflows
-- `change-server-api`, `change-persistence` — API/SDK and durable-state workflows
-- `change-execution-boundaries` — capabilities, permissions, control profiles, enforcement, and sandboxing
-- `change-browser-runtime` — Browser ownership/control plus Desktop native and WebRTC presentation
-- `change-channel-runtime` — Channel targets, provider lifecycle, managed Projects, native Clarus tasks, diagnostics, and account navigation
-- `change-plugin-runtime` — Plugin API 4 definitions, generated artifacts, installation, runtime generations, Host Services, and UI host
-- `develop-synergy` — run an isolated second instance
-- `testing-guide` — choose fixtures and verification gates
-- `git-guide` — worktree, commit, rebase, push, and PR safety
-- `add-agent`, `add-cli-command`, `add-tool` — implementation workflows
-- `find-logs`, `inspect-sessions` — read-only diagnostics
-- `release-log-workflow` — release analysis and authorized publication
+`development-standards` (route changes, capture rules), `architecture` (trace ownership), `develop-frontend`/`integrate-llm` (Web UI, model-backed), `change-server-api`/`change-persistence` (API, durable state), `change-execution-boundaries` (permissions, sandboxing), `change-browser-runtime` (Browser/Desktop presentation), `change-channel-runtime` (Channels, providers, Clarus), `change-plugin-runtime` (Plugin API), `develop-synergy` (isolated instance), `testing-guide` (fixtures), `git-guide` (worktrees, PRs), `add-agent`/`add-cli-command`/`add-tool` (workflows), `find-logs`/`inspect-sessions` (diagnostics), `find-simplifications` (surface audits), `release-log-workflow` (notes).

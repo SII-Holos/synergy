@@ -6,3 +6,5 @@ bun run format:check
 bun run lint
 bun run typecheck
 bun run monorepo:check
+bun run doc:check
+bun run decision:check
