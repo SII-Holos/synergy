@@ -31,6 +31,7 @@ import { GitRoute } from "./git"
 import { ToolRegistry } from "../tool/registry"
 import { zodToJsonSchema } from "zod-to-json-schema"
 import { lazy } from "../util/lazy"
+import { withTimeout } from "../util/timeout"
 import { MCP } from "../mcp"
 import { Storage } from "../storage/storage"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
@@ -588,13 +589,23 @@ export namespace Server {
             },
           }),
           async (c) => {
-            const providers = await Provider.list().catch((error) => {
+            // Health is the daemon/Desktop readiness signal: it must answer
+            // within the probe window even when the first provider state build
+            // is stuck on an unreachable registry. Wait briefly for the build,
+            // then answer optimistically instead of letting probes time out.
+            const providers = await withTimeout(Provider.list(), 1_000, {
+              message: "provider state build timed out",
+            }).catch((error) => {
+              if (error instanceof Error && error.message === "provider state build timed out") {
+                log.warn("global health answered optimistically while provider state is still building")
+                return undefined
+              }
               log.warn("failed to load providers for global health", {
                 error: error instanceof Error ? error : new Error(String(error)),
               })
               return {}
             })
-            const modelReady = Object.keys(providers).length > 0
+            const modelReady = providers ? Object.keys(providers).length > 0 : true
             return c.json({ healthy: true, version: Installation.VERSION, modelReady })
           },
         )
