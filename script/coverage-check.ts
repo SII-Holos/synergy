@@ -226,7 +226,15 @@ export function evaluatePackage(
     functionsPct,
     thresholds: config.thresholds,
     passed,
-    uncovered: uncovered.sort((left, right) => right.lines.length - left.lines.length).slice(0, 20),
+    uncovered: uncovered
+      .sort((left, right) => {
+        const leftMissing = left.lines.length === 0 ? 1 : 0
+        const rightMissing = right.lines.length === 0 ? 1 : 0
+        // Never-loaded files are the actionable failures: show them first and
+        // never let the cap slice them away.
+        return rightMissing - leftMissing || right.lines.length - left.lines.length
+      })
+      .slice(0, 50),
     errors,
   }
 }
@@ -304,6 +312,15 @@ async function runPackage(
     .env({ ...process.env, LC_ALL: "C" })
     .nothrow()
     .quiet()
+  if (output.exitCode !== 0) {
+    // A failing test batch used to surface only as phantom "missing" files
+    // (the shard orchestrator aborted every remaining batch). Report the
+    // underlying failure with its output so the gate names the real culprit.
+    const stderr = output.stderr.toString().trim()
+    const stdout = output.stdout.toString().trim()
+    const detail = stdout ? `${stderr}\n--- stdout ---\n${stdout}` : stderr
+    throw new Error(`${name}: coverage command exited ${output.exitCode}\n${detail.slice(0, 30_000)}`)
+  }
   // Sharded orchestrators (app, ui) write one lcov per batch under
   // coverage/shards/; merge them when present, otherwise read the single
   // canonical file.

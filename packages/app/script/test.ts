@@ -4,6 +4,7 @@ import { mkdir, readdir, rm } from "node:fs/promises"
 import path from "node:path"
 
 const root = path.resolve(import.meta.dir, "..")
+const failedBatches: Array<{ shard: number; exitCode: number }> = []
 const isolated = "test/app-build-css-contract.test.ts"
 const browserOnly = [
   "test/components/note/document-editor-core.test.ts",
@@ -71,7 +72,7 @@ async function run(tests: string[], options: { browser?: boolean; timeoutMs?: nu
     },
   )
   const exitCode = await child.exited
-  if (exitCode !== 0) globalThis.process.exit(exitCode)
+  if (exitCode !== 0) failedBatches.push({ shard, exitCode })
 }
 
 const coverage = process.argv.includes("--coverage")
@@ -90,3 +91,9 @@ let shard = 1
 for (const file of playwrightIsolated) await run([file], { timeoutMs: 120000 }, shard++)
 await run(browserOnly, { browser: true }, shard++)
 await run([isolated], {}, shard++)
+if (failedBatches.length > 0) {
+  console.error(
+    `test batches failed: ${failedBatches.map(({ shard, exitCode }) => `shard ${shard} (exit ${exitCode})`).join(", ")}`,
+  )
+  process.exit(1)
+}

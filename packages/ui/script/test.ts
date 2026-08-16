@@ -4,6 +4,7 @@ import { mkdir, readdir, rm } from "node:fs/promises"
 import path from "node:path"
 
 const root = path.resolve(import.meta.dir, "..")
+const failedBatches: Array<{ shard: number; exitCode: number }> = []
 const isolated = new Set([
   "test/components/message-part-error-boundary.test.ts",
   "test/components/activity-trace.dom.test.ts",
@@ -61,7 +62,7 @@ async function run(files: string[], options: { browser?: boolean } = {}, shard =
     },
   )
   const exitCode = await child.exited
-  if (exitCode !== 0) globalThis.process.exit(exitCode)
+  if (exitCode !== 0) failedBatches.push({ shard, exitCode })
 }
 
 const coverage = process.argv.includes("--coverage")
@@ -83,3 +84,9 @@ await run(
   { browser: true },
   shard++,
 )
+if (failedBatches.length > 0) {
+  console.error(
+    `test batches failed: ${failedBatches.map(({ shard, exitCode }) => `shard ${shard} (exit ${exitCode})`).join(", ")}`,
+  )
+  process.exit(1)
+}

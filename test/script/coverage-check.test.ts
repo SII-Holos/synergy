@@ -145,6 +145,13 @@ describe("coverage package evaluation", () => {
     const verdict = evaluatePackage("pkg", config, ["src/a.ts"], [record("src/a.ts")])
     expect(verdict.uncovered).toEqual([{ file: "src/a.ts", lines: [2] }])
   })
+
+  test("sorts never-loaded files before zero-line files", () => {
+    const verdict = evaluatePackage("pkg", config, ["src/a.ts", "src/b.ts"], [record("src/a.ts")])
+    expect(verdict.missing).toBe(1)
+    expect(verdict.uncovered[0]).toEqual({ file: "src/b.ts", lines: [] })
+    expect(verdict.uncovered[1]).toEqual({ file: "src/a.ts", lines: [2] })
+  })
 })
 
 describe("coverage manifest validation", () => {
