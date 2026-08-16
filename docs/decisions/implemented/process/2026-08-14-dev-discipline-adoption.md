@@ -8,7 +8,7 @@ Synergy's conventions relied on habit: docs could accumulate dead links and bloa
 
 ## Decision
 
-Adopt, adapted from the dsh repo: a gated decision-record system (`docs/decisions/`, format gate `decision:check`), doc gates (md-links / md-wrap / doc-budgets) plus generated CLI/config/tool catalogs with freshness checks, an `all-checks-passed` CI aggregate job, per-package coverage thresholds with reasoned exemptions, a pre-commit fast-check layer, and a docs tier table (`docs/AGENTS.md`).
+Adopt, adapted from the dsh repo: a gated decision-record system (`docs/decisions/`, format gate `decision:check`), doc gates (md-links / md-wrap / doc-budgets) plus generated CLI/config/tool catalogs with freshness checks, an `all-checks-passed` CI aggregate job, per-package coverage thresholds with reasoned exemptions, a pre-commit fast-check layer, and a docs tier table (`docs/AGENTS.md`). Also adopt the `find-simplifications` survey workflow (from dsh's `dsh-find-simplifications`): it turns broad "find things to simplify" requests into evidence-backed simplification decision records, inline cleanup comments, and superseded-record coalescing.
 
 ## Alternatives considered
 
