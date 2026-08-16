@@ -125,27 +125,24 @@ describe("synergy-link local service log files", () => {
     })
     void following.catch(() => undefined)
 
-    const waitForChunks = async (count: number) => {
-      const deadline = Date.now() + 5_000
-      while (chunks.length < count && Date.now() < deadline) {
+    // fs.watch may coalesce rapid successive writes into a single callback
+    // (inotify under CI load), so assert on content arrival instead of exact
+    // chunk boundaries. The behavior under test is that every write is
+    // eventually emitted and truncation resets the read offset.
+    const waitForContent = async (content: string) => {
+      const deadline = Date.now() + 15_000
+      while (!chunks.some((chunk) => chunk.includes(content)) && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 50))
       }
-      expect(chunks.length).toBeGreaterThanOrEqual(count)
+      expect(chunks.some((chunk) => chunk.includes(content))).toBe(true)
     }
 
-    await waitForChunks(1)
-    expect(chunks[0]).toBe("first\n")
-
+    await waitForContent("first\n")
     await appendFile(logPath, "second\n")
-    await waitForChunks(2)
-    expect(chunks[1]).toBe("second\n")
-
+    await waitForContent("second\n")
     await writeFile(logPath, "restarted\n")
-    await waitForChunks(3)
-    expect(chunks[2]).toBe("restarted\n")
-
+    await waitForContent("restarted\n")
     await appendFile(logPath, "after-truncate\n")
-    await waitForChunks(4)
-    expect(chunks[3]).toBe("after-truncate\n")
+    await waitForContent("after-truncate\n")
   })
 })

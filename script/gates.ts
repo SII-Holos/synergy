@@ -108,8 +108,13 @@ async function runGate(gate: Gate, root: string): Promise<GateError | null> {
   if (output.exitCode === 0) return null
   // Keep the full failure detail: coverage gates print per-file uncovered
   // lines that a 1000-char slice truncates to the alphabetically last file,
-  // hiding the real gap list. Cap only to avoid pathological logs.
-  return { gate: gate.id, exitCode: output.exitCode, stderr: output.stderr.toString().slice(0, 100_000) }
+  // hiding the real gap list. Include stdout too — coverage-check's per-package
+  // verdict lines go there and are otherwise invisible. Cap only to avoid
+  // pathological logs.
+  const stderr = output.stderr.toString()
+  const stdout = output.stdout.toString()
+  const detail = stdout ? `${stderr}\n--- stdout ---\n${stdout}` : stderr
+  return { gate: gate.id, exitCode: output.exitCode, stderr: detail.slice(0, 100_000) }
 }
 
 export function validateGateGraph(gates: Gate[]): string[] {
