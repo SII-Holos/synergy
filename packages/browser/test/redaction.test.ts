@@ -29,3 +29,9 @@ describe("Browser redaction", () => {
     expect(error.url).not.toContain("password")
   })
 })
+
+test("falls back to text redaction for malformed URLs", () => {
+  expect(redactBrowserURL("not a url with token=abc123")).toBe('not a url with token="[redacted]"')
+  expect(redactBrowserText('password="hunter2" api_key=sk-1234')).not.toContain("hunter2")
+  expect(redactBrowserText("Bearer abc.def.ghi")).not.toContain("abc")
+})

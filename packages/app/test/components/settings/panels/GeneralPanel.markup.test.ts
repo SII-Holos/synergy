@@ -41,3 +41,38 @@ describe("GeneralPanel activity display markup", () => {
     expect(source).toContain('id: "settings.general.activityDisplay.minimal"')
   })
 })
+
+describe("GeneralPanel interface zoom markup", () => {
+  test("gates the zoom row behind the desktop zoom bridge", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../../../../src/components/settings/panels/GeneralPanel.tsx"),
+      "utf8",
+    )
+    expect(source).toContain("<Show when={platform.desktopZoom}>")
+    expect(source).toMatch(/<InterfaceZoom\s+zoom=/)
+  })
+
+  test("renders a continuous zoom slider spanning the desktop shell range", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../../../../src/components/settings/panels/GeneralPanel.tsx"),
+      "utf8",
+    )
+    expect(source).toMatch(/type="range"/)
+    expect(source).toMatch(/min="50"/)
+    expect(source).toMatch(/max="200"/)
+    expect(source).toMatch(/step="1"/)
+    expect(source).toMatch(/onZoomChange\(Number\(event\.currentTarget\.value\) \/ 100\)/)
+  })
+
+  test("uses statically extractable Lingui descriptors for zoom copy", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../../../../src/components/settings/panels/GeneralPanel.tsx"),
+      "utf8",
+    )
+    expect(source).toContain('zoomTitle: { id: "settings.general.zoom.title"')
+    expect(source).toContain('id: "settings.general.zoom.description"')
+    expect(source).toContain('id: "settings.general.zoom.low"')
+    expect(source).toContain('id: "settings.general.zoom.high"')
+    expect(source).toContain('id: "settings.general.zoom.aria"')
+  })
+})

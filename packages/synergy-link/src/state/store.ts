@@ -77,7 +77,11 @@ export interface SynergyLinkState {
 
 const DEFAULT_STATE: SynergyLinkState = {
   runtimeMode: "standalone",
-  ownerRegistry: SynergyLinkOwnerRegistry.defaultRegistry(),
+  // Literal default, not SynergyLinkOwnerRegistry.defaultRegistry(): calling a
+  // namespace member at module top level reads an uninitialized binding when
+  // owner-registry.ts loads first (it imports SynergyLinkStore, forming a
+  // cycle), which crashed the package test suite on CI.
+  ownerRegistry: { local: { ownerIDs: [] } },
   collaborationEnabled: true,
   approvalMode: "manual",
   trusted: {

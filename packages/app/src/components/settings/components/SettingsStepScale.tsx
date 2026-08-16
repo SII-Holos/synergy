@@ -48,6 +48,7 @@ export function SettingsStepScale(props: {
         step="1"
         value={currentIndex()}
         aria-label={props.ariaLabel}
+        aria-valuetext={currentSummary()}
         onInput={(event) => {
           const index = Number(event.currentTarget.value)
           const option = props.options[index]
