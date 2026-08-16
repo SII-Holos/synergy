@@ -118,7 +118,7 @@ const BUILTIN_SETTINGS_COPY = {
     searchTerms: {
       id: "settings.catalog.general.searchTerms",
       message:
-        "appearance | color | light | dark | auto | language | snapshot | activity | activity display | product update | toast | notification | zoom | interface zoom",
+        "appearance | color | light | dark | auto | language | snapshot | activity | activity display | product update | toast | notification",
       comment: SEARCH_TERMS_COMMENT,
     },
     rowLabels: [
@@ -128,7 +128,6 @@ const BUILTIN_SETTINGS_COPY = {
       { id: "settings.catalog.general.row.snapshot", message: "Snapshot" },
       { id: "settings.catalog.general.row.productUpdates", message: "Product Updates" },
       { id: "settings.catalog.general.row.notifications", message: "Notifications" },
-      { id: "settings.catalog.general.row.zoom", message: "Interface Zoom" },
       { id: "settings.catalog.general.row.toastDuration", message: "Toast Duration" },
     ],
   },

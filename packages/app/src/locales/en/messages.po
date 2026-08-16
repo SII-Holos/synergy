@@ -14002,7 +14002,7 @@ msgstr "Interface Zoom"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.searchTerms"
-msgstr "appearance | color | light | dark | auto | language | snapshot | activity | activity display | product update | toast | notification | zoom | interface zoom"
+msgstr "appearance | color | light | dark | auto | language | snapshot | activity | activity display | product update | toast | notification"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.github.description"

@@ -113,6 +113,7 @@ let desktopUnreadTrayIcon: ReturnType<typeof nativeImage.createFromPath> | null 
 let desktopTrayDefaultIcon: ReturnType<typeof nativeImage.createFromPath> | null = null
 let emitDesktopWindowState: (() => void) | null = null
 let currentDesktopZoomFactor = DEFAULT_DESKTOP_ZOOM_FACTOR
+let zoomWriteQueue: Promise<void> = Promise.resolve()
 
 const updateQuitApp = app as typeof app & {
   on(event: "before-quit-for-update", listener: () => void): typeof app
@@ -265,6 +266,7 @@ async function createWindow() {
 
   mainWindow = new BrowserWindow(windowOptions)
   applyDesktopZoom()
+  mainWindow.webContents.on("did-finish-load", () => applyDesktopZoom())
   applyDesktopUnreadState()
   const rendererDelivery = new DesktopRendererDelivery(mainWindow.webContents)
   mainRendererDelivery = rendererDelivery
@@ -351,12 +353,22 @@ function applyDesktopZoom(): void {
   applyDesktopZoomToWindow(mainWindow, { version: 1, zoomFactor: currentDesktopZoomFactor })
 }
 
-async function setDesktopZoomFactor(input: unknown): Promise<number> {
-  const zoomFactor = parseDesktopZoomFactor(input)
+function scheduleDesktopZoomPersist(): void {
+  const factor = currentDesktopZoomFactor
+  zoomWriteQueue = zoomWriteQueue
+    .catch(() => undefined)
+    .then(() => saveDesktopZoom(app.getPath("userData"), { version: 1, zoomFactor: factor }))
+}
+
+function updateDesktopZoomFactor(zoomFactor: number): void {
   currentDesktopZoomFactor = zoomFactor
-  await saveDesktopZoom(app.getPath("userData"), { version: 1, zoomFactor })
   applyDesktopZoom()
-  return zoomFactor
+  scheduleDesktopZoomPersist()
+}
+
+function setDesktopZoomFactor(input: unknown): number {
+  updateDesktopZoomFactor(parseDesktopZoomFactor(input))
+  return currentDesktopZoomFactor
 }
 
 function getDesktopThemeSnapshot(): DesktopThemeSnapshot {
@@ -872,6 +884,7 @@ app.on("before-quit", (event) => {
     const results = await Promise.allSettled([
       browserBroker?.close() ?? Promise.resolve(),
       serverManager?.stop() ?? Promise.resolve(),
+      zoomWriteQueue,
     ])
     results.push(...(await Promise.allSettled([nativePagePool?.destroy() ?? Promise.resolve()])))
     const failures = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
@@ -908,6 +921,8 @@ async function start() {
     channel,
     debug: isDebugEnabled(channel),
     getMainWindow: () => mainWindow,
+    getZoomFactor: () => currentDesktopZoomFactor,
+    setZoomFactor: (factor) => updateDesktopZoomFactor(factor),
   })
   installDesktopTray(channel)
   registerProtocolHandler()

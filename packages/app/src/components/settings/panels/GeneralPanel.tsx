@@ -370,12 +370,17 @@ function InterfaceZoom() {
   const platform = usePlatform()
   const bridge = () => platform.desktopZoom
   const [zoom, { mutate }] = createResource(bridge, async (value) => String(await value.get()))
+  let zoomRequestSeq = 0
 
   async function setZoom(value: string) {
     const current = bridge()
     if (!current) return
+    const seq = ++zoomRequestSeq
     try {
-      mutate(String(await current.set(Number(value))))
+      const applied = await current.set(Number(value))
+      // Only publish the latest completed request so out-of-order responses
+      // cannot move the control back to an obsolete stop.
+      if (seq === zoomRequestSeq) mutate(String(applied))
     } catch {
       // The desktop shell rejected the zoom change; keep the current value.
     }

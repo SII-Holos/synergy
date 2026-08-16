@@ -208,6 +208,7 @@ const copy = {
     id: "settings.panel.configDiagnostics.quarantined",
     message: "Moved to {path}",
   },
+  interfaceZoomRow: { id: "settings.catalog.general.row.zoom", message: "Interface Zoom" },
 }
 
 export type SettingsPanelProps = DialogSettingsProps & {
@@ -939,10 +940,18 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const settingsSections = createMemo(() => {
     settingsRegistryVersion()
     const components = builtinSettingsComponents()
+    const desktopZoom = Boolean(platform.desktopZoom)
     return filterSettingsSections(getSettingsSections(), developerMode())
       .map((section) => {
         const localized = localizeSettingsSection(section, _)
-        return isBuiltinSettingsId(section.id) ? { ...localized, component: components[section.id] } : localized
+        const base = isBuiltinSettingsId(section.id) ? { ...localized, component: components[section.id] } : localized
+        if (!desktopZoom || section.id !== "general") return base
+        const zoomLabel = _(copy.interfaceZoomRow)
+        return {
+          ...base,
+          keywords: [...(base.keywords ?? []), zoomLabel.toLowerCase()],
+          rowLabels: [...(base.rowLabels ?? []), zoomLabel],
+        }
       })
       .sort(compareSections)
   })
