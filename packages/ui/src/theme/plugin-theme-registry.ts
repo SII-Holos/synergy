@@ -1,4 +1,4 @@
-import { synergyTheme } from "./default-themes"
+import { builtinThemes, getBuiltinTheme } from "./default-themes"
 import type { Theme } from "./types"
 
 export interface PluginThemeDefinition {
@@ -6,6 +6,10 @@ export interface PluginThemeDefinition {
   label: string
   theme: Theme
   pluginId?: string
+}
+
+export interface ThemeDefinition extends PluginThemeDefinition {
+  builtin?: boolean
 }
 
 const pluginThemes = new Map<string, PluginThemeDefinition>()
@@ -45,8 +49,14 @@ export function getPluginTheme(id: string): PluginThemeDefinition | undefined {
   return pluginThemes.get(id)
 }
 
-export function listThemeChoices(): PluginThemeDefinition[] {
-  return [{ id: synergyTheme.id, label: synergyTheme.name, theme: synergyTheme }, ...listPluginThemes()]
+export function listThemeChoices(): ThemeDefinition[] {
+  const builtins = builtinThemes.map((theme) => ({
+    id: theme.id,
+    label: theme.name,
+    theme,
+    builtin: true,
+  }))
+  return [...builtins, ...listPluginThemes().filter((theme) => !getBuiltinTheme(theme.id))]
 }
 
 export function subscribePluginThemes(listener: () => void): () => void {

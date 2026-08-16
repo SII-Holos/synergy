@@ -38,9 +38,21 @@ export {
   listThemeChoices,
   subscribePluginThemes,
   type PluginThemeDefinition,
+  type ThemeDefinition,
 } from "./plugin-theme-registry"
 
-export { synergyTheme } from "./default-themes"
+export {
+  ayuTheme,
+  builtinThemes,
+  catppuccinTheme,
+  everforestTheme,
+  getBuiltinTheme,
+  kanagawaTheme,
+  rosePineTheme,
+  solarizedTheme,
+  synergyTheme,
+  tokyoNightTheme,
+} from "./default-themes"
 export { ThemeSchema, parseTheme } from "./schema"
 export { THEME_TOKEN_NAMES, THEME_TOKEN_SET, type ThemeTokenName } from "./tokens"
 export {
