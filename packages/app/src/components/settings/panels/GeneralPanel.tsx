@@ -1,4 +1,4 @@
-import { createResource, For, Show } from "solid-js"
+import { For, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -11,7 +11,6 @@ import { translateDescriptor } from "@/locales/translate"
 import { usePlatform, type DesktopUpdateMode } from "@/context/platform"
 import { SettingRow } from "../components/SettingRow"
 import { SegmentPill } from "../components/SegmentPill"
-import { SettingsStepScale, type SettingsStepOption } from "../components/SettingsStepScale"
 import { MenuField } from "../../menu-field/MenuField"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import {
@@ -189,6 +188,8 @@ export function GeneralPanel(props: {
   desktopUpdateMode?: DesktopUpdateMode
   onGeneralChange: <K extends keyof GeneralStore>(key: K, value: GeneralStore[K]) => void
   onDesktopUpdateModeChange: (mode: DesktopUpdateMode) => void
+  desktopZoom?: number
+  onDesktopZoomChange?: (factor: number) => void
   popoverLayer?: HTMLElement
 }) {
   const theme = useTheme()
@@ -312,7 +313,7 @@ export function GeneralPanel(props: {
           popoverLayer={props.popoverLayer}
         />
         <Show when={platform.desktopZoom}>
-          <InterfaceZoom />
+          <InterfaceZoom zoom={props.desktopZoom ?? 1} onZoomChange={(factor) => props.onDesktopZoomChange?.(factor)} />
         </Show>
       </SettingsSection>
 
@@ -356,50 +357,35 @@ export function GeneralPanel(props: {
   )
 }
 
-const zoomOptions = [
-  { value: "0.5", label: "50%" },
-  { value: "0.75", label: "75%" },
-  { value: "1", label: "100%" },
-  { value: "1.25", label: "125%" },
-  { value: "1.5", label: "150%" },
-  { value: "1.75", label: "175%" },
-  { value: "2", label: "200%" },
-] satisfies SettingsStepOption[]
-
-function InterfaceZoom() {
+function InterfaceZoom(props: { zoom: number; onZoomChange: (factor: number) => void }) {
   const { _ } = useLingui()
-  const platform = usePlatform()
-  const bridge = () => platform.desktopZoom
-  const [zoom, { mutate }] = createResource(bridge, async (value) => String(await value.get()))
-  let zoomRequestSeq = 0
-
-  async function setZoom(value: string) {
-    const current = bridge()
-    if (!current) return
-    const seq = ++zoomRequestSeq
-    try {
-      const applied = await current.set(Number(value))
-      // Only publish the latest completed request so out-of-order responses
-      // cannot move the control back to an obsolete stop.
-      if (seq === zoomRequestSeq) mutate(String(applied))
-    } catch {
-      // The desktop shell rejected the zoom change; keep the current value.
-    }
-  }
+  const percent = () => Math.round(props.zoom * 100)
 
   return (
     <SettingRow
       title={_(copy.zoomTitle)}
       description={_(copy.zoomDescription)}
       trailing={
-        <SettingsStepScale
-          value={zoom() ?? "1"}
-          options={zoomOptions}
-          lowLabel={_(copy.zoomLow)}
-          highLabel={_(copy.zoomHigh)}
-          ariaLabel={_(copy.zoomAria)}
-          onChange={(value) => void setZoom(value)}
-        />
+        <div class="settings-step-scale">
+          <div class="settings-step-scale-header">
+            <span>{percent()}%</span>
+          </div>
+          <input
+            class="settings-step-scale-slider"
+            type="range"
+            min="50"
+            max="200"
+            step="1"
+            value={percent()}
+            aria-label={_(copy.zoomAria)}
+            onInput={(event) => props.onZoomChange(Number(event.currentTarget.value) / 100)}
+          />
+          <div class="settings-step-scale-meta">
+            <span>{_(copy.zoomLow)}</span>
+            <span />
+            <span>{_(copy.zoomHigh)}</span>
+          </div>
+        </div>
       }
     />
   )

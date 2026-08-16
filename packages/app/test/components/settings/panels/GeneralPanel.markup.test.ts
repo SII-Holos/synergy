@@ -49,17 +49,19 @@ describe("GeneralPanel interface zoom markup", () => {
       "utf8",
     )
     expect(source).toContain("<Show when={platform.desktopZoom}>")
-    expect(source).toContain("<InterfaceZoom />")
+    expect(source).toMatch(/<InterfaceZoom\s+zoom=/)
   })
 
-  test("offers zoom stops that match the desktop shell range", () => {
+  test("renders a continuous zoom slider spanning the desktop shell range", () => {
     const source = readFileSync(
       join(import.meta.dir, "../../../../src/components/settings/panels/GeneralPanel.tsx"),
       "utf8",
     )
-    for (const stop of ["0.5", "0.75", "1", "1.25", "1.5", "1.75", "2"]) {
-      expect(source).toContain(`{ value: "${stop}"`)
-    }
+    expect(source).toMatch(/type="range"/)
+    expect(source).toMatch(/min="50"/)
+    expect(source).toMatch(/max="200"/)
+    expect(source).toMatch(/step="1"/)
+    expect(source).toMatch(/onZoomChange\(Number\(event\.currentTarget\.value\) \/ 100\)/)
   })
 
   test("uses statically extractable Lingui descriptors for zoom copy", () => {
