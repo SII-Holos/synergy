@@ -1,4 +1,4 @@
-import { Show, createMemo, createEffect, createSignal, onCleanup, untrack } from "solid-js"
+import { Show, createMemo, createEffect, onCleanup, untrack } from "solid-js"
 import { useSync } from "@/context/sync"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -9,6 +9,7 @@ import { SUBAGENT_FOOTER_MODEL_LABEL_CLASS, subagentFooterSessionStatus } from "
 import { useLocale } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import { S } from "./session-i18n"
+import { sharedSecondTick } from "./second-tick"
 
 const HIDE_MODEL_LABEL_AGENTS = new Set(["codex", "claude-code"])
 
@@ -65,18 +66,20 @@ export function SubagentSessionFooter(props: {
 
   const visual = createMemo(() => getAgentVisual(props.cortex.agent))
   const preview = createMemo(() => cleanPreview(props.cortex.error ?? outputPreview(props.cortex.output)))
-  const [tick, setTick] = createSignal(0)
   const sessionStatus = createMemo<SessionStatus | undefined>(() =>
     subagentFooterSessionStatus(sync.data.session_status, props.sessionID),
   )
+  const secondTick = sharedSecondTick()
+  // The running clock subscribes to the shared 1 Hz source, which pauses
+  // while the document is hidden; non-running footers freeze at completedAt.
   createEffect(() => {
     if (props.cortex.status !== "running") return
-    const id = setInterval(() => setTick((t) => t + 1), 1000)
-    onCleanup(() => clearInterval(id))
+    const unsubscribe = secondTick.subscribe()
+    onCleanup(unsubscribe)
   })
 
   const duration = createMemo(() => {
-    tick()
+    secondTick.read()
     return formatDuration(props.cortex.startedAt, props.cortex.completedAt)
   })
   const modelLabel = createMemo(() => {

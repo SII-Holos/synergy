@@ -47,8 +47,8 @@ beforeAll(async () => {
     plugins: [solidPlugin()],
     server: {
       host: "127.0.0.1",
-      port: 0,
-      strictPort: false,
+      port: 5201,
+      strictPort: true,
       fs: { allow: [path.resolve(import.meta.dir, "../../..")] },
     },
     // This suite runs in the main parallel batch next to tooltip; both

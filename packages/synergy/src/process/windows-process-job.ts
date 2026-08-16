@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto"
-import { existsSync, unlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
+import { unlinkSync } from "node:fs"
 import path from "node:path"
 import type { ChildProcess } from "node:child_process"
 import type { Pointer } from "bun:ffi"
@@ -12,19 +12,28 @@ export namespace WindowsProcessJob {
   const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
   const BASIC_LIMIT_FLAGS_OFFSET = 16
 
-  const BOOTSTRAP = [
-    "$gate = $env:SYNERGY_WINDOWS_JOB_GATE",
-    "while (-not [System.IO.File]::Exists($gate)) { Start-Sleep -Milliseconds 5 }",
-    "$configPath = $env:SYNERGY_WINDOWS_JOB_CONFIG",
-    "$config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json",
-    "Remove-Item -LiteralPath $gate,$configPath -Force -ErrorAction SilentlyContinue",
-    "Remove-Item Env:SYNERGY_WINDOWS_JOB_GATE -ErrorAction SilentlyContinue",
-    "Remove-Item Env:SYNERGY_WINDOWS_JOB_CONFIG -ErrorAction SilentlyContinue",
-    "$target = [string]$config.command",
-    "$arguments = @($config.args)",
-    "& $target @arguments",
-    "exit $LASTEXITCODE",
-  ].join("; ")
+  // Gate command prefixes. Each keeps the user command on the target shell's
+  // command line — preserving its parsing semantics (e.g. cmd /c single `%`
+  // loop variables) — and waits for a gate file that `activate()` creates only
+  // after the kill-on-close Job Object owns the process. The user command
+  // therefore cannot run, nor spawn descendants such as `cmd /c start`,
+  // before job containment is in place. When attach wins the race (the common
+  // case, with the FFI runtime pre-warmed), the gate already exists and the
+  // prefix costs a few trivial existence checks.
+  //
+  // cmd has no sub-second sleep primitive, so its poll is a bounded `for /l`
+  // loop over `ping` (~5-15ms per attempt, ~2s worst case); if the gate never
+  // appears the post-loop check exits non-zero before the user command runs.
+  // A single `%i` is correct for a /c command line (batch files would need
+  // `%%i`), and the command itself is never moved into a batch file, so cmd
+  // parsing semantics — including single-percent loop variables — are intact.
+  const CMD_GATE_PREFIX =
+    '@for /l %i in (1,1,200) do @if not exist "%SYNERGY_WINDOWS_JOB_GATE%" ping -n 1 -w 1 127.0.0.1 >nul & @if not exist "%SYNERGY_WINDOWS_JOB_GATE%" exit /b 1 & @del /q "%SYNERGY_WINDOWS_JOB_GATE%" >nul 2>&1'
+  const POWERSHELL_GATE_PREFIX =
+    "$g=$env:SYNERGY_WINDOWS_JOB_GATE; $i=0; while((-not (Test-Path -LiteralPath $g)) -and ($i -lt 200)){ $i++; Start-Sleep -Milliseconds 5 }; if(-not (Test-Path -LiteralPath $g)){ exit 1 }; Remove-Item -LiteralPath $g -Force -ErrorAction SilentlyContinue; Remove-Item Env:SYNERGY_WINDOWS_JOB_GATE -ErrorAction SilentlyContinue"
+  const BASH_GATE_PREFIX =
+    'for i in {1..200}; do [ -f "$SYNERGY_WINDOWS_JOB_GATE" ] && break; sleep 0.005; done; [ -f "$SYNERGY_WINDOWS_JOB_GATE" ] || exit 1; rm -f "$SYNERGY_WINDOWS_JOB_GATE"; unset SYNERGY_WINDOWS_JOB_GATE'
+  let runtimePromise: Promise<RuntimeForTest> | undefined
 
   type Handle = number | Pointer
 
@@ -52,38 +61,39 @@ export namespace WindowsProcessJob {
     lastError(): number
   }
 
-  let runtimePromise: Promise<RuntimeForTest> | undefined
-
-  export function prepare(input: {
-    command: string
-    args: string[]
-    env: Record<string, string>
-  }): Prepared | undefined {
-    if (process.platform !== "win32") return
+  export function prepare(
+    input: {
+      command: string
+      args: string[]
+      env: Record<string, string>
+    },
+    platform: NodeJS.Platform = process.platform,
+  ): Prepared | undefined {
+    if (platform !== "win32") return
+    // Pre-warm the FFI runtime so the job attaches before the shell's gate
+    // poll completes (memoized, so a no-op on later commands).
+    if (process.platform === "win32") void runtime().catch(() => {})
+    // Keep the caller-selected executable (e.g. a custom COMSPEC path) and
+    // rewrite only the command line: prepend the gate wait for the target
+    // shell's own syntax, then append the user command unchanged.
+    const shellName = path.win32.basename(input.command).toLowerCase()
+    const isCmd = shellName === "cmd" || shellName === "cmd.exe"
+    const isPowerShell =
+      shellName === "powershell" || shellName === "powershell.exe" || shellName === "pwsh" || shellName === "pwsh.exe"
+    const prefix = isCmd ? CMD_GATE_PREFIX : isPowerShell ? POWERSHELL_GATE_PREFIX : BASH_GATE_PREFIX
+    const separator = isPowerShell ? "; " : isCmd ? " & " : "; "
     const token = `${process.pid}-${randomBytes(8).toString("hex")}`
     const gatePath = path.join(tmpdir(), `synergy-process-job-${token}.gate`)
-    const configPath = path.join(tmpdir(), `synergy-process-job-${token}.json`)
-    writeFileSync(configPath, JSON.stringify({ command: input.command, args: input.args }), {
-      encoding: "utf8",
-      mode: 0o600,
-      flag: "wx",
-    })
+    const commandLine = input.args[input.args.length - 1] ?? ""
     const cleanup = () => {
-      for (const target of [gatePath, configPath]) {
-        if (!existsSync(target)) continue
-        try {
-          unlinkSync(target)
-        } catch {}
-      }
+      try {
+        unlinkSync(gatePath)
+      } catch {}
     }
     return {
-      command: "powershell.exe",
-      args: ["-NoProfile", "-NonInteractive", "-Command", BOOTSTRAP],
-      env: {
-        ...input.env,
-        SYNERGY_WINDOWS_JOB_GATE: gatePath,
-        SYNERGY_WINDOWS_JOB_CONFIG: configPath,
-      },
+      command: input.command,
+      args: [...input.args.slice(0, -1), `${prefix}${separator}${commandLine}`],
+      env: { ...input.env, SYNERGY_WINDOWS_JOB_GATE: gatePath },
       activate(child) {
         return activate({
           child,
