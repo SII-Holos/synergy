@@ -106,7 +106,10 @@ export function concurrencyLimit(): number {
 async function runGate(gate: Gate, root: string): Promise<GateError | null> {
   const output = await $`sh -c ${gate.run}`.cwd(root).nothrow().quiet()
   if (output.exitCode === 0) return null
-  return { gate: gate.id, exitCode: output.exitCode, stderr: output.stderr.toString().slice(0, 1000) }
+  // Keep the full failure detail: coverage gates print per-file uncovered
+  // lines that a 1000-char slice truncates to the alphabetically last file,
+  // hiding the real gap list. Cap only to avoid pathological logs.
+  return { gate: gate.id, exitCode: output.exitCode, stderr: output.stderr.toString().slice(0, 100_000) }
 }
 
 export function validateGateGraph(gates: Gate[]): string[] {
