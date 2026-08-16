@@ -98,6 +98,11 @@ async function reset() {
   alternateFetchCalls = 0
   environmentDiscoveryAuth = undefined
   environmentDiscoveryByProvider.clear()
+  // Env.set mutates the process environment directly; clear it between tests
+  // so a leftover canonical key cannot drive the environment-profile refresh
+  // and clobber the shared discovery callback during a later test.
+  delete process.env[environmentName]
+  delete process.env[mappedEnvironmentName]
   configuredBaseURL = undefined
   configuredDiscovery = new Promise<void>((resolve) => {
     resolveConfiguredDiscovery = resolve
@@ -463,8 +468,7 @@ test("configured inline credentials participate in live discovery", async () => 
       await ProviderCatalog.refresh(inlineProviderID, environmentProfileID, undefined, configured)
     },
   })
-
-  expect(environmentDiscoveryAuth).toBe("inline-catalog-key")
+  expect(environmentDiscoveryByProvider.get(inlineProviderID)).toBe("inline-catalog-key")
   expect(await Bun.file(Global.Path.providerModelCatalogCache).text()).not.toContain("inline-catalog-key")
 })
 

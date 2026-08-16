@@ -17429,6 +17429,14 @@ msgid "settings.runtime.observ.page.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.observ.performanceEnabled.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.observ.performanceEnabled.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.observ.shell.command.found"
 msgstr ""
 

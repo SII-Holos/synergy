@@ -164,7 +164,9 @@ export namespace NoteStore {
   async function loadIndex(scopeID: string): Promise<Metadata[]> {
     const sid = Identifier.asScopeID(scopeID)
     try {
-      const raw = await Storage.read<unknown>(indexPath(sid))
+      // A missing index is an expected first-run state, not a storage fault:
+      // fall through to a rebuild without raising a storage issue.
+      const raw = await Storage.read<unknown>(indexPath(sid), { silentNotFound: true })
       if (!Array.isArray(raw)) return rebuildIndex(scopeID)
       const entries = raw
         .map((entry) => normalizeMetadataEntry(entry, scopeID))
@@ -226,8 +228,14 @@ export namespace NoteStore {
     noteID: string,
   ): Promise<{ scopeID: string; note: z.infer<typeof NoteTypes.Info> }> {
     const sid = Identifier.asScopeID(scopeID)
+    // Cross-scope probing is expected control flow: a note legitimately
+    // missing from one scope is a miss, not a storage fault. Probe reads
+    // stay silent so ordinary lookups stop raising PERF_STORAGE_OPERATION_ERROR
+    // issues for every scope that does not own the note.
     try {
-      const note = await Storage.read<z.infer<typeof NoteTypes.Info>>(StoragePath.note(sid, noteID))
+      const note = await Storage.read<z.infer<typeof NoteTypes.Info>>(StoragePath.note(sid, noteID), {
+        silentNotFound: true,
+      })
       return { scopeID, note: normalize(note) }
     } catch {
       // fallthrough
@@ -235,7 +243,9 @@ export namespace NoteStore {
     if (scopeID !== HOME_SCOPE_ID) {
       const globalSid = Identifier.asScopeID(HOME_SCOPE_ID)
       try {
-        const note = await Storage.read<z.infer<typeof NoteTypes.Info>>(StoragePath.note(globalSid, noteID))
+        const note = await Storage.read<z.infer<typeof NoteTypes.Info>>(StoragePath.note(globalSid, noteID), {
+          silentNotFound: true,
+        })
         return { scopeID: HOME_SCOPE_ID, note: normalize(note) }
       } catch {
         // fallthrough
@@ -247,6 +257,7 @@ export namespace NoteStore {
       try {
         const note = await Storage.read<z.infer<typeof NoteTypes.Info>>(
           StoragePath.note(Identifier.asScopeID(candidate), noteID),
+          { silentNotFound: true },
         )
         return { scopeID: candidate, note: normalize(note) }
       } catch {

@@ -73,6 +73,7 @@ export const UI_DEFAULTS = {
   toolOverrides: "" as string,
   watcherIgnore: "" as string,
   logLevel: "" as string,
+  performanceEnabled: "true" as "true" | "false",
   coauthorReminder: "true" as string,
   bossMode: "false" as "true" | "false",
   bossIdentityText: "" as string,
@@ -363,6 +364,7 @@ export type RuntimeStore = {
   toolOverrides: string
   watcherIgnore: string
   logLevel: string
+  performanceEnabled: "true" | "false"
   coauthorReminder: string
   bossMode: "true" | "false"
   bossIdentityText: string
@@ -460,6 +462,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
       toolOverrides: UI_DEFAULTS.toolOverrides,
       watcherIgnore: UI_DEFAULTS.watcherIgnore,
       logLevel: UI_DEFAULTS.logLevel,
+      performanceEnabled: UI_DEFAULTS.performanceEnabled,
       coauthorReminder: UI_DEFAULTS.coauthorReminder,
       bossMode: UI_DEFAULTS.bossMode,
       bossIdentityText: UI_DEFAULTS.bossIdentityText,

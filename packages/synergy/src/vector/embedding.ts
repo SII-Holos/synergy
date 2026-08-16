@@ -180,6 +180,10 @@ export namespace Embedding {
           configure({ remoteHost, cacheDir }) {
             runtime.env.remoteHost = remoteHost
             runtime.env.cacheDir = cacheDir
+            // Keep local-model lookups aligned with the cache directory.
+            // Without this, transformers.js resolves local paths against the
+            // bundled module directory (a virtual drive in standalone builds).
+            runtime.env.localModelPath = cacheDir
           },
         }
       },

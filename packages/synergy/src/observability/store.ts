@@ -253,6 +253,10 @@ export namespace ObservabilityStore {
   }
 
   export function insertMetric(metric: ObservabilitySchema.Metric) {
+    // Data version must stay frozen while disabled: the dashboard summary
+    // cache keys on it, so an increment that never persists would still
+    // defeat the cache.
+    if (!ObservabilityConfig.current().enabled) return
     dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "metric", row: metric })
@@ -265,6 +269,7 @@ export namespace ObservabilityStore {
   }
 
   export function insertSpan(span: ObservabilitySchema.Span) {
+    if (!ObservabilityConfig.current().enabled) return
     dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "span", row: span })
@@ -281,6 +286,7 @@ export namespace ObservabilityStore {
   }
 
   export function insertEvent(event: ObservabilitySchema.Event) {
+    if (!ObservabilityConfig.current().enabled) return
     dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "event", row: event })
@@ -293,6 +299,7 @@ export namespace ObservabilityStore {
   }
 
   export function insertResource(sample: ObservabilitySchema.ResourceSample) {
+    if (!ObservabilityConfig.current().enabled) return
     dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "resource", row: sample })
@@ -305,6 +312,7 @@ export namespace ObservabilityStore {
   }
 
   export function insertIssue(issue: ObservabilitySchema.Issue) {
+    if (!ObservabilityConfig.current().enabled) return
     dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "issue", row: issue })
@@ -324,6 +332,7 @@ export namespace ObservabilityStore {
     rejected: number
     page: Record<string, unknown>
   }) {
+    if (!ObservabilityConfig.current().enabled) return
     dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "browser-batch", row: input })

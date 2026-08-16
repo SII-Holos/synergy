@@ -64,8 +64,17 @@ export function mergeTokenReceipt(current: TokenReceipt | undefined, next: Token
   }
 }
 
-export function startBrowserPerformanceMetrics(input: { url: string; client: SynergyClient }) {
-  if (started || typeof window === "undefined") return
+// Mirror the backend ObservabilityConfig.effective() semantics: the master
+// observability.enabled flag wins when performance.enabled is unset. The
+// collector must not run when the effective value is false.
+export function browserPerformanceEnabled(config?: {
+  observability?: { enabled?: boolean; performance?: { enabled?: boolean } }
+}): boolean {
+  return config?.observability?.performance?.enabled ?? config?.observability?.enabled ?? true
+}
+
+export function startBrowserPerformanceMetrics(input: { url: string; client: SynergyClient }): boolean {
+  if (started || typeof window === "undefined") return started
   started = true
 
   const flush = () => void flushBrowserMetrics(input)
@@ -87,6 +96,7 @@ export function startBrowserPerformanceMetrics(input: { url: string; client: Syn
   cleanup.push(() => window.removeEventListener("pagehide", flushOnPageHide))
   cleanup.push(() => window.removeEventListener("popstate", onLocationChange))
   cleanup.push(() => window.removeEventListener("hashchange", onLocationChange))
+  return true
 }
 
 function enqueue(entry: QueueEntry) {
