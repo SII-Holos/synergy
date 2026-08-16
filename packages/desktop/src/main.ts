@@ -257,6 +257,7 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      zoomFactor: currentDesktopZoomFactor,
     },
   }
   if (windowState.x !== undefined && windowState.y !== undefined) {

@@ -357,6 +357,7 @@ export function GeneralPanel(props: {
 }
 
 const zoomOptions = [
+  { value: "0.5", label: "50%" },
   { value: "0.75", label: "75%" },
   { value: "1", label: "100%" },
   { value: "1.25", label: "125%" },
