@@ -13997,8 +13997,12 @@ msgid "settings.catalog.general.row.toastDuration"
 msgstr "提示时长"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.general.row.zoom"
+msgstr "界面缩放"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.general.searchTerms"
-msgstr "外观 | 颜色 | 浅色 | 深色 | 自动 | 语言 | 快照 | 活动 | 活动显示 | 产品更新 | 提示 | 通知"
+msgstr "外观 | 颜色 | 浅色 | 深色 | 自动 | 语言 | 快照 | 活动 | 活动显示 | 产品更新 | 提示 | 通知 | 缩放 | 界面缩放"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.github.description"
@@ -15119,6 +15123,26 @@ msgstr "更新 Synergy 服务"
 #. js-lingui-explicit-id
 msgid "settings.general.updates.web.description"
 msgstr "服务器有更新的 Web 资源时，刷新此浏览器。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.aria"
+msgstr "界面缩放"
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.description"
+msgstr "调整桌面应用的界面大小"
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.high"
+msgstr "更大"
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.low"
+msgstr "更小"
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.title"
+msgstr "界面缩放"
 
 #. js-lingui-explicit-id
 msgid "settings.github.account"

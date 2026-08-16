@@ -33,7 +33,11 @@ describe("Browser native view manager", () => {
         detachCount += 1
       },
     }
-    const manager = new BrowserNativeViewManager({} as never, pool as never, () => {})
+    const manager = new BrowserNativeViewManager(
+      { webContents: { getZoomFactor: () => 1 } } as never,
+      pool as never,
+      () => {},
+    )
     const hiddenRequest: BrowserNativeAttachRequest & { visible: boolean } = {
       protocolVersion: 2,
       ownerKey: "scope:test:session:test",
@@ -70,7 +74,11 @@ describe("Browser native view manager", () => {
       attach: () => view,
       detach() {},
     }
-    const manager = new BrowserNativeViewManager({} as never, pool as never, () => {})
+    const manager = new BrowserNativeViewManager(
+      { webContents: { getZoomFactor: () => 1 } } as never,
+      pool as never,
+      () => {},
+    )
 
     await manager.attach({
       protocolVersion: 2,
@@ -121,7 +129,11 @@ describe("Browser native view manager", () => {
         return () => undefined
       },
     }
-    const manager = new BrowserNativeViewManager(window as never, pool as never, () => {})
+    const manager = new BrowserNativeViewManager(
+      { webContents: { getZoomFactor: () => 1 }, contentView: window.contentView } as never,
+      pool as never,
+      () => {},
+    )
     await manager.attach({
       protocolVersion: 2,
       ownerKey: "scope:test:session:generation",

@@ -9,7 +9,8 @@ description: Route a Synergy source change to the current repository development
 
 1. Read the nearest `AGENTS.md` and [Development reference](../../../docs/reference/development.md).
 2. Trace the current implementation with `architecture` when ownership crosses packages or domains.
-3. Load every focused workflow that applies:
+3. Check whether the change needs a decision record: every non-trivial change MUST add or update an implemented record in `docs/decisions/` in the same PR (mechanical/local edits exempt). Follow the path-encoded lifecycle/class scheme and format contract in [Decision records](../../../docs/decisions/README.md); validate with `bun run decision:check`.
+4. Load every focused workflow that applies:
    - Web/shared product UI: `develop-frontend`
    - LLM or internal-agent invocation: `integrate-llm`
    - HTTP route, OpenAPI, SDK, or Web API client: `change-server-api`
@@ -21,7 +22,8 @@ description: Route a Synergy source change to the current repository development
    - built-in agent, CLI command, or first-party tool: `add-agent`, `add-cli-command`, or `add-tool`
    - tests or manual runtime validation: `testing-guide` and `develop-synergy`
    - Git/worktree/PR operations: `git-guide`
-4. Use canonical product, architecture, reference, plugin, and operations documents for system truth. Keep Skills procedural; do not copy whole architecture descriptions into them.
+   - broad simplification audits or decision-record coalescing: `find-simplifications`
+5. Use canonical product, architecture, reference, plugin, and operations documents for system truth. Keep Skills procedural; do not copy whole architecture descriptions into them.
 
 ## Implement from Current Evidence
 

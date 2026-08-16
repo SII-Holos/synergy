@@ -208,6 +208,7 @@ const copy = {
     id: "settings.panel.configDiagnostics.quarantined",
     message: "Moved to {path}",
   },
+  interfaceZoomRow: { id: "settings.catalog.general.row.zoom", message: "Interface Zoom" },
 }
 
 export type SettingsPanelProps = DialogSettingsProps & {
@@ -273,6 +274,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [aggregateSaveStatus, setAggregateSaveStatus] = createSignal<"idle" | "saving" | "saved" | "error">("idle")
   const [saveResultFingerprint, setSaveResultFingerprint] = createSignal<string>()
   const [desktopUpdateDraft, setDesktopUpdateDraft] = createSignal<DesktopUpdateMode>()
+  const [desktopZoomDraft, setDesktopZoomDraft] = createSignal<number>()
   const [pluginDraftVersion, setPluginDraftVersion] = createSignal(0)
   const pluginDrafts = createPluginSettingsDrafts(() => setPluginDraftVersion((version) => version + 1))
   const [refreshing, setRefreshing] = createSignal(false)
@@ -333,6 +335,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [desktopServerStatus] = createResource(async () => {
     if (platform.platform !== "desktop" || !platform.desktopServer) return null
     return platform.desktopServer.status().catch(() => null)
+  })
+  const [desktopZoomSaved, { mutate: setDesktopZoomSaved }] = createResource(async () => {
+    if (!platform.desktopZoom) return undefined
+    return platform.desktopZoom.get().catch(() => undefined)
   })
 
   const canOpenConfigFiles = createMemo(() => canUseConfigFileOpen(platform, desktopServerStatus()))
@@ -500,6 +506,13 @@ export function SettingsPanel(props: SettingsPanelProps) {
     const draft = desktopUpdateDraft()
     return draft !== undefined && draft !== (productUpdate.desktopStatus()?.mode ?? "auto")
   }
+  const desktopZoomDirty = () => {
+    const draft = desktopZoomDraft()
+    if (draft === undefined) return false
+    // The slider steps in whole percent points; treat values within half a
+    // step of the saved factor as unchanged to avoid rounding-induced dirt.
+    return Math.abs(draft - (desktopZoomSaved() ?? 1)) > 0.005
+  }
   const editingLabel = createMemo(() => _(copy.globalConfig))
   const hasAnyChanges = createMemo(
     () =>
@@ -508,7 +521,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
       personalizeController.dirty() ||
       font.dirty() ||
       colorSchemeDirty() ||
-      desktopUpdateDirty(),
+      desktopUpdateDirty() ||
+      desktopZoomDirty(),
   )
   const draftFingerprint = createMemo(() =>
     JSON.stringify({
@@ -518,6 +532,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       font: [font.selected("sans"), font.selected("mono")],
       colorScheme: settings.general.colorScheme,
       desktopUpdate: desktopUpdateDraft(),
+      desktopZoom: desktopZoomDraft(),
     }),
   )
 
@@ -530,6 +545,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     personalizeController.discard()
     font.discard()
     setDesktopUpdateDraft(undefined)
+    setDesktopZoomDraft(undefined)
     resetEditor()
     doEnsureInit()
   }
@@ -611,6 +627,17 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return true
   }
 
+  async function saveDesktopZoomChanges() {
+    const draft = desktopZoomDraft()
+    const bridge = platform.desktopZoom
+    if (draft === undefined || !bridge) return true
+    const applied = await bridge.set(draft)
+    if (Math.abs(applied - draft) > 1e-6) return false
+    setDesktopZoomSaved(applied)
+    setDesktopZoomDraft((current) => retainDraftAfterSave(current, draft))
+    return true
+  }
+
   const explicitSaveSources = () => [
     { dirty: save.explicitDirty, save: save.saveServerChanges },
     { dirty: hasPluginChanges, save: savePluginChanges },
@@ -618,6 +645,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     { dirty: font.dirty, save: saveFontChanges },
     { dirty: colorSchemeDirty, save: saveColorSchemeChanges },
     { dirty: desktopUpdateDirty, save: saveDesktopUpdateChanges },
+    { dirty: desktopZoomDirty, save: saveDesktopZoomChanges },
   ]
   const hasExplicitChanges = createMemo(() => hasExplicitSettingsChanges(explicitSaveSources()))
   const explicitSaveBlocked = createMemo(
@@ -693,6 +721,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
     const saved = productUpdate.desktopStatus()?.mode ?? "auto"
     setDesktopUpdateDraft(mode === saved ? undefined : mode)
   }
+  function stageDesktopZoomFactor(factor: number) {
+    const saved = desktopZoomSaved() ?? 1
+    setDesktopZoomDraft(Math.abs(factor - saved) < 0.005 ? undefined : factor)
+  }
 
   const saveFooterStatus = createMemo(() =>
     settingsSaveFooterStatus({
@@ -764,6 +796,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
         onGeneralChange={(key, value) => setSettings("general", key, value)}
         desktopUpdateMode={desktopUpdateDraft() ?? productUpdate.desktopStatus()?.mode}
         onDesktopUpdateModeChange={stageDesktopUpdateMode}
+        desktopZoom={desktopZoomDraft() ?? desktopZoomSaved() ?? 1}
+        onDesktopZoomChange={stageDesktopZoomFactor}
         popoverLayer={settingsPopoverLayer()}
       />
     ),
@@ -939,10 +973,18 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const settingsSections = createMemo(() => {
     settingsRegistryVersion()
     const components = builtinSettingsComponents()
+    const desktopZoom = Boolean(platform.desktopZoom)
     return filterSettingsSections(getSettingsSections(), developerMode())
       .map((section) => {
         const localized = localizeSettingsSection(section, _)
-        return isBuiltinSettingsId(section.id) ? { ...localized, component: components[section.id] } : localized
+        const base = isBuiltinSettingsId(section.id) ? { ...localized, component: components[section.id] } : localized
+        if (!desktopZoom || section.id !== "general") return base
+        const zoomLabel = _(copy.interfaceZoomRow)
+        return {
+          ...base,
+          keywords: [...(base.keywords ?? []), zoomLabel.toLowerCase()],
+          rowLabels: [...(base.rowLabels ?? []), zoomLabel],
+        }
       })
       .sort(compareSections)
   })
