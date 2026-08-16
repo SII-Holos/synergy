@@ -3,7 +3,7 @@
 export const DEFAULT_DESKTOP_SHELL_SKIN = {
   light: {
     background: "#f2f2f2",
-    text: "#585858",
+    text: "#161616",
     mutedText: "#585858",
     panel: "#ebebeb",
     border: "#cacaca",
@@ -18,7 +18,7 @@ export const DEFAULT_DESKTOP_SHELL_SKIN = {
   },
   dark: {
     background: "#0d0d0d",
-    text: "#c4c4c4",
+    text: "#f2f2f2",
     mutedText: "#929292",
     panel: "#161616",
     border: "#363636",

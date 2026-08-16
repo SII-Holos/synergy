@@ -146,18 +146,17 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["input-focus"] = layer(5, 4)
   tokens["input-disabled"] = layer(5, 3)
 
-  tokens["text-base"] = neutral[10]
+  tokens["text-base"] = neutral[11]
   tokens["text-weak"] = pickReadableColor(tokens["surface-base"] as HexColor, [
     neutral[8],
     neutral[isDark ? 9 : 10],
-    neutral[10],
     neutral[11],
   ])
-  tokens["text-weaker"] = neutral[7]
+  tokens["text-weaker"] = neutral[isDark ? 7 : 9]
   tokens["text-subtle"] = neutral[6]
   tokens["text-error"] = error[isDark ? 8 : 9]
   tokens["text-stronger"] = isDark ? "#fdfcfc" : "#020202"
-  tokens["text-strong"] = neutral[11]
+  tokens["text-strong"] = tokens["text-stronger"]
   tokens["text-invert-base"] = isDark ? neutral[10] : neutralAlpha[10]
   tokens["text-invert-weak"] = isDark ? neutral[8] : neutralAlpha[8]
   tokens["text-invert-weaker"] = isDark ? neutral[7] : neutralAlpha[7]
