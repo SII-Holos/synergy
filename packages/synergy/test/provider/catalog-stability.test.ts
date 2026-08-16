@@ -189,6 +189,66 @@ test("timeout and empty responses preserve the last successful model set", async
   expect(catalog[providerID].models["model-stable"].catalog_state).toBe("active")
 })
 
+test("a failed refresh without a prior verified catalog keeps bundled fallback models", async () => {
+  fetchCatalog = async () => {
+    throw new DOMException("timed out", "TimeoutError")
+  }
+  await ProviderCatalog.refresh(providerID)
+  expect(ProviderCatalog.modelCatalogState(providerID)?.failure).toBe("timeout")
+
+  ProviderCatalog.reset()
+  const catalog = await ProviderCatalog.resolve({ config, includeLive: true })
+  expect(catalog[providerID].models["gpt-5.5"]).toBeDefined()
+})
+
+test("resolve serves the cached registry catalog without waiting on the network", async () => {
+  const previousDisableFetch = process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
+  delete process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
+  const server = Bun.serve({
+    port: 0,
+    async fetch() {
+      await Bun.sleep(30_000)
+      return new Response("unreachable", { status: 502 })
+    },
+  })
+  try {
+    const remoteConfig = {
+      providerCatalog: {
+        enabled: true,
+        registryUrl: `http://127.0.0.1:${server.port}/catalog.json`,
+        publicKey: "test-public-key",
+        cacheTtlMs: 60_000,
+      },
+    }
+    await fs.mkdir(Global.Path.cache, { recursive: true })
+    await Bun.write(
+      Global.Path.providerCatalogCache,
+      JSON.stringify({
+        version: 1,
+        providers: { "remote-cached-provider": { id: "remote-cached-provider", name: "Remote Cached Provider" } },
+      }),
+    )
+
+    const startedAt = Date.now()
+    const catalog = await ProviderCatalog.resolve({ config: remoteConfig })
+    expect(Date.now() - startedAt).toBeLessThan(1000)
+    expect(catalog["remote-cached-provider"]?.name).toBe("Remote Cached Provider")
+
+    // A cold first run (no cache) must also not block on the registry.
+    await fs.rm(Global.Path.providerCatalogCache, { force: true })
+    ProviderCatalog.reset()
+    const coldStart = Date.now()
+    const coldCatalog = await ProviderCatalog.resolve({ config: remoteConfig })
+    expect(Date.now() - coldStart).toBeLessThan(1000)
+    expect(coldCatalog["remote-cached-provider"]).toBeUndefined()
+  } finally {
+    server.stop(true)
+    await fs.rm(Global.Path.providerCatalogCache, { force: true })
+    if (previousDisableFetch === undefined) delete process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
+    else process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH = previousDisableFetch
+  }
+})
+
 test("refresh is single-flight per provider", async () => {
   let release!: (entries: ProviderProfile.ModelCatalogEntry[]) => void
   let started!: () => void
