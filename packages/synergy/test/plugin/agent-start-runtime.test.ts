@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { cleanupObservabilityHomes, resetObservabilityHome } from "../observability/fixture"
+import { ObservabilityConfig } from "@/observability/config"
 import {
   PluginAgentCallRuntime,
   PluginAgentCallRuntimeError,
@@ -6,6 +8,18 @@ import {
   warnPluginAgentCallDelivery,
 } from "@/plugin/agent-call-runtime"
 import { ObservabilityStore } from "@/observability/store"
+
+// The observability mirror writes log.record events asynchronously, and the
+// store/config are process-global. Sibling files in the same worker (e.g.
+// observability/disabled.test.ts, store-worker-mode.test.ts) refresh the
+// shared config to disabled without restoring it, which silently drops every
+// event these tests expect. Pin the config to enabled and isolate the home so
+// this file is self-sufficient regardless of worker assignment.
+beforeAll(() => {
+  resetObservabilityHome()
+  ObservabilityConfig.refresh({ observability: { enabled: true } })
+})
+afterAll(() => cleanupObservabilityHomes())
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -43,6 +57,27 @@ function baseInput(
 
 async function settle() {
   for (let attempt = 0; attempt < 20; attempt++) await Bun.sleep(1)
+}
+
+// Poll until the expected record lands; the mirror writes asynchronously and
+// a single fixed sleep is not reliable under full-suite load.
+async function waitForLogRecord(
+  match: (data: Record<string, unknown>) => boolean,
+  timeoutMs = 2_000,
+): Promise<{ data_json: string } | undefined> {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const event = ObservabilityStore.queryEvents({ type: "log.record" }).find((item) => {
+      try {
+        return match(JSON.parse(item.data_json) as Record<string, unknown>)
+      } catch {
+        return false
+      }
+    })
+    if (event) return event
+    if (Date.now() >= deadline) return undefined
+    await Bun.sleep(10)
+  }
 }
 
 describe("PluginAgentCallRuntime", () => {
@@ -91,11 +126,9 @@ describe("PluginAgentCallRuntime", () => {
       ),
     )
 
-    await settle()
-    const event = ObservabilityStore.queryEvents({ type: "log.record" }).find((item) => {
-      const data = JSON.parse(item.data_json)
-      return data.callId === result.callId && data.message === "plugin Agent call terminal delivery rejected"
-    })
+    const event = await waitForLogRecord(
+      (data) => data.callId === result.callId && data.message === "plugin Agent call terminal delivery rejected",
+    )
     expect(event).toBeDefined()
     const data = JSON.parse(event!.data_json)
     expect(data).toMatchObject({
@@ -114,7 +147,7 @@ describe("PluginAgentCallRuntime", () => {
     expect(JSON.stringify(data)).not.toContain(privateFailure)
   })
 
-  test("uses stable redacted warnings for every unacknowledged delivery status", () => {
+  test("uses stable redacted warnings for every unacknowledged delivery status", async () => {
     const callIds = ["plugin_mismatch", "no_handler", "failed"].map((deliveryStatus) => {
       const callId = crypto.randomUUID()
       warnPluginAgentCallDelivery({
@@ -130,7 +163,16 @@ describe("PluginAgentCallRuntime", () => {
       return { callId, deliveryStatus }
     })
 
-    const records = ObservabilityStore.queryEvents({ type: "log.record" }).map((event) => JSON.parse(event.data_json))
+    const deadline = Date.now() + 2_000
+    let records: Array<Record<string, unknown>> = []
+    for (;;) {
+      records = ObservabilityStore.queryEvents({ type: "log.record" }).map(
+        (event) => JSON.parse(event.data_json) as Record<string, unknown>,
+      )
+      const allPresent = callIds.every(({ callId }) => records.some((item) => item.callId === callId))
+      if (allPresent || Date.now() >= deadline) break
+      await Bun.sleep(10)
+    }
     for (const { callId, deliveryStatus } of callIds) {
       const record = records.find((item) => item.callId === callId)
       expect(record).toMatchObject({

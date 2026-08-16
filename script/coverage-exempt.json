@@ -1,7 +1,7 @@
 {
   "packages": {
     "packages/synergy": {
-      "command": "bun run script/test-ci.ts --coverage",
+      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,

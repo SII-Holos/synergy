@@ -323,7 +323,7 @@ async function runPackage(
     const stdout = output.stdout.toString().trim()
     const detail = stdout ? `${stderr}\n--- stdout ---\n${stdout}` : stderr
     const MAX = 30_000
-    const HEAD = 4_000
+    const HEAD = 20_000
     const shown = detail.length > MAX ? `${detail.slice(0, HEAD)}\n…\n${detail.slice(-(MAX - HEAD))}` : detail
     throw new Error(`${name}: coverage command exited ${output.exitCode}\n${shown}`)
   }

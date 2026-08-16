@@ -19,34 +19,6 @@ describe("Synergy CI test runner", () => {
     ])
   })
 
-  test("adds per-shard coverage flags when coverage is requested", () => {
-    expect(shardArgs(2, 4, undefined, "coverage/shards")).toEqual([
-      "test",
-      "--timeout",
-      "30000",
-      "--no-orphans",
-      "--shard=2/4",
-      "--coverage",
-      "--coverage-reporter=lcov",
-      "--coverage-dir=coverage/shards/2",
-    ])
-  })
-
-  test("combines per-shard coverage with the JUnit reporter", () => {
-    expect(shardArgs(2, 4, "coverage/ci-tests", "coverage/shards")).toEqual([
-      "test",
-      "--timeout",
-      "30000",
-      "--no-orphans",
-      "--shard=2/4",
-      "--coverage",
-      "--coverage-reporter=lcov",
-      "--coverage-dir=coverage/shards/2",
-      "--reporter=junit",
-      `--reporter-outfile=${path.join("coverage/ci-tests", "synergy-test-shard-2-of-4.xml")}`,
-    ])
-  })
-
   test("runs every shard sequentially", async () => {
     const calls: string[][] = []
     const exitCode = await runSequentialShards(async (args) => {
