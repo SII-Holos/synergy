@@ -319,7 +319,17 @@ export function extractFailureSignals(detail: string, maxFails = 30): string[] {
       if (fails < maxFails) signals.push(lines[index]!)
       fails++
     } else if (trimmed.startsWith("error: ")) {
-      signals.push(lines[index]!)
+      // Keep the error line plus its immediate context (assertion diff,
+      // stack frame, or next failing test) so the gate shows the actual
+      // expectation mismatch, not just the error kind.
+      const block = [lines[index]!]
+      for (let next = index + 1; next < lines.length && block.length < 15; next++) {
+        const nextTrimmed = lines[next]!.trim()
+        if (nextTrimmed === "") break
+        if (nextTrimmed.startsWith("(pass) ") || nextTrimmed.startsWith("(fail) ")) break
+        block.push(lines[next]!)
+      }
+      signals.push(block.join("\n"))
     } else if (trimmed.startsWith("test batches failed")) {
       signals.push(lines[index]!)
     } else if (trimmed.includes("externalized for browser compatibility") && !externalizedBlock) {
