@@ -13997,8 +13997,12 @@ msgid "settings.catalog.general.row.toastDuration"
 msgstr "Toast Duration"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.general.row.zoom"
+msgstr "Interface Zoom"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.general.searchTerms"
-msgstr "appearance | color | light | dark | auto | language | snapshot | activity | activity display | product update | toast | notification"
+msgstr "appearance | color | light | dark | auto | language | snapshot | activity | activity display | product update | toast | notification | zoom | interface zoom"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.github.description"
@@ -15119,6 +15123,26 @@ msgstr "Update Synergy Service"
 #. js-lingui-explicit-id
 msgid "settings.general.updates.web.description"
 msgstr "Refresh this browser when the server has newer Web assets."
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.aria"
+msgstr "Interface zoom"
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.description"
+msgstr "Adjust the interface size of the desktop app"
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.high"
+msgstr "Larger"
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.low"
+msgstr "Smaller"
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.title"
+msgstr "Interface zoom"
 
 #. js-lingui-explicit-id
 msgid "settings.github.account"

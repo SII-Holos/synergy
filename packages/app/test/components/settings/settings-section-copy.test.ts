@@ -52,6 +52,7 @@ describe("settings section localization", () => {
         "Snapshot",
         "Product Updates",
         "Notifications",
+        "Interface Zoom",
         "Toast Duration",
       ],
     })

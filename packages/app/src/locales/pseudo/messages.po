@@ -13997,6 +13997,10 @@ msgid "settings.catalog.general.row.toastDuration"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.general.row.zoom"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.general.searchTerms"
 msgstr ""
 
@@ -15118,6 +15122,26 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.general.updates.web.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.aria"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.high"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.low"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.title"
 msgstr ""
 
 #. js-lingui-explicit-id

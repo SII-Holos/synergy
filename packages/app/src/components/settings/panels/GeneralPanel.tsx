@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js"
+import { createResource, For, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -8,9 +8,10 @@ import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { useProductUpdate } from "@/context/product-update"
 import type { LocalePreference } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
-import type { DesktopUpdateMode } from "@/context/platform"
+import { usePlatform, type DesktopUpdateMode } from "@/context/platform"
 import { SettingRow } from "../components/SettingRow"
 import { SegmentPill } from "../components/SegmentPill"
+import { SettingsStepScale, type SettingsStepOption } from "../components/SettingsStepScale"
 import { MenuField } from "../../menu-field/MenuField"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import {
@@ -81,6 +82,14 @@ const copy = {
     message: "Font access was denied; using default",
   },
   fontDefault: { id: "settings.general.font.default", message: "Using default" },
+  zoomTitle: { id: "settings.general.zoom.title", message: "Interface zoom" },
+  zoomDescription: {
+    id: "settings.general.zoom.description",
+    message: "Adjust the interface size of the desktop app",
+  },
+  zoomLow: { id: "settings.general.zoom.low", message: "Smaller" },
+  zoomHigh: { id: "settings.general.zoom.high", message: "Larger" },
+  zoomAria: { id: "settings.general.zoom.aria", message: "Interface zoom" },
   monoFontTitle: { id: "settings.general.monoFont.title", message: "Monospace font" },
   monoFontDescription: {
     id: "settings.general.monoFont.description",
@@ -185,6 +194,7 @@ export function GeneralPanel(props: {
   const theme = useTheme()
   const selectedThemeId = () => props.general.theme || "synergy"
   const { _ } = useLingui()
+  const platform = usePlatform()
   const colorSchemeOptions = () => [
     {
       value: "light" as const,
@@ -301,6 +311,9 @@ export function GeneralPanel(props: {
           description={_(copy.monoFontDescription)}
           popoverLayer={props.popoverLayer}
         />
+        <Show when={platform.desktopZoom}>
+          <InterfaceZoom />
+        </Show>
       </SettingsSection>
 
       <SettingsSection title={_(copy.behaviorTitle)}>
@@ -340,6 +353,49 @@ export function GeneralPanel(props: {
         </div>
       </SettingsSection>
     </SettingsPage>
+  )
+}
+
+const zoomOptions = [
+  { value: "0.75", label: "75%" },
+  { value: "1", label: "100%" },
+  { value: "1.25", label: "125%" },
+  { value: "1.5", label: "150%" },
+  { value: "1.75", label: "175%" },
+  { value: "2", label: "200%" },
+] satisfies SettingsStepOption[]
+
+function InterfaceZoom() {
+  const { _ } = useLingui()
+  const platform = usePlatform()
+  const bridge = () => platform.desktopZoom
+  const [zoom, { mutate }] = createResource(bridge, async (value) => String(await value.get()))
+
+  async function setZoom(value: string) {
+    const current = bridge()
+    if (!current) return
+    try {
+      mutate(String(await current.set(Number(value))))
+    } catch {
+      // The desktop shell rejected the zoom change; keep the current value.
+    }
+  }
+
+  return (
+    <SettingRow
+      title={_(copy.zoomTitle)}
+      description={_(copy.zoomDescription)}
+      trailing={
+        <SettingsStepScale
+          value={zoom() ?? "1"}
+          options={zoomOptions}
+          lowLabel={_(copy.zoomLow)}
+          highLabel={_(copy.zoomHigh)}
+          ariaLabel={_(copy.zoomAria)}
+          onChange={(value) => void setZoom(value)}
+        />
+      }
+    />
   )
 }
 

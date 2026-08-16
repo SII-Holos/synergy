@@ -68,6 +68,13 @@ import {
 } from "./theme.js"
 import { loadWindowState, scheduleWindowStatePersistence } from "./window-state.js"
 import {
+  DEFAULT_DESKTOP_ZOOM_FACTOR,
+  applyDesktopZoomToWindow,
+  loadDesktopZoom,
+  parseDesktopZoomFactor,
+  saveDesktopZoom,
+} from "./zoom-state.js"
+import {
   desktopDevDockIconPath,
   desktopIconPath,
   desktopEmitsWindowStateEvents,
@@ -105,6 +112,7 @@ let desktopUnreadOverlayIcon: ReturnType<typeof nativeImage.createFromPath> | nu
 let desktopUnreadTrayIcon: ReturnType<typeof nativeImage.createFromPath> | null = null
 let desktopTrayDefaultIcon: ReturnType<typeof nativeImage.createFromPath> | null = null
 let emitDesktopWindowState: (() => void) | null = null
+let currentDesktopZoomFactor = DEFAULT_DESKTOP_ZOOM_FACTOR
 
 const updateQuitApp = app as typeof app & {
   on(event: "before-quit-for-update", listener: () => void): typeof app
@@ -256,6 +264,7 @@ async function createWindow() {
   }
 
   mainWindow = new BrowserWindow(windowOptions)
+  applyDesktopZoom()
   applyDesktopUnreadState()
   const rendererDelivery = new DesktopRendererDelivery(mainWindow.webContents)
   mainRendererDelivery = rendererDelivery
@@ -332,6 +341,22 @@ async function createWindow() {
 async function initializeDesktopTheme(): Promise<void> {
   const state = await loadDesktopSkinState(app.getPath("userData"))
   updateDesktopThemeSnapshot(snapshotDesktopTheme(state), { broadcast: false })
+}
+async function initializeDesktopZoom(): Promise<void> {
+  currentDesktopZoomFactor = (await loadDesktopZoom(app.getPath("userData"))).zoomFactor
+}
+
+function applyDesktopZoom(): void {
+  if (!mainWindow) return
+  applyDesktopZoomToWindow(mainWindow, { version: 1, zoomFactor: currentDesktopZoomFactor })
+}
+
+async function setDesktopZoomFactor(input: unknown): Promise<number> {
+  const zoomFactor = parseDesktopZoomFactor(input)
+  currentDesktopZoomFactor = zoomFactor
+  await saveDesktopZoom(app.getPath("userData"), { version: 1, zoomFactor })
+  applyDesktopZoom()
+  return zoomFactor
 }
 
 function getDesktopThemeSnapshot(): DesktopThemeSnapshot {
@@ -632,6 +657,8 @@ function registerIpcHandlers() {
   ipcMain.handle("desktop.theme.get", () => getDesktopThemeSnapshot())
   ipcMain.handle("desktop.theme.set", (_event, input: unknown) => setDesktopSkin(input))
   ipcMain.handle("desktop.theme.setSource", (_event, input: unknown) => setDesktopThemeSource(input))
+  ipcMain.handle("desktop.zoom.get", () => currentDesktopZoomFactor)
+  ipcMain.handle("desktop.zoom.set", (_event, input: unknown) => setDesktopZoomFactor(input))
   ipcMain.handle("desktop.window.minimize", () => {
     mainWindow?.minimize()
   })
@@ -863,6 +890,7 @@ async function start() {
   if (!shouldStart) return
   await app.whenReady()
   await initializeDesktopTheme()
+  await initializeDesktopZoom()
   initializeDesktopUnreadAssets()
   installDesktopThemeNativeListener()
   runtimeLog("appReady", { mode: process.env.SYNERGY_DESKTOP_MODE ?? "desktop" })
