@@ -24,6 +24,10 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   const interactive = generateScale(seeds.interactive, isDark)
   const diffAdd = generateScale(seeds.diffAdd, isDark)
   const diffDelete = generateScale(seeds.diffDelete, isDark)
+  const syntaxString = generateScale(seeds.syntaxString, isDark)
+  const syntaxKeyword = generateScale(seeds.syntaxKeyword, isDark)
+  const syntaxType = generateScale(seeds.syntaxType, isDark)
+  const syntaxProperty = generateScale(seeds.syntaxProperty, isDark)
   const chartSeries = generateCategoricalPalette(seeds.primary, isDark)
 
   const neutralAlpha = generateNeutralBlendScale(neutral, isDark)
@@ -329,13 +333,13 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
 
   tokens["syntax-comment"] = "var(--text-weak)"
   tokens["syntax-regexp"] = isDark ? "#94a2b4" : "#667386"
-  tokens["syntax-string"] = isDark ? "#8ab2a8" : "#4f6d67"
-  tokens["syntax-keyword"] = isDark ? "#a1a8b4" : "#686d79"
+  tokens["syntax-string"] = syntaxString[isDark ? 8 : 9]
+  tokens["syntax-keyword"] = syntaxKeyword[isDark ? 8 : 9]
   tokens["syntax-primitive"] = isDark ? "#8eb0b8" : "#4b7480"
   tokens["syntax-operator"] = isDark ? "#959dab" : "#727785"
   tokens["syntax-variable"] = "var(--text-strong)"
-  tokens["syntax-property"] = isDark ? "#98b2c8" : "#587392"
-  tokens["syntax-type"] = isDark ? "#b3c291" : "#66734d"
+  tokens["syntax-property"] = syntaxProperty[isDark ? 8 : 9]
+  tokens["syntax-type"] = syntaxType[isDark ? 8 : 9]
   tokens["syntax-constant"] = isDark ? "#90b4bb" : "#53727a"
   tokens["syntax-punctuation"] = isDark ? "#9199a6" : "#787d89"
   tokens["syntax-object"] = isDark ? "#afb6c2" : "#5d6370"

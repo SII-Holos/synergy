@@ -1,4 +1,10 @@
-import { HEX_COLOR_PATTERN, OPAQUE_HEX_COLOR_PATTERN, THEME_ID_PATTERN, THEME_SEED_NAMES } from "./schema-contract.js"
+import {
+  HEX_COLOR_PATTERN,
+  OPAQUE_HEX_COLOR_PATTERN,
+  THEME_CORE_SEED_NAMES,
+  THEME_ID_PATTERN,
+  THEME_SEED_NAMES,
+} from "./schema-contract.js"
 import { THEME_TOKEN_NAMES } from "./tokens.js"
 
 export function renderThemeSchemaJson(): string {
@@ -30,7 +36,7 @@ export function renderThemeSchemaJson(): string {
       ThemeSeedColors: {
         type: "object",
         additionalProperties: false,
-        required: Object.keys(seedProperties),
+        required: [...THEME_CORE_SEED_NAMES],
         properties: seedProperties,
       },
       ThemeVariant: {

@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test"
-import { synergyTheme } from "../src/theme/default-themes"
+import { builtinThemes, synergyTheme } from "../src/theme/default-themes"
 import {
   getPluginTheme,
   isPluginThemeRegistryReady,
+  listThemeChoices,
   replacePluginThemes,
   subscribePluginThemes,
 } from "../src/theme/plugin-theme-registry"
@@ -25,6 +26,18 @@ test("replaces a complete plugin theme generation with one notification", () => 
     expect(isPluginThemeRegistryReady()).toBe(true)
   } finally {
     unsubscribe()
+    replacePluginThemes([], { ready: false })
+  }
+})
+
+test("lists all built-in themes before plugin themes", () => {
+  replacePluginThemes([{ id: "one:default", label: "One", theme: { ...synergyTheme, id: "default" }, pluginId: "one" }])
+  try {
+    expect(listThemeChoices().map((theme) => theme.id)).toEqual([
+      ...builtinThemes.map((theme) => theme.id),
+      "one:default",
+    ])
+  } finally {
     replacePluginThemes([], { ready: false })
   }
 })

@@ -1,4 +1,4 @@
-export const THEME_SEED_NAMES = [
+export const THEME_CORE_SEED_NAMES = [
   "neutral",
   "primary",
   "success",
@@ -9,6 +9,15 @@ export const THEME_SEED_NAMES = [
   "diffAdd",
   "diffDelete",
 ] as const
+
+/**
+ * Syntax colors intentionally remain independent of interaction/status colors.
+ * They are optional in serialized themes for compatibility with the original
+ * nine-seed plugin format, but are always present after parsing.
+ */
+export const THEME_SYNTAX_SEED_NAMES = ["syntaxString", "syntaxKeyword", "syntaxType", "syntaxProperty"] as const
+
+export const THEME_SEED_NAMES = [...THEME_CORE_SEED_NAMES, ...THEME_SYNTAX_SEED_NAMES] as const
 
 export type ThemeSeedName = (typeof THEME_SEED_NAMES)[number]
 

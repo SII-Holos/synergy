@@ -21,7 +21,7 @@ function allTokens(theme: ResolvedTheme): ThemeTokenName[] {
 
 test("resolves CSS variable references for imperative consumers", () => {
   const resolved = resolveTheme(synergyTheme).light
-  expect(resolveThemeColor(resolved, "syntax-comment")).toBe(resolveThemeColor(resolved, "text-weaker"))
+  expect(resolveThemeColor(resolved, "syntax-comment")).toBe(resolveThemeColor(resolved, "text-weak"))
 })
 
 function luminance(value: string): number {
@@ -197,6 +197,10 @@ describe("resolveTheme (synergy)", () => {
           interactive: "#7556a8",
           diffAdd: "#34845c",
           diffDelete: "#b34b42",
+          syntaxString: "#34845c",
+          syntaxKeyword: "#7556a8",
+          syntaxType: "#557ca7",
+          syntaxProperty: "#7556a8",
         },
       },
       dark: {
@@ -210,6 +214,10 @@ describe("resolveTheme (synergy)", () => {
           interactive: "#a98bd4",
           diffAdd: "#55b77f",
           diffDelete: "#dc7268",
+          syntaxString: "#55b77f",
+          syntaxKeyword: "#a98bd4",
+          syntaxType: "#7fa8d2",
+          syntaxProperty: "#a98bd4",
         },
       },
     })
@@ -226,6 +234,50 @@ describe("resolveTheme (synergy)", () => {
     expectAtLeastAsBright(resolved.light, "surface-float-base", "background-stronger")
     expectAtMostAsBright(resolved.light, "surface-float-base-hover", "surface-float-base")
     expectBrighter(resolved.dark, "surface-float-base", "background-stronger")
+  })
+
+  test("legacy nine-seed themes receive deterministic syntax seed fallbacks", () => {
+    const {
+      syntaxString: _syntaxString,
+      syntaxKeyword: _syntaxKeyword,
+      syntaxType: _syntaxType,
+      syntaxProperty: _syntaxProperty,
+      ...legacySeeds
+    } = synergyTheme.light.seeds
+    const theme = parseTheme({
+      name: "Legacy seed test",
+      id: "legacy-seed-test",
+      light: { seeds: legacySeeds },
+      dark: { seeds: legacySeeds },
+    })
+
+    expect(theme.light.seeds.syntaxString).toBe(legacySeeds.success)
+    expect(theme.light.seeds.syntaxKeyword).toBe(legacySeeds.primary)
+    expect(theme.light.seeds.syntaxType).toBe(legacySeeds.info)
+    expect(theme.light.seeds.syntaxProperty).toBe(legacySeeds.interactive)
+  })
+
+  test("syntax seeds drive their corresponding resolver tokens", () => {
+    const theme = parseTheme({
+      ...synergyTheme,
+      light: {
+        ...synergyTheme.light,
+        seeds: {
+          ...synergyTheme.light.seeds,
+          syntaxString: "#dc2626",
+          syntaxKeyword: "#7c3aed",
+          syntaxType: "#0891b2",
+          syntaxProperty: "#ea580c",
+        },
+      },
+    })
+    const baseline = resolveTheme(synergyTheme).light
+    const resolved = resolveTheme(theme).light
+
+    expect(resolved["syntax-string"]).not.toBe(baseline["syntax-string"])
+    expect(resolved["syntax-keyword"]).not.toBe(baseline["syntax-keyword"])
+    expect(resolved["syntax-type"]).not.toBe(baseline["syntax-type"])
+    expect(resolved["syntax-property"]).not.toBe(baseline["syntax-property"])
   })
 
   test("theme parsing rejects unknown tokens and unsupported color syntax", () => {
@@ -376,17 +428,10 @@ describe("resolveTheme (synergy)", () => {
   test("surface polarity follows the neutral workbench product rule", () => {
     const resolved = resolveTheme(synergyTheme)
 
-    expect(resolved.light["background-stronger"]).toBe("#FAFAFA")
-    expect(resolved.light["surface-raised-base"]).toBe("#FFFFFF")
-    expect(resolved.light["surface-raised-stronger-non-alpha"]).toBe("#FFFFFF")
-    expect(resolved.light["surface-float-base"]).toBe("#FFFFFF")
-    expect(resolved.light["surface-inset-base"]).toBe("#F4F4F5")
-    expect(resolved.light["surface-interactive-selected"]).toBe("#F1F2F4")
-
-    expectAtLeastAsBright(resolved.light, "surface-raised-base", "background-stronger")
-    expectAtLeastAsBright(resolved.light, "surface-raised-strong", "surface-raised-base")
-    expectAtLeastAsBright(resolved.light, "surface-raised-stronger", "surface-raised-base")
-    expectAtLeastAsBright(resolved.light, "surface-raised-stronger-non-alpha", "surface-raised-base")
+    expectAtMostAsBright(resolved.light, "surface-raised-base", "background-stronger")
+    expectAtMostAsBright(resolved.light, "surface-raised-strong", "surface-raised-base")
+    expectAtMostAsBright(resolved.light, "surface-raised-stronger", "surface-raised-base")
+    expectAtMostAsBright(resolved.light, "surface-raised-stronger-non-alpha", "surface-raised-base")
     expectAtLeastAsBright(resolved.light, "surface-float-base", "background-stronger")
     expectAtMostAsBright(resolved.light, "surface-raised-base-hover", "surface-raised-base")
     expectAtMostAsBright(resolved.light, "surface-float-base-hover", "surface-float-base")

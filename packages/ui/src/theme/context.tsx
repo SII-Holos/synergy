@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
 import { applyThemeToDocument } from "./application"
-import { synergyTheme } from "./default-themes"
+import { getBuiltinTheme, synergyTheme } from "./default-themes"
 import { resolveThemeVariant } from "./resolve"
 import type { Theme } from "./types"
 import { createSimpleContext } from "../context/helper"
@@ -41,6 +41,8 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     const [themeRegistryVersion, setThemeRegistryVersion] = createSignal(0)
     const activeTheme = createMemo(() => {
       themeRegistryVersion()
+      const builtin = getBuiltinTheme(store.themeId)
+      if (builtin) return builtin
       const registered = getPluginTheme(store.themeId)?.theme
       if (registered) return registered
       if (!isPluginThemeRegistryReady() && bootstrap?.themeId === store.themeId) return bootstrap.theme
@@ -66,8 +68,8 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
 
     createEffect(() => {
       const activeId = store.themeId || synergyTheme.id
-      const pluginTheme = activeId === synergyTheme.id ? undefined : getPluginTheme(activeId)
-      if (activeId !== synergyTheme.id && !pluginTheme && isPluginThemeRegistryReady()) {
+      const knownTheme = getBuiltinTheme(activeId) ?? getPluginTheme(activeId)?.theme
+      if (!knownTheme && isPluginThemeRegistryReady()) {
         setStore("themeId", synergyTheme.id)
         return
       }
@@ -84,7 +86,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
 
     const setThemeId = (id: string) => {
       const next = !id || id === synergyTheme.id ? synergyTheme.id : id
-      if (next !== synergyTheme.id && !getPluginTheme(next)) return
+      if (!getBuiltinTheme(next) && !getPluginTheme(next)) return
       setStore("themeId", next)
     }
 
