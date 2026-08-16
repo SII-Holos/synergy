@@ -316,10 +316,16 @@ async function runPackage(
     // A failing test batch used to surface only as phantom "missing" files
     // (the shard orchestrator aborted every remaining batch). Report the
     // underlying failure with its output so the gate names the real culprit.
+    // bun test prints its failure summary at the END of the stream, so keep
+    // a small head prefix for the command banner plus the tail when the
+    // output exceeds the cap instead of truncating from the front.
     const stderr = output.stderr.toString().trim()
     const stdout = output.stdout.toString().trim()
     const detail = stdout ? `${stderr}\n--- stdout ---\n${stdout}` : stderr
-    throw new Error(`${name}: coverage command exited ${output.exitCode}\n${detail.slice(0, 30_000)}`)
+    const MAX = 30_000
+    const HEAD = 4_000
+    const shown = detail.length > MAX ? `${detail.slice(0, HEAD)}\n…\n${detail.slice(-(MAX - HEAD))}` : detail
+    throw new Error(`${name}: coverage command exited ${output.exitCode}\n${shown}`)
   }
   // Sharded orchestrators (app, ui) write one lcov per batch under
   // coverage/shards/; merge them when present, otherwise read the single
