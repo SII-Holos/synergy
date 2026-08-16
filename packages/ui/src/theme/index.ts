@@ -30,12 +30,13 @@ export type { ThemeChangeDetail } from "./application"
 export { ThemeProvider, useTheme } from "./context"
 export type { ColorScheme } from "./color-scheme"
 export {
-  registerPluginTheme,
-  replacePluginThemes,
+  getPluginTheme,
+  getTheme,
   isPluginThemeRegistryReady,
   listPluginThemes,
-  getPluginTheme,
   listThemeChoices,
+  registerPluginTheme,
+  replacePluginThemes,
   subscribePluginThemes,
   type PluginThemeDefinition,
   type ThemeDefinition,
@@ -46,7 +47,6 @@ export {
   builtinThemes,
   catppuccinTheme,
   everforestTheme,
-  getBuiltinTheme,
   kanagawaTheme,
   rosePineTheme,
   solarizedTheme,

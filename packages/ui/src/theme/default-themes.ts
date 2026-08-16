@@ -286,7 +286,3 @@ export const builtinThemes = [
   everforestTheme,
   solarizedTheme,
 ] as const
-
-export function getBuiltinTheme(id: string): Theme | undefined {
-  return builtinThemes.find((theme) => theme.id === id)
-}

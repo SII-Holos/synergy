@@ -3,6 +3,8 @@ import { builtinThemes } from "../src/theme/default-themes"
 import { resolveTheme } from "../src/theme/resolve"
 import { THEME_SEED_NAMES } from "../src/theme/schema-contract"
 
+const MODES = ["light", "dark"] as const
+
 test("built-in themes resolve both color schemes", () => {
   expect(builtinThemes.map((theme) => theme.id)).toEqual([
     "synergy",
@@ -22,6 +24,23 @@ test("built-in themes resolve both color schemes", () => {
     expect(resolved.light["surface-interactive-solid"]).toBeDefined()
     expect(resolved.dark["surface-interactive-solid"]).toBeDefined()
   }
+})
+
+test("provides 16 variants across 8 skins and both color schemes", () => {
+  expect(builtinThemes).toHaveLength(8)
+  let variants = 0
+  for (const theme of builtinThemes) {
+    const resolved = resolveTheme(theme)
+    for (const mode of MODES) {
+      const tokens = resolved[mode]
+      expect(tokens["background-base"]).toBeDefined()
+      expect(tokens["text-base"]).toBeDefined()
+      expect(tokens["surface-interactive-solid"]).toBeDefined()
+      variants += 1
+    }
+    expect(resolved.light["background-base"]).not.toBe(resolved.dark["background-base"])
+  }
+  expect(variants).toBe(8 * MODES.length)
 })
 
 test("built-in themes use the complete seed pipeline without general overrides", () => {
