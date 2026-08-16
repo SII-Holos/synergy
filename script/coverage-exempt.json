@@ -213,6 +213,10 @@
           "reason": "requires live external provider or API credentials"
         },
         {
+          "glob": "src/provider/models-macro.ts",
+          "reason": "compile-time Bun macro (import ... with { type: 'macro' }); inlined during bundling, never executed under the runtime coverage instrument"
+        },
+        {
           "glob": "src/remote/index.ts",
           "reason": "barrel re-export"
         },
