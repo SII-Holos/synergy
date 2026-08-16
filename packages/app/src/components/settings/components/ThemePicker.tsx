@@ -1,4 +1,4 @@
-import { For } from "solid-js"
+import { createMemo, For } from "solid-js"
 import { resolveTheme, type ThemeDefinition } from "@ericsanchezok/synergy-ui/theme"
 
 export function ThemePicker(props: {
@@ -12,7 +12,9 @@ export function ThemePicker(props: {
     <div class="settings-theme-grid" role="radiogroup" aria-label={props.ariaLabel}>
       <For each={props.themes}>
         {(choice) => {
-          const tokens = () => resolveTheme(choice.theme)[props.mode]
+          // Resolve the preview tokens once per card per mode instead of
+          // re-running the full two-variant resolver for every token read.
+          const tokens = createMemo(() => resolveTheme(choice.theme)[props.mode])
           return (
             <button
               type="button"

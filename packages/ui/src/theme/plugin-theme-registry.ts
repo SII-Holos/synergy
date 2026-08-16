@@ -33,12 +33,15 @@ for (const theme of builtinThemes) {
 
 export function registerPluginTheme(theme: PluginThemeDefinition): () => void {
   if (builtinIds.has(theme.id)) return () => {}
-  themes.set(theme.id, { ...theme, builtin: false })
+  // Bind the disposer to this exact registration, not to the id: re-registering
+  // the same id (even with the same Theme object) creates a new entry, and a
+  // stale disposer must not remove the newer registration.
+  const entry: ThemeDefinition = { ...theme, builtin: false }
+  themes.set(theme.id, entry)
   pluginThemeIds.add(theme.id)
   notify()
   return () => {
-    const current = themes.get(theme.id)
-    if (!current || current.builtin || current.theme !== theme.theme) return
+    if (themes.get(theme.id) !== entry) return
     themes.delete(theme.id)
     pluginThemeIds.delete(theme.id)
     notify()

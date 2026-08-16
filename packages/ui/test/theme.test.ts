@@ -236,7 +236,7 @@ describe("resolveTheme (synergy)", () => {
     expectBrighter(resolved.dark, "surface-float-base", "background-stronger")
   })
 
-  test("legacy nine-seed themes receive deterministic syntax seed fallbacks", () => {
+  test("legacy nine-seed themes resolve with deterministic syntax seed fallbacks", () => {
     const {
       syntaxString: _syntaxString,
       syntaxKeyword: _syntaxKeyword,
@@ -251,10 +251,38 @@ describe("resolveTheme (synergy)", () => {
       dark: { seeds: legacySeeds },
     })
 
-    expect(theme.light.seeds.syntaxString).toBe(legacySeeds.success)
-    expect(theme.light.seeds.syntaxKeyword).toBe(legacySeeds.primary)
-    expect(theme.light.seeds.syntaxType).toBe(legacySeeds.info)
-    expect(theme.light.seeds.syntaxProperty).toBe(legacySeeds.interactive)
+    // parseTheme preserves the author-facing nine-seed shape; the resolver
+    // normalizes missing syntax seeds at its boundary (syntaxString <- success,
+    // syntaxKeyword <- primary, syntaxType <- info, syntaxProperty <- interactive).
+    expect("syntaxString" in theme.light.seeds).toBe(false)
+    const resolved = resolveTheme(theme)
+    const explicit = parseTheme({
+      name: "Legacy seed test explicit",
+      id: "legacy-seed-test-explicit",
+      light: {
+        seeds: {
+          ...legacySeeds,
+          syntaxString: legacySeeds.success,
+          syntaxKeyword: legacySeeds.primary,
+          syntaxType: legacySeeds.info,
+          syntaxProperty: legacySeeds.interactive,
+        },
+      },
+      dark: {
+        seeds: {
+          ...legacySeeds,
+          syntaxString: legacySeeds.success,
+          syntaxKeyword: legacySeeds.primary,
+          syntaxType: legacySeeds.info,
+          syntaxProperty: legacySeeds.interactive,
+        },
+      },
+    })
+    const expected = resolveTheme(explicit)
+    expect(resolved.light["syntax-string"]).toBe(expected.light["syntax-string"])
+    expect(resolved.light["syntax-keyword"]).toBe(expected.light["syntax-keyword"])
+    expect(resolved.light["syntax-type"]).toBe(expected.light["syntax-type"])
+    expect(resolved.light["syntax-property"]).toBe(expected.light["syntax-property"])
   })
 
   test("syntax seeds drive their corresponding resolver tokens", () => {

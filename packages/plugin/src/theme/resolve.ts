@@ -10,10 +10,15 @@ import {
   oklchToHex,
   withAlpha,
 } from "./color.js"
+import { normalizeSeedColors } from "./schema-contract.js"
 import { THEME_TOKEN_NAMES, THEME_TOKEN_SET } from "./tokens.js"
 
 export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): ResolvedTheme {
-  const { seeds, overrides = {} } = variant
+  // The public resolver accepts the author-facing nine-seed shape: missing
+  // syntax seeds fall back to their semantic counterparts (see
+  // normalizeSeedColors) so legacy plugin themes resolve without parseTheme.
+  const seeds = normalizeSeedColors(variant.seeds)
+  const { overrides = {} } = variant
 
   const neutral = generateNeutralScale(seeds.neutral, isDark)
   const primary = generateScale(seeds.primary, isDark)
@@ -350,20 +355,26 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["syntax-diff-delete"] = diffDelete[10]
   tokens["syntax-diff-unknown"] = isDark ? "#94a8bc" : "#6d7f93"
 
-  tokens["markdown-heading"] = isDark ? "#9d7cd8" : "#d68c27"
-  tokens["markdown-text"] = isDark ? "#eeeeee" : "#1a1a1a"
-  tokens["markdown-link"] = isDark ? "#fab283" : "#3b7dd8"
-  tokens["markdown-link-text"] = isDark ? "#56b6c2" : "#318795"
-  tokens["markdown-code"] = isDark ? "#7fd88f" : "#3d9a57"
-  tokens["markdown-block-quote"] = isDark ? "#e5c07b" : "#b0851f"
-  tokens["markdown-emph"] = isDark ? "#e5c07b" : "#b0851f"
-  tokens["markdown-strong"] = isDark ? "#f5a742" : "#d68c27"
-  tokens["markdown-horizontal-rule"] = isDark ? "#808080" : "#8a8a8a"
-  tokens["markdown-list-item"] = isDark ? "#fab283" : "#3b7dd8"
-  tokens["markdown-list-enumeration"] = isDark ? "#56b6c2" : "#318795"
-  tokens["markdown-image"] = isDark ? "#fab283" : "#3b7dd8"
-  tokens["markdown-image-text"] = isDark ? "#56b6c2" : "#318795"
-  tokens["markdown-code-block"] = isDark ? "#eeeeee" : "#1a1a1a"
+  const markdownLink = pickReadableColor(tokens["surface-base"] as HexColor, [
+    interactive[isDark ? 9 : 10],
+    interactive[isDark ? 10 : 11],
+    interactive[11],
+    neutral[11],
+  ])
+  tokens["markdown-heading"] = tokens["text-strong"]
+  tokens["markdown-text"] = tokens["text-base"]
+  tokens["markdown-link"] = markdownLink
+  tokens["markdown-link-text"] = markdownLink
+  tokens["markdown-code"] = tokens["text-weak"]
+  tokens["markdown-block-quote"] = tokens["text-weak"]
+  tokens["markdown-emph"] = tokens["text-weak"]
+  tokens["markdown-strong"] = tokens["text-strong"]
+  tokens["markdown-horizontal-rule"] = tokens["border-base"]
+  tokens["markdown-list-item"] = markdownLink
+  tokens["markdown-list-enumeration"] = tokens["text-weak"]
+  tokens["markdown-image"] = markdownLink
+  tokens["markdown-image-text"] = tokens["text-weak"]
+  tokens["markdown-code-block"] = tokens["text-base"]
 
   const avatarNames = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
   avatarNames.forEach((name, index) => {

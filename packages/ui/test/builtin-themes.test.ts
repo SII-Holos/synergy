@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test"
 import { builtinThemes } from "../src/theme/default-themes"
 import { resolveTheme } from "../src/theme/resolve"
-import { THEME_SEED_NAMES } from "../src/theme/schema-contract"
-
+import { THEME_ALL_SEED_NAMES } from "../src/theme/schema-contract"
 const MODES = ["light", "dark"] as const
 
 test("built-in themes resolve both color schemes", () => {
@@ -45,8 +44,8 @@ test("provides 16 variants across 8 skins and both color schemes", () => {
 
 test("built-in themes use the complete seed pipeline without general overrides", () => {
   for (const theme of builtinThemes) {
-    expect(Object.keys(theme.light.seeds).sort()).toEqual([...THEME_SEED_NAMES].sort())
-    expect(Object.keys(theme.dark.seeds).sort()).toEqual([...THEME_SEED_NAMES].sort())
+    expect(Object.keys(theme.light.seeds).sort()).toEqual([...THEME_ALL_SEED_NAMES].sort())
+    expect(Object.keys(theme.dark.seeds).sort()).toEqual([...THEME_ALL_SEED_NAMES].sort())
     expect(theme.light.overrides).toBeUndefined()
     expect(theme.dark.overrides).toBeUndefined()
   }

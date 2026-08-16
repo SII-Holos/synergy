@@ -5,12 +5,13 @@ import {
   OPAQUE_HEX_COLOR_PATTERN,
   THEME_CORE_SEED_NAMES,
   THEME_ID_PATTERN,
-  THEME_SEED_NAMES,
   THEME_SYNTAX_SEED_NAMES,
+  normalizeSeedColors,
   type ThemeSeedName,
 } from "./schema-contract.js"
 import { THEME_TOKEN_NAMES, THEME_TOKEN_SET } from "./tokens.js"
-import type { HexColor, Theme, ThemeSeedColors, ThemeVariant } from "./types.js"
+import type { HexColor, Theme, ThemeVariant } from "./types.js"
+import type { ThemeSeedInput } from "./schema-contract.js"
 import { resolveTheme } from "./resolve.js"
 
 const HexColorSchema = z.string().regex(new RegExp(HEX_COLOR_PATTERN))
@@ -48,34 +49,10 @@ export const ThemeSchema = z
 
 export function parseTheme(input: unknown): Theme {
   const parsed = ThemeSchema.parse(input)
-  const normalizeSeeds = (seeds: Partial<ThemeSeedColors>): ThemeSeedColors => ({
-    neutral: seeds.neutral as HexColor,
-    primary: seeds.primary as HexColor,
-    success: seeds.success as HexColor,
-    warning: seeds.warning as HexColor,
-    error: seeds.error as HexColor,
-    info: seeds.info as HexColor,
-    interactive: seeds.interactive as HexColor,
-    diffAdd: seeds.diffAdd as HexColor,
-    diffDelete: seeds.diffDelete as HexColor,
-    syntaxString: (seeds.syntaxString ?? seeds.success) as HexColor,
-    syntaxKeyword: (seeds.syntaxKeyword ?? seeds.primary) as HexColor,
-    syntaxType: (seeds.syntaxType ?? seeds.info) as HexColor,
-    syntaxProperty: (seeds.syntaxProperty ?? seeds.interactive) as HexColor,
-  })
-  const theme: Theme = {
-    ...parsed,
-    light: {
-      ...parsed.light,
-      seeds: normalizeSeeds(parsed.light.seeds as Partial<ThemeSeedColors>),
-      overrides: parsed.light.overrides as ThemeVariant["overrides"],
-    },
-    dark: {
-      ...parsed.dark,
-      seeds: normalizeSeeds(parsed.dark.seeds as Partial<ThemeSeedColors>),
-      overrides: parsed.dark.overrides as ThemeVariant["overrides"],
-    },
-  }
-  resolveTheme(theme)
-  return theme
+  // Validation path: keep the parsed theme shape intact (nine-seed input stays
+  // nine-seed). The resolver normalizes missing syntax seeds at the boundary
+  // (resolveThemeVariant -> normalizeSeedColors), so downstream consumers and
+  // equality assertions see the exact input they passed.
+  resolveTheme(parsed as unknown as Theme)
+  return parsed as unknown as Theme
 }

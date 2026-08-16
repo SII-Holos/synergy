@@ -59,7 +59,7 @@ function shellColors(tokens: ReturnType<typeof resolveTheme>["light"]): ShellSki
     mutedText: color("text-weak"),
     panel: color("surface-raised-base"),
     border: color("border-base"),
-    control: color("icon-weak-base"),
+    control: color("text-weak"),
     controlHover: color("icon-strong-hover"),
     controlHoverBackground: color("button-ghost-hover"),
     focus: color("border-focus"),
