@@ -120,6 +120,10 @@ export namespace Server {
   export const DEFAULT_URL = DEFAULT_SERVER_URL
 
   const log = Log.create({ service: "server" })
+  // Bound on how long /global/health waits for the provider state build.
+  // The daemon readiness probe aborts after 1200ms and the CLI probe after 3s,
+  // so a slow build must never hold the health response past this window.
+  const HEALTH_PROVIDER_WAIT_MS = 1000
   const APP_DIST = (() => {
     const fromExec = path.resolve(path.dirname(fs.realpathSync(process.execPath)), "../app")
     if (fs.existsSync(fromExec)) return fromExec
@@ -588,13 +592,22 @@ export namespace Server {
             },
           }),
           async (c) => {
-            const providers = await Provider.list().catch((error) => {
-              log.warn("failed to load providers for global health", {
-                error: error instanceof Error ? error : new Error(String(error)),
-              })
-              return {}
-            })
-            const modelReady = Object.keys(providers).length > 0
+            // Bound the wait for the provider state build so a slow build can
+            // never stall the readiness probe (daemon 1.2s / CLI 3s windows).
+            // On timeout, answer from the last settled provider state; never
+            // report ready optimistically when nothing has settled yet.
+            const providers = await Promise.race([
+              Provider.list().catch((error) => {
+                log.warn("failed to load providers for global health", {
+                  error: error instanceof Error ? error : new Error(String(error)),
+                })
+                return {} as Record<string, Provider.Info>
+              }),
+              new Promise<Record<string, Provider.Info> | undefined>((resolve) => {
+                setTimeout(() => resolve(undefined), HEALTH_PROVIDER_WAIT_MS)
+              }),
+            ])
+            const modelReady = Object.keys(providers ?? Provider.listSettled()).length > 0
             return c.json({ healthy: true, version: Installation.VERSION, modelReady })
           },
         )
