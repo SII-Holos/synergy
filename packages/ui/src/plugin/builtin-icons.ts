@@ -5,6 +5,7 @@ import { registerIcon } from "./icon-registry"
 
 const builtinIconNames = [
   "activity",
+  "alarm-clock",
   "alert-triangle",
   "align-right",
   "archive",
@@ -32,9 +33,12 @@ const builtinIconNames = [
   "cable",
   "calendar-clock",
   "chart-pie",
+  "chart-no-axes-combined",
   "calendar-days",
   "check",
   "chevron-down",
+  "chevron-first",
+  "chevron-last",
   "chevron-right",
   "chevron-up",
   "chevrons-right",
@@ -161,6 +165,7 @@ const builtinIconNames = [
   "pin-off",
   "plus",
   "plug-zap",
+  "puzzle",
   "quote",
   "radar",
   "redo-2",

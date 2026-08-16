@@ -408,7 +408,7 @@ export function Sidebar(props: SidebarProps) {
       <div class="sb-actions">
         <Tooltip value={_(sidebar.newSession)} placement="right">
           <button type="button" class="sb-action-btn" aria-label={_(sidebar.newSession)} onClick={handleNewSession}>
-            <Icon name={getSemanticIcon("session.new")} size="normal" />
+            <Icon name={getSemanticIcon("session.new")} size="small" />
             <Show when={isExpanded()}>
               <span class="sb-action-label">{_(sidebar.newSessionShort)}</span>
             </Show>
@@ -430,7 +430,7 @@ export function Sidebar(props: SidebarProps) {
                 }}
                 onClick={() => navigate(entry.path)}
               >
-                <Icon name={navigationIcon(entry)} size="normal" />
+                <Icon name={navigationIcon(entry)} size="small" />
                 <Show when={isExpanded()}>
                   <span class="sb-action-label">{navigationLabel(entry)}</span>
                 </Show>
@@ -455,7 +455,7 @@ export function Sidebar(props: SidebarProps) {
                 }}
                 onClick={() => setProjectsFlyoutOpen((v) => !v)}
               >
-                <Icon name={getSemanticIcon("workspace.add")} size="normal" />
+                <Icon name={getSemanticIcon("workspace.add")} size="small" />
               </button>
             </Tooltip>
           </div>

@@ -24,7 +24,7 @@ export const SemanticIconToken = {
   "github.main": "github",
   "email.main": "mail",
   "channels.main": "message-circle",
-  "plugins.main": "package",
+  "plugins.main": "puzzle",
   "plugins.permission.ui": "palette",
   "plugins.permission.tools": "list-todo",
   "plugins.permission.runtime": "gpu",
@@ -50,12 +50,12 @@ export const SemanticIconToken = {
   "agents.main": "users",
   "providers.main": "server",
   "providers.reconnect": "shield-alert",
-  "agenda.main": "calendar-clock",
+  "agenda.main": "alarm-clock",
   "terminal.main": "code",
 
   // Session runtime
   "session.default": "message-square",
-  "session.new": "square-pen",
+  "session.new": "pen",
   "session.running": "loader-circle",
   "session.idle": "circle",
   "session.waiting": "hourglass",
@@ -80,7 +80,7 @@ export const SemanticIconToken = {
   "notes.tag": "tag",
   "notes.select": "square-check",
   "notes.restore": "archive-restore",
-  "performance.main": "radar",
+  "performance.main": "chart-no-axes-combined",
   "performance.health": "heart-pulse",
   "performance.cpu": "circuit-board",
   "performance.memory": "memory-stick",
@@ -131,8 +131,8 @@ export const SemanticIconToken = {
 
   // App shell and window controls
   "app.sidebar": "panel-left",
-  "app.sidebar.open": "panel-left-open",
-  "app.sidebar.close": "panel-left-close",
+  "app.sidebar.open": "chevron-last",
+  "app.sidebar.close": "chevron-first",
   "app.sideWorkspace": "panel-right",
   "app.bottomSpace": "panel-bottom",
   "app.statusBar": "panel-bottom-dashed",

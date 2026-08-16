@@ -41,7 +41,12 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      transition: transform var(--motion-duration-fast) var(--motion-ease-standard);
     }
+  }
+
+  &[data-expanded] [data-slot="collapsible-arrow"] {
+    transform: rotate(180deg);
   }
 
   [data-slot="collapsible-content"] {

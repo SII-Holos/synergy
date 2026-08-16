@@ -34,7 +34,7 @@ function CollapsibleContent(props: ComponentProps<typeof Kobalte.Content>) {
 function CollapsibleArrow(props?: ComponentProps<"div">) {
   return (
     <div data-slot="collapsible-arrow" {...(props || {})}>
-      <Icon name="grip-vertical" size="small" />
+      <Icon name="chevron-down" size="small" />
     </div>
   )
 }
