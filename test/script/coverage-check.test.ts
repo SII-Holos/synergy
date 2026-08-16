@@ -4,6 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import {
   evaluatePackage,
+  extractFailureSignals,
   matchesExempt,
   mergeLcov,
   parseLcov,
@@ -246,5 +247,64 @@ describe("coverage source universe", () => {
     await writeFile(path.join(root, "packages/pkg/src/node_modules/d.ts"), "5\n")
     const universe = await sourceUniverse(path.join(root, "packages/pkg"), ["src/**/*.ts", "src/**/*.tsx"])
     expect(universe).toEqual(["src/a.ts", "src/nested/b.tsx"])
+  })
+})
+
+describe("coverage failure signal extraction", () => {
+  test("pulls failing test names to the front", () => {
+    const detail = [
+      "some banner",
+      "(pass) suite > fine [0.5ms]",
+      "(fail) suite > broken one [12.30ms]",
+      "(fail) suite > broken two [1.10ms]",
+      " 12 pass",
+      " 2 fail",
+    ].join("\n")
+    const signals = extractFailureSignals(detail)
+    expect(signals.some((line) => line.includes("broken one"))).toBe(true)
+    expect(signals.some((line) => line.includes("broken two"))).toBe(true)
+  })
+
+  test("caps the failing test list and reports the remainder", () => {
+    const lines = Array.from({ length: 40 }, (_, index) => `(fail) suite > case ${index} [1ms]`)
+    const signals = extractFailureSignals(lines.join("\n"), 5)
+    expect(signals.some((line) => line.includes("case 0"))).toBe(true)
+    expect(signals.some((line) => line.includes("case 4"))).toBe(true)
+    expect(signals.some((line) => line.includes("case 5"))).toBe(false)
+    expect(signals.some((line) => line.includes("35 more failing tests"))).toBe(true)
+  })
+
+  test("keeps shard orchestrator abort lines and error lines", () => {
+    const detail = [
+      "##[group]test/a.test.ts:",
+      "(pass) suite > ok [0.1ms]",
+      "test batches failed: shard 1 (exit 1)",
+      'error: script "test" exited with code 1',
+    ].join("\n")
+    const signals = extractFailureSignals(detail)
+    expect(signals.some((line) => line.includes("test batches failed: shard 1"))).toBe(true)
+    expect(signals.some((line) => line.includes('error: script "test" exited with code 1'))).toBe(true)
+  })
+
+  test("captures the vite externalized module block", () => {
+    const detail = [
+      "vite v6.0.0 building for production...",
+      "The following modules were externalized for browser compatibility:",
+      "  packages/ui/src/components/thing.tsx",
+      "  @messageformat/core",
+      "",
+      "If you do want to externalize this module explicitly add it to",
+      "build.rollupOptions.external",
+    ].join("\n")
+    const signals = extractFailureSignals(detail)
+    expect(signals.some((line) => line.includes("externalized for browser compatibility"))).toBe(true)
+    expect(signals.some((line) => line.includes("@messageformat/core"))).toBe(true)
+  })
+
+  test("falls back to the output tail when no signal lines exist", () => {
+    const detail = Array.from({ length: 40 }, (_, index) => `plain line ${index}`).join("\n")
+    const signals = extractFailureSignals(detail)
+    expect(signals).toHaveLength(25)
+    expect(signals[0]).toContain("plain line 15")
   })
 })

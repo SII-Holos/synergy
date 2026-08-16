@@ -298,6 +298,45 @@ async function collectLcovFiles(packageRoot: string, relPath: string): Promise<s
   return exists ? [direct] : []
 }
 
+/**
+ * Pull the actionable failure lines out of a failing command's output so the
+ * gate names the real culprit even when the full detail gets truncated.
+ *
+ * bun test prints failures as "(fail) <suite> > <name>"; the sharded
+ * orchestrators print "test batches failed: shard N (exit M)"; vite lib
+ * builds print "externalized for browser compatibility" followed by the
+ * offending module ids. When none of those appear the failure is
+ * process-level (crash/kill), so fall back to the output tail.
+ */
+export function extractFailureSignals(detail: string, maxFails = 30): string[] {
+  const lines = detail.split("\n")
+  const signals: string[] = []
+  let fails = 0
+  let externalizedBlock = false
+  for (let index = 0; index < lines.length; index++) {
+    const trimmed = lines[index]!.trim()
+    if (trimmed.startsWith("(fail) ")) {
+      if (fails < maxFails) signals.push(lines[index]!)
+      fails++
+    } else if (trimmed.startsWith("error: ")) {
+      signals.push(lines[index]!)
+    } else if (trimmed.startsWith("test batches failed")) {
+      signals.push(lines[index]!)
+    } else if (trimmed.includes("externalized for browser compatibility") && !externalizedBlock) {
+      externalizedBlock = true
+      const block = [lines[index]!]
+      for (let next = index + 1; next < lines.length && block.length < 20; next++) {
+        if (lines[next]!.trim() === "") break
+        block.push(lines[next]!)
+      }
+      signals.push(block.join("\n"))
+    }
+  }
+  if (fails > maxFails) signals.push(`… and ${fails - maxFails} more failing tests`)
+  if (signals.length === 0) return lines.slice(-25)
+  return signals
+}
+
 async function runPackage(
   name: string,
   config: PackageCoverageConfig,
@@ -322,10 +361,12 @@ async function runPackage(
     const stderr = output.stderr.toString().trim()
     const stdout = output.stdout.toString().trim()
     const detail = stdout ? `${stderr}\n--- stdout ---\n${stdout}` : stderr
+    const signals = extractFailureSignals(detail)
     const MAX = 30_000
     const HEAD = 20_000
     const shown = detail.length > MAX ? `${detail.slice(0, HEAD)}\n…\n${detail.slice(-(MAX - HEAD))}` : detail
-    throw new Error(`${name}: coverage command exited ${output.exitCode}\n${shown}`)
+    const prefix = signals.length > 0 ? `\n--- failure signals ---\n${signals.join("\n")}\n` : ""
+    throw new Error(`${name}: coverage command exited ${output.exitCode}${prefix}\n${shown}`)
   }
   // Sharded orchestrators (app, ui) write one lcov per batch under
   // coverage/shards/; merge them when present, otherwise read the single
