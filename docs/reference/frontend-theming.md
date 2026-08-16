@@ -29,7 +29,7 @@ Use the semantic meaning of a color, not its hue. Product code should use classe
 - Use ordinal `chart-series-*` tokens for categorical visualization colors. The default series palette is derived from the theme's `primary` seed in OKLCH and can be overridden token by token. Do not borrow status or avatar tokens because their hue looks convenient.
 - Reuse an existing token only when its semantic role matches. If no role exists, add one canonical token and resolve it for every theme instead of inventing a consumer-only variable.
 - Pair filled status surfaces with their matching foreground token, such as `surface-critical-solid` with `text-on-critical-solid`; do not combine independent status ramp strengths and assume they remain readable.
-- Keep the polarity invariant: dark-mode content and selected surfaces step brighter than their containers; light-mode content and selected surfaces step darker.
+- Keep the polarity invariant: dark-mode content and selected surfaces step brighter than their containers; light-mode raised/card surfaces step brighter than the canvas while chrome (sidebar/navbar) sits one step darker, and hover/active states step darker than their resting surface in both modes.
 - Text/background and status foreground/surface pairs must meet WCAG AA contrast in both modes.
 
 Literal colors belong only at the theme-authoring boundary, in color-generation math, or in genuinely user/external-authored content. A new product color outside those boundaries is a theme-contract change and needs a semantic token.

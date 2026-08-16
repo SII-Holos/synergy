@@ -46,39 +46,39 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
 
   const tokens = {} as ResolvedTheme
 
-  tokens["background-base"] = neutral[0]
+  tokens["background-base"] = layer(2, 0)
   tokens["background-weak"] = layer(1, 1)
   tokens["background-strong"] = neutral[0]
-  tokens["background-stronger"] = layer(2, 1)
+  tokens["background-stronger"] = layer(1, 1)
 
-  tokens["surface-base"] = layer(3, 2)
+  tokens["surface-base"] = layer(0, 2)
   tokens["base"] = tokens["surface-base"]
-  tokens["surface-base-hover"] = layer(4, 3)
-  tokens["surface-base-active"] = layer(5, 4)
-  tokens["surface-base-interactive-active"] = layer(5, 4)
+  tokens["surface-base-hover"] = layer(1, 3)
+  tokens["surface-base-active"] = layer(2, 4)
+  tokens["surface-base-interactive-active"] = layer(2, 4)
   tokens["base2"] = tokens["surface-base"]
   tokens["base3"] = tokens["surface-base"]
-  tokens["surface-inset-base"] = layer(4, 3)
-  tokens["surface-inset-base-hover"] = layer(5, 4)
-  tokens["surface-inset-strong"] = layer(6, 4)
-  tokens["surface-inset-strong-hover"] = layer(7, 5)
-  tokens["surface-raised-base"] = layer(3, 2)
+  tokens["surface-inset-base"] = layer(2, 3)
+  tokens["surface-inset-base-hover"] = layer(3, 4)
+  tokens["surface-inset-strong"] = layer(3, 4)
+  tokens["surface-inset-strong-hover"] = layer(4, 5)
+  tokens["surface-raised-base"] = layer(0, 2)
   tokens["surface-float-base"] = layer(0, 2)
   tokens["surface-float-base-hover"] = layer(1, 3)
-  tokens["surface-raised-base-hover"] = layer(4, 3)
-  tokens["surface-raised-base-active"] = layer(5, 4)
-  tokens["surface-raised-strong"] = layer(4, 3)
-  tokens["surface-raised-strong-hover"] = layer(5, 4)
-  tokens["surface-raised-stronger"] = layer(5, 4)
-  tokens["surface-raised-stronger-hover"] = layer(6, 5)
-  tokens["surface-weak"] = layer(4, 3)
-  tokens["surface-weaker"] = layer(5, 4)
-  tokens["surface-strong"] = layer(5, 4)
-  tokens["surface-raised-stronger-non-alpha"] = layer(5, 4)
-  tokens["surface-disabled"] = layer(5, 4)
+  tokens["surface-raised-base-hover"] = layer(1, 3)
+  tokens["surface-raised-base-active"] = layer(2, 4)
+  tokens["surface-raised-strong"] = layer(0, 3)
+  tokens["surface-raised-strong-hover"] = layer(1, 4)
+  tokens["surface-raised-stronger"] = layer(0, 4)
+  tokens["surface-raised-stronger-hover"] = layer(1, 5)
+  tokens["surface-weak"] = layer(1, 3)
+  tokens["surface-weaker"] = layer(3, 4)
+  tokens["surface-strong"] = layer(0, 4)
+  tokens["surface-raised-stronger-non-alpha"] = layer(0, 4)
+  tokens["surface-disabled"] = layer(3, 4)
   tokens["surface-focus"] = neutralSelectionBorder(0.08, 0.08)
-  tokens["surface-hover"] = layer(4, 3)
-  tokens["surface-hover-base"] = layer(3, 2)
+  tokens["surface-hover"] = layer(1, 3)
+  tokens["surface-hover-base"] = layer(1, 2)
   tokens["surface-overlay"] = isDark ? "#0000007a" : "#00000057"
 
   tokens["surface-brand-base"] = primary[8]
@@ -101,8 +101,8 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
     interactiveForeground === "#000000"
       ? lighten(tokens["surface-interactive-solid"] as HexColor, 0.08)
       : darken(tokens["surface-interactive-solid"] as HexColor, 0.08)
-  tokens["surface-interactive-selected"] = layer(5, 4)
-  tokens["surface-interactive-selected-weak"] = layer(4, 3)
+  tokens["surface-interactive-selected"] = layer(3, 4)
+  tokens["surface-interactive-selected-weak"] = layer(1, 3)
 
   tokens["surface-success-base"] = success[2]
   tokens["surface-success-weak"] = success[1]
@@ -139,12 +139,12 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["surface-diff-delete-strong"] = diffDelete[isDark ? 4 : 5]
   tokens["surface-diff-delete-stronger"] = diffDelete[isDark ? 10 : 8]
 
-  tokens["input-base"] = layer(4, 3)
-  tokens["input-hover"] = layer(5, 4)
-  tokens["input-active"] = layer(5, 4)
-  tokens["input-selected"] = layer(5, 4)
-  tokens["input-focus"] = layer(5, 4)
-  tokens["input-disabled"] = layer(5, 3)
+  tokens["input-base"] = layer(2, 3)
+  tokens["input-hover"] = layer(3, 4)
+  tokens["input-active"] = layer(3, 4)
+  tokens["input-selected"] = layer(3, 4)
+  tokens["input-focus"] = layer(3, 4)
+  tokens["input-disabled"] = layer(3, 3)
 
   tokens["text-base"] = neutral[11]
   tokens["text-weak"] = pickReadableColor(tokens["surface-base"] as HexColor, [
@@ -213,8 +213,8 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["text-on-brand-weaker"] = neutralAlpha[7]
   tokens["text-on-brand-strong"] = neutralAlpha[11]
 
-  tokens["button-secondary-base"] = layer(4, 3)
-  tokens["button-secondary-hover"] = layer(5, 4)
+  tokens["button-secondary-base"] = layer(2, 3)
+  tokens["button-secondary-hover"] = layer(3, 4)
   tokens["button-ghost-hover"] = neutralAlpha[1]
   tokens["button-ghost-hover2"] = neutralAlpha[2]
 

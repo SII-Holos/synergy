@@ -428,10 +428,10 @@ describe("resolveTheme (synergy)", () => {
   test("surface polarity follows the neutral workbench product rule", () => {
     const resolved = resolveTheme(synergyTheme)
 
-    expectAtMostAsBright(resolved.light, "surface-raised-base", "background-stronger")
-    expectAtMostAsBright(resolved.light, "surface-raised-strong", "surface-raised-base")
-    expectAtMostAsBright(resolved.light, "surface-raised-stronger", "surface-raised-base")
-    expectAtMostAsBright(resolved.light, "surface-raised-stronger-non-alpha", "surface-raised-base")
+    expectAtLeastAsBright(resolved.light, "surface-raised-base", "background-stronger")
+    expectAtLeastAsBright(resolved.light, "surface-raised-strong", "surface-raised-base")
+    expectAtLeastAsBright(resolved.light, "surface-raised-stronger", "surface-raised-base")
+    expectAtLeastAsBright(resolved.light, "surface-raised-stronger-non-alpha", "surface-raised-base")
     expectAtLeastAsBright(resolved.light, "surface-float-base", "background-stronger")
     expectAtMostAsBright(resolved.light, "surface-raised-base-hover", "surface-raised-base")
     expectAtMostAsBright(resolved.light, "surface-float-base-hover", "surface-float-base")

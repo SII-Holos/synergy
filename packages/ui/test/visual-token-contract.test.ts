@@ -322,14 +322,14 @@ describe("Visual Token Contract", () => {
   })
 
   describe("1b. Static theme fallback preserves neutral workbench surfaces", () => {
-    test("light fallback keeps raised surfaces darker than the near-white canvas", async () => {
+    test("light fallback keeps raised surfaces brighter than the canvas", async () => {
       const css = extractLightFallbackBlock(await readThemeCss())
-      expectCustomPropValue(css, "background-stronger", "#f2f2f2")
-      expectCustomPropValue(css, "surface-raised-base", "#ebebeb")
-      expectCustomPropValue(css, "surface-raised-strong", "#e1e1e1")
-      expectCustomPropValue(css, "surface-raised-stronger", "#d7d7d7")
-      expectCustomPropValue(css, "surface-raised-stronger-non-alpha", "#d7d7d7")
-      expectCustomPropValue(css, "surface-inset-base", "#e1e1e1")
+      expectCustomPropValue(css, "background-stronger", "#f8f8f8")
+      expectCustomPropValue(css, "surface-raised-base", "#fdfdfd")
+      expectCustomPropValue(css, "surface-raised-strong", "#fdfdfd")
+      expectCustomPropValue(css, "surface-raised-stronger", "#fdfdfd")
+      expectCustomPropValue(css, "surface-raised-stronger-non-alpha", "#fdfdfd")
+      expectCustomPropValue(css, "surface-inset-base", "#f2f2f2")
     })
 
     test("dark fallback makes raised content brighter than the canvas", async () => {

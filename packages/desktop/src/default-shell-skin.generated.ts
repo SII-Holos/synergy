@@ -2,10 +2,10 @@
 
 export const DEFAULT_DESKTOP_SHELL_SKIN = {
   light: {
-    background: "#f2f2f2",
+    background: "#f8f8f8",
     text: "#161616",
     mutedText: "#585858",
-    panel: "#ebebeb",
+    panel: "#fdfdfd",
     border: "#cacaca",
     control: "#cacaca",
     controlHover: "#151313",
