@@ -5,6 +5,8 @@ export function installAppMenu(options: {
   channel: DesktopChannel
   debug: boolean
   getMainWindow(): BrowserWindow | null
+  getZoomFactor(): number
+  setZoomFactor(factor: number): void
 }): void {
   if (process.platform !== "darwin") {
     Menu.setApplicationMenu(null)
@@ -31,9 +33,21 @@ export function installAppMenu(options: {
   const viewMenu: MenuItemConstructorOptions = {
     label: "View",
     submenu: [
-      { role: "resetZoom" },
-      { role: "zoomIn" },
-      { role: "zoomOut" },
+      {
+        label: "Actual Size",
+        accelerator: "CmdOrCtrl+0",
+        click: () => options.setZoomFactor(1),
+      },
+      {
+        label: "Zoom In",
+        accelerator: "CmdOrCtrl+Plus",
+        click: () => options.setZoomFactor(zoomStep(options.getZoomFactor(), 0.25)),
+      },
+      {
+        label: "Zoom Out",
+        accelerator: "CmdOrCtrl+-",
+        click: () => options.setZoomFactor(zoomStep(options.getZoomFactor(), -0.25)),
+      },
       ...(options.debug
         ? ([
             { type: "separator" },
@@ -70,4 +84,8 @@ export function installAppMenu(options: {
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
   app.setAboutPanelOptions({ applicationName: DESKTOP_PRODUCT_NAME })
+}
+
+function zoomStep(factor: number, delta: number): number {
+  return Math.min(2, Math.max(0.5, Math.round((factor + delta) * 100) / 100))
 }

@@ -105,6 +105,7 @@ function requiredRuntimeAssets(platform) {
     binary,
     astGrep,
     sqliteVec,
+    "watcher.node",
     "app/index.html",
     "schema/config.schema.json",
     "browser-runtime/playwright-core/package.json",
