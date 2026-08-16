@@ -21,6 +21,12 @@ const astGrepPlatformPackages: Record<string, string> = {
   "windows-x64": "@ast-grep/cli-win32-x64-msvc",
 }
 
+function watcherBindingPackageName(targetOs: string, targetArch: string, musl: boolean): string {
+  const os = targetOs === "windows" ? "win32" : targetOs
+  const libc = musl ? "-musl" : "-glibc"
+  return targetOs === "linux" ? `@parcel/watcher-${os}-${targetArch}${libc}` : `@parcel/watcher-${os}-${targetArch}`
+}
+
 export async function prepareRuntimeCoreAssets(options: RuntimeCoreAssetOptions) {
   const appDistDir = options.appDistDir ?? APP_DIST_DIR
   const schemaPath = options.schemaPath ?? path.join(SYNERGY_DIR, "schema/config.schema.json")
@@ -63,7 +69,31 @@ export async function prepareRuntimeAssets(name: string) {
     await copySqliteVec(runtimeDir, targetOs, targetArch, dependencies)
     await copyAstGrep(runtimeDir, targetOs, targetArch, dependencies)
   }
+  // The watcher binding is copied for every target including musl: unlike
+  // ast-grep/sqlite-vec, @parcel/watcher publishes musl packages.
+  await copyWatcherBinding(runtimeDir, targetOs, targetArch, musl, dependencies)
   await writeRuntimeManifest(runtimeDir, name)
+}
+
+async function copyWatcherBinding(
+  runtimeDir: string,
+  targetOs: string,
+  targetArch: string,
+  musl: boolean,
+  dependencies: Record<string, string>,
+) {
+  const packageName = watcherBindingPackageName(targetOs, targetArch, musl)
+  const version = dependencies[packageName]
+  if (!version) {
+    // watcher.node is unconditionally required by the runtime manifest for
+    // every target (including musl), so a missing declaration is fatal.
+    throw new Error(`watcher binding package not declared for ${packageName}`)
+  }
+  const source = resolveDependencyAsset(packageName, version, "watcher.node")
+  if (!source) {
+    throw new Error(`watcher binding (watcher.node) not found for ${packageName}`)
+  }
+  await fs.copyFile(source, path.join(runtimeDir, "watcher.node"))
 }
 
 function runtimeTarget(name: string) {

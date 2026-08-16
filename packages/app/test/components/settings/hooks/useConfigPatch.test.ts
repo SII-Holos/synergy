@@ -734,3 +734,39 @@ describe("settings config patch activity display", () => {
     )
   })
 })
+
+describe("settings config patch performance monitoring", () => {
+  test("does not emit a performance patch when the form matches the effective value", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.performanceEnabled = "false"
+    expect(
+      buildPatch({
+        cfg: { observability: { enabled: false } } as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("observability")
+  })
+
+  test("emits performance.enabled true when the master switch disabled it and the form is on", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.performanceEnabled = "true"
+    const patch = buildPatch({
+      cfg: { observability: { enabled: false } } as Config,
+      state,
+      originalMcps: {},
+    })
+    expect((patch.observability as { performance?: { enabled?: boolean } })?.performance?.enabled).toBe(true)
+  })
+
+  test("emits performance.enabled false when only performance.enabled is set on the server", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.performanceEnabled = "false"
+    const patch = buildPatch({
+      cfg: { observability: { performance: { enabled: true } } } as Config,
+      state,
+      originalMcps: {},
+    })
+    expect((patch.observability as { performance?: { enabled?: boolean } })?.performance?.enabled).toBe(false)
+  })
+})

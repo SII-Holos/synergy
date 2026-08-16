@@ -53,6 +53,29 @@ describe("Diagnostics", () => {
     expect(summary.resources.pressure.observabilityDroppedWrites).toBeGreaterThanOrEqual(0)
   })
 
+  test("createPackage bypasses the pending-session cache for a fresh snapshot", async () => {
+    const home = process.env.SYNERGY_TEST_HOME!
+    const sessionsDir = path.join(home, ".synergy", "data", "sessions", "scope:home", "ses_cached")
+    await fs.mkdir(sessionsDir, { recursive: true })
+    const infoPath = path.join(sessionsDir, "info.json")
+    await fs.writeFile(infoPath, JSON.stringify({ id: "ses_cached", pendingReply: true, time: { updated: 1 } }))
+
+    // First summary populates the cache.
+    const first = await Diagnostics.summary()
+    expect(first.sessions.pendingReply.some((item) => item.sessionID === "ses_cached")).toBe(true)
+
+    // A subsequent summary within the TTL reuses the cached list.
+    const cached = await Diagnostics.summary()
+    expect(cached.sessions.pendingReply.some((item) => item.sessionID === "ses_cached")).toBe(true)
+
+    // The session finishes; createPackage must see the fresh state even though
+    // the 15s cache would still hold the stale pending entry.
+    await fs.writeFile(infoPath, JSON.stringify({ id: "ses_cached", pendingReply: false, time: { updated: 2 } }))
+    const output = path.join(home, "fresh-diagnostics.tar.gz")
+    const result = await Diagnostics.createPackage({ output })
+    expect(result.summary.sessions.pendingReply.some((item) => item.sessionID === "ses_cached")).toBe(false)
+  })
+
   test("package contains redacted indexed telemetry without JSONL-only events", async () => {
     await ObservabilityEvents.emit("tool.error", {
       traceId: "trace_pkg",

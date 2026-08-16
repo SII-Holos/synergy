@@ -4,11 +4,7 @@ import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { batch, createSignal, onCleanup } from "solid-js"
 import { createEventQueue } from "./event-queue"
 import { usePlatform } from "./platform"
-import {
-  recordTokenReceive,
-  startBrowserPerformanceMetrics,
-  stopBrowserPerformanceMetrics,
-} from "@/components/performance/browser-metrics"
+import { recordTokenReceive, stopBrowserPerformanceMetrics } from "@/components/performance/browser-metrics"
 import { useServer } from "./server"
 import { streamingTokenReceipt } from "./streaming-token-event"
 
@@ -172,8 +168,6 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       fetch: platform.fetch,
       throwOnError: true,
     })
-
-    startBrowserPerformanceMetrics({ url: server.url, client: sdk })
 
     return { url: server.url, client: sdk, event: emitter, connected, disconnectedAt }
   },
