@@ -253,9 +253,3 @@ export async function* iterate(channelType: string, accountId: string): AsyncGen
 export async function list(channelType: string, accountId: string): Promise<DiagnosticRecord[]> {
   return Array.fromAsync(iterate(channelType, accountId))
 }
-
-export async function hasData(channelType: string, accountId: string): Promise<boolean> {
-  const account = accountHash(channelType, accountId)
-  const cutoff = Date.now() - RETENTION_MS
-  return (await retainedRecordIDs(account, cutoff)).length > 0
-}

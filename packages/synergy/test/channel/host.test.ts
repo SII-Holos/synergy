@@ -3,15 +3,19 @@ import { ChannelHost } from "../../src/channel/host"
 import { ManagedProjectOwnership } from "../../src/channel/managed-project-ownership"
 import { Session } from "../../src/session"
 import { SessionInbox } from "../../src/session/inbox"
+import { Channel } from "../../src/channel"
+import { Scope } from "../../src/scope"
+import { ScopeContext } from "../../src/scope/context"
 
+function inHome<T>(fn: () => T | Promise<T>) {
+  return ScopeContext.provide({ scope: Scope.home(), fn })
+}
 function createHost(label = crypto.randomUUID()) {
-  const statuses: ChannelHost.ProviderStatus[] = []
   const diagnostics: ChannelHost.DiagnosticRecordInput[] = []
   const messages: ChannelHost.ConversationMessage[] = []
   const host = ChannelHost.create({
     channelType: "test-channel",
     accountId: `account-${label}`,
-    onStatus: (status) => statuses.push(status),
     onDiagnostic: async (record) => {
       diagnostics.push(record)
     },
@@ -20,14 +24,13 @@ function createHost(label = crypto.randomUUID()) {
       return { accepted: true, execution: Promise.resolve() }
     },
   })
-  return { host, statuses, diagnostics, messages }
+  return { host, diagnostics, messages }
 }
 
 describe("ChannelHost", () => {
-  test("binds account identity and forwards conversations, status, and diagnostics", async () => {
-    const { host, statuses, diagnostics, messages } = createHost()
+  test("binds account identity and forwards conversations and diagnostics", async () => {
+    const { host, diagnostics, messages } = createHost()
 
-    host.status.update({ kind: "syncing" })
     await host.diagnostics.record({ level: "warn", message: "partial discovery", data: { page: 2 } })
     await host.conversations.receive({
       chatId: "chat",
@@ -40,8 +43,9 @@ describe("ChannelHost", () => {
 
     expect(host.channelType).toBe("test-channel")
     expect(host.accountId).toStartWith("account-")
-    expect(statuses).toEqual([{ kind: "syncing" }])
     expect(diagnostics).toEqual([{ level: "warn", message: "partial discovery", data: { page: 2 } }])
+    // Core status is the canonical status surface; creating a host records nothing there.
+    expect(await inHome(() => Channel.status())).toEqual({})
     expect(messages).toEqual([
       expect.objectContaining({
         channelType: host.channelType,
