@@ -73,6 +73,10 @@ beforeAll(async () => {
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 800, height: 600 } })
   await page.goto(url)
+  // Vite cold-start on CI pre-builds dependencies (zod is pulled in through
+  // builtinThemes -> resolveTheme), so the component may not be mounted yet
+  // when the first test begins; wait for the radiogroup before asserting.
+  await page.waitForSelector('[role="radio"]', { timeout: 30000 })
 })
 
 afterAll(async () => {
