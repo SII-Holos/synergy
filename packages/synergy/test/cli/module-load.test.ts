@@ -46,14 +46,6 @@ const cliModules = [
   "../../src/cli/cmd/uninstall",
   "../../src/cli/cmd/upgrade",
   "../../src/cli/cmd/web",
-  "../../src/tool/agora-accept",
-  "../../src/tool/agora-comment",
-  "../../src/tool/agora-join",
-  "../../src/tool/agora-post",
-  "../../src/tool/agora-read",
-  "../../src/tool/agora-search",
-  "../../src/tool/agora-submit",
-  "../../src/tool/agora-sync",
 ]
 
 describe("CLI command module loading", () => {

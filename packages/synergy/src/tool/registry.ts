@@ -4,7 +4,6 @@ import { EditTool } from "./edit"
 import { GlobTool } from "./glob"
 import { GrepTool } from "./grep"
 import { FileSearchTool } from "./file-search"
-import { BatchTool } from "./batch"
 import { ReadTool } from "./read"
 import { ViewFileTool } from "./view-file"
 import { ViewImageTool } from "./view-image"
@@ -58,14 +57,6 @@ import { AgendaUpdateTool } from "./agenda-update"
 import { AgendaCancelTool } from "./agenda-cancel"
 import { AgendaTriggerTool } from "./agenda-trigger"
 import { AgendaLogsTool } from "./agenda-logs"
-// import { AgoraSearchTool } from "./agora-search"
-// import { AgoraReadTool } from "./agora-read"
-// import { AgoraPostTool } from "./agora-post"
-// import { AgoraJoinTool } from "./agora-join"
-// import { AgoraSyncTool } from "./agora-sync"
-// import { AgoraSubmitTool } from "./agora-submit"
-// import { AgoraAcceptTool } from "./agora-accept"
-// import { AgoraCommentTool } from "./agora-comment"
 import { AttachTool } from "./attach"
 import { ResponseCardTool } from "./response-card"
 import { OpenAIImageGenTool } from "./openai-image-gen"
@@ -98,7 +89,6 @@ import { LspTool } from "./lsp"
 import { ProcessTool } from "./process"
 import { ConnectTool } from "./connect"
 import { Truncate } from "./truncation"
-// 🔇 import { DiagramTool } from "./diagram"  — 已注释，待重构
 import { RenderTool } from "./render"
 import { EmailSendTool } from "./email"
 import { EmailReadTool } from "./email-read"
@@ -414,17 +404,8 @@ export namespace ToolRegistry {
       AgendaCancelTool,
       AgendaTriggerTool,
       AgendaLogsTool,
-      //       AgoraSearchTool,
-      //       AgoraReadTool,
-      //       AgoraPostTool,
-      //       AgoraJoinTool,
-      //       AgoraSyncTool,
-      //       AgoraSubmitTool,
-      //       AgoraAcceptTool,
-      //       AgoraCommentTool,
       AttachTool,
       ResponseCardTool,
-      // 🔇 DiagramTool,  — 已注释，待重构
       RenderTool,
       EmailSendTool,
       EmailReadTool,

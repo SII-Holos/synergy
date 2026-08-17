@@ -1,1 +1,0 @@
-// Agora tool — disabled pending plugin extraction

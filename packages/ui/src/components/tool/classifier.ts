@@ -174,11 +174,6 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
     subtitleKeys: ["target"],
     argsKeys: ["action"],
   },
-  community: {
-    icon: "compass",
-    descriptor: CLASSIFIER_LABEL_DESC["community"],
-    subtitleKeys: ["keyword", "post_id", "title", "comment"],
-  },
   network: {
     icon: "cable",
     descriptor: CLASSIFIER_LABEL_DESC["network"],
@@ -302,7 +297,6 @@ const CATEGORY_COUNT_DESCRIPTORS: Partial<Record<SemanticCategory, MessageDescri
   task: TOOL_LABEL_DESC.tasks,
   memory: TOOL_LABEL_DESC.results,
   search: TOOL_LABEL_DESC.results,
-  community: TOOL_LABEL_DESC.posts,
   schedule: TOOL_LABEL_DESC.items,
   "file-read": TOOL_LABEL_DESC.files,
   "file-write": TOOL_LABEL_DESC.files,
