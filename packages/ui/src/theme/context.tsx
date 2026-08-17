@@ -5,12 +5,7 @@ import { synergyTheme } from "./default-themes"
 import { resolveThemeVariant } from "./resolve"
 import type { Theme } from "./types"
 import { createSimpleContext } from "../context/helper"
-import {
-  getPluginTheme,
-  isPluginThemeRegistryReady,
-  listThemeChoices,
-  subscribePluginThemes,
-} from "./plugin-theme-registry"
+import { getTheme, isPluginThemeRegistryReady, listThemeChoices, subscribePluginThemes } from "./plugin-theme-registry"
 import { createSkinBootstrapSnapshot, readSkinBootstrapSnapshot, writeSkinBootstrapSnapshot } from "./shell-skin"
 import {
   COLOR_SCHEME_STORAGE_KEY,
@@ -41,7 +36,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     const [themeRegistryVersion, setThemeRegistryVersion] = createSignal(0)
     const activeTheme = createMemo(() => {
       themeRegistryVersion()
-      const registered = getPluginTheme(store.themeId)?.theme
+      const registered = getTheme(store.themeId)?.theme
       if (registered) return registered
       if (!isPluginThemeRegistryReady() && bootstrap?.themeId === store.themeId) return bootstrap.theme
       return synergyTheme
@@ -66,8 +61,8 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
 
     createEffect(() => {
       const activeId = store.themeId || synergyTheme.id
-      const pluginTheme = activeId === synergyTheme.id ? undefined : getPluginTheme(activeId)
-      if (activeId !== synergyTheme.id && !pluginTheme && isPluginThemeRegistryReady()) {
+      const knownTheme = getTheme(activeId)?.theme
+      if (!knownTheme && isPluginThemeRegistryReady()) {
         setStore("themeId", synergyTheme.id)
         return
       }
@@ -84,7 +79,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
 
     const setThemeId = (id: string) => {
       const next = !id || id === synergyTheme.id ? synergyTheme.id : id
-      if (next !== synergyTheme.id && !getPluginTheme(next)) return
+      if (!getTheme(next)) return
       setStore("themeId", next)
     }
 

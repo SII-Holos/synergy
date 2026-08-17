@@ -1,9 +1,15 @@
-import { HEX_COLOR_PATTERN, OPAQUE_HEX_COLOR_PATTERN, THEME_ID_PATTERN, THEME_SEED_NAMES } from "./schema-contract.js"
+import {
+  HEX_COLOR_PATTERN,
+  OPAQUE_HEX_COLOR_PATTERN,
+  THEME_ALL_SEED_NAMES,
+  THEME_CORE_SEED_NAMES,
+  THEME_ID_PATTERN,
+} from "./schema-contract.js"
 import { THEME_TOKEN_NAMES } from "./tokens.js"
 
 export function renderThemeSchemaJson(): string {
   const seedProperties = Object.fromEntries(
-    THEME_SEED_NAMES.map((name) => [name, { $ref: "#/definitions/OpaqueHexColor" }]),
+    THEME_ALL_SEED_NAMES.map((name) => [name, { $ref: "#/definitions/OpaqueHexColor" }]),
   )
   const schema = {
     $schema: "http://json-schema.org/draft-07/schema#",
@@ -30,7 +36,7 @@ export function renderThemeSchemaJson(): string {
       ThemeSeedColors: {
         type: "object",
         additionalProperties: false,
-        required: Object.keys(seedProperties),
+        required: [...THEME_CORE_SEED_NAMES],
         properties: seedProperties,
       },
       ThemeVariant: {

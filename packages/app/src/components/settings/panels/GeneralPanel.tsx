@@ -11,6 +11,7 @@ import { translateDescriptor } from "@/locales/translate"
 import { usePlatform, type DesktopUpdateMode } from "@/context/platform"
 import { SettingRow } from "../components/SettingRow"
 import { SegmentPill } from "../components/SegmentPill"
+import { ThemePicker } from "../components/ThemePicker"
 import { MenuField } from "../../menu-field/MenuField"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import {
@@ -235,19 +236,19 @@ export function GeneralPanel(props: {
   return (
     <SettingsPage title={_(copy.pageTitle)} description={_(copy.pageDescription)}>
       <SettingsSection title={_(copy.appearanceTitle)}>
-        <SettingRow
-          title={_(copy.themeTitle)}
-          description={_(copy.themeDescription)}
-          trailing={
-            <MenuField
-              value={selectedThemeId()}
-              ariaLabel={_(copy.themeTitle)}
-              popoverLayer={props.popoverLayer}
-              options={theme.themes().map((option) => ({ value: option.id, label: option.label }))}
-              onChange={(value) => setThemeId(value)}
-            />
-          }
-        />
+        <div class="settings-theme-picker-section">
+          <div class="settings-theme-picker-copy">
+            <span class="settings-row-title">{_(copy.themeTitle)}</span>
+            <span class="settings-row-description">{_(copy.themeDescription)}</span>
+          </div>
+          <ThemePicker
+            ariaLabel={_(copy.themeTitle)}
+            mode={theme.mode()}
+            themes={theme.themes()}
+            value={selectedThemeId()}
+            onChange={setThemeId}
+          />
+        </div>
         <div class="settings-color-grid" role="radiogroup" aria-label={_(copy.colorSchemeLabel)}>
           <For each={colorSchemeOptions()}>
             {(option) => (

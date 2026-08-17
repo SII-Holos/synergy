@@ -10,10 +10,15 @@ import {
   oklchToHex,
   withAlpha,
 } from "./color.js"
+import { normalizeSeedColors } from "./schema-contract.js"
 import { THEME_TOKEN_NAMES, THEME_TOKEN_SET } from "./tokens.js"
 
 export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): ResolvedTheme {
-  const { seeds, overrides = {} } = variant
+  // The public resolver accepts the author-facing nine-seed shape: missing
+  // syntax seeds fall back to their semantic counterparts (see
+  // normalizeSeedColors) so legacy plugin themes resolve without parseTheme.
+  const seeds = normalizeSeedColors(variant.seeds)
+  const { overrides = {} } = variant
 
   const neutral = generateNeutralScale(seeds.neutral, isDark)
   const primary = generateScale(seeds.primary, isDark)
@@ -24,6 +29,10 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   const interactive = generateScale(seeds.interactive, isDark)
   const diffAdd = generateScale(seeds.diffAdd, isDark)
   const diffDelete = generateScale(seeds.diffDelete, isDark)
+  const syntaxString = generateScale(seeds.syntaxString, isDark)
+  const syntaxKeyword = generateScale(seeds.syntaxKeyword, isDark)
+  const syntaxType = generateScale(seeds.syntaxType, isDark)
+  const syntaxProperty = generateScale(seeds.syntaxProperty, isDark)
   const chartSeries = generateCategoricalPalette(seeds.primary, isDark)
 
   const neutralAlpha = generateNeutralBlendScale(neutral, isDark)
@@ -42,39 +51,39 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
 
   const tokens = {} as ResolvedTheme
 
-  tokens["background-base"] = neutral[0]
+  tokens["background-base"] = layer(2, 0)
   tokens["background-weak"] = layer(1, 1)
   tokens["background-strong"] = neutral[0]
-  tokens["background-stronger"] = layer(2, 1)
+  tokens["background-stronger"] = layer(1, 1)
 
-  tokens["surface-base"] = layer(3, 2)
+  tokens["surface-base"] = layer(0, 2)
   tokens["base"] = tokens["surface-base"]
-  tokens["surface-base-hover"] = layer(4, 3)
-  tokens["surface-base-active"] = layer(5, 4)
-  tokens["surface-base-interactive-active"] = layer(5, 4)
+  tokens["surface-base-hover"] = layer(1, 3)
+  tokens["surface-base-active"] = layer(2, 4)
+  tokens["surface-base-interactive-active"] = layer(2, 4)
   tokens["base2"] = tokens["surface-base"]
   tokens["base3"] = tokens["surface-base"]
-  tokens["surface-inset-base"] = layer(4, 3)
-  tokens["surface-inset-base-hover"] = layer(5, 4)
-  tokens["surface-inset-strong"] = layer(6, 4)
-  tokens["surface-inset-strong-hover"] = layer(7, 5)
-  tokens["surface-raised-base"] = layer(3, 2)
+  tokens["surface-inset-base"] = layer(2, 3)
+  tokens["surface-inset-base-hover"] = layer(3, 4)
+  tokens["surface-inset-strong"] = layer(3, 4)
+  tokens["surface-inset-strong-hover"] = layer(4, 5)
+  tokens["surface-raised-base"] = layer(0, 2)
   tokens["surface-float-base"] = layer(0, 2)
   tokens["surface-float-base-hover"] = layer(1, 3)
-  tokens["surface-raised-base-hover"] = layer(4, 3)
-  tokens["surface-raised-base-active"] = layer(5, 4)
-  tokens["surface-raised-strong"] = layer(4, 3)
-  tokens["surface-raised-strong-hover"] = layer(5, 4)
-  tokens["surface-raised-stronger"] = layer(5, 4)
-  tokens["surface-raised-stronger-hover"] = layer(6, 5)
-  tokens["surface-weak"] = layer(4, 3)
-  tokens["surface-weaker"] = layer(5, 4)
-  tokens["surface-strong"] = layer(5, 4)
-  tokens["surface-raised-stronger-non-alpha"] = layer(5, 4)
-  tokens["surface-disabled"] = layer(5, 4)
+  tokens["surface-raised-base-hover"] = layer(1, 3)
+  tokens["surface-raised-base-active"] = layer(2, 4)
+  tokens["surface-raised-strong"] = layer(0, 3)
+  tokens["surface-raised-strong-hover"] = layer(1, 4)
+  tokens["surface-raised-stronger"] = layer(0, 4)
+  tokens["surface-raised-stronger-hover"] = layer(1, 5)
+  tokens["surface-weak"] = layer(1, 3)
+  tokens["surface-weaker"] = layer(3, 4)
+  tokens["surface-strong"] = layer(0, 4)
+  tokens["surface-raised-stronger-non-alpha"] = layer(0, 4)
+  tokens["surface-disabled"] = layer(3, 4)
   tokens["surface-focus"] = neutralSelectionBorder(0.08, 0.08)
-  tokens["surface-hover"] = layer(4, 3)
-  tokens["surface-hover-base"] = layer(3, 2)
+  tokens["surface-hover"] = layer(1, 3)
+  tokens["surface-hover-base"] = layer(1, 2)
   tokens["surface-overlay"] = isDark ? "#0000007a" : "#00000057"
 
   tokens["surface-brand-base"] = primary[8]
@@ -97,8 +106,8 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
     interactiveForeground === "#000000"
       ? lighten(tokens["surface-interactive-solid"] as HexColor, 0.08)
       : darken(tokens["surface-interactive-solid"] as HexColor, 0.08)
-  tokens["surface-interactive-selected"] = layer(5, 4)
-  tokens["surface-interactive-selected-weak"] = layer(4, 3)
+  tokens["surface-interactive-selected"] = layer(3, 4)
+  tokens["surface-interactive-selected-weak"] = layer(1, 3)
 
   tokens["surface-success-base"] = success[2]
   tokens["surface-success-weak"] = success[1]
@@ -135,25 +144,24 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["surface-diff-delete-strong"] = diffDelete[isDark ? 4 : 5]
   tokens["surface-diff-delete-stronger"] = diffDelete[isDark ? 10 : 8]
 
-  tokens["input-base"] = layer(4, 3)
-  tokens["input-hover"] = layer(5, 4)
-  tokens["input-active"] = layer(5, 4)
-  tokens["input-selected"] = layer(5, 4)
-  tokens["input-focus"] = layer(5, 4)
-  tokens["input-disabled"] = layer(5, 3)
+  tokens["input-base"] = layer(3, 3)
+  tokens["input-hover"] = layer(4, 4)
+  tokens["input-active"] = layer(4, 4)
+  tokens["input-selected"] = layer(4, 4)
+  tokens["input-focus"] = layer(4, 4)
+  tokens["input-disabled"] = layer(4, 3)
 
-  tokens["text-base"] = neutral[10]
+  tokens["text-base"] = neutral[11]
   tokens["text-weak"] = pickReadableColor(tokens["surface-base"] as HexColor, [
     neutral[8],
     neutral[isDark ? 9 : 10],
-    neutral[10],
     neutral[11],
   ])
-  tokens["text-weaker"] = neutral[7]
-  tokens["text-subtle"] = neutral[6]
+  tokens["text-weaker"] = neutral[isDark ? 8 : 9]
+  tokens["text-subtle"] = neutral[isDark ? 7 : 8]
   tokens["text-error"] = error[isDark ? 8 : 9]
   tokens["text-stronger"] = isDark ? "#fdfcfc" : "#020202"
-  tokens["text-strong"] = neutral[11]
+  tokens["text-strong"] = tokens["text-stronger"]
   tokens["text-invert-base"] = isDark ? neutral[10] : neutralAlpha[10]
   tokens["text-invert-weak"] = isDark ? neutral[8] : neutralAlpha[8]
   tokens["text-invert-weaker"] = isDark ? neutral[7] : neutralAlpha[7]
@@ -210,8 +218,8 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["text-on-brand-weaker"] = neutralAlpha[7]
   tokens["text-on-brand-strong"] = neutralAlpha[11]
 
-  tokens["button-secondary-base"] = layer(4, 3)
-  tokens["button-secondary-hover"] = layer(5, 4)
+  tokens["button-secondary-base"] = layer(3, 3)
+  tokens["button-secondary-hover"] = layer(4, 4)
   tokens["button-ghost-hover"] = neutralAlpha[1]
   tokens["button-ghost-hover2"] = neutralAlpha[2]
 
@@ -273,12 +281,12 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["icon-disabled"] = neutral[isDark ? 6 : 7]
   tokens["icon-focus"] = neutral[11]
   tokens["icon-invert-base"] = isDark ? neutral[0] : "#ffffff"
-  tokens["icon-weak-base"] = neutral[isDark ? 5 : 6]
-  tokens["icon-weak-hover"] = neutral[6]
-  tokens["icon-weak-active"] = neutral[7]
-  tokens["icon-weak-selected"] = neutral[8]
+  tokens["icon-weak-base"] = neutral[isDark ? 7 : 8]
+  tokens["icon-weak-hover"] = neutral[isDark ? 8 : 9]
+  tokens["icon-weak-active"] = neutral[isDark ? 9 : 10]
+  tokens["icon-weak-selected"] = neutral[isDark ? 9 : 10]
   tokens["icon-weak-disabled"] = neutral[isDark ? 4 : 6]
-  tokens["icon-weak-focus"] = neutral[8]
+  tokens["icon-weak-focus"] = neutral[isDark ? 8 : 9]
   tokens["icon-strong-base"] = neutral[11]
   tokens["icon-strong-hover"] = isDark ? "#f6f3f3" : "#151313"
   tokens["icon-strong-active"] = isDark ? "#fcfcfc" : "#020202"
@@ -329,13 +337,13 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
 
   tokens["syntax-comment"] = "var(--text-weak)"
   tokens["syntax-regexp"] = isDark ? "#94a2b4" : "#667386"
-  tokens["syntax-string"] = isDark ? "#8ab2a8" : "#4f6d67"
-  tokens["syntax-keyword"] = isDark ? "#a1a8b4" : "#686d79"
+  tokens["syntax-string"] = syntaxString[isDark ? 8 : 9]
+  tokens["syntax-keyword"] = syntaxKeyword[isDark ? 8 : 9]
   tokens["syntax-primitive"] = isDark ? "#8eb0b8" : "#4b7480"
   tokens["syntax-operator"] = isDark ? "#959dab" : "#727785"
   tokens["syntax-variable"] = "var(--text-strong)"
-  tokens["syntax-property"] = isDark ? "#98b2c8" : "#587392"
-  tokens["syntax-type"] = isDark ? "#b3c291" : "#66734d"
+  tokens["syntax-property"] = syntaxProperty[isDark ? 8 : 9]
+  tokens["syntax-type"] = syntaxType[isDark ? 8 : 9]
   tokens["syntax-constant"] = isDark ? "#90b4bb" : "#53727a"
   tokens["syntax-punctuation"] = isDark ? "#9199a6" : "#787d89"
   tokens["syntax-object"] = isDark ? "#afb6c2" : "#5d6370"
@@ -347,20 +355,26 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["syntax-diff-delete"] = diffDelete[10]
   tokens["syntax-diff-unknown"] = isDark ? "#94a8bc" : "#6d7f93"
 
-  tokens["markdown-heading"] = isDark ? "#9d7cd8" : "#d68c27"
-  tokens["markdown-text"] = isDark ? "#eeeeee" : "#1a1a1a"
-  tokens["markdown-link"] = isDark ? "#fab283" : "#3b7dd8"
-  tokens["markdown-link-text"] = isDark ? "#56b6c2" : "#318795"
-  tokens["markdown-code"] = isDark ? "#7fd88f" : "#3d9a57"
-  tokens["markdown-block-quote"] = isDark ? "#e5c07b" : "#b0851f"
-  tokens["markdown-emph"] = isDark ? "#e5c07b" : "#b0851f"
-  tokens["markdown-strong"] = isDark ? "#f5a742" : "#d68c27"
-  tokens["markdown-horizontal-rule"] = isDark ? "#808080" : "#8a8a8a"
-  tokens["markdown-list-item"] = isDark ? "#fab283" : "#3b7dd8"
-  tokens["markdown-list-enumeration"] = isDark ? "#56b6c2" : "#318795"
-  tokens["markdown-image"] = isDark ? "#fab283" : "#3b7dd8"
-  tokens["markdown-image-text"] = isDark ? "#56b6c2" : "#318795"
-  tokens["markdown-code-block"] = isDark ? "#eeeeee" : "#1a1a1a"
+  const markdownLink = pickReadableColor(tokens["surface-base"] as HexColor, [
+    interactive[isDark ? 9 : 10],
+    interactive[isDark ? 10 : 11],
+    interactive[11],
+    neutral[11],
+  ])
+  tokens["markdown-heading"] = tokens["text-strong"]
+  tokens["markdown-text"] = tokens["text-base"]
+  tokens["markdown-link"] = markdownLink
+  tokens["markdown-link-text"] = markdownLink
+  tokens["markdown-code"] = tokens["text-weak"]
+  tokens["markdown-block-quote"] = tokens["text-weak"]
+  tokens["markdown-emph"] = tokens["text-weak"]
+  tokens["markdown-strong"] = tokens["text-strong"]
+  tokens["markdown-horizontal-rule"] = tokens["border-base"]
+  tokens["markdown-list-item"] = markdownLink
+  tokens["markdown-list-enumeration"] = tokens["text-weak"]
+  tokens["markdown-image"] = markdownLink
+  tokens["markdown-image-text"] = tokens["text-weak"]
+  tokens["markdown-code-block"] = tokens["text-base"]
 
   const avatarNames = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
   avatarNames.forEach((name, index) => {
@@ -459,6 +473,7 @@ export const THEME_CONTRAST_REQUIREMENTS: readonly ThemeContrastRequirement[] = 
   })),
   { foreground: "border-focus", background: "background-base", minimum: 3 },
   { foreground: "icon-base", background: "surface-base", minimum: 3 },
+  { foreground: "icon-weak-base", background: "background-stronger", minimum: 3 },
 ] as const
 
 function assertThemeContrast(tokens: ResolvedTheme) {

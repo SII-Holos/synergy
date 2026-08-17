@@ -30,17 +30,29 @@ export type { ThemeChangeDetail } from "./application"
 export { ThemeProvider, useTheme } from "./context"
 export type { ColorScheme } from "./color-scheme"
 export {
-  registerPluginTheme,
-  replacePluginThemes,
+  getPluginTheme,
+  getTheme,
   isPluginThemeRegistryReady,
   listPluginThemes,
-  getPluginTheme,
   listThemeChoices,
+  registerPluginTheme,
+  replacePluginThemes,
   subscribePluginThemes,
   type PluginThemeDefinition,
+  type ThemeDefinition,
 } from "./plugin-theme-registry"
 
-export { synergyTheme } from "./default-themes"
+export {
+  ayuTheme,
+  builtinThemes,
+  catppuccinTheme,
+  everforestTheme,
+  kanagawaTheme,
+  rosePineTheme,
+  solarizedTheme,
+  synergyTheme,
+  tokyoNightTheme,
+} from "./default-themes"
 export { ThemeSchema, parseTheme } from "./schema"
 export { THEME_TOKEN_NAMES, THEME_TOKEN_SET, type ThemeTokenName } from "./tokens"
 export {

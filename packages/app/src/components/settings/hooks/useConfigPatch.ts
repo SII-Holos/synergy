@@ -40,7 +40,7 @@ function buildGeneralPatch(cfg: Config, state: SettingsState, patch: Record<stri
   if (username !== (cfg.username ?? UI_DEFAULTS.username)) patch.username = username || undefined
 
   const theme = general.theme.trim()
-  if (theme !== (cfg.theme ?? UI_DEFAULTS.theme)) patch.theme = theme || undefined
+  if (theme !== (cfg.theme ?? UI_DEFAULTS.theme)) patch.theme = theme
 
   const resolvedLocale = cfg.locale ?? UI_DEFAULTS.locale
   if (general.locale !== resolvedLocale) patch.locale = general.locale

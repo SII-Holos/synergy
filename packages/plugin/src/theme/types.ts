@@ -1,5 +1,5 @@
 import type { ThemeTokenName } from "./tokens.js"
-import type { ThemeSeedName } from "./schema-contract.js"
+import type { ThemeSeedInput } from "./schema-contract.js"
 
 export type HexColor = `#${string}`
 
@@ -9,10 +9,15 @@ export interface OklchColor {
   h: number // Hue 0-360
 }
 
-export type ThemeSeedColors = Record<ThemeSeedName, HexColor>
+/**
+ * Author-facing seed shape: the nine core seeds are required and the four
+ * syntax seeds are optional (nine-seed plugin compatibility). The resolver
+ * normalizes missing syntax seeds before generating tokens.
+ */
+export type ThemeSeedColors = ThemeSeedInput
 
 export interface ThemeVariant {
-  seeds: ThemeSeedColors
+  seeds: ThemeSeedInput
   overrides?: Partial<Record<ThemeTokenName, ColorValue>>
 }
 

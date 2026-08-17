@@ -322,10 +322,11 @@ describe("Visual Token Contract", () => {
   })
 
   describe("1b. Static theme fallback preserves neutral workbench surfaces", () => {
-    test("light fallback uses a near-white canvas with white raised rows", async () => {
+    test("light fallback keeps raised surfaces brighter than the canvas", async () => {
       const css = extractLightFallbackBlock(await readThemeCss())
       expectCustomPropValue(css, "background-stronger", "#FAFAFA")
       expectCustomPropValue(css, "surface-raised-base", "#FFFFFF")
+      expectCustomPropValue(css, "surface-raised-strong", "#FFFFFF")
       expectCustomPropValue(css, "surface-raised-stronger", "#FFFFFF")
       expectCustomPropValue(css, "surface-raised-stronger-non-alpha", "#FFFFFF")
       expectCustomPropValue(css, "surface-inset-base", "#F4F4F5")

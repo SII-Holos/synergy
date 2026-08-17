@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test"
-import { synergyTheme } from "../src/theme/default-themes"
+import { builtinThemes, synergyTheme } from "../src/theme/default-themes"
 import {
   getPluginTheme,
+  getTheme,
   isPluginThemeRegistryReady,
+  listThemeChoices,
   replacePluginThemes,
   subscribePluginThemes,
 } from "../src/theme/plugin-theme-registry"
@@ -25,6 +27,23 @@ test("replaces a complete plugin theme generation with one notification", () => 
     expect(isPluginThemeRegistryReady()).toBe(true)
   } finally {
     unsubscribe()
+    replacePluginThemes([], { ready: false })
+  }
+})
+
+test("built-in skin ids cannot be shadowed by plugin themes", () => {
+  replacePluginThemes([
+    { id: "catppuccin", label: "Plugin Catppuccin", theme: { ...synergyTheme, id: "catppuccin" }, pluginId: "one" },
+    { id: "one:default", label: "One", theme: { ...synergyTheme, id: "default" }, pluginId: "one" },
+  ])
+  try {
+    expect(getPluginTheme("catppuccin")).toBeUndefined()
+    expect(getTheme("catppuccin")?.builtin).toBe(true)
+    expect(listThemeChoices().map((theme) => theme.id)).toEqual([
+      ...builtinThemes.map((theme) => theme.id),
+      "one:default",
+    ])
+  } finally {
     replacePluginThemes([], { ready: false })
   }
 })

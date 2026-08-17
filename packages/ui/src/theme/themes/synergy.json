@@ -12,7 +12,11 @@
       "info": "#3B82F6",
       "interactive": "#3B82F6",
       "diffAdd": "#22C55E",
-      "diffDelete": "#EF4444"
+      "diffDelete": "#EF4444",
+      "syntaxString": "#374151",
+      "syntaxKeyword": "#6B7280",
+      "syntaxType": "#374151",
+      "syntaxProperty": "#2563EB"
     },
     "overrides": {
       "background-base": "#FAFAFA",
@@ -92,7 +96,7 @@
       "markdown-list-enumeration": "#374151",
       "markdown-image": "#3B82F6",
       "markdown-image-text": "#2563EB",
-      "markdown-code-block": "#111827",
+      "markdown-code-block": "#1A1A1A",
       "syntax-comment": "var(--text-weaker)",
       "syntax-regexp": "var(--text-base)",
       "syntax-string": "#374151",
@@ -106,8 +110,7 @@
       "syntax-punctuation": "var(--text-base)",
       "syntax-object": "var(--text-strong)",
       "syntax-info": "#2563EB",
-      "syntax-diff-unknown": "#EF4444",
-      "markdown-code-block": "#1A1A1A"
+      "syntax-diff-unknown": "#EF4444"
     }
   },
   "dark": {
@@ -120,7 +123,11 @@
       "info": "#60A5FA",
       "interactive": "#3B82F6",
       "diffAdd": "#22C55E",
-      "diffDelete": "#EF4444"
+      "diffDelete": "#EF4444",
+      "syntaxString": "#D4D4D8",
+      "syntaxKeyword": "#A1A1AA",
+      "syntaxType": "#D4D4D8",
+      "syntaxProperty": "#60A5FA"
     },
     "overrides": {
       "background-base": "#0F0F10",
@@ -200,7 +207,7 @@
       "markdown-list-enumeration": "#D4D4D8",
       "markdown-image": "#60A5FA",
       "markdown-image-text": "#60A5FA",
-      "markdown-code-block": "#F4F4F5",
+      "markdown-code-block": "#EEEEEE",
       "syntax-comment": "var(--text-weaker)",
       "syntax-regexp": "var(--text-base)",
       "syntax-string": "#D4D4D8",
@@ -214,8 +221,7 @@
       "syntax-punctuation": "var(--text-weak)",
       "syntax-object": "var(--text-strong)",
       "syntax-info": "#60A5FA",
-      "syntax-diff-unknown": "#EF4444",
-      "markdown-code-block": "#EEEEEE"
+      "syntax-diff-unknown": "#EF4444"
     }
   }
 }

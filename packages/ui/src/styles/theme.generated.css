@@ -183,10 +183,10 @@
   --icon-invert-base: #ffffff;
   --icon-weak-base: #4B5563;
   --icon-weak-hover: #111827;
-  --icon-weak-active: #b7b7b7;
-  --icon-weak-selected: #868686;
+  --icon-weak-active: #585858;
+  --icon-weak-selected: #585858;
   --icon-weak-disabled: #cacaca;
-  --icon-weak-focus: #868686;
+  --icon-weak-focus: #747474;
   --icon-strong-base: #161616;
   --icon-strong-hover: #151313;
   --icon-strong-active: #020202;
@@ -462,8 +462,8 @@
     --icon-invert-base: #070707;
     --icon-weak-base: #C5C5CC;
     --icon-weak-hover: #F4F4F5;
-    --icon-weak-active: #696969;
-    --icon-weak-selected: #7a7a7a;
+    --icon-weak-active: #929292;
+    --icon-weak-selected: #929292;
     --icon-weak-disabled: #292929;
     --icon-weak-focus: #7a7a7a;
     --icon-strong-base: #f2f2f2;

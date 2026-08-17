@@ -39,6 +39,34 @@ describe("settings config patch", () => {
       variant: "high",
     })
   })
+  test("clears a stored theme when the Synergy default is selected", () => {
+    const state = defaultSettingsState("enter")
+    state.general.theme = ""
+
+    const patch = buildPatch({
+      cfg: { theme: "ayu" } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    // The cleared value must survive JSON serialization: an undefined value
+    // is dropped by the SDK request serializer, so the server would keep the
+    // previous theme and the picker would jump back after refresh.
+    expect(JSON.parse(JSON.stringify(patch))).toHaveProperty("theme", "")
+  })
+
+  test("does not re-send the theme when it matches the server config", () => {
+    const state = defaultSettingsState("enter")
+    state.general.theme = "ayu"
+
+    const patch = buildPatch({
+      cfg: { theme: "ayu" } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("theme")
+  })
 
   test("persists Clarus account enablement without adding model fields", () => {
     const state = defaultSettingsState("enter")
