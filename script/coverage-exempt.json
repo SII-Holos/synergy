@@ -1150,10 +1150,6 @@
           "reason": "global context requires full app bootstrap"
         },
         {
-          "glob": "src/context/plugin-host.tsx",
-          "reason": "global context requires full app bootstrap"
-        },
-        {
           "glob": "src/context/product-update.tsx",
           "reason": "global context requires full app bootstrap"
         },
@@ -1446,10 +1442,6 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
-          "glob": "src/components/avatar.tsx",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
-        },
-        {
           "glob": "src/components/basic-tool.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
@@ -1510,19 +1502,11 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
-          "glob": "src/components/diff-ssr.tsx",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
-        },
-        {
           "glob": "src/components/diff.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
           "glob": "src/components/error-card.tsx",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
-        },
-        {
-          "glob": "src/components/favicon.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
@@ -1570,10 +1554,6 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
-          "glob": "src/components/message-nav.tsx",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
-        },
-        {
           "glob": "src/components/message-part.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
@@ -1599,18 +1579,6 @@
         },
         {
           "glob": "src/components/resize-handle.tsx",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
-        },
-        {
-          "glob": "src/components/select.tsx",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
-        },
-        {
-          "glob": "src/components/session-message-rail.tsx",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
-        },
-        {
-          "glob": "src/components/session-resonance-popover.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
@@ -1695,10 +1663,6 @@
         },
         {
           "glob": "src/components/turn-change-summary-panel.tsx",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
-        },
-        {
-          "glob": "src/components/typewriter.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
