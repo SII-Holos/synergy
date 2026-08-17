@@ -15,7 +15,19 @@ import type {
 } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
 
-import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, ParentProps, Show, Switch } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  ErrorBoundary,
+  For,
+  Match,
+  on,
+  onCleanup,
+  ParentProps,
+  Show,
+  Switch,
+} from "solid-js"
 import { TurnChangeSummaryPanel } from "./turn-change-summary-panel"
 import {
   resolveTurnDiffPanelState,
@@ -717,7 +729,28 @@ function originIconToken(origin: { type: string; label?: string; detail?: string
   }
 }
 
-function TimelineDisplay(props: {
+export function TimelineDisplay(props: {
+  item: SessionTurnDisplayItem
+  serverUrl: string
+  rollbackActive: boolean
+  onRewind?: () => void
+  working: boolean
+  compactReasoning?: boolean
+}) {
+  return (
+    <ErrorBoundary
+      fallback={(err) => (
+        <div data-slot="session-turn-timeline-item-error">
+          <ErrorCard error={err?.message || String(err)} />
+        </div>
+      )}
+    >
+      <TimelineDisplayInner {...props} />
+    </ErrorBoundary>
+  )
+}
+
+function TimelineDisplayInner(props: {
   item: SessionTurnDisplayItem
   serverUrl: string
   rollbackActive: boolean
@@ -753,23 +786,31 @@ function TimelineDisplay(props: {
 
   return (
     <Switch>
-      <Match when={activityGroup()}>{(item) => <ActivityTrace group={item()} serverUrl={props.serverUrl} />}</Match>
-      <Match when={activitySummary()}>{(item) => <MinimalActivitySummary item={item()} />}</Match>
-      <Match when={activityReasoning()}>{(item) => <ActivityReasoningSummary item={item()} />}</Match>
-      <Match when={activityReceipt()}>{(item) => <ActivityReceipt item={item()} serverUrl={props.serverUrl} />}</Match>
-      <Match when={guidedUser()}>
+      <Match keyed when={activityGroup()}>
+        {(item) => <ActivityTrace group={item} serverUrl={props.serverUrl} />}
+      </Match>
+      <Match keyed when={activitySummary()}>
+        {(item) => <MinimalActivitySummary item={item} />}
+      </Match>
+      <Match keyed when={activityReasoning()}>
+        {(item) => <ActivityReasoningSummary item={item} />}
+      </Match>
+      <Match keyed when={activityReceipt()}>
+        {(item) => <ActivityReceipt item={item} serverUrl={props.serverUrl} />}
+      </Match>
+      <Match keyed when={guidedUser()}>
         {(item) => (
           <div data-slot="session-turn-rewind-wrapper" data-align="right">
-            <Message message={item().message} parts={item().parts} userVariant="turn-bubble" />
+            <Message message={item.message} parts={item.parts} userVariant="turn-bubble" />
           </div>
         )}
       </Match>
-      <Match when={nonRootUser()}>
+      <Match keyed when={nonRootUser()}>
         {(item) => (
           <div data-slot="session-turn-rewind-wrapper">
-            <div data-slot="session-turn-chip" data-origin={item().message.origin?.type ?? "guided"}>
-              <Icon name={getSemanticIcon(originIconToken(item().message.origin))} size="small" />
-              <span data-slot="session-turn-chip-label">{item().originLabel}</span>
+            <div data-slot="session-turn-chip" data-origin={item.message.origin?.type ?? "guided"}>
+              <Icon name={getSemanticIcon(originIconToken(item.message.origin))} size="small" />
+              <span data-slot="session-turn-chip-label">{item.originLabel}</span>
             </div>
             <button
               type="button"
@@ -786,10 +827,10 @@ function TimelineDisplay(props: {
           </div>
         )}
       </Match>
-      <Match when={timelineItem()}>
+      <Match keyed when={timelineItem()}>
         {(item) => (
           <TimelineItemDisplay
-            item={item()}
+            item={item}
             serverUrl={props.serverUrl}
             working={props.working}
             compactReasoning={props.compactReasoning}
