@@ -1,8 +1,10 @@
+import { MonotonicKeySpace } from "./monotonic-key-space"
+
 export function createScopeReconnectRecovery(publish: (scopeKey: string, generation: number) => void) {
-  const versions = new Map<string, number>()
+  const versions = new MonotonicKeySpace()
   const lifecycles = new Map<string, object>()
 
-  const version = (scopeKey: string) => versions.get(scopeKey) ?? 0
+  const version = (scopeKey: string) => versions.get(scopeKey)
 
   const lifecycle = (scopeKey: string) => {
     const active = lifecycles.get(scopeKey)
@@ -17,7 +19,7 @@ export function createScopeReconnectRecovery(publish: (scopeKey: string, generat
     const recovered = await recover()
     if (!recovered) return false
     if (lifecycles.get(scopeKey) !== activeLifecycle) return false
-    if (generation <= version(scopeKey)) return true
+    if (generation <= versions.get(scopeKey)) return true
     versions.set(scopeKey, generation)
     publish(scopeKey, generation)
     return true
