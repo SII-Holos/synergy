@@ -1,3 +1,5 @@
+import { MonotonicKeySpace } from "./monotonic-key-space"
+
 export type SyncResource = "dag" | "todo" | "inbox" | "message"
 
 export type SyncVersion = {
@@ -45,10 +47,8 @@ export class SyncResourceFreshness {
   private readonly resources = new Map<string, SyncVersion>()
   private readonly scopes = new Map<string, ScopeVersion>()
   private readonly retiredEpochs = new Map<string, Set<string>>()
-  private readonly generations = new Map<string, number>()
-  private nextGeneration = 1
-  private readonly revisions = new Map<string, number>()
-  private nextRevision = 1
+  private readonly generations = new MonotonicKeySpace()
+  private readonly revisions = new MonotonicKeySpace()
 
   current(input: SyncResourceKey): SyncVersion | undefined {
     return this.resources.get(resourceKey(input))
@@ -57,14 +57,14 @@ export class SyncResourceFreshness {
   capture(input: SyncResourceKey): SyncResourceRequest {
     return {
       generation: this.generation(input.scopeKey),
-      revision: this.revisions.get(resourceKey(input)) ?? 0,
+      revision: this.revisions.get(resourceKey(input)),
     }
   }
 
   unchanged(input: SyncResourceKey, request: SyncResourceRequest): boolean {
     return (
       this.generation(input.scopeKey) === request.generation &&
-      (this.revisions.get(resourceKey(input)) ?? 0) === request.revision
+      this.revisions.get(resourceKey(input)) === request.revision
     )
   }
   invalidate(input: SyncResourceKey) {
@@ -74,7 +74,7 @@ export class SyncResourceFreshness {
 
   acceptResponse(input: SyncResourceKey, request: SyncResourceRequest, version: SyncVersion | undefined): boolean {
     if (this.generation(input.scopeKey) !== request.generation) return false
-    if ((this.revisions.get(resourceKey(input)) ?? 0) !== request.revision) {
+    if (this.revisions.get(resourceKey(input)) !== request.revision) {
       if (!isValidVersion(version) || !this.current(input)) return false
     }
     return this.acceptSnapshot(input, version)
@@ -166,19 +166,15 @@ export class SyncResourceFreshness {
   }
 
   private generation(scopeKey: string) {
-    const existing = this.generations.get(scopeKey)
-    if (existing !== undefined) return existing
-    const created = this.nextGeneration++
-    this.generations.set(scopeKey, created)
-    return created
+    return this.generations.ensure(scopeKey)
   }
 
   private advanceGeneration(scopeKey: string) {
-    this.generations.set(scopeKey, this.nextGeneration++)
+    this.generations.allocate(scopeKey)
   }
 
   private bumpRevision(input: SyncResourceKey) {
-    this.revisions.set(resourceKey(input), this.nextRevision++)
+    this.revisions.allocate(resourceKey(input))
   }
 
   private clearResources(scopeKey: string) {
@@ -186,8 +182,6 @@ export class SyncResourceFreshness {
     for (const key of this.resources.keys()) {
       if (key.startsWith(prefix)) this.resources.delete(key)
     }
-    for (const key of this.revisions.keys()) {
-      if (key.startsWith(prefix)) this.revisions.delete(key)
-    }
+    this.revisions.deletePrefix(prefix)
   }
 }
