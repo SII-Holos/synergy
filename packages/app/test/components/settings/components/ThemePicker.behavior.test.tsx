@@ -59,15 +59,16 @@ beforeAll(async () => {
     configFile: false,
     root: fixtureDirectory,
     plugins: [solidPlugin()],
-    // Pre-bundle at server startup so the first page load never triggers a
-    // dependency-optimization reload. On CI cold start, zod (pulled in through
-    // builtinThemes -> resolveTheme) was discovered mid-flight, the page
-    // reloaded, and the radiogroup wait raced the reload. The cache is scoped
-    // to this fixture because the sibling Playwright servers share
-    // packages/app/node_modules/.vite with different optimizer configs, and a
-    // shared cache makes every server invalidate and re-optimize each other.
+    // Pre-bundle the Solid runtime, JSX runtime, and zod (pulled in through
+    // builtinThemes -> resolveTheme) at server startup. With noDiscovery the
+    // optimizer never re-runs after the first request, so a dependency found
+    // mid-load cannot invalidate the bundle and reload the page mid-flight
+    // (which returned 500 on slow cold Coverage CI starts). The cache is
+    // scoped to this fixture because the sibling Playwright servers share
+    // packages/app/node_modules/.vite and invalidate each other's cache.
     optimizeDeps: {
-      include: ["solid-js", "solid-js/web", "zod"],
+      include: ["solid-js", "solid-js/web", "solid-js/store", "solid-js/jsx-runtime", "zod"],
+      noDiscovery: true,
     },
     cacheDir: path.join(fixtureDirectory, ".vite"),
     server: {
@@ -78,6 +79,10 @@ beforeAll(async () => {
     },
   })
   await server.listen()
+  // Transform the whole fixture module graph server-side before the browser
+  // connects: dependency optimization is finalized up front and any transform
+  // error surfaces here with its real message instead of a browser 500.
+  await server.warmupRequest("/main.tsx")
 
   const url = server.resolvedUrls?.local[0]
   if (!url) throw new Error("Expected Vite test server URL")
@@ -87,6 +92,9 @@ beforeAll(async () => {
   page.on("pageerror", (error) => pageErrors.push(error))
   page.on("console", (message) => {
     if (message.type() === "error") pageErrors.push(new Error(message.text()))
+  })
+  page.on("response", (response) => {
+    if (response.status() >= 400) pageErrors.push(new Error(`HTTP ${response.status()} for ${response.url()}`))
   })
   await page.goto(url)
   try {
