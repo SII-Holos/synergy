@@ -46,6 +46,7 @@ export {
   THEME_SEED_NAMES,
   THEME_SYNTAX_SEED_NAMES,
   normalizeSeedColors,
+  type ThemeAllSeedName,
   type ThemeCoreSeedName,
   type ThemeSeedName,
   type ThemeSeedInput,

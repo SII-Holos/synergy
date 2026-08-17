@@ -63,7 +63,7 @@ Themes define complete `light` and `dark` variants. Each variant supplies opaque
 | `diffAdd`     | Added diff content                               |
 | `diffDelete`  | Deleted diff content                             |
 
-Four optional syntax seeds (`syntaxString`, `syntaxKeyword`, `syntaxType`, `syntaxProperty`) drive the resolver's syntax highlight tokens. They are optional in serialized themes for compatibility with the original nine-seed plugin format; `parseTheme` derives them deterministically (`syntaxString ← success`, `syntaxKeyword ← primary`, `syntaxType ← info`, `syntaxProperty ← interactive`) when absent, and every parsed theme carries the full thirteen-seed set.
+Four optional syntax seeds (`syntaxString`, `syntaxKeyword`, `syntaxType`, `syntaxProperty`) drive the resolver's syntax highlight tokens. They are optional in serialized themes for compatibility with the original nine-seed plugin format. `parseTheme` validates and preserves the author-facing seed shape; the resolver normalizes missing syntax seeds at its boundary (`resolveThemeVariant` derives `syntaxString ← success`, `syntaxKeyword ← primary`, `syntaxType ← info`, `syntaxProperty ← interactive`), so a nine-seed theme round-trips unchanged through parsing and resolves with the full thirteen-seed semantics.
 
 Choose seeds as palette anchors, not as final component colors. The resolver generates the full ramp and semantic contract. Start with seeds only, inspect both modes, and add overrides only for intentional semantic exceptions. Rebuilding most tokens through overrides defeats the shared resolver and makes a theme harder to maintain.
 

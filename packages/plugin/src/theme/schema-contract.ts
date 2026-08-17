@@ -28,7 +28,11 @@ export const THEME_SEED_NAMES = THEME_CORE_SEED_NAMES
 /** The full thirteen-seed set: nine core seeds plus four optional syntax seeds. */
 export const THEME_ALL_SEED_NAMES = [...THEME_CORE_SEED_NAMES, ...THEME_SYNTAX_SEED_NAMES] as const
 
-export type ThemeSeedName = (typeof THEME_ALL_SEED_NAMES)[number]
+/** The original nine-name public union, kept backward compatible for API4 consumers. */
+export type ThemeSeedName = (typeof THEME_CORE_SEED_NAMES)[number]
+
+/** The expanded thirteen-name union (core + syntax seeds). */
+export type ThemeAllSeedName = (typeof THEME_ALL_SEED_NAMES)[number]
 
 /**
  * Author-facing seed input. The nine core seeds are required; the four syntax
@@ -37,7 +41,7 @@ export type ThemeSeedName = (typeof THEME_ALL_SEED_NAMES)[number]
 export type ThemeSeedInput = Record<ThemeCoreSeedName, HexColor> & Partial<Record<ThemeSyntaxSeedName, HexColor>>
 
 /** The complete, normalized seed set that resolver and consumers operate on. */
-export type ThemeSeedColors = Record<ThemeSeedName, HexColor>
+export type ThemeSeedColors = Record<ThemeAllSeedName, HexColor>
 
 export const HEX_COLOR_PATTERN = "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$"
 export const OPAQUE_HEX_COLOR_PATTERN = "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"

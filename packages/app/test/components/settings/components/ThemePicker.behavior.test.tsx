@@ -1,0 +1,113 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { mkdtemp, rm } from "node:fs/promises"
+import path from "node:path"
+import { chromium, type Browser, type Page } from "playwright"
+import { createServer, type ViteDevServer } from "vite"
+import solidPlugin from "vite-plugin-solid"
+
+let browser: Browser
+let page: Page
+let server: ViteDevServer
+let fixtureDirectory: string
+
+const componentPath = path.resolve(import.meta.dir, "../../../../src/components/settings/components/ThemePicker.tsx")
+
+beforeAll(async () => {
+  fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".theme-picker-fixture-"))
+  const componentImport = JSON.stringify(`/@fs/${componentPath}`)
+
+  await Promise.all([
+    Bun.write(
+      path.join(fixtureDirectory, "index.html"),
+      '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+    ),
+    Bun.write(
+      path.join(fixtureDirectory, "main.tsx"),
+      `
+        import { createComponent, createSignal } from "solid-js"
+        import { render } from "solid-js/web"
+        import { builtinThemes } from "@ericsanchezok/synergy-ui/theme"
+        import { ThemePicker } from ${componentImport}
+
+        const themes = builtinThemes.map((theme) => ({
+          id: theme.id,
+          label: theme.name,
+          theme,
+          builtin: true,
+        }))
+
+        function Harness() {
+          const [value, setValue] = createSignal("synergy")
+          return createComponent(ThemePicker, {
+            ariaLabel: "Appearance theme",
+            mode: "light",
+            themes,
+            get value() {
+              return value()
+            },
+            onChange: (id: string) => setValue(id),
+          })
+        }
+
+        render(() => createComponent(Harness, {}), document.querySelector("#root")!)
+      `,
+    ),
+  ])
+
+  server = await createServer({
+    configFile: false,
+    root: fixtureDirectory,
+    plugins: [solidPlugin()],
+    server: {
+      host: "127.0.0.1",
+      port: 5206,
+      strictPort: true,
+      fs: { allow: [path.resolve(import.meta.dir, "../../../../..")] },
+    },
+  })
+  await server.listen()
+
+  const url = server.resolvedUrls?.local[0]
+  if (!url) throw new Error("Expected Vite test server URL")
+
+  browser = await chromium.launch({ headless: true })
+  page = await browser.newPage({ viewport: { width: 800, height: 600 } })
+  await page.goto(url)
+})
+
+afterAll(async () => {
+  await page?.close()
+  await browser?.close()
+  await server?.close()
+  if (fixtureDirectory) await rm(fixtureDirectory, { recursive: true, force: true })
+})
+
+const radios = () => page.locator('[role="radio"]')
+const checkedLabel = async () =>
+  (await page.locator('[role="radio"][aria-checked="true"]').first().getAttribute("aria-label")) ?? null
+const focusedLabel = async () => (await page.locator('[role="radio"]:focus').first().getAttribute("aria-label")) ?? null
+
+describe("ThemePicker behavior", () => {
+  test("renders one radio card per built-in theme and marks the selected one", async () => {
+    await expect(radios().count()).resolves.toBe(8)
+    expect(await checkedLabel()).toBe("Synergy")
+  })
+
+  test("clicking a card reports onChange and moves the checked state", async () => {
+    await page.locator('[role="radio"][aria-label="Ayu"]').click()
+    expect(await checkedLabel()).toBe("Ayu")
+  })
+
+  test("arrow keys move focus and select the next card (roving tabindex)", async () => {
+    await page.locator('[role="radio"][aria-label="Synergy"]').focus()
+    await page.keyboard.press("ArrowRight")
+    expect(await focusedLabel()).toBe("Catppuccin")
+    expect(await checkedLabel()).toBe("Catppuccin")
+
+    await page.keyboard.press("ArrowRight")
+    expect(await focusedLabel()).toBe("Tokyo Night")
+
+    await page.keyboard.press("Home")
+    expect(await focusedLabel()).toBe("Synergy")
+  })
+})

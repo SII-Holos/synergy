@@ -7,7 +7,7 @@ import {
   THEME_ID_PATTERN,
   THEME_SYNTAX_SEED_NAMES,
   normalizeSeedColors,
-  type ThemeSeedName,
+  type ThemeAllSeedName,
 } from "./schema-contract.js"
 import { THEME_TOKEN_NAMES, THEME_TOKEN_SET } from "./tokens.js"
 import type { HexColor, Theme, ThemeVariant } from "./types.js"
@@ -27,7 +27,7 @@ const ThemeSeedsSchema = z
     Object.fromEntries([
       ...THEME_CORE_SEED_NAMES.map((name) => [name, OpaqueHexColorSchema]),
       ...THEME_SYNTAX_SEED_NAMES.map((name) => [name, OpaqueHexColorSchema.optional()]),
-    ]) as Record<ThemeSeedName, z.ZodTypeAny>,
+    ]) as Record<ThemeAllSeedName, z.ZodTypeAny>,
   )
   .strict()
 const ThemeVariantSchema = z

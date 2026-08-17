@@ -157,8 +157,8 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
     neutral[isDark ? 9 : 10],
     neutral[11],
   ])
-  tokens["text-weaker"] = neutral[isDark ? 7 : 9]
-  tokens["text-subtle"] = neutral[6]
+  tokens["text-weaker"] = neutral[isDark ? 8 : 9]
+  tokens["text-subtle"] = neutral[isDark ? 7 : 8]
   tokens["text-error"] = error[isDark ? 8 : 9]
   tokens["text-stronger"] = isDark ? "#fdfcfc" : "#020202"
   tokens["text-strong"] = tokens["text-stronger"]
@@ -281,12 +281,12 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["icon-disabled"] = neutral[isDark ? 6 : 7]
   tokens["icon-focus"] = neutral[11]
   tokens["icon-invert-base"] = isDark ? neutral[0] : "#ffffff"
-  tokens["icon-weak-base"] = neutral[isDark ? 5 : 7]
-  tokens["icon-weak-hover"] = neutral[isDark ? 6 : 8]
-  tokens["icon-weak-active"] = neutral[isDark ? 7 : 9]
-  tokens["icon-weak-selected"] = neutral[8]
+  tokens["icon-weak-base"] = neutral[isDark ? 7 : 8]
+  tokens["icon-weak-hover"] = neutral[isDark ? 8 : 9]
+  tokens["icon-weak-active"] = neutral[isDark ? 9 : 10]
+  tokens["icon-weak-selected"] = neutral[isDark ? 9 : 10]
   tokens["icon-weak-disabled"] = neutral[isDark ? 4 : 6]
-  tokens["icon-weak-focus"] = neutral[8]
+  tokens["icon-weak-focus"] = neutral[isDark ? 8 : 9]
   tokens["icon-strong-base"] = neutral[11]
   tokens["icon-strong-hover"] = isDark ? "#f6f3f3" : "#151313"
   tokens["icon-strong-active"] = isDark ? "#fcfcfc" : "#020202"
@@ -473,6 +473,7 @@ export const THEME_CONTRAST_REQUIREMENTS: readonly ThemeContrastRequirement[] = 
   })),
   { foreground: "border-focus", background: "background-base", minimum: 3 },
   { foreground: "icon-base", background: "surface-base", minimum: 3 },
+  { foreground: "icon-weak-base", background: "background-stronger", minimum: 3 },
 ] as const
 
 function assertThemeContrast(tokens: ResolvedTheme) {
