@@ -9,6 +9,7 @@ let browser: Browser
 let page: Page
 let server: ViteDevServer
 let fixtureDirectory: string
+const pageErrors: Error[] = []
 
 const componentPath = path.resolve(import.meta.dir, "../../../../src/components/settings/components/ThemePicker.tsx")
 
@@ -61,10 +62,14 @@ beforeAll(async () => {
     // Pre-bundle at server startup so the first page load never triggers a
     // dependency-optimization reload. On CI cold start, zod (pulled in through
     // builtinThemes -> resolveTheme) was discovered mid-flight, the page
-    // reloaded, and the radiogroup wait raced the reload.
+    // reloaded, and the radiogroup wait raced the reload. The cache is scoped
+    // to this fixture because the sibling Playwright servers share
+    // packages/app/node_modules/.vite with different optimizer configs, and a
+    // shared cache makes every server invalidate and re-optimize each other.
     optimizeDeps: {
       include: ["solid-js", "solid-js/web", "zod"],
     },
+    cacheDir: path.join(fixtureDirectory, ".vite"),
     server: {
       host: "127.0.0.1",
       port: 5206,
@@ -79,8 +84,18 @@ beforeAll(async () => {
 
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 800, height: 600 } })
+  page.on("pageerror", (error) => pageErrors.push(error))
+  page.on("console", (message) => {
+    if (message.type() === "error") pageErrors.push(new Error(message.text()))
+  })
   await page.goto(url)
-  await page.waitForSelector('[role="radio"]', { timeout: 60000 })
+  try {
+    await page.waitForSelector('[role="radio"]', { timeout: 60000 })
+  } catch (error) {
+    const pageError = pageErrors[0]
+    if (pageError) throw new Error(`ThemePicker fixture page failed to render: ${pageError.stack}`, { cause: error })
+    throw error
+  }
 })
 
 afterAll(async () => {
