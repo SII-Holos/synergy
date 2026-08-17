@@ -17,7 +17,6 @@
   "ignoreDependencies": [
     "@babel/preset-typescript",
     "@ericsanchezok/synergy-plugin",
-    "@ericsanchezok/synergy-script",
     "@ericsanchezok/synergy-sdk",
     "@napi-rs/canvas",
     "@scope/plugin",

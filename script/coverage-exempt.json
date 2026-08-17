@@ -384,15 +384,6 @@
         }
       ]
     },
-    "packages/script": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
-      "lcov": "coverage/lcov.info",
-      "thresholds": {
-        "lines": 80,
-        "functions": 75
-      },
-      "exempt": []
-    },
     "packages/app": {
       "command": "bun run test -- --coverage",
       "lcov": "coverage/lcov.info",
