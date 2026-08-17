@@ -47427,34 +47427,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.channel.message.received": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "channel.message.received"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "channelType": {
-                "type": "string"
-              },
-              "accountId": {
-                "type": "string"
-              },
-              "chatId": {
-                "type": "string"
-              },
-              "text": {
-                "type": "string"
-              }
-            },
-            "required": ["channelType", "accountId", "chatId", "text"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.synergy_link.target.created": {
         "type": "object",
         "properties": {
@@ -48119,9 +48091,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.channel.disconnected"
-          },
-          {
-            "$ref": "#/components/schemas/Event.channel.message.received"
           },
           {
             "$ref": "#/components/schemas/Event.synergy_link.target.created"
