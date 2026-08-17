@@ -144,12 +144,12 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["surface-diff-delete-strong"] = diffDelete[isDark ? 4 : 5]
   tokens["surface-diff-delete-stronger"] = diffDelete[isDark ? 10 : 8]
 
-  tokens["input-base"] = layer(2, 3)
-  tokens["input-hover"] = layer(3, 4)
-  tokens["input-active"] = layer(3, 4)
-  tokens["input-selected"] = layer(3, 4)
-  tokens["input-focus"] = layer(3, 4)
-  tokens["input-disabled"] = layer(3, 3)
+  tokens["input-base"] = layer(3, 3)
+  tokens["input-hover"] = layer(4, 4)
+  tokens["input-active"] = layer(4, 4)
+  tokens["input-selected"] = layer(4, 4)
+  tokens["input-focus"] = layer(4, 4)
+  tokens["input-disabled"] = layer(4, 3)
 
   tokens["text-base"] = neutral[11]
   tokens["text-weak"] = pickReadableColor(tokens["surface-base"] as HexColor, [
@@ -218,8 +218,8 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["text-on-brand-weaker"] = neutralAlpha[7]
   tokens["text-on-brand-strong"] = neutralAlpha[11]
 
-  tokens["button-secondary-base"] = layer(2, 3)
-  tokens["button-secondary-hover"] = layer(3, 4)
+  tokens["button-secondary-base"] = layer(3, 3)
+  tokens["button-secondary-hover"] = layer(4, 4)
   tokens["button-ghost-hover"] = neutralAlpha[1]
   tokens["button-ghost-hover2"] = neutralAlpha[2]
 
@@ -281,9 +281,9 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["icon-disabled"] = neutral[isDark ? 6 : 7]
   tokens["icon-focus"] = neutral[11]
   tokens["icon-invert-base"] = isDark ? neutral[0] : "#ffffff"
-  tokens["icon-weak-base"] = neutral[isDark ? 5 : 6]
-  tokens["icon-weak-hover"] = neutral[6]
-  tokens["icon-weak-active"] = neutral[7]
+  tokens["icon-weak-base"] = neutral[isDark ? 5 : 7]
+  tokens["icon-weak-hover"] = neutral[isDark ? 6 : 8]
+  tokens["icon-weak-active"] = neutral[isDark ? 7 : 9]
   tokens["icon-weak-selected"] = neutral[8]
   tokens["icon-weak-disabled"] = neutral[isDark ? 4 : 6]
   tokens["icon-weak-focus"] = neutral[8]
