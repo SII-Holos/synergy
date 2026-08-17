@@ -59,6 +59,20 @@ beforeAll(async () => {
     configFile: false,
     root: fixtureDirectory,
     plugins: [solidPlugin()],
+    resolve: {
+      alias: {
+        // The plugin package's exports map serves "import" from its gitignored
+        // dist/theme/index.js, which is absent in the Coverage job (it runs no
+        // build step; turbo test only builds it through dependsOn ^build).
+        // Resolve the theme entry to source so the fixture is hermetic on any
+        // fresh checkout.
+        "@ericsanchezok/synergy-plugin/theme": path.resolve(
+          import.meta.dir,
+          "../../../../../..",
+          "packages/plugin/src/theme/index.ts",
+        ),
+      },
+    },
     // Pre-bundle the Solid runtime, JSX runtime, and zod (pulled in through
     // builtinThemes -> resolveTheme) at server startup. With noDiscovery the
     // optimizer never re-runs after the first request, so a dependency found
