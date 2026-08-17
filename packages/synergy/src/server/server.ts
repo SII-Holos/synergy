@@ -120,6 +120,33 @@ export namespace Server {
   export const DEFAULT_URL = DEFAULT_SERVER_URL
 
   const log = Log.create({ service: "server" })
+  // Bound on how long /global/health waits for the provider state build.
+  // The daemon readiness probe aborts after 1200ms and the CLI probe after 3s,
+  // so a slow build must never hold the health response past this window.
+  const HEALTH_PROVIDER_WAIT_MS = 1000
+  /**
+   * Decide modelReady for the global health handler within a bounded wait.
+   * Races the provider-state build against `waitMs`; on timeout or build
+   * error it falls back to the last settled provider state instead of
+   * reporting ready optimistically. Pure function for direct testing.
+   */
+  export async function resolveHealthModelReady(input: {
+    list: () => Promise<Record<string, Provider.Info>>
+    listSettled: () => Record<string, Provider.Info>
+    waitMs?: number
+    onError?: (error: unknown) => void
+  }): Promise<boolean> {
+    const providers = await Promise.race([
+      input.list().catch((error) => {
+        input.onError?.(error)
+        return undefined as Record<string, Provider.Info> | undefined
+      }),
+      new Promise<Record<string, Provider.Info> | undefined>((resolve) => {
+        setTimeout(() => resolve(undefined), input.waitMs ?? HEALTH_PROVIDER_WAIT_MS)
+      }),
+    ])
+    return Object.keys(providers ?? input.listSettled()).length > 0
+  }
   const APP_DIST = (() => {
     const fromExec = path.resolve(path.dirname(fs.realpathSync(process.execPath)), "../app")
     if (fs.existsSync(fromExec)) return fromExec
@@ -588,13 +615,20 @@ export namespace Server {
             },
           }),
           async (c) => {
-            const providers = await Provider.list().catch((error) => {
-              log.warn("failed to load providers for global health", {
-                error: error instanceof Error ? error : new Error(String(error)),
-              })
-              return {}
+            // Bound the wait for the provider state build so a slow build can
+            // never stall the readiness probe (daemon 1.2s / CLI 3s windows).
+            // On timeout or build error, answer from the last settled provider
+            // state; never report ready optimistically when nothing has
+            // settled yet.
+            const modelReady = await resolveHealthModelReady({
+              list: () => Provider.list(),
+              listSettled: () => Provider.listSettled(),
+              onError: (error) => {
+                log.warn("failed to load providers for global health", {
+                  error: error instanceof Error ? error : new Error(String(error)),
+                })
+              },
             })
-            const modelReady = Object.keys(providers).length > 0
             return c.json({ healthy: true, version: Installation.VERSION, modelReady })
           },
         )
