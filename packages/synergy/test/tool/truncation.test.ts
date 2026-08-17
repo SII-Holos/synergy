@@ -140,12 +140,14 @@ describe("Truncate", () => {
       const oldId = Identifier.create("tool", false, oldTimestamp)
       oldFile = path.join(Truncate.DIR, oldId)
       await Bun.write(Bun.file(oldFile), "old content")
+      await fs.utimes(oldFile, new Date(oldTimestamp), new Date(oldTimestamp))
 
       // Create a recent file (3 days ago)
       const recentTimestamp = Date.now() - 3 * DAY_MS
       const recentId = Identifier.create("tool", false, recentTimestamp)
       recentFile = path.join(Truncate.DIR, recentId)
       await Bun.write(Bun.file(recentFile), "recent content")
+      await fs.utimes(recentFile, new Date(recentTimestamp), new Date(recentTimestamp))
 
       await Truncate.cleanup()
 
