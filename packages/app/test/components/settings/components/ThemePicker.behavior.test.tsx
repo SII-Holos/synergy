@@ -58,6 +58,13 @@ beforeAll(async () => {
     configFile: false,
     root: fixtureDirectory,
     plugins: [solidPlugin()],
+    // Pre-bundle at server startup so the first page load never triggers a
+    // dependency-optimization reload. On CI cold start, zod (pulled in through
+    // builtinThemes -> resolveTheme) was discovered mid-flight, the page
+    // reloaded, and the radiogroup wait raced the reload.
+    optimizeDeps: {
+      include: ["solid-js", "solid-js/web", "zod"],
+    },
     server: {
       host: "127.0.0.1",
       port: 5206,
@@ -73,10 +80,7 @@ beforeAll(async () => {
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 800, height: 600 } })
   await page.goto(url)
-  // Vite cold-start on CI pre-builds dependencies (zod is pulled in through
-  // builtinThemes -> resolveTheme), so the component may not be mounted yet
-  // when the first test begins; wait for the radiogroup before asserting.
-  await page.waitForSelector('[role="radio"]', { timeout: 30000 })
+  await page.waitForSelector('[role="radio"]', { timeout: 60000 })
 })
 
 afterAll(async () => {
