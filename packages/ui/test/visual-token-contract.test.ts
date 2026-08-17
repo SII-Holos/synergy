@@ -324,21 +324,21 @@ describe("Visual Token Contract", () => {
   describe("1b. Static theme fallback preserves neutral workbench surfaces", () => {
     test("light fallback keeps raised surfaces brighter than the canvas", async () => {
       const css = extractLightFallbackBlock(await readThemeCss())
-      expectCustomPropValue(css, "background-stronger", "#f8f8f8")
-      expectCustomPropValue(css, "surface-raised-base", "#fdfdfd")
-      expectCustomPropValue(css, "surface-raised-strong", "#fdfdfd")
-      expectCustomPropValue(css, "surface-raised-stronger", "#fdfdfd")
-      expectCustomPropValue(css, "surface-raised-stronger-non-alpha", "#fdfdfd")
-      expectCustomPropValue(css, "surface-inset-base", "#f2f2f2")
+      expectCustomPropValue(css, "background-stronger", "#FAFAFA")
+      expectCustomPropValue(css, "surface-raised-base", "#FFFFFF")
+      expectCustomPropValue(css, "surface-raised-strong", "#FFFFFF")
+      expectCustomPropValue(css, "surface-raised-stronger", "#FFFFFF")
+      expectCustomPropValue(css, "surface-raised-stronger-non-alpha", "#FFFFFF")
+      expectCustomPropValue(css, "surface-inset-base", "#F4F4F5")
     })
 
     test("dark fallback makes raised content brighter than the canvas", async () => {
       const css = extractDarkFallbackBlock(await readThemeCss())
-      expectCustomPropValue(css, "background-stronger", "#0d0d0d")
-      expectCustomPropValue(css, "surface-raised-base", "#161616")
-      expectCustomPropValue(css, "surface-raised-strong", "#1f1f1f")
-      expectCustomPropValue(css, "surface-raised-stronger", "#292929")
-      expectCustomPropValue(css, "surface-raised-stronger-non-alpha", "#292929")
+      expectCustomPropValue(css, "background-stronger", "#0F0F10")
+      expectCustomPropValue(css, "surface-raised-base", "#1B1B1D")
+      expectCustomPropValue(css, "surface-raised-strong", "#222326")
+      expectCustomPropValue(css, "surface-raised-stronger", "#2A2B2F")
+      expectCustomPropValue(css, "surface-raised-stronger-non-alpha", "#2A2B2F")
     })
   })
 

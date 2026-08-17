@@ -42,10 +42,15 @@ test("provides 16 variants across 8 skins and both color schemes", () => {
   expect(variants).toBe(8 * MODES.length)
 })
 
-test("built-in themes use the complete seed pipeline without general overrides", () => {
+test("all built-in themes carry the complete thirteen-seed set", () => {
   for (const theme of builtinThemes) {
     expect(Object.keys(theme.light.seeds).sort()).toEqual([...THEME_ALL_SEED_NAMES].sort())
     expect(Object.keys(theme.dark.seeds).sort()).toEqual([...THEME_ALL_SEED_NAMES].sort())
+  }
+})
+
+test("curated skins other than Synergy stay seeds-only", () => {
+  for (const theme of builtinThemes.filter((theme) => theme.id !== "synergy")) {
     expect(theme.light.overrides).toBeUndefined()
     expect(theme.dark.overrides).toBeUndefined()
   }

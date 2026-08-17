@@ -21,7 +21,8 @@ function allTokens(theme: ResolvedTheme): ThemeTokenName[] {
 
 test("resolves CSS variable references for imperative consumers", () => {
   const resolved = resolveTheme(synergyTheme).light
-  expect(resolveThemeColor(resolved, "syntax-comment")).toBe(resolveThemeColor(resolved, "text-weak"))
+  // The curated Synergy skin maps syntax-comment to the weaker text tier.
+  expect(resolveThemeColor(resolved, "syntax-comment")).toBe(resolveThemeColor(resolved, "text-weaker"))
 })
 
 function luminance(value: string): number {
@@ -286,12 +287,18 @@ describe("resolveTheme (synergy)", () => {
   })
 
   test("syntax seeds drive their corresponding resolver tokens", () => {
+    const baseTheme = parseTheme({
+      name: "Syntax seed baseline",
+      id: "syntax-seed-baseline",
+      light: { seeds: synergyTheme.light.seeds },
+      dark: { seeds: synergyTheme.dark.seeds },
+    })
     const theme = parseTheme({
-      ...synergyTheme,
+      ...baseTheme,
       light: {
-        ...synergyTheme.light,
+        ...baseTheme.light,
         seeds: {
-          ...synergyTheme.light.seeds,
+          ...baseTheme.light.seeds,
           syntaxString: "#dc2626",
           syntaxKeyword: "#7c3aed",
           syntaxType: "#0891b2",
@@ -299,7 +306,7 @@ describe("resolveTheme (synergy)", () => {
         },
       },
     })
-    const baseline = resolveTheme(synergyTheme).light
+    const baseline = resolveTheme(baseTheme).light
     const resolved = resolveTheme(theme).light
 
     expect(resolved["syntax-string"]).not.toBe(baseline["syntax-string"])

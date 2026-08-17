@@ -96,7 +96,7 @@ Desktop persists `DesktopSkinStateV2` with the source, theme ID, and both shell 
 
 ## Creating a New Selectable Theme
 
-All selectable themes — built-in or plugin — resolve through one shared registry and one resolver pipeline. Built-in curated skins are defined seeds-only in `packages/ui/src/theme/default-themes.ts` and pre-registered in the registry; plugin themes register into the same registry through the public extension boundary and appear in **Settings → General → Appearance** after installation. A plugin theme may not shadow a built-in skin id.
+All selectable themes — built-in or plugin — resolve through one shared registry and one resolver pipeline. Built-in curated skins pre-register from `packages/ui/src/theme/default-themes.ts`; the default Synergy skin keeps its curated overrides in `themes/synergy.json` (the product's shipped visual contract), while the additional built-in skins are defined seeds-only. Plugin themes register into the same registry through the public extension boundary and appear in **Settings → General → Appearance** after installation. A plugin theme may not shadow a built-in skin id.
 
 The recommended path for new distributable themes is a structured plugin theme. It uses the public extension boundary, remains independently distributable, and requires no core changes:
 
@@ -127,7 +127,7 @@ Install or refresh the local project with `synergy plugin add file:///absolute/p
 
 ### Modifying a built-in theme
 
-Edit the seed palettes in `packages/ui/src/theme/default-themes.ts` (or `themes/synergy.json` for the default Synergy skin) only when changing a curated visual contract. Keep built-in themes seeds-only so the shared resolver and its contrast assertions guarantee quality. Do not hardcode the adjustment in a consuming component. After the edit, regenerate the theme artifacts and verify the product polarity and contrast in both modes.
+Edit the seed palettes and curated overrides in `themes/synergy.json` for the default Synergy skin, or the seed palettes in `packages/ui/src/theme/default-themes.ts` for the other built-in skins, only when changing a curated visual contract. Keep non-default built-in skins seeds-only so the shared resolver and its contrast assertions guarantee quality; the Synergy default may carry overrides because it is the shipped product contract. Do not hardcode the adjustment in a consuming component. After the edit, regenerate the theme artifacts and verify the product polarity and contrast in both modes.
 
 ### Adding a new semantic token
 
