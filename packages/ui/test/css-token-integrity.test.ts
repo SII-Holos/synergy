@@ -12,7 +12,6 @@ const PHASE2_UI_FILES: FileSet[] = [
     label: "Phase 2 — UI token refs",
     globs: [
       "src/components/markdown.css",
-      "src/components/session-resonance-popover.css",
       "src/components/diagram.css",
       "src/components/session-turn.css",
       "src/components/icon-button.css",
@@ -266,7 +265,6 @@ describe("CSS Token Integrity", () => {
   test("no formerly broken token references remain in P0 scope files", async () => {
     const p0Files = [
       "src/components/markdown.css",
-      "src/components/session-resonance-popover.css",
       "src/components/diagram.css",
       "../app/src/components/prompt-input/quick-actions.css",
     ]
