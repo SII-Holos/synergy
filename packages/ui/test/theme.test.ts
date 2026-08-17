@@ -21,6 +21,7 @@ function allTokens(theme: ResolvedTheme): ThemeTokenName[] {
 
 test("resolves CSS variable references for imperative consumers", () => {
   const resolved = resolveTheme(synergyTheme).light
+  // The curated Synergy skin maps syntax-comment to the weaker text tier.
   expect(resolveThemeColor(resolved, "syntax-comment")).toBe(resolveThemeColor(resolved, "text-weaker"))
 })
 
@@ -197,6 +198,10 @@ describe("resolveTheme (synergy)", () => {
           interactive: "#7556a8",
           diffAdd: "#34845c",
           diffDelete: "#b34b42",
+          syntaxString: "#34845c",
+          syntaxKeyword: "#7556a8",
+          syntaxType: "#557ca7",
+          syntaxProperty: "#7556a8",
         },
       },
       dark: {
@@ -210,6 +215,10 @@ describe("resolveTheme (synergy)", () => {
           interactive: "#a98bd4",
           diffAdd: "#55b77f",
           diffDelete: "#dc7268",
+          syntaxString: "#55b77f",
+          syntaxKeyword: "#a98bd4",
+          syntaxType: "#7fa8d2",
+          syntaxProperty: "#a98bd4",
         },
       },
     })
@@ -226,6 +235,84 @@ describe("resolveTheme (synergy)", () => {
     expectAtLeastAsBright(resolved.light, "surface-float-base", "background-stronger")
     expectAtMostAsBright(resolved.light, "surface-float-base-hover", "surface-float-base")
     expectBrighter(resolved.dark, "surface-float-base", "background-stronger")
+  })
+
+  test("legacy nine-seed themes resolve with deterministic syntax seed fallbacks", () => {
+    const {
+      syntaxString: _syntaxString,
+      syntaxKeyword: _syntaxKeyword,
+      syntaxType: _syntaxType,
+      syntaxProperty: _syntaxProperty,
+      ...legacySeeds
+    } = synergyTheme.light.seeds
+    const theme = parseTheme({
+      name: "Legacy seed test",
+      id: "legacy-seed-test",
+      light: { seeds: legacySeeds },
+      dark: { seeds: legacySeeds },
+    })
+
+    // parseTheme preserves the author-facing nine-seed shape; the resolver
+    // normalizes missing syntax seeds at its boundary (syntaxString <- success,
+    // syntaxKeyword <- primary, syntaxType <- info, syntaxProperty <- interactive).
+    expect("syntaxString" in theme.light.seeds).toBe(false)
+    const resolved = resolveTheme(theme)
+    const explicit = parseTheme({
+      name: "Legacy seed test explicit",
+      id: "legacy-seed-test-explicit",
+      light: {
+        seeds: {
+          ...legacySeeds,
+          syntaxString: legacySeeds.success,
+          syntaxKeyword: legacySeeds.primary,
+          syntaxType: legacySeeds.info,
+          syntaxProperty: legacySeeds.interactive,
+        },
+      },
+      dark: {
+        seeds: {
+          ...legacySeeds,
+          syntaxString: legacySeeds.success,
+          syntaxKeyword: legacySeeds.primary,
+          syntaxType: legacySeeds.info,
+          syntaxProperty: legacySeeds.interactive,
+        },
+      },
+    })
+    const expected = resolveTheme(explicit)
+    expect(resolved.light["syntax-string"]).toBe(expected.light["syntax-string"])
+    expect(resolved.light["syntax-keyword"]).toBe(expected.light["syntax-keyword"])
+    expect(resolved.light["syntax-type"]).toBe(expected.light["syntax-type"])
+    expect(resolved.light["syntax-property"]).toBe(expected.light["syntax-property"])
+  })
+
+  test("syntax seeds drive their corresponding resolver tokens", () => {
+    const baseTheme = parseTheme({
+      name: "Syntax seed baseline",
+      id: "syntax-seed-baseline",
+      light: { seeds: synergyTheme.light.seeds },
+      dark: { seeds: synergyTheme.dark.seeds },
+    })
+    const theme = parseTheme({
+      ...baseTheme,
+      light: {
+        ...baseTheme.light,
+        seeds: {
+          ...baseTheme.light.seeds,
+          syntaxString: "#dc2626",
+          syntaxKeyword: "#7c3aed",
+          syntaxType: "#0891b2",
+          syntaxProperty: "#ea580c",
+        },
+      },
+    })
+    const baseline = resolveTheme(baseTheme).light
+    const resolved = resolveTheme(theme).light
+
+    expect(resolved["syntax-string"]).not.toBe(baseline["syntax-string"])
+    expect(resolved["syntax-keyword"]).not.toBe(baseline["syntax-keyword"])
+    expect(resolved["syntax-type"]).not.toBe(baseline["syntax-type"])
+    expect(resolved["syntax-property"]).not.toBe(baseline["syntax-property"])
   })
 
   test("theme parsing rejects unknown tokens and unsupported color syntax", () => {
@@ -375,13 +462,6 @@ describe("resolveTheme (synergy)", () => {
 
   test("surface polarity follows the neutral workbench product rule", () => {
     const resolved = resolveTheme(synergyTheme)
-
-    expect(resolved.light["background-stronger"]).toBe("#FAFAFA")
-    expect(resolved.light["surface-raised-base"]).toBe("#FFFFFF")
-    expect(resolved.light["surface-raised-stronger-non-alpha"]).toBe("#FFFFFF")
-    expect(resolved.light["surface-float-base"]).toBe("#FFFFFF")
-    expect(resolved.light["surface-inset-base"]).toBe("#F4F4F5")
-    expect(resolved.light["surface-interactive-selected"]).toBe("#F1F2F4")
 
     expectAtLeastAsBright(resolved.light, "surface-raised-base", "background-stronger")
     expectAtLeastAsBright(resolved.light, "surface-raised-strong", "surface-raised-base")

@@ -696,6 +696,117 @@
 
 /* ===== General settings ===== */
 
+.settings-theme-picker-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-theme-picker-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(132px, 1fr));
+  gap: 9px;
+  max-width: 570px;
+}
+
+.settings-theme-card {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+  background: var(--settings-card-bg);
+  color: var(--text-strong);
+  text-align: left;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.settings-theme-card:hover {
+  background: var(--settings-card-bg-hover);
+  border-color: color-mix(in oklch, var(--border-base) 62%, transparent);
+}
+
+.settings-theme-card:focus-visible {
+  outline: none;
+  box-shadow: var(--settings-focus-ring);
+}
+
+.settings-theme-card-active {
+  border-color: var(--border-interactive-base);
+  box-shadow: inset 0 0 0 1px var(--border-interactive-base);
+}
+
+.settings-theme-preview {
+  height: 72px;
+  display: grid;
+  grid-template-columns: 30% minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid;
+  border-radius: 5px;
+}
+
+.settings-theme-preview-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px 6px;
+  border-right: 1px solid color-mix(in srgb, currentColor 9%, transparent);
+}
+
+.settings-theme-preview-sidebar span {
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  opacity: 0.9;
+}
+
+.settings-theme-preview-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+}
+
+.settings-theme-preview-toolbar {
+  height: 12px;
+  display: block;
+  border-bottom: 1px solid;
+}
+
+.settings-theme-preview-line {
+  width: 84%;
+  height: 4px;
+  display: block;
+  border-radius: 999px;
+  opacity: 0.58;
+}
+
+.settings-theme-preview-line-strong {
+  width: 54%;
+  opacity: 0.88;
+}
+
+.settings-theme-preview-line-short {
+  width: 66%;
+}
+
+.settings-theme-card-label {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-strong);
+  font-size: var(--settings-type-control-size);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--settings-type-control-line-height);
+}
+
 .settings-color-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(112px, 1fr));
@@ -1817,6 +1928,11 @@
   }
 
   .settings-color-grid {
+    grid-template-columns: 1fr;
+    max-width: none;
+  }
+
+  .settings-theme-grid {
     grid-template-columns: 1fr;
     max-width: none;
   }
