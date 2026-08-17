@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { LLM } from "../../src/session/llm"
+import { collectText } from "./llm-stream-util"
 
 function residual(onCancel: () => void) {
   return {
@@ -19,7 +20,7 @@ describe("LLM stream ownership", () => {
       },
     }
 
-    expect(await LLM.collectText(result)).toBe("complete text")
+    expect(await collectText(result)).toBe("complete text")
     expect(cancellations).toBe(1)
   })
 
