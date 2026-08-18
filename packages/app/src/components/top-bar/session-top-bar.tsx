@@ -77,16 +77,16 @@ function SessionActionMenu(props: {
       }
     >
       <div class="stb-menu-list" role="menu">
-        <Show when={props.visibility.copySessionID}>
-          <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(handleCopySessionID)}>
-            <Icon name={getSemanticIcon("action.copy")} size="small" />
-            <span>{_(topBar.copySessionID)}</span>
-          </button>
-        </Show>
         <Show when={props.visibility.rename}>
           <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onRename)}>
             <Icon name={getSemanticIcon("action.rename")} size="small" />
             <span>{_(topBar.rename)}</span>
+          </button>
+        </Show>
+        <Show when={props.visibility.copySessionID}>
+          <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(handleCopySessionID)}>
+            <Icon name={getSemanticIcon("action.copy")} size="small" />
+            <span>{_(topBar.copySessionID)}</span>
           </button>
         </Show>
         <Show when={props.visibility.worktree}>
