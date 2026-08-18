@@ -2872,6 +2872,10 @@ msgid "app.kanban.composer.workflow"
 msgstr "Mode"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.dragReorder"
+msgstr "Drag to reorder pinned sessions"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.empty"
 msgstr "No sessions on the board"
 
@@ -2918,6 +2922,10 @@ msgstr "Open session"
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.pinPane"
 msgstr "Pin"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pinToReorderHint"
+msgstr "Pin this session to reorder it"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.removePane"

@@ -32,6 +32,7 @@ import { useLocale } from "@/context/locale"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { kanbanPage } from "@/locales/messages"
 import type { BoardPane } from "../model/pane-selection"
+import { KANBAN_REORDER_MIME } from "@/utils/session-drag"
 import { KanbanPaneComposer, type BoardWorkflowKind } from "./composer"
 import type { ControlProfileId } from "@/context/input"
 import "../kanban.css"
@@ -215,8 +216,31 @@ export function KanbanPane(props: {
               onClick={props.onPinToggle}
               title={props.pane.pinned ? _(kanbanPage.unpinPane) : _(kanbanPage.pinPane)}
             >
-              <Icon name={getSemanticIcon("action.pin")} size="small" />
+              <Icon
+                name={props.pane.pinned ? getSemanticIcon("action.unpin") : getSemanticIcon("action.pin")}
+                size="small"
+              />
             </button>
+          </Show>
+          <Show when={props.pane.kind === "live"}>
+            <span
+              class="kanban-pane-grip"
+              draggable
+              data-locked={!props.pane.pinned || undefined}
+              title={props.pane.pinned ? _(kanbanPage.dragReorder) : _(kanbanPage.pinToReorderHint)}
+              aria-label={props.pane.pinned ? _(kanbanPage.dragReorder) : _(kanbanPage.pinToReorderHint)}
+              onDragStart={(event) => {
+                if (!props.pane.pinned) {
+                  event.preventDefault()
+                  showToast({ type: "info", title: _(kanbanPage.pinToReorderHint) })
+                  return
+                }
+                event.dataTransfer?.setData(KANBAN_REORDER_MIME, props.pane.key)
+                if (event.dataTransfer) event.dataTransfer.effectAllowed = "move"
+              }}
+            >
+              <Icon name="grip" size="small" />
+            </span>
           </Show>
           <Show when={props.onRemove}>
             <button class="kanban-pane-action" onClick={props.onRemove} title={_(kanbanPage.removePane)}>

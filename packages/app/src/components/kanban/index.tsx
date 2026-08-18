@@ -16,14 +16,20 @@ import { kanbanPage } from "@/locales/messages"
 import { resolveActivityDisplay } from "@ericsanchezok/synergy-ui/session-turn-activity"
 import type { ControlProfileId } from "@/context/input"
 import type { NavigationContentProps } from "@/plugin/registries/navigation-registry"
-import { computeBoardPanes, BOARD_PANE_CAP, type BoardPane, type BoardPaneSource } from "./model/pane-selection"
+import {
+  computeBoardPanes,
+  reorderPinnedKeys,
+  BOARD_PANE_CAP,
+  type BoardPane,
+  type BoardPaneSource,
+} from "./model/pane-selection"
 import { createBoardLoader, type BoardLoaderDeps } from "./model/board-loader"
 import { KanbanPane, type BoardPaneData, type BoardPaneLoadState } from "./pane/pane"
 import type { BoardWorkflowKind } from "./pane/composer"
 import { KanbanGrid } from "./layout/grid"
 import { KanbanFocus } from "./layout/focus"
 import "./kanban.css"
-import { parseSessionDragPayload, SESSION_DRAG_MIME } from "@/utils/session-drag"
+import { KANBAN_REORDER_MIME, parseSessionDragPayload, SESSION_DRAG_MIME } from "@/utils/session-drag"
 
 import {
   defaultKanbanPreferences,
@@ -146,6 +152,9 @@ export function KanbanPanel() {
   onCleanup(() => {
     boardLoader.dispose()
   })
+  const reorderPane = (fromKey: string, toKey: string) => {
+    setStore("pinned", (pinned) => reorderPinnedKeys(pinned, fromKey, toKey))
+  }
 
   const followFor = (pane: BoardPane) => () => store.follow[pane.key] !== false
   const toggleFollow = (pane: BoardPane) =>
@@ -252,9 +261,13 @@ export function KanbanPanel() {
     setDragActive(true)
   }
   const handleDragOver = (event: DragEvent) => {
-    if (!event.dataTransfer?.types.includes(SESSION_DRAG_MIME)) return
+    const types = event.dataTransfer?.types
+    if (!types) return
+    const isSessionDrag = types.includes(SESSION_DRAG_MIME)
+    const isReorderDrag = types.includes(KANBAN_REORDER_MIME)
+    if (!isSessionDrag && !isReorderDrag) return
     event.preventDefault()
-    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy"
+    if (event.dataTransfer) event.dataTransfer.dropEffect = isSessionDrag ? "copy" : "move"
   }
   const handleDragLeave = () => {
     dragDepth = Math.max(0, dragDepth - 1)
@@ -263,6 +276,14 @@ export function KanbanPanel() {
   const handleDrop = (event: DragEvent) => {
     dragDepth = 0
     setDragActive(false)
+    const reorderKey = event.dataTransfer?.getData(KANBAN_REORDER_MIME)
+    if (reorderKey) {
+      event.preventDefault()
+      const target = (event.target as HTMLElement | null)?.closest?.("[data-pane-key]") as HTMLElement | null
+      const targetKey = target?.dataset.paneKey
+      if (targetKey && targetKey !== reorderKey) reorderPane(reorderKey, targetKey)
+      return
+    }
     const payload = event.dataTransfer?.getData(SESSION_DRAG_MIME)
     if (!payload) return
     const session = parseSessionDragPayload(payload)
@@ -369,6 +390,7 @@ export function KanbanPanel() {
               render={renderPane}
               gridCols={store.gridCols}
               gridRows={store.gridRows}
+              onReorder={reorderPane}
             />
           </Show>
         </Show>
@@ -383,13 +405,20 @@ function SwitchLayout(props: {
   render: (pane: BoardPane, variant?: "focus" | "rail") => ReturnType<typeof KanbanPanel> | null
   gridCols: number
   gridRows: number
+  onReorder: (fromKey: string, toKey: string) => void
 }) {
   const panes = () => props.panes
   const render = props.render
   return (
     <>
       <Show when={props.mode === "grid"} fallback={<></>}>
-        <KanbanGrid panes={panes()} renderPane={(pane) => render(pane)} cols={props.gridCols} rows={props.gridRows} />
+        <KanbanGrid
+          panes={panes()}
+          renderPane={(pane) => render(pane)}
+          cols={props.gridCols}
+          rows={props.gridRows}
+          onReorder={props.onReorder}
+        />
       </Show>
       <Show when={props.mode === "focus"} fallback={<></>}>
         <KanbanFocus panes={panes()} renderPane={(pane, variant) => render(pane, variant) ?? <></>} />

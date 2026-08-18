@@ -181,6 +181,7 @@ export const SemanticIconToken = {
 
   // Generic actions and state
   "action.pin": "pin",
+  "action.unpin": "pin-off",
   "action.download": "download-cloud",
   "action.add": "plus",
   "action.clear": "circle-x",

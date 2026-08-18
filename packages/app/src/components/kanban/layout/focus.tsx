@@ -3,6 +3,7 @@ import type { JSX } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { kanbanPage } from "@/locales/messages"
 import { buildPaneSnapshot, type BoardPane } from "../model/pane-selection"
+import { FlipPanes } from "../flip"
 
 export function KanbanFocus(props: {
   panes: BoardPane[]
@@ -21,9 +22,13 @@ export function KanbanFocus(props: {
   const railKeys = createMemo(() => snapshot().keys.filter((key) => key !== active()?.key))
 
   return (
-    <div data-component="kanban-layout-focus" class="kanban-focus">
+    <FlipPanes entries={props.panes} class="kanban-focus">
       <Show when={active()}>
-        {(current) => <div class="kanban-focus-main">{props.renderPane(current(), "focus")}</div>}
+        {(current) => (
+          <div class="kanban-focus-main" data-pane-key={current().key}>
+            {props.renderPane(current(), "focus")}
+          </div>
+        )}
       </Show>
       <div class="kanban-focus-rail">
         <For each={railKeys()}>
@@ -47,12 +52,14 @@ export function KanbanFocus(props: {
                   }
                 }}
               >
-                {props.renderPane(pane()!, "rail")}
+                <div class="kanban-focus-promote-inner" data-pane-key={key}>
+                  {props.renderPane(pane()!, "rail")}
+                </div>
               </div>
             )
           }}
         </For>
       </div>
-    </div>
+    </FlipPanes>
   )
 }

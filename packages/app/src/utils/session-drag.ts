@@ -31,3 +31,10 @@ export function parseSessionDragPayload(raw: string): SessionDragPayload | undef
   }
   return undefined
 }
+
+/**
+ * Board-internal drag contract for reordering pinned panes. The payload is the
+ * pane key (`scopeKey\nsessionID`); the drop target is resolved from the
+ * closest `[data-pane-key]` element under the pointer.
+ */
+export const KANBAN_REORDER_MIME = "application/x-synergy-kanban-reorder"

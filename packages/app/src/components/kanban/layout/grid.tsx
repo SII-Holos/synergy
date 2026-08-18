@@ -1,6 +1,7 @@
 import { For, createMemo } from "solid-js"
 import type { JSX } from "solid-js"
 import { buildPaneSnapshot, type BoardPane } from "../model/pane-selection"
+import { FlipPanes } from "../flip"
 
 export function KanbanGrid(props: {
   panes: BoardPane[]
@@ -9,6 +10,8 @@ export function KanbanGrid(props: {
   cols: number
   /** Fixed grid rows (1–4); extra panes overflow. */
   rows: number
+  /** Reorder pinned panes by swapping the dragged key onto a target key. */
+  onReorder: (fromKey: string, toKey: string) => void
 }) {
   // Key rows by the stable pane key so status/navigation updates that recompute
   // `panes()` never destroy and recreate the whole message tree (mirrors
@@ -23,15 +26,19 @@ export function KanbanGrid(props: {
   })
 
   return (
-    <div data-component="kanban-layout-grid" class="kanban-grid" style={gridStyle()}>
+    <FlipPanes entries={props.panes} class="kanban-grid" style={gridStyle()}>
       <For each={snapshot().keys}>
         {(key) => {
           const pane = () => snapshot().map.get(key)
           const current = pane()
           if (!current) return null
-          return <div class="kanban-grid-cell">{props.renderPane(current)}</div>
+          return (
+            <div class="kanban-grid-cell" data-pane-key={key}>
+              {props.renderPane(current)}
+            </div>
+          )
         }}
       </For>
-    </div>
+    </FlipPanes>
   )
 }

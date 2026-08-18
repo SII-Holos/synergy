@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   computeBoardPanes,
+  reorderPinnedKeys,
   splitPaneKey,
   type BoardPaneSource,
 } from "../../../../src/components/kanban/model/pane-selection"
@@ -72,5 +73,25 @@ describe("computeBoardPanes", () => {
   test("splitPaneKey parses the scope/session separator", () => {
     expect(splitPaneKey("/workspace/project\nses_1")).toEqual({ scopeKey: "/workspace/project", sessionID: "ses_1" })
     expect(splitPaneKey("naked")).toEqual({ scopeKey: "", sessionID: "naked" })
+  })
+})
+
+describe("reorderPinnedKeys", () => {
+  test("moves the dragged key onto the target position", () => {
+    expect(reorderPinnedKeys(["/a\ns1", "/a\ns2", "/a\ns3"], "/a\ns1", "/a\ns3")).toEqual([
+      "/a\ns2",
+      "/a\ns3",
+      "/a\ns1",
+    ])
+    expect(reorderPinnedKeys(["/a\ns1", "/a\ns2", "/a\ns3"], "/a\ns3", "/a\ns1")).toEqual([
+      "/a\ns3",
+      "/a\ns1",
+      "/a\ns2",
+    ])
+  })
+
+  test("returns the same array for unknown or equal keys", () => {
+    expect(reorderPinnedKeys(["/a\ns1", "/a\ns2"], "/a\ns1", "/a\ns1")).toEqual(["/a\ns1", "/a\ns2"])
+    expect(reorderPinnedKeys(["/a\ns1", "/a\ns2"], "/a\nmissing", "/a\ns1")).toEqual(["/a\ns1", "/a\ns2"])
   })
 })

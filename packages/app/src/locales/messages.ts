@@ -1323,6 +1323,8 @@ export const kanbanPage = {
   removePane: { id: "app.kanban.removePane", message: "Remove" },
   pinPane: { id: "app.kanban.pinPane", message: "Pin" },
   unpinPane: { id: "app.kanban.unpinPane", message: "Unpin" },
+  dragReorder: { id: "app.kanban.dragReorder", message: "Drag to reorder pinned sessions" },
+  pinToReorderHint: { id: "app.kanban.pinToReorderHint", message: "Pin this session to reorder it" },
   empty: { id: "app.kanban.empty", message: "No sessions on the board" },
   emptyHint: {
     id: "app.kanban.emptyHint",

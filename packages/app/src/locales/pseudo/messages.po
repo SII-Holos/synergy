@@ -2872,6 +2872,10 @@ msgid "app.kanban.composer.workflow"
 msgstr ""
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.dragReorder"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.empty"
 msgstr ""
 
@@ -2917,6 +2921,10 @@ msgstr ""
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.pinPane"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pinToReorderHint"
 msgstr ""
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────

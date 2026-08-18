@@ -2872,6 +2872,10 @@ msgid "app.kanban.composer.workflow"
 msgstr "模式"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.dragReorder"
+msgstr "拖动以调整固定会话顺序"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.empty"
 msgstr "看板上没有会话"
 
@@ -2918,6 +2922,10 @@ msgstr "打开会话"
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.pinPane"
 msgstr "固定"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pinToReorderHint"
+msgstr "先固定此会话才能调整顺序"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.removePane"

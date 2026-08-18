@@ -75,6 +75,21 @@ export function computeBoardPanes(input: { pinned: string[]; sources: BoardPaneS
   return panes
 }
 
+/**
+ * Move `fromKey` to the position currently occupied by `toKey` in the pinned
+ * order (used when the user drags one pinned pane onto another). Returns a new
+ * array; unknown or equal keys leave the order unchanged.
+ */
+export function reorderPinnedKeys(pinned: string[], fromKey: string, toKey: string): string[] {
+  const fromIndex = pinned.indexOf(fromKey)
+  const toIndex = pinned.indexOf(toKey)
+  if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return pinned
+  const next = [...pinned]
+  next.splice(fromIndex, 1)
+  next.splice(toIndex, 0, fromKey)
+  return next
+}
+
 function paneKey(source: BoardPaneSource): string {
   return `${source.scopeKey}\n${source.entry.id}`
 }

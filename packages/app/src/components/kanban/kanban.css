@@ -176,6 +176,11 @@
   cursor: pointer;
 }
 
+.kanban-focus-promote-inner {
+  height: 100%;
+  min-height: 0;
+}
+
 /* --- Add-session chooser --- */
 
 .kanban-add-menu {
@@ -405,6 +410,35 @@
 
 .kanban-pane-action[data-active] {
   color: var(--text-strong);
+}
+
+.kanban-pane-grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--text-weaker);
+  cursor: grab;
+  flex: none;
+}
+
+.kanban-pane-grip:hover {
+  color: var(--text-strong);
+  background: var(--surface-base-interactive-active);
+}
+
+.kanban-pane-grip[data-locked] {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.kanban-pane-grip[data-locked]:hover {
+  color: var(--text-weaker);
+  background: transparent;
 }
 
 .kanban-pane-body {
