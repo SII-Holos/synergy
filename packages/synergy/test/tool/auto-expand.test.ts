@@ -368,11 +368,43 @@ describe("ToolResolver auto-expand resolution", () => {
       },
     })
   })
+  test("concurrent auto-expands of different groups keep both in toolState", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const idA = freshID("auto_concurrent_a")
+        const idB = freshID("auto_concurrent_b")
+        await registerTool(idA, { mode: "group", group: "auto-concurrent-a" })
+        await registerTool(idB, { mode: "group", group: "auto-concurrent-b" })
+        const session = await Session.create({})
+        const input = {
+          agent: allowAllAgent,
+          model,
+          sessionID: session.id,
+          session,
+          processor: runtimeProcessor(),
+          includeMCP: false,
+        }
+
+        const [a, b] = await Promise.all([
+          ToolResolver.autoExpandTool({ ...input }, idA),
+          ToolResolver.autoExpandTool({ ...input }, idB),
+        ])
+        expect(a).toBeDefined()
+        expect(b).toBeDefined()
+        const fresh = await Session.get(session.id)
+        expect(fresh.toolState?.expandedGroups).toContain("auto-concurrent-a")
+        expect(fresh.toolState?.expandedGroups).toContain("auto-concurrent-b")
+      },
+    })
+  })
 })
 
 type TurnResult = {
   parts: Array<Record<string, any>>
   events: Array<{ type: string; tool?: string; callID?: string; data?: Record<string, unknown> }>
+  streamInput?: Record<string, unknown>
 }
 
 async function runAutoExpandTurn(input: {
@@ -458,26 +490,30 @@ async function runAutoExpandTurn(input: {
       model,
       abort: new AbortController().signal,
     })
-    ;(AgentTurn.stream as any) = mock(async () => ({
-      fullStream: (async function* () {
-        yield { type: "start" }
-        yield { type: "tool-input-start", id: input.callID, toolName: input.toolName }
-        yield { type: "tool-call", toolCallId: input.callID, toolName: input.toolName, input: input.args }
-        if (input.emitToolError) {
-          yield {
-            type: "tool-error",
-            toolCallId: input.callID,
-            toolName: input.toolName,
-            input: input.args,
-            error: new Error(`Model tried to call unavailable tool '${input.toolName}'`),
+    let streamInputSeen: Record<string, unknown> | undefined
+    ;(AgentTurn.stream as any) = mock(async (streamInputArg: any) => {
+      streamInputSeen = streamInputArg
+      return {
+        fullStream: (async function* () {
+          yield { type: "start" }
+          yield { type: "tool-input-start", id: input.callID, toolName: input.toolName }
+          yield { type: "tool-call", toolCallId: input.callID, toolName: input.toolName, input: input.args }
+          if (input.emitToolError) {
+            yield {
+              type: "tool-error",
+              toolCallId: input.callID,
+              toolName: input.toolName,
+              input: input.args,
+              error: new Error(`Model tried to call unavailable tool '${input.toolName}'`),
+            }
           }
-        }
-        yield { type: "finish" }
-      })(),
-      contextUsageDraft: undefined,
-      usage: Promise.resolve(undefined),
-      async dispose() {},
-    }))
+          yield { type: "finish" }
+        })(),
+        contextUsageDraft: undefined,
+        usage: Promise.resolve(undefined),
+        async dispose() {},
+      }
+    })
 
     await processor.process({
       user: { id: "msg_user" } as any,
@@ -495,7 +531,7 @@ async function runAutoExpandTurn(input: {
       model,
     } as any)
 
-    return { parts: [...parts.values()], events }
+    return { parts: [...parts.values()], events, streamInput: streamInputSeen }
   } finally {
     ;(AgentTurn.stream as any) = originals.stream
     ;(Session.updatePart as any) = originals.updatePart
@@ -703,6 +739,56 @@ describe("SessionProcessor auto-expand interception", () => {
         expect(part!.state.status).toBe("error")
         expect(part!.state.error).toContain("unavailable tool")
         expect((await Session.get(session.id)).toolState).toBeUndefined()
+      },
+    })
+  })
+  test("does not leak processor-internal fields into the AgentTurn stream input", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const id = await registerTool(freshID("auto_no_leak"), { mode: "group", group: "auto-test" })
+        const session = await Session.create({})
+        const resolved = await ToolResolver.resolveWithAvailability({
+          agent: allowAllAgent,
+          model,
+          sessionID: session.id,
+          session,
+          processor: runtimeProcessor(),
+          includeMCP: false,
+        })
+
+        const { parts, events, streamInput } = await runAutoExpandTurn({
+          sessionID: session.id,
+          messageID: "msg_auto_no_leak",
+          toolName: id,
+          callID: "call_auto_no_leak",
+          args: { value: 1 },
+          executionTools: resolved.executionTools,
+          executorKinds: resolved.executorKinds,
+          autoExpandable: resolved.autoExpandable,
+          resolverInput: {
+            agent: allowAllAgent,
+            model,
+            sessionID: session.id,
+            session,
+            includeMCP: false,
+          },
+        })
+
+        // The worker protocol envelope schema is strict; processor-internal
+        // fields must never be forwarded to AgentTurn.stream or the worker
+        // serialization would reject the whole turn.
+        expect(streamInput).toBeDefined()
+        expect("autoExpandable" in streamInput!).toBe(false)
+        expect("resolverInput" in streamInput!).toBe(false)
+        expect("executionTools" in streamInput!).toBe(false)
+        expect("executorKinds" in streamInput!).toBe(false)
+
+        const part = parts.find((item) => item.type === "tool" && item.callID === "call_auto_no_leak")
+        expect(part).toBeDefined()
+        expect(part!.state.status).toBe("completed")
+        expect(events.some((item) => item.type === "tool.auto_expanded")).toBe(true)
       },
     })
   })
