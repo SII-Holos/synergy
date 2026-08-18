@@ -2500,7 +2500,7 @@ function NoteEditor(props: {
             />
           </div>
 
-          <div class="min-h-0 flex-1 px-4 py-4">
+          <div class="flex min-h-0 flex-1 flex-col px-4 py-4">
             <DocumentEditorCore
               content={baseNote()?.content}
               onUpdate={() => markDirty("content")}
