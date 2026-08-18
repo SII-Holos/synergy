@@ -33,6 +33,7 @@ function attachment(input: {
   filename: string
   hidden?: boolean
   localPath?: string
+  deliverable?: boolean
   detectedFrom?: "markdown" | "file_url" | "line" | "path"
 }): MessageV2.AttachmentPart {
   return {
@@ -45,13 +46,14 @@ function attachment(input: {
     filename: input.filename,
     presentation: input.hidden ? { hidden: true } : { renderer: "image" },
     ...(input.localPath ? { localPath: input.localPath } : {}),
-    ...(input.detectedFrom
+    ...(input.deliverable !== undefined || input.detectedFrom
       ? {
           metadata: {
             kind: "attachment",
             attachment: {
               originTool: "process",
-              detectedFrom: input.detectedFrom,
+              ...(input.detectedFrom ? { detectedFrom: input.detectedFrom } : {}),
+              ...(input.deliverable !== undefined ? { deliverable: input.deliverable } : {}),
             },
           },
         }
@@ -256,9 +258,8 @@ describe("Channel task outbound parts", () => {
     ).toEqual([])
   })
 
-  test("deduplicates identical content that appears under different asset urls", async () => {
-    const buffer = Buffer.from([137, 80, 78, 71, 1, 2, 3, 4])
-    const hashedID = await Asset.write(buffer, "image/png", "result.png")
+  test("deduplicates attachments that share the same asset url", async () => {
+    const pngID = await Asset.write(Buffer.from([137, 80, 78, 71]), "image/png", "preview.png")
     const rootID = "message_root"
     const toolMessageID = "message_tool"
 
@@ -275,19 +276,18 @@ describe("Channel task outbound parts", () => {
                 messageID: toolMessageID,
                 attachments: [
                   attachment({
-                    id: "attachment_hashed",
+                    id: "attachment_first",
                     messageID: toolMessageID,
-                    url: `asset://${hashedID}`,
+                    url: `asset://${pngID}`,
                     mime: "image/png",
-                    filename: "result.png",
+                    filename: "preview.png",
                   }),
                   attachment({
-                    id: "attachment_alias",
+                    id: "attachment_second",
                     messageID: toolMessageID,
-                    url: "asset://n.png",
-                    localPath: Asset.resolvePath(hashedID),
+                    url: `asset://${pngID}`,
                     mime: "image/png",
-                    filename: "n.png",
+                    filename: "preview.png",
                   }),
                 ],
               }),
@@ -301,14 +301,14 @@ describe("Channel task outbound parts", () => {
     ).toEqual([
       {
         type: "image",
-        path: Asset.resolvePath(hashedID),
-        filename: "result.png",
+        path: Asset.resolvePath(pngID),
+        filename: "preview.png",
         contentType: "image/png",
       },
     ])
   })
 
-  test("filters attachments discovered incidentally from tool output", async () => {
+  test("filters attachments classified as non-deliverables", async () => {
     const pngID = await Asset.write(Buffer.from([137, 80, 78, 71]), "image/png", "preview.png")
     const rootID = "message_root"
     const toolMessageID = "message_tool"
@@ -331,7 +331,44 @@ describe("Channel task outbound parts", () => {
                     url: `asset://${pngID}`,
                     mime: "image/png",
                     filename: "preview.png",
-                    detectedFrom: "line",
+                    deliverable: false,
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+        rootID,
+        terminalMessageID: "message_terminal",
+        includeText: false,
+      }),
+    ).toEqual([])
+  })
+
+  test("filters legacy incidental attachments via the detectedFrom fallback", async () => {
+    const pngID = await Asset.write(Buffer.from([137, 80, 78, 71]), "image/png", "preview.png")
+    const rootID = "message_root"
+    const toolMessageID = "message_tool"
+
+    expect(
+      await projectChannelTaskParts({
+        messages: [
+          message({
+            id: toolMessageID,
+            rootID,
+            finish: "tool-calls",
+            parts: [
+              completedTool({
+                id: "tool_legacy_incidental",
+                messageID: toolMessageID,
+                attachments: [
+                  attachment({
+                    id: "attachment_legacy_incidental",
+                    messageID: toolMessageID,
+                    url: `asset://${pngID}`,
+                    mime: "image/png",
+                    filename: "preview.png",
+                    detectedFrom: "path",
                   }),
                 ],
               }),
@@ -346,7 +383,8 @@ describe("Channel task outbound parts", () => {
   })
 
   test("keeps attachments referenced explicitly via markdown and file urls", async () => {
-    const pngID = await Asset.write(Buffer.from([137, 80, 78, 71]), "image/png", "preview.png")
+    const markdownID = await Asset.write(Buffer.from([137, 80, 78, 71, 1]), "image/png", "markdown.png")
+    const fileUrlID = await Asset.write(Buffer.from([137, 80, 78, 71, 2]), "image/png", "file-url.png")
     const rootID = "message_root"
     const toolMessageID = "message_tool"
 
@@ -365,17 +403,19 @@ describe("Channel task outbound parts", () => {
                   attachment({
                     id: "attachment_markdown",
                     messageID: toolMessageID,
-                    url: `asset://${pngID}`,
+                    url: `asset://${markdownID}`,
                     mime: "image/png",
-                    filename: "preview.png",
+                    filename: "markdown.png",
+                    deliverable: true,
                     detectedFrom: "markdown",
                   }),
                   attachment({
                     id: "attachment_file_url",
                     messageID: toolMessageID,
-                    url: `asset://${pngID}`,
+                    url: `asset://${fileUrlID}`,
                     mime: "image/png",
-                    filename: "preview.png",
+                    filename: "file-url.png",
+                    deliverable: true,
                     detectedFrom: "file_url",
                   }),
                 ],
@@ -390,8 +430,14 @@ describe("Channel task outbound parts", () => {
     ).toEqual([
       {
         type: "image",
-        path: Asset.resolvePath(pngID),
-        filename: "preview.png",
+        path: Asset.resolvePath(markdownID),
+        filename: "markdown.png",
+        contentType: "image/png",
+      },
+      {
+        type: "image",
+        path: Asset.resolvePath(fileUrlID),
+        filename: "file-url.png",
         contentType: "image/png",
       },
     ])

@@ -44,38 +44,15 @@ export async function projectChannelTaskParts(input: ProjectInput): Promise<Outb
       if (part.type !== "tool" || part.state.status !== "completed") continue
       for (const attachment of part.state.attachments ?? []) {
         if (attachment.presentation?.hidden) continue
-        if (isIncidentalAttachment(attachment)) continue
-        const fingerprint = attachmentFingerprint(attachment)
-        if (seen.has(fingerprint)) continue
-        seen.add(fingerprint)
+        if (!MessageV2.isDeliverableAttachment(attachment)) continue
+        if (seen.has(attachment.url)) continue
+        seen.add(attachment.url)
         const outbound = await projectAttachment(attachment)
         if (outbound) result.push(outbound)
       }
     }
   }
   return result
-}
-
-/**
- * Content-addressed asset ids already encode the attachment bytes (sha256
- * prefix), so they deduplicate identical content across different urls.
- * Non-hash urls fall back to the raw url.
- */
-function attachmentFingerprint(attachment: MessageV2.AttachmentPart): string {
-  const assetID = assetIDFromUrl(attachment.url)
-  if (assetID && Asset.isValidId(assetID)) return `asset:${assetID}`
-  return `url:${attachment.url}`
-}
-
-/**
- * Skip attachments discovered incidentally from tool output (file paths that
- * merely appeared in a command's stdout). Only explicit deliverables — the
- * attach tool, markdown references, file urls — are projected to channels.
- */
-function isIncidentalAttachment(attachment: MessageV2.AttachmentPart): boolean {
-  const discovered = attachment.metadata?.attachment as { detectedFrom?: string; originTool?: string } | undefined
-  if (!discovered?.detectedFrom) return false
-  return discovered.detectedFrom === "line" || discovered.detectedFrom === "path"
 }
 
 export async function loadChannelTaskMessages(input: {

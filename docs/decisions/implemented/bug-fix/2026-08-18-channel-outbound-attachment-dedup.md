@@ -1,27 +1,26 @@
-# Decision Record: Deduplicate and filter attachments in channel outbound projection
+# Decision Record: Classify attachment deliverability at creation for channel outbound projection
 
 Status: implemented
 
 ## Problem
 
-The Feishu channel outbound bridge projects every attachment from the whole task tree (`projectChannelTaskParts` in `packages/synergy/src/channel/outbound-parts.ts`) onto each terminal reply. Two defects made the same image ride along on every outbound message:
-
-- Deduplication keyed on `attachment.url` fails when identical content exists under different asset urls (a content-addressed asset id and a legacy named id such as `asset://n.png` point at the same bytes), so the same file is uploaded and sent repeatedly.
-- `AttachmentDiscovery` (`packages/synergy/src/tool/attachment-discovery.ts`) attaches any image path that merely appears in a bash command's stdout (`detectedFrom: "line" | "path"`). Such incidentally discovered attachments were projected forever, so a stray emoji image found by a `find` probe was attached to every later channel message.
+The Feishu channel outbound bridge projects the completed tool attachments of a task tree (`projectChannelTaskParts` in `packages/synergy/src/channel/outbound-parts.ts`) onto every terminal reply. `AttachmentDiscovery` (`packages/synergy/src/tool/attachment-discovery.ts`) attaches any supported file path that merely appears in a bash command's stdout (`detectedFrom: "line" | "path"`) as a first-class attachment, indistinguishable from explicit deliverables. In boss-session flows a debug probe once matched a Flutter pub-cache test image; that incidental attachment was then re-projected onto every later channel message.
 
 ## Decision
 
-`projectChannelTaskParts` now deduplicates by content fingerprint and filters incidentally discovered attachments:
+Attachment deliverability is classified **once, at creation**, and consumers only read the verdict:
 
-- `attachmentFingerprint(attachment)` returns the content-addressed asset id when the url is a valid hash id (`Asset.isValidId`), because `Asset.generateId` is the sha256 prefix of the file bytes. Non-hash urls fall back to the raw url. The `seen` set is keyed on this fingerprint instead of the url.
-- `isIncidentalAttachment(attachment)` skips attachments whose `metadata.attachment.detectedFrom` is `"line"` or `"path"` (bash probe output), keeping only explicit deliverables: the `attach` tool, markdown references, and `file_url` references.
+- `AttachmentDiscovery.discover` writes `metadata.attachment.deliverable` on every attachment it creates: `true` for explicit references (`detectedFrom: "markdown" | "file_url"`), `false` for paths that merely appeared in tool output (`"line" | "path"`).
+- The `attach` tool writes `deliverable: true` on its attachments.
+- `MessageV2.isDeliverableAttachment(attachment)` is the single predicate: it prefers the canonical `deliverable` verdict and falls back to the legacy `detectedFrom` heuristic for attachments persisted before the verdict existed, so already-materialized incidental attachments also stop being projected.
+- `projectChannelTaskParts` skips non-deliverables via that predicate and keeps deduplicating by asset url within the projection. Deduplication by content fingerprint was considered and rejected: content-addressed asset ids already encode the bytes, so identical content stored under two resolvable urls cannot occur in the current codebase, and legacy named ids (`asset://n.png`) are rejected earlier by `resolveAttachmentSource` — the fingerprint key was unreachable and its test passed on the old code.
 
 ## Alternatives considered
 
 - **Narrow the projection to the terminal task segment** — rejected: the existing contract and tests require projecting tool attachments from earlier assistant steps in the same task; shrinking the range would drop legitimate deliverables.
-- **Read file bytes and hash them at projection time** — rejected: hash asset ids already encode content; reading every candidate would add I/O for no gain.
-- **Only extend the attachment-discovery skip list** — rejected as insufficient here: it prevents new false positives but does not stop already-materialized attachments from being projected, and the dedup defect is independent.
+- **Deduplicate by content fingerprint (hash asset id) instead of url** — rejected: unreachable in the current codebase. `Asset.isValidId` only accepts 16-hex ids; the legacy alias url (`asset://n.png`) is discarded by `resolveAttachmentSource` before projection, and two _resolvable_ urls for the same bytes cannot exist because `Asset.generateId` is a content hash. Uniqueness is already guaranteed by url dedup, per-task root scoping, and the `channelOutboundSent` marker.
+- **Filter by re-deriving `detectedFrom` heuristics in the projection layer** — rejected: it duplicates discovery's classification vocabulary in a downstream consumer, so a future source of incidental attachments would need the filter copied again, and it leaves the model context and UI consuming the same incidental attachments.
 
 ## Consequences
 
-Identical content is delivered at most once per outbound projection even under different asset urls, and bash-probe artifacts no longer leak into channel messages. Explicit attachments and named (non-hash) asset urls keep their prior behavior. Files that were already persisted as incidental attachments stay in session history but are no longer projected.
+Explicit deliverables (attach tool, markdown references, file urls) are projected exactly as before. Incidental tool-output artifacts are no longer projected to channels — including ones already persisted before this change, via the legacy fallback. The classification lives in the attachment metadata schema at the point of creation, so every consumer (channel projection today, model context or UI later) reads one verdict instead of re-deriving heuristics.
