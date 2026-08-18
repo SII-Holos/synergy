@@ -33,6 +33,7 @@ function attachment(input: {
   filename: string
   hidden?: boolean
   localPath?: string
+  detectedFrom?: "markdown" | "file_url" | "line" | "path"
 }): MessageV2.AttachmentPart {
   return {
     id: input.id,
@@ -44,6 +45,17 @@ function attachment(input: {
     filename: input.filename,
     presentation: input.hidden ? { hidden: true } : { renderer: "image" },
     ...(input.localPath ? { localPath: input.localPath } : {}),
+    ...(input.detectedFrom
+      ? {
+          metadata: {
+            kind: "attachment",
+            attachment: {
+              originTool: "process",
+              detectedFrom: input.detectedFrom,
+            },
+          },
+        }
+      : {}),
   }
 }
 
@@ -242,5 +254,146 @@ describe("Channel task outbound parts", () => {
         includeText: false,
       }),
     ).toEqual([])
+  })
+
+  test("deduplicates identical content that appears under different asset urls", async () => {
+    const buffer = Buffer.from([137, 80, 78, 71, 1, 2, 3, 4])
+    const hashedID = await Asset.write(buffer, "image/png", "result.png")
+    const rootID = "message_root"
+    const toolMessageID = "message_tool"
+
+    expect(
+      await projectChannelTaskParts({
+        messages: [
+          message({
+            id: toolMessageID,
+            rootID,
+            finish: "tool-calls",
+            parts: [
+              completedTool({
+                id: "tool_dupe",
+                messageID: toolMessageID,
+                attachments: [
+                  attachment({
+                    id: "attachment_hashed",
+                    messageID: toolMessageID,
+                    url: `asset://${hashedID}`,
+                    mime: "image/png",
+                    filename: "result.png",
+                  }),
+                  attachment({
+                    id: "attachment_alias",
+                    messageID: toolMessageID,
+                    url: "asset://n.png",
+                    localPath: Asset.resolvePath(hashedID),
+                    mime: "image/png",
+                    filename: "n.png",
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+        rootID,
+        terminalMessageID: "message_terminal",
+        includeText: false,
+      }),
+    ).toEqual([
+      {
+        type: "image",
+        path: Asset.resolvePath(hashedID),
+        filename: "result.png",
+        contentType: "image/png",
+      },
+    ])
+  })
+
+  test("filters attachments discovered incidentally from tool output", async () => {
+    const pngID = await Asset.write(Buffer.from([137, 80, 78, 71]), "image/png", "preview.png")
+    const rootID = "message_root"
+    const toolMessageID = "message_tool"
+
+    expect(
+      await projectChannelTaskParts({
+        messages: [
+          message({
+            id: toolMessageID,
+            rootID,
+            finish: "tool-calls",
+            parts: [
+              completedTool({
+                id: "tool_incidental",
+                messageID: toolMessageID,
+                attachments: [
+                  attachment({
+                    id: "attachment_incidental",
+                    messageID: toolMessageID,
+                    url: `asset://${pngID}`,
+                    mime: "image/png",
+                    filename: "preview.png",
+                    detectedFrom: "line",
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+        rootID,
+        terminalMessageID: "message_terminal",
+        includeText: false,
+      }),
+    ).toEqual([])
+  })
+
+  test("keeps attachments referenced explicitly via markdown and file urls", async () => {
+    const pngID = await Asset.write(Buffer.from([137, 80, 78, 71]), "image/png", "preview.png")
+    const rootID = "message_root"
+    const toolMessageID = "message_tool"
+
+    expect(
+      await projectChannelTaskParts({
+        messages: [
+          message({
+            id: toolMessageID,
+            rootID,
+            finish: "tool-calls",
+            parts: [
+              completedTool({
+                id: "tool_explicit",
+                messageID: toolMessageID,
+                attachments: [
+                  attachment({
+                    id: "attachment_markdown",
+                    messageID: toolMessageID,
+                    url: `asset://${pngID}`,
+                    mime: "image/png",
+                    filename: "preview.png",
+                    detectedFrom: "markdown",
+                  }),
+                  attachment({
+                    id: "attachment_file_url",
+                    messageID: toolMessageID,
+                    url: `asset://${pngID}`,
+                    mime: "image/png",
+                    filename: "preview.png",
+                    detectedFrom: "file_url",
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+        rootID,
+        terminalMessageID: "message_terminal",
+        includeText: false,
+      }),
+    ).toEqual([
+      {
+        type: "image",
+        path: Asset.resolvePath(pngID),
+        filename: "preview.png",
+        contentType: "image/png",
+      },
+    ])
   })
 })
