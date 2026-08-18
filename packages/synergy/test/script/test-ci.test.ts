@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
-import { runSequentialShards, shardArgs } from "../../script/test-ci"
+import { runSequentialShards, shardArgs, runBunTest } from "../../script/test-ci"
+import { createIsolatedTestEnv } from "../../script/test-env"
 
 describe("Synergy CI test runner", () => {
   test("builds isolated Bun test shard arguments", () => {
@@ -39,5 +40,36 @@ describe("Synergy CI test runner", () => {
 
     expect(exitCode).toBe(17)
     expect(calls.map((args) => args.at(-1))).toEqual(["--shard=1/4", "--shard=2/4"])
+  })
+})
+
+describe("CI orchestrator isolation env", () => {
+  test("runBunTest spawns with the injected isolated env and deletes SYNERGY_HOME", async () => {
+    const calls: Array<{ args: string[]; env: Record<string, string | undefined> }> = []
+    const originalSpawn = Bun.spawn
+    // @ts-expect-error – test-only interception of Bun.spawn
+    Bun.spawn = ((command: string[], options: { env?: Record<string, string | undefined> }) => {
+      calls.push({ args: command, env: options.env ?? {} })
+      return {
+        exited: Promise.resolve(0),
+        stdin: undefined,
+        stdout: undefined,
+        stderr: undefined,
+      } as never
+    }) as typeof Bun.spawn
+    try {
+      const isolated = await createIsolatedTestEnv()
+      try {
+        const exit = await runBunTest(["test", "--shard=1/4"], isolated.env)
+        expect(exit).toBe(0)
+        expect(calls).toHaveLength(1)
+        expect(calls[0]!.env["SYNERGY_TEST_HOME"]).toBe(isolated.env["SYNERGY_TEST_HOME"])
+        expect("SYNERGY_HOME" in calls[0]!.env).toBe(false)
+      } finally {
+        await isolated.dispose()
+      }
+    } finally {
+      Bun.spawn = originalSpawn
+    }
   })
 })
