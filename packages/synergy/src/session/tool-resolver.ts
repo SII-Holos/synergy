@@ -1,3 +1,4 @@
+import Ajv2020 from "ajv/dist/2020"
 import { Global } from "@/global"
 import { type Tool as AITool, tool, jsonSchema, type ToolCallOptions, type JSONSchema7 } from "ai"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
@@ -225,6 +226,7 @@ export namespace ToolResolver {
   export interface Availability {
     visible: Definition[]
     diagnostics: Map<string, ToolDiagnosticInfo>
+    autoExpandable: Set<string>
   }
 
   export interface ResolvedTools {
@@ -232,6 +234,7 @@ export namespace ToolResolver {
     executionTools: Record<string, AITool>
     executorKinds: Record<string, ToolExecutorKind>
     activeToolIDs: string[]
+    autoExpandable: Set<string>
   }
 
   interface PluginGateData {
@@ -1138,6 +1141,7 @@ export namespace ToolResolver {
   async function applyAvailability(defs: Definition[], input: Omit<Input, "processor">): Promise<Availability> {
     const visible: Definition[] = []
     const diagnostics = new Map<string, ToolDiagnosticInfo>()
+    const autoExpandable = new Set<string>()
     const disabled = PermissionNext.disabled(
       defs.map((item) => item.id),
       PermissionNext.merge(input.agent.permission, PermissionNext.sessionRuleset(input.session)),
@@ -1177,6 +1181,17 @@ export namespace ToolResolver {
           forcedTools: forcedToolIDs,
         })
       ) {
+        const normalized = ToolExposure.normalize(def.id, def.exposure)
+        if (
+          (normalized.mode === "group" || normalized.mode === "search") &&
+          !isEphemeral &&
+          !disabled.has(def.id) &&
+          ToolExposure.userAllows(def.id, input.userTools) &&
+          !disabled.has("expand_tools") &&
+          ToolExposure.userAllows("expand_tools", input.userTools)
+        ) {
+          autoExpandable.add(def.id)
+        }
         diagnostics.set(
           def.id,
           SessionModePolicy.unavailable({
@@ -1268,7 +1283,7 @@ export namespace ToolResolver {
       visible.push(def)
     }
 
-    return { visible, diagnostics }
+    return { visible, diagnostics, autoExpandable }
   }
 
   function diagnosticRuntimeTool(input: Input, diagnostic: ToolDiagnosticInfo): AITool {
@@ -2062,6 +2077,118 @@ export namespace ToolResolver {
       executionTools,
       executorKinds,
       activeToolIDs,
+      autoExpandable: availabilityResult.autoExpandable,
+    }
+  }
+
+  export interface AutoExpandedTool {
+    tool: AITool
+    executor: ToolExecutorKind
+    inputSchema?: JSONSchema7
+    group?: string
+    activatedTool?: string
+  }
+
+  /**
+   * Validate model-supplied arguments against the real tool schema before an
+   * auto-expanded call is dispatched. Deferred tools are absent from
+   * toolDefinitions (the diagnostic stub carries an open schema), so the AI SDK
+   * never validated the arguments; MCP and plugin execution paths do not
+   * revalidate. Returns an invalid-arguments message, or undefined when the
+   * input satisfies the schema or the schema cannot be compiled.
+   */
+  export function validateToolInput(
+    toolName: string,
+    schema: JSONSchema7 | undefined,
+    input: unknown,
+  ): string | undefined {
+    if (!schema) return undefined
+    try {
+      const ajv = new Ajv2020({ allErrors: true, strict: false })
+      const validate = ajv.compile(schema as any)
+      if (validate(input)) return undefined
+      return `The ${toolName} tool was called with invalid arguments: ${ajv.errorsText(validate.errors)}.\nPlease rewrite the input so it satisfies the expected schema.`
+    } catch {
+      // Uncompilable schemas (e.g. unsupported draft) fall back to the previous
+      // behavior; execution paths with their own validation still apply.
+      return undefined
+    }
+  }
+
+  /**
+   * Resolve the runtime tool for a single tool name against a fresh session
+   * snapshot. Returns undefined when the tool is not visible under the current
+   * permission, user-tool, or mode policy — fail closed.
+   */
+  export async function runtimeToolFor(
+    input: Input,
+    toolName: string,
+  ): Promise<{ tool: AITool; executor: ToolExecutorKind; inputSchema?: JSONSchema7 } | undefined> {
+    using _ = log.time("runtimeToolFor")
+    const session = input.session ?? (await Session.get(input.sessionID).catch(() => undefined))
+    const availabilityResult = await applyAvailability(await collectDefinitions({ ...input, session }), {
+      ...input,
+      session,
+    })
+    const item = availabilityResult.visible.find((def) => def.id === toolName)
+    if (!item) return undefined
+    const runtimeInput = { ...input, session, activeToolIDs: availabilityResult.visible.map((def) => def.id) }
+    const runtimeTool = item.createRuntimeTool?.(runtimeInput)
+    if (!runtimeTool) return undefined
+    return {
+      tool: withExecutionDeduplication(runtimeInput, runtimeTool),
+      executor: item.executor ?? ToolExecutor.classify(item.id, item.source),
+      inputSchema: item.inputSchema,
+    }
+  }
+
+  /**
+   * Persist the expansion for a single deferred tool (group or activation)
+   * through the canonical session toolState, then resolve its runtime tool
+   * against the fresh session. Returns undefined when the tool does not exist
+   * or remains hidden after expansion — fail closed.
+   */
+  export async function autoExpandTool(input: Input, toolName: string): Promise<AutoExpandedTool | undefined> {
+    using _ = log.time("autoExpandTool")
+    const session = await Session.get(input.sessionID).catch(() => undefined)
+    if (!session) return undefined
+    const { ToolDiscovery } = await import("@/tool/discovery")
+    const catalog = await ToolDiscovery.collect({
+      providerID: ToolDiscovery.providerIDFromModel(input.model),
+      agent: input.agent,
+      session,
+      userTools: input.userTools,
+      includeMCP: input.includeMCP,
+    })
+    const entry = catalog.tools.find((tool) => tool.id === toolName)
+    if (!entry) return undefined
+    if (catalog.disabled.has(toolName)) return undefined
+    if (catalog.disabled.has("expand_tools") || !ToolExposure.userAllows("expand_tools", input.userTools)) {
+      return undefined
+    }
+    const expansion = ToolExposure.expansionForTool(toolName, entry.exposure, session.toolState)
+    if (expansion.kind === "none") {
+      return (await runtimeToolFor({ ...input, session }, toolName)) ?? undefined
+    }
+    // Merge into the draft inside the mutation lock: the pre-lock snapshot can
+    // be stale when concurrent auto-expansions run in the same turn, and
+    // overwriting toolState wholesale would drop the other expansion.
+    await Session.update(session.id, (draft) => {
+      draft.toolState = ToolExposure.expandState(
+        draft.toolState,
+        expansion.kind === "group" ? [expansion.group] : undefined,
+        expansion.kind === "activate" ? [expansion.tool] : undefined,
+      )
+    })
+    // Re-fetch the session so the fresh toolState is visible to the
+    // availability re-check; the pre-update snapshot would still hide the tool.
+    const freshSession = await Session.get(input.sessionID).catch(() => undefined)
+    if (!freshSession) return undefined
+    const resolved = await runtimeToolFor({ ...input, session: freshSession }, toolName)
+    if (!resolved) return undefined
+    return {
+      ...resolved,
+      ...(expansion.kind === "group" ? { group: expansion.group } : { activatedTool: expansion.tool }),
     }
   }
 
