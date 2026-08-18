@@ -1,22 +1,3 @@
-import { HOME_SCOPE_KEY } from "@/utils/scope"
-
-/**
- * Resolve the directory token carried by a session drag payload.
- *
- * Home-scope sessions have no real directory; the drop side requires a
- * non-empty directory to accept the reference, so home sessions carry the
- * reserved HOME_SCOPE_KEY ("home") token instead of omitting the field.
- */
-export function sessionDragDirectory(scope: {
-  type?: string
-  id: string
-  directory?: string
-  worktree?: string
-}): string {
-  if (scope.type === "home" || scope.id === HOME_SCOPE_KEY) return HOME_SCOPE_KEY
-  return scope.directory ?? scope.worktree ?? scope.id
-}
-
 export type SessionDragData = {
   id: string
   directory: string
@@ -27,9 +8,9 @@ export type SessionDragData = {
 /**
  * Populate a drag event with the canonical session drag payload.
  *
- * Mirrors the payload shape established by the scopes session rows: the
- * `application/x-synergy-session` JSON contract plus a text/plain title
- * fallback, a copy effect, and a minimal drag image.
+ * Writes the `application/x-synergy-session` JSON contract consumed by the
+ * prompt input drop handler, plus a text/plain title fallback, a copy effect,
+ * and a minimal drag image.
  */
 export function setSessionDragData(event: DragEvent, data: SessionDragData): void {
   if (!event.dataTransfer) return

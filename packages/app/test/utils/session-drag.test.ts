@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { HOME_SCOPE_KEY } from "../../src/utils/scope"
-import { sessionDragDirectory, setSessionDragData } from "../../src/utils/session-drag"
+import { setSessionDragData } from "../../src/utils/session-drag"
 
 class FakeDataTransfer {
   data = new Map<string, string>()
@@ -19,24 +18,6 @@ class FakeDataTransfer {
     this.dragImage = { node, x, y }
   }
 }
-
-describe("sessionDragDirectory", () => {
-  test("maps home scope to the reserved home token", () => {
-    expect(sessionDragDirectory({ type: "home", id: "ses_home", directory: undefined })).toBe(HOME_SCOPE_KEY)
-    expect(sessionDragDirectory({ type: "project", id: HOME_SCOPE_KEY })).toBe(HOME_SCOPE_KEY)
-  })
-
-  test("prefers directory over worktree and scope id for project sessions", () => {
-    expect(sessionDragDirectory({ type: "project", id: "ses_p", directory: "/repo", worktree: "/repo-wt" })).toBe(
-      "/repo",
-    )
-  })
-
-  test("falls back to worktree then scope id when directory is absent", () => {
-    expect(sessionDragDirectory({ type: "project", id: "ses_p", worktree: "/wt" })).toBe("/wt")
-    expect(sessionDragDirectory({ type: "project", id: "ses_p" })).toBe("ses_p")
-  })
-})
 
 describe("setSessionDragData", () => {
   test("writes the canonical session payload, text/plain title, and copy effect", () => {

@@ -6,7 +6,6 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { relativeTime } from "@/utils/time"
 import type { Session, SessionStatus, PermissionRequest, QuestionRequest } from "@ericsanchezok/synergy-sdk/client"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { sessionDragDirectory, setSessionDragData } from "@/utils/session-drag"
 
 type ChildStore = {
   session_status: { [sessionID: string]: SessionStatus }
@@ -130,15 +129,6 @@ function ActiveCard(props: {
   const updatedAt = () => props.session.time.updated ?? props.session.time.created
   const isPinned = () => props.session.pinned && props.session.pinned > 0
 
-  function handleDragStart(e: DragEvent) {
-    setSessionDragData(e, {
-      id: props.session.id,
-      directory: sessionDragDirectory(props.session.scope),
-      title: props.session.title || i18n._(AP.scopesSessionNewSession.id),
-      updatedAt: props.session.time.updated ?? props.session.time.created,
-    })
-  }
-
   return (
     <div
       class="min-w-[200px] max-w-[240px] flex flex-col rounded-[1.15rem] bg-surface-raised-base/90 p-3 border border-border-weaker-base/50 shadow-sm cursor-pointer transition-all duration-150 hover:bg-surface-raised-base-hover hover:border-border-base/60 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98]"
@@ -146,8 +136,6 @@ function ActiveCard(props: {
         animation: "cardPopIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both",
         "animation-delay": `${props.index() * 40}ms`,
       }}
-      draggable={true}
-      onDragStart={handleDragStart}
       onClick={() => props.onSelect(props.session)}
     >
       <div class="flex items-center gap-1.5 mb-2">

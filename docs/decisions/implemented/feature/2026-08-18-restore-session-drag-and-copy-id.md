@@ -11,9 +11,9 @@ Users need to reference another session from the current one. The raw session ID
 Two complementary app-only paths:
 
 1. **Copy session ID**: the session top-bar overflow menu gains a "Copy session ID" item that copies the current session's raw ID via the shared `copyTextToClipboard` utility and shows a success toast on success. Placement is limited to the top-bar menu per product decision; sidebar and list rows do not get copy affordances.
-2. **Restore desktop sidebar drag**: `SidebarSessionRow` becomes draggable and writes the canonical `application/x-synergy-session` payload, so sessions can be dragged into the prompt input and become session-reference chips. Drag payload setup is extracted into a shared `utils/session-drag.ts` helper used by the scopes rows, Active Zone cards, and the sidebar row.
+2. **Restore desktop sidebar drag**: `SidebarSessionRow` becomes draggable and writes the canonical `application/x-synergy-session` payload, so sessions can be dragged into the prompt input and become session-reference chips. Drag payload setup is extracted into a shared `utils/session-drag.ts` helper (`setSessionDragData`) used by the sidebar row.
 
-Home-scope sessions carry the reserved `"home"` directory token in the payload (resolved via `sessionDragDirectory`) instead of omitting the directory field, because the drop handler and persisted-prompt sanitizer both reject references without a non-empty directory — previously home-scope drags were silently dropped.
+Home-scope sessions carry the reserved `"home"` directory token in the payload instead of omitting the directory field, because the drop handler and persisted-prompt sanitizer both reject references without a non-empty directory — previously home-scope drags were silently dropped. The sidebar resolves the token via `scopeKeyForNavEntry`, which maps home scope to `HOME_SCOPE_KEY`; `setSessionDragData` only requires a non-empty directory string.
 
 The drop handler's self-reference check is now ID-only (`dropped.id === params.id`): session IDs are globally unique and the old directory conjunction was ineffective for home-scope sessions where `sdk.directory` is undefined.
 

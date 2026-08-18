@@ -8,7 +8,6 @@ import type { Session } from "@ericsanchezok/synergy-sdk/client"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { sessionActionVisibility } from "@/components/session/session-actions"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
-import { sessionDragDirectory, setSessionDragData } from "@/utils/session-drag"
 
 export interface SessionRowProps {
   session: Session
@@ -214,15 +213,6 @@ export function SessionRow(props: SessionRowProps) {
     setRenaming(false)
   }
 
-  function handleDragStart(e: DragEvent) {
-    setSessionDragData(e, {
-      id: props.session.id,
-      directory: sessionDragDirectory(props.session.scope),
-      title: props.session.title || i18n._(AP.scopesSessionNewSession.id),
-      updatedAt: props.session.time.updated ?? props.session.time.created,
-    })
-  }
-
   return (
     <div
       class="group/row relative flex cursor-pointer transition-colors duration-100 hover:bg-surface-raised-base-hover"
@@ -231,8 +221,6 @@ export function SessionRow(props: SessionRowProps) {
         "bg-surface-raised-base/50": !props.isActive && !!props.even,
       }}
       onClick={props.onSelect}
-      draggable={true}
-      onDragStart={handleDragStart}
     >
       {/* Left status bar */}
       <div class={`w-[2.5px] shrink-0 self-stretch ${statusBarColor(props)}`} />
