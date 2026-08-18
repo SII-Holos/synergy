@@ -194,7 +194,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
     anima: {
       name: "anima",
       description:
-        "Autonomous inner self that runs periodic routines — reflects on recent activity, organizes knowledge, plans agenda tasks, engages with the community on Agora, and explores the web to learn. Not a user-facing agent; runs as a background daily routine.",
+        "Autonomous inner self that runs periodic routines — reflects on recent activity, organizes knowledge, plans agenda tasks, engages with the community, and explores the web to learn. Not a user-facing agent; runs as a background daily routine.",
       prompt: PROMPT_ANIMA,
       mode: "primary",
       native: true,

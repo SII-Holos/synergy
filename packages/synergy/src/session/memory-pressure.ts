@@ -1,6 +1,5 @@
 import { Log } from "@/util/log"
 import { ServiceMemory } from "@/process/service-memory"
-import { RetentionProbe } from "./retention-probe"
 
 export namespace SessionMemoryPressure {
   const log = Log.create({ service: "session.memory-pressure" })
@@ -323,7 +322,6 @@ export namespace SessionMemoryPressure {
         before.heapUsedBytes + before.externalBytes - after.heapUsedBytes - after.externalBytes,
       ),
     }
-    RetentionProbe.checkReleased({ phase: input.phase, afterGC: true })
     log.info("gc completed", {
       sessionID: input.sessionID,
       messageID: input.messageID,

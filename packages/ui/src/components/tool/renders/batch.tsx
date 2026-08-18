@@ -1,55 +1,7 @@
 import { createMemo, Show } from "solid-js"
 import { BasicTool } from "../../basic-tool"
 import { ToolTextOutput } from "../../tool-output-text"
-import { ToolRegistry, getQzToolInfo, getToolInfo } from "../../message-part"
-
-// TODO: legacy qzcli tool registrations — remove when replaced by native inspire tools
-const qzToolNames = [
-  "qzcli_qz_auth_login",
-  "qzcli_qz_set_cookie",
-  "qzcli_qz_list_workspaces",
-  "qzcli_qz_refresh_resources",
-  "qzcli_qz_get_availability",
-  "qzcli_qz_list_jobs",
-  "qzcli_qz_get_job_detail",
-  "qzcli_qz_stop_job",
-  "qzcli_qz_get_usage",
-  "qzcli_qz_inspect_status_catalog",
-  "qzcli_qz_track_job",
-  "qzcli_qz_list_tracked_jobs",
-  "qzcli_qz_create_job",
-  "qzcli_qz_create_hpc_job",
-  "qzcli_qz_get_hpc_usage",
-] as const
-
-for (const name of qzToolNames) {
-  ToolRegistry.register({
-    name,
-    render(props) {
-      const info = getQzToolInfo(name, props.input, props.metadata)
-      if (!info) return undefined as any
-      return (
-        <BasicTool
-          {...props}
-          trigger={{
-            icon: info.icon,
-            title: info.title,
-            subtitle: info.subtitle || "",
-            tags: info.args?.map((a) => ({ label: a })),
-          }}
-        >
-          <Show when={props.output}>
-            {(output) => (
-              <div data-component="tool-output" data-scrollable>
-                <ToolTextOutput text={output()} />
-              </div>
-            )}
-          </Show>
-        </BasicTool>
-      )
-    },
-  })
-}
+import { ToolRegistry, getToolInfo } from "../../message-part"
 
 const inspireToolNames = [
   "inspire_status",
