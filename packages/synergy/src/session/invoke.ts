@@ -1064,6 +1064,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             resolvedTools?.activeToolIDs.splice(0)
             if (resolvedTools) {
               resolvedTools.definitions.splice(0)
+              resolvedTools.autoExpandable?.clear()
               for (const id of Object.keys(resolvedTools.executionTools)) delete resolvedTools.executionTools[id]
               for (const id of Object.keys(resolvedTools.executorKinds)) delete resolvedTools.executorKinds[id]
             }
@@ -1143,6 +1144,16 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           executionTools: resolvedTools.executionTools,
           executorKinds: resolvedTools.executorKinds,
           activeToolIDs: resolvedTools.activeToolIDs,
+          autoExpandable: resolvedTools.autoExpandable,
+          resolverInput: {
+            agent,
+            model,
+            sessionID,
+            session,
+            userTools: R.tools,
+            ephemeralTools: ephemeralToolsByMessage.get(R.id),
+            includeMCP: true,
+          },
           model,
           contextUsageProvenance,
           maxOutputTokens: promptDecision.maxOutputTokens,

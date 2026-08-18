@@ -308,7 +308,7 @@ Anchored edit discipline:
 
 Use `scan_files` for text search and `parse_code` for AST-aware code search when results may feed an edit.
 
-Some capability groups are not always visible. If you need a known domain, expand it with `expand_tools({ groups: [...] })`; if the domain is unclear, call `search_tools` first.
+Some capability groups are not always visible. If you need a known domain, expand it with `expand_tools({ groups: [...] })`; if the domain is unclear, call `search_tools` first. A direct call to a deferred-but-authorized tool is auto-expanded and executed in the same turn (visibility only, never a permission bypass); denied or disabled tools still return the not-visible diagnostic.
 
 Known groups:
 

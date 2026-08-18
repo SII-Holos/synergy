@@ -19121,6 +19121,10 @@ msgid "ui.attachment.previewImage"
 msgstr "Preview {filename}"
 
 #. js-lingui-explicit-id
+msgid "ui.basicTool.autoExpanded"
+msgstr "Auto-loaded"
+
+#. js-lingui-explicit-id
 msgid "ui.basicTool.chars"
 msgstr "{count} chars"
 

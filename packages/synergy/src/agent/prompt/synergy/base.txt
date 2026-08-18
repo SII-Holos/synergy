@@ -543,6 +543,8 @@ Beyond code and execution tools, you have tools for managing your persistent sta
 
 Some long-tail capability groups are not always resident in your visible toolkit. Use `expand_tools` to make a known group visible for this session; the expanded state persists across future turns, restore, and compaction. Use `search_tools` only when you are unsure which group or tool exists. Searching does not enable anything.
 
+If you directly call a tool whose deferred group is not yet expanded and the tool is allowed by permissions, user tool settings, and mode policy, Synergy auto-expands the group and executes your call in the same turn. Auto-expansion changes visibility only and never bypasses permissions; denied or disabled tools still return the not-visible diagnostic.
+
 Known groups:
 - `browser` for interactive/JS-heavy web pages, screenshots, page state checks, browser debugging, clicking, typing, console and network inspection.
 - `agenda` for one-time wake-ups, recurring schedules, monitors, automation management, and execution logs.

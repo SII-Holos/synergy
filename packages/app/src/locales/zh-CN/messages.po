@@ -19121,6 +19121,10 @@ msgid "ui.attachment.previewImage"
 msgstr "预览 {filename}"
 
 #. js-lingui-explicit-id
+msgid "ui.basicTool.autoExpanded"
+msgstr "已自动加载"
+
+#. js-lingui-explicit-id
 msgid "ui.basicTool.chars"
 msgstr "{count} 个字符"
 
