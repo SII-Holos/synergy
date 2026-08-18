@@ -45,7 +45,6 @@ export namespace RuntimeReload {
     "snapshot",
     "lspWriteDiagnostics",
     "lspDiagnostics",
-    //     "agora",
     "instructions",
     "enterprise",
     "tools",

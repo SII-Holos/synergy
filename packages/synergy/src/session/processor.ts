@@ -911,7 +911,6 @@ export namespace SessionProcessor {
                 ...agentTurnInput
               } = streamInput
               const stream = await AgentTurn.stream(agentTurnInput)
-              streamInput.memoryTurn?.trackOwner("agent_turn.stream", stream)
               SessionManager.setExecutionPhase(input.sessionID, "running_agent")
               streamInput.memoryTurn?.streamStarted()
               SessionMemoryPressure.probe("processor.after_llm_stream", {
@@ -977,7 +976,6 @@ export namespace SessionProcessor {
               }
 
               try {
-                streamInput.memoryTurn?.trackOwner("agent_turn.full_stream", stream.fullStream)
                 for await (const value of stream.fullStream) {
                   input.abort.throwIfAborted()
                   switch (value.type) {
@@ -1167,8 +1165,6 @@ export namespace SessionProcessor {
                       const streamedRaw = generatingAccum[value.toolCallId]
                       const toolInput = SessionToolInput.normalize(value.input)
                       const toolInputBytes = SessionBounds.toolInputByteLength(toolInput)
-                      streamInput.memoryTurn?.trackOwner("provider.tool_call_event", value, toolInputBytes)
-                      streamInput.memoryTurn?.trackOwner("tool.parsed_input", toolInput, toolInputBytes)
                       log.info("tool.stream.tool_call.input_ready", {
                         sessionID: input.sessionID,
                         messageID: input.assistantMessage.id,

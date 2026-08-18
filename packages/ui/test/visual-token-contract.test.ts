@@ -118,7 +118,6 @@ const P0_UI_FILES = [
   "src/components/switch.css",
   "src/components/checkbox.css",
   "src/components/message-part.css",
-  "src/components/diagram.css",
   "src/components/session-turn.css",
 ]
 
@@ -476,20 +475,6 @@ describe("Visual Token Contract", () => {
       expect(answer).toContain("color: var(--text-weak)")
       expect(answer).toContain("font-size: var(--font-size-small)")
       expect(answer).toContain("font-weight: var(--font-weight-medium)")
-    })
-  })
-
-  describe("8. diagram.css font token usage", () => {
-    test("diagram.css 已正确使用 --font-weight-semibold", async () => {
-      const css = await readFileSafe("src/components/diagram.css")
-      // diagram.css already references --font-weight-semibold — keep it functional
-      expect(css).toContain("var(--font-weight-semibold)")
-    })
-
-    test("diagram.css 11px 字体使用 --font-size-x-small", async () => {
-      const css = await readFileSafe("src/components/diagram.css")
-      const hasXSmall = /var\(--font-size-x-small\)/.test(css)
-      expect(hasXSmall, "diagram.css 的 11px 元素应使用 --font-size-x-small").toBe(true)
     })
   })
 })

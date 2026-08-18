@@ -12,6 +12,7 @@
 import { mkdir, readdir, rm } from "node:fs/promises"
 import path from "node:path"
 
+import { createIsolatedTestEnv } from "./test-env"
 const packageRoot = path.resolve(import.meta.dir, "..")
 
 /**
@@ -25,6 +26,10 @@ const packageRoot = path.resolve(import.meta.dir, "..")
  * - auto-expand mocks 15 module functions and drives the real tool scheduler
  *   and session store, so a single shared-process run with failing sibling
  *   fixtures (plugin registry, network) settles its parts as errors.
+ * - arxiv/holos/proxy/registry/retry/import/catalog/MCP-OAuth suites start
+ *   local servers or assert network timing and flake under a full shared
+ *   process on CI (see postmortem 0001 coverage failures); each passes in
+ *   its own process.
  */
 export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
   "test/vector/embedding-standalone.test.ts",
@@ -32,6 +37,16 @@ export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
   "test/server/nav-global-routes.test.ts",
   "test/tool/openai-image-gen.test.ts",
   "test/tool/auto-expand.test.ts",
+  "test/tool/arxiv-download.test.ts",
+  "test/holos/runtime.test.ts",
+  "test/server/plugin-official-install.test.ts",
+  "test/server/plugin-registry-routes.test.ts",
+  "test/server/skill-route.test.ts",
+  "test/config/import.test.ts",
+  "test/provider/proxy.test.ts",
+  "test/session/retry.test.ts",
+  "test/provider/catalog-stability.test.ts",
+  "test/plugin/mcp-declarative-oauth.test.ts",
 ])
 
 export interface CoverageBatches {
@@ -52,14 +67,14 @@ async function collectTests(directory: string): Promise<string[]> {
     entries.map(async (entry) => {
       const relative = path.posix.join(directory, entry.name)
       if (entry.isDirectory()) return collectTests(relative)
-      if (/\.test\.tsx?$/.test(entry.name)) return [relative]
+      if (/\.(test|spec)\.tsx?$/.test(entry.name)) return [relative]
       return []
     }),
   )
   return nested.flat()
 }
 
-async function runBatch(files: string[], shard: number): Promise<number> {
+async function runBatch(files: string[], shard: number, env: Record<string, string | undefined>): Promise<number> {
   if (files.length === 0) return 0
   const child = Bun.spawn(
     [
@@ -74,7 +89,7 @@ async function runBatch(files: string[], shard: number): Promise<number> {
     ],
     {
       cwd: packageRoot,
-      env: process.env,
+      env,
       stdin: "inherit",
       stdout: "inherit",
       stderr: "inherit",
@@ -83,27 +98,42 @@ async function runBatch(files: string[], shard: number): Promise<number> {
   return child.exited
 }
 
-async function main() {
-  const shardRoot = path.join(packageRoot, "coverage", "shards")
-  await rm(shardRoot, { recursive: true, force: true })
-  await mkdir(shardRoot, { recursive: true })
-
-  const files = (await collectTests("test")).toSorted()
+export async function runBatches(
+  files: string[],
+  env: Record<string, string | undefined>,
+  runBatch: (files: string[], shard: number, env: Record<string, string | undefined>) => Promise<number>,
+): Promise<number> {
   const { main, isolated } = splitCoverageBatches(files)
-
   const failed: Array<{ shard: number; exitCode: number }> = []
-  const mainExit = await runBatch(main, 0)
+  const mainExit = await runBatch(main, 0, env)
   if (mainExit !== 0) failed.push({ shard: 0, exitCode: mainExit })
   let shard = 1
   for (const file of isolated) {
-    const exitCode = await runBatch([file], shard++)
+    const exitCode = await runBatch([file], shard++, env)
     if (exitCode !== 0) failed.push({ shard: shard - 1, exitCode })
   }
   if (failed.length > 0) {
     console.error(
       `coverage batches failed: ${failed.map(({ shard, exitCode }) => `shard ${shard} (exit ${exitCode})`).join(", ")}`,
     )
-    process.exit(1)
+    return 1
+  }
+  return 0
+}
+
+export async function main() {
+  const shardRoot = path.join(packageRoot, "coverage", "shards")
+  await rm(shardRoot, { recursive: true, force: true })
+  await mkdir(shardRoot, { recursive: true })
+
+  const files = (await collectTests("test")).toSorted()
+  const isolatedEnv = await createIsolatedTestEnv()
+  try {
+    // process.exit would skip this finally and leak the isolated env, so the
+    // failure signal is an exit code set after dispose() has run.
+    process.exitCode = await runBatches(files, isolatedEnv.env, runBatch)
+  } finally {
+    await isolatedEnv.dispose()
   }
 }
 

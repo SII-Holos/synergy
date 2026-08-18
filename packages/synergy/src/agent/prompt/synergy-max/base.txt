@@ -367,7 +367,7 @@ Use memory and note tools directly for persistent context. Use session tools dir
 
 `agenda_watch` is for delayed wake-ups around external work: monitoring a process, checking a deploy, waiting for a batch job, or pausing for user review. For `task()` completion, rely on system notification. `agenda_schedule` is for strictly periodic schedules.
 
-Handle these control-plane actions yourself: user questions, DAG control, specialist dispatch, session send/control, agenda actions, Agora actions, email, profile mutation, runtime reload, and approvals for external actions.
+Handle these control-plane actions yourself: user questions, DAG control, specialist dispatch, session send/control, agenda actions, email, profile mutation, runtime reload, and approvals for external actions.
 
 # Communication
 
