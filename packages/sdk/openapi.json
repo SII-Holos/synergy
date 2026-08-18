@@ -34087,6 +34087,9 @@
           "error": {
             "type": "string"
           },
+          "launchFailure": {
+            "type": "boolean"
+          },
           "notifyParentOnComplete": {
             "type": "boolean"
           },
@@ -34988,6 +34991,9 @@
           },
           "error": {
             "type": "string"
+          },
+          "launchFailure": {
+            "type": "boolean"
           },
           "progress": {
             "type": "object",
