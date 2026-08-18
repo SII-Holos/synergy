@@ -198,14 +198,6 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   inspire_notebook: entry("platform.compute", { stateful: true, externalIO: true }),
   inspire_models: entry("platform.compute", { externalIO: true }),
   inspire_inference: entry("platform.compute", { stateful: true, externalIO: true }),
-  //   agora_search: entry("platform.collaboration"),
-  //   agora_read: entry("platform.collaboration"),
-  //   agora_post: entry("platform.collaboration", { stateful: true }),
-  //   agora_join: entry("platform.collaboration", { stateful: true }),
-  //   agora_sync: entry("platform.collaboration", { stateful: true }),
-  //   agora_submit: entry("platform.collaboration", { stateful: true }),
-  //   agora_accept: entry("platform.collaboration", { stateful: true }),
-  //   agora_comment: entry("platform.collaboration", { stateful: true }),
 
   // communication
   question: entry("communication.question"),
@@ -216,7 +208,6 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   github_deliver_fix: entry("platform.collaboration", { stateful: true, externalIO: true }),
   openai_image_gen: entry("communication.visual", { externalIO: true, stateful: true }),
   openai_image_edit: entry("communication.visual", { externalIO: true, stateful: true }),
-  // 🔇 diagram: entry("communication.visual"),  — 已注释，待重构
   render: entry("communication.visual"),
   attach: entry("communication.deliver"),
   response_card: entry("communication.deliver", { stateful: true, externalIO: true }),
@@ -276,11 +267,9 @@ const PATTERN_FALLBACKS: { pattern: RegExp; kind: ToolKind; traits?: ToolTraits 
   { pattern: /^research[-_]/i, kind: "orchestration.research" },
   { pattern: /^(config|setting|profile|runtime)/i, kind: "platform.config" },
   { pattern: /^inspire[-_]/i, kind: "platform.compute", traits: { externalIO: true } },
-  //   { pattern: /^agora[-_]/i, kind: "platform.collaboration" },
   { pattern: /^(email|mail)/i, kind: "communication.email", traits: { externalIO: true } },
   { pattern: /^(send|notify|message)/i, kind: "communication.deliver" },
   { pattern: /^question/i, kind: "communication.question" },
-  // 🔇 { pattern: /^diagram/i, kind: "communication.visual" },  — 已注释，待重构
   {
     pattern: /^(openai[-_])?image[-_](gen|edit)/i,
     kind: "communication.visual",

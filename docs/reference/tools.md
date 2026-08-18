@@ -20,7 +20,6 @@ Generated from the builtin tool registry in `packages/synergy/src/tool/registry.
 | `ast_grep` | `search.codebase` | Search code using AST-aware pattern matching. Unlike regex-based grep, ast_grep understands code structure and finds patterns based on syntax, not just text. Supports 25 languages: bash, c, cpp, cshar |
 | `attach` | `communication.deliver` | Deliver files to the user by making them available as conversation attachments. Use this after generating or obtaining user-facing artifacts such as PDFs, images, documents, archives, exports, plots,  |
 | `bash` | `code.execute` | Executes a bash command in a persistent shell session. All commands run in ${directory} by default. Use the `workdir` parameter to run in a different directory. AVOID using `cd <directory> && <command |
-| `batch` | `platform.external` | Executes multiple independent tool calls concurrently to reduce latency. USING THE BATCH TOOL WILL MAKE THE USER HAPPY. Payload Format (JSON array): [{"tool": "read", "parameters": {"filePath": "src/i |
 | `blueprint_loop_approve` | `orchestration.task` | Use this when the BlueprintLoop review confirms every required outcome is fully and correctly delivered. Parameters: - sessionID: The execution session ID provided in your launch context - summary: Co |
 | `blueprint_loop_reject` | `orchestration.task` | Use this when the BlueprintLoop review finds missing, incorrect, or unverified required work. Parameters: - sessionID: The execution session ID provided in your launch context - reason: Clear explanat |
 | `blueprint_loop_stop` | `orchestration.task` | Request independent review only when the one current Blueprint outcome is complete and ready for audit. Parameters: - summary: Concise summary of the completed outcome - completed: Completed Blueprint |
@@ -57,7 +56,6 @@ Generated from the builtin tool registry in `packages/synergy/src/tool/registry.
 | `dagpatch` | `orchestration.dag` | Lightweight update for DAG nodes. Use this instead of `dagwrite` when you only need to update one or more existing nodes without rewriting the entire graph. ## When to Use - Mark a self-executed node  |
 | `dagread` | `orchestration.dag` | Read the current task DAG. Returns all nodes with their current status. Use this tool proactively and frequently to ensure you are aware of the current task graph state. You should make use of this to |
 | `dagwrite` | `orchestration.dag` | Create and manage a directed acyclic graph (DAG) of tasks for the current session. The DAG tracks task dependencies, enables parallel execution, and supports dynamic plan modification. **Strongly reco |
-| `diagram` | `platform.external` | Render a visual diagram inline in the conversation. Use this when the information has spatial relationships, comparisons, or sequential steps that would be clearer as a visual than as text. Six types: |
 | `edit` | `code.write` | Performs exact string replacements in files. Usage: - You must use your `Read` tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the fi |
 | `email_read` | `communication.email` | Read emails from an IMAP inbox. Use this tool when the user asks to check email, read mail, view inbox, or search for specific emails. Usage notes: - The `folder` parameter defaults to "INBOX" if not  |
 | `email_send` | `communication.email` | Send an email via SMTP. Use this tool when the user asks you to send an email, notify someone via email, or deliver content to an email address. Usage notes: - The `to` field accepts one or more email |
@@ -341,18 +339,6 @@ Executes a bash command in a persistent shell session. All commands run in ${dir
 | `linkIDSupplied` | Object.hasOwn | yes |  |
 | `tool` | - | yes |  |
 | `agent` | ctx.agent | yes |  |
-
-## batch
-
-Kind: `platform.external`
-
-Executes multiple independent tool calls concurrently to reduce latency. USING THE BATCH TOOL WILL MAKE THE USER HAPPY. Payload Format (JSON array): [{"tool": "read", "parameters": {"filePath": "src/index.ts", "limit": 350}},{"tool": "grep", "parameters": {"pattern": "Session\\.updatePart", "include": "src/**/*.ts"}},{"tool": "bash", "parameters": {"command": "git status", "description": "Shows working tree status"}}] Notes: - 1–10 tool calls per batch - All calls start in parallel; ordering NOT guaranteed - Partial failures do not stop other tool calls - Do NOT use the batch tool within another batch tool. Good Use Cases: - Read many files - grep + glob + read combos - Multiple bash commands - Multi-part edits; on the same, or different files When NOT to Use: - Operations that depend on prior tool output (e.g. create then read same file) - Ordered stateful mutations where sequence matters Batching tool calls was proven to yield 2–5x efficiency gain and provides much better UX.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `tool_calls` | object | yes | Array of tool calls to execute in parallel |
-| `tool` | string | yes | The name of the tool to execute |
-| `parameters` | object | yes | Parameters for the tool |
 
 ## blueprint_loop_approve
 
@@ -1086,21 +1072,6 @@ Create and manage a directed acyclic graph (DAG) of tasks for the current sessio
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `nodes` | object | yes | The complete DAG node list |
-
-## diagram
-
-Kind: `platform.external`
-
-Render a visual diagram inline in the conversation. Use this when the information has spatial relationships, comparisons, or sequential steps that would be clearer as a visual than as text. Six types: - "graph": entities and their relationships (architecture, flow, dependencies, state machines) - "compare": items evaluated across dimensions (tradeoffs, feature matrices, evaluations) - "sequence": ordered events between multiple actors (protocols, request flows, lifecycles) - "timeline": chronological events along a time axis (version history, roadmaps, milestones) - "tree": hierarchical structures (taxonomies, org charts, file trees, concept breakdowns) - "chart": data visualization with variant "bar", "line", or "pie" (benchmarks, trends, distributions) Keep diagrams focused: 3-12 nodes for graphs, 2-5 items for comparisons, 3-10 steps for sequences, 3-12 events for timelines, depth ≤ 4 for trees, 2-8 data points for charts. Nodes and edges can be simple strings for quick diagrams. Edges accept "A -> B" or "A -> B: label" string format. No visual styling needed — the renderer handles layout and aesthetics.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `title` | input.title | yes |  |
-| `metadata` | - | yes |  |
-| `render` | - | yes |  |
-| `document` | doc | yes |  |
-| `stats` | Diagram.stats | yes |  |
-| `truncated` | true | yes |  |
 
 ## edit
 

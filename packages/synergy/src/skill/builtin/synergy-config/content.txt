@@ -8,7 +8,7 @@ When you need detailed schema, fields, or examples for a specific config area, l
 
 | User says... | Load reference |
 |---|---|
-| "add provider", "configure API key", "connect OpenAI/Anthropic/...", "add Ollama", "local model", "vLLM", "LM Studio" | `references/providers.txt` |
+| "add provider", "configure API key", "connect OpenAI/Anthropic/...", "add Ollama", "local model", "vLLM", "LM Studio", "中转站", "relay", "OpenAI-compatible gateway" | `references/providers.txt` |
 | "add MCP", "connect MCP", pasted `mcpServers`/`servers` JSON, "MCP not working" | `references/mcp.txt` |
 | "set model", "default model", "change model", "vision model", "model role", "nano model", "which model", "cheaper model" | `references/models.txt` |
 | "create agent", "custom agent", "add a code reviewer", "default agent", "override agent", "disable agent" | `references/agents.txt` |

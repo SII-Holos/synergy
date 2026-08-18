@@ -508,21 +508,6 @@ export namespace SessionSummary {
     }
   }
 
-  export const diff = fn(
-    z.object({
-      sessionID: Identifier.schema("session"),
-      messageID: Identifier.schema("message").optional(),
-    }),
-    async (input) => {
-      const session = await SessionManager.requireSession(input.sessionID)
-      const scopeID = asScopeID((session.scope as Scope).id)
-      const diffs = await Storage.read<SnapshotSchema.FileDiff[]>(
-        StoragePath.sessionSummary(scopeID, asSessionID(input.sessionID)),
-      ).catch(() => [])
-      return SnapshotSchema.normalizeArray(diffs) ?? []
-    },
-  )
-
   async function computeDiff(input: {
     messages: MessageV2.WithParts[]
     sessionID: string

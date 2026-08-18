@@ -126,7 +126,6 @@ Knowing where things live saves time:
 | `packages/sdk/js`  | TypeScript SDK (`@ericsanchezok/synergy-sdk`)      |
 | `packages/ui`      | Shared UI components                               |
 | `packages/util`    | Shared utilities                                   |
-| `packages/script`  | Build and release tooling                          |
 
 If your change touches one package, scan adjacent packages before assuming an abstraction boundary.
 

@@ -8778,10 +8778,6 @@ msgid "classifier.label.communication"
 msgstr "Send content"
 
 #. ── Classifier category labels ──────────────────────────────────────
-msgid "classifier.label.community"
-msgstr "Access Agora"
-
-#. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.config"
 msgstr "Change settings"
 
@@ -9272,10 +9268,6 @@ msgstr "PENDING"
 #. js-lingui-explicit-id
 msgid "dag.status.running"
 msgstr "RUNNING"
-
-#. ── Diagram ─────────────────────────────────────────────────────────
-msgid "diagram.total-label"
-msgstr "Total"
 
 #. ── Diff preview ────────────────────────────────────────────────────
 msgid "diff.file-diff-preview"
@@ -11397,10 +11389,6 @@ msgid "session-status.delegating-work"
 msgstr "Delegating work"
 
 #. js-lingui-explicit-id
-msgid "session-status.drawing-diagram"
-msgstr "Drawing diagram"
-
-#. js-lingui-explicit-id
 msgid "session-status.flashing-back"
 msgstr "Flashing back"
 
@@ -11515,10 +11503,6 @@ msgstr "Reviewing Blueprint"
 #. js-lingui-explicit-id
 msgid "session-status.reviewing-light-loop"
 msgstr "Reviewing Light Loop"
-
-#. js-lingui-explicit-id
-msgid "session-status.running-batch"
-msgstr "Running batch"
 
 #. js-lingui-explicit-id
 msgid "session-status.running-commands"
@@ -18129,10 +18113,6 @@ msgid "tool.label.pathwaySteps"
 msgstr "{count} steps"
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
-msgid "tool.label.posts"
-msgstr "{count, plural, one {# post} other {# posts}}"
-
-#. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.results"
 msgstr "{count, plural, one {# result} other {# results}}"
 
@@ -18265,14 +18245,6 @@ msgid "tool.title.attach"
 msgstr "Add attachment"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.availability"
-msgstr "Check availability"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.batch"
-msgstr "Run batch"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.batch-stop"
 msgstr "Batch Stop"
 
@@ -18397,10 +18369,6 @@ msgid "tool.title.deploy-inference"
 msgstr "Deploy inference service"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.diagram"
-msgstr "Generate diagram"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.disconnected"
 msgstr "Disconnected"
 
@@ -18465,20 +18433,12 @@ msgid "tool.title.glob"
 msgstr "Match files with Glob"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.gpu-usage"
-msgstr "View GPU usage"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.grep"
 msgstr "Search with Grep"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.harbor-login"
 msgstr "Log in to Harbor"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.hpc-usage"
-msgstr "View HPC usage"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.idea"
@@ -18684,10 +18644,6 @@ msgstr "Question Timed Out"
 msgid "tool.title.questions"
 msgstr "Ask questions"
 
-#. Legacy qzcli — TODO remove
-msgid "tool.title.qz-login"
-msgstr "Log in to QZ"
-
 #. File ops
 msgid "tool.title.read"
 msgstr "Read file"
@@ -18721,10 +18677,6 @@ msgid "tool.title.read-to-dos"
 msgstr "Read to-dos"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.refresh-resources"
-msgstr "Refresh Resources"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.register-model"
 msgstr "Register Model"
 
@@ -18736,7 +18688,7 @@ msgstr "Reject BlueprintLoop"
 msgid "tool.title.reject-light-loop"
 msgstr "Reject Light Loop"
 
-#. Render / diagram
+#. Render
 msgid "tool.title.render"
 msgstr "Render content"
 
@@ -18824,10 +18776,6 @@ msgstr "View session status"
 msgid "tool.title.sessions"
 msgstr "View sessions"
 
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.set-cookie"
-msgstr "Set Cookie"
-
 #. Inspire variant keys for getToolInfo dynamic title selection
 msgid "tool.title.set-default"
 msgstr "Set Default"
@@ -18853,10 +18801,6 @@ msgid "tool.title.start-notebook"
 msgstr "Start Notebook"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.status-catalog"
-msgstr "View status catalog"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.stop-inference"
 msgstr "Stop inference service"
 
@@ -18879,10 +18823,6 @@ msgstr "Submit GPU Job"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.submit-hpc-job"
 msgstr "Submit HPC Job"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.submit-job"
-msgstr "Submit Job"
 
 #. DAG / task orchestration
 msgid "tool.title.task"
@@ -18907,14 +18847,6 @@ msgstr "Manage research timeline"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.to-dos"
 msgstr "Update to-dos"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.track-job"
-msgstr "Track Job"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.tracked-jobs"
-msgstr "View tracked jobs"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.trigger-agenda"
@@ -18955,10 +18887,6 @@ msgstr "Read web page"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.wiki"
 msgstr "Manage research knowledge"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.workspaces"
-msgstr "View workspaces"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.worktrees"
@@ -19119,6 +19047,10 @@ msgstr "Open {filename}"
 #. js-lingui-explicit-id
 msgid "ui.attachment.previewImage"
 msgstr "Preview {filename}"
+
+#. js-lingui-explicit-id
+msgid "ui.basicTool.autoExpanded"
+msgstr "Auto-loaded"
 
 #. js-lingui-explicit-id
 msgid "ui.basicTool.chars"
