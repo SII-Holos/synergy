@@ -46,7 +46,7 @@ Classification failure never re-enters the in-process top-level classifier. Work
 
 The enforcement gate owns the security decision. A tool implementation can still reject malformed input or fail for ordinary runtime reasons after authorization.
 
-Tool exposure is a context-budget decision, not an authorization decision. `search_tools` and `expand_tools` let an eligible agent discover or activate deferred tools, but the resolver still removes every tool denied by agent, session, user-tool, or workflow policy.
+Tool exposure is a context-budget decision, not an authorization decision. `search_tools` and `expand_tools` let an eligible agent discover or activate deferred tools, but the resolver still removes every tool denied by agent, session, user-tool, or workflow policy. Deferred MCP server groups are discoverable through the "Connected MCP groups" directory in the `expand_tools` description whenever the MCP defer threshold is active; the directory lists connected servers and their tool names so an agent can expand `mcp:<server>` directly.
 
 ## Capability Model
 
