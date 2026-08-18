@@ -15,7 +15,19 @@ import type {
 } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
 
-import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, ParentProps, Show, Switch } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  ErrorBoundary,
+  For,
+  Match,
+  on,
+  onCleanup,
+  ParentProps,
+  Show,
+  Switch,
+} from "solid-js"
 import { TurnChangeSummaryPanel } from "./turn-change-summary-panel"
 import {
   resolveTurnDiffPanelState,
@@ -717,7 +729,28 @@ function originIconToken(origin: { type: string; label?: string; detail?: string
   }
 }
 
-function TimelineDisplay(props: {
+export function TimelineDisplay(props: {
+  item: SessionTurnDisplayItem
+  serverUrl: string
+  rollbackActive: boolean
+  onRewind?: () => void
+  working: boolean
+  compactReasoning?: boolean
+}) {
+  return (
+    <ErrorBoundary
+      fallback={(err) => (
+        <div data-slot="session-turn-timeline-item-error">
+          <ErrorCard error={err?.message || String(err)} />
+        </div>
+      )}
+    >
+      <TimelineDisplayInner {...props} />
+    </ErrorBoundary>
+  )
+}
+
+function TimelineDisplayInner(props: {
   item: SessionTurnDisplayItem
   serverUrl: string
   rollbackActive: boolean
