@@ -786,31 +786,23 @@ function TimelineDisplayInner(props: {
 
   return (
     <Switch>
-      <Match keyed when={activityGroup()}>
-        {(item) => <ActivityTrace group={item} serverUrl={props.serverUrl} />}
-      </Match>
-      <Match keyed when={activitySummary()}>
-        {(item) => <MinimalActivitySummary item={item} />}
-      </Match>
-      <Match keyed when={activityReasoning()}>
-        {(item) => <ActivityReasoningSummary item={item} />}
-      </Match>
-      <Match keyed when={activityReceipt()}>
-        {(item) => <ActivityReceipt item={item} serverUrl={props.serverUrl} />}
-      </Match>
-      <Match keyed when={guidedUser()}>
+      <Match when={activityGroup()}>{(item) => <ActivityTrace group={item()} serverUrl={props.serverUrl} />}</Match>
+      <Match when={activitySummary()}>{(item) => <MinimalActivitySummary item={item()} />}</Match>
+      <Match when={activityReasoning()}>{(item) => <ActivityReasoningSummary item={item()} />}</Match>
+      <Match when={activityReceipt()}>{(item) => <ActivityReceipt item={item()} serverUrl={props.serverUrl} />}</Match>
+      <Match when={guidedUser()}>
         {(item) => (
           <div data-slot="session-turn-rewind-wrapper" data-align="right">
-            <Message message={item.message} parts={item.parts} userVariant="turn-bubble" />
+            <Message message={item().message} parts={item().parts} userVariant="turn-bubble" />
           </div>
         )}
       </Match>
-      <Match keyed when={nonRootUser()}>
+      <Match when={nonRootUser()}>
         {(item) => (
           <div data-slot="session-turn-rewind-wrapper">
-            <div data-slot="session-turn-chip" data-origin={item.message.origin?.type ?? "guided"}>
-              <Icon name={getSemanticIcon(originIconToken(item.message.origin))} size="small" />
-              <span data-slot="session-turn-chip-label">{item.originLabel}</span>
+            <div data-slot="session-turn-chip" data-origin={item().message.origin?.type ?? "guided"}>
+              <Icon name={getSemanticIcon(originIconToken(item().message.origin))} size="small" />
+              <span data-slot="session-turn-chip-label">{item().originLabel}</span>
             </div>
             <button
               type="button"
@@ -827,10 +819,10 @@ function TimelineDisplayInner(props: {
           </div>
         )}
       </Match>
-      <Match keyed when={timelineItem()}>
+      <Match when={timelineItem()}>
         {(item) => (
           <TimelineItemDisplay
-            item={item}
+            item={item()}
             serverUrl={props.serverUrl}
             working={props.working}
             compactReasoning={props.compactReasoning}
