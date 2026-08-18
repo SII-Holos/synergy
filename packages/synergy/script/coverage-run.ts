@@ -22,13 +22,26 @@ const packageRoot = path.resolve(import.meta.dir, "..")
  *   "Unexpected reading file" on the transformers runtime under a full run;
  * - nav-global-routes asserts home-scope completion counters that sibling
  *   files can mutate;
- * - openai-image-gen's global fetch mock races with sibling fetch mocks.
+ * - openai-image-gen's global fetch mock races with sibling fetch mocks;
+ * - arxiv/holos/proxy/registry/retry/import/catalog/MCP-OAuth suites start
+ *   local servers or assert network timing and flake under a full shared
+ *   process on CI (see postmortem 0001 coverage failures); each passes in
+ *   its own process.
  */
 export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
   "test/vector/embedding-standalone.test.ts",
   "test/channel/svg-raster-standalone.test.ts",
   "test/server/nav-global-routes.test.ts",
   "test/tool/openai-image-gen.test.ts",
+  "test/tool/arxiv-download.test.ts",
+  "test/holos/runtime.test.ts",
+  "test/server/plugin-official-install.test.ts",
+  "test/server/plugin-registry-routes.test.ts",
+  "test/config/import.test.ts",
+  "test/provider/proxy.test.ts",
+  "test/session/retry.test.ts",
+  "test/provider/catalog-stability.test.ts",
+  "test/plugin/mcp-declarative-oauth.test.ts",
 ])
 
 export interface CoverageBatches {
