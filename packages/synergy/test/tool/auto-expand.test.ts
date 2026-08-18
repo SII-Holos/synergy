@@ -792,4 +792,85 @@ describe("SessionProcessor auto-expand interception", () => {
       },
     })
   })
+  test("auto-expanded MCP tools validate model arguments before dispatch", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalToolEntries = MCP.toolEntries
+    const serverName = "auto-validate-mcp"
+    const toolIDs = Array.from({ length: ToolExposure.MCP_DEFER_THRESHOLD }, (_, index) =>
+      ToolExposure.mcpToolID(serverName, `tool_${index}`),
+    )
+    const executeCalls = { value: 0 }
+    ;(MCP as any).toolEntries = async () =>
+      toolIDs.map((id, index) => ({
+        id,
+        serverName,
+        toolName: `tool_${index}`,
+        inputSchema: {
+          type: "object",
+          properties: { value: { type: "number" } },
+          additionalProperties: false,
+        },
+        tool: {
+          description: "MCP validate tool",
+          inputSchema: {
+            type: "json-schema",
+            schema: {
+              type: "object",
+              properties: { value: { type: "number" } },
+              additionalProperties: false,
+            },
+          },
+          execute: async () => {
+            executeCalls.value++
+            return { content: [{ type: "text", text: "ok" }] }
+          },
+        },
+      }))
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const resolved = await ToolResolver.resolveWithAvailability({
+            agent: allowAllAgent,
+            model,
+            sessionID: session.id,
+            session,
+            processor: runtimeProcessor(),
+            includeMCP: true,
+          })
+          expect(resolved.autoExpandable.has(toolIDs[0])).toBe(true)
+
+          const { parts, events } = await runAutoExpandTurn({
+            sessionID: session.id,
+            messageID: "msg_auto_validate",
+            toolName: toolIDs[0],
+            callID: "call_auto_validate",
+            args: { value: "not-a-number" },
+            executionTools: resolved.executionTools,
+            executorKinds: resolved.executorKinds,
+            autoExpandable: resolved.autoExpandable,
+            resolverInput: {
+              agent: allowAllAgent,
+              model,
+              sessionID: session.id,
+              session,
+              includeMCP: true,
+            },
+          })
+
+          const part = parts.find((item) => item.type === "tool" && item.callID === "call_auto_validate")
+          expect(part).toBeDefined()
+          expect(part!.state.status).toBe("error")
+          expect(part!.state.error).toContain("invalid arguments")
+          expect(executeCalls.value).toBe(0)
+          expect(events.some((item) => item.type === "tool.auto_expanded")).toBe(true)
+          const fresh = await Session.get(session.id)
+          expect(fresh.toolState?.expandedGroups).toContain(`mcp:${serverName}`)
+        },
+      })
+    } finally {
+      ;(MCP as any).toolEntries = originalToolEntries
+    }
+  })
 })

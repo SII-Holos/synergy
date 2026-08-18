@@ -1540,12 +1540,33 @@ export namespace SessionProcessor {
               await Promise.all(
                 deferredToolCalls.map(async (call) => {
                   if (!streamInput.executionTools) return
+                  let expanded: ToolResolver.AutoExpandedTool | undefined
                   if (streamInput.autoExpandable?.has(call.toolName)) {
-                    const expanded = await resolveAutoExpand(call.toolName)
+                    expanded = await resolveAutoExpand(call.toolName)
                     if (expanded) {
                       streamInput.executionTools[call.toolName] = expanded.tool
                       streamInput.executorKinds[call.toolName] = expanded.executor
                       await markAutoExpanded(call, expanded)
+                    }
+                  }
+                  // Deferred tools are absent from toolDefinitions, so the AI
+                  // SDK never validated these arguments, and MCP/plugin
+                  // execution paths do not revalidate. Validate against the
+                  // freshly resolved schema before dispatching the real tool.
+                  if (expanded) {
+                    const { ToolResolver: DynamicToolResolver } = await import("./tool-resolver")
+                    const invalid = DynamicToolResolver.validateToolInput(
+                      call.toolName,
+                      expanded.inputSchema,
+                      call.input,
+                    )
+                    if (invalid) {
+                      const part = toolcalls[call.callID]
+                      if (part && part.state.status === "running") {
+                        await settleToolPart(part, streamToolErrorOutcome(part, new Error(invalid)))
+                        delete toolcalls[call.callID]
+                      }
+                      return
                     }
                   }
                   const task = await ToolScheduler.dispatch({

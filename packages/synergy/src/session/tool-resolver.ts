@@ -1,3 +1,4 @@
+import Ajv2020 from "ajv/dist/2020"
 import { Global } from "@/global"
 import { type Tool as AITool, tool, jsonSchema, type ToolCallOptions, type JSONSchema7 } from "ai"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
@@ -2084,8 +2085,35 @@ export namespace ToolResolver {
   export interface AutoExpandedTool {
     tool: AITool
     executor: ToolExecutorKind
+    inputSchema?: JSONSchema7
     group?: string
     activatedTool?: string
+  }
+
+  /**
+   * Validate model-supplied arguments against the real tool schema before an
+   * auto-expanded call is dispatched. Deferred tools are absent from
+   * toolDefinitions (the diagnostic stub carries an open schema), so the AI SDK
+   * never validated the arguments; MCP and plugin execution paths do not
+   * revalidate. Returns an invalid-arguments message, or undefined when the
+   * input satisfies the schema or the schema cannot be compiled.
+   */
+  export function validateToolInput(
+    toolName: string,
+    schema: JSONSchema7 | undefined,
+    input: unknown,
+  ): string | undefined {
+    if (!schema) return undefined
+    try {
+      const ajv = new Ajv2020({ allErrors: true, strict: false })
+      const validate = ajv.compile(schema as any)
+      if (validate(input)) return undefined
+      return `The ${toolName} tool was called with invalid arguments: ${ajv.errorsText(validate.errors)}.\nPlease rewrite the input so it satisfies the expected schema.`
+    } catch {
+      // Uncompilable schemas (e.g. unsupported draft) fall back to the previous
+      // behavior; execution paths with their own validation still apply.
+      return undefined
+    }
   }
 
   /**
@@ -2096,7 +2124,7 @@ export namespace ToolResolver {
   export async function runtimeToolFor(
     input: Input,
     toolName: string,
-  ): Promise<{ tool: AITool; executor: ToolExecutorKind } | undefined> {
+  ): Promise<{ tool: AITool; executor: ToolExecutorKind; inputSchema?: JSONSchema7 } | undefined> {
     using _ = log.time("runtimeToolFor")
     const session = input.session ?? (await Session.get(input.sessionID).catch(() => undefined))
     const availabilityResult = await applyAvailability(await collectDefinitions({ ...input, session }), {
@@ -2111,6 +2139,7 @@ export namespace ToolResolver {
     return {
       tool: withExecutionDeduplication(runtimeInput, runtimeTool),
       executor: item.executor ?? ToolExecutor.classify(item.id, item.source),
+      inputSchema: item.inputSchema,
     }
   }
 
