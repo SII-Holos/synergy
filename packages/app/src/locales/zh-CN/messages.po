@@ -8426,6 +8426,18 @@ msgid "app.topBar.session.archive"
 msgstr "归档"
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.session.copyID"
+msgstr "复制会话 ID"
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.session.copyIDCopied"
+msgstr "会话 ID 已复制"
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.session.copyIDFailed"
+msgstr "复制会话 ID 失败"
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.session.enterWorktree"
 msgstr "进入隔离工作区"
 
@@ -19047,6 +19059,10 @@ msgstr "打开 {filename}"
 #. js-lingui-explicit-id
 msgid "ui.attachment.previewImage"
 msgstr "预览 {filename}"
+
+#. js-lingui-explicit-id
+msgid "ui.basicTool.autoExpanded"
+msgstr "已自动加载"
 
 #. js-lingui-explicit-id
 msgid "ui.basicTool.chars"

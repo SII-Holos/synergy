@@ -4099,6 +4099,7 @@ export type SessionCortexDelegation = {
     modelID: string
   }
   error?: string
+  launchFailure?: boolean
   notifyParentOnComplete?: boolean
   deliveryNotifiedAt?: number
   visibility?: "visible" | "hidden"
@@ -4394,6 +4395,7 @@ export type CortexTask = {
   startedAt: number
   completedAt?: number
   error?: string
+  launchFailure?: boolean
   progress?: {
     toolCalls: number
     lastTool?: string

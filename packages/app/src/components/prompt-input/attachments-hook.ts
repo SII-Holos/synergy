@@ -17,6 +17,7 @@ import { createPromptPartID } from "./content"
 import { getCursorPosition } from "./editor-dom"
 import { PI } from "./prompt-input-i18n"
 import type { BlueprintSlot, DroppedBlueprintData, DroppedSessionData, PromptInputStore } from "./types"
+import { decideDroppedSession } from "./session-drop"
 
 type PromptAttachmentsInput = {
   editor: () => HTMLDivElement
@@ -226,12 +227,8 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
     if (sessionData) {
       try {
         const dropped = JSON.parse(sessionData) as DroppedSessionData
-        if (!dropped.id || !dropped.directory) return
-        if (dropped.id === params.id && dropped.directory === sdk.directory) return
-        const existing = input
-          .sessionAttachments()
-          .find((attachment) => attachment.sessionId === dropped.id && attachment.directory === dropped.directory)
-        if (existing) return
+        const decision = decideDroppedSession(dropped, params.id, input.sessionAttachments())
+        if (!decision.accepted) return
         const cursorPosition = prompt.cursor() ?? getCursorPosition(input.editor())
         prompt.set(
           [

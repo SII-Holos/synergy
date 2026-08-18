@@ -8,7 +8,7 @@
     "typecheck": "tsgo --noEmit",
     "test": "bun test --timeout 30000",
     "test:ci": "bun run script/test-ci.ts",
-    "test:coverage": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
+    "test:coverage": "bun run script/coverage-run.ts",
     "test:changed": "bun test --changed=origin/dev",
     "test:profile": "bun -e \"await import('node:fs/promises').then((fs) => fs.mkdir('coverage', { recursive: true }))\" && bun test --timeout 30000 --reporter=junit --reporter-outfile=coverage/test-profile-junit.xml",
     "build": "bun run script/build.ts",

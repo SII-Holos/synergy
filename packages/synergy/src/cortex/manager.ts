@@ -259,8 +259,8 @@ export namespace Cortex {
       draft.cortex.startedAt = task.startedAt
       draft.cortex.completedAt = undefined
       draft.cortex.error = undefined
+      draft.cortex.launchFailure = undefined
       draft.cortex.output = undefined
-      draft.cortex.deliveryNotifiedAt = undefined
       draft.cortex.owner = input.owner
       draft.cortex.timeoutMs = input.timeoutMs
       draft.cortex.tools = input.tools
@@ -309,7 +309,7 @@ export namespace Cortex {
     const run = runTask(current, current.model, budget?.maxOutputTokens, budget?.maxCost)
       .catch(async (error) => {
         log.error("task error", { taskID, error })
-        await updateTaskStatus(taskID, "error", String(error))
+        await updateTaskStatus(taskID, "error", String(error), undefined, { launchFailure: true })
       })
       .finally(() => {
         taskRuns.delete(taskID)
@@ -608,16 +608,16 @@ export namespace Cortex {
     status: CortexTypes.TaskStatus,
     error?: string,
     output?: CortexTypes.TaskOutput,
+    options?: { launchFailure?: boolean },
   ): Promise<void> {
     const task = tasks.get(taskID)
     if (!task) return
 
-    // Once cancel() accepts a request, an abort/error callback from the task
-    // processor must not race it into the less precise "error" terminal state.
     if (cancellationRequests.has(taskID)) {
       status = "cancelled"
       error = undefined
       output = undefined
+      options = undefined
     }
 
     if (isTerminal(task.status)) {
@@ -649,6 +649,7 @@ export namespace Cortex {
       }
       if (error) terminalTask.error = error
       if (output) terminalTask.output = output
+      if (options?.launchFailure) terminalTask.launchFailure = true
       const waiters = taskWaiters.get(taskID)
       const shouldNotifyParent = !waiters?.size && terminalTask.notifyParentOnComplete !== false
       terminalTask.notifyParentOnComplete = shouldNotifyParent
@@ -666,6 +667,7 @@ export namespace Cortex {
           draft.cortex.model = terminalTask.model
           if (error) draft.cortex.error = error
           if (output) draft.cortex.output = output
+          draft.cortex.launchFailure = options?.launchFailure === true ? true : undefined
           draft.cortex.usage = terminalTask.usage
           draft.cortex.notifyParentOnComplete = shouldNotifyParent
         }
@@ -680,11 +682,13 @@ export namespace Cortex {
         terminalTask.status = "cancelled"
         terminalTask.error = undefined
         terminalTask.output = undefined
+        terminalTask.launchFailure = undefined
         await Session.update(task.sessionID, (draft) => {
           if (draft.cortex) {
             draft.cortex.status = "cancelled"
             draft.cortex.error = undefined
             draft.cortex.output = undefined
+            draft.cortex.launchFailure = undefined
           }
         }).catch((error) => {
           log.error("failed to persist task cancellation", { taskID, error })
@@ -1161,6 +1165,7 @@ export namespace Cortex {
       startedAt: delegation.startedAt,
       completedAt: delegation.completedAt,
       error: delegation.error,
+      launchFailure: delegation.launchFailure,
       notifyParentOnComplete: delegation.notifyParentOnComplete,
       visibility: delegation.visibility,
       tools: delegation.tools,

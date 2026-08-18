@@ -312,6 +312,63 @@ describe("BlueprintContinuation", () => {
     })
   })
 
+  test("fails an audit immediately when the reviewer failed to launch", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session, loop } = await setupLoop()
+        const scopeID = ScopeContext.current.scope.id
+        const requesterMessageID = Identifier.ascending("message")
+        await BlueprintLoopStore.recordStopRequest(scopeID, loop.id, {
+          summary: "Blueprint complete",
+          requestedAt: Date.now(),
+          requesterSessionID: session.id,
+          requesterMessageID,
+        })
+        const reviewer = await Session.create({
+          parentID: session.id,
+          cortex: {
+            taskID: "ctx_launch_failed_review",
+            parentSessionID: session.id,
+            parentMessageID: requesterMessageID,
+            description: "Audit BlueprintLoop",
+            agent: "supervisor",
+            status: "error",
+            startedAt: Date.now(),
+            completedAt: Date.now(),
+            error: "No model configured for agent supervisor",
+            launchFailure: true,
+          },
+        })
+        await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
+          status: "auditing",
+          auditSessionID: reviewer.id,
+          auditTaskID: "ctx_launch_failed_review",
+        })
+        const prepare = mock(async () => {
+          throw new Error("recovery must not relaunch after a launch failure")
+        })
+        ;(Cortex as any).prepare = prepare
+
+        const proposal = await BlueprintContinuationPolicy.handle({
+          session: await Session.get(session.id),
+          scopeID,
+          sessionID: session.id,
+          terminalMessageID: "msg_terminal",
+        })
+
+        expect(proposal).toEqual({ kind: "handled" })
+        expect(prepare).not.toHaveBeenCalled()
+        const failed = await BlueprintLoopStore.get(scopeID, loop.id)
+        expect(failed.status).toBe("failed")
+        expect(failed.error).toContain("reviewer_launch_failed")
+        expect(failed.error).toContain("No model configured for agent supervisor")
+        expect(failed.stopRequest?.reviewToolRecoveryAttempts ?? 0).toBe(0)
+      },
+    })
+  })
+
   test.each(["running", "queued"] as const)("does not continue while a child task is %s", async (status) => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

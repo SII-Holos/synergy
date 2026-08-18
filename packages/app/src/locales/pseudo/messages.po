@@ -8426,6 +8426,18 @@ msgid "app.topBar.session.archive"
 msgstr ""
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.session.copyID"
+msgstr ""
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.session.copyIDCopied"
+msgstr ""
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.session.copyIDFailed"
+msgstr ""
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.session.enterWorktree"
 msgstr ""
 
@@ -19046,6 +19058,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "ui.attachment.previewImage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.basicTool.autoExpanded"
 msgstr ""
 
 #. js-lingui-explicit-id
