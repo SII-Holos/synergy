@@ -143,26 +143,6 @@
   cursor: pointer;
 }
 
-/* --- Waterfall layout --- */
-
-.kanban-waterfall {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  align-items: start;
-  /* Columns wrap into rows; the board frame clips overflow, so let the
-     layout scroll vertically like the grid layout does. */
-  overflow-y: auto;
-}
-
-.kanban-waterfall-col {
-  min-width: 0;
-  min-height: 260px;
-}
-
 /* --- Add-session chooser --- */
 
 .kanban-add-menu {
@@ -323,14 +303,6 @@
   }
 }
 
-.kanban-msg-time {
-  display: block;
-  font-size: var(--font-size-xs);
-  color: var(--text-weaker);
-  font-family: var(--font-family-mono);
-  margin-bottom: 2px;
-}
-
 .kanban-pane-title {
   flex: 1;
   min-width: 0;
@@ -422,6 +394,63 @@
   border-radius: 8px;
 }
 
+.kanban-pane-composer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border-base);
+  background: var(--surface-base);
+  flex: none;
+}
+
+.kanban-pane-input {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-strong);
+  background: var(--surface-base-hover);
+  border: 1px solid var(--border-base);
+  border-radius: 8px;
+  padding: 6px 10px;
+  outline: none;
+}
+
+.kanban-pane-input:focus {
+  border-color: var(--border-strong-base);
+}
+
+.kanban-pane-input::placeholder {
+  color: var(--text-weaker);
+}
+
+.kanban-pane-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--text-strong);
+  cursor: pointer;
+}
+
+.kanban-pane-send:hover:not(:disabled) {
+  background: var(--surface-base-interactive-active);
+}
+
+.kanban-pane-send:disabled {
+  color: var(--text-weaker);
+  cursor: default;
+}
+
+.kanban-pane[data-compact] .kanban-pane-input {
+  font-size: var(--font-size-xs);
+  padding: 4px 8px;
+}
+
 .kanban-pane[data-compact] .kanban-pane-title-text {
   font-size: var(--font-size-sm);
 }
@@ -434,24 +463,4 @@
   outline: 2px solid var(--border-focus);
   outline-offset: 2px;
   border-radius: 12px;
-}
-
-@media (max-width: 767px) {
-  .kanban-focus {
-    grid-template-columns: 1fr;
-  }
-
-  .kanban-focus-rail {
-    flex-direction: row;
-    overflow-x: auto;
-    overflow-y: hidden;
-  }
-
-  .kanban-focus-rail > .kanban-focus-promote {
-    min-width: 220px;
-  }
-
-  .kanban-waterfall {
-    grid-template-columns: 1fr;
-  }
 }

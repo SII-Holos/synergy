@@ -2876,10 +2876,6 @@ msgid "app.kanban.layout.grid"
 msgstr ""
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.layout.waterfall"
-msgstr ""
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.loadError"
 msgstr ""
 
@@ -2901,6 +2897,14 @@ msgstr ""
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.retry"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.sendFailed"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.sendPlaceholder"
 msgstr ""
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────

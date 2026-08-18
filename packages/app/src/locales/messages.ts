@@ -1317,7 +1317,6 @@ export const kanbanPage = {
   title: { id: "app.kanban.title", message: "Kanban" },
   layoutGrid: { id: "app.kanban.layout.grid", message: "Grid" },
   layoutFocus: { id: "app.kanban.layout.focus", message: "Focus" },
-  layoutWaterfall: { id: "app.kanban.layout.waterfall", message: "Waterfall" },
   follow: { id: "app.kanban.follow", message: "Follow latest" },
   unfollow: { id: "app.kanban.unfollow", message: "Paused" },
   openSession: { id: "app.kanban.openSession", message: "Open session" },
@@ -1336,6 +1335,8 @@ export const kanbanPage = {
   addPane: { id: "app.kanban.addPane", message: "Add session" },
   addPaneHint: { id: "app.kanban.addPaneHint", message: "Pick a session to pin to the board" },
   ariaLayout: { id: "app.kanban.aria.layout", message: "Board layout" },
+  sendPlaceholder: { id: "app.kanban.sendPlaceholder", message: "Message this session…" },
+  sendFailed: { id: "app.kanban.sendFailed", message: "Failed to send message" },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 // ── Plugin marketplace ────────────────────────────────────────────────────────

@@ -20,10 +20,9 @@ import { createBoardLoader, type BoardLoaderDeps } from "./model/board-loader"
 import { KanbanPane, type BoardPaneData, type BoardPaneLoadState } from "./pane/pane"
 import { KanbanGrid } from "./layout/grid"
 import { KanbanFocus } from "./layout/focus"
-import { KanbanWaterfall } from "./layout/waterfall"
 import "./kanban.css"
 
-export type KanbanLayout = "grid" | "focus" | "waterfall"
+export type KanbanLayout = "grid" | "focus"
 
 type KanbanPersisted = {
   layout: KanbanLayout
@@ -43,7 +42,7 @@ export function migrateKanbanPreferences(value: unknown): KanbanPersisted {
   const base = defaultKanbanPreferences()
   if (!isRecord(value)) return base
   return {
-    layout: value.layout === "focus" || value.layout === "waterfall" ? value.layout : "grid",
+    layout: value.layout === "focus" ? "focus" : "grid",
     follow: isRecord(value.follow) ? (value.follow as Record<string, boolean>) : {},
     pinned: Array.isArray(value.pinned) ? value.pinned.filter((x): x is string => typeof x === "string") : [],
   }
@@ -185,7 +184,20 @@ export function KanbanPanel() {
     boardLoader.load(pane.scopeKey, pane.sessionID, { force: true })
   }
 
-  const renderPane = (pane: BoardPane, variant: "focus" | "rail" | "waterfall" | "default" = "default") => {
+  const sendToPane = (pane: BoardPane) => async (text: string) => {
+    if (pane.kind !== "live") return
+    // Session.input accepts a plain text part; agent/model fall back to the
+    // session's last used values server-side, so the board composer stays a
+    // thin, scope-aware send surface.
+    const client = createSynergyClient({
+      baseUrl: globalSDK.url,
+      ...(isHomeScope(pane.scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: pane.scopeKey }),
+      throwOnError: true,
+    })
+    await client.session.input({ sessionID: pane.sessionID, parts: [{ type: "text", text }] })
+  }
+
+  const renderPane = (pane: BoardPane, variant: "focus" | "rail" | "default" = "default") => {
     // Unavailable panes render their placeholder independently of Scope data:
     // their session is gone, so no store exists and nothing should be loaded.
     const child =
@@ -203,11 +215,10 @@ export function KanbanPanel() {
         onToggleFollow={() => toggleFollow(pane)}
         onOpen={() => openSession(pane)}
         onPinToggle={pane.pinned ? () => unpinPane(pane) : () => pinKey(pane.key)}
-        onRemove={pane.kind === "unavailable" ? () => unpinPane(pane) : undefined}
         compact={variant === "rail"}
-        timeAlign={variant === "waterfall"}
         loadState={loadStateFor(pane)}
         onRetry={retryPane(pane)}
+        onSend={sendToPane(pane)}
       />
     )
   }
@@ -235,13 +246,6 @@ export function KanbanPanel() {
             onClick={() => setLayoutMode("focus")}
           >
             {_(kanbanPage.layoutFocus)}
-          </button>
-          <button
-            class="kanban-layout-btn"
-            data-active={layoutMode() === "waterfall" || undefined}
-            onClick={() => setLayoutMode("waterfall")}
-          >
-            {_(kanbanPage.layoutWaterfall)}
           </button>
         </div>
         <Show when={unpinnedSources().length > 0}>
@@ -292,7 +296,7 @@ export function KanbanPanel() {
 function SwitchLayout(props: {
   mode: KanbanLayout
   panes: BoardPane[]
-  render: (pane: BoardPane, variant?: "focus" | "rail" | "waterfall") => ReturnType<typeof KanbanPanel> | null
+  render: (pane: BoardPane, variant?: "focus" | "rail") => ReturnType<typeof KanbanPanel> | null
 }) {
   const panes = () => props.panes
   const render = props.render
@@ -303,9 +307,6 @@ function SwitchLayout(props: {
       </Show>
       <Show when={props.mode === "focus"} fallback={<></>}>
         <KanbanFocus panes={panes()} renderPane={(pane, variant) => render(pane, variant) ?? <></>} />
-      </Show>
-      <Show when={props.mode === "waterfall"} fallback={<></>}>
-        <KanbanWaterfall panes={panes()} renderPane={(pane) => render(pane, "waterfall")} />
       </Show>
     </>
   )

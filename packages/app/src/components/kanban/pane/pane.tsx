@@ -27,6 +27,7 @@ import { messagesFrom, selectMessagesInCanonicalOrder } from "@/components/sessi
 import { resolveSessionVisualState, type SessionVisualStore } from "@/components/sidebar/session-visual-state"
 import { hasMessageWindowSnapshot, type MessageWindowMetadata } from "@/context/session-message-window"
 import { useLocale } from "@/context/locale"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { kanbanPage } from "@/locales/messages"
 import type { BoardPane } from "../model/pane-selection"
 import "../kanban.css"
@@ -72,10 +73,9 @@ export function KanbanPane(props: {
   onPinToggle?: () => void
   onRemove?: () => void
   compact?: boolean
-  /** Waterfall variant: render a timestamp above every message for time-aligned comparison. */
-  timeAlign?: boolean
   loadState?: () => BoardPaneLoadState | undefined
   onRetry?: () => void
+  onSend: (text: string) => Promise<void>
 }) {
   const { _ } = useLingui()
   const { fmt } = useLocale()
@@ -151,8 +151,27 @@ export function KanbanPane(props: {
     autoScroll.scrollRef(undefined)
   })
 
-  const formatMsgTime = (created: number) =>
-    new Date(created).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  // Per-pane composer: a plain text input that posts to session.input, so the
+  // board stays a live control surface instead of a read-only monitor.
+  const [draft, setDraft] = createSignal("")
+  const [sending, setSending] = createSignal(false)
+  const submitDraft = async () => {
+    const text = draft().trim()
+    if (!text || sending()) return
+    setSending(true)
+    try {
+      await props.onSend(text)
+      setDraft("")
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: _(kanbanPage.sendFailed),
+        description: error instanceof Error ? error.message : undefined,
+      })
+    } finally {
+      setSending(false)
+    }
+  }
 
   return (
     <div
@@ -262,9 +281,6 @@ export function KanbanPane(props: {
                         data-message-role={message()?.role}
                         class="kanban-pane-msg w-full min-w-0"
                       >
-                        {props.timeAlign ? (
-                          <span class="kanban-msg-time">{formatMsgTime(message()!.time.created)}</span>
-                        ) : null}
                         {content}
                       </div>
                     )
@@ -298,6 +314,27 @@ export function KanbanPane(props: {
           </Show>
         </Show>
       </div>
+      <Show when={props.pane.kind === "live"}>
+        <form
+          class="kanban-pane-composer"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void submitDraft()
+          }}
+        >
+          <input
+            class="kanban-pane-input"
+            type="text"
+            value={draft()}
+            placeholder={_(kanbanPage.sendPlaceholder)}
+            disabled={sending()}
+            onInput={(event) => setDraft(event.currentTarget.value)}
+          />
+          <button class="kanban-pane-send" type="submit" disabled={sending() || !draft().trim()}>
+            <Icon name={getSemanticIcon("prompt.send")} size="small" />
+          </button>
+        </form>
+      </Show>
     </div>
   )
 }

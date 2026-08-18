@@ -2876,10 +2876,6 @@ msgid "app.kanban.layout.grid"
 msgstr "网格"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.layout.waterfall"
-msgstr "瀑布"
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.loadError"
 msgstr "消息加载失败"
 
@@ -2902,6 +2898,14 @@ msgstr "移除"
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.retry"
 msgstr "重试"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.sendFailed"
+msgstr "发送消息失败"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.sendPlaceholder"
+msgstr "向此会话发送消息…"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.title"

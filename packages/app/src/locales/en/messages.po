@@ -2876,10 +2876,6 @@ msgid "app.kanban.layout.grid"
 msgstr "Grid"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.layout.waterfall"
-msgstr "Waterfall"
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.loadError"
 msgstr "Failed to load messages"
 
@@ -2902,6 +2898,14 @@ msgstr "Remove"
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.retry"
 msgstr "Retry"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.sendFailed"
+msgstr "Failed to send message"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.sendPlaceholder"
+msgstr "Message this session…"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.title"
