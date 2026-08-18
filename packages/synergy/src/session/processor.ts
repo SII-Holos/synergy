@@ -893,6 +893,8 @@ export namespace SessionProcessor {
                 executionTools: _executionTools,
                 executorKinds: _executorKinds,
                 memoryTurn: _memoryTurn,
+                autoExpandable: _autoExpandable,
+                resolverInput: _resolverInput,
                 ...agentTurnInput
               } = streamInput
               const stream = await AgentTurn.stream(agentTurnInput)

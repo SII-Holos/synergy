@@ -2142,13 +2142,15 @@ export namespace ToolResolver {
     if (expansion.kind === "none") {
       return (await runtimeToolFor({ ...input, session }, toolName)) ?? undefined
     }
-    const updatedState = ToolExposure.expandState(
-      session.toolState,
-      expansion.kind === "group" ? [expansion.group] : undefined,
-      expansion.kind === "activate" ? [expansion.tool] : undefined,
-    )
+    // Merge into the draft inside the mutation lock: the pre-lock snapshot can
+    // be stale when concurrent auto-expansions run in the same turn, and
+    // overwriting toolState wholesale would drop the other expansion.
     await Session.update(session.id, (draft) => {
-      draft.toolState = updatedState
+      draft.toolState = ToolExposure.expandState(
+        draft.toolState,
+        expansion.kind === "group" ? [expansion.group] : undefined,
+        expansion.kind === "activate" ? [expansion.tool] : undefined,
+      )
     })
     // Re-fetch the session so the fresh toolState is visible to the
     // availability re-check; the pre-update snapshot would still hide the tool.
