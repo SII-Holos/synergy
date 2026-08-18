@@ -138,14 +138,11 @@ const TOOL_DESC: Record<string, MessageDescriptor> = {
 
   attach: defineDescriptor("session-status.preparing-files", "Preparing files"),
 
-  diagram: defineDescriptor("session-status.drawing-diagram", "Drawing diagram"),
   render: defineDescriptor("session-status.rendering-content", "Rendering content"),
 
   runtime_reload: defineDescriptor("session-status.reloading-config", "Reloading config"),
 
   task_list: defineDescriptor("session-status.managing-tasks", "Managing tasks"),
-
-  batch: defineDescriptor("session-status.running-batch", "Running batch"),
 }
 
 const REASONING_DESC = defineDescriptor("session-status.thinking", "Thinking")
