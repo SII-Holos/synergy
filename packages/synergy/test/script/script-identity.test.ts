@@ -2,15 +2,15 @@ import { describe, expect, test } from "bun:test"
 
 // One module evaluation per process: pin the environment BEFORE importing so
 // the module's top-level awaits run deterministically with no network access.
-// SYNERGY_BUMP drives the "latest" channel; a failing registry fetch exercises
-// the 0.1.0 fallback and the bump arithmetic.
+// SYNERGY_BUMP drives the "latest" channel; a 404 registry response leaves no
+// published versions and exercises the bump arithmetic against the baseline.
 process.env.SYNERGY_BUMP = "minor"
 delete process.env.SYNERGY_VERSION
 delete process.env.SYNERGY_CHANNEL
-const registryFetch = (async () => ({ ok: false, statusText: "unavailable" })) as unknown as typeof fetch
+const registryFetch = (async () => new Response(null, { status: 404 })) as unknown as typeof fetch
 globalThis.fetch = registryFetch
 
-const { Script } = await import("../src/index.ts")
+const { Script } = await import("../../script/script-identity")
 
 describe("Script identity derivation", () => {
   test("derives the latest channel from a bump input", () => {
@@ -18,7 +18,7 @@ describe("Script identity derivation", () => {
     expect(Script.preview).toBe(false)
   })
 
-  test("falls back to 0.1.0 and applies the minor bump when the registry is unreachable", () => {
+  test("applies the minor bump when no published versions are reachable", () => {
     expect(Script.version).toBe("0.2.0")
   })
 })
