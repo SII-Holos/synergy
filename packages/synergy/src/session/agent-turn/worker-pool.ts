@@ -79,6 +79,8 @@ const DEFAULT_AGENT_WORKER_SUPERVISOR_OPTIONS: AgentWorkerSupervisorOptions = {
   },
   sleep: Bun.sleep,
 }
+const RELEASED_REQUEST_TTL_MS = 30_000
+const RELEASED_REQUEST_RING_CAPACITY = 2
 
 interface PoolTask {
   requestId: string
@@ -124,8 +126,14 @@ interface PoolWorker {
   idleBaselineExternalBytes?: number
   idleSince?: number
   activeMemoryPressureRequestId?: string
+  releasedRequests: ReleasedRequest[]
   lastEventSequence: number
   lastHeartbeatAt: number
+}
+
+interface ReleasedRequest {
+  requestId: string
+  releasedAt: number
 }
 
 type MemoryRecycleReason = "rss_soft" | "heap_soft"
@@ -518,6 +526,7 @@ export class AgentWorkerPool {
         stopping: false,
         retireAfterTask: false,
         turns: 0,
+        releasedRequests: [],
         lastEventSequence: 0,
         lastHeartbeatAt: Date.now(),
       }
@@ -549,6 +558,10 @@ export class AgentWorkerPool {
     }
     if (message.type === "heartbeat") {
       if (message.requestId !== undefined && message.requestId !== worker.task?.requestId) {
+        if (this.isRecentlyReleased(worker, message.requestId)) {
+          this.dropLateMessage(worker, message.type, message.requestId)
+          return
+        }
         this.terminateForProtocol(worker, "heartbeat referenced an unowned turn")
         return
       }
@@ -589,6 +602,12 @@ export class AgentWorkerPool {
 
     const task = worker.task
     if (!task || "requestId" in message === false || message.requestId !== task.requestId) {
+      const lateRequestId =
+        "requestId" in message && typeof message.requestId === "string" ? message.requestId : undefined
+      if (lateRequestId !== undefined && this.isRecentlyReleased(worker, lateRequestId)) {
+        this.dropLateMessage(worker, message.type, lateRequestId)
+        return
+      }
       this.terminateForProtocol(worker, "message referenced an unowned turn")
       return
     }
@@ -831,6 +850,10 @@ export class AgentWorkerPool {
       worker.idleSince = Date.now()
       worker.activeMemoryPressureRequestId = undefined
     }
+    worker.releasedRequests.push({ requestId: task.requestId, releasedAt: Date.now() })
+    if (worker.releasedRequests.length > RELEASED_REQUEST_RING_CAPACITY) {
+      worker.releasedRequests.splice(0, worker.releasedRequests.length - RELEASED_REQUEST_RING_CAPACITY)
+    }
     if (task.startedAt !== undefined) {
       ObservabilityMetrics.record({
         name: "agent.turn.duration",
@@ -848,6 +871,31 @@ export class AgentWorkerPool {
     if (drain) this.drain()
   }
 
+  private isRecentlyReleased(worker: PoolWorker, requestId: string): boolean {
+    const now = this.supervisor.now()
+    worker.releasedRequests = worker.releasedRequests.filter(
+      (entry) => now - entry.releasedAt <= RELEASED_REQUEST_TTL_MS,
+    )
+    return worker.releasedRequests.some((entry) => entry.requestId === requestId)
+  }
+
+  private dropLateMessage(worker: PoolWorker, messageType: string, requestId: string): void {
+    this.log.debug("agent worker late message dropped", {
+      workerID: worker.id,
+      pid: worker.pid,
+      messageType,
+      requestID: requestId,
+    })
+    ObservabilityMetrics.record({
+      name: "agent.worker.late_message",
+      value: 1,
+      unit: "count",
+      module: "session",
+      processId: worker.id,
+      pid: worker.pid,
+      labels: { messageType },
+    })
+  }
   private recordWorkerMemory(
     worker: PoolWorker,
     memory: AgentTurnProtocol.WorkerMemory,
@@ -1126,6 +1174,15 @@ export class AgentWorkerPool {
       workerID: worker.id,
       pid: worker.pid,
       reason,
+    })
+    ObservabilityMetrics.record({
+      name: "agent.worker.recycle",
+      value: 1,
+      unit: "count",
+      module: "session",
+      processId: worker.id,
+      pid: worker.pid,
+      labels: { reason: "protocol_violation", turns: worker.turns },
     })
     worker.host.process.kill()
   }

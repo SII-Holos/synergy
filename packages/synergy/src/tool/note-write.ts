@@ -19,7 +19,6 @@ const parameters = z.object({
     .optional()
     .describe("Document kind. Use 'blueprint' when this note should be executable as a BlueprintLoop."),
   description: z.string().optional().describe("Short blueprint description. Only used when kind is 'blueprint'."),
-  auditAgent: z.string().optional().describe("Audit agent for this blueprint. Only used when kind is 'blueprint'."),
   scope: z
     .enum(["current", "home"])
     .default("current")
@@ -62,7 +61,6 @@ async function updateExisting(input: {
   tags?: string[]
   kind?: "note" | "blueprint"
   description?: string
-  auditAgent?: string
   content(existing: Awaited<ReturnType<typeof NoteStore.getAny>>): unknown
   ctx: Tool.Context
   optimistic?: boolean
@@ -72,7 +70,6 @@ async function updateExisting(input: {
   const nextKind = NoteBlueprintPolicy.requestedKind({
     kind: input.kind,
     description: input.description,
-    auditAgent: input.auditAgent,
   })
   const session = await Session.get(input.ctx.sessionID)
   const decision = NoteBlueprintPolicy.evaluateWrite({
@@ -102,7 +99,6 @@ async function updateExisting(input: {
     patch.blueprint = {
       ...(existing.blueprint ?? {}),
       ...(input.description !== undefined ? { description: input.description } : {}),
-      ...(input.auditAgent !== undefined ? { auditAgent: input.auditAgent } : {}),
       runCount: numberValue(blueprint.runCount) ?? 0,
     }
   }
@@ -110,13 +106,13 @@ async function updateExisting(input: {
   try {
     await NoteStore.updateAny(ScopeContext.current.scope.id, input.id, patch as any)
   } catch (error) {
-    if (error instanceof NoteError.Conflict) {
+    if (NoteError.Conflict.isInstance(error)) {
       return createConflictResult({
         id: input.id,
         action: input.action,
         title: existing.title,
         expectedVersion: existing.version,
-        currentVersion: error instanceof NoteError.Conflict ? error.data.note.version : 0,
+        currentVersion: error.data.note.version,
       })
     }
     throw error
@@ -163,7 +159,6 @@ export const NoteWriteTool = Tool.define("note_write", {
       const kind = NoteBlueprintPolicy.requestedKind({
         kind: params.kind,
         description: params.description,
-        auditAgent: params.auditAgent,
         fallback: "note",
       })
       const session = await Session.get(ctx.sessionID)
@@ -185,7 +180,6 @@ export const NoteWriteTool = Tool.define("note_write", {
             kind === "blueprint"
               ? {
                   description: params.description,
-                  auditAgent: params.auditAgent,
                 }
               : undefined,
         },
@@ -231,7 +225,6 @@ export const NoteWriteTool = Tool.define("note_write", {
         tags: params.tags,
         kind: params.kind,
         description: params.description,
-        auditAgent: params.auditAgent,
         content: (existing) => ({
           type: "doc" as const,
           content: [...(existing.content?.content ?? []), ...(tiptapContent.content ?? [])],
@@ -248,7 +241,6 @@ export const NoteWriteTool = Tool.define("note_write", {
         tags: params.tags,
         kind: params.kind,
         description: params.description,
-        auditAgent: params.auditAgent,
         content: () => tiptapContent,
         ctx,
         optimistic: false,
