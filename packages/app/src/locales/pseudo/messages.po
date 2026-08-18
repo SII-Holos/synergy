@@ -19049,6 +19049,10 @@ msgid "ui.attachment.previewImage"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "ui.basicTool.autoExpanded"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "ui.basicTool.chars"
 msgstr ""
 

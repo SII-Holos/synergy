@@ -23,6 +23,9 @@ const packageRoot = path.resolve(import.meta.dir, "..")
  * - nav-global-routes asserts home-scope completion counters that sibling
  *   files can mutate;
  * - openai-image-gen's global fetch mock races with sibling fetch mocks;
+ * - auto-expand mocks 15 module functions and drives the real tool scheduler
+ *   and session store, so a single shared-process run with failing sibling
+ *   fixtures (plugin registry, network) settles its parts as errors.
  * - arxiv/holos/proxy/registry/retry/import/catalog/MCP-OAuth suites start
  *   local servers or assert network timing and flake under a full shared
  *   process on CI (see postmortem 0001 coverage failures); each passes in
@@ -33,6 +36,7 @@ export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
   "test/channel/svg-raster-standalone.test.ts",
   "test/server/nav-global-routes.test.ts",
   "test/tool/openai-image-gen.test.ts",
+  "test/tool/auto-expand.test.ts",
   "test/tool/arxiv-download.test.ts",
   "test/holos/runtime.test.ts",
   "test/server/plugin-official-install.test.ts",

@@ -23,6 +23,7 @@ import { classifyTool } from "./tool/classifier"
 import { toolCountdown, type ToolTime } from "./tool/timeout"
 
 const charsLabelDescriptor = { id: "ui.basicTool.chars", message: "{count} chars" }
+const autoExpandedLabelDescriptor = { id: "ui.basicTool.autoExpanded", message: "Auto-loaded" }
 function translateToolDescriptor(
   i18n: Pick<I18n, "_">,
   descriptor: MessageDescriptor,
@@ -130,6 +131,10 @@ export function BasicTool(props: BasicToolProps) {
     if (props.status !== "generating" || !props.charsReceived) return null
     return _({ ...charsLabelDescriptor, values: { count: props.charsReceived.toLocaleString() } })
   })
+  const autoExpandedLabel = createMemo(() => {
+    if (!props.metadata?.autoExpanded) return null
+    return _(autoExpandedLabelDescriptor)
+  })
   const countdown = createMemo(() => {
     if (props.countdown !== undefined) {
       return { seconds: props.countdown, startedAt: props.countdownStartedAt ?? props.time?.start }
@@ -137,7 +142,17 @@ export function BasicTool(props: BasicToolProps) {
     return toolCountdown(props.metadata, props.time)
   })
 
-  const triggerProps = createMemo(() => fromTrigger(props.trigger, props.icon, props.onSubtitleClick))
+  const triggerProps = createMemo(() => {
+    const base = fromTrigger(props.trigger, props.icon, props.onSubtitleClick)
+    if (!base) return base
+    const auto = autoExpandedLabel()
+    if (!auto) return base
+    return {
+      ...base,
+      tags: [...(base.tags ?? []), { label: auto, tone: "default" as const }],
+    }
+  })
+
   const rawTrigger = createMemo<JSX.Element | undefined>(() => {
     if (triggerProps()) return undefined
     const trigger = props.trigger
