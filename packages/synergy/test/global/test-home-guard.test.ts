@@ -21,6 +21,12 @@ describe("isTestEntryPath", () => {
     }
   })
 
+  test("detects .spec.* entries as test processes", () => {
+    for (const ext of [".spec.ts", ".spec.tsx", ".spec.js", ".spec.jsx", ".spec.cjs", ".spec.mjs"]) {
+      expect(isTestEntryPath(`/repo/x/thing${ext}`, [], {})).toBe(true)
+    }
+  })
+
   test("detects a test file passed as argv[1] when Bun.main is unavailable", () => {
     expect(isTestEntryPath(undefined, ["bun", "/repo/test/thing.test.ts"], {})).toBe(true)
   })
@@ -59,6 +65,29 @@ describe("assertIsolatedTestHome", () => {
 
   test("does not throw for a test entry against an isolated temp home", () => {
     expect(() => assertIsolatedTestHome("/tmp/synergy-test-home", testEntry(), ["bun", testEntry()], {})).not.toThrow()
+  })
+
+  test("throws when the root is the real config dir itself (~/.synergy/.synergy)", () => {
+    expect(() =>
+      assertIsolatedTestHome(path.join(REAL_HOME_ROOT, ".synergy"), testEntry(), ["bun", testEntry()], {}),
+    ).toThrow(TestHomeGuardError)
+  })
+
+  test("throws for any root inside the real ~/.synergy tree", () => {
+    expect(() =>
+      assertIsolatedTestHome(path.join(REAL_HOME_ROOT, "data"), testEntry(), ["bun", testEntry()], {}),
+    ).toThrow(TestHomeGuardError)
+  })
+
+  test("does not throw for a dedicated test home outside the real root", () => {
+    expect(() =>
+      assertIsolatedTestHome(
+        path.join(os.homedir(), "synergy-test-home", ".synergy"),
+        testEntry(),
+        ["bun", testEntry()],
+        {},
+      ),
+    ).not.toThrow()
   })
 
   test("honors SYNERGY_ALLOW_REAL_HOME=1 as an explicit opt-in", () => {
@@ -157,6 +186,20 @@ describe("incident-shape subprocess contract", () => {
     expect(result.stderr).toContain("Refusing to run a test process")
     // The guard fires before any side effect: nothing new may appear under the
     // real Synergy data root as a result of this run.
+    const dataRoot = path.join(os.homedir(), ".synergy", "data")
+    const before = await fs.readdir(dataRoot).catch(() => [])
+    const after = await fs.readdir(dataRoot).catch(() => [])
+    expect(after).toEqual(before)
+  })
+
+  test("SYNERGY_HOME pointed at the real config dir is also blocked before any write", async () => {
+    const fixture = await writeFixture()
+    const result = await runBunTestSpawn(
+      ["--parallel=2", "--config", "/dev/null", fixture],
+      strippedEnv({ SYNERGY_HOME: path.join(os.homedir(), ".synergy") }),
+    )
+    expect(result.exitCode).not.toBe(0)
+    expect(result.stderr).toContain("Refusing to run a test process")
     const dataRoot = path.join(os.homedir(), ".synergy", "data")
     const before = await fs.readdir(dataRoot).catch(() => [])
     const after = await fs.readdir(dataRoot).catch(() => [])
