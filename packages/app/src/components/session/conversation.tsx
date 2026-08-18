@@ -1,3 +1,4 @@
+import { Dynamic } from "solid-js/web"
 import { For, Show, createMemo, onMount } from "solid-js"
 import type { Accessor } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -10,6 +11,7 @@ import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-ou
 import type { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 import type { UserMessage, AssistantMessage, Message, SessionInboxItem } from "@ericsanchezok/synergy-sdk"
 import { SessionTimeline } from "./session-timeline"
+import { buildConversationTimelineSnapshot } from "./conversation-timeline"
 import { ConversationViewport } from "./conversation-viewport"
 import { navMark } from "@/utils/perf"
 import { BrowserViewEffects } from "@/components/workspace/browser/browser-view-effects"
@@ -68,6 +70,13 @@ export function SessionConversation(props: {
   const workspaceOpen = createMemo(() => props.workspaceOpen?.() ?? false)
   const lastTimelineID = createMemo(() => props.timeline()?.at(-1)?.id)
   const turnProjection = props.turnProjection
+  // Rows below are keyed by the stable message id (see conversation-timeline):
+  // message objects are replaced in place by window reload, reconnect replay,
+  // rollback copies, and message.updated reconcile. Reference-keyed rows would
+  // destroy and recreate the whole SessionTurn tree on every replacement while
+  // the abandoned tree stayed alive in the Solid owner graph — the renderer
+  // heap grew to the 4 GiB V8 limit after ~33h of a long session.
+  const timelineSnapshot = createMemo(() => buildConversationTimelineSnapshot(props.timeline() ?? []))
   return (
     <ConversationViewport
       scrolledUp={props.scrolledUp()}
@@ -138,37 +147,37 @@ export function SessionConversation(props: {
           </Show>
         </div>
       </Show>
-      <For each={props.timeline()}>
-        {(msg) => {
+      <For each={timelineSnapshot().keys}>
+        {(key) => {
           onMount(() => {
             navMark({ dir: props.paramsDir, to: props.sessionID, name: "session:first-turn-mounted" })
           })
 
-          const isLast = () => msg.id === lastTimelineID()
-          const turnMessages = () => turnProjection().turnMessagesFor(msg as UserMessage)
+          // Reading the current snapshot through getters keeps the row mounted
+          // across object replacement while updated message data flows through.
+          const message = () => timelineSnapshot().map.get(key)
+          const rootMessage = () => message() as UserMessage
+          const isLast = () => key === lastTimelineID()
+          const turnMessages = () => turnProjection().turnMessagesFor(rootMessage())
+          if (!message()) return null
 
-          if (msg.role === "assistant") {
-            const assistantMsg = msg as AssistantMessage
-            const source = assistantMsg.metadata?.source as string | undefined
-            const isCommand = source === "command"
-            const Component = isCommand ? CommandResultOutput : MailboxMessage
+          if (message()?.role === "assistant") {
+            const assistantMessage = () => message() as AssistantMessage
+            const source = () => assistantMessage().metadata?.source as string | undefined
+            const isCommand = () => source() === "command"
 
             return (
               <div
-                id={props.anchor(msg.id)}
-                data-message-id={msg.id}
+                id={props.anchor(key)}
+                data-message-id={key}
                 data-message-role="assistant"
                 class="min-w-0 w-full max-w-full"
                 style={isLast() ? { animation: "fadeUp 0.3s ease-out both" } : undefined}
               >
-                <MessageSlotOutlet
-                  slot="message.before"
-                  sessionId={props.sessionID}
-                  messageId={msg.id}
-                  role="assistant"
-                />
-                <Component
-                  message={assistantMsg}
+                <MessageSlotOutlet slot="message.before" sessionId={props.sessionID} messageId={key} role="assistant" />
+                <Dynamic
+                  component={isCommand() ? CommandResultOutput : MailboxMessage}
+                  message={assistantMessage()}
                   classes={{
                     root: "min-w-0 w-full relative",
                     container: "w-full min-w-0 max-w-full px-3 md:px-1 pb-1",
@@ -177,37 +186,34 @@ export function SessionConversation(props: {
                 <MessageSlotOutlet
                   slot="message.actions"
                   sessionId={props.sessionID}
-                  messageId={msg.id}
+                  messageId={key}
                   role="assistant"
                 />
-                <MessageSlotOutlet
-                  slot="message.after"
-                  sessionId={props.sessionID}
-                  messageId={msg.id}
-                  role="assistant"
-                />
+                <MessageSlotOutlet slot="message.after" sessionId={props.sessionID} messageId={key} role="assistant" />
               </div>
             )
           }
 
           return (
             <div
-              id={props.anchor(msg.id)}
-              data-message-id={msg.id}
+              id={props.anchor(key)}
+              data-message-id={key}
               data-message-role="user"
               class="min-w-0 w-full max-w-full"
               style={isLast() ? { animation: "fadeUp 0.3s ease-out both" } : undefined}
             >
               <SessionTurn
                 sessionID={props.sessionID}
-                messageID={msg.id}
-                rootMessage={msg}
+                messageID={key}
+                rootMessage={rootMessage()}
                 messages={turnMessages()}
                 compactionParentIDs={turnProjection().compactionParentIDs}
                 activityDisplay={props.activityDisplay()}
                 lastUserMessageID={props.lastUserMessage()?.id}
                 compactReasoning={props.compactReasoning()}
-                onRewind={messageAllowsCanonicalActions(msg) ? () => props.onRewind?.(msg as UserMessage) : undefined}
+                onRewind={
+                  messageAllowsCanonicalActions(rootMessage()) ? () => props.onRewind?.(rootMessage()) : undefined
+                }
                 rollbackActive={props.rollbackActive}
                 onReviewChanges={props.onReviewChanges}
                 classes={{

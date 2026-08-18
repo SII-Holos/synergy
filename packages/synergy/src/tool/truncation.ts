@@ -21,12 +21,19 @@ export namespace Truncate {
   }
 
   export async function cleanup() {
-    const cutoff = Identifier.timestamp(Identifier.create("tool", false, Date.now() - RETENTION_MS))
+    // Tool output files are written by output(), so mtime is their creation
+    // time. The tool_* id encodes only the low 36 bits of the epoch (the
+    // create() payload is 48 bits), so decoding the id cannot recover the
+    // full timestamp across the 2^36 ms boundary; retention must use mtime.
+    const cutoff = Date.now() - RETENTION_MS
     const glob = new Bun.Glob("tool_*")
     const entries = await Array.fromAsync(glob.scan({ cwd: DIR, onlyFiles: true })).catch(() => [] as string[])
     for (const entry of entries) {
-      if (Identifier.timestamp(entry) >= cutoff) continue
-      await fs.unlink(path.join(DIR, entry)).catch(() => {})
+      const filepath = path.join(DIR, entry)
+      const stat = await fs.stat(filepath).catch(() => null)
+      if (!stat) continue
+      if (stat.mtimeMs >= cutoff) continue
+      await fs.unlink(filepath).catch(() => {})
     }
   }
 
