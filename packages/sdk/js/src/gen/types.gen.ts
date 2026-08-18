@@ -6245,6 +6245,13 @@ export type WorkspaceFileChildrenResponse = {
   truncated: boolean
 }
 
+export type WorkspaceFileWriteError = {
+  name: "WorkspaceFileAccessDeniedError" | "WorkspaceFileWriteConflictError" | "WorkspaceFileTooLargeError"
+  data: {
+    message: string
+  }
+}
+
 export type WorkspaceFileTextRange = {
   offset: number
   limit: number
@@ -6364,13 +6371,6 @@ export type WorkspaceFileWriteResult = {
   mtime: number
   size: number
   existed: boolean
-}
-
-export type WorkspaceFileWriteError = {
-  name: "WorkspaceFileAccessDeniedError" | "WorkspaceFileWriteConflictError" | "WorkspaceFileTooLargeError"
-  data: {
-    message: string
-  }
 }
 
 export type WorkspaceFileWriteFileInput = {
@@ -14563,6 +14563,10 @@ export type WorkspaceFilesChildrenData = {
 
 export type WorkspaceFilesChildrenErrors = {
   /**
+   * Forbidden
+   */
+  403: WorkspaceFileWriteError
+  /**
    * Not found
    */
   404: NotFoundError
@@ -14601,6 +14605,10 @@ export type WorkspaceFilesReadData = {
 
 export type WorkspaceFilesReadErrors = {
   /**
+   * Forbidden
+   */
+  403: WorkspaceFileWriteError
+  /**
    * Not found
    */
   404: NotFoundError
@@ -14633,6 +14641,10 @@ export type WorkspaceFilesStatData = {
 }
 
 export type WorkspaceFilesStatErrors = {
+  /**
+   * Forbidden
+   */
+  403: WorkspaceFileWriteError
   /**
    * Not found
    */

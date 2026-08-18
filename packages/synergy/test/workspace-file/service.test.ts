@@ -29,6 +29,16 @@ async function trySymlink(target: string, linkPath: string) {
   }
 }
 
+async function tryDirSymlink(target: string, linkPath: string) {
+  try {
+    await fs.symlink(target, linkPath, "dir")
+    return true
+  } catch (error) {
+    if (isSymlinkPrivilegeError(error)) return false
+    throw error
+  }
+}
+
 async function withWorkspace<T>(init: (dir: string) => Promise<void>, fn: (dir: string) => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true, init })
   return ScopeContext.provide({
@@ -69,6 +79,67 @@ describe("WorkspaceFileService", () => {
           const inside = await WorkspaceFileService.node("inside.txt")
           expect(inside.path).toBe("inside.txt")
           expect(inside.type).toBe("file")
+        },
+      )
+    } finally {
+      await fs.rm(sibling, { recursive: true, force: true }).catch(() => {})
+    }
+  })
+  test("accepts files when the workspace root itself is a symlink", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "inside.txt"), "inside")
+        await fs.mkdir(path.join(dir, "docs"), { recursive: true })
+        await Bun.write(path.join(dir, "docs", "note.md"), "# note")
+      },
+    })
+    const linkDir = path.join(os.tmpdir(), `synergy-test-root-link-${Math.random().toString(36).slice(2)}`)
+    let linkCreated = false
+    try {
+      linkCreated = await tryDirSymlink(tmp.path, linkDir)
+      if (!linkCreated) return
+      const scope = await tmp.scope()
+      await ScopeContext.provide({
+        scope: { ...scope, directory: linkDir, worktree: linkDir },
+        fn: async () => {
+          WorkspaceFileIndexer.invalidate()
+          try {
+            const node = await WorkspaceFileService.node("inside.txt", { resolveGitStatus: false })
+            expect(node.path).toBe("inside.txt")
+            expect(node.type).toBe("file")
+
+            const children = await WorkspaceFileService.children({ path: "" })
+            expect(children.children.some((item) => item.name === "docs")).toBe(true)
+
+            const read = await WorkspaceFileService.read({ path: "docs/note.md" })
+            expect(read.kind).toBe("text")
+            if (read.kind === "text") expect(read.content).toContain("# note")
+          } finally {
+            WorkspaceFileIndexer.invalidate()
+          }
+        },
+      })
+    } finally {
+      await fs.rm(linkDir, { recursive: true, force: true }).catch(() => {})
+    }
+  })
+
+  test("still rejects directory symlinks whose target escapes the workspace", async () => {
+    const sibling = path.join(os.tmpdir(), `synergy-test-sibling-${Date.now()}`)
+    await fs.mkdir(sibling, { recursive: true })
+    await Bun.write(path.join(sibling, "note.md"), "outside")
+    let linkCreated = false
+    try {
+      await withWorkspace(
+        async (dir) => {
+          linkCreated = await tryDirSymlink(sibling, path.join(dir, "docs"))
+        },
+        async () => {
+          if (!linkCreated) return
+          await expect(WorkspaceFileService.children({ path: "docs" })).rejects.toThrow(/escapes workspace/)
+          await expect(WorkspaceFileService.node("docs/note.md")).rejects.toThrow(/escapes workspace/)
+          await expect(WorkspaceFileService.read({ path: "docs/note.md" })).rejects.toThrow(/escapes workspace/)
         },
       )
     } finally {
