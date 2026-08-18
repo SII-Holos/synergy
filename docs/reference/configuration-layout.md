@@ -638,6 +638,7 @@ Domain files are the durable configuration contract. Environment variables are p
 
 | Variable                             | Effect                                                                                       |
 | ------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `SYNERGY_ALLOW_REAL_HOME=1`          | Opt out of the test-home guard (`TestHomeGuardError`) for a deliberate real-home test run    |
 | `SYNERGY_EXPERIMENTAL=1`             | Enable the grouped experimental behaviors that explicitly consult it                         |
 | `SYNERGY_EXPERIMENTAL_OXFMT=1`       | Allow the experimental `oxfmt` formatter path                                                |
 | `SYNERGY_EXPERIMENTAL_LSP_TY=1`      | Prefer the experimental `ty` Python language server over Pyright                             |

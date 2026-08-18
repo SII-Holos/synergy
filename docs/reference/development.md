@@ -76,7 +76,9 @@ bun test --watch
 
 `bun run test:ci` matches the CI core-suite boundary: four sequential shards run in separate Bun processes, limiting process-global state and temporary fixture accumulation while avoiding concurrent port and environment collisions. Set `SYNERGY_TEST_JUNIT_DIR` to a package-relative directory when per-shard JUnit reports are needed.
 
-Provider/model tests use the pinned `test/tool/fixtures/models-api.json` catalog loaded by `test/preload.ts`. Update the fixture deliberately when a test requires a new model; do not reintroduce live model-catalog fetching into deterministic tests.
+`bun run test:coverage` runs through `script/coverage-run.ts`, which spawns every coverage batch with an injected isolated test home. Both orchestrators (`test-ci.ts`, `coverage-run.ts`) set `SYNERGY_TEST_HOME`/`SYNERGY_TEST_ROOT` in the child environment and delete `SYNERGY_HOME`, because Bun 1.3.x does not propagate `test/preload.ts` environment into `--parallel` worker processes — a raw `bun test --coverage --parallel` run would fall through to the real user home and write fixtures into `~/.synergy/data`.
+
+`src/global/index.ts` enforces this at module load: a test-entry process (`Bun.main`/argv matching `*.test.*`, or `BUN_TEST_WORKER_ID`/`JEST_WORKER_ID` present) that resolves the Synergy home to `os.homedir()/.synergy` throws `TestHomeGuardError` before creating anything. Run core suites through the package scripts; the only escape hatch for a deliberate real-home test run is `SYNERGY_ALLOW_REAL_HOME=1` (see [Configuration layout](configuration-layout.md)).
 
 The same pinned catalog is the default input for core binary builds. `packages/synergy/script/models-catalog.ts` validates it and requires non-empty OpenAI, Anthropic, and Google entries before compilation; `MODELS_DEV_API_JSON` can override the input for an ordinary local build, while release builds always force the repository-pinned snapshot.
 

@@ -12,6 +12,7 @@
 import { mkdir, readdir, rm } from "node:fs/promises"
 import path from "node:path"
 
+import { createIsolatedTestEnv } from "./test-env"
 const packageRoot = path.resolve(import.meta.dir, "..")
 
 /**
@@ -55,7 +56,7 @@ async function collectTests(directory: string): Promise<string[]> {
   return nested.flat()
 }
 
-async function runBatch(files: string[], shard: number): Promise<number> {
+async function runBatch(files: string[], shard: number, env: Record<string, string | undefined>): Promise<number> {
   if (files.length === 0) return 0
   const child = Bun.spawn(
     [
@@ -70,7 +71,7 @@ async function runBatch(files: string[], shard: number): Promise<number> {
     ],
     {
       cwd: packageRoot,
-      env: process.env,
+      env,
       stdin: "inherit",
       stdout: "inherit",
       stderr: "inherit",
@@ -86,20 +87,24 @@ async function main() {
 
   const files = (await collectTests("test")).toSorted()
   const { main, isolated } = splitCoverageBatches(files)
-
-  const failed: Array<{ shard: number; exitCode: number }> = []
-  const mainExit = await runBatch(main, 0)
-  if (mainExit !== 0) failed.push({ shard: 0, exitCode: mainExit })
-  let shard = 1
-  for (const file of isolated) {
-    const exitCode = await runBatch([file], shard++)
-    if (exitCode !== 0) failed.push({ shard: shard - 1, exitCode })
-  }
-  if (failed.length > 0) {
-    console.error(
-      `coverage batches failed: ${failed.map(({ shard, exitCode }) => `shard ${shard} (exit ${exitCode})`).join(", ")}`,
-    )
-    process.exit(1)
+  const isolatedEnv = await createIsolatedTestEnv()
+  try {
+    const failed: Array<{ shard: number; exitCode: number }> = []
+    const mainExit = await runBatch(main, 0, isolatedEnv.env)
+    if (mainExit !== 0) failed.push({ shard: 0, exitCode: mainExit })
+    let shard = 1
+    for (const file of isolated) {
+      const exitCode = await runBatch([file], shard++, isolatedEnv.env)
+      if (exitCode !== 0) failed.push({ shard: shard - 1, exitCode })
+    }
+    if (failed.length > 0) {
+      console.error(
+        `coverage batches failed: ${failed.map(({ shard, exitCode }) => `shard ${shard} (exit ${exitCode})`).join(", ")}`,
+      )
+      process.exit(1)
+    }
+  } finally {
+    await isolatedEnv.dispose()
   }
 }
 
