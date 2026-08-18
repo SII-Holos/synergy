@@ -18,11 +18,13 @@ function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
   touches: string[]
   messagePages: { sessionID: string; limit: number }[]
   scopeVersions: Record<string, number>
+  bucketSnapshots: Set<string>
   partActions: Record<string, "apply" | "preserve" | "retry">
 } {
   const touches: string[] = []
   const messagePages: { sessionID: string; limit: number }[] = []
   const scopeVersions: Record<string, number> = {}
+  const bucketSnapshots = new Set<string>()
   const partActions: Record<string, "apply" | "preserve" | "retry"> = {}
   const stores = new Map<string, FakeStore>()
   const ensureScopeState = (scopeKey: string) => {
@@ -38,6 +40,7 @@ function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
     touches,
     messagePages,
     scopeVersions,
+    bucketSnapshots,
     partActions,
     ensureScopeState,
     captureResourceRequest: (_s, sessionID) => ({ sessionID }) as unknown as SyncResourceRequest,
@@ -51,6 +54,7 @@ function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
     setLatestContextMessage: () => {},
     touchMessageBucket: (_s, sessionID) => touches.push(sessionID),
     scopeReconnectVersion: (scopeKey) => scopeVersions[scopeKey] ?? 0,
+    hasBucketSnapshot: (_s, sessionID) => bucketSnapshots.has(sessionID),
     messagePage: async (input) => {
       messagePages.push({ sessionID: input.sessionID, limit: input.limit })
       return {
@@ -99,7 +103,8 @@ describe("createBoardLoader", () => {
     await new Promise((r) => setTimeout(r, 10))
     const first = deps.messagePages.length
 
-    // Same pane set again: phase is now ready, so no refetch.
+    // Same pane set again: phase is now ready and the bucket exists, so no refetch.
+    deps.bucketSnapshots.add("s1")
     loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
     await new Promise((r) => setTimeout(r, 10))
     expect(deps.messagePages.length).toBe(first)
@@ -141,6 +146,29 @@ describe("createBoardLoader", () => {
     ])
     await new Promise((r) => setTimeout(r, 10))
     expect(deps.messagePages.filter((p) => p.sessionID === "s2").length).toBe(2)
+  })
+
+  test("syncPanes refetches a ready pane whose bucket was LRU-evicted", async () => {
+    const deps = makeDeps()
+    const loader = createBoardLoader(deps)
+    loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
+    await new Promise((r) => setTimeout(r, 10))
+    const first = deps.messagePages.length
+
+    // The loader still reports "ready", but the global-sync LRU evicted the
+    // snapshot while the pane was away; syncPanes must refetch instead of
+    // leaving the pane on a stale ready state.
+    deps.bucketSnapshots.add("s1") // simulate apply having happened before eviction
+    loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
+    await new Promise((r) => setTimeout(r, 10))
+    expect(deps.messagePages.length).toBe(first)
+
+    // Now the bucket is gone: refetch must happen even though phase is ready.
+    deps.bucketSnapshots.delete("s1")
+    loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
+    await new Promise((r) => setTimeout(r, 10))
+    expect(deps.messagePages.length).toBe(first + 1)
+    expect(deps.messagePages.at(-1)?.sessionID).toBe("s1")
   })
 
   test("dispose stops further loads", async () => {

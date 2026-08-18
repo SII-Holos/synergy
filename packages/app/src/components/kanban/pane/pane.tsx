@@ -332,7 +332,7 @@ export function KanbanPane(props: {
           </Show>
         </Show>
       </div>
-      <Show when={props.pane.kind === "live"}>
+      <Show when={props.pane.kind === "live" && !props.compact}>
         <KanbanPaneComposer
           sessionID={props.pane.sessionID}
           agents={props.data.agent}

@@ -125,6 +125,10 @@ export function KanbanPanel() {
     setLatestContextMessage: (scopeKey, sessionID, message, revision) =>
       globalSync.setLatestContextMessage(scopeKey, sessionID, message, revision),
     touchMessageBucket: (scopeKey, sessionID) => globalSync.touchMessageBucket(scopeKey, sessionID),
+    hasBucketSnapshot: (scopeKey, sessionID) => {
+      const store = globalSync.peekScopeState(scopeKey)?.[0] as BoardPaneData | undefined
+      return !!store?.messageWindow?.[sessionID]
+    },
     scopeRequest: (scopeKey) =>
       (isHomeScope(scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }) as Record<string, string>,
     scopeReconnectVersion: (scopeKey) => globalSync.scopeReconnectVersion(scopeKey),

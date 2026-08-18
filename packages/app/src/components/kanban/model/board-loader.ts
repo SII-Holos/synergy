@@ -58,6 +58,9 @@ export type BoardLoaderDeps = {
   ) => void
   touchMessageBucket: (scopeKey: string, sessionID: string) => void
   scopeReconnectVersion: (scopeKey: string) => number
+  /** Whether the scope store still holds the message-window snapshot for this
+   * session (false after the global-sync LRU evicts the bucket). */
+  hasBucketSnapshot: (scopeKey: string, sessionID: string) => boolean
   messagePage: (input: {
     scopeRequest: Record<string, string>
     sessionID: string
@@ -198,6 +201,11 @@ export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
         // Skip panes that are already loaded/loading; navigation updates must
         // not refetch every visible transcript. Only reconnects force a reload.
         load(pane.scopeKey, pane.sessionID)
+      } else if (loader.state(key).phase === "ready" && !deps.hasBucketSnapshot(pane.scopeKey, pane.sessionID)) {
+        // The bucket was LRU-evicted while this pane was away (e.g. a session
+        // dragged in from the sidebar whose snapshot was evicted): "ready" is
+        // stale, so refetch instead of leaving the pane on "loading" forever.
+        void loader.load(key, { force: true, input: { scopeKey: pane.scopeKey, sessionID: pane.sessionID } })
       }
     }
     for (const key of lastPanes) {
