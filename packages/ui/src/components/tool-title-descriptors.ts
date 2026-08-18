@@ -59,7 +59,6 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   blueprint_loop_stop: d("tool.title.request-blueprint-review", "Request Blueprint Review"),
   blueprint_loop_approve: d("tool.title.approve-blueprint-loop", "Approve BlueprintLoop"),
   blueprint_loop_reject: d("tool.title.reject-blueprint-loop", "Reject BlueprintLoop"),
-  batch: d("tool.title.batch", "Run batch"),
 
   // Sessions
   session_list: d("tool.title.sessions", "View sessions"),
@@ -149,9 +148,8 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   worktree_leave: d("tool.title.leave-worktree", "Leave isolated workspace"),
   worktree_list: d("tool.title.worktrees", "View isolated workspaces"),
 
-  // Render / diagram
+  // Render
   render: d("tool.title.render", "Render content"),
-  diagram: d("tool.title.diagram", "Generate diagram"),
 
   // Research
   research_init: d("tool.title.research-init", "Start research"),
@@ -187,23 +185,6 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   browser_assets: d("browser.title.assets", "Inspect page assets"),
   browser_annotate: d("browser.title.annotate", "Annotate page"),
   browser_view: d("browser.title.browser-view", "View browser"),
-
-  // Legacy qzcli — TODO remove
-  qz_login: d("tool.title.qz-login", "Log in to QZ"),
-  qz_set_cookie: d("tool.title.set-cookie", "Set Cookie"),
-  qz_workspaces: d("tool.title.workspaces", "View workspaces"),
-  qz_refresh_resources: d("tool.title.refresh-resources", "Refresh Resources"),
-  qz_availability: d("tool.title.availability", "Check availability"),
-  qz_jobs: d("tool.title.jobs", "View jobs"),
-  qz_job_detail: d("tool.title.job-detail", "View job details"),
-  qz_stop_job: d("tool.title.stop-job", "Stop Job"),
-  qz_gpu_usage: d("tool.title.gpu-usage", "View GPU usage"),
-  qz_status_catalog: d("tool.title.status-catalog", "View status catalog"),
-  qz_track_job: d("tool.title.track-job", "Track Job"),
-  qz_tracked_jobs: d("tool.title.tracked-jobs", "View tracked jobs"),
-  qz_submit_job: d("tool.title.submit-job", "Submit Job"),
-  qz_submit_hpc: d("tool.title.submit-hpc-job", "Submit HPC Job"),
-  qz_hpc_usage: d("tool.title.hpc-usage", "View HPC usage"),
 
   // Inspire — base keys use the most common variant; getToolInfo selects its own
   inspire_status: d("tool.title.platform-status", "View platform status"),
@@ -274,7 +255,6 @@ export const CLASSIFIER_LABEL_DESC: Record<string, MessageDescriptor> = {
   schedule: d("classifier.label.schedule", "Manage schedule"),
   session: d("classifier.label.session", "Manage sessions"),
   "session-control": d("classifier.label.session-control", "Manage session"),
-  community: d("classifier.label.community", "Access Agora"),
   network: d("classifier.label.network", "Manage connection"),
   analyze: d("classifier.label.analyze", "Analyze content"),
   config: d("classifier.label.config", "Change settings"),
@@ -450,11 +430,6 @@ export const MESSAGE_PART_DESC = {
   untitled: d("message-part.untitled", "Untitled"),
 } as const
 
-// ── Diagram ─────────────────────────────────────────────────────────
-export const DIAGRAM_DESC = {
-  totalLabel: d("diagram.total-label", "Total"),
-} as const
-
 // ── Diff preview ────────────────────────────────────────────────────
 export const DIFF_DESC = {
   fileDiffPreview: d("diff.file-diff-preview", "File diff preview"),
@@ -503,7 +478,6 @@ export const TOOL_LABEL_DESC = {
   notes: d("tool.label.notes", "{count, plural, one {# note} other {# notes}}"),
   blueprints: d("tool.label.blueprints", "{count, plural, one {# blueprint} other {# blueprints}}"),
   targets: d("tool.label.targets", "{count, plural, one {# target} other {# targets}}"),
-  posts: d("tool.label.posts", "{count, plural, one {# post} other {# posts}}"),
   memories: d("tool.label.memories", "{count, plural, one {# memory} other {# memories}}"),
   found: d("tool.label.found", "{count} found"),
   browserSettled: d("browser.label.settled", "settled"),

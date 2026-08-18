@@ -71,18 +71,6 @@ export namespace LLM {
     return ownStream(result, result.textStream)
   }
 
-  export async function collectText<TOOLS extends ToolSet, PARTIAL_OUTPUT>(
-    result: StreamTextResult<TOOLS, PARTIAL_OUTPUT>,
-  ) {
-    const text = result.text
-    const cancellation = cancelResidualStream(result)
-    try {
-      return await text
-    } finally {
-      await cancellation
-    }
-  }
-
   /**
    * Tool call repair logic, extracted for testability.
    *

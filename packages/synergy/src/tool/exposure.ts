@@ -276,6 +276,34 @@ export namespace ToolExposure {
     return [...new Set([...values].filter(Boolean))].sort()
   }
 
+  export function expansionForTool(
+    toolID: string,
+    exposure: Info | undefined,
+    state: ToolState | undefined,
+  ): { kind: "group"; group: string } | { kind: "activate"; tool: string } | { kind: "none" } {
+    const normalized = normalize(toolID, exposure)
+    if (normalized.mode === "group") {
+      const expanded = new Set(state?.expandedGroups ?? [])
+      return expanded.has(normalized.group) ? { kind: "none" } : { kind: "group", group: normalized.group }
+    }
+    if (normalized.mode === "search") {
+      const activated = new Set(state?.activatedTools ?? [])
+      return activated.has(toolID) ? { kind: "none" } : { kind: "activate", tool: toolID }
+    }
+    return { kind: "none" }
+  }
+
+  export function expandState(
+    state: ToolState | undefined,
+    groups?: Iterable<string>,
+    tools?: Iterable<string>,
+  ): Required<ToolState> {
+    return {
+      expandedGroups: unique([...(state?.expandedGroups ?? []), ...(groups ?? [])]),
+      activatedTools: unique([...(state?.activatedTools ?? []), ...(tools ?? [])]),
+    }
+  }
+
   export function groupFromExposure(exposure: Info | undefined): string | undefined {
     return exposure?.mode === "group" ? exposure.group : undefined
   }

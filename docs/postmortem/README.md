@@ -34,8 +34,9 @@ Each postmortem is a file named `NNNN-kebab-case-title.md`, numbered sequentiall
 
 Entries are added only when an incident qualifies; the table stays empty until then.
 
-| Number | Title | Status | Date |
-| ------ | ----- | ------ | ---- |
+| Number | Title                                                            | Status      | Date       |
+| ------ | ---------------------------------------------------------------- | ----------- | ---------- |
+| 0001   | Coverage-mode test run wrote fixtures into the real Synergy home | implemented | 2026-08-18 |
 
 ## History rules
 

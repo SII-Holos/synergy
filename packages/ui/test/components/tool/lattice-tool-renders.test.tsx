@@ -30,7 +30,7 @@ mock.module("../../../src/components/message-part", () => ({
   },
 }))
 
-for (const name of ["file-ops", "standard", "task", "dag", "special", "browser", "anysearch", "batch"]) {
+for (const name of ["file-ops", "standard", "task", "dag", "browser", "anysearch", "batch"]) {
   mock.module(`../../../src/components/tool/renders/${name}`, () => ({}))
 }
 
