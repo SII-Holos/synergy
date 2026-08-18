@@ -238,4 +238,18 @@ describe("session.message-v2.fromError", () => {
 
     expect(result.name).toBe("UnknownError")
   })
+  test("classifies agent worker exits as retryable", () => {
+    const workerCrash = new Error("Agent worker exited (SIGTERM)")
+    const result = MessageV2.fromError(workerCrash, { providerID: "test" })
+
+    expect(result.name).toBe("UnknownError")
+    expect(SessionRetry.retryable(result)).toBe("Agent worker restarted")
+  })
+
+  test("does not classify unrelated errors as worker exits", () => {
+    const unknown = new Error("Provider timeout")
+    const result = MessageV2.fromError(unknown, { providerID: "test" })
+
+    expect(SessionRetry.retryable(result)).toBeUndefined()
+  })
 })
