@@ -152,7 +152,7 @@ export function KanbanPanel() {
     navigate(`/${base64Encode(dir)}/session/${pane.sessionID}`)
   }
 
-  const renderPane = (pane: BoardPane, variant: "focus" | "rail" | "default" = "default") => {
+  const renderPane = (pane: BoardPane, variant: "focus" | "rail" | "waterfall" | "default" = "default") => {
     const child = globalSync.peekScopeState(pane.scopeKey)?.[0] as BoardPaneData | undefined
     if (!child) return null
     return (
@@ -167,6 +167,7 @@ export function KanbanPanel() {
         onPinToggle={pane.pinned ? () => unpinPane(pane) : () => pinPane(pane)}
         onRemove={pane.kind === "unavailable" ? () => unpinPane(pane) : undefined}
         compact={variant === "rail"}
+        timeAlign={variant === "waterfall"}
       />
     )
   }
@@ -241,7 +242,7 @@ export function KanbanPanel() {
 function SwitchLayout(props: {
   mode: KanbanLayout
   panes: BoardPane[]
-  render: (pane: BoardPane, variant?: "focus" | "rail") => ReturnType<typeof KanbanPanel> | null
+  render: (pane: BoardPane, variant?: "focus" | "rail" | "waterfall") => ReturnType<typeof KanbanPanel> | null
 }) {
   const panes = () => props.panes
   const render = props.render
@@ -254,7 +255,7 @@ function SwitchLayout(props: {
         <KanbanFocus panes={panes()} renderPane={(pane, variant) => render(pane, variant) ?? <></>} />
       </Show>
       <Show when={props.mode === "waterfall"} fallback={<></>}>
-        <KanbanWaterfall panes={panes()} renderPane={(pane) => render(pane)} />
+        <KanbanWaterfall panes={panes()} renderPane={(pane) => render(pane, "waterfall")} />
       </Show>
     </>
   )

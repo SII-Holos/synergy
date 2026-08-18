@@ -41,7 +41,7 @@ const builtinNavigation: Array<Parameters<typeof registerNavigation>[0]> = [
     iconToken: "kanban.main",
     placement: "sidebar",
     path: "/kanban",
-    order: 25,
+    order: 15,
     loader: async () => {
       const kanban = await import("@/components/kanban")
       const KanbanNavigation: Component<NavigationContentProps> = () => <kanban.KanbanPanel />

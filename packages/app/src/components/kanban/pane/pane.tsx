@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal, onCleanup } from "solid-js"
+import { For, Show, createMemo, createSignal, onCleanup, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { useLingui } from "@lingui/solid"
 import type {
@@ -50,6 +50,8 @@ export function KanbanPane(props: {
   onPinToggle?: () => void
   onRemove?: () => void
   compact?: boolean
+  /** Waterfall variant: render a timestamp above every message for time-aligned comparison. */
+  timeAlign?: boolean
 }) {
   const { _ } = useLingui()
   const [scrolledUp, setScrolledUp] = createSignal(false)
@@ -82,10 +84,12 @@ export function KanbanPane(props: {
     if (hours < 24) return `${hours}h`
     return `${Math.round(hours / 24)}d`
   })
-
   onCleanup(() => {
     autoScroll.scrollRef(undefined)
   })
+
+  const formatMsgTime = (created: number) =>
+    new Date(created).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 
   return (
     <div
@@ -173,39 +177,39 @@ export function KanbanPane(props: {
               >
                 <For each={messages()}>
                   {(message) => {
+                    const row = (content: JSX.Element) => (
+                      <div
+                        data-message-id={message.id}
+                        data-message-role={message.role}
+                        class="kanban-pane-msg w-full min-w-0"
+                      >
+                        {props.timeAlign ? (
+                          <span class="kanban-msg-time">{formatMsgTime(message.time.created)}</span>
+                        ) : null}
+                        {content}
+                      </div>
+                    )
                     if (message.role === "assistant") {
                       const assistant = message as AssistantMessage
                       const isCommand = assistant.metadata?.source === "command"
-                      return (
-                        <div
-                          data-message-id={message.id}
-                          data-message-role="assistant"
-                          class="kanban-pane-msg w-full min-w-0"
-                        >
-                          <Dynamic
-                            component={isCommand ? CommandResultOutput : MailboxMessage}
-                            message={assistant}
-                            classes={{ root: "min-w-0 w-full relative", container: "w-full min-w-0 max-w-full" }}
-                          />
-                        </div>
+                      return row(
+                        <Dynamic
+                          component={isCommand ? CommandResultOutput : MailboxMessage}
+                          message={assistant}
+                          classes={{ root: "min-w-0 w-full relative", container: "w-full min-w-0 max-w-full" }}
+                        />,
                       )
                     }
                     if (message.role === "user" && (message as UserMessage).isRoot) {
-                      return (
-                        <div
-                          data-message-id={message.id}
-                          data-message-role="user"
-                          class="kanban-pane-msg w-full min-w-0"
-                        >
-                          <SessionTurn
-                            sessionID={props.pane.sessionID}
-                            messageID={message.id}
-                            rootMessage={message as UserMessage}
-                            messages={collectMessagesForTurnDisplay(messages(), message.id)}
-                            activityDisplay="minimal"
-                            classes={{ root: "min-w-0 w-full relative", container: "w-full min-w-0 max-w-full" }}
-                          />
-                        </div>
+                      return row(
+                        <SessionTurn
+                          sessionID={props.pane.sessionID}
+                          messageID={message.id}
+                          rootMessage={message as UserMessage}
+                          messages={collectMessagesForTurnDisplay(messages(), message.id)}
+                          activityDisplay="minimal"
+                          classes={{ root: "min-w-0 w-full relative", container: "w-full min-w-0 max-w-full" }}
+                        />,
                       )
                     }
                     return null

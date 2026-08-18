@@ -147,7 +147,7 @@
 
 .kanban-waterfall {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   width: 100%;
   height: 100%;
@@ -235,6 +235,20 @@
   100% {
     box-shadow: 0 0 0 0 transparent;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kanban-dot[data-pulse] {
+    animation: none;
+  }
+}
+
+.kanban-msg-time {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--text-weaker);
+  font-family: var(--font-family-mono);
+  margin-bottom: 2px;
 }
 
 .kanban-pane-title {
@@ -332,6 +346,16 @@
   font-size: var(--font-size-sm);
 }
 
+.kanban-focus-promote {
+  outline: none;
+}
+
+.kanban-focus-promote:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+  border-radius: 12px;
+}
+
 @media (max-width: 767px) {
   .kanban-focus {
     grid-template-columns: 1fr;
@@ -345,5 +369,9 @@
 
   .kanban-focus-rail > .kanban-focus-promote {
     min-width: 220px;
+  }
+
+  .kanban-waterfall {
+    grid-template-columns: 1fr;
   }
 }

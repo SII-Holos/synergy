@@ -25,13 +25,24 @@ export function KanbanFocus(props: {
       <div class="kanban-focus-rail">
         <For each={rail()}>
           {(pane) => (
-            <button
+            // Promote control is a semantic button-like region, not a <button>:
+            // the pane inside already contains interactive buttons, so nesting
+            // them in an outer <button> would be invalid HTML.
+            <div
               class="kanban-focus-promote"
+              role="button"
+              tabindex={0}
+              aria-label={_(kanbanPage.layoutFocus)}
               onClick={() => setActiveKey(pane.key)}
-              title={_(kanbanPage.layoutFocus)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault()
+                  setActiveKey(pane.key)
+                }
+              }}
             >
               {props.renderPane(pane, "rail")}
-            </button>
+            </div>
           )}
         </For>
       </div>
