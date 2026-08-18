@@ -2888,14 +2888,6 @@ msgid "app.kanban.grid.columns"
 msgstr "列数"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.grid.freeLayout"
-msgstr "自由布局"
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.grid.freeLayoutHint"
-msgstr "自由排列窗格；每个窗格可跨多个单元格"
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.grid.layoutLabel"
 msgstr "网格布局"
 
@@ -2922,26 +2914,6 @@ msgstr "加载中…"
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.openSession"
 msgstr "打开会话"
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.pane.span"
-msgstr "尺寸"
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.pane.span.1x1"
-msgstr "1 × 1"
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.pane.span.1x2"
-msgstr "1 × 2"
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.pane.span.2x1"
-msgstr "2 × 1"
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.pane.span.2x2"
-msgstr "2 × 2"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.pinPane"

@@ -22,14 +22,13 @@ import type { BoardWorkflowKind } from "./pane/composer"
 import { KanbanGrid } from "./layout/grid"
 import { KanbanFocus } from "./layout/focus"
 import "./kanban.css"
+import { parseSessionDragPayload, SESSION_DRAG_MIME } from "@/utils/session-drag"
 
 import {
   defaultKanbanPreferences,
   migrateKanbanPreferences,
-  spanFor,
   type KanbanLayout,
   type KanbanPersisted,
-  type PaneSpan,
 } from "./model/preferences"
 
 const EMPTY_BOARD_PANE_DATA: BoardPaneData = {
@@ -228,19 +227,54 @@ export function KanbanPanel() {
         onSend={sendToPane(pane)}
         onUpdateProfile={updateProfileFor(pane)}
         onSetWorkflow={setWorkflowFor(pane)}
-        span={store.freeLayout ? spanFor(store.paneSpans, pane.key) : undefined}
-        onSpanChange={store.freeLayout ? (span) => setStore("paneSpans", pane.key, span) : undefined}
       />
     )
   }
 
   const unpinnedSources = createMemo(() => {
     const pinned = new Set(store.pinned)
+
     return sources().filter((source) => !pinned.has(`${source.scopeKey}\n${source.entry.id}`))
   })
 
+  // --- Drag-and-drop pin: sessions dragged from the sidebar land here ---
+  const [dragActive, setDragActive] = createSignal(false)
+  let dragDepth = 0
+  const handleDragEnter = (event: DragEvent) => {
+    if (!event.dataTransfer?.types.includes(SESSION_DRAG_MIME)) return
+    dragDepth += 1
+    setDragActive(true)
+  }
+  const handleDragOver = (event: DragEvent) => {
+    if (!event.dataTransfer?.types.includes(SESSION_DRAG_MIME)) return
+    event.preventDefault()
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy"
+  }
+  const handleDragLeave = () => {
+    dragDepth = Math.max(0, dragDepth - 1)
+    if (dragDepth === 0) setDragActive(false)
+  }
+  const handleDrop = (event: DragEvent) => {
+    dragDepth = 0
+    setDragActive(false)
+    const payload = event.dataTransfer?.getData(SESSION_DRAG_MIME)
+    if (!payload) return
+    const session = parseSessionDragPayload(payload)
+    if (!session) return
+    event.preventDefault()
+    pinKey(`${session.scopeKey}\n${session.sessionID}`)
+  }
+
   return (
-    <div data-component="kanban-panel" class="kanban-panel">
+    <div
+      data-component="kanban-panel"
+      class="kanban-panel"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      data-dragging={dragActive() || undefined}
+    >
       <div class="kanban-toolbar">
         <span class="kanban-toolbar-title">{_(kanbanPage.title)}</span>
         <div class="kanban-layout-switcher" role="group" aria-label={_(kanbanPage.ariaLayout)}>
@@ -285,14 +319,6 @@ export function KanbanPanel() {
                 <option value={4}>4</option>
               </select>
             </label>
-            <label class="kanban-grid-config-toggle" title={_(kanbanPage.gridFreeLayoutHint)}>
-              <input
-                type="checkbox"
-                checked={store.freeLayout}
-                onChange={(event) => setStore("freeLayout", event.currentTarget.checked)}
-              />
-              <span>{_(kanbanPage.gridFreeLayout)}</span>
-            </label>
           </div>
         </Show>
         <Show when={unpinnedSources().length > 0}>
@@ -320,7 +346,6 @@ export function KanbanPanel() {
           </Popover>
         </Show>
       </div>
-
       <div class="kanban-body">
         <Show
           when={panes().length > 0}
@@ -338,8 +363,6 @@ export function KanbanPanel() {
               render={renderPane}
               gridCols={store.gridCols}
               gridRows={store.gridRows}
-              freeLayout={store.freeLayout}
-              paneSpans={store.paneSpans}
             />
           </Show>
         </Show>
@@ -354,22 +377,13 @@ function SwitchLayout(props: {
   render: (pane: BoardPane, variant?: "focus" | "rail") => ReturnType<typeof KanbanPanel> | null
   gridCols: number
   gridRows: number
-  freeLayout: boolean
-  paneSpans: Record<string, PaneSpan>
 }) {
   const panes = () => props.panes
   const render = props.render
   return (
     <>
       <Show when={props.mode === "grid"} fallback={<></>}>
-        <KanbanGrid
-          panes={panes()}
-          renderPane={(pane) => render(pane)}
-          cols={props.gridCols}
-          rows={props.gridRows}
-          freeLayout={props.freeLayout}
-          paneSpans={props.paneSpans}
-        />
+        <KanbanGrid panes={panes()} renderPane={(pane) => render(pane)} cols={props.gridCols} rows={props.gridRows} />
       </Show>
       <Show when={props.mode === "focus"} fallback={<></>}>
         <KanbanFocus panes={panes()} renderPane={(pane, variant) => render(pane, variant) ?? <></>} />

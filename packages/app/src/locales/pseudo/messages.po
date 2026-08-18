@@ -2888,14 +2888,6 @@ msgid "app.kanban.grid.columns"
 msgstr ""
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.grid.freeLayout"
-msgstr ""
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.grid.freeLayoutHint"
-msgstr ""
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.grid.layoutLabel"
 msgstr ""
 
@@ -2921,26 +2913,6 @@ msgstr ""
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.openSession"
-msgstr ""
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.pane.span"
-msgstr ""
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.pane.span.1x1"
-msgstr ""
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.pane.span.1x2"
-msgstr ""
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.pane.span.2x1"
-msgstr ""
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.pane.span.2x2"
 msgstr ""
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────

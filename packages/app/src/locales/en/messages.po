@@ -2877,7 +2877,7 @@ msgstr "No sessions on the board"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.emptyHint"
-msgstr "Running and waiting sessions appear here automatically. Pin any session to keep it visible."
+msgstr "Running and waiting sessions appear here automatically. Drag a session from the sidebar to pin it."
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.follow"
@@ -2886,14 +2886,6 @@ msgstr "Follow latest"
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.grid.columns"
 msgstr "Columns"
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.grid.freeLayout"
-msgstr "Free layout"
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.grid.freeLayoutHint"
-msgstr "Arrange panes freely; each pane can span multiple cells"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.grid.layoutLabel"
@@ -2922,26 +2914,6 @@ msgstr "Loading…"
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.openSession"
 msgstr "Open session"
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.pane.span"
-msgstr "Size"
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.pane.span.1x1"
-msgstr "1 × 1"
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.pane.span.1x2"
-msgstr "1 × 2"
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.pane.span.2x1"
-msgstr "2 × 1"
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.pane.span.2x2"
-msgstr "2 × 2"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.pinPane"

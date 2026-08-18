@@ -1,6 +1,5 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
-import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
 import type {
   Agent,
@@ -23,7 +22,6 @@ import { SessionTurn } from "@ericsanchezok/synergy-ui/session-turn"
 import { buildSessionTurnProjection } from "@ericsanchezok/synergy-ui/session-turn-projection"
 import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
-import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { ConversationViewport } from "@/components/session/conversation-viewport"
 import { buildConversationTimelineSnapshot } from "@/components/session/conversation-timeline"
 import { messagesFrom, selectMessagesInCanonicalOrder } from "@/components/session/session-message-order"
@@ -32,9 +30,7 @@ import { hasMessageWindowSnapshot, type MessageWindowMetadata } from "@/context/
 import { useLocale } from "@/context/locale"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { kanbanPage } from "@/locales/messages"
-import { translateDescriptor } from "@/locales/translate"
 import type { BoardPane } from "../model/pane-selection"
-import { parsePaneSpan, paneSpanLabel, type PaneSpan } from "../model/preferences"
 import { KanbanPaneComposer, type BoardWorkflowKind } from "./composer"
 import type { ControlProfileId } from "@/context/input"
 import "../kanban.css"
@@ -86,13 +82,9 @@ export function KanbanPane(props: {
   onSend: (text: string, options?: { agent?: string }) => Promise<void>
   onUpdateProfile: (profile: ControlProfileId) => Promise<void>
   onSetWorkflow: (kind: BoardWorkflowKind) => Promise<void>
-  /** Free-layout span controls (grid mode only). */
-  span?: PaneSpan
-  onSpanChange?: (span: PaneSpan) => void
 }) {
   const { _ } = useLingui()
-  const { fmt, i18n } = useLocale()
-  const translateCopy = (descriptor: MessageDescriptor) => translateDescriptor(descriptor, i18n)
+  const { fmt } = useLocale()
   const [scrolledUp, setScrolledUp] = createSignal(false)
 
   const messages = createMemo(() => props.data.message[props.pane.sessionID] ?? [])
@@ -200,39 +192,6 @@ export function KanbanPane(props: {
         </span>
         <span class="kanban-pane-time">{lastActivity()}</span>
         <div class="kanban-pane-actions">
-          <Show when={props.onSpanChange}>
-            <Popover
-              trigger={
-                <button class="kanban-pane-action" title={_(kanbanPage.paneSpan)}>
-                  <Icon name={getSemanticIcon("action.more")} size="small" />
-                </button>
-              }
-              title={_(kanbanPage.paneSpan)}
-            >
-              <div class="kanban-pane-span-menu" role="listbox" aria-label={_(kanbanPage.paneSpan)}>
-                <For
-                  each={
-                    [
-                      ["1x1", kanbanPage.paneSpan1x1],
-                      ["2x1", kanbanPage.paneSpan2x1],
-                      ["1x2", kanbanPage.paneSpan1x2],
-                      ["2x2", kanbanPage.paneSpan2x2],
-                    ] as const
-                  }
-                >
-                  {(item) => (
-                    <button
-                      class="kanban-pane-span-item"
-                      data-active={(props.span && paneSpanLabel(props.span) === item[0]) || undefined}
-                      onClick={() => props.onSpanChange?.(parsePaneSpan(item[0]))}
-                    >
-                      {translateCopy(item[1])}
-                    </button>
-                  )}
-                </For>
-              </div>
-            </Popover>
-          </Show>
           <Show when={props.pane.kind === "live"}>
             <button
               class="kanban-pane-action"

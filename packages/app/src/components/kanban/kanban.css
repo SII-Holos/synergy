@@ -13,6 +13,12 @@
   color: var(--text-base);
 }
 
+.kanban-panel[data-dragging] {
+  outline: 2px dashed var(--border-focus);
+  outline-offset: -2px;
+  border-radius: 12px;
+}
+
 .kanban-toolbar {
   display: flex;
   align-items: center;
@@ -119,46 +125,6 @@
   padding: 2px 6px;
 }
 
-.kanban-grid-config-toggle {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: var(--font-size-xs);
-  color: var(--text-weak);
-  cursor: pointer;
-}
-
-.kanban-pane-span-menu {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 140px;
-  padding: 4px;
-}
-
-.kanban-pane-span-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  padding: 6px 8px;
-  cursor: pointer;
-  font-size: var(--font-size-sm);
-  color: var(--text-strong);
-}
-
-.kanban-pane-span-item:hover {
-  background: var(--surface-base-interactive-active);
-}
-
-.kanban-pane-span-item[data-active] {
-  color: var(--text-strong);
-  background: var(--surface-base-active);
-}
 /* --- Grid layout --- */
 
 .kanban-grid {

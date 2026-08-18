@@ -16,6 +16,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { sidebar } from "@/locales/messages"
 import { BRAND_ASSETS, brandAssetPath, holosLogoPath } from "@/utils/brand-assets"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { encodeSessionDragPayload, SESSION_DRAG_MIME } from "@/utils/session-drag"
 import { getScopeLabel } from "@/utils/scope"
 import { useHolos } from "@/context/holos"
 import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
@@ -1221,6 +1222,18 @@ function SidebarSessionRow(props: {
   const lingui = useLingui()
   const globalSync = useGlobalSync()
 
+  const dragScopeKey = () => props.scope?.worktree ?? scopeKeyForNavEntry(props.entry, globalSync.data.scope) ?? ""
+
+  const handleDragStart = (event: DragEvent) => {
+    const scopeKey = dragScopeKey()
+    if (!scopeKey) {
+      event.preventDefault()
+      return
+    }
+    event.dataTransfer?.setData(SESSION_DRAG_MIME, encodeSessionDragPayload({ scopeKey, sessionID: props.entry.id }))
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy"
+  }
+
   const visual = createMemo(() => {
     if (props.scope) return resolveSessionVisualState(globalSync.peekScopeState(props.scope.worktree)?.[0], props.entry)
     return resolveSessionVisualState(getStoreForEntry(globalSync, props.entry), props.entry)
@@ -1240,6 +1253,8 @@ function SidebarSessionRow(props: {
         "sb-session-active": props.active,
       }}
       data-session-id={props.entry.id}
+      draggable={!props.flyout}
+      onDragStart={handleDragStart}
       onClick={props.onClick}
     >
       <span classList={{ ...sessionIconClassList(visual()) }} title={sessionTooltip()}>
