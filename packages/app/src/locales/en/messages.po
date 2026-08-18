@@ -2877,7 +2877,7 @@ msgstr "No sessions on the board"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.emptyHint"
-msgstr "Running and waiting sessions appear here automatically. Drag a session from the sidebar to pin it."
+msgstr "Sessions appear here in your recent order. Drag a session from the sidebar to pin it."
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.follow"

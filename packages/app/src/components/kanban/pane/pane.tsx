@@ -20,6 +20,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 import { SessionTurn } from "@ericsanchezok/synergy-ui/session-turn"
 import { buildSessionTurnProjection } from "@ericsanchezok/synergy-ui/session-turn-projection"
+import type { ActivityDisplayMode } from "@ericsanchezok/synergy-ui/session-turn-activity"
 import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
 import { ConversationViewport } from "@/components/session/conversation-viewport"
@@ -77,6 +78,8 @@ export function KanbanPane(props: {
   onPinToggle?: () => void
   onRemove?: () => void
   compact?: boolean
+  activityDisplay: () => ActivityDisplayMode
+  compactReasoning: () => boolean
   loadState?: () => BoardPaneLoadState | undefined
   onRetry?: () => void
   onSend: (text: string, options?: { agent?: string }) => Promise<void>
@@ -293,7 +296,8 @@ export function KanbanPane(props: {
                         rootMessage={root()}
                         messages={projection().turnMessagesFor(root())}
                         lastUserMessageID={lastRoot()?.id}
-                        activityDisplay="minimal"
+                        activityDisplay={props.activityDisplay()}
+                        compactReasoning={props.compactReasoning()}
                         classes={{ root: "min-w-0 w-full relative", container: "w-full min-w-0 max-w-full" }}
                       />,
                     )

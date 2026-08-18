@@ -19,49 +19,34 @@ function entry(id: string, lastActivityAt: number, pinned = 0) {
   }
 }
 
-function source(
-  scopeKey: string,
-  id: string,
-  lastActivityAt: number,
-  running: boolean,
-  waiting: boolean,
-): BoardPaneSource {
-  return { scopeKey, entry: entry(id, lastActivityAt), running, waiting }
+function source(scopeKey: string, id: string, lastActivityAt: number): BoardPaneSource {
+  return { scopeKey, entry: entry(id, lastActivityAt) }
 }
 
 describe("computeBoardPanes", () => {
-  test("pinned panes come first in pinned order", () => {
-    const sources = [
-      source("/a", "s2", 10, true, false),
-      source("/a", "s1", 20, true, false),
-      source("/a", "s3", 30, false, false),
-    ]
+  test("pinned panes come first in pinned order, then sources fill the rest", () => {
+    const sources = [source("/a", "s2", 10), source("/a", "s1", 20), source("/a", "s3", 30)]
     const panes = computeBoardPanes({ pinned: ["/a\ns2", "/a\ns1"], sources })
-    expect(panes.map((p) => p.sessionID)).toEqual(["s2", "s1"])
-    expect(panes.every((p) => p.pinned)).toBe(true)
+    expect(panes.map((p) => p.sessionID)).toEqual(["s2", "s1", "s3"])
+    expect(panes.map((p) => p.pinned)).toEqual([true, true, false])
     expect(panes.every((p) => p.kind === "live")).toBe(true)
   })
 
-  test("auto candidates fill remaining slots ordered by most recent activity", () => {
-    const sources = [
-      source("/a", "s1", 100, false, false),
-      source("/a", "s2", 200, true, false),
-      source("/a", "s3", 300, true, false),
-      source("/a", "s4", 400, false, true),
-    ]
-    const panes = computeBoardPanes({ pinned: ["/a\ns1"], sources })
-    expect(panes.map((p) => p.sessionID)).toEqual(["s1", "s4", "s3", "s2"])
+  test("remaining slots fill in the given (sidebar recent) order", () => {
+    const sources = [source("/a", "s1", 100), source("/a", "s2", 200), source("/a", "s3", 300), source("/a", "s4", 400)]
+    const panes = computeBoardPanes({ pinned: ["/a\ns2"], sources })
+    expect(panes.map((p) => p.sessionID)).toEqual(["s2", "s1", "s3", "s4"])
     expect(panes.map((p) => p.pinned)).toEqual([true, false, false, false])
   })
 
-  test("idle sessions are never auto-added", () => {
-    const sources = [source("/a", "s1", 200, false, false), source("/a", "s2", 100, true, false)]
+  test("idle sessions participate when slots remain", () => {
+    const sources = [source("/a", "s1", 200), source("/a", "s2", 100)]
     const panes = computeBoardPanes({ pinned: [], sources })
-    expect(panes.map((p) => p.sessionID)).toEqual(["s2"])
+    expect(panes.map((p) => p.sessionID)).toEqual(["s1", "s2"])
   })
 
   test("a leftover pinned key whose session vanished becomes an unavailable pane", () => {
-    const sources = [source("/a", "s1", 100, true, false)]
+    const sources = [source("/a", "s1", 100)]
     const panes = computeBoardPanes({ pinned: ["/a\ngone", "/a\ns1"], sources })
     expect(panes[0]).toMatchObject({ key: "/a\ngone", sessionID: "gone", kind: "unavailable", pinned: true })
     expect(panes[1]).toMatchObject({ sessionID: "s1", kind: "live", pinned: true })
@@ -69,13 +54,13 @@ describe("computeBoardPanes", () => {
 
   test("respects the cap and does not duplicate pinned + auto", () => {
     const sources = [
-      source("/a", "s1", 100, true, false),
-      source("/a", "s2", 90, true, false),
-      source("/a", "s3", 80, true, false),
-      source("/a", "s4", 70, true, false),
-      source("/a", "s5", 60, true, false),
-      source("/a", "s6", 50, true, false),
-      source("/a", "s7", 40, true, false),
+      source("/a", "s1", 100),
+      source("/a", "s2", 90),
+      source("/a", "s3", 80),
+      source("/a", "s4", 70),
+      source("/a", "s5", 60),
+      source("/a", "s6", 50),
+      source("/a", "s7", 40),
     ]
     const panes = computeBoardPanes({ pinned: ["/a\ns3", "/a\ns7"], sources, cap: 4 })
     expect(panes).toHaveLength(4)

@@ -1326,7 +1326,7 @@ export const kanbanPage = {
   empty: { id: "app.kanban.empty", message: "No sessions on the board" },
   emptyHint: {
     id: "app.kanban.emptyHint",
-    message: "Running and waiting sessions appear here automatically. Drag a session from the sidebar to pin it.",
+    message: "Sessions appear here in your recent order. Drag a session from the sidebar to pin it.",
   },
   unavailable: { id: "app.kanban.unavailable", message: "Session no longer available" },
   loading: { id: "app.kanban.loading", message: "Loading…" },

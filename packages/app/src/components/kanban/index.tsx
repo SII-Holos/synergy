@@ -13,9 +13,10 @@ import { planMessagePageApply } from "@/context/session-message-page"
 import { scopeKeyForNavEntry } from "@/components/sidebar/session-visual-state"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { kanbanPage } from "@/locales/messages"
+import { resolveActivityDisplay } from "@ericsanchezok/synergy-ui/session-turn-activity"
 import type { ControlProfileId } from "@/context/input"
 import type { NavigationContentProps } from "@/plugin/registries/navigation-registry"
-import { computeBoardPanes, type BoardPane, type BoardPaneSource } from "./model/pane-selection"
+import { computeBoardPanes, BOARD_PANE_CAP, type BoardPane, type BoardPaneSource } from "./model/pane-selection"
 import { createBoardLoader, type BoardLoaderDeps } from "./model/board-loader"
 import { KanbanPane, type BoardPaneData, type BoardPaneLoadState } from "./pane/pane"
 import type { BoardWorkflowKind } from "./pane/composer"
@@ -57,6 +58,15 @@ export function KanbanPanel() {
   const layoutMode = () => store.layout
   const setLayoutMode = (mode: KanbanLayout) => setStore("layout", mode)
 
+  // Shared display settings: the board renders turns exactly like the session
+  // page (activity display mode + compact reasoning from the global config).
+  const activityDisplay = createMemo(() => resolveActivityDisplay(globalSync.data.config.activityDisplay))
+  const compactReasoning = () => globalSync.data.config.compactReasoning === true
+
+  // Pane capacity follows the active layout: grid shows exactly cols × rows,
+  // focus keeps the fixed board cap (main pane + scrollable rail).
+  const paneCap = () => (layoutMode() === "grid" ? store.gridCols * store.gridRows : BOARD_PANE_CAP)
+
   // --- Collect every visible top-level session across scopes ---
   const navEntries = createMemo(() => {
     const list: NavEntry[] = []
@@ -84,16 +94,15 @@ export function KanbanPanel() {
     for (const entry of navEntries()) {
       const scopeKey = scopeKeyForNavEntry(entry, globalSync.data.scope)
       if (!scopeKey) continue
-      const child = globalSync.peekScopeState(scopeKey)?.[0]
-      const status = child?.session_status?.[entry.id]
-      const waiting = !!child?.permission?.[entry.id]?.length || !!child?.question?.[entry.id]?.length
-      const running = status?.type === "busy" || status?.type === "retry"
-      result.push({ scopeKey, entry, running, waiting })
+      result.push({ scopeKey, entry })
     }
-    return result
+    // Mirror the sidebar recent order: most recently active first.
+    return result.toSorted(
+      (a, b) => b.entry.lastActivityAt - a.entry.lastActivityAt || a.entry.id.localeCompare(b.entry.id),
+    )
   })
 
-  const panes = createMemo(() => computeBoardPanes({ pinned: store.pinned, sources: sources() }))
+  const panes = createMemo(() => computeBoardPanes({ pinned: store.pinned, sources: sources(), cap: paneCap() }))
 
   // --- Loader (cross-scope message page; panes rejoin the LRU on re-entry) ---
   const [loadStates, setLoadStates] = createStore<Record<string, BoardPaneLoadState>>({})
@@ -217,6 +226,8 @@ export function KanbanPanel() {
         onOpen={() => openSession(pane)}
         onPinToggle={pane.pinned ? () => unpinPane(pane) : () => pinKey(pane.key)}
         compact={variant === "rail"}
+        activityDisplay={activityDisplay}
+        compactReasoning={compactReasoning}
         loadState={loadStateFor(pane)}
         onRetry={retryPane(pane)}
         onSend={sendToPane(pane)}

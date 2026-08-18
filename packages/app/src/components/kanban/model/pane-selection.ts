@@ -17,8 +17,6 @@ export type BoardPane = {
 export type BoardPaneSource = {
   scopeKey: string
   entry: NavEntry
-  running: boolean
-  waiting: boolean
 }
 
 export function splitPaneKey(key: string): { scopeKey: string; sessionID: string } {
@@ -31,8 +29,9 @@ export function splitPaneKey(key: string): { scopeKey: string; sessionID: string
  * Mixed policy pane selection: pinned panes (in pinned order) always occupy
  * slots first; leftover pinned keys whose session is no longer visible become
  * "unavailable" placeholders (user can remove them); remaining slots are
- * filled by auto candidates (running + waiting sessions) ordered by most
- * recent activity, up to `cap`.
+ * filled by the other sources in sidebar recent order (the caller passes
+ * `sources` already ordered like the sidebar recent list), up to `cap`.
+ * Idle and unread sessions participate so the board mirrors the sidebar.
  */
 export function computeBoardPanes(input: { pinned: string[]; sources: BoardPaneSource[]; cap?: number }): BoardPane[] {
   const cap = input.cap ?? BOARD_PANE_CAP
@@ -59,11 +58,9 @@ export function computeBoardPanes(input: { pinned: string[]; sources: BoardPaneS
   }
 
   if (panes.length < cap) {
-    const auto = input.sources
-      .filter((source) => (source.running || source.waiting) && !pinnedKeys.has(paneKey(source)))
-      .sort((a, b) => b.entry.lastActivityAt - a.entry.lastActivityAt)
-    for (const source of auto) {
+    for (const source of input.sources) {
       if (panes.length >= cap) break
+      if (pinnedKeys.has(paneKey(source))) continue
       panes.push({
         key: paneKey(source),
         scopeKey: source.scopeKey,
