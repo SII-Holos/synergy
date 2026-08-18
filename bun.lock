@@ -7,7 +7,6 @@
       "devDependencies": {
         "@arethetypeswrong/cli": "0.18.4",
         "@ericsanchezok/synergy-plugin": "workspace:*",
-        "@ericsanchezok/synergy-script": "workspace:*",
         "@ericsanchezok/synergy-sdk": "workspace:*",
         "@napi-rs/canvas": "1.0.0",
         "@tsconfig/bun": "catalog:",
@@ -99,7 +98,6 @@
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
         "@typescript/native-preview": "catalog:",
-        "babel-plugin-macros": "3.1.0",
         "playwright": "1.61.0",
         "typescript": "catalog:",
         "vite": "catalog:",
@@ -185,12 +183,6 @@
         "zod": ">=4.0.0",
       },
     },
-    "packages/script": {
-      "name": "@ericsanchezok/synergy-script",
-      "devDependencies": {
-        "@types/bun": "catalog:",
-      },
-    },
     "packages/sdk/js": {
       "name": "@ericsanchezok/synergy-sdk",
       "version": "1.1.26",
@@ -233,7 +225,6 @@
         "@ericsanchezok/synergy-browser": "workspace:*",
         "@ericsanchezok/synergy-link-protocol": "workspace:*",
         "@ericsanchezok/synergy-plugin": "workspace:*",
-        "@ericsanchezok/synergy-script": "workspace:*",
         "@ericsanchezok/synergy-sdk": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "@hono/zod-validator": "catalog:",
@@ -301,7 +292,6 @@
         "@ast-grep/cli-win32-x64-msvc": "0.40.5",
         "@ericsanchezok/synergy-link": "workspace:*",
         "@ericsanchezok/synergy-plugin-kit": "workspace:*",
-        "@ericsanchezok/synergy-script": "workspace:*",
         "@parcel/watcher-darwin-arm64": "2.5.6",
         "@parcel/watcher-darwin-x64": "2.5.6",
         "@parcel/watcher-linux-arm64-glibc": "2.5.6",
@@ -681,8 +671,6 @@
     "@ericsanchezok/synergy-plugin": ["@ericsanchezok/synergy-plugin@workspace:packages/plugin"],
 
     "@ericsanchezok/synergy-plugin-kit": ["@ericsanchezok/synergy-plugin-kit@workspace:packages/plugin-kit"],
-
-    "@ericsanchezok/synergy-script": ["@ericsanchezok/synergy-script@workspace:packages/script"],
 
     "@ericsanchezok/synergy-sdk": ["@ericsanchezok/synergy-sdk@workspace:packages/sdk/js"],
 

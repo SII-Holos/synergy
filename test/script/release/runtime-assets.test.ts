@@ -45,6 +45,7 @@ describe("release runtime asset contract", () => {
     expect(required).toContain(astGrep)
     expect(required).toContain(sqliteVec)
     if (sandbox) expect(required).toContain(sandbox)
+    expect(required).toContain("watcher.node")
     expect(required).toContain("lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs")
     expect(required).toContain("lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm")
     expect(required).toContain("lib/holos-cli/index.js")
@@ -52,10 +53,11 @@ describe("release runtime asset contract", () => {
     expect(required).toContain("lib/holos-cli/node_modules/ws/package.json")
     expect(required).toContain("lib/holos-cli/node_modules/zod/package.json")
   })
-  test("excludes glibc-only native helpers from musl archives", () => {
+  test("keeps the watcher binding in musl archives but excludes glibc-only helpers", () => {
     const required = requiredRuntimeArtifactPaths("synergy-linux-x64-baseline-musl")
     expect(required).not.toContain("bin/ast-grep")
     expect(required).not.toContain("vec0.so")
+    expect(required).toContain("watcher.node")
     expect(required).toContain("sandbox/synergy-sandbox-linux")
   })
 

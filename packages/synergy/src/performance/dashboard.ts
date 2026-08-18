@@ -58,7 +58,10 @@ export namespace PerformanceDashboard {
     const rows = ObservabilityStore.queryMetrics({ since, scopeID: input.scopeID, limit: 50_001, newestFirst: true })
     const truncated = rows.length > 50_000
     const metrics = truncated ? rows.slice(0, 50_000) : rows
-    const resourceRows = ObservabilityStore.resourceSince(since, { scopeID: input.scopeID })
+    // Resource samples are process-global (no scope filtering); an explicit
+    // cap keeps truncation semantics identical to the metric row cap so the
+    // newest server row cannot be silently dropped by the store's 10k default.
+    const resourceRows = ObservabilityStore.resourceSince(since, { limit: 50_000 })
     const serverResourceRows = resourceRows.filter((row) => row.process_role === "server")
     const resources = serverResourceRows.at(-1)
     const currentChildRows = resources

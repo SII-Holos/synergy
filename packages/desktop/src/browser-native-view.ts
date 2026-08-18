@@ -66,12 +66,24 @@ export class BrowserNativeViewManager {
 
   resize(ownerKey: string, pageId: string, bounds: BrowserNativeBounds): void {
     if (this.ownerKey !== ownerKey || this.pageId !== pageId || !this.view) return
+    const desktop = this.desktopBounds(bounds)
     this.view.setBounds({
-      x: Math.max(0, Math.round(bounds.x)),
-      y: Math.max(0, Math.round(bounds.y)),
-      width: Math.max(1, Math.round(bounds.width)),
-      height: Math.max(1, Math.round(bounds.height)),
+      x: Math.max(0, desktop.x),
+      y: Math.max(0, desktop.y),
+      width: Math.max(1, desktop.width),
+      height: Math.max(1, desktop.height),
     })
+  }
+
+  /** Renderer bounds are CSS pixels; convert them to desktop coordinates scaled by the host zoom. */
+  private desktopBounds(bounds: BrowserNativeBounds): { x: number; y: number; width: number; height: number } {
+    const zoom = Math.max(this.window.webContents.getZoomFactor(), 0.01)
+    return {
+      x: Math.round(bounds.x * zoom),
+      y: Math.round(bounds.y * zoom),
+      width: Math.round(bounds.width * zoom),
+      height: Math.round(bounds.height * zoom),
+    }
   }
 
   destroy(): void {

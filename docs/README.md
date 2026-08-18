@@ -50,8 +50,11 @@ Architecture documents define current invariants, ownership boundaries, and the 
 
 Reference documents answer exact operational and repository questions without repeating the product narrative.
 
-- [CLI](reference/cli.md)
-- [Configuration](reference/configuration.md)
+- [Configuration layout](reference/configuration-layout.md) — domain file layout and semantics guide
+- [Configuration](reference/configuration.md) — generated field-level reference
+- [CLI guide](reference/cli-guide.md) — concept and lifecycle guide
+- [CLI](reference/cli.md) — generated command reference
+- [Tools](reference/tools.md) — generated tool catalog
 - [Skills](reference/skills.md)
 - [Storage and paths](reference/storage-and-paths.md)
 - [Package map](reference/packages.md)

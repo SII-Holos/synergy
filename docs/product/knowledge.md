@@ -91,8 +91,7 @@ Settings → Library → Memory always shows the effective embedding model. A us
 
 When no `embedding.apiKey` is configured, Synergy uses the bundled `Xenova/all-MiniLM-L6-v2` model running locally via `@huggingface/transformers`. The model is approximately 80 MB and produces 384-dimensional vectors.
 
-**Lazy loading**: The local model is not preloaded at startup. It loads on first use — the initial embedding call triggers a one-time download and pipeline initialization. Subsequent calls reuse the warm runtime.
-**Cache location**: Model files cache under `~/.synergy/data/embedding/models` (in `data/`, not `cache/`, so cache-version cleanup never clears them); the location is configurable via `embedding.local.cacheDir`, which supports `{env:VAR}` references, and the directory is created automatically.
+**Lazy loading**: The local model is not preloaded at startup. It loads on first use — the initial embedding call triggers a one-time download and pipeline initialization. Subsequent calls reuse the warm runtime. **Cache location**: Model files cache under `~/.synergy/data/embedding/models` (in `data/`, not `cache/`, so cache-version cleanup never clears them); the location is configurable via `embedding.local.cacheDir`, which supports `{env:VAR}` references, and the directory is created automatically.
 
 **Explicit download**: Run `synergy embed download` to fetch the model assets ahead of time. The command shows the configured download source and live byte/percentage progress. After a successful download, embedding calls start instantly.
 

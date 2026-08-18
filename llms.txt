@@ -79,6 +79,6 @@ The project-local `.synergy/skill/` files are executable workflows for this repo
 - `change-server-api` and `change-persistence`
 - `change-execution-boundaries`, `change-channel-runtime`, `change-browser-runtime`, and `change-plugin-runtime`
 - `add-agent`, `add-cli-command`, and `add-tool`
-- `find-logs`, `inspect-sessions`, and `release-log-workflow`
+- `find-logs`, `inspect-sessions`, `find-simplifications`, and `release-log-workflow`
 
 Use `Scope` for workspace resolution/context and `Library` for the knowledge subsystem. Current built-in primary agents are `synergy` and `synergy-max`; retired terminology belongs only in migration or research material.

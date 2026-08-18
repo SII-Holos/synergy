@@ -185,14 +185,23 @@ export function inspectWindowsHelper(
 /**
  * Resolve the Windows helper and retain the first invalid candidate for diagnostics.
  * Returns null only when no helper binary exists at any search path.
+ *
+ * The probe re-validates the binary on every call: the previous stat-signature
+ * cache (size + mtime) could be spoofed by replacing the helper with different
+ * bytes of the same length and restoring its modification time, which would
+ * skip the embedded SHA-256 integrity check and let a tampered binary execute
+ * sandboxed commands. Verification cost is a bounded read + digest per command;
+ * integrity wins over the small latency saving.
  */
-function findHelperBinary(): WindowsHelperInfo | null {
+export function findHelperBinary(
+  searchPaths: readonly ((homedir: string) => string)[] = WINDOWS_HELPER_SEARCH_PATHS,
+): WindowsHelperInfo | null {
   // Try tarball-relative installation before searching standard paths
   installTarballHelper()
 
   const homedir = os.homedir()
   let firstInvalid: WindowsHelperInfo | null = null
-  for (const getPath of WINDOWS_HELPER_SEARCH_PATHS) {
+  for (const getPath of searchPaths) {
     const p = getPath(homedir)
     try {
       if (fs.existsSync(p)) {

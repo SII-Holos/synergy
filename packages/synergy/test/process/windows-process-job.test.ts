@@ -262,3 +262,63 @@ describe("WindowsProcessJob", () => {
     expect(calls).toEqual(["close:2", "kill-child", "terminate", "close:1", "close:1", "cleanup"])
   })
 })
+
+describe("WindowsProcessJob.prepare", () => {
+  test("returns undefined on non-win32 platforms", () => {
+    expect(WindowsProcessJob.prepare({ command: "bash", args: ["-c", "echo hi"], env: {} }, "darwin")).toBeUndefined()
+    expect(WindowsProcessJob.prepare({ command: "bash", args: ["-c", "echo hi"], env: {} }, "linux")).toBeUndefined()
+  })
+
+  test("keeps the selected shell and prepends a gate wait to the command line", () => {
+    const prepared = WindowsProcessJob.prepare(
+      { command: "C:\\Custom\\bash.exe", args: ["-c", "echo hi"], env: { PATH: "C:\\bin" } },
+      "win32",
+    )
+    expect(prepared).toBeDefined()
+    // The caller-selected executable is preserved.
+    expect(prepared!.command).toBe("C:\\Custom\\bash.exe")
+    // Only the final arg is rewritten: gate prefix + original command.
+    expect(prepared!.args[0]).toBe("-c")
+    expect(prepared!.args[1]).toContain("SYNERGY_WINDOWS_JOB_GATE")
+    expect(prepared!.args[1]).toEndWith("echo hi")
+    expect(prepared!.env.SYNERGY_WINDOWS_JOB_GATE).toMatch(/synergy-process-job-.*\.gate$/)
+    expect(prepared!.cleanup).toBeDefined()
+    prepared!.cleanup()
+  })
+
+  test("keeps cmd commands on the command line with cmd-native gate syntax", () => {
+    const prepared = WindowsProcessJob.prepare(
+      { command: "C:\\Windows\\System32\\cmd.exe", args: ["/d", "/s", "/c", "for %i in (*.txt) do @echo %i"], env: {} },
+      "win32",
+    )
+    expect(prepared).toBeDefined()
+    // The selected cmd executable is preserved (not replaced by bare cmd.exe).
+    expect(prepared!.command).toBe("C:\\Windows\\System32\\cmd.exe")
+    expect(prepared!.args[0]).toBe("/d")
+    expect(prepared!.args[1]).toBe("/s")
+    expect(prepared!.args[2]).toBe("/c")
+    // The user command stays verbatim on the command line (no batch file), so
+    // single-percent loop variables keep their /c semantics.
+    const gated = prepared!.args[3]
+    expect(gated).toContain("for /l %i in (1,1,200)")
+    expect(gated).toContain("for %i in (*.txt) do @echo %i")
+    expect(prepared!.env.SYNERGY_WINDOWS_JOB_GATE).toBeDefined()
+    prepared!.cleanup()
+  })
+
+  test("keeps powershell commands on the command line with powershell-native gate syntax", () => {
+    const prepared = WindowsProcessJob.prepare(
+      { command: "pwsh.exe", args: ["-NoProfile", "-Command", "Write-Host test"], env: {} },
+      "win32",
+    )
+    expect(prepared).toBeDefined()
+    expect(prepared!.command).toBe("pwsh.exe")
+    expect(prepared!.args[0]).toBe("-NoProfile")
+    expect(prepared!.args[1]).toBe("-Command")
+    const gated = prepared!.args[2]
+    expect(gated).toContain("Test-Path -LiteralPath $g")
+    expect(gated).toEndWith("Write-Host test")
+    expect(prepared!.env.SYNERGY_WINDOWS_JOB_GATE).toBeDefined()
+    prepared!.cleanup()
+  })
+})

@@ -19,6 +19,8 @@ import {
   BrowserWebRTCSignalSchema,
   BrowserWebRTCMessageSchema,
   browserOwnerKey,
+  normalizeBrowserURL,
+  parseBrowserPresentationPreference,
   selectBrowserPresentation,
 } from "../src/protocol"
 
@@ -381,4 +383,207 @@ describe("browser protocol v2", () => {
     expect(BrowserHostDownloadEntrySchema.safeParse({ ...entry, path: "/managed/file" }).success).toBe(true)
     expect(BrowserHostDownloadEntrySchema.safeParse({ ...entry, clientPath: "/tmp/file" }).success).toBe(false)
   })
+})
+
+describe("browser URL normalization and presentation preference", () => {
+  test("normalizes localhost, domains, URLs, and search queries", () => {
+    expect(normalizeBrowserURL("localhost")).toBe("http://localhost")
+    expect(normalizeBrowserURL("localhost:3000/app")).toBe("http://localhost:3000/app")
+    expect(normalizeBrowserURL("127.0.0.1:8080")).toBe("http://127.0.0.1:8080")
+    expect(normalizeBrowserURL("example.com")).toBe("https://example.com")
+    expect(normalizeBrowserURL("example.com:8443/path")).toBe("https://example.com:8443/path")
+    expect(normalizeBrowserURL("https://example.com/a")).toBe("https://example.com/a")
+    expect(normalizeBrowserURL("/docs", "https://example.com")).toBe("https://example.com/docs")
+    expect(normalizeBrowserURL("synergy browser")).toBe("https://www.google.com/search?q=synergy%20browser")
+    expect(() => normalizeBrowserURL("   ")).toThrow("URL is required")
+    expect(normalizeBrowserURL("::::")).toBe("https://www.google.com/search?q=%3A%3A%3A%3A")
+  })
+
+  test("parses presentation preferences with a safe auto fallback", () => {
+    expect(parseBrowserPresentationPreference("native")).toBe("native")
+    expect(parseBrowserPresentationPreference("webrtc")).toBe("webrtc")
+    expect(parseBrowserPresentationPreference("bogus")).toBe("auto")
+    expect(parseBrowserPresentationPreference(null)).toBe("auto")
+    expect(parseBrowserPresentationPreference(undefined)).toBe("auto")
+  })
+
+  test("auto-selection prefers local native and falls back to WebRTC or null", () => {
+    expect(
+      selectBrowserPresentation({
+        desktopLocalHost: true,
+        remote: false,
+        capabilities: { native: true, webrtc: true },
+      }),
+    ).toMatchObject({ kind: "native", reason: "desktop-local" })
+    expect(
+      selectBrowserPresentation({
+        desktopLocalHost: true,
+        remote: false,
+        capabilities: { native: true, webrtc: false },
+      }),
+    ).toMatchObject({ kind: "native", reason: "desktop-local" })
+    expect(
+      selectBrowserPresentation({
+        desktopLocalHost: true,
+        remote: true,
+        capabilities: { native: true, webrtc: true },
+      }),
+    ).toMatchObject({ kind: "webrtc", reason: "remote-client" })
+    expect(
+      selectBrowserPresentation({
+        desktopLocalHost: false,
+        remote: true,
+        capabilities: { native: false, webrtc: true },
+      }),
+    ).toMatchObject({ kind: "webrtc", reason: "remote-client" })
+    expect(
+      selectBrowserPresentation({
+        desktopLocalHost: false,
+        remote: true,
+        capabilities: { native: true, webrtc: false },
+      }),
+    ).toBeNull()
+    expect(
+      selectBrowserPresentation({
+        desktopLocalHost: false,
+        remote: true,
+        capabilities: { native: false, webrtc: false },
+      }),
+    ).toBeNull()
+  })
+})
+
+describe("browser Host page lifecycle messages", () => {
+  const baseCreate = {
+    type: "page.create",
+    protocolVersion: 2,
+    requestId: "request-1",
+    ownerKey: "scope:scope-1:session:session-1",
+    owner: { mode: "session", scopeID: "scope-1", directory: "/workspace", sessionID: "session-1" },
+    routeDirectory: "/route",
+    presentation: "native",
+    page: {
+      id: "page-1",
+      url: "https://example.com/",
+      title: "Example",
+      isLoading: false,
+      lastActiveAt: 1,
+    },
+    networkProxy: { server: "http://proxy:8080", username: "user", password: "pass" },
+    downloadDir: "/downloads",
+  }
+
+  test("enforces owner/ticket consistency on page.create", () => {
+    expect(BrowserHostMessageSchema.safeParse(baseCreate).success).toBe(true)
+    expect(
+      BrowserHostMessageSchema.safeParse({
+        ...baseCreate,
+        owner: { ...baseCreate.owner, sessionID: undefined },
+      }).success,
+    ).toBe(false)
+    expect(
+      BrowserHostMessageSchema.safeParse({
+        ...baseCreate,
+        owner: { mode: "scope", scopeID: "scope-1", directory: "/workspace", sessionID: "session-1" },
+      }).success,
+    ).toBe(false)
+    expect(BrowserHostMessageSchema.safeParse({ ...baseCreate, ownerKey: "mismatch" }).success).toBe(false)
+    expect(
+      BrowserHostMessageSchema.safeParse({ ...baseCreate, presentation: "webrtc", signalingTicket: undefined }).success,
+    ).toBe(false)
+    expect(
+      BrowserHostMessageSchema.safeParse({ ...baseCreate, presentation: "native", signalingTicket: "ticket" }).success,
+    ).toBe(false)
+    expect(
+      BrowserHostMessageSchema.safeParse({ ...baseCreate, presentation: "webrtc", signalingTicket: "ticket" }).success,
+    ).toBe(true)
+  })
+
+  test("requires exactly one of result or error on page.result", () => {
+    const baseResult = {
+      type: "page.result",
+      protocolVersion: 2,
+      requestId: "request-1",
+      result: { type: "void" },
+    }
+    expect(BrowserHostMessageSchema.safeParse(baseResult).success).toBe(true)
+    expect(
+      BrowserHostMessageSchema.safeParse({
+        ...baseResult,
+        result: undefined,
+        error: { type: "error", code: "browser_test", message: "failed", retryable: false },
+      }).success,
+    ).toBe(true)
+    expect(
+      BrowserHostMessageSchema.safeParse({
+        ...baseResult,
+        error: { type: "error", code: "browser_test", message: "failed", retryable: false },
+      }).success,
+    ).toBe(false)
+    expect(BrowserHostMessageSchema.safeParse({ ...baseResult, result: undefined }).success).toBe(false)
+  })
+})
+
+describe("browser upload and checkpoint schema limits", () => {
+  test("rejects invalid base64 and oversized upload content", () => {
+    const upload = (dataBase64: string) => ({
+      type: "upload",
+      target: { kind: "css", value: "input[type=file]" },
+      files: [{ name: "file.txt", mimeType: "text/plain", dataBase64 }],
+    })
+    expect(BrowserBackendCommandSchema.safeParse(upload("dGVzdA==")).success).toBe(true)
+    expect(BrowserBackendCommandSchema.safeParse(upload("***not-base64***")).success).toBe(false)
+    expect(BrowserBackendCommandSchema.safeParse(upload("a".repeat(35 * 1024 * 1024))).success).toBe(false)
+    const manyFiles = upload("dGVzdA==")
+    const files = Array.from({ length: 21 }, () => ({ name: "f.txt", mimeType: "text/plain", dataBase64: "dGVzdA==" }))
+    expect(BrowserBackendCommandSchema.safeParse({ type: "upload", target: manyFiles.target, files }).success).toBe(
+      false,
+    )
+  })
+
+  test("rejects checkpoints over the 32 MB limit", () => {
+    const checkpoint = BrowserCheckpointSchema.parse({
+      url: "https://example.com/",
+      cookies: [],
+      origins: [],
+      viewport: { width: 1280, height: 720 },
+      scroll: { x: 0, y: 0 },
+      formState: [],
+    })
+    const oversized = {
+      ...checkpoint,
+      origins: [
+        {
+          origin: "https://example.com",
+          localStorage: { big: "x".repeat(32 * 1024 * 1024) },
+          sessionStorage: {},
+        },
+      ],
+    }
+    expect(BrowserCheckpointSchema.safeParse(oversized).success).toBe(false)
+  })
+
+  test("rejects list-only and get-only fields on the wrong console/network actions", () => {
+    expect(
+      BrowserBackendCommandSchema.safeParse({ type: "console", action: "get", id: "console-1", level: "log" }).success,
+    ).toBe(false)
+    expect(
+      BrowserBackendCommandSchema.safeParse({ type: "network", action: "get", id: "req-1", resourceTypes: ["XHR"] })
+        .success,
+    ).toBe(false)
+    expect(BrowserBackendCommandSchema.safeParse({ type: "network", action: "clear", includeBody: true }).success).toBe(
+      false,
+    )
+    expect(
+      BrowserBackendCommandSchema.safeParse({ type: "network", action: "clear", includeSensitive: true }).success,
+    ).toBe(false)
+    expect(BrowserBackendCommandSchema.safeParse({ type: "network", action: "list", includeBody: true }).success).toBe(
+      false,
+    )
+  })
+})
+
+test("falls back to a search URL when a base-relative URL cannot be constructed", () => {
+  expect(normalizeBrowserURL("http://", "https://example.com")).toBe("https://www.google.com/search?q=http%3A%2F%2F")
+  expect(browserOwnerKey({ mode: "scope", scopeID: "scope-1" })).toBe("scope:scope-1:scope")
 })

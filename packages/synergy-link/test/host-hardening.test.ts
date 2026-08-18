@@ -583,8 +583,12 @@ describe("synergy-link host hardening", () => {
         execute(host, sessionID, "req_duplicate", command),
       ])
       expect(processID(first)).toBe(processID(second))
-      for (let attempt = 0; attempt < 100 && !(await Bun.file(counterPath).exists()); attempt += 1) await Bun.sleep(10)
-      expect(await Bun.file(counterPath).text()).toBe("x")
+      let counter: string | null = null
+      for (let attempt = 0; attempt < 200 && counter !== "x"; attempt += 1) {
+        counter = (await Bun.file(counterPath).exists()) ? await Bun.file(counterPath).text() : null
+        if (counter !== "x") await Bun.sleep(10)
+      }
+      expect(counter).toBe("x")
     } finally {
       await host.rpc.processRegistry.reset()
       await rm(root, { recursive: true, force: true })

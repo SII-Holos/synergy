@@ -197,6 +197,10 @@ export namespace SessionProcessor {
     const executionCallbacks = new Map<string, Promise<unknown>>()
     const settlementPromises = new Map<string, Promise<void>>()
     const settledToolCalls = new Set<string>()
+    // LLM-side tool-error events without an execution slot or tool part are
+    // recorded for observability but never settled, so track their call IDs
+    // separately to avoid double-counting when the stream repeats the event.
+    const recordedToolFailures = new Set<string>()
     const pendingToolCallStates = new Map<string, ToolCallState>()
     const toolCallStateUpdates = new Map<string, Promise<void>>()
     const generatingAccum: Record<string, string> = {}
@@ -779,6 +783,7 @@ export namespace SessionProcessor {
       executionCallbacks.clear()
       settlementPromises.clear()
       settledToolCalls.clear()
+      recordedToolFailures.clear()
       for (const callID of Object.keys(generatingAccum)) delete generatingAccum[callID]
       for (const callID of Object.keys(generatingBytes)) delete generatingBytes[callID]
       snapshot = undefined
@@ -847,7 +852,6 @@ export namespace SessionProcessor {
                 ...agentTurnInput
               } = streamInput
               const stream = await AgentTurn.stream(agentTurnInput)
-              streamInput.memoryTurn?.trackOwner("agent_turn.stream", stream)
               SessionManager.setExecutionPhase(input.sessionID, "running_agent")
               streamInput.memoryTurn?.streamStarted()
               SessionMemoryPressure.probe("processor.after_llm_stream", {
@@ -913,7 +917,6 @@ export namespace SessionProcessor {
               }
 
               try {
-                streamInput.memoryTurn?.trackOwner("agent_turn.full_stream", stream.fullStream)
                 for await (const value of stream.fullStream) {
                   input.abort.throwIfAborted()
                   switch (value.type) {
@@ -1103,8 +1106,6 @@ export namespace SessionProcessor {
                       const streamedRaw = generatingAccum[value.toolCallId]
                       const toolInput = SessionToolInput.normalize(value.input)
                       const toolInputBytes = SessionBounds.toolInputByteLength(toolInput)
-                      streamInput.memoryTurn?.trackOwner("provider.tool_call_event", value, toolInputBytes)
-                      streamInput.memoryTurn?.trackOwner("tool.parsed_input", toolInput, toolInputBytes)
                       log.info("tool.stream.tool_call.input_ready", {
                         sessionID: input.sessionID,
                         messageID: input.assistantMessage.id,
@@ -1233,7 +1234,13 @@ export namespace SessionProcessor {
                       const rejected =
                         value.error instanceof PermissionNext.RejectedError ||
                         value.error instanceof Question.RejectedError
-                      if (!slot && !rejected && !settledToolCalls.has(value.toolCallId)) {
+                      if (
+                        !slot &&
+                        !rejected &&
+                        !settledToolCalls.has(value.toolCallId) &&
+                        !recordedToolFailures.has(value.toolCallId)
+                      ) {
+                        recordedToolFailures.add(value.toolCallId)
                         const diagnostic = streamToolDiagnostic(value.toolName, value.error)
                         ObservabilityToolFailures.record({
                           tool: value.toolName,

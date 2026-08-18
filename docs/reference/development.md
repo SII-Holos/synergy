@@ -179,6 +179,7 @@ The repository-local `.synergy/skill/` directory is the executable handbook for 
 | Plugin manifest, install/update, runtime, bridge, marketplace, or UI host                        | `change-plugin-runtime`                            |
 | Built-in agent, CLI command, or first-party tool                                                 | `add-agent`, `add-cli-command`, or `add-tool`      |
 | Test selection, isolated runtime, or Git operation                                               | `testing-guide`, `develop-synergy`, or `git-guide` |
+| Broad simplification audit, dead/duplicated/over-built surface, or decision-record coalescing    | `find-simplifications`                             |
 
 When implementation or review reveals a reusable required pattern, registration, safety constraint, or verification step, update the owning Skill in the same change. Create a focused verb-led Skill if no existing workflow would reliably trigger. Root and package `AGENTS.md` files retain safety, global invariants, and routing; canonical docs retain product and architecture truth; Skills retain the executable procedure.
 

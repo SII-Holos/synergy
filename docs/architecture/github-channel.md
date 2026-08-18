@@ -153,23 +153,16 @@ The separate `src/provider/github.ts` (OAuth device-flow personal token) is unch
 
 ## Deferred enhancements
 
-The following items are intentionally deferred from the initial channel
-migration and remain open for follow-up work:
+The following items are intentionally deferred from the initial channel migration and remain open for follow-up work:
 
 - **`review_requested` support** — responding to the GitHub `review_requested`
-  event (a reviewer explicitly added to a PR) is not yet wired into the poll
-  synthesizer. Today review triggers are PR open, draft → ready, and explicit
-  `@mention` comments; PR head pushes intentionally do not re-review.
+  event (a reviewer explicitly added to a PR) is not yet wired into the poll synthesizer. Today review triggers are PR open, draft → ready, and explicit `@mention` comments; PR head pushes intentionally do not re-review.
 - **Silent-when-clean (👍) low-noise reviews** — the agent always posts a
-  review comment, even when the change has no defects. Posting only a 👍
-  reaction (or nothing) for clean reviews is a future noise-reduction option.
+  review comment, even when the change has no defects. Posting only a 👍 reaction (or nothing) for clean reviews is a future noise-reduction option.
 - **Large-PR token budget chunking** — PR-Agent chunks oversized diffs to fit
-  the model context window. The channel agent relies on the standard session
-  compaction loop instead; explicit diff chunking is not implemented.
+  the model context window. The channel agent relies on the standard session compaction loop instead; explicit diff chunking is not implemented.
 - **Personal-account reply identity** — the planned optional `postAs: "user"`
-  reply identity via the OAuth personal token was not implemented; all GitHub
-  writes use the App installation token. The user-credential provider remains
-  the bash `GH_TOKEN` source only.
+  reply identity via the OAuth personal token was not implemented; all GitHub writes use the App installation token. The user-credential provider remains the bash `GH_TOKEN` source only.
 
 ## References
 

@@ -76,4 +76,19 @@ describe("Chromium release contract", () => {
     expect(ChromiumManifestSchema.safeParse({ ...manifest, url: "http://example.com/chrome.zip" }).success).toBe(false)
     expect(chromiumManifestName("1.2.3", "linux", "x64")).toBe("synergy-chromium-linux-x64-1.2.3.manifest.json")
   })
+
+  test("maps Windows and macOS x64 targets and rejects unsupported pairs", () => {
+    expect(chromiumReleaseTarget("win32", "x64", "149.0.7827.55", "1228")).toEqual({
+      platform: "win32",
+      arch: "x64",
+      name: "chrome-win64.zip",
+      executable: "chrome-win64/chrome.exe",
+      path: "builds/cft/149.0.7827.55/win64/chrome-win64.zip",
+      urls: ["https://cdn.playwright.dev/builds/cft/149.0.7827.55/win64/chrome-win64.zip"],
+    })
+    expect(chromiumReleaseTarget("darwin", "x64", "149.0.7827.55", "1228")?.name).toBe("chrome-mac-x64.zip")
+    expect(chromiumReleaseTarget("linux", "x64", "149.0.7827.55", "1228")?.name).toBe("chrome-linux64.zip")
+    expect(chromiumReleaseTarget("win32", "arm64", "149.0.7827.55", "1228")).toBeNull()
+    expect(chromiumManifestName("1.2.3", "darwin", "x64")).toBe("synergy-chromium-darwin-x64-1.2.3.manifest.json")
+  })
 })

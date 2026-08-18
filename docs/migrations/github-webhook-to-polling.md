@@ -2,7 +2,7 @@
 
 Synergy replaced its inbound GitHub App webhook endpoint with outbound GitHub REST API polling. This is an intentional clean break: the host no longer exposes `POST /integrations/github/webhook`, accepts GitHub webhook signatures, or uses `SYNERGY_GITHUB_WEBHOOK_SECRET`.
 
-For current behavior and configuration, see [GitHub Channel](../architecture/github-channel.md) and [Configuration](../reference/configuration.md#github-channel).
+For current behavior and configuration, see [GitHub Channel](../architecture/github-channel.md) and [Configuration](../reference/configuration-layout.md#github-channel).
 
 ## Operator Cutover
 

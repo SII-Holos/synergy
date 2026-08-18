@@ -246,6 +246,7 @@ verify_runtime_manifest_contract() {
             ;;
     esac
     for required in \
+        "watcher.node" \
         "app/index.html" \
         "schema/config.schema.json" \
         "browser-runtime/playwright-core/package.json" \
@@ -459,7 +460,7 @@ backup_managed_runtime() {
     local name
     rm -rf "$backup"
     mkdir -p "$backup" || return 1
-    for name in app schema browser-runtime lib sandbox bin runtime-manifest.sha256 vec0.so vec0.dylib vec0.dll; do
+    for name in app schema browser-runtime lib sandbox bin runtime-manifest.sha256 vec0.so vec0.dylib vec0.dll watcher.node; do
         if [ -e "$ROOT_DIR/$name" ] || [ -L "$ROOT_DIR/$name" ]; then
             cp -RP "$ROOT_DIR/$name" "$backup/$name" || return 1
         fi
@@ -470,9 +471,9 @@ restore_managed_runtime() {
     local backup="$1"
     local name
     rm -rf "$ROOT_DIR/app" "$ROOT_DIR/schema" "$ROOT_DIR/browser-runtime" "$ROOT_DIR/lib" "$ROOT_DIR/sandbox" "$ROOT_DIR/bin"
-    rm -f "$ROOT_DIR/runtime-manifest.sha256" "$ROOT_DIR/vec0.so" "$ROOT_DIR/vec0.dylib" "$ROOT_DIR/vec0.dll"
+    rm -f "$ROOT_DIR/runtime-manifest.sha256" "$ROOT_DIR/vec0.so" "$ROOT_DIR/vec0.dylib" "$ROOT_DIR/vec0.dll" "$ROOT_DIR/watcher.node"
     mkdir -p "$ROOT_DIR" || return 1
-    for name in app schema browser-runtime lib sandbox bin runtime-manifest.sha256 vec0.so vec0.dylib vec0.dll; do
+    for name in app schema browser-runtime lib sandbox bin runtime-manifest.sha256 vec0.so vec0.dylib vec0.dll watcher.node; do
         if [ -e "$backup/$name" ] || [ -L "$backup/$name" ]; then
             cp -RP "$backup/$name" "$ROOT_DIR/$name" || return 1
         fi
@@ -500,12 +501,15 @@ apply_bundle_contents() {
         replace_bundle_directory "$bundle_root/sandbox" "$ROOT_DIR/sandbox" || return 1
     fi
 
-    rm -f "$INSTALL_DIR/ast-grep" "$INSTALL_DIR/ast-grep.exe" "$ROOT_DIR/vec0.so" "$ROOT_DIR/vec0.dylib" "$ROOT_DIR/vec0.dll" || return 1
+    rm -f "$INSTALL_DIR/ast-grep" "$INSTALL_DIR/ast-grep.exe" "$ROOT_DIR/vec0.so" "$ROOT_DIR/vec0.dylib" "$ROOT_DIR/vec0.dll" "$ROOT_DIR/watcher.node" || return 1
     for vec in "$bundle_root/vec0.so" "$bundle_root/vec0.dylib" "$bundle_root/vec0.dll"; do
         if [ -f "$vec" ]; then
             cp "$vec" "$ROOT_DIR/" || return 1
         fi
     done
+    if [ -f "$bundle_root/watcher.node" ]; then
+        cp "$bundle_root/watcher.node" "$ROOT_DIR/" || return 1
+    fi
 
     if [ -d "$bundle_root/bin" ]; then
         install_bin_contents "$bundle_root/bin" || return 1

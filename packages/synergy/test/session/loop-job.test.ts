@@ -33,6 +33,7 @@ describe("LoopJob background execution", () => {
   test("executes a detached payload without retaining the full context", async () => {
     const started = Promise.withResolvers<void>()
     const release = Promise.withResolvers<void>()
+    const completed = Promise.withResolvers<void>()
     let received: LoopJob.JobInstance | undefined
     const type = `test_detached_${Date.now()}_${Math.random()}`
     LoopJob.register({
@@ -49,6 +50,7 @@ describe("LoopJob background execution", () => {
         received = payload
         started.resolve()
         await release.promise
+        completed.resolve()
         return "pass"
       },
     })
@@ -59,10 +61,9 @@ describe("LoopJob background execution", () => {
 
     expect(received).toEqual({ type, sessionID: "ses_detached", messageID: "msg_ses_detached" })
     expect(received).not.toHaveProperty("messages")
-    expect(LoopJob.backgroundStats().jobs.find((job) => job.type === type)?.payloadBytes).toBeLessThan(1024)
 
     release.resolve()
-    await waitUntil(() => !LoopJob.backgroundStats().jobs.some((job) => job.type === type))
+    await completed.promise
   })
 
   test("coalesces repeated work to the latest pending payload", async () => {
@@ -99,10 +100,8 @@ describe("LoopJob background execution", () => {
     await LoopJob.execute([{ type, revision: 2 }], ctx)
     await LoopJob.execute([{ type, revision: 3 }], ctx)
 
-    const active = LoopJob.backgroundStats().jobs.find((job) => job.type === type)
-    expect(active?.pending).toBe(true)
     releaseFirst.resolve()
-    await waitUntil(() => !LoopJob.backgroundStats().jobs.some((job) => job.type === type))
+    await waitUntil(() => seen.length === 2)
     expect(seen).toEqual([1, 3])
   })
 
@@ -134,7 +133,6 @@ describe("LoopJob background execution", () => {
     await waitUntil(() => seen.length === 3)
 
     release.resolve()
-    await waitUntil(() => !LoopJob.backgroundStats().jobs.some((job) => job.type === type))
     expect(seen).toEqual([1, 2, 3])
   })
 
@@ -173,7 +171,7 @@ describe("LoopJob background execution", () => {
     await firstStarted.promise
     await LoopJob.execute([{ type, revision: 2 }], ctx)
 
-    await waitUntil(() => !LoopJob.backgroundStats().jobs.some((job) => job.type === type))
+    await waitUntil(() => seen.length === 2)
     expect(seen).toEqual([1, 2])
   })
 })

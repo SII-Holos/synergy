@@ -95,43 +95,26 @@ Provider delivery failure rejects the Question. Channels without a native questi
 
 ### Outbound Delivery Anchoring
 
-Outbound channel delivery uses a message-scoped reply anchor instead of a
-generic push when the assistant message carries `channelReply: true`. Each
-inbound Channel root user message records `channelReplyToMessageId` from the
-provider root ID, or from the inbound message ID when no root exists. The
-session endpoint remains stable when a Channel session is reused and does not
-store or refresh this transient routing state.
+Outbound channel delivery uses a message-scoped reply anchor instead of a generic push when the assistant message carries `channelReply: true`. Each inbound Channel root user message records `channelReplyToMessageId` from the provider root ID, or from the inbound message ID when no root exists. The session endpoint remains stable when a Channel session is reused and does not store or refresh this transient routing state.
 
-`ChannelOutbound` reacts to terminal assistant messages. For each new terminal
-assistant it:
+`ChannelOutbound` reacts to terminal assistant messages. For each new terminal assistant it:
 
 1. acquires a lock on the message ID and re-reads the current metadata to
    prevent duplicate or stale delivery
 2. checks for `channelPush`, `mailbox`, or `channelReply` metadata — without
    any of these, the assistant is not sent
 3. when `channelReply` is true and no `channelReplyToMessageId` exists on that
-   assistant, logs a warning and drops the message instead of pushing to the
-   chat
+   assistant, logs a warning and drops the message instead of pushing to the chat
 4. delivers provider-native response cards and ordinary text/media parts; card-only terminal responses are valid outbound results. Tool-produced file, image, audio, and video attachments found across the completed task thread are projected into the same delivery, so attachment-only terminal responses are valid too
 5. records `channelOutboundSent: true` after all matching cards are durably handled and ordinary provider delivery succeeds, so repeated terminal events do not send the result again
 
 ### Reply in Thread
 
-The Feishu/Lark provider supports per-account `replyInThread: true` in account
-configuration. When enabled, `provider.replyMessage()` includes
-`reply_in_thread: true` in the request body so the reply appears in a thread
-rather than at the top level of the chat.
+The Feishu/Lark provider supports per-account `replyInThread: true` in account configuration. When enabled, `provider.replyMessage()` includes `reply_in_thread: true` in the request body so the reply appears in a thread rather than at the top level of the chat.
 
 ### Continuation Delivery
 
-`SessionInvoke` propagates channel delivery metadata through continuation
-steps. When a steer message injected by Cortex (or another source) carries
-`channelPush`, `channelReply`, and `channelReplyToMessageId`, every assistant
-message produced in that continuation round inherits them. An unrelated user
-message that starts a new task root does not inherit the delivery metadata. If
-one continuation contains conflicting reply anchors, it keeps reply intent but
-omits the target so outbound delivery fails closed instead of replying to the
-wrong topic.
+`SessionInvoke` propagates channel delivery metadata through continuation steps. When a steer message injected by Cortex (or another source) carries `channelPush`, `channelReply`, and `channelReplyToMessageId`, every assistant message produced in that continuation round inherits them. An unrelated user message that starts a new task root does not inherit the delivery metadata. If one continuation contains conflicting reply anchors, it keeps reply intent but omits the target so outbound delivery fails closed instead of replying to the wrong topic.
 
 ### Native Clarus tasks
 

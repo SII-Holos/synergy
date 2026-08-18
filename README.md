@@ -8,21 +8,15 @@
   <p><strong>Persistent, recoverable AI agent work.</strong></p>
 
   <p>
-    An open-source workspace for software and knowledge work that keeps sessions, agents, files, Browser,
-    tools, and automation connected in one runtime.
+    An open-source workspace for software and knowledge work that keeps sessions, agents, files, Browser, tools, and automation connected in one runtime.
   </p>
 
   <p>
-    <a href="https://synergy.holosai.io">Website</a> ·
-    <a href="docs/README.md">Documentation</a> ·
-    <a href="#quick-start">Quick Start</a> ·
-    <a href="CONTRIBUTING.md">Contributing</a>
+    <a href="https://synergy.holosai.io">Website</a> · <a href="docs/README.md">Documentation</a> · <a href="#quick-start">Quick Start</a> · <a href="CONTRIBUTING.md">Contributing</a>
   </p>
 
   <p>
-    <a href="https://github.com/SII-Holos/synergy/releases/latest"><img src="https://img.shields.io/github/v/release/SII-Holos/synergy?sort=semver" alt="Latest release" /></a>
-    <a href="https://github.com/SII-Holos/synergy/actions/workflows/ci.yml"><img src="https://github.com/SII-Holos/synergy/actions/workflows/ci.yml/badge.svg?branch=dev" alt="CI status" /></a>
-    <a href="LICENSE"><img src="https://img.shields.io/github/license/SII-Holos/synergy" alt="MIT License" /></a>
+    <a href="https://github.com/SII-Holos/synergy/releases/latest"><img src="https://img.shields.io/github/v/release/SII-Holos/synergy?sort=semver" alt="Latest release" /></a> <a href="https://github.com/SII-Holos/synergy/actions/workflows/ci.yml"><img src="https://github.com/SII-Holos/synergy/actions/workflows/ci.yml/badge.svg?branch=dev" alt="CI status" /></a> <a href="LICENSE"><img src="https://img.shields.io/github/license/SII-Holos/synergy" alt="MIT License" /></a>
   </p>
 
 <sub>Built by the <a href="https://github.com/SII-Holos">Holos</a> team at [Shanghai Innovation Institute](https://www.sii.edu.cn).</sub>

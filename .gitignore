@@ -22,12 +22,20 @@ Session.vim
 a.out
 target
 .scripts
+
+# Declarations emitted beside sources when a composite project type-checks a
+# file outside its rootDir (packages/app tsconfig includes script/shared/)
+script/shared/*.d.ts
 log/
 
 # Bun build temp files
 *.bun-build
 .bun-version.info
 packages/synergy/coverage/
+
+# Test coverage artifacts
+coverage/
+coverage*/
 
 # Windows special device files
 nul

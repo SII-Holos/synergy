@@ -30,6 +30,11 @@ export function resetObservabilityHome(prefix = "synergy-observability-") {
 export function cleanupObservabilityHomes() {
   ObservabilityResources.stop()
   ObservabilityStore.close()
+  // Sibling tests refresh the shared config (e.g. disabled.test.ts pins
+  // enabled:false) without restoring it; reset the cache so a later file in
+  // the same worker re-evaluates the default and does not silently drop every
+  // event it expects to observe.
+  ObservabilityConfig.refresh()
   if (originalHome === undefined) delete process.env.SYNERGY_TEST_HOME
   else process.env.SYNERGY_TEST_HOME = originalHome
   if (originalInline === undefined) delete process.env.SYNERGY_OBSERVABILITY_INLINE

@@ -1,0 +1,1706 @@
+{
+  "packages": {
+    "packages/synergy": {
+      "command": "bun run script/coverage-run.ts",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/acp/types.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/agenda/store.ts",
+          "reason": "agenda store requires the full scheduler runtime"
+        },
+        {
+          "glob": "src/agent/prompt/types.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/browser/driver.ts",
+          "reason": "requires a real browser runtime"
+        },
+        {
+          "glob": "src/browser/page.ts",
+          "reason": "requires a real browser runtime"
+        },
+        {
+          "glob": "src/browser/types.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/channel/provider/feishu/api-context.ts",
+          "reason": "channel providers require live external services"
+        },
+        {
+          "glob": "src/channel/provider/feishu/feishu-types.ts",
+          "reason": "channel providers require live external services"
+        },
+        {
+          "glob": "src/channel/provider/feishu/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/channel/provider/feishu/svg-raster-worker.ts",
+          "reason": "channel providers require live external services"
+        },
+        {
+          "glob": "src/channel/provider/github/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/channel/provider/github/poll.ts",
+          "reason": "channel providers require live external services"
+        },
+        {
+          "glob": "src/cli/cmd/auth.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/channel.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/config.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/mcp.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/plugin.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/run.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/stats.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/uninstall.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/config/import.ts",
+          "reason": "not exercised by the unit suite; requires full runtime or external service"
+        },
+        {
+          "glob": "src/config/setup.ts",
+          "reason": "not exercised by the unit suite; requires full runtime or external service"
+        },
+        {
+          "glob": "src/control-profile/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/control-profile/types.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/daemon/launchd.ts",
+          "reason": "OS daemon integration (launchd/schtasks/systemd)"
+        },
+        {
+          "glob": "src/daemon/schtasks.ts",
+          "reason": "OS daemon integration (launchd/schtasks/systemd)"
+        },
+        {
+          "glob": "src/email/imap.ts",
+          "reason": "requires live IMAP/SMTP service"
+        },
+        {
+          "glob": "src/external-agent/adapter/claude-code.ts",
+          "reason": "external agent adapters require live subprocesses or agents"
+        },
+        {
+          "glob": "src/external-agent/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/holos/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/holos/startup.ts",
+          "reason": "requires live Holos control plane"
+        },
+        {
+          "glob": "src/lattice/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/library/stats/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/lsp/server.ts",
+          "reason": "LSP server requires the full language-service runtime"
+        },
+        {
+          "glob": "src/migration/types.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/note/store.ts",
+          "reason": "note store requires the full storage runtime"
+        },
+        {
+          "glob": "src/observability/telemetry-worker.ts",
+          "reason": "telemetry worker is spawned as a child process"
+        },
+        {
+          "glob": "src/performance/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/permission/toml/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/plugin-runtime/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/plugin-runtime/runner.ts",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/runtime-policy.ts",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/process/pty.ts",
+          "reason": "process/PTY handling requires real child-process runtime"
+        },
+        {
+          "glob": "src/provider/anthropic-oauth.ts",
+          "reason": "requires live external provider or API credentials"
+        },
+        {
+          "glob": "src/provider/codex.ts",
+          "reason": "requires live external provider or API credentials"
+        },
+        {
+          "glob": "src/provider/grok.ts",
+          "reason": "requires live external provider or API credentials"
+        },
+        {
+          "glob": "src/provider/models-macro.ts",
+          "reason": "compile-time Bun macro (import ... with { type: 'macro' }); inlined during bundling, never executed under the runtime coverage instrument"
+        },
+        {
+          "glob": "src/remote/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/sandbox/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/sandbox/readiness.ts",
+          "reason": "sandbox enforcement requires a real OS sandbox environment"
+        },
+        {
+          "glob": "src/sandbox/types.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/server/runtime.ts",
+          "reason": "HTTP server runtime requires full server bootstrap"
+        },
+        {
+          "glob": "src/server/server.ts",
+          "reason": "HTTP server runtime requires full server bootstrap"
+        },
+        {
+          "glob": "src/session/agent-turn/runner.ts",
+          "reason": "session/LLM-loop runtime requires the full model pipeline"
+        },
+        {
+          "glob": "src/session/invoke.ts",
+          "reason": "session/LLM-loop runtime requires the full model pipeline"
+        },
+        {
+          "glob": "src/session/processor.ts",
+          "reason": "session/LLM-loop runtime requires the full model pipeline"
+        },
+        {
+          "glob": "src/session/tool-resolver.ts",
+          "reason": "session/LLM-loop runtime requires the full model pipeline"
+        },
+        {
+          "glob": "src/setup/service.ts",
+          "reason": "system service setup (interactive or privileged)"
+        },
+        {
+          "glob": "src/tool/process/shared.ts",
+          "reason": "tool implementations require live tool runtime context"
+        },
+        {
+          "glob": "src/tool/session-control.ts",
+          "reason": "tool implementations require live tool runtime context"
+        }
+      ]
+    },
+    "packages/util": {
+      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/browser": {
+      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/plugin": {
+      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/plugin-kit": {
+      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/commands/publish-market.ts",
+          "reason": "not exercised by the unit suite; requires full runtime or external service"
+        }
+      ]
+    },
+    "packages/synergy-link": {
+      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/cli.ts",
+          "reason": "not exercised by the unit suite; requires full runtime or external service"
+        }
+      ]
+    },
+    "packages/synergy-link-protocol": {
+      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/sdk/js": {
+      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/gen/client/client.gen.ts",
+          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
+        },
+        {
+          "glob": "src/gen/client/types.gen.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/gen/client/utils.gen.ts",
+          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
+        },
+        {
+          "glob": "src/gen/core/bodySerializer.gen.ts",
+          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
+        },
+        {
+          "glob": "src/gen/core/pathSerializer.gen.ts",
+          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
+        },
+        {
+          "glob": "src/gen/core/queryKeySerializer.gen.ts",
+          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
+        },
+        {
+          "glob": "src/gen/core/serverSentEvents.gen.ts",
+          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
+        },
+        {
+          "glob": "src/gen/core/types.gen.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/gen/core/utils.gen.ts",
+          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
+        },
+        {
+          "glob": "src/gen/sdk.gen.ts",
+          "reason": "generated OpenAPI SDK code (script/generate.ts output)"
+        }
+      ]
+    },
+    "packages/app": {
+      "command": "bun run test -- --coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 60,
+        "functions": 50
+      },
+      "exempt": [
+        {
+          "glob": "src/app.tsx",
+          "reason": "not exercised by the unit suite; requires full runtime or external service"
+        },
+        {
+          "glob": "src/components/agenda/activity-state.ts",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/agenda/activity-view.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/agenda/agenda-i18n.ts",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/agenda/calendar.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/agenda/date.ts",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/agenda/expand.ts",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/agenda/form.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/agenda/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/components/agenda/mini-calendar.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/agenda/panel.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/agenda/shared.ts",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/agent-visual.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/app-shell/connection-banner.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/app-shell/desktop-native-titlebar.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/app-shell/desktop-theme-sync.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/app-shell/desktop-window-chrome.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/app-shell/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/components/app-shell/mobile-drawer-root.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/app-shell/mobile-drawer.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/app-shell/mobile-tools-drawer.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/attachment-workbench/content.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/attachment-workbench/pdf-preview.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/boss/boss-panel.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/dialog/dialog-connect-provider.tsx",
+          "reason": "dialogs require interactive flows"
+        },
+        {
+          "glob": "src/components/dialog/dialog-scope-edit.tsx",
+          "reason": "dialogs require interactive flows"
+        },
+        {
+          "glob": "src/components/dialog/dialog-select-directory.tsx",
+          "reason": "dialogs require interactive flows"
+        },
+        {
+          "glob": "src/components/dialog/dialog-select-file.tsx",
+          "reason": "dialogs require interactive flows"
+        },
+        {
+          "glob": "src/components/dialog/dialog-select-mcp.tsx",
+          "reason": "dialogs require interactive flows"
+        },
+        {
+          "glob": "src/components/dialog/dialog-select-model.tsx",
+          "reason": "dialogs require interactive flows"
+        },
+        {
+          "glob": "src/components/dialog/dialog-session-export.tsx",
+          "reason": "dialogs require interactive flows"
+        },
+        {
+          "glob": "src/components/dialog/dialog-session-import.tsx",
+          "reason": "dialogs require interactive flows"
+        },
+        {
+          "glob": "src/components/dialog/dialog-session-rename.tsx",
+          "reason": "dialogs require interactive flows"
+        },
+        {
+          "glob": "src/components/dialog/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/components/dialog/project-directory-picker.tsx",
+          "reason": "dialogs require interactive flows"
+        },
+        {
+          "glob": "src/components/file-workbench/content.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/file-workbench/explorer.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/file-workbench/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/components/file-workbench/source-model-cache.ts",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/file-workbench/source-view.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/holos/agent-actions.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/lattice/lattice-config-dialog.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/lattice/lattice-panel.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/note/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/components/note/panel.tsx",
+          "reason": "note editor requires the Tiptap runtime"
+        },
+        {
+          "glob": "src/components/performance/PerformanceDashboard.tsx",
+          "reason": "performance dashboards require live telemetry"
+        },
+        {
+          "glob": "src/components/performance/panel.tsx",
+          "reason": "performance dashboards require live telemetry"
+        },
+        {
+          "glob": "src/components/performance/types.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/components/prompt-input/add-menu.tsx",
+          "reason": "prompt input requires a live editor runtime"
+        },
+        {
+          "glob": "src/components/prompt-input/attachments-hook.ts",
+          "reason": "prompt input requires a live editor runtime"
+        },
+        {
+          "glob": "src/components/prompt-input/attachments.tsx",
+          "reason": "prompt input requires a live editor runtime"
+        },
+        {
+          "glob": "src/components/prompt-input/edit-light-loop-dialog.tsx",
+          "reason": "prompt input requires a live editor runtime"
+        },
+        {
+          "glob": "src/components/prompt-input/editor-dom.ts",
+          "reason": "prompt input requires a live editor runtime"
+        },
+        {
+          "glob": "src/components/prompt-input/editor-hook.ts",
+          "reason": "prompt input requires a live editor runtime"
+        },
+        {
+          "glob": "src/components/prompt-input/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/components/prompt-input/light-loop-submit-control.tsx",
+          "reason": "prompt input requires a live editor runtime"
+        },
+        {
+          "glob": "src/components/prompt-input/permission-modes.ts",
+          "reason": "prompt input requires a live editor runtime"
+        },
+        {
+          "glob": "src/components/prompt-input/permission-selector.tsx",
+          "reason": "prompt input requires a live editor runtime"
+        },
+        {
+          "glob": "src/components/prompt-input/placeholders.ts",
+          "reason": "prompt input requires a live editor runtime"
+        },
+        {
+          "glob": "src/components/prompt-input/plan-blueprint-offer.tsx",
+          "reason": "prompt input requires a live editor runtime"
+        },
+        {
+          "glob": "src/components/prompt-input/popover.tsx",
+          "reason": "prompt input requires a live editor runtime"
+        },
+        {
+          "glob": "src/components/prompt-input/prompt-input.tsx",
+          "reason": "prompt input requires a live editor runtime"
+        },
+        {
+          "glob": "src/components/prompt-input/quick-actions.tsx",
+          "reason": "prompt input requires a live editor runtime"
+        },
+        {
+          "glob": "src/components/prompt-input/session-command.ts",
+          "reason": "prompt input requires a live editor runtime"
+        },
+        {
+          "glob": "src/components/prompt-input/start-options.tsx",
+          "reason": "prompt input requires a live editor runtime"
+        },
+        {
+          "glob": "src/components/prompt-input/submit.ts",
+          "reason": "prompt input requires a live editor runtime"
+        },
+        {
+          "glob": "src/components/prompt-input/types.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/components/prompt-input/worktree-unavailable-dialog.tsx",
+          "reason": "prompt input requires a live editor runtime"
+        },
+        {
+          "glob": "src/components/provider/ProviderConnectionFlow.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/provider/external-link.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/provider/model-manager.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/scopes/active-zone.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/scopes/pagination-bar.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/scopes/session-row.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/search/global-search-modal.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/session/commands.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/compact-action.ts",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/conversation-viewport.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/conversation.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/dialog-rewind-confirm.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/components/session/permission-dock.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/prompt-dock-float-layer.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/prompt-dock.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/question-prompt.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/raw-messages-dialog.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/rollback-dialog.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/session-cortex-indicator.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/session-inbox.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/session-lsp-indicator.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/session-mcp-indicator.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/session-new-view.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/session-progress-dag.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/session-progress-island.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/session-progress-panel.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/session-progress-todo.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/session-review-tab.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/session-timeline.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/session-transition-card.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/session-transition-progress-steps.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/subagent-dock.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/subagent-session-footer.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/wake-indicator.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/session/worktree-transition-dialog.tsx",
+          "reason": "session views require a live session runtime; covered by E2E/browser suites"
+        },
+        {
+          "glob": "src/components/settings/SettingsPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/components/AccountToggleCard.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/components/BasicAccountToggleCard.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/components/McpCard.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/components/ModelRoleRow.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/components/ModelVariantPicker.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/components/PasswordField.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/components/SaveIndicator.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/components/SectionLabel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/components/SegmentPill.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/components/SettingRow.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/components/SettingsPrimitives.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/components/SettingsStepScale.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/hooks/useSettingsSave.ts",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/components/settings/panels/AccountPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/ArchivedSessionsPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/BossModePanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/ChannelsPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/CodeChecksPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/ConfigFilesPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/EmailPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/GeneralPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/GitHubPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/ImportPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/LibraryPanels.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/McpPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/ModelsPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/PersonalizePanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/ProvidersPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/RuntimePanels.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/SafetyPanels.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/SynergyLinkPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/UsagePanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/WorktreesPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/library-embedding-section.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/library-reencode-progress.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/settings-dialog-frame.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/settings-visibility.ts",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/sidebar/flip-list.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/sidebar/sidebar-attention-notice.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/sidebar/sidebar.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/status-bar/context-status-button.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/status-bar/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/components/status-bar/indicator.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/status-bar/status-bar.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/terminal/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/components/terminal/terminal.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/toolbar-selector.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/top-bar/session-top-bar.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/workspace/browser/address-bar.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/browser/agent-assistant.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/browser/annotation-input.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/browser/assets-panel.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-panel.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-surface.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-view-effects.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/browser/console-panel.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/browser/downloads-panel.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/browser/elements-panel.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/browser/network-panel.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/browser/remote-browser-surface.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/browser/viewport-selector.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/builtin-workbench-panels.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/tool-boss.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/tool-browser.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/tool-context.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/tool-lattice.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/tool-notes.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/tool-session-review.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/tool-terminal.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/workbench-surface.tsx",
+          "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/composables/use-navigate-to-session.ts",
+          "reason": "not exercised by the unit suite; requires full runtime or external service"
+        },
+        {
+          "glob": "src/composables/use-session-meta.ts",
+          "reason": "not exercised by the unit suite; requires full runtime or external service"
+        },
+        {
+          "glob": "src/context/auth.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/command.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/file/index.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/global-sync.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/holos.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/input.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/layout/index.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/local.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/notification.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/product-update.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/prompt/index.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/resource-open.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/sdk.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/sync.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/terminal/index.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/workbench/index.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/custom-elements.d.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/entry.tsx",
+          "reason": "not exercised by the unit suite; requires full runtime or external service"
+        },
+        {
+          "glob": "src/env.d.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/hooks/use-providers.ts",
+          "reason": "hooks require a component runtime"
+        },
+        {
+          "glob": "src/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/pages/directory-layout.tsx",
+          "reason": "pages require the full app shell"
+        },
+        {
+          "glob": "src/pages/error.tsx",
+          "reason": "pages require the full app shell"
+        },
+        {
+          "glob": "src/pages/home.tsx",
+          "reason": "pages require the full app shell"
+        },
+        {
+          "glob": "src/pages/layout.tsx",
+          "reason": "pages require the full app shell"
+        },
+        {
+          "glob": "src/pages/server-connection-error.tsx",
+          "reason": "pages require the full app shell"
+        },
+        {
+          "glob": "src/pages/session.tsx",
+          "reason": "pages require the full app shell"
+        },
+        {
+          "glob": "src/plugin/api.ts",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/bridge.tsx",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/components/declarative-settings-form.tsx",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/components/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/plugin/components/plugin-error-boundary.tsx",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/consent/PluginConsentDialog.tsx",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/consent/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/plugin/consent/schema.ts",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/dev-reload.ts",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/host.tsx",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/plugin/lifecycle.ts",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/marketplace/MarketplacePage.tsx",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/marketplace/MarketplacePluginIcon.tsx",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/marketplace/PluginDetailDialog.tsx",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/marketplace/PluginDetailPage.tsx",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/marketplace/StarRating.tsx",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/marketplace/VerifiedBadge.tsx",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/marketplace/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/plugin/marketplace/install-utils.ts",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/marketplace/plugin-detail-model.ts",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/marketplace/rating-stars.ts",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/marketplace/types.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/plugin/pages.tsx",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/plugin-interaction-i18n.ts",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/registries/composer-extension-registry.tsx",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/registries/composer-slot-registry.ts",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/registries/icon-registry.ts",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/registries/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/plugin/registries/message-slot-registry.ts",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/registries/selection-extension-registry.tsx",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/registries/workbench-panel-registry.ts",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/route-scope.tsx",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/plugin/text-action-surface.tsx",
+          "reason": "plugin runtime requires a live plugin process"
+        },
+        {
+          "glob": "src/solid-dnd.d.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/types/lingui.d.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/utils/brand-assets.ts",
+          "reason": "utility modules exercised via dom tests"
+        },
+        {
+          "glob": "src/utils/dom.ts",
+          "reason": "utility modules exercised via dom tests"
+        },
+        {
+          "glob": "src/utils/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/utils/perf.ts",
+          "reason": "utility modules exercised via dom tests"
+        },
+        {
+          "glob": "src/utils/proxy.ts",
+          "reason": "utility modules exercised via dom tests"
+        },
+        {
+          "glob": "src/utils/solid-dnd.tsx",
+          "reason": "utility modules exercised via dom tests"
+        },
+        {
+          "glob": "src/utils/speech.ts",
+          "reason": "utility modules exercised via dom tests"
+        }
+      ]
+    },
+    "packages/desktop": {
+      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 60,
+        "functions": 50
+      },
+      "exempt": [
+        {
+          "glob": "src/main.ts",
+          "reason": "Electron main-process entry; launches the full desktop runtime"
+        }
+      ]
+    },
+    "packages/ui": {
+      "command": "bun run test -- --coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 60,
+        "functions": 50
+      },
+      "exempt": [
+        {
+          "glob": "src/assets.d.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/components/accordion.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/activity-specialized-detail-model.ts",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/activity-specialized-detail.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/activity-trace.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/attachment-card.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/basic-tool.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/button.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/card.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/checkbox.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/clipboard.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/code.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/command-result-output.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/compaction-card.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/composer-slots.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/countdown.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/dag-graph.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/dialog.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/diff-changes.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/diff-patch.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/diff.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/error-card.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/file-icon.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/file-icons/types.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/components/font.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/icon-button.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/icon.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/image-preview.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/list.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/logo.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/mailbox-message.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/markdown.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/media-generation-card.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/message-part.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/popover.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/progress-circle.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/provider-icon.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/provider-icons/types.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/components/radio-group.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/resize-handle.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/session-review.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/special-user-message.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/sticky-accordion-header.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/switch.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/tabs.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/tag.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/text-field.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/toast.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/tool-output-text.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/tool-result-body.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/tool/anysearch-info.ts",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/tool/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/components/tool/renders/anysearch.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/tool/renders/batch.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/tool/renders/dag.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/tool/renders/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/components/tool/renders/standard.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/tool/trigger.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/tooltip.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/turn-change-summary-panel.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/context/code.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/data.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/dialog.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/diff.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/helper.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/context/marked.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/resource-open.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/context/worker-pool.tsx",
+          "reason": "global context requires full app bootstrap"
+        },
+        {
+          "glob": "src/custom-elements.d.ts",
+          "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/hooks/create-animated-number.ts",
+          "reason": "hooks require a component runtime"
+        },
+        {
+          "glob": "src/hooks/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/pierre/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/pierre/worker.ts",
+          "reason": "not exercised by the unit suite; requires full runtime or external service"
+        },
+        {
+          "glob": "src/theme/context.tsx",
+          "reason": "theme resolution exercised via plugin/dom tests"
+        },
+        {
+          "glob": "src/theme/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/theme/schema-contract.ts",
+          "reason": "theme resolution exercised via plugin/dom tests"
+        },
+        {
+          "glob": "src/theme/types.ts",
+          "reason": "types-only declarations, no runtime logic"
+        }
+      ]
+    }
+  }
+}

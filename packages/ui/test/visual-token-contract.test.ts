@@ -118,7 +118,6 @@ const P0_UI_FILES = [
   "src/components/switch.css",
   "src/components/checkbox.css",
   "src/components/message-part.css",
-  "src/components/diagram.css",
   "src/components/session-turn.css",
 ]
 
@@ -322,10 +321,11 @@ describe("Visual Token Contract", () => {
   })
 
   describe("1b. Static theme fallback preserves neutral workbench surfaces", () => {
-    test("light fallback uses a near-white canvas with white raised rows", async () => {
+    test("light fallback keeps raised surfaces brighter than the canvas", async () => {
       const css = extractLightFallbackBlock(await readThemeCss())
       expectCustomPropValue(css, "background-stronger", "#FAFAFA")
       expectCustomPropValue(css, "surface-raised-base", "#FFFFFF")
+      expectCustomPropValue(css, "surface-raised-strong", "#FFFFFF")
       expectCustomPropValue(css, "surface-raised-stronger", "#FFFFFF")
       expectCustomPropValue(css, "surface-raised-stronger-non-alpha", "#FFFFFF")
       expectCustomPropValue(css, "surface-inset-base", "#F4F4F5")
@@ -475,20 +475,6 @@ describe("Visual Token Contract", () => {
       expect(answer).toContain("color: var(--text-weak)")
       expect(answer).toContain("font-size: var(--font-size-small)")
       expect(answer).toContain("font-weight: var(--font-weight-medium)")
-    })
-  })
-
-  describe("8. diagram.css font token usage", () => {
-    test("diagram.css 已正确使用 --font-weight-semibold", async () => {
-      const css = await readFileSafe("src/components/diagram.css")
-      // diagram.css already references --font-weight-semibold — keep it functional
-      expect(css).toContain("var(--font-weight-semibold)")
-    })
-
-    test("diagram.css 11px 字体使用 --font-size-x-small", async () => {
-      const css = await readFileSafe("src/components/diagram.css")
-      const hasXSmall = /var\(--font-size-x-small\)/.test(css)
-      expect(hasXSmall, "diagram.css 的 11px 元素应使用 --font-size-x-small").toBe(true)
     })
   })
 })

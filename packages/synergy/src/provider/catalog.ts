@@ -491,19 +491,28 @@ export namespace ProviderCatalog {
     }
   }
 
-  async function readCachedRemote(config: Config): Promise<RemoteCatalog | undefined> {
+  async function readCachedRemote(
+    config: Config,
+    options?: { allowStale?: boolean },
+  ): Promise<RemoteCatalog | undefined> {
     if (!config.offlineCache) return undefined
     const file = Bun.file(Global.Path.providerCatalogCache)
     const stat = await file.stat().catch(() => undefined)
-    if (!stat || Date.now() - stat.mtimeMs > config.cacheTtlMs) return undefined
+    if (!stat) return undefined
+    if (!options?.allowStale && Date.now() - stat.mtimeMs > config.cacheTtlMs) return undefined
     const parsed = RemoteCatalog.safeParse(await file.json().catch(() => undefined))
     return parsed.success ? parsed.data : undefined
   }
 
-  async function fetchRemote(config: Config): Promise<RemoteCatalog | undefined> {
-    if (!config.enabled) return readCachedRemote(config)
-    if (process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH === "true") return readCachedRemote(config)
-    if (!config.publicKey.trim()) return readCachedRemote(config)
+  const remoteRefreshInFlight = new Map<string, Promise<void>>()
+  const lastRemoteCatalogs = new Map<string, { catalog: RemoteCatalog; fetchedAt: number }>()
+  const remoteRefreshCooldownUntil = new Map<string, number>()
+
+  function remoteRefreshKey(config: Config) {
+    return `${config.registryUrl}|${config.publicKey}`
+  }
+
+  async function refreshRemote(config: Config): Promise<RemoteCatalog | undefined> {
     const [catalogResponse, signatureResponse] = await Promise.all([
       fetch(config.registryUrl, {
         headers: { "User-Agent": Installation.USER_AGENT },
@@ -514,14 +523,71 @@ export namespace ProviderCatalog {
         signal: AbortSignal.timeout(10_000),
       }).catch(() => undefined),
     ])
-    if (!catalogResponse?.ok || !signatureResponse?.ok) return readCachedRemote(config)
+    if (!catalogResponse?.ok || !signatureResponse?.ok) return undefined
     const text = await catalogResponse.text()
     const signature = (await signatureResponse.text()).trim()
-    if (!(await verifySignature(text, signature, config.publicKey))) return readCachedRemote(config)
+    if (!(await verifySignature(text, signature, config.publicKey))) return undefined
     const parsed = RemoteCatalog.safeParse(JSON.parse(text))
-    if (!parsed.success) return readCachedRemote(config)
+    if (!parsed.success) return undefined
     await Bun.write(Global.Path.providerCatalogCache, JSON.stringify(parsed.data, null, 2)).catch(() => {})
+    lastRemoteCatalogs.set(remoteRefreshKey(config), { catalog: parsed.data, fetchedAt: Date.now() })
+    // Invalidate resolved projections so a resolve that started before the
+    // fresh registry data landed cannot cache a stale snapshot.
+    invalidateModelsDevProjection()
     return parsed.data
+  }
+
+  function scheduleRemoteRefresh(config: Config) {
+    const key = remoteRefreshKey(config)
+    if (remoteRefreshInFlight.has(key)) return
+    if ((remoteRefreshCooldownUntil.get(key) ?? 0) > Date.now()) return
+    remoteRefreshInFlight.set(
+      key,
+      refreshRemote(config)
+        .then((fresh) => {
+          if (fresh) remoteRefreshCooldownUntil.delete(key)
+          else remoteRefreshCooldownUntil.set(key, Date.now() + RETRY_DELAY_MS)
+        })
+        .catch((error) => {
+          log.warn("failed to refresh provider registry catalog", { error })
+          remoteRefreshCooldownUntil.set(key, Date.now() + RETRY_DELAY_MS)
+        })
+        .finally(() => {
+          remoteRefreshInFlight.delete(key)
+        }),
+    )
+  }
+
+  async function fetchRemote(config: Config, options?: { forceRefresh?: boolean }): Promise<RemoteCatalog | undefined> {
+    if (!config.enabled) return readCachedRemote(config)
+    if (process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH === "true") return readCachedRemote(config)
+    if (!config.publicKey.trim()) return readCachedRemote(config)
+    // Serve the last known registry catalog immediately (stale included) and
+    // refresh in the background so a slow or unreachable registry can never
+    // stall startup or health checks. Only an explicit refresh waits on the
+    // network; a cold first run serves bundled data and picks the registry up
+    // on the next resolution.
+    if (options?.forceRefresh) {
+      const fresh = await refreshRemote(config).catch((error) => {
+        log.warn("failed to refresh provider registry catalog", { error })
+        return undefined
+      })
+      return fresh ?? readCachedRemote(config, { allowStale: true })
+    }
+    const cached = await readCachedRemote(config, { allowStale: true })
+    const key = remoteRefreshKey(config)
+    const lastKnown = lastRemoteCatalogs.get(key)
+    const remote = cached ?? lastKnown?.catalog
+    const lastFetchAt = lastKnown?.fetchedAt ?? (await cachedMtime(config))
+    if (!remote || Date.now() - lastFetchAt > config.cacheTtlMs) scheduleRemoteRefresh(config)
+    return remote
+  }
+
+  async function cachedMtime(config: Config): Promise<number> {
+    const stat = await Bun.file(Global.Path.providerCatalogCache)
+      .stat()
+      .catch(() => undefined)
+    return stat?.mtimeMs ?? 0
   }
 
   function applySnapshotEntries(
@@ -695,15 +761,28 @@ export namespace ProviderCatalog {
     }
     const key = context ? snapshotKey(providerID, context.identityHash) : undefined
     const snapshot = key ? (await readSnapshots()).get(key) : undefined
-    const modelCount = snapshot?.activeModels.length ?? Object.keys(provider.models).length
+    // A failed refresh that never verified successfully has no authoritative
+    // model list; applying its empty snapshot would wipe the bundled fallback
+    // models and make the provider look unconfigured, so keep the bundled set.
+    const neverVerified = snapshot ? snapshot.failure !== undefined && snapshot.lastVerifiedAt === undefined : false
+    const modelCount = neverVerified
+      ? Object.keys(provider.models).length
+      : (snapshot?.activeModels.length ?? Object.keys(provider.models).length)
     catalogStates.set(catalogStateKey(providerID), {
-      source: snapshot && key && freshlyVerified.has(key) ? "live" : snapshot ? "cached" : "bundled",
+      source:
+        snapshot && key && freshlyVerified.has(key)
+          ? "live"
+          : snapshot
+            ? neverVerified
+              ? "bundled"
+              : "cached"
+            : "bundled",
       refreshing: key ? refreshInFlight.has(key) || scheduledRefreshes.has(key) : false,
       modelCount,
       lastVerifiedAt: snapshot?.lastVerifiedAt,
       failure: snapshot?.failure,
     })
-    if (!snapshot) return provider
+    if (!snapshot || neverVerified) return provider
     return applySnapshotEntries(provider, profile, modelsDev, snapshot)
   }
 
@@ -963,7 +1042,7 @@ export namespace ProviderCatalog {
   }
 
   async function doResolve(
-    input: { config?: unknown; includeLive?: boolean } | undefined,
+    input: { config?: unknown; includeLive?: boolean; forceRefresh?: boolean } | undefined,
     liveContexts: Map<string, LiveDiscoveryTarget>,
     key: string,
     generation: number,
@@ -977,7 +1056,7 @@ export namespace ProviderCatalog {
       result[providerID] = mergeProvider(result[providerID], provider)
     }
 
-    const remote = await fetchRemote(config)
+    const remote = await fetchRemote(config, { forceRefresh: input?.forceRefresh === true })
     if (remote) {
       for (const [providerID, provider] of Object.entries(remote.providers)) {
         const source = provider.modelsDevProviderID ? modelsDev[provider.modelsDevProviderID] : undefined
@@ -1122,6 +1201,9 @@ export namespace ProviderCatalog {
     catalogStates.clear()
     freshlyVerified.clear()
     snapshots = undefined
+    remoteRefreshInFlight.clear()
+    remoteRefreshCooldownUntil.clear()
+    lastRemoteCatalogs.clear()
   }
 
   void loadModelsDevRuntime()

@@ -18,6 +18,7 @@ describe("standalone installation removal", () => {
       "sandbox/synergy-sandbox-linux",
       "schema/config.schema.json",
       "vec0.so",
+      "watcher.node",
       "runtime-manifest.sha256",
     ]
     const sharedPaths = ["sandbox-helper/synergy-sandbox-linux", "sandbox-helper/bwrap/bwrap"]

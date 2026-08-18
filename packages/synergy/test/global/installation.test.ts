@@ -519,6 +519,7 @@ describe("standalone installation", () => {
       "lib/holos-cli/vendor/clarus-shared/index.js",
       "lib/holos-cli/node_modules/ws/package.json",
       "lib/holos-cli/node_modules/zod/package.json",
+      "watcher.node",
     ]
     try {
       const lines: string[] = []

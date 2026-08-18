@@ -18,13 +18,6 @@ a {
   cursor: default;
 }
 
-button:not(:disabled):active,
-a:active,
-[role="button"]:not(:disabled):active {
-  transform: scale(0.97);
-  transition-duration: 80ms;
-}
-
 .app-shell--desktop-native-chrome {
   --desktop-native-titlebar-height: 18px;
   --desktop-native-titlebar-traffic-width: 90px;

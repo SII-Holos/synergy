@@ -113,10 +113,7 @@ Skill slash-command fallback preserves that same root. When a Skill template has
 
 ### Root variant lifecycle
 
-Each task root user message stores an optional `variant` string that selects a
-reasoning or effort variant for the model call. The variant is resolved once
-when the root message is created (input acceptance or inbox materialization)
-and then persisted. Active roots do not re-resolve after config reload.
+Each task root user message stores an optional `variant` string that selects a reasoning or effort variant for the model call. The variant is resolved once when the root message is created (input acceptance or inbox materialization) and then persisted. Active roots do not re-resolve after config reload.
 
 Resolution priority (first non-empty wins):
 
@@ -124,32 +121,15 @@ Resolution priority (first non-empty wins):
 2. `agent.defaultVariant` from the resolved agent definition
 3. `config.role_variant[modelRole]` from the Models domain configuration
 
-Only task roots (`isRoot = true`) receive a resolved variant. Steer and
-context messages never expose or materialize a variant. A queued inbox item
-may retain its internal variant snapshot so promotion back to task mode does
-not lose intent, while non-task public projections unset the field.
+Only task roots (`isRoot = true`) receive a resolved variant. Steer and context messages never expose or materialize a variant. A queued inbox item may retain its internal variant snapshot so promotion back to task mode does not lose intent, while non-task public projections unset the field.
 
-`LLM.prepare()` consumes the persisted `variant` from the root user message.
-When the variant is absent, no variant options are applied and the provider
-uses its default behavior.
+`LLM.prepare()` consumes the persisted `variant` from the root user message. When the variant is absent, no variant options are applied and the provider uses its default behavior.
 
-A persisted variant that is absent from the current enabled model catalog
-raises `ProviderModelVariantUnavailableError` at
-`SessionRootVariant.options()` — the runtime does not silently fall back to
-another variant or unset the field.
+A persisted variant that is absent from the current enabled model catalog raises `ProviderModelVariantUnavailableError` at `SessionRootVariant.options()` — the runtime does not silently fall back to another variant or unset the field.
 
-`SessionRootVariant.resolve()` validates an explicit candidate variant against
-the model's declared `variants`. When the model declares variants, an unknown
-explicit candidate surfaces the same error before persistence so the caller
-can correct the request. An agent or role default that the selected model does
-not declare is omitted, letting that provider use its own default rather than
-persisting an invalid root variant. A model that declares no variants leaves a
-newly resolved root variant unset.
+`SessionRootVariant.resolve()` validates an explicit candidate variant against the model's declared `variants`. When the model declares variants, an unknown explicit candidate surfaces the same error before persistence so the caller can correct the request. An agent or role default that the selected model does not declare is omitted, letting that provider use its own default rather than persisting an invalid root variant. A model that declares no variants leaves a newly resolved root variant unset.
 
-Legacy task roots that were persisted without a variant are filled by
-migration `20260726-session-root-variant` when the agent/config defaults can
-be resolved. Session import applies the same canonicalization to missing
-imported root variants while preserving explicit values.
+Legacy task roots that were persisted without a variant are filled by migration `20260726-session-root-variant` when the agent/config defaults can be resolved. Session import applies the same canonicalization to missing imported root variants while preserving explicit values.
 
 ## Canonical Message Semantics
 

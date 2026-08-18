@@ -29,7 +29,7 @@ Use the semantic meaning of a color, not its hue. Product code should use classe
 - Use ordinal `chart-series-*` tokens for categorical visualization colors. The default series palette is derived from the theme's `primary` seed in OKLCH and can be overridden token by token. Do not borrow status or avatar tokens because their hue looks convenient.
 - Reuse an existing token only when its semantic role matches. If no role exists, add one canonical token and resolve it for every theme instead of inventing a consumer-only variable.
 - Pair filled status surfaces with their matching foreground token, such as `surface-critical-solid` with `text-on-critical-solid`; do not combine independent status ramp strengths and assume they remain readable.
-- Keep the polarity invariant: dark-mode content and selected surfaces step brighter than their containers; light-mode content and selected surfaces step darker.
+- Keep the polarity invariant: dark-mode content and selected surfaces step brighter than their containers; light-mode raised/card surfaces step brighter than the canvas while chrome (sidebar/navbar) sits one step darker, and hover/active states step darker than their resting surface in both modes.
 - Text/background and status foreground/surface pairs must meet WCAG AA contrast in both modes.
 
 Literal colors belong only at the theme-authoring boundary, in color-generation math, or in genuinely user/external-authored content. A new product color outside those boundaries is a theme-contract change and needs a semantic token.
@@ -49,9 +49,7 @@ Keep this read inside Solid reactivity so switching between two themes with the 
 
 An isolated consumer that cannot use the Solid context may listen for `THEME_CHANGE_EVENT`. This event fires for both color-scheme changes and same-mode theme changes. Do not infer theme identity only from `data-color-scheme` or a dark-mode media query.
 
-## Choosing Theme Seeds
-
-A theme defines complete `light` and `dark` variants. Each variant supplies nine opaque three- or six-digit hex seeds:
+Themes define complete `light` and `dark` variants. Each variant supplies opaque three- or six-digit hex seeds. The nine semantic seeds anchor the product contract:
 
 | Seed          | Role                                             |
 | ------------- | ------------------------------------------------ |
@@ -64,6 +62,8 @@ A theme defines complete `light` and `dark` variants. Each variant supplies nine
 | `info`        | Informational state                              |
 | `diffAdd`     | Added diff content                               |
 | `diffDelete`  | Deleted diff content                             |
+
+Four optional syntax seeds (`syntaxString`, `syntaxKeyword`, `syntaxType`, `syntaxProperty`) drive the resolver's syntax highlight tokens. They are optional in serialized themes for compatibility with the original nine-seed plugin format. `parseTheme` validates and preserves the author-facing seed shape; the resolver normalizes missing syntax seeds at its boundary (`resolveThemeVariant` derives `syntaxString ← success`, `syntaxKeyword ← primary`, `syntaxType ← info`, `syntaxProperty ← interactive`), so a nine-seed theme round-trips unchanged through parsing and resolves with the full thirteen-seed semantics.
 
 Choose seeds as palette anchors, not as final component colors. The resolver generates the full ramp and semantic contract. Start with seeds only, inspect both modes, and add overrides only for intentional semantic exceptions. Rebuilding most tokens through overrides defeats the shared resolver and makes a theme harder to maintain.
 
@@ -96,7 +96,9 @@ Desktop persists `DesktopSkinStateV2` with the source, theme ID, and both shell 
 
 ## Creating a New Selectable Theme
 
-The recommended path is a structured plugin theme. It uses the public extension boundary, remains independently distributable, and appears in **Settings → General → Appearance** after installation. Do not add a parallel built-in theme registry or theme-specific CSS bundle.
+All selectable themes — built-in or plugin — resolve through one shared registry and one resolver pipeline. Built-in curated skins pre-register from `packages/ui/src/theme/default-themes.ts`; the default Synergy skin keeps its curated overrides in `themes/synergy.json` (the product's shipped visual contract), while the additional built-in skins are defined seeds-only. Plugin themes register into the same registry through the public extension boundary and appear in **Settings → General → Appearance** after installation. A plugin theme may not shadow a built-in skin id.
+
+The recommended path for new distributable themes is a structured plugin theme. It uses the public extension boundary, remains independently distributable, and requires no core changes:
 
 Create the theme plugin from the current template:
 
@@ -123,9 +125,9 @@ synergy-plugin pack
 
 Install or refresh the local project with `synergy plugin add file:///absolute/path/to/ocean-theme`, then switch to it in Appearance. See [Plugin UI contributions](../plugins/ui-contributions.md#themes-and-icons) for the current contribution contract.
 
-### Modifying the built-in Synergy theme
+### Modifying a built-in theme
 
-Edit `packages/ui/src/theme/themes/synergy.json` only when changing Synergy's default visual contract. Do not hardcode the adjustment in a consuming component. After the edit, regenerate the theme artifacts and verify the product polarity and contrast in both modes.
+Edit the seed palettes and curated overrides in `themes/synergy.json` for the default Synergy skin, or the seed palettes in `packages/ui/src/theme/default-themes.ts` for the other built-in skins, only when changing a curated visual contract. Keep non-default built-in skins seeds-only so the shared resolver and its contrast assertions guarantee quality; the Synergy default may carry overrides because it is the shipped product contract. Do not hardcode the adjustment in a consuming component. After the edit, regenerate the theme artifacts and verify the product polarity and contrast in both modes.
 
 ### Adding a new semantic token
 
