@@ -55,7 +55,6 @@
       "packages/synergy-link",
       "packages/plugin",
       "packages/plugin-kit",
-      "packages/script",
       "packages/sdk/js",
       "packages/synergy",
       "packages/ui",
@@ -114,7 +113,6 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.4",
     "@ericsanchezok/synergy-plugin": "workspace:*",
-    "@ericsanchezok/synergy-script": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",
     "@napi-rs/canvas": "1.0.0",
     "@tsconfig/bun": "catalog:",

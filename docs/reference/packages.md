@@ -15,7 +15,6 @@ Synergy is a Bun monorepo. Package ownership is intentionally split between the 
 | `packages/synergy-link-protocol` | `@ericsanchezok/synergy-link-protocol`: typed Link envelopes, sessions, Bash, process, errors, and client contracts   |
 | `packages/ui`                    | `@ericsanchezok/synergy-ui`: shared UI components, semantic icons, rendering, styles, themes, plugin UI surfaces      |
 | `packages/util`                  | `@ericsanchezok/synergy-util`: shared errors, protocol helpers, policy and utility primitives                         |
-| `packages/script`                | `@ericsanchezok/synergy-script`: build and release utilities                                                          |
 
 ## Runtime Boundaries
 
