@@ -374,6 +374,7 @@ Loaded message and part buckets are memory-bounded independently of session meta
 - the global LRU spans Scope/session bucket keys;
 - at most 15 session buckets are retained;
 - the actively viewed session is protected even if it is the oldest;
+- any board panes pinned through `protectMessageBucket` are protected alongside the active session, so a live Kanban pane is never blanked by eviction; panes unprotect on unmount and the bucket returns to normal LRU retirement;
 - eviction removes that session's message array, all parts owned by those messages, the session's `messageWindow` metadata, and its latest Context projection;
 - revisiting an evicted session reloads it through normal message page sync.
 

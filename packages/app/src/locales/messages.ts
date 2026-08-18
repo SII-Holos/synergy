@@ -667,6 +667,7 @@ export const appShell = {
   library: { id: "app.shell.mobile.tool.library", message: "Library" },
   performance: { id: "app.shell.mobile.tool.performance", message: "Performance" },
   plugins: { id: "app.shell.mobile.tool.plugins", message: "Plugins" },
+  kanban: { id: "app.shell.mobile.tool.kanban", message: "Kanban" },
   notes: { id: "app.shell.mobile.tool.notes", message: "Notes" },
   browser: { id: "app.shell.mobile.tool.browser", message: "Browser" },
 } as const satisfies Record<string, AppMessageDescriptor>
@@ -1304,9 +1305,35 @@ export const library = {
 
 export const pluginNav = {
   agenda: { id: "app.plugin.builtin.agenda", message: "Agenda" },
+  kanban: { id: "app.plugin.builtin.kanban", message: "Kanban" },
   library: { id: "app.plugin.builtin.library", message: "Library" },
   performance: { id: "app.plugin.builtin.performance", message: "Performance" },
   plugins: { id: "app.plugin.builtin.plugins", message: "Plugins" },
+} as const satisfies Record<string, AppMessageDescriptor>
+
+// ── Kanban page ─────────────────────────────────────────────────────────────
+
+export const kanbanPage = {
+  title: { id: "app.kanban.title", message: "Kanban" },
+  layoutGrid: { id: "app.kanban.layout.grid", message: "Grid" },
+  layoutFocus: { id: "app.kanban.layout.focus", message: "Focus" },
+  layoutWaterfall: { id: "app.kanban.layout.waterfall", message: "Waterfall" },
+  follow: { id: "app.kanban.follow", message: "Follow latest" },
+  unfollow: { id: "app.kanban.unfollow", message: "Paused" },
+  openSession: { id: "app.kanban.openSession", message: "Open session" },
+  removePane: { id: "app.kanban.removePane", message: "Remove" },
+  pinPane: { id: "app.kanban.pinPane", message: "Pin" },
+  unpinPane: { id: "app.kanban.unpinPane", message: "Unpin" },
+  empty: { id: "app.kanban.empty", message: "No sessions on the board" },
+  emptyHint: {
+    id: "app.kanban.emptyHint",
+    message: "Running and waiting sessions appear here automatically. Pin any session to keep it visible.",
+  },
+  unavailable: { id: "app.kanban.unavailable", message: "Session no longer available" },
+  loading: { id: "app.kanban.loading", message: "Loading…" },
+  addPane: { id: "app.kanban.addPane", message: "Add session" },
+  addPaneHint: { id: "app.kanban.addPaneHint", message: "Pick a session to pin to the board" },
+  ariaLayout: { id: "app.kanban.aria.layout", message: "Board layout" },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 // ── Plugin marketplace ────────────────────────────────────────────────────────
@@ -1471,6 +1498,7 @@ export const messages = {
   providerFlow,
   agentVisual,
   pluginNav,
+  kanbanPage,
   pluginMarketplace,
   pluginPermission,
 } as const

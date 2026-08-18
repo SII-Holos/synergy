@@ -1,0 +1,174 @@
+import type { Message, Part } from "@ericsanchezok/synergy-sdk/client"
+import type { SyncResourceRequest } from "@/context/sync-resource-freshness"
+import { createSessionMessageLoader } from "@/context/session-message-loader"
+import type { planMessagePageApply } from "@/context/session-message-page"
+import type { MessageWindowState } from "@/context/session-message-window"
+
+export type BoardMessagePageResult = {
+  data?: {
+    items: { info: Message; parts: Part[] }[]
+    referencedRoots: { info: Message; parts: Part[] }[]
+    nextCursor: string | null
+    hasMore: boolean
+    total: number
+  }
+  response?: { headers?: Pick<Headers, "get"> }
+}
+
+export type BoardLoaderDeps = {
+  ensureScopeState: (scopeKey: string) => unknown[]
+  captureResourceRequest: (scopeKey: string, sessionID: string, resource: "message") => SyncResourceRequest
+  unprotectMessageBucket: (scopeKey: string, sessionID: string) => void
+  beginContextProjection: (scopeKey: string, sessionID: string) => number
+  applyResourceResponse: (
+    scopeKey: string,
+    sessionID: string,
+    resource: "message",
+    request: SyncResourceRequest,
+    headers: Pick<Headers, "get"> | undefined,
+    apply: () => void,
+  ) => boolean
+  setLatestContextMessage: (
+    scopeKey: string,
+    sessionID: string,
+    message: Message | null | undefined,
+    revision?: number,
+  ) => void
+  touchMessageBucket: (scopeKey: string, sessionID: string) => void
+  protectMessageBucket: (scopeKey: string, sessionID: string) => void
+  scopeReconnectVersion: (scopeKey: string) => number
+  messagePage: (input: {
+    scopeRequest: Record<string, string>
+    sessionID: string
+    limit: number
+  }) => Promise<BoardMessagePageResult>
+  scopeRequest: (scopeKey: string) => Record<string, string>
+  plan: typeof planMessagePageApply
+  reconcile: (value: unknown, options?: { key: string }) => unknown
+}
+
+export type BoardLoader = {
+  load: (scopeKey: string, sessionID: string, options?: { force?: boolean }) => void
+  state: (scopeKey: string, sessionID: string) => { phase: string; hasSnapshot: boolean }
+  protect: (scopeKey: string, sessionID: string) => void
+  unprotect: (scopeKey: string, sessionID: string) => void
+  dispose: () => void
+  syncPanes: (panes: { scopeKey: string; sessionID: string }[]) => void
+}
+
+const LIMIT = 200
+
+export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
+  const loader = createSessionMessageLoader<
+    {
+      response: BoardMessagePageResult
+      request: SyncResourceRequest
+      revision: number
+    },
+    { scopeKey: string; sessionID: string }
+  >({
+    request: async (key, signal, input) => {
+      if (!input) throw new Error("Missing board message load input")
+      const { scopeKey, sessionID } = input
+      deps.ensureScopeState(scopeKey)
+      const request = deps.captureResourceRequest(scopeKey, sessionID, "message")
+      const revision = deps.beginContextProjection(scopeKey, sessionID)
+      const response = await deps
+        .messagePage({ scopeRequest: deps.scopeRequest(scopeKey), sessionID, limit: LIMIT })
+        .catch(() => undefined)
+      if (signal.aborted) throw new DOMException("Aborted", "AbortError")
+      return { response: response ?? { data: undefined }, request, revision }
+    },
+    apply: (key, result) => {
+      const page = result.response.data
+      if (!page) return "applied"
+      const sep = key.indexOf("\n")
+      const scopeKey = key.slice(0, sep)
+      const sessionID = key.slice(sep + 1)
+      const store = deps.ensureScopeState(scopeKey) as unknown[]
+      const setStore = store[1] as (path: string, sessionID: string, value: unknown) => void
+      const current = deps.ensureScopeState(scopeKey)[0] as {
+        message?: Record<string, Message[]>
+        messageWindow?: Record<string, MessageWindowState<Message>>
+      }
+      const metadata = current.messageWindow?.[sessionID]
+      const plan = deps.plan({
+        page,
+        current: metadata
+          ? {
+              messages: current.message?.[sessionID] ?? [],
+              mode: metadata.mode,
+              pendingLatest: metadata.pendingLatest,
+              pendingLatestIds: metadata.pendingLatestIds,
+              tailMissingLatest: metadata.tailMissingLatest,
+            }
+          : undefined,
+      })
+      const accepted = deps.applyResourceResponse(
+        scopeKey,
+        sessionID,
+        "message",
+        result.request,
+        result.response?.response?.headers,
+        () => {
+          const reconcile = deps.reconcile
+          setStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
+          setStore("messageWindow", sessionID, reconcile(plan.metadata))
+          deps.setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage, result.revision)
+          for (const [messageID, parts] of Object.entries(plan.parts)) {
+            setStore("part", messageID, reconcile(parts, { key: "id" }))
+          }
+          deps.touchMessageBucket(scopeKey, sessionID)
+        },
+      )
+      return accepted ? "applied" : "superseded"
+    },
+    errorMessage: (error) => (error instanceof Error ? error.message : String(error)),
+  })
+
+  const lastReconnectVersion = new Map<string, number>()
+  let disposed = false
+
+  function load(scopeKey: string, sessionID: string, options?: { force?: boolean }) {
+    if (disposed) return
+    deps.protectMessageBucket(scopeKey, sessionID)
+    const key = `${scopeKey}\n${sessionID}`
+    void loader.load(key, {
+      force: options?.force,
+      input: { scopeKey, sessionID },
+    })
+  }
+
+  function syncPanes(panes: { scopeKey: string; sessionID: string }[]) {
+    if (disposed) return
+    const seen = new Set<string>()
+    for (const pane of panes) {
+      const key = `${pane.scopeKey}\n${pane.sessionID}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      const version = deps.scopeReconnectVersion(pane.scopeKey)
+      const last = lastReconnectVersion.get(pane.scopeKey) ?? 0
+      if (version > last) {
+        lastReconnectVersion.set(pane.scopeKey, version)
+        void loader.load(key, { force: true, input: { scopeKey: pane.scopeKey, sessionID: pane.sessionID } })
+      } else {
+        load(pane.scopeKey, pane.sessionID)
+      }
+    }
+  }
+
+  return {
+    load,
+    state: (scopeKey, sessionID) => {
+      const s = loader.state(`${scopeKey}\n${sessionID}`)
+      return { phase: s.phase, hasSnapshot: s.hasSnapshot }
+    },
+    protect: deps.protectMessageBucket,
+    unprotect: deps.unprotectMessageBucket,
+    dispose() {
+      disposed = true
+      loader.dispose()
+    },
+    syncPanes,
+  }
+}

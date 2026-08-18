@@ -2843,6 +2843,74 @@ msgstr "Agent switch failed"
 msgid "app.home.start"
 msgstr "Start"
 
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.addPane"
+msgstr "Add session"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.addPaneHint"
+msgstr "Pick a session to pin to the board"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.aria.layout"
+msgstr "Board layout"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.empty"
+msgstr "No sessions on the board"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.emptyHint"
+msgstr "Running and waiting sessions appear here automatically. Pin any session to keep it visible."
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.follow"
+msgstr "Follow latest"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.layout.focus"
+msgstr "Focus"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.layout.grid"
+msgstr "Grid"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.layout.waterfall"
+msgstr "Waterfall"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.loading"
+msgstr "Loading…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.openSession"
+msgstr "Open session"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pinPane"
+msgstr "Pin"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.removePane"
+msgstr "Remove"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.title"
+msgstr "Kanban"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unavailable"
+msgstr "Session no longer available"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unfollow"
+msgstr "Paused"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unpinPane"
+msgstr "Unpin"
+
 #. js-lingui-explicit-id
 msgid "app.lattice.config.arm"
 msgstr "Arm Lattice for this message"
@@ -5865,6 +5933,10 @@ msgid "app.plugin.builtin.agenda"
 msgstr "Agenda"
 
 #. ── Plugin builtin navigation ─────────────────────────────────────────────────
+msgid "app.plugin.builtin.kanban"
+msgstr "Kanban"
+
+#. ── Plugin builtin navigation ─────────────────────────────────────────────────
 msgid "app.plugin.builtin.library"
 msgstr "Library"
 
@@ -7056,6 +7128,10 @@ msgstr "Agenda"
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.tool.browser"
 msgstr "Browser"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.tool.kanban"
+msgstr "Kanban"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.tool.library"

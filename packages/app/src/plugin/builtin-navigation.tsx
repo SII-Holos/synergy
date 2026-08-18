@@ -34,6 +34,21 @@ const builtinNavigation: Array<Parameters<typeof registerNavigation>[0]> = [
     },
   },
   {
+    id: "kanban",
+    navigationId: "kanban",
+    label: pluginNav.kanban.id,
+    labelDescriptor: pluginNav.kanban,
+    iconToken: "kanban.main",
+    placement: "sidebar",
+    path: "/kanban",
+    order: 25,
+    loader: async () => {
+      const kanban = await import("@/components/kanban")
+      const KanbanNavigation: Component<NavigationContentProps> = () => <kanban.KanbanPanel />
+      return { default: KanbanNavigation }
+    },
+  },
+  {
     id: "performance",
     navigationId: "performance",
     label: pluginNav.performance.id,

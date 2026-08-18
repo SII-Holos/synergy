@@ -2,32 +2,47 @@ import { describe, expect, test } from "bun:test"
 import { planSessionVolatileResync } from "../../src/context/session-volatile-resync"
 
 describe("planSessionVolatileResync", () => {
-  test("refreshes only the active session while invalidating all retained state", () => {
+  test("refreshes every active session in this scope while invalidating all retained state", () => {
     expect(
       planSessionVolatileResync({
         scopeKey: "/workspace/project",
-        activeBucketKey: "/workspace/project\nses_active",
-        inboxSessionIDs: ["ses_active", "ses_inactive"],
+        activeBucketKeys: ["/workspace/project\nses_active", "/workspace/project\nses_board"],
+        inboxSessionIDs: ["ses_active", "ses_board", "ses_inactive"],
         todoSessionIDs: ["ses_inactive"],
         dagSessionIDs: ["ses_other"],
       }),
     ).toEqual({
-      activeSessionID: "ses_active",
-      retainedSessionIDs: ["ses_active", "ses_inactive", "ses_other"],
+      activeSessionIDs: ["ses_active", "ses_board"],
+      retainedSessionIDs: ["ses_active", "ses_board", "ses_inactive", "ses_other"],
     })
   })
 
-  test("does not refresh an active session owned by another scope", () => {
+  test("does not refresh sessions owned by another scope", () => {
     expect(
       planSessionVolatileResync({
         scopeKey: "/workspace/project",
-        activeBucketKey: "/workspace/other\nses_active",
+        activeBucketKeys: ["/workspace/other\nses_active", "/workspace/project\nses_board"],
+        inboxSessionIDs: ["ses_cached", "ses_board"],
+        todoSessionIDs: [],
+        dagSessionIDs: [],
+      }),
+    ).toEqual({
+      activeSessionIDs: ["ses_board"],
+      retainedSessionIDs: ["ses_cached", "ses_board"],
+    })
+  })
+
+  test("an empty active set keeps no volatile buckets fresh", () => {
+    expect(
+      planSessionVolatileResync({
+        scopeKey: "/workspace/project",
+        activeBucketKeys: [],
         inboxSessionIDs: ["ses_cached"],
         todoSessionIDs: [],
         dagSessionIDs: [],
       }),
     ).toEqual({
-      activeSessionID: undefined,
+      activeSessionIDs: [],
       retainedSessionIDs: ["ses_cached"],
     })
   })

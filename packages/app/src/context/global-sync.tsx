@@ -880,9 +880,10 @@ function createGlobalSync() {
   }
 
   async function refreshVolatileAfterResync(scopeKey: string, store: State, setStore: SetStoreFunction<State>) {
+    const activeBucketKeys = [activeBucketKey, ...protectedBucketKeys].filter((key): key is string => !!key)
     const plan = planSessionVolatileResync({
       scopeKey,
-      activeBucketKey,
+      activeBucketKeys,
       inboxSessionIDs: Object.keys(store.inbox),
       todoSessionIDs: Object.keys(store.todo),
       dagSessionIDs: Object.keys(store.dag),
@@ -892,42 +893,44 @@ function createGlobalSync() {
       invalidateResource(scopeKey, sessionID, "todo")
       invalidateResource(scopeKey, sessionID, "dag")
     }
+    const activeSessionIDSet = new Set(plan.activeSessionIDs)
     setStore(
       produce((draft) => {
         for (const sessionID of plan.retainedSessionIDs) {
-          if (sessionID === plan.activeSessionID) continue
+          if (activeSessionIDSet.has(sessionID)) continue
           delete draft.inbox[sessionID]
           delete draft.todo[sessionID]
           delete draft.dag[sessionID]
         }
       }),
     )
-    if (!plan.activeSessionID) return
+    if (plan.activeSessionIDs.length === 0) return
 
-    const sessionID = plan.activeSessionID
-    const inboxRequest = captureResourceRequest(scopeKey, sessionID, "inbox")
-    const todoRequest = captureResourceRequest(scopeKey, sessionID, "todo")
-    const dagRequest = captureResourceRequest(scopeKey, sessionID, "dag")
     const sdk = createScopedClient(scopeKey)
-    await sdk.session
+    const states = await sdk.session
       .volatileBatch({
         ...scopeRequest(scopeKey),
-        sessionVolatileBatchInput: { sessionIDs: [sessionID] },
+        sessionVolatileBatchInput: { sessionIDs: plan.activeSessionIDs },
       })
-      .then((result) => {
-        const state = result.data?.sessions[sessionID]
-        if (!state) return
-        applyResourceResponse(scopeKey, sessionID, "inbox", inboxRequest, result.response?.headers, () => {
-          setStore("inbox", sessionID, reconcile(state.inbox, { key: "id" }))
-        })
-        applyResourceResponse(scopeKey, sessionID, "todo", todoRequest, result.response?.headers, () => {
-          setStore("todo", sessionID, reconcile(state.todo, { key: "id" }))
-        })
-        applyResourceResponse(scopeKey, sessionID, "dag", dagRequest, result.response?.headers, () => {
-          setStore("dag", sessionID, reconcile(state.dag, { key: "id" }))
-        })
+      .then((result) => result.data?.sessions)
+      .catch(() => undefined)
+    if (!states) return
+    for (const sessionID of plan.activeSessionIDs) {
+      const state = states[sessionID]
+      if (!state) continue
+      const inboxRequest = captureResourceRequest(scopeKey, sessionID, "inbox")
+      const todoRequest = captureResourceRequest(scopeKey, sessionID, "todo")
+      const dagRequest = captureResourceRequest(scopeKey, sessionID, "dag")
+      applyResourceResponse(scopeKey, sessionID, "inbox", inboxRequest, undefined, () => {
+        setStore("inbox", sessionID, reconcile(state.inbox, { key: "id" }))
       })
-      .catch(() => {})
+      applyResourceResponse(scopeKey, sessionID, "todo", todoRequest, undefined, () => {
+        setStore("todo", sessionID, reconcile(state.todo, { key: "id" }))
+      })
+      applyResourceResponse(scopeKey, sessionID, "dag", dagRequest, undefined, () => {
+        setStore("dag", sessionID, reconcile(state.dag, { key: "id" }))
+      })
+    }
   }
 
   async function resyncInstance(scopeKey: string): Promise<boolean> {
@@ -987,16 +990,18 @@ function createGlobalSync() {
   const replayInFlight = new Map<string, Promise<boolean>>()
 
   // LRU eviction of loaded message/part buckets to bound memory as the user
-  // switches between sessions (C7). The actively-viewed session is protected, so
-  // eviction can never blank the current timeline; evicted sessions reload on
-  // next view.
+  // switches between sessions (C7). The actively-viewed session and any board
+  // panes protected via protectMessageBucket are never evicted, so eviction can
+  // never blank the current timeline or a live board pane; evicted sessions
+  // reload on next view.
   const MESSAGE_BUCKET_CAP = 15
   const messageLru: string[] = []
   let activeBucketKey: string | undefined
+  const protectedBucketKeys = new Set<string>()
   const bucketKey = (scopeKey: string, sessionID: string) => `${scopeKey}\n${sessionID}`
 
   function evictMessageBuckets() {
-    const protectedIds = new Set<string>()
+    const protectedIds = new Set<string>(protectedBucketKeys)
     if (activeBucketKey) protectedIds.add(activeBucketKey)
     const toEvict = planBucketEviction(messageLru, MESSAGE_BUCKET_CAP, protectedIds)
     if (toEvict.length === 0) return
@@ -1035,6 +1040,17 @@ function createGlobalSync() {
   function markActiveSession(scopeKey: string, sessionID: string | undefined) {
     activeBucketKey = sessionID ? bucketKey(scopeKey, sessionID) : undefined
     if (scopeKey && sessionID) touchMessageBucket(scopeKey, sessionID)
+  }
+
+  function protectMessageBucket(scopeKey: string, sessionID: string) {
+    if (!scopeKey || !sessionID) return
+    const key = bucketKey(scopeKey, sessionID)
+    protectedBucketKeys.add(key)
+    touchMessageBucket(scopeKey, sessionID)
+  }
+
+  function unprotectMessageBucket(scopeKey: string, sessionID: string) {
+    protectedBucketKeys.delete(bucketKey(scopeKey, sessionID))
   }
 
   type ScopedClient = ReturnType<typeof createScopedClient>
@@ -1904,6 +1920,8 @@ function createGlobalSync() {
     releaseScopeState,
     markActiveSession,
     touchMessageBucket,
+    protectMessageBucket,
+    unprotectMessageBucket,
     beginContextProjection: contextProjectionRevision.begin,
     setLatestContextMessage,
     recover,

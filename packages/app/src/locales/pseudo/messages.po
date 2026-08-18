@@ -2843,6 +2843,74 @@ msgstr ""
 msgid "app.home.start"
 msgstr ""
 
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.addPane"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.addPaneHint"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.aria.layout"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.empty"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.emptyHint"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.follow"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.layout.focus"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.layout.grid"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.layout.waterfall"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.loading"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.openSession"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pinPane"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.removePane"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.title"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unavailable"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unfollow"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unpinPane"
+msgstr ""
+
 #. js-lingui-explicit-id
 msgid "app.lattice.config.arm"
 msgstr ""
@@ -5865,6 +5933,10 @@ msgid "app.plugin.builtin.agenda"
 msgstr ""
 
 #. ── Plugin builtin navigation ─────────────────────────────────────────────────
+msgid "app.plugin.builtin.kanban"
+msgstr ""
+
+#. ── Plugin builtin navigation ─────────────────────────────────────────────────
 msgid "app.plugin.builtin.library"
 msgstr ""
 
@@ -7055,6 +7127,10 @@ msgstr ""
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.tool.browser"
+msgstr ""
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.tool.kanban"
 msgstr ""
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
