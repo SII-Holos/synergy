@@ -7,6 +7,29 @@ import { WorkspaceFileSearch } from "../workspace-file/search"
 import { WorkspaceFileService } from "../workspace-file/service"
 import { WorkspaceFileStatus } from "../workspace-file/status"
 import { errors } from "./error"
+import type { Context } from "hono"
+
+const AccessDeniedResponse = {
+  403: {
+    description: "Forbidden",
+    content: {
+      "application/json": {
+        schema: resolver(WorkspaceFile.WriteFileError),
+      },
+    },
+  },
+} as const
+
+async function respondGuarded(c: Context, fn: () => Promise<unknown>): Promise<Response> {
+  try {
+    return c.json(await fn())
+  } catch (err) {
+    if (err instanceof WorkspaceFileService.AccessDeniedError) {
+      return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
+    }
+    throw err
+  }
+}
 
 const BoolString = z.enum(["true", "false"]).optional()
 
@@ -50,6 +73,7 @@ export const WorkspaceFilesRoute = new Hono()
           },
         },
         ...errors(404),
+        ...AccessDeniedResponse,
       },
     }),
     validator(
@@ -64,8 +88,8 @@ export const WorkspaceFilesRoute = new Hono()
     ),
     async (c) => {
       const query = c.req.valid("query")
-      return c.json(
-        await WorkspaceFileService.children({
+      return respondGuarded(c, () =>
+        WorkspaceFileService.children({
           path: query.path,
           limit: query.limit,
           cursor: query.cursor,
@@ -91,6 +115,7 @@ export const WorkspaceFilesRoute = new Hono()
           },
         },
         ...errors(404),
+        ...AccessDeniedResponse,
       },
     }),
     validator(
@@ -107,8 +132,8 @@ export const WorkspaceFilesRoute = new Hono()
     async (c) => {
       const query = c.req.valid("query")
       const range = parseRange(query.range)
-      return c.json(
-        await WorkspaceFileService.read({
+      return respondGuarded(c, () =>
+        WorkspaceFileService.read({
           path: query.path,
           offset: query.offset ?? range.offset,
           limit: query.limit ?? range.limit,
@@ -134,6 +159,7 @@ export const WorkspaceFilesRoute = new Hono()
           },
         },
         ...errors(404),
+        ...AccessDeniedResponse,
       },
     }),
     validator(
@@ -143,7 +169,7 @@ export const WorkspaceFilesRoute = new Hono()
       }),
     ),
     async (c) => {
-      return c.json(await WorkspaceFileService.node(c.req.valid("query").path))
+      return respondGuarded(c, () => WorkspaceFileService.node(c.req.valid("query").path))
     },
   )
   .get(
