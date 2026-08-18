@@ -1782,7 +1782,6 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     "write",
     "websearch",
     "webfetch",
-    "diagram",
   ])
   const CLEARING_TOOLS = new Set(["dagwrite", "dagread", "dagpatch", "task", "task_list", "task_output", "task_cancel"])
 

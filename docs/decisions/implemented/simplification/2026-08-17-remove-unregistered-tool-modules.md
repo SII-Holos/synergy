@@ -32,3 +32,7 @@ Keep `src/tool/ls.ts`: `ListTool` is unregistered in `ToolRegistry` but has a pr
 - `grep` finds no `BatchTool`, `DiagramTool`, or `Agora*` references outside git history.
 - `bun run deadcode` reports no new findings for `packages/synergy`.
 - `bun run --cwd packages/ui test` green after renderer removal (including CSS token-contract tests if they reference the removed files).
+- The `diagram` UI renderer is exported from the `packages/ui` public `./*` exports map; removal shrinks that public surface. No in-repo or plugin-package consumer exists (`git grep` finds none), and the same class of deletion was already accepted for other unused components (#1184). Out-of-repo consumers of `@ericsanchezok/synergy-ui/diagram` would break; accepted for a cleanup of an unreachable tool, recoverable from history.
+- Dead permission/capability entries removed in the same pass: `diagram` from `SYNERGY_PERMISSION_CAPABILITY` and `ACCUMULATING_TOOLS`, plus the legacy `batch` permission mapping. `doom_loop` stays — it has live consumers.
+- Stale coverage exemptions removed from `script/coverage-exempt.json` (five `src/agora/*` files, `src/components/diagram.tsx`, `src/components/tool/renders/special.tsx`); `bun script/coverage-check.ts --validate` passes.
+- App-owned i18n catalogs regenerated via `bun run --cwd packages/app i18n:extract`; stale descriptor keys removed from `en`/`zh-CN`/`pseudo` catalogs and from `packages/app/test/script/i18n-check.test.ts` expectations.
