@@ -18,14 +18,10 @@ export namespace NoteBlueprintPolicy {
     kind?: Kind
     description?: string
     defaultAgent?: string
-    auditAgent?: string
     fallback?: Kind
   }): Kind | undefined {
     return (
-      input.kind ??
-      (input.description !== undefined || input.defaultAgent !== undefined || input.auditAgent !== undefined
-        ? "blueprint"
-        : input.fallback)
+      input.kind ?? (input.description !== undefined || input.defaultAgent !== undefined ? "blueprint" : input.fallback)
     )
   }
 

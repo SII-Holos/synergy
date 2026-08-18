@@ -1680,7 +1680,7 @@ Search notes using regex patterns. Searches across note titles and content, retu
 
 Kind: `knowledge.note`
 
-Create a new note or overwrite an existing note with complete markdown content. A Blueprint is not a separate document type; it is a note with kind:"blueprint". Content is converted to the internal ProseMirror JSON format for storage. Modes are retained for compatibility: - "create" (default): Creates a new note. Requires `title` and `content`. - "append": Adds content to the end of an existing note. Requires `id` and `content`. This is an optimistic update and may report a conflict if the note changes while appending. - "replace": Overwrites the entire existing note content. Requires `id` and `content`. This is the reliable full-document write path, analogous to file write; use it when you have generated the complete desired note from the latest content or when rewriting most of a Blueprint. Prefer `note_edit` for targeted changes to a few blocks. Prefer `note_write` with `mode:"replace"` for broad rewrites, large Blueprint reshaping, or recovery after local edit structure is no longer useful. Do not use append/replace as a blind fallback after a failed edit unless the replacement content is intentionally complete. The `scope` parameter controls where new notes are created: - "current" (default): Creates in the current project scope - "home": Creates in the home scope (visible from all projects) Blueprint creation and editing is only available in Plan or Lattice. Outside Plan or Lattice, use `kind:"note"` for deliverables and do not pass Blueprint fields. Attempts to create, replace, append to, or convert a Blueprint outside Plan or Lattice will be rejected with a semantic error. Use `kind:"blueprint"` in Plan or Lattice when the note should become executable through BlueprintLoop. Blueprint content must be decision-complete and directly executable. Do not create or replace a Blueprint that contains Open Decisions, Open Questions, TBDs, unresolved alternatives, or instructions for the execution session to ask the user later. If blocking ambiguity remains, ask the user first and wait for the answer. In Plan or Lattice, use `kind:"note"` to convert a Blueprint note back to a plain note. Blueprint notes may include `description` and `auditAgent` metadata; Blueprint run state lives on BlueprintLoop, not on the note itself. Execution-agent selection is not available through this tool. When updating (append/replace), the note is found automatically regardless of scope. The `tags` parameter can be provided to set or update tags on any mode.
+Create a new note or overwrite an existing note with complete markdown content. A Blueprint is not a separate document type; it is a note with kind:"blueprint". Content is converted to the internal ProseMirror JSON format for storage. Modes are retained for compatibility: - "create" (default): Creates a new note. Requires `title` and `content`. - "append": Adds content to the end of an existing note. Requires `id` and `content`. This is an optimistic update and may report a conflict if the note changes while appending. - "replace": Overwrites the entire existing note content. Requires `id` and `content`. This is the reliable full-document write path, analogous to file write; use it when you have generated the complete desired note from the latest content or when rewriting most of a Blueprint. Prefer `note_edit` for targeted changes to a few blocks. Prefer `note_write` with `mode:"replace"` for broad rewrites, large Blueprint reshaping, or recovery after local edit structure is no longer useful. Do not use append/replace as a blind fallback after a failed edit unless the replacement content is intentionally complete. The `scope` parameter controls where new notes are created: - "current" (default): Creates in the current project scope - "home": Creates in the home scope (visible from all projects) Blueprint creation and editing is only available in Plan or Lattice. Outside Plan or Lattice, use `kind:"note"` for deliverables and do not pass Blueprint fields. Attempts to create, replace, append to, or convert a Blueprint outside Plan or Lattice will be rejected with a semantic error. Use `kind:"blueprint"` in Plan or Lattice when the note should become executable through BlueprintLoop. Blueprint content must be decision-complete and directly executable. Do not create or replace a Blueprint that contains Open Decisions, Open Questions, TBDs, unresolved alternatives, or instructions for the execution session to ask the user later. If blocking ambiguity remains, ask the user first and wait for the answer. In Plan or Lattice, use `kind:"note"` to convert a Blueprint note back to a plain note. Blueprint notes may include `description` metadata; Blueprint run state lives on BlueprintLoop, not on the note itself. Execution-agent and audit-reviewer selection are host-owned: reviewers are host-selected and not available through this tool. When updating (append/replace), the note is found automatically regardless of scope. The `tags` parameter can be provided to set or update tags on any mode.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1689,7 +1689,6 @@ Create a new note or overwrite an existing note with complete markdown content. 
 | `metadata` | - | yes |  |
 | `kind` | params.kind | yes |  |
 | `description` | params.description | yes |  |
-| `auditAgent` | params.auditAgent | yes |  |
 | `fallback` | - | yes |  |
 | `workflowKind` | session.workflow | yes |  |
 | `action` | - | yes |  |
@@ -1698,7 +1697,6 @@ Create a new note or overwrite an existing note with complete markdown content. 
 | `content` | tiptapContent | yes |  |
 | `tags` | params.tags | yes |  |
 | `description` | params.description | yes |  |
-| `auditAgent` | params.auditAgent | yes |  |
 | `title` | note.title | yes |  |
 | `output` | - | yes |  |
 | `metadata` | - | yes |  |
@@ -1714,7 +1712,6 @@ Create a new note or overwrite an existing note with complete markdown content. 
 | `tags` | params.tags | yes |  |
 | `kind` | params.kind | yes |  |
 | `description` | params.description | yes |  |
-| `auditAgent` | params.auditAgent | yes |  |
 | `content` | - | yes |  |
 | `type` | - | yes |  |
 | `content` | - | yes |  |
@@ -1724,7 +1721,6 @@ Create a new note or overwrite an existing note with complete markdown content. 
 | `tags` | params.tags | yes |  |
 | `kind` | params.kind | yes |  |
 | `description` | params.description | yes |  |
-| `auditAgent` | params.auditAgent | yes |  |
 | `content` | - | yes |  |
 | `optimistic` | false | yes |  |
 | `title` | - | yes |  |
