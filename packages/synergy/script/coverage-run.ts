@@ -21,13 +21,17 @@ const packageRoot = path.resolve(import.meta.dir, "..")
  *   "Unexpected reading file" on the transformers runtime under a full run;
  * - nav-global-routes asserts home-scope completion counters that sibling
  *   files can mutate;
- * - openai-image-gen's global fetch mock races with sibling fetch mocks.
+ * - openai-image-gen's global fetch mock races with sibling fetch mocks;
+ * - auto-expand mocks 15 module functions and drives the real tool scheduler
+ *   and session store, so a single shared-process run with failing sibling
+ *   fixtures (plugin registry, network) settles its parts as errors.
  */
 export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
   "test/vector/embedding-standalone.test.ts",
   "test/channel/svg-raster-standalone.test.ts",
   "test/server/nav-global-routes.test.ts",
   "test/tool/openai-image-gen.test.ts",
+  "test/tool/auto-expand.test.ts",
 ])
 
 export interface CoverageBatches {
