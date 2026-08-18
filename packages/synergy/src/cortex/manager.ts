@@ -8,6 +8,7 @@ import { Identifier } from "../id/id"
 import { Log } from "../util/log"
 import { Session } from "../session"
 import { SessionInvoke, resolveInputParts } from "../session/invoke"
+import { lastModel } from "../session/input"
 import { SessionManager } from "../session/manager"
 import { Agent } from "../agent/agent"
 import { MessageV2 } from "../session/message-v2"
@@ -401,7 +402,7 @@ export namespace Cortex {
     if (!initial || initial.status === "cancelled") return
 
     const agent = await Agent.get(task.agent)
-    const resolvedModel = model ?? (await Agent.getAvailableModel(agent))
+    const resolvedModel = model ?? (await Agent.getAvailableModel(agent)) ?? (await lastModel(task.parentSessionID))
 
     if (!resolvedModel) {
       throw new Error(`No model configured for agent ${task.agent}`)
