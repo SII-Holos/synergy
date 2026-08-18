@@ -27,6 +27,41 @@ export function resolveChannelAccountInvocation(input: { accountConfig: unknown;
 }
 
 /**
+ * Resolve the model to invoke for a channel message that carries image
+ * attachments. Chat sessions stream images straight into the model; channel
+ * sessions that pin a non-vision model (e.g. a default text model) would
+ * otherwise degrade every attached image to a text placeholder at the provider
+ * boundary. When the pinned model cannot consume images, prefer the configured
+ * vision model so the image actually reaches the model, mirroring chat.
+ *
+ * Returns the vision model only when:
+ *  - the message carries at least one image attachment, AND
+ *  - the pinned model is known to lack image input capability, AND
+ *  - a distinct vision model is configured and available.
+ * Otherwise the pinned invocation is returned unchanged.
+ */
+export async function resolveChannelInvocationWithImages(input: {
+  invocation: { model?: ModelRef; variant?: string }
+  hasImageAttachments: boolean
+}): Promise<{ model?: ModelRef; variant?: string }> {
+  const { invocation, hasImageAttachments } = input
+  if (!hasImageAttachments || !invocation.model) return invocation
+
+  const pinned = await Provider.getModel(invocation.model.providerID, invocation.model.modelID).catch(() => undefined)
+  if (pinned?.capabilities.input.image) return invocation
+
+  const vision = await Provider.resolveRoleModel("vision")
+  if (!vision) return invocation
+  if (vision.providerID === invocation.model.providerID && vision.modelID === invocation.model.modelID) {
+    return invocation
+  }
+  const available = await Provider.isModelAvailable(vision).catch(() => false)
+  if (!available) return invocation
+
+  return { model: vision }
+}
+
+/**
  * Resolve the agent override for a channel account. GitHub channel accounts
  * may set `agent` to pick a specific agent; anything else falls back to the
  * caller-provided default.

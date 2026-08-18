@@ -19,7 +19,11 @@ import { SessionInteraction } from "../session/interaction"
 import { SessionInvoke } from "../session/invoke"
 
 import { ChannelCommand } from "./command"
-import { resolveChannelAccountInvocation, resolveChannelAccountAgent } from "./model-selection"
+import {
+  resolveChannelAccountInvocation,
+  resolveChannelAccountAgent,
+  resolveChannelInvocationWithImages,
+} from "./model-selection"
 import { createStatusReactionController } from "./status-reactions"
 import { buildAssistantTranscript, resolveFinalResponseText } from "./response-text"
 import { ManagedProjectOwnership } from "./managed-project-ownership"
@@ -734,9 +738,15 @@ export namespace Channel {
               : {}),
           })
           const sessionID = session.id
-          const accountInvocation = resolveChannelAccountInvocation({
-            accountConfig,
-            sessionModelOverride: session.modelOverride,
+          const hasImageAttachments = (ctx.attachments ?? []).some((attachment) =>
+            attachment.contentType.startsWith("image/"),
+          )
+          const accountInvocation = await resolveChannelInvocationWithImages({
+            invocation: resolveChannelAccountInvocation({
+              accountConfig,
+              sessionModelOverride: session.modelOverride,
+            }),
+            hasImageAttachments,
           })
           const deliveryKey = ChannelBusyHandoff.deliveryKeyForMessage({
             channelType: ctx.channelType,
