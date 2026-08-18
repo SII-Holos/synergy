@@ -10,6 +10,7 @@ export function sessionActionVisibility(input: { sessionID?: string; scopeKey: s
     export: menu,
     import: menu,
     archive: menu,
+    copySessionID: menu,
   }
 }
 
