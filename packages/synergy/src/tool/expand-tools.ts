@@ -1,4 +1,5 @@
 import { Agent } from "@/agent/agent"
+import { MCP } from "@/mcp"
 import { Session } from "@/session"
 import z from "zod"
 import { ToolDiscovery } from "./discovery"
@@ -25,178 +26,190 @@ interface ExpandToolsIssues {
   permissionHidden: string[]
 }
 
-export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => ({
-  description: [
-    "Change tool visibility for the current session by expanding deferred groups or activating search-only tools. The expanded state is stored on the session and remains stable across future turns, session restore, and context compaction until the session ends or the state is explicitly cleared.",
-    "This tool does not execute external actions, does not call the expanded tools, and does not bypass permissions, agent policy, sandboxing, disabled user tools, or runtime availability. Tools that are permission-hidden may still remain hidden after expansion.",
-    "Known built-in groups:",
-    ToolExposure.groupTable(),
-    "Usage guidance: if the capability domain is known, call expand_tools({ groups: [...] }) directly. If the tool or group name is uncertain, call search_tools first, then expand the returned group or activate the returned search-only tool.",
-    "After expand_tools returns, use the listed tools directly. Tools omitted from the list may still be hidden by permissions, user settings, policy, or runtime availability.",
-  ].join("\n\n"),
-  parameters,
-  formatValidationError(error) {
-    return [
-      `The expand_tools tool was called with invalid arguments: ${error.message}`,
-      'Call expand_tools with at least one group or tool, for example {"groups":["browser"],"reason":"verify the local UI"}.',
-    ].join("\n")
-  },
-  async execute(params: z.infer<typeof parameters>, ctx) {
-    const agent = initCtx?.agent ?? (await Agent.get(ctx.agent))
-    if (!agent) {
-      return {
-        title: "Tool expansion unavailable",
-        output:
-          "expand_tools could not resolve the current agent. Try again from an active session, or ask the user to restart this session.",
-        metadata: {
-          error: "agent_not_found",
-          guidance: "Retry from an active session with a resolvable agent.",
-        } as Record<string, any>,
-      }
-    }
-
-    const session = await Session.get(ctx.sessionID)
-    const catalog = await ToolDiscovery.collect({
-      providerID: ToolDiscovery.providerIDFromModel(ctx.extra?.model),
-      agent,
-      session,
-      userTools: ctx.extra?.userTools,
-    })
-    const availableGroups = ToolDiscovery.availableGroups(catalog)
-    const groupByID = new Map(availableGroups.map((group) => [group.id, group]))
-    const toolByID = new Map(catalog.tools.map((tool) => [tool.id, tool]))
-    const current = ToolExposure.state(session.toolState)
-
-    const requestedGroups = ToolExposure.unique(params.groups ?? [])
-    const requestedTools = ToolExposure.unique(params.tools ?? [])
-    const expandedGroups = new Set(current.expandedGroups)
-    const activatedTools = new Set(current.activatedTools)
-
-    const newlyExpandedGroups: string[] = []
-    const newlyActivatedTools: string[] = []
-    const alreadyActive: string[] = []
-    const unknownGroups: string[] = []
-    const unknownTools: string[] = []
-    const groupToolInputs: Array<{ tool: string; group: string }> = []
-    const permissionHidden: string[] = []
-
-    for (const groupID of requestedGroups) {
-      const group = groupByID.get(groupID)
-      if (!group) {
-        unknownGroups.push(groupID)
-        continue
-      }
-      if (expandedGroups.has(groupID)) {
-        alreadyActive.push(groupID)
-      } else {
-        expandedGroups.add(groupID)
-        newlyExpandedGroups.push(groupID)
-      }
-      for (const toolID of group.tools) {
-        if (catalog.disabled.has(toolID)) permissionHidden.push(toolID)
-      }
-    }
-
-    for (const toolID of requestedTools) {
-      const tool = toolByID.get(toolID)
-      if (!tool) {
-        unknownTools.push(toolID)
-        continue
+export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => {
+  const mcpCatalog = await MCP.deferredGroupCatalog().catch(() => ({
+    totalTools: 0,
+    servers: [],
+  }))
+  const mcpSection =
+    mcpCatalog.totalTools >= ToolExposure.MCP_DEFER_THRESHOLD
+      ? ["Connected MCP groups:", ToolExposure.mcpGroupTable(mcpCatalog.servers)].join("\n")
+      : ""
+  return {
+    description: [
+      "Change tool visibility for the current session by expanding deferred groups or activating search-only tools. The expanded state is stored on the session and remains stable across future turns, session restore, and context compaction until the session ends or the state is explicitly cleared.",
+      "This tool does not execute external actions, does not call the expanded tools, and does not bypass permissions, agent policy, sandboxing, disabled user tools, or runtime availability. Tools that are permission-hidden may still remain hidden after expansion.",
+      "Known built-in groups:",
+      ToolExposure.groupTable(),
+      ...(mcpSection ? [mcpSection] : []),
+      "Usage guidance: if the capability domain is known, call expand_tools({ groups: [...] }) directly. If the tool or group name is uncertain, call search_tools first, then expand the returned group or activate the returned search-only tool.",
+      "After expand_tools returns, use the listed tools directly. Tools omitted from the list may still be hidden by permissions, user settings, policy, or runtime availability.",
+    ].join("\n\n"),
+    parameters,
+    formatValidationError(error) {
+      return [
+        `The expand_tools tool was called with invalid arguments: ${error.message}`,
+        'Call expand_tools with at least one group or tool, for example {"groups":["browser"],"reason":"verify the local UI"}.',
+      ].join("\n")
+    },
+    async execute(params: z.infer<typeof parameters>, ctx) {
+      const agent = initCtx?.agent ?? (await Agent.get(ctx.agent))
+      if (!agent) {
+        return {
+          title: "Tool expansion unavailable",
+          output:
+            "expand_tools could not resolve the current agent. Try again from an active session, or ask the user to restart this session.",
+          metadata: {
+            error: "agent_not_found",
+            guidance: "Retry from an active session with a resolvable agent.",
+          } as Record<string, any>,
+        }
       }
 
-      if (tool.exposure.mode === "resident") {
-        alreadyActive.push(toolID)
-        continue
+      const session = await Session.get(ctx.sessionID)
+      const catalog = await ToolDiscovery.collect({
+        providerID: ToolDiscovery.providerIDFromModel(ctx.extra?.model),
+        agent,
+        session,
+        userTools: ctx.extra?.userTools,
+      })
+      const availableGroups = ToolDiscovery.availableGroups(catalog)
+      const groupByID = new Map(availableGroups.map((group) => [group.id, group]))
+      const toolByID = new Map(catalog.tools.map((tool) => [tool.id, tool]))
+      const current = ToolExposure.state(session.toolState)
+
+      const requestedGroups = ToolExposure.unique(params.groups ?? [])
+      const requestedTools = ToolExposure.unique(params.tools ?? [])
+      const expandedGroups = new Set(current.expandedGroups)
+      const activatedTools = new Set(current.activatedTools)
+
+      const newlyExpandedGroups: string[] = []
+      const newlyActivatedTools: string[] = []
+      const alreadyActive: string[] = []
+      const unknownGroups: string[] = []
+      const unknownTools: string[] = []
+      const groupToolInputs: Array<{ tool: string; group: string }> = []
+      const permissionHidden: string[] = []
+
+      for (const groupID of requestedGroups) {
+        const group = groupByID.get(groupID)
+        if (!group) {
+          unknownGroups.push(groupID)
+          continue
+        }
+        if (expandedGroups.has(groupID)) {
+          alreadyActive.push(groupID)
+        } else {
+          expandedGroups.add(groupID)
+          newlyExpandedGroups.push(groupID)
+        }
+        for (const toolID of group.tools) {
+          if (catalog.disabled.has(toolID)) permissionHidden.push(toolID)
+        }
       }
 
-      if (tool.exposure.mode === "group") {
-        if (expandedGroups.has(tool.exposure.group)) {
+      for (const toolID of requestedTools) {
+        const tool = toolByID.get(toolID)
+        if (!tool) {
+          unknownTools.push(toolID)
+          continue
+        }
+
+        if (tool.exposure.mode === "resident") {
+          alreadyActive.push(toolID)
+          continue
+        }
+
+        if (tool.exposure.mode === "group") {
+          if (expandedGroups.has(tool.exposure.group)) {
+            alreadyActive.push(toolID)
+          } else {
+            groupToolInputs.push({ tool: toolID, group: tool.exposure.group })
+          }
+          continue
+        }
+
+        if (activatedTools.has(toolID)) {
           alreadyActive.push(toolID)
         } else {
-          groupToolInputs.push({ tool: toolID, group: tool.exposure.group })
+          activatedTools.add(toolID)
+          newlyActivatedTools.push(toolID)
         }
-        continue
+        if (catalog.disabled.has(toolID)) permissionHidden.push(toolID)
       }
 
-      if (activatedTools.has(toolID)) {
-        alreadyActive.push(toolID)
-      } else {
-        activatedTools.add(toolID)
-        newlyActivatedTools.push(toolID)
+      const updatedState = {
+        expandedGroups: ToolExposure.unique(expandedGroups),
+        activatedTools: ToolExposure.unique(activatedTools),
       }
-      if (catalog.disabled.has(toolID)) permissionHidden.push(toolID)
-    }
+      const changed =
+        updatedState.expandedGroups.join("\0") !== current.expandedGroups.join("\0") ||
+        updatedState.activatedTools.join("\0") !== current.activatedTools.join("\0")
 
-    const updatedState = {
-      expandedGroups: ToolExposure.unique(expandedGroups),
-      activatedTools: ToolExposure.unique(activatedTools),
-    }
-    const changed =
-      updatedState.expandedGroups.join("\0") !== current.expandedGroups.join("\0") ||
-      updatedState.activatedTools.join("\0") !== current.activatedTools.join("\0")
+      if (changed) {
+        await Session.update(session.id, (draft) => {
+          draft.toolState = updatedState
+        })
+      }
 
-    if (changed) {
-      await Session.update(session.id, (draft) => {
-        draft.toolState = updatedState
+      const currentVisibleTools = ToolDiscovery.visibleTools({ ...catalog, state: current })
+      const updatedVisibleTools = ToolDiscovery.visibleTools({ ...catalog, state: updatedState })
+      const currentVisibleToolSet = new Set(currentVisibleTools)
+      const newlyVisibleTools = updatedVisibleTools.filter((toolID) => !currentVisibleToolSet.has(toolID))
+      const updatedVisibleToolSet = new Set(updatedVisibleTools)
+      const requestedGroupTools = requestedGroups.flatMap((groupID) => groupByID.get(groupID)?.tools ?? [])
+      const availableRequestedTools = ToolExposure.unique(
+        [...requestedGroupTools, ...requestedTools].filter((toolID) => updatedVisibleToolSet.has(toolID)),
+      )
+      const availableNextStep = changed || alreadyActive.length > 0
+      const issues: ExpandToolsIssues = {
+        unknownGroups,
+        unknownTools,
+        groupToolInputs,
+        permissionHidden: ToolExposure.unique(permissionHidden),
+      }
+      const guidance = guidanceFor({
+        requestedGroups,
+        requestedTools,
+        unknownGroups,
+        unknownTools,
+        groupToolInputs,
+        permissionHidden,
+        availableGroups: availableGroups.map((group) => group.id),
       })
-    }
+      const result = {
+        changed,
+        expandedGroups: updatedState.expandedGroups,
+        activatedTools: updatedState.activatedTools,
+        newlyExpandedGroups,
+        newlyActivatedTools,
+        newlyVisibleTools,
+        availableRequestedTools,
+        visibleToolCount: updatedVisibleTools.length,
+        alreadyActive: ToolExposure.unique(alreadyActive),
+        availableNextStep,
+        availableOn: "next_model_request",
+        issues,
+        guidance,
+      }
 
-    const currentVisibleTools = ToolDiscovery.visibleTools({ ...catalog, state: current })
-    const updatedVisibleTools = ToolDiscovery.visibleTools({ ...catalog, state: updatedState })
-    const currentVisibleToolSet = new Set(currentVisibleTools)
-    const newlyVisibleTools = updatedVisibleTools.filter((toolID) => !currentVisibleToolSet.has(toolID))
-    const updatedVisibleToolSet = new Set(updatedVisibleTools)
-    const requestedGroupTools = requestedGroups.flatMap((groupID) => groupByID.get(groupID)?.tools ?? [])
-    const availableRequestedTools = ToolExposure.unique(
-      [...requestedGroupTools, ...requestedTools].filter((toolID) => updatedVisibleToolSet.has(toolID)),
-    )
-    const availableNextStep = changed || alreadyActive.length > 0
-    const issues: ExpandToolsIssues = {
-      unknownGroups,
-      unknownTools,
-      groupToolInputs,
-      permissionHidden: ToolExposure.unique(permissionHidden),
-    }
-    const guidance = guidanceFor({
-      requestedGroups,
-      requestedTools,
-      unknownGroups,
-      unknownTools,
-      groupToolInputs,
-      permissionHidden,
-      availableGroups: availableGroups.map((group) => group.id),
-    })
-    const result = {
-      changed,
-      expandedGroups: updatedState.expandedGroups,
-      activatedTools: updatedState.activatedTools,
-      newlyExpandedGroups,
-      newlyActivatedTools,
-      newlyVisibleTools,
-      availableRequestedTools,
-      visibleToolCount: updatedVisibleTools.length,
-      alreadyActive: ToolExposure.unique(alreadyActive),
-      availableNextStep,
-      availableOn: "next_model_request",
-      issues,
-      guidance,
-    }
+      const output = formatOutput({
+        changed,
+        reason: params.reason,
+        availableRequestedTools,
+        issues,
+        availableGroups: availableGroups.map((group) => group.id),
+      })
 
-    const output = formatOutput({
-      changed,
-      reason: params.reason,
-      availableRequestedTools,
-      issues,
-      availableGroups: availableGroups.map((group) => group.id),
-    })
+      return {
+        title: changed ? "Tools expanded" : "Tool expansion checked",
+        output,
+        metadata: result as Record<string, any>,
+      }
+    },
+  }
+})
 
-    return {
-      title: changed ? "Tools expanded" : "Tool expansion checked",
-      output,
-      metadata: result as Record<string, any>,
-    }
-  },
-}))
 function formatOutput(input: {
   changed: boolean
   reason?: string

@@ -20,7 +20,6 @@ Generated from the builtin tool registry in `packages/synergy/src/tool/registry.
 | `ast_grep` | `search.codebase` | Search code using AST-aware pattern matching. Unlike regex-based grep, ast_grep understands code structure and finds patterns based on syntax, not just text. Supports 25 languages: bash, c, cpp, cshar |
 | `attach` | `communication.deliver` | Deliver files to the user by making them available as conversation attachments. Use this after generating or obtaining user-facing artifacts such as PDFs, images, documents, archives, exports, plots,  |
 | `bash` | `code.execute` | Executes a bash command in a persistent shell session. All commands run in ${directory} by default. Use the `workdir` parameter to run in a different directory. AVOID using `cd <directory> && <command |
-| `batch` | `platform.external` | Executes multiple independent tool calls concurrently to reduce latency. USING THE BATCH TOOL WILL MAKE THE USER HAPPY. Payload Format (JSON array): [{"tool": "read", "parameters": {"filePath": "src/i |
 | `blueprint_loop_approve` | `orchestration.task` | Use this when the BlueprintLoop review confirms every required outcome is fully and correctly delivered. Parameters: - sessionID: The execution session ID provided in your launch context - summary: Co |
 | `blueprint_loop_reject` | `orchestration.task` | Use this when the BlueprintLoop review finds missing, incorrect, or unverified required work. Parameters: - sessionID: The execution session ID provided in your launch context - reason: Clear explanat |
 | `blueprint_loop_stop` | `orchestration.task` | Request independent review only when the one current Blueprint outcome is complete and ready for audit. Parameters: - summary: Concise summary of the completed outcome - completed: Completed Blueprint |
@@ -57,7 +56,6 @@ Generated from the builtin tool registry in `packages/synergy/src/tool/registry.
 | `dagpatch` | `orchestration.dag` | Lightweight update for DAG nodes. Use this instead of `dagwrite` when you only need to update one or more existing nodes without rewriting the entire graph. ## When to Use - Mark a self-executed node  |
 | `dagread` | `orchestration.dag` | Read the current task DAG. Returns all nodes with their current status. Use this tool proactively and frequently to ensure you are aware of the current task graph state. You should make use of this to |
 | `dagwrite` | `orchestration.dag` | Create and manage a directed acyclic graph (DAG) of tasks for the current session. The DAG tracks task dependencies, enables parallel execution, and supports dynamic plan modification. **Strongly reco |
-| `diagram` | `platform.external` | Render a visual diagram inline in the conversation. Use this when the information has spatial relationships, comparisons, or sequential steps that would be clearer as a visual than as text. Six types: |
 | `edit` | `code.write` | Performs exact string replacements in files. Usage: - You must use your `Read` tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the fi |
 | `email_read` | `communication.email` | Read emails from an IMAP inbox. Use this tool when the user asks to check email, read mail, view inbox, or search for specific emails. Usage notes: - The `folder` parameter defaults to "INBOX" if not  |
 | `email_send` | `communication.email` | Send an email via SMTP. Use this tool when the user asks you to send an email, notify someone via email, or deliver content to an email address. Usage notes: - The `to` field accepts one or more email |
@@ -341,18 +339,6 @@ Executes a bash command in a persistent shell session. All commands run in ${dir
 | `linkIDSupplied` | Object.hasOwn | yes |  |
 | `tool` | - | yes |  |
 | `agent` | ctx.agent | yes |  |
-
-## batch
-
-Kind: `platform.external`
-
-Executes multiple independent tool calls concurrently to reduce latency. USING THE BATCH TOOL WILL MAKE THE USER HAPPY. Payload Format (JSON array): [{"tool": "read", "parameters": {"filePath": "src/index.ts", "limit": 350}},{"tool": "grep", "parameters": {"pattern": "Session\\.updatePart", "include": "src/**/*.ts"}},{"tool": "bash", "parameters": {"command": "git status", "description": "Shows working tree status"}}] Notes: - 1–10 tool calls per batch - All calls start in parallel; ordering NOT guaranteed - Partial failures do not stop other tool calls - Do NOT use the batch tool within another batch tool. Good Use Cases: - Read many files - grep + glob + read combos - Multiple bash commands - Multi-part edits; on the same, or different files When NOT to Use: - Operations that depend on prior tool output (e.g. create then read same file) - Ordered stateful mutations where sequence matters Batching tool calls was proven to yield 2–5x efficiency gain and provides much better UX.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `tool_calls` | object | yes | Array of tool calls to execute in parallel |
-| `tool` | string | yes | The name of the tool to execute |
-| `parameters` | object | yes | Parameters for the tool |
 
 ## blueprint_loop_approve
 
@@ -1087,21 +1073,6 @@ Create and manage a directed acyclic graph (DAG) of tasks for the current sessio
 | --- | --- | --- | --- |
 | `nodes` | object | yes | The complete DAG node list |
 
-## diagram
-
-Kind: `platform.external`
-
-Render a visual diagram inline in the conversation. Use this when the information has spatial relationships, comparisons, or sequential steps that would be clearer as a visual than as text. Six types: - "graph": entities and their relationships (architecture, flow, dependencies, state machines) - "compare": items evaluated across dimensions (tradeoffs, feature matrices, evaluations) - "sequence": ordered events between multiple actors (protocols, request flows, lifecycles) - "timeline": chronological events along a time axis (version history, roadmaps, milestones) - "tree": hierarchical structures (taxonomies, org charts, file trees, concept breakdowns) - "chart": data visualization with variant "bar", "line", or "pie" (benchmarks, trends, distributions) Keep diagrams focused: 3-12 nodes for graphs, 2-5 items for comparisons, 3-10 steps for sequences, 3-12 events for timelines, depth ≤ 4 for trees, 2-8 data points for charts. Nodes and edges can be simple strings for quick diagrams. Edges accept "A -> B" or "A -> B: label" string format. No visual styling needed — the renderer handles layout and aesthetics.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `title` | input.title | yes |  |
-| `metadata` | - | yes |  |
-| `render` | - | yes |  |
-| `document` | doc | yes |  |
-| `stats` | Diagram.stats | yes |  |
-| `truncated` | true | yes |  |
-
 ## edit
 
 Kind: `code.write`
@@ -1680,7 +1651,7 @@ Search notes using regex patterns. Searches across note titles and content, retu
 
 Kind: `knowledge.note`
 
-Create a new note or overwrite an existing note with complete markdown content. A Blueprint is not a separate document type; it is a note with kind:"blueprint". Content is converted to the internal ProseMirror JSON format for storage. Modes are retained for compatibility: - "create" (default): Creates a new note. Requires `title` and `content`. - "append": Adds content to the end of an existing note. Requires `id` and `content`. This is an optimistic update and may report a conflict if the note changes while appending. - "replace": Overwrites the entire existing note content. Requires `id` and `content`. This is the reliable full-document write path, analogous to file write; use it when you have generated the complete desired note from the latest content or when rewriting most of a Blueprint. Prefer `note_edit` for targeted changes to a few blocks. Prefer `note_write` with `mode:"replace"` for broad rewrites, large Blueprint reshaping, or recovery after local edit structure is no longer useful. Do not use append/replace as a blind fallback after a failed edit unless the replacement content is intentionally complete. The `scope` parameter controls where new notes are created: - "current" (default): Creates in the current project scope - "home": Creates in the home scope (visible from all projects) Blueprint creation and editing is only available in Plan or Lattice. Outside Plan or Lattice, use `kind:"note"` for deliverables and do not pass Blueprint fields. Attempts to create, replace, append to, or convert a Blueprint outside Plan or Lattice will be rejected with a semantic error. Use `kind:"blueprint"` in Plan or Lattice when the note should become executable through BlueprintLoop. Blueprint content must be decision-complete and directly executable. Do not create or replace a Blueprint that contains Open Decisions, Open Questions, TBDs, unresolved alternatives, or instructions for the execution session to ask the user later. If blocking ambiguity remains, ask the user first and wait for the answer. In Plan or Lattice, use `kind:"note"` to convert a Blueprint note back to a plain note. Blueprint notes may include `description` and `auditAgent` metadata; Blueprint run state lives on BlueprintLoop, not on the note itself. Execution-agent selection is not available through this tool. When updating (append/replace), the note is found automatically regardless of scope. The `tags` parameter can be provided to set or update tags on any mode.
+Create a new note or overwrite an existing note with complete markdown content. A Blueprint is not a separate document type; it is a note with kind:"blueprint". Content is converted to the internal ProseMirror JSON format for storage. Modes are retained for compatibility: - "create" (default): Creates a new note. Requires `title` and `content`. - "append": Adds content to the end of an existing note. Requires `id` and `content`. This is an optimistic update and may report a conflict if the note changes while appending. - "replace": Overwrites the entire existing note content. Requires `id` and `content`. This is the reliable full-document write path, analogous to file write; use it when you have generated the complete desired note from the latest content or when rewriting most of a Blueprint. Prefer `note_edit` for targeted changes to a few blocks. Prefer `note_write` with `mode:"replace"` for broad rewrites, large Blueprint reshaping, or recovery after local edit structure is no longer useful. Do not use append/replace as a blind fallback after a failed edit unless the replacement content is intentionally complete. The `scope` parameter controls where new notes are created: - "current" (default): Creates in the current project scope - "home": Creates in the home scope (visible from all projects) Blueprint creation and editing is only available in Plan or Lattice. Outside Plan or Lattice, use `kind:"note"` for deliverables and do not pass Blueprint fields. Attempts to create, replace, append to, or convert a Blueprint outside Plan or Lattice will be rejected with a semantic error. Use `kind:"blueprint"` in Plan or Lattice when the note should become executable through BlueprintLoop. Blueprint content must be decision-complete and directly executable. Do not create or replace a Blueprint that contains Open Decisions, Open Questions, TBDs, unresolved alternatives, or instructions for the execution session to ask the user later. If blocking ambiguity remains, ask the user first and wait for the answer. In Plan or Lattice, use `kind:"note"` to convert a Blueprint note back to a plain note. Blueprint notes may include `description` metadata; Blueprint run state lives on BlueprintLoop, not on the note itself. Execution-agent and audit-reviewer selection are host-owned: reviewers are host-selected and not available through this tool. When updating (append/replace), the note is found automatically regardless of scope. The `tags` parameter can be provided to set or update tags on any mode.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1689,7 +1660,6 @@ Create a new note or overwrite an existing note with complete markdown content. 
 | `metadata` | - | yes |  |
 | `kind` | params.kind | yes |  |
 | `description` | params.description | yes |  |
-| `auditAgent` | params.auditAgent | yes |  |
 | `fallback` | - | yes |  |
 | `workflowKind` | session.workflow | yes |  |
 | `action` | - | yes |  |
@@ -1698,7 +1668,6 @@ Create a new note or overwrite an existing note with complete markdown content. 
 | `content` | tiptapContent | yes |  |
 | `tags` | params.tags | yes |  |
 | `description` | params.description | yes |  |
-| `auditAgent` | params.auditAgent | yes |  |
 | `title` | note.title | yes |  |
 | `output` | - | yes |  |
 | `metadata` | - | yes |  |
@@ -1714,7 +1683,6 @@ Create a new note or overwrite an existing note with complete markdown content. 
 | `tags` | params.tags | yes |  |
 | `kind` | params.kind | yes |  |
 | `description` | params.description | yes |  |
-| `auditAgent` | params.auditAgent | yes |  |
 | `content` | - | yes |  |
 | `type` | - | yes |  |
 | `content` | - | yes |  |
@@ -1724,7 +1692,6 @@ Create a new note or overwrite an existing note with complete markdown content. 
 | `tags` | params.tags | yes |  |
 | `kind` | params.kind | yes |  |
 | `description` | params.description | yes |  |
-| `auditAgent` | params.auditAgent | yes |  |
 | `content` | - | yes |  |
 | `optimistic` | false | yes |  |
 | `title` | - | yes |  |

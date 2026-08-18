@@ -77,6 +77,14 @@ async function recoverTerminalReviewer(input: {
   ) {
     return undefined
   }
+  if (reviewer.cortex.launchFailure === true) {
+    const error = ReviewToolRecovery.launchError(reviewer.cortex.error)
+    if (!input.pluginOwned) {
+      await deliverExhaustionNotice(input.sessionID, input.stopRequest.requesterMessageID, error)
+    }
+    await LightLoopRuntime.setTerminalStatus(input.sessionID, "failed", error)
+    return { kind: "handled" }
+  }
 
   const attempts = input.stopRequest.reviewToolRecoveryAttempts ?? 0
   if (attempts >= ReviewToolRecovery.MAX_ATTEMPTS) {
