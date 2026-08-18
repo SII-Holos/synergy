@@ -263,7 +263,7 @@ Fields:
 - `options.timeout` — request timeout in ms (default 300000). Set `false` to disable.
 - `models` — manually specify models. Key is display name, `id` is what's sent to API.
 - `models.<name>.cost` — `input` and `output` per million tokens
-- `models.<name>.limit` — `context` and `output` token limits
+- `models.<name>.limit` — token limits: `context` (window), optional `input` (explicit input cap), optional `output` (per-request output cap). How you fill these drives the soft-compaction strategy — see "Model token limits and soft compaction" below.
 - `models.<name>.options` — model-level SDK options that override provider-level `options`; unknown keys are forwarded into the request body as extra args (see the relay section below)
 - `models.<name>.reasoning` — declare the model as a reasoning model so effort variants are generated (boolean)
 - `models.<name>.reasoning_options` — effort values the API accepts, e.g. `[{ "type": "effort", "values": ["low", "medium", "high"] }]`
@@ -370,6 +370,52 @@ Notes:
 - `reasoning` + `reasoning_options` generate the effort variants (low/medium/high/...) shown in model role and variant pickers. Without them the relay's default reasoning behavior is used and no effort selector appears.
 - `queryParams` (e.g. `{ "api-version": "..." }`) is only honored at the SDK level, so it belongs in `provider.<id>.options`.
 - The Settings custom-provider wizard captures `reasoning` but not `reasoning_options` / `interleaved`; declare those fields in JSONC directly.
+
+## Model token limits and soft compaction (context / input / output)
+
+Custom models declare their limits under `models.<name>.limit`. How you fill `context` / `input` / `output` directly determines the input envelope and when proactive compaction triggers:
+
+| Field | Meaning | If omitted |
+|---|---|---|
+| `context` | Total context window in tokens | 0 — no budget, proactive compaction never triggers |
+| `input` | Explicit max input tokens | The whole `context` window is treated as usable input |
+| `output` | Max output tokens per request | Capped at `384000`; requests are further capped to `context - 32000` headroom |
+
+Budgeting rules (authoritative details: `docs/architecture/llm-loop.md` "Prompt budget" and `docs/reference/configuration-layout.md` `compaction`):
+
+- **Usable input** — explicit `input` if set (and > 0), otherwise the full `context` window.
+- **Output per request** — declared `output`; when unset or `>= context` (shared-context models), capped to `context - 32000` so a raised default output cap cannot reject every nonempty prompt.
+- **Margin** — `min(32000, max(2048, ceil(context * 0.05)))`, reserved from the envelope.
+- **Input envelope** — with explicit `input`: exactly `input`. Without it: `context - output - margin` when `output < context` and that remainder is positive; otherwise the usable input (`context`).
+- **Soft compaction threshold** — `floor(envelope * 0.85)` by default, configurable via `compaction.overflowThreshold` (range 0.5–1). Proactive compaction triggers when the estimated input reaches this threshold. Compaction's own summarization output is bounded to `min(model output, 32000)`.
+
+### Recommended fill patterns
+
+**1. Shared-context model (most relays / OpenAI-compatible models)** — the API counts input + output together against `context`; leave `input` unset:
+
+```jsonc
+"limit": { "context": 131072, "output": 16384 }
+```
+
+Synergy reserves `output` + margin from the window and compacts at 85% of the remainder (here ~91.9k). Without `output`, requests cap at `context - 32000` and the envelope is the full context (compaction at 85% of 131072 ≈ 111.4k).
+
+**2. Documented separate input cap** (e.g. 400k context / 272k input / 128k output):
+
+```jsonc
+"limit": { "context": 400000, "input": 272000, "output": 128000 }
+```
+
+The envelope becomes exactly `input` (272k); compaction triggers at 85% of it (≈ 231.2k). Setting `input` disables output reservation — the explicit input limit is authoritative.
+
+**3. Conservative / unknown relay** — only `context`:
+
+```jsonc
+"limit": { "context": 131072 }
+```
+
+Safe default: envelope = full context, output capped at `context - 32000`, compaction at 85% of context.
+
+Note: the input footprint used for the threshold is `input + cache.read + cache.write` (Anthropic-style providers report cache tokens separately). If compaction triggers earlier than expected, cached-token usage is the usual cause.
 
 ## Bundled SDK packages
 
@@ -510,3 +556,4 @@ For any OpenAI-compatible server, use `@ai-sdk/openai-compatible` as the SDK and
 - **Extra args not taking effect (e.g. `enable_thinking` ignored)** — extra request-body args must live in `models.<name>.options`, not `provider.<id>.options`. Unknown keys in provider-level options are silently ignored.
 - **"reasoning_content ... must be passed back" error** — declare `interleaved: { "field": "reasoning_content" }` on the model so Synergy replays reasoning content on assistant messages.
 - **No reasoning-effort variants for a relay model** — declare `reasoning: true` and `reasoning_options` on the model. Without `reasoning: true` no variants are generated.
+- **Compaction triggers earlier than expected** — the input footprint includes cache read/write tokens (`input + cache.read + cache.write`). With large cached system prompts, raise `compaction.overflowThreshold` (0.5–1, default 0.85) in `120-runtime.jsonc`, or set an explicit `limit.input` so the envelope matches the API's real input cap.
