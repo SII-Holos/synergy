@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import fs from "node:fs/promises"
-import { createIsolatedTestEnv } from "../../script/test-env"
+import { createIsolatedTestEnv, isTransientCleanupError } from "../../script/test-env"
 
 describe("createIsolatedTestEnv", () => {
   test("injects SYNERGY_TEST_HOME and SYNERGY_TEST_ROOT, deletes SYNERGY_HOME, forces LC_ALL=C", async () => {
@@ -33,3 +33,17 @@ function pathOf(value: string) {
   // SYNERGY_TEST_HOME is <root>/home; the created root is its parent.
   return value.replace(/\/home$/, "")
 }
+
+describe("isTransientCleanupError", () => {
+  test("accepts the Windows transient lock codes", () => {
+    for (const code of ["EBUSY", "EPERM", "ENOTEMPTY"]) {
+      expect(isTransientCleanupError({ code })).toBe(true)
+    }
+  })
+
+  test("rejects other codes and non-error values", () => {
+    expect(isTransientCleanupError({ code: "EACCES" })).toBe(false)
+    expect(isTransientCleanupError({ code: "ENOENT" })).toBe(false)
+    expect(isTransientCleanupError(new Error("boom"))).toBe(false)
+  })
+})

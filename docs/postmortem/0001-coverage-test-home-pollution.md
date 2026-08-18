@@ -8,7 +8,7 @@ On 2026-08-16, a local full-suite coverage run against a `packages/synergy` work
 
 ## Summary
 
-The `packages/synergy` test suite is isolated by `test/preload.ts`, which sets `SYNERGY_TEST_HOME` and `SYNERGY_TEST_ROOT` to a per-process temp root and deletes `SYNERGY_HOME`. The preload is wired through `bunfig.toml` `[test] preload`. On 2026-08-16 20:03 and 20:29 (+08:00), a CI-repair session (`ses_ff8fa09c2ffes2dUsKLnijr5x6`, PR #1168 work) ran full-suite coverage commands from a worktree's `packages/synergy`:
+The `packages/synergy` test suite is isolated by `test/preload.ts`, which sets `SYNERGY_TEST_HOME` and `SYNERGY_TEST_ROOT` to a per-process temp root and deletes `SYNERGY_HOME`. The preload is wired through `bunfig.toml` `[test] preload`. On 2026-08-16 20:03 and 20:29 (+08:00), a CI-repair session (`ses_<redacted>`, PR #1168 work) ran full-suite coverage commands from a worktree's `packages/synergy`:
 
 - `bun test --coverage … --workers 1` (serial experiment)
 - `LC_ALL=C bun test --coverage --coverage-reporter=lcov --parallel=4 --timeout 30000`
@@ -16,10 +16,10 @@ The `packages/synergy` test suite is isolated by `test/preload.ts`, which sets `
 Both worktrees carried the preload in `bunfig.toml` (verified via `git show`), yet test fixtures from `test/channel/*`, `test/server/channel.test.ts`, and `test/session/boss-workflow.test.ts` landed in the real `~/.synergy/data`:
 
 - `channel/diagnostics/` — 22 synthetic account records (`ndjson-schema-<uuid>`, `diag-redact-<uuid>`, `secret-project`)
-- `channel/providers/clarus/accounts/cb47b20d2…/` — assignment + `assignment_session_index` (`proj-discover`, `task-1`, "Complete the task")
+- `channel/providers/clarus/accounts/<redacted>/` — assignment + `assignment_session_index` (`proj-discover`, `task-1`, "Complete the task")
 - `channel/providers/github/` — account workspace index
 - `sessions/scope_21x4totapii/`, `sessions/scope_9rhzucvxdga/` — synthetic scope sessions
-- `sessions/home/ses_ff572deb5…/` — "Runtime Boss" inbox session from `test/session/boss-workflow.test.ts`
+- `sessions/home/ses_<redacted>/` — "Runtime Boss" inbox session from `test/session/boss-workflow.test.ts`
 - matching `session_index/` entries
 
 Timestamps on the artifacts match the two runs exactly.
@@ -45,11 +45,11 @@ Why every safety net missed it:
 
 ## Guardrails added
 
-- **Runtime home guard** — `packages/synergy/src/global/test-home-guard.ts` + a call in `src/global/index.ts` before any `fs.mkdir` side effect. A test-entry process (`Bun.main`/argv matches `*.test.*`/`*.spec.*`, or `BUN_TEST_WORKER_ID`/`JEST_WORKER_ID` present) resolving into the real home tree (root equal to `os.homedir()/.synergy` or inside it) now throws `TestHomeGuardError` at module load, with an actionable message, before writing anything. `SYNERGY_ALLOW_REAL_HOME=1` is the documented opt-in.
+- **Runtime home guard** — `packages/synergy/src/global/test-home-guard.ts` + a call in `src/global/index.ts` before any `fs.mkdir` side effect. A test-entry process (`Bun.main`/argv matches `*.test.*`/`*.spec.*`, or `BUN_TEST_WORKER_ID`/`JEST_WORKER_ID` present) now requires the positive `SYNERGY_TEST_HOME` isolation marker, and is additionally blocked when the root is `os.homedir()/.synergy` or inside it (Windows paths normalized case-insensitively). Violations throw `TestHomeGuardError` at module load, with an actionable message, before writing anything. `SYNERGY_ALLOW_REAL_HOME=1` is the documented opt-in.
 - **Orchestrator env injection** — `packages/synergy/script/test-env.ts` injects `SYNERGY_TEST_HOME`/`SYNERGY_TEST_ROOT` and deletes `SYNERGY_HOME` in every child spawned by `test-ci.ts` and `coverage-run.ts`; `test:coverage` now routes through the orchestrator. Even when preload does not run in a child, the spawned env carries the isolation.
 - **Regression tests** — `test/global/test-home-guard.test.ts` (unit + subprocess incident-shape contract), `test/script/test-env.test.ts`, extended `test/script/test-ci.test.ts`.
 - **Decision record** — `docs/decisions/implemented/testing/2026-08-18-test-home-isolation-guard.md`.
-- **Pollution cleanup** — forensics-verified 8/16 artifacts removed with a backup manifest at `~/synergy-backup-test-pollution-20260818-110911`; pre-incident data (7/28 channel workspaces, real Clarus account `f2c6ca87-…` with 4 projects, `managed_ownership`, `projects`) preserved. `~/.synergy/plugin.lock` was suspected to carry a test mutation but was deliberately not touched because it is the live runtime lock.
+- **Pollution cleanup** — forensics-verified 8/16 artifacts removed with a backup manifest under the home directory (path redacted); pre-incident data (7/28 channel workspaces, real Clarus account `<redacted>` with 4 projects, `managed_ownership`, `projects`) preserved. `~/.synergy/plugin.lock` was suspected to carry a test mutation but was deliberately not touched because it is the live runtime lock.
 
 ## Lessons
 

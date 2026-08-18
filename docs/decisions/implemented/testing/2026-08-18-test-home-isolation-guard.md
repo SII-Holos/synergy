@@ -12,11 +12,11 @@ The existing safeguards were per-fixture (`test/fixture/fixture.ts` `tmpdir()` t
 
 Add two deterministic layers that do not depend on Bun's preload semantics:
 
-1. **Runtime home guard** — `packages/synergy/src/global/test-home-guard.ts` exports `isTestEntryPath` (true when `Bun.main`/argv entry matches `*.test.*`/`*.spec.*`, or `BUN_TEST_WORKER_ID`/`JEST_WORKER_ID` is present) and `assertIsolatedTestHome(root, entryPath, argv, env)` which throws `TestHomeGuardError` when the resolved Synergy root is `os.homedir()/.synergy` or any path inside it, the entry looks like a test, and `SYNERGY_ALLOW_REAL_HOME !== "1"`. `src/global/index.ts` calls it at module evaluation, before any `fs.mkdir` side effect, so a violated guard aborts the worker before it writes anything.
+1. **Runtime home guard** — `packages/synergy/src/global/test-home-guard.ts` exports `isTestEntryPath` (true when `Bun.main`/argv entry matches `*.test.*`/`*.spec.*`, or `BUN_TEST_WORKER_ID`/`JEST_WORKER_ID` is present) and `assertIsolatedTestHome(root, entryPath, argv, env)` which throws `TestHomeGuardError` unless the test-entry process carries the positive `SYNERGY_TEST_HOME` isolation marker, and additionally blocks when the resolved Synergy root is `os.homedir()/.synergy` or any path inside it even with the marker present (Windows paths are normalized case-insensitively before containment checks). `SYNERGY_ALLOW_REAL_HOME !== "1"` gates the whole check. `src/global/index.ts` calls it at module evaluation, before any `fs.mkdir` side effect, so a violated guard aborts the worker before it writes anything.
 
 2. **Orchestrator env injection** — `packages/synergy/script/test-env.ts` exports `createIsolatedTestEnv()` which builds `{ SYNERGY_TEST_HOME, SYNERGY_TEST_ROOT }` under a fresh `synergy-orchestrated-*` temp root, deletes `SYNERGY_HOME` (deletion, not `undefined`, to avoid env stringification), and returns a `dispose()` that removes the root. `script/test-ci.ts` and `script/coverage-run.ts` pass this env to every spawned `bun test` child (and therefore to its `--parallel` workers). `packages/synergy/package.json` `test:coverage` now routes through `bun run script/coverage-run.ts`.
 
-The guard is the last line of defense for any raw `bun test --parallel` invocation; the orchestrator injection is the positive isolation for the two supported entry points (`test:ci`, `test:coverage`). `SYNERGY_ALLOW_REAL_HOME=1` is the documented opt-in for a deliberate real-home test run.
+The guard is the last line of defense for any raw `bun test --parallel` invocation: a relocated real instance (custom `SYNERGY_HOME`) is indistinguishable from a disposable test directory by pathname, so the positive `SYNERGY_TEST_HOME` marker is required rather than trusting any non-default root. The orchestrator injection is the positive isolation for the two supported entry points (`test:ci`, `test:coverage`). `SYNERGY_ALLOW_REAL_HOME=1` is the documented opt-in for a deliberate real-home test run.
 
 ## Alternatives considered
 
@@ -38,4 +38,4 @@ The guard is the last line of defense for any raw `bun test --parallel` invocati
 - `test:ci` and `test:coverage` are the two supported core-suite entry points and are always isolated; both orchestrators dispose the orchestrated temp root even when a batch fails (exit code set outside the disposal `finally`, never `process.exit` inside it).
 - The `SYNERGY_ALLOW_REAL_HOME=1` escape hatch is explicit and documented.
 - Future Bun upgrades that change preload-per-file semantics do not affect either layer, because neither depends on preload running.
-- The remaining risk is a non-`*.test.*` entry that imports core `src/global` with a real home and no isolation; that shape is not a test run by definition and is unaffected.
+- The remaining risk is a non-`*.test.*`/`*.spec.*` entry that imports core `src/global` with a real home and no isolation; that shape is not a test run by definition and is unaffected.

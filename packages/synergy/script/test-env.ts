@@ -37,7 +37,20 @@ export async function createIsolatedTestEnv(): Promise<{
   return {
     env,
     dispose: async () => {
-      await fs.rm(root, { recursive: true, force: true })
+      try {
+        await fs.rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
+      } catch (error) {
+        // Recently exited test children can leave SQLite or other files
+        // temporarily locked on Windows; match test/preload.ts cleanup
+        // semantics so an otherwise passing run does not fail in dispose.
+        if (process.platform === "win32" && isTransientCleanupError(error)) return
+        throw error
+      }
     },
   }
+}
+
+export function isTransientCleanupError(error: unknown) {
+  const code = (error as { code?: unknown })?.code
+  return code === "EBUSY" || code === "EPERM" || code === "ENOTEMPTY"
 }
