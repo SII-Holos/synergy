@@ -34,12 +34,12 @@ describe("coverage batch splitting", () => {
       "test/provider/catalog-stability.test.ts",
       "test/provider/proxy.test.ts",
       "test/server/nav-global-routes.test.ts",
-      "test/tool/auto-expand.test.ts",
       "test/server/plugin-official-install.test.ts",
       "test/server/plugin-registry-routes.test.ts",
       "test/server/skill-route.test.ts",
       "test/session/retry.test.ts",
       "test/tool/arxiv-download.test.ts",
+      "test/tool/auto-expand.test.ts",
       "test/tool/openai-image-gen.test.ts",
       "test/vector/embedding-standalone.test.ts",
     ])
