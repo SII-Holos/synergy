@@ -227,7 +227,7 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
       try {
         const dropped = JSON.parse(sessionData) as DroppedSessionData
         if (!dropped.id || !dropped.directory) return
-        if (dropped.id === params.id && dropped.directory === sdk.directory) return
+        if (dropped.id === params.id) return
         const existing = input
           .sessionAttachments()
           .find((attachment) => attachment.sessionId === dropped.id && attachment.directory === dropped.directory)

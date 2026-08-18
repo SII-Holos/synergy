@@ -8426,6 +8426,18 @@ msgid "app.topBar.session.archive"
 msgstr "Archive"
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.session.copyID"
+msgstr "Copy session ID"
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.session.copyIDCopied"
+msgstr "Session ID copied"
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.session.copyIDFailed"
+msgstr "Failed to copy session ID"
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.session.enterWorktree"
 msgstr "Enter worktree"
 

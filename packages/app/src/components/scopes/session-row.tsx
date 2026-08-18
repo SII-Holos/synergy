@@ -8,6 +8,7 @@ import type { Session } from "@ericsanchezok/synergy-sdk/client"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { sessionActionVisibility } from "@/components/session/session-actions"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
+import { sessionDragDirectory, setSessionDragData } from "@/utils/session-drag"
 
 export interface SessionRowProps {
   session: Session
@@ -214,26 +215,12 @@ export function SessionRow(props: SessionRowProps) {
   }
 
   function handleDragStart(e: DragEvent) {
-    if (!e.dataTransfer) return
-    const title = props.session.title || i18n._(AP.scopesSessionNewSession.id)
-    const payload = JSON.stringify({
+    setSessionDragData(e, {
       id: props.session.id,
-      directory: props.session.scope.directory,
-      title,
+      directory: sessionDragDirectory(props.session.scope),
+      title: props.session.title || i18n._(AP.scopesSessionNewSession.id),
       updatedAt: props.session.time.updated ?? props.session.time.created,
     })
-    e.dataTransfer.effectAllowed = "copy"
-    e.dataTransfer.setData("application/x-synergy-session", payload)
-    e.dataTransfer.setData("text/plain", title)
-    const dragImage = document.createElement("div")
-    dragImage.className =
-      "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-raised-base text-12-medium text-text-base shadow-lg border border-border-base"
-    dragImage.style.position = "absolute"
-    dragImage.style.top = "-1000px"
-    dragImage.textContent = title
-    document.body.appendChild(dragImage)
-    e.dataTransfer.setDragImage(dragImage, 0, 16)
-    setTimeout(() => document.body.removeChild(dragImage), 0)
   }
 
   return (
