@@ -2,18 +2,22 @@ import os from "os"
 import path from "path"
 
 /**
- * Guards against test processes resolving the Synergy home to the real user
+ * Guards against test processes resolving the Synergy home into the real user
  * home. Bun 1.3.x does not propagate `test/preload.ts` environment variables
  * (SYNERGY_TEST_HOME / SYNERGY_TEST_ROOT) into `--parallel` worker processes,
  * so a parallel test run against a source checkout falls through to
  * `os.homedir()` and writes fixtures into the real `~/.synergy` data.
+ *
+ * The guard blocks any test-entry process whose Synergy root is the real
+ * `~/.synergy` root or any path inside it, including `SYNERGY_HOME` pointed at
+ * the real config directory (which would resolve to `~/.synergy/.synergy`).
  *
  * The guard is deliberately pure: it performs no filesystem side effects, so
  * a violated check aborts module init in `src/global/index.ts` before any
  * directory creation. It imports only node builtins to keep that guarantee.
  */
 
-const TEST_FILE_RE = /\.test\.(ts|tsx|js|jsx|cjs|mjs)$/
+const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|js|jsx|cjs|mjs)$/
 
 export function isTestEntryPath(
   entryPath: string | undefined,
@@ -31,7 +35,7 @@ export class TestHomeGuardError extends Error {
   constructor(entryPath: string | undefined) {
     const entry = entryPath ? ` (entry: ${entryPath})` : ""
     super(
-      `Refusing to run a test process against the real user home as the Synergy home${entry}. ` +
+      `Refusing to run a test process with the Synergy home resolving into the real ~/.synergy tree${entry}. ` +
         "Bun does not propagate test/preload.ts environment into --parallel workers, so this run would " +
         "write test fixtures into ~/.synergy/data. " +
         "The package orchestrators (bun run test:ci / bun run test:coverage) set SYNERGY_TEST_HOME; " +
@@ -51,6 +55,8 @@ export function assertIsolatedTestHome(
   if (env.SYNERGY_ALLOW_REAL_HOME === "1") return
   if (!isTestEntryPath(entryPath, argv, env)) return
   const realHomeRoot = path.resolve(path.join(os.homedir(), ".synergy"))
-  if (path.resolve(root) !== realHomeRoot) return
+  const resolvedRoot = path.resolve(root)
+  const insideRealHome = resolvedRoot === realHomeRoot || resolvedRoot.startsWith(realHomeRoot + path.sep)
+  if (!insideRealHome) return
   throw new TestHomeGuardError(entryPath)
 }

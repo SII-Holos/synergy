@@ -45,7 +45,7 @@ Why every safety net missed it:
 
 ## Guardrails added
 
-- **Runtime home guard** — `packages/synergy/src/global/test-home-guard.ts` + a call in `src/global/index.ts` before any `fs.mkdir` side effect. A test-entry process (`Bun.main`/argv matches `*.test.*`, or `BUN_TEST_WORKER_ID`/`JEST_WORKER_ID` present) resolving the real home now throws `TestHomeGuardError` at module load, with an actionable message, before writing anything. `SYNERGY_ALLOW_REAL_HOME=1` is the documented opt-in.
+- **Runtime home guard** — `packages/synergy/src/global/test-home-guard.ts` + a call in `src/global/index.ts` before any `fs.mkdir` side effect. A test-entry process (`Bun.main`/argv matches `*.test.*`/`*.spec.*`, or `BUN_TEST_WORKER_ID`/`JEST_WORKER_ID` present) resolving into the real home tree (root equal to `os.homedir()/.synergy` or inside it) now throws `TestHomeGuardError` at module load, with an actionable message, before writing anything. `SYNERGY_ALLOW_REAL_HOME=1` is the documented opt-in.
 - **Orchestrator env injection** — `packages/synergy/script/test-env.ts` injects `SYNERGY_TEST_HOME`/`SYNERGY_TEST_ROOT` and deletes `SYNERGY_HOME` in every child spawned by `test-ci.ts` and `coverage-run.ts`; `test:coverage` now routes through the orchestrator. Even when preload does not run in a child, the spawned env carries the isolation.
 - **Regression tests** — `test/global/test-home-guard.test.ts` (unit + subprocess incident-shape contract), `test/script/test-env.test.ts`, extended `test/script/test-ci.test.ts`.
 - **Decision record** — `docs/decisions/implemented/testing/2026-08-18-test-home-isolation-guard.md`.

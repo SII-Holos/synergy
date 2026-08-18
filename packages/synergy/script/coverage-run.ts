@@ -62,7 +62,7 @@ async function collectTests(directory: string): Promise<string[]> {
     entries.map(async (entry) => {
       const relative = path.posix.join(directory, entry.name)
       if (entry.isDirectory()) return collectTests(relative)
-      if (/\.test\.tsx?$/.test(entry.name)) return [relative]
+      if (/\.(test|spec)\.tsx?$/.test(entry.name)) return [relative]
       return []
     }),
   )
@@ -93,29 +93,40 @@ async function runBatch(files: string[], shard: number, env: Record<string, stri
   return child.exited
 }
 
-async function main() {
+export async function runBatches(
+  files: string[],
+  env: Record<string, string | undefined>,
+  runBatch: (files: string[], shard: number, env: Record<string, string | undefined>) => Promise<number>,
+): Promise<number> {
+  const { main, isolated } = splitCoverageBatches(files)
+  const failed: Array<{ shard: number; exitCode: number }> = []
+  const mainExit = await runBatch(main, 0, env)
+  if (mainExit !== 0) failed.push({ shard: 0, exitCode: mainExit })
+  let shard = 1
+  for (const file of isolated) {
+    const exitCode = await runBatch([file], shard++, env)
+    if (exitCode !== 0) failed.push({ shard: shard - 1, exitCode })
+  }
+  if (failed.length > 0) {
+    console.error(
+      `coverage batches failed: ${failed.map(({ shard, exitCode }) => `shard ${shard} (exit ${exitCode})`).join(", ")}`,
+    )
+    return 1
+  }
+  return 0
+}
+
+export async function main() {
   const shardRoot = path.join(packageRoot, "coverage", "shards")
   await rm(shardRoot, { recursive: true, force: true })
   await mkdir(shardRoot, { recursive: true })
 
   const files = (await collectTests("test")).toSorted()
-  const { main, isolated } = splitCoverageBatches(files)
   const isolatedEnv = await createIsolatedTestEnv()
   try {
-    const failed: Array<{ shard: number; exitCode: number }> = []
-    const mainExit = await runBatch(main, 0, isolatedEnv.env)
-    if (mainExit !== 0) failed.push({ shard: 0, exitCode: mainExit })
-    let shard = 1
-    for (const file of isolated) {
-      const exitCode = await runBatch([file], shard++, isolatedEnv.env)
-      if (exitCode !== 0) failed.push({ shard: shard - 1, exitCode })
-    }
-    if (failed.length > 0) {
-      console.error(
-        `coverage batches failed: ${failed.map(({ shard, exitCode }) => `shard ${shard} (exit ${exitCode})`).join(", ")}`,
-      )
-      process.exit(1)
-    }
+    // process.exit would skip this finally and leak the isolated env, so the
+    // failure signal is an exit code set after dispose() has run.
+    process.exitCode = await runBatches(files, isolatedEnv.env, runBatch)
   } finally {
     await isolatedEnv.dispose()
   }
