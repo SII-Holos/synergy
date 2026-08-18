@@ -15,15 +15,11 @@ type FakeStore = {
 }
 
 function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
-  protects: string[]
-  unprotects: string[]
   touches: string[]
   messagePages: { sessionID: string; limit: number }[]
   scopeVersions: Record<string, number>
   partActions: Record<string, "apply" | "preserve" | "retry">
 } {
-  const protects: string[] = []
-  const unprotects: string[] = []
   const touches: string[] = []
   const messagePages: { sessionID: string; limit: number }[] = []
   const scopeVersions: Record<string, number> = {}
@@ -39,8 +35,6 @@ function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
     return [store, setter]
   }
   return {
-    protects,
-    unprotects,
     touches,
     messagePages,
     scopeVersions,
@@ -49,7 +43,6 @@ function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
     captureResourceRequest: (_s, sessionID) => ({ sessionID }) as unknown as SyncResourceRequest,
     capturePartSnapshotRequest: (_s, _sid) => ({ generation: 1, revisions: new Map() }) as SessionPartSnapshotRequest,
     partSnapshotAction: (_s, _sid, messageID) => partActions[messageID] ?? "apply",
-    unprotectMessageBucket: (_s, sessionID) => unprotects.push(sessionID),
     beginContextProjection: () => 1,
     applyResourceResponse: (_s, _sid, _r, _req, _h, apply) => {
       apply()
@@ -57,7 +50,6 @@ function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
     },
     setLatestContextMessage: () => {},
     touchMessageBucket: (_s, sessionID) => touches.push(sessionID),
-    protectMessageBucket: (_s, sessionID) => protects.push(sessionID),
     scopeReconnectVersion: (scopeKey) => scopeVersions[scopeKey] ?? 0,
     messagePage: async (input) => {
       messagePages.push({ sessionID: input.sessionID, limit: input.limit })
@@ -79,16 +71,15 @@ function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
 }
 
 describe("createBoardLoader", () => {
-  test("load protects the bucket and issues a 200-limit message page", async () => {
+  test("load issues a 200-limit message page", async () => {
     const deps = makeDeps()
     const loader = createBoardLoader(deps)
     loader.load("/a", "s1")
     await new Promise((r) => setTimeout(r, 10))
-    expect(deps.protects).toEqual(["s1"])
     expect(deps.messagePages).toEqual([{ sessionID: "s1", limit: 200 }])
   })
 
-  test("syncPanes protects, loads, and deduplicates repeated panes", async () => {
+  test("syncPanes loads and deduplicates repeated panes", async () => {
     const deps = makeDeps()
     const loader = createBoardLoader(deps)
     loader.syncPanes([
@@ -97,7 +88,6 @@ describe("createBoardLoader", () => {
       { scopeKey: "/a", sessionID: "s1" },
     ])
     await new Promise((r) => setTimeout(r, 10))
-    expect(deps.protects).toEqual(["s1", "s2"])
     // s1 deduplicated: only one messagePage per session
     expect(deps.messagePages.map((p) => p.sessionID).sort()).toEqual(["s1", "s2"])
   })
@@ -131,7 +121,7 @@ describe("createBoardLoader", () => {
     expect(deps.messagePages.at(-1)?.sessionID).toBe("s1")
   })
 
-  test("syncPanes unprotects panes that left the board", async () => {
+  test("syncPanes reloads a pane that left the board and rejoined", async () => {
     const deps = makeDeps()
     const loader = createBoardLoader(deps)
     loader.syncPanes([
@@ -139,18 +129,18 @@ describe("createBoardLoader", () => {
       { scopeKey: "/a", sessionID: "s2" },
     ])
     await new Promise((r) => setTimeout(r, 10))
-    expect(deps.unprotects).toEqual([])
+    const s2Pages = deps.messagePages.filter((p) => p.sessionID === "s2").length
+    expect(s2Pages).toBe(1)
 
-    // s2 drops out of the board; its protection must be released.
+    // s2 leaves the board; when it rejoins it must be refetched because its
+    // bucket may have been LRU-evicted while away (no protection set).
     loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
-    expect(deps.unprotects).toEqual(["s2"])
-  })
-
-  test("unprotect removes the bucket from the protection set", () => {
-    const deps = makeDeps()
-    const loader = createBoardLoader(deps)
-    loader.unprotect("/a", "s1")
-    expect(deps.unprotects).toEqual(["s1"])
+    loader.syncPanes([
+      { scopeKey: "/a", sessionID: "s1" },
+      { scopeKey: "/a", sessionID: "s2" },
+    ])
+    await new Promise((r) => setTimeout(r, 10))
+    expect(deps.messagePages.filter((p) => p.sessionID === "s2").length).toBe(2)
   })
 
   test("dispose stops further loads", async () => {
@@ -160,6 +150,5 @@ describe("createBoardLoader", () => {
     loader.load("/a", "s1")
     await new Promise((r) => setTimeout(r, 10))
     expect(deps.messagePages).toEqual([])
-    expect(deps.protects).toEqual([])
   })
 })

@@ -880,7 +880,7 @@ function createGlobalSync() {
   }
 
   async function refreshVolatileAfterResync(scopeKey: string, store: State, setStore: SetStoreFunction<State>) {
-    const activeBucketKeys = [activeBucketKey, ...protectedBucketKeys].filter((key): key is string => !!key)
+    const activeBucketKeys = [activeBucketKey].filter((key): key is string => !!key)
     const plan = planSessionVolatileResync({
       scopeKey,
       activeBucketKeys,
@@ -1002,19 +1002,18 @@ function createGlobalSync() {
   const replayInFlight = new Map<string, Promise<boolean>>()
 
   // LRU eviction of loaded message/part buckets to bound memory as the user
-  // switches between sessions (C7). The actively-viewed session and any board
-  // panes protected via protectMessageBucket are never evicted, so eviction can
-  // never blank the current timeline or a live board pane; evicted sessions
-  // reload on next view.
+  // switches between sessions (C7). Only the actively-viewed session is never
+  // evicted, so eviction can never blank the current timeline; evicted buckets
+  // reload on next view. Board panes get no special protection: they enter the
+  // normal load path when the board is mounted (touching their bucket) and
+  // refill from the loader after eviction.
   const MESSAGE_BUCKET_CAP = 15
   const messageLru: string[] = []
   let activeBucketKey: string | undefined
-  const protectedBucketKeys = new Set<string>()
   const bucketKey = (scopeKey: string, sessionID: string) => `${scopeKey}\n${sessionID}`
 
   function evictMessageBuckets() {
-    const protectedIds = new Set<string>(protectedBucketKeys)
-    if (activeBucketKey) protectedIds.add(activeBucketKey)
+    const protectedIds = new Set<string>(activeBucketKey ? [activeBucketKey] : [])
     const toEvict = planBucketEviction(messageLru, MESSAGE_BUCKET_CAP, protectedIds)
     if (toEvict.length === 0) return
     const evictSet = new Set(toEvict)
@@ -1052,17 +1051,6 @@ function createGlobalSync() {
   function markActiveSession(scopeKey: string, sessionID: string | undefined) {
     activeBucketKey = sessionID ? bucketKey(scopeKey, sessionID) : undefined
     if (scopeKey && sessionID) touchMessageBucket(scopeKey, sessionID)
-  }
-
-  function protectMessageBucket(scopeKey: string, sessionID: string) {
-    if (!scopeKey || !sessionID) return
-    const key = bucketKey(scopeKey, sessionID)
-    protectedBucketKeys.add(key)
-    touchMessageBucket(scopeKey, sessionID)
-  }
-
-  function unprotectMessageBucket(scopeKey: string, sessionID: string) {
-    protectedBucketKeys.delete(bucketKey(scopeKey, sessionID))
   }
 
   type ScopedClient = ReturnType<typeof createScopedClient>
@@ -1932,8 +1920,6 @@ function createGlobalSync() {
     releaseScopeState,
     markActiveSession,
     touchMessageBucket,
-    protectMessageBucket,
-    unprotectMessageBucket,
     beginContextProjection: contextProjectionRevision.begin,
     setLatestContextMessage,
     recover,

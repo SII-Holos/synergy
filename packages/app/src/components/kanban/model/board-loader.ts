@@ -41,7 +41,6 @@ export type BoardLoaderDeps = {
     messageID: string,
     request: SessionPartSnapshotRequest,
   ) => SessionPartSnapshotAction
-  unprotectMessageBucket: (scopeKey: string, sessionID: string) => void
   beginContextProjection: (scopeKey: string, sessionID: string) => number
   applyResourceResponse: (
     scopeKey: string,
@@ -58,7 +57,6 @@ export type BoardLoaderDeps = {
     revision?: number,
   ) => void
   touchMessageBucket: (scopeKey: string, sessionID: string) => void
-  protectMessageBucket: (scopeKey: string, sessionID: string) => void
   scopeReconnectVersion: (scopeKey: string) => number
   messagePage: (input: {
     scopeRequest: Record<string, string>
@@ -74,8 +72,6 @@ export type BoardLoaderDeps = {
 export type BoardLoader = {
   load: (scopeKey: string, sessionID: string, options?: { force?: boolean }) => void
   state: (scopeKey: string, sessionID: string) => { phase: string; hasSnapshot: boolean; error?: string }
-  protect: (scopeKey: string, sessionID: string) => void
-  unprotect: (scopeKey: string, sessionID: string) => void
   dispose: () => void
   syncPanes: (panes: { scopeKey: string; sessionID: string }[]) => void
 }
@@ -166,15 +162,14 @@ export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
   })
 
   const lastReconnectVersion = new Map<string, number>()
-  // Keys that left the board (protection released) and may have been evicted;
-  // reload them the next time they rejoin instead of trusting a stale phase.
+  // Keys that left the board; reload them the next time they rejoin instead of
+  // trusting a stale phase (their bucket may have been LRU-evicted meanwhile).
   const dirty = new Set<string>()
   let lastPanes = new Set<string>()
   let disposed = false
 
   function load(scopeKey: string, sessionID: string, options?: { force?: boolean }) {
     if (disposed) return
-    deps.protectMessageBucket(scopeKey, sessionID)
     const key = `${scopeKey}\n${sessionID}`
     void loader.load(key, {
       force: options?.force,
@@ -210,7 +205,6 @@ export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
       const sep = key.indexOf("\n")
       if (sep === -1) continue
       dirty.add(key)
-      deps.unprotectMessageBucket(key.slice(0, sep), key.slice(sep + 1))
     }
     lastPanes = wanted
   }
@@ -221,8 +215,6 @@ export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
       const s = loader.state(`${scopeKey}\n${sessionID}`)
       return { phase: s.phase, hasSnapshot: s.hasSnapshot, error: s.error }
     },
-    protect: deps.protectMessageBucket,
-    unprotect: deps.unprotectMessageBucket,
     dispose() {
       disposed = true
       loader.dispose()

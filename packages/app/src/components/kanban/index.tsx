@@ -95,7 +95,7 @@ export function KanbanPanel() {
 
   const panes = createMemo(() => computeBoardPanes({ pinned: store.pinned, sources: sources() }))
 
-  // --- Loader (cross-scope message page + eviction protection) ---
+  // --- Loader (cross-scope message page; panes rejoin the LRU on re-entry) ---
   const [loadStates, setLoadStates] = createStore<Record<string, BoardPaneLoadState>>({})
   const boardLoader = createBoardLoader({
     ensureScopeState: (scopeKey) => globalSync.ensureScopeState(scopeKey),
@@ -110,8 +110,6 @@ export function KanbanPanel() {
     setLatestContextMessage: (scopeKey, sessionID, message, revision) =>
       globalSync.setLatestContextMessage(scopeKey, sessionID, message, revision),
     touchMessageBucket: (scopeKey, sessionID) => globalSync.touchMessageBucket(scopeKey, sessionID),
-    protectMessageBucket: (scopeKey, sessionID) => globalSync.protectMessageBucket(scopeKey, sessionID),
-    unprotectMessageBucket: (scopeKey, sessionID) => globalSync.unprotectMessageBucket(scopeKey, sessionID),
     scopeRequest: (scopeKey) =>
       (isHomeScope(scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }) as Record<string, string>,
     scopeReconnectVersion: (scopeKey) => globalSync.scopeReconnectVersion(scopeKey),
@@ -125,7 +123,7 @@ export function KanbanPanel() {
       setLoadStates(key, { phase: state.phase, hasSnapshot: state.hasSnapshot, error: state.error }),
   } satisfies BoardLoaderDeps)
 
-  // Load / protect live panes; reload on reconnect version bump. Unavailable
+  // Load live panes; reload on reconnect version bump. Unavailable
   // placeholders never reach the loader (their sessions no longer exist).
   createEffect(() => {
     const current = panes()
@@ -137,9 +135,6 @@ export function KanbanPanel() {
   })
 
   onCleanup(() => {
-    for (const pane of panes()) {
-      if (pane.kind === "live") boardLoader.unprotect(pane.scopeKey, pane.sessionID)
-    }
     boardLoader.dispose()
   })
 
