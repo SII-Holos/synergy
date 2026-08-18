@@ -162,7 +162,10 @@ export function KanbanPanel() {
 
   const pinKey = (key: string) => {
     if (store.pinned.includes(key)) return
-    setStore("pinned", (pinned) => [...pinned, key])
+    // New pins (sidebar drag, Add-session) go to the front so they are
+    // immediately visible even when the board is at capacity; the last
+    // pinned session drops off the visible board but stays pinned.
+    setStore("pinned", (pinned) => [key, ...pinned])
   }
   const pinSource = (source: BoardPaneSource) => pinKey(`${source.scopeKey}\n${source.entry.id}`)
   const unpinPane = (pane: BoardPane) => setStore("pinned", (pinned) => pinned.filter((key) => key !== pane.key))
