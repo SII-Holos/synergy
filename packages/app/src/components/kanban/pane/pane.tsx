@@ -225,7 +225,7 @@ export function KanbanPane(props: {
           <Show when={props.pane.kind === "live"}>
             <span
               class="kanban-pane-grip"
-              draggable
+              draggable="true"
               data-locked={!props.pane.pinned || undefined}
               title={props.pane.pinned ? _(kanbanPage.dragReorder) : _(kanbanPage.pinToReorderHint)}
               aria-label={props.pane.pinned ? _(kanbanPage.dragReorder) : _(kanbanPage.pinToReorderHint)}

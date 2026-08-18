@@ -1253,7 +1253,7 @@ function SidebarSessionRow(props: {
         "sb-session-active": props.active,
       }}
       data-session-id={props.entry.id}
-      draggable={!props.flyout}
+      draggable={props.flyout ? "false" : "true"}
       onDragStart={handleDragStart}
       onClick={props.onClick}
     >
