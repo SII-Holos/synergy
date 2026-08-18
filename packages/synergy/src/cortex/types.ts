@@ -106,6 +106,7 @@ export namespace CortexTypes {
       startedAt: z.number(),
       completedAt: z.number().optional(),
       error: z.string().optional(),
+      launchFailure: z.boolean().optional(),
       progress: TaskProgress.optional(),
       notifyParentOnComplete: z.boolean().optional(),
       visibility: z.enum(["visible", "hidden"]).optional(),

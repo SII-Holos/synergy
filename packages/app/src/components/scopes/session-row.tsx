@@ -213,29 +213,6 @@ export function SessionRow(props: SessionRowProps) {
     setRenaming(false)
   }
 
-  function handleDragStart(e: DragEvent) {
-    if (!e.dataTransfer) return
-    const title = props.session.title || i18n._(AP.scopesSessionNewSession.id)
-    const payload = JSON.stringify({
-      id: props.session.id,
-      directory: props.session.scope.directory,
-      title,
-      updatedAt: props.session.time.updated ?? props.session.time.created,
-    })
-    e.dataTransfer.effectAllowed = "copy"
-    e.dataTransfer.setData("application/x-synergy-session", payload)
-    e.dataTransfer.setData("text/plain", title)
-    const dragImage = document.createElement("div")
-    dragImage.className =
-      "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-raised-base text-12-medium text-text-base shadow-lg border border-border-base"
-    dragImage.style.position = "absolute"
-    dragImage.style.top = "-1000px"
-    dragImage.textContent = title
-    document.body.appendChild(dragImage)
-    e.dataTransfer.setDragImage(dragImage, 0, 16)
-    setTimeout(() => document.body.removeChild(dragImage), 0)
-  }
-
   return (
     <div
       class="group/row relative flex cursor-pointer transition-colors duration-100 hover:bg-surface-raised-base-hover"
@@ -244,8 +221,6 @@ export function SessionRow(props: SessionRowProps) {
         "bg-surface-raised-base/50": !props.isActive && !!props.even,
       }}
       onClick={props.onSelect}
-      draggable={true}
-      onDragStart={handleDragStart}
     >
       {/* Left status bar */}
       <div class={`w-[2.5px] shrink-0 self-stretch ${statusBarColor(props)}`} />
