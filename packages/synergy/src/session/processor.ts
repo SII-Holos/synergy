@@ -817,13 +817,26 @@ export namespace SessionProcessor {
           const cached = autoExpandedByTool.get(toolName)
           if (cached) return cached
           if (!streamInput.resolverInput) return undefined
-          const { ToolResolver: DynamicToolResolver } = await import("./tool-resolver")
-          const resolved = await DynamicToolResolver.autoExpandTool(
-            { ...streamInput.resolverInput, processor: result },
-            toolName,
-          )
-          if (resolved) autoExpandedByTool.set(toolName, resolved)
-          return resolved
+          try {
+            const { ToolResolver: DynamicToolResolver } = await import("./tool-resolver")
+            const resolved = await DynamicToolResolver.autoExpandTool(
+              { ...streamInput.resolverInput, processor: result },
+              toolName,
+            )
+            if (resolved) autoExpandedByTool.set(toolName, resolved)
+            return resolved
+          } catch (error) {
+            // Fail closed: any resolution failure falls back to the diagnostic
+            // stub path (deferred diagnostic) instead of aborting the whole
+            // dispatch loop. The tool call settles as an error below.
+            log.warn("tool.auto_expand.resolution_failed", {
+              sessionID: input.sessionID,
+              messageID: input.assistantMessage.id,
+              tool: toolName,
+              error,
+            })
+            return undefined
+          }
         }
         const markAutoExpanded = async (
           call: { callID: string; toolName: string },

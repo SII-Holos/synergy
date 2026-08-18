@@ -29,6 +29,7 @@ describe("coverage batch splitting", () => {
     expect([...ISOLATED_COVERAGE_FILES].toSorted()).toEqual([
       "test/channel/svg-raster-standalone.test.ts",
       "test/server/nav-global-routes.test.ts",
+      "test/tool/auto-expand.test.ts",
       "test/tool/openai-image-gen.test.ts",
       "test/vector/embedding-standalone.test.ts",
     ])
