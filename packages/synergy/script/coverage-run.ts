@@ -37,6 +37,7 @@ export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
   "test/holos/runtime.test.ts",
   "test/server/plugin-official-install.test.ts",
   "test/server/plugin-registry-routes.test.ts",
+  "test/server/skill-route.test.ts",
   "test/config/import.test.ts",
   "test/provider/proxy.test.ts",
   "test/session/retry.test.ts",

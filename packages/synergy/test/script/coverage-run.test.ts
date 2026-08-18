@@ -36,6 +36,7 @@ describe("coverage batch splitting", () => {
       "test/server/nav-global-routes.test.ts",
       "test/server/plugin-official-install.test.ts",
       "test/server/plugin-registry-routes.test.ts",
+      "test/server/skill-route.test.ts",
       "test/session/retry.test.ts",
       "test/tool/arxiv-download.test.ts",
       "test/tool/openai-image-gen.test.ts",
