@@ -200,15 +200,6 @@ export namespace Channel {
         reason: z.string().optional(),
       }),
     ),
-    MessageReceived: BusEvent.define(
-      "channel.message.received",
-      z.object({
-        channelType: z.string(),
-        accountId: z.string(),
-        chatId: z.string(),
-        text: z.string(),
-      }),
-    ),
   }
 
   type Connection = {
@@ -657,13 +648,6 @@ export namespace Channel {
             accountHash: externalIdentityHash(ctx.accountId),
             chatHash: externalIdentityHash(ctx.chatId),
             senderHash: externalIdentityHash(ctx.senderId),
-          })
-
-          Bus.publish(Event.MessageReceived, {
-            channelType: ctx.channelType,
-            accountId: ctx.accountId,
-            chatId: ctx.chatId,
-            text: ctx.text,
           })
 
           const cmdResult = await ChannelCommand.execute(

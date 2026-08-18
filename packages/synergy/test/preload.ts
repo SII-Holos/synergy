@@ -87,9 +87,17 @@ delete process.env["SAMBANOVA_API_KEY"]
 
 // Now safe to import from src/
 const { Log } = await import("../src/util/log")
+const { AgentTurn } = await import("../src/session/agent-turn")
+const { runInProcessStream } = await import("../src/session/agent-turn/in-process")
 
 Log.init({
   print: false,
   dev: true,
   level: "DEBUG",
 })
+
+// Register the in-process stream hook so call-style tests keep exercising the
+// same LLM.stream seam they always mocked (see test/agent/call.test.ts).
+// Pool-path tests must explicitly unregister it with
+// AgentTurn.setInProcessStream(undefined) and restore it afterwards.
+AgentTurn.setInProcessStream(runInProcessStream)

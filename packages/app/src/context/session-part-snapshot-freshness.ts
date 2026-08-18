@@ -1,3 +1,5 @@
+import { MonotonicKeySpace } from "./monotonic-key-space"
+
 export type SessionPartSnapshotRequest = {
   generation: number
   revisions: ReadonlyMap<string, number>
@@ -14,17 +16,15 @@ function messageKey(scopeKey: string, sessionID: string, messageID: string) {
 }
 
 export class SessionPartSnapshotFreshness {
-  private readonly generations = new Map<string, number>()
-  private readonly revisions = new Map<string, number>()
-  private readonly snapshotRequiredRevisions = new Map<string, number>()
-  private nextGeneration = 1
-  private nextRevision = 1
+  private readonly generations = new MonotonicKeySpace()
+  private readonly revisions = new MonotonicKeySpace()
+  private readonly snapshotRequiredRevisions = new MonotonicKeySpace()
 
   capture(scopeKey: string, sessionID: string): SessionPartSnapshotRequest {
     const generation = this.generation(scopeKey, sessionID)
     const prefix = `${sessionKey(scopeKey, sessionID)}\n`
     const revisions = new Map<string, number>()
-    for (const [key, revision] of this.revisions) {
+    for (const [key, revision] of this.revisions.entries()) {
       if (key.startsWith(prefix)) revisions.set(key.slice(prefix.length), revision)
     }
     return { generation, revisions }
@@ -32,8 +32,7 @@ export class SessionPartSnapshotFreshness {
 
   touch(scopeKey: string, sessionID: string, messageID: string, options?: { requiresSnapshot?: boolean }) {
     const key = messageKey(scopeKey, sessionID, messageID)
-    const revision = this.nextRevision++
-    this.revisions.set(key, revision)
+    const revision = this.revisions.allocate(key)
     if (options?.requiresSnapshot) this.snapshotRequiredRevisions.set(key, revision)
   }
 
@@ -46,42 +45,27 @@ export class SessionPartSnapshotFreshness {
     if (this.generation(scopeKey, sessionID) !== request.generation) return "retry"
     const key = messageKey(scopeKey, sessionID, messageID)
     const capturedRevision = request.revisions.get(messageID) ?? 0
-    if ((this.revisions.get(key) ?? 0) === capturedRevision) return "apply"
-    if ((this.snapshotRequiredRevisions.get(key) ?? 0) > capturedRevision) return "retry"
+    if (this.revisions.get(key) === capturedRevision) return "apply"
+    if (this.snapshotRequiredRevisions.get(key) > capturedRevision) return "retry"
     return "preserve"
   }
 
   releaseScope(scopeKey: string) {
     const generationPrefix = `${scopeKey}\n`
-    for (const key of this.generations.keys()) {
-      if (key.startsWith(generationPrefix)) this.generations.delete(key)
-    }
+    this.generations.deletePrefix(generationPrefix)
     const revisionPrefix = `${scopeKey}\n`
-    for (const key of this.revisions.keys()) {
-      if (key.startsWith(revisionPrefix)) this.revisions.delete(key)
-    }
-    for (const key of this.snapshotRequiredRevisions.keys()) {
-      if (key.startsWith(revisionPrefix)) this.snapshotRequiredRevisions.delete(key)
-    }
+    this.revisions.deletePrefix(revisionPrefix)
+    this.snapshotRequiredRevisions.deletePrefix(revisionPrefix)
   }
 
   releaseSession(scopeKey: string, sessionID: string) {
     this.generations.delete(sessionKey(scopeKey, sessionID))
     const prefix = `${sessionKey(scopeKey, sessionID)}\n`
-    for (const key of this.revisions.keys()) {
-      if (key.startsWith(prefix)) this.revisions.delete(key)
-    }
-    for (const key of this.snapshotRequiredRevisions.keys()) {
-      if (key.startsWith(prefix)) this.snapshotRequiredRevisions.delete(key)
-    }
+    this.revisions.deletePrefix(prefix)
+    this.snapshotRequiredRevisions.deletePrefix(prefix)
   }
 
   private generation(scopeKey: string, sessionID: string) {
-    const key = sessionKey(scopeKey, sessionID)
-    const existing = this.generations.get(key)
-    if (existing !== undefined) return existing
-    const created = this.nextGeneration++
-    this.generations.set(key, created)
-    return created
+    return this.generations.ensure(sessionKey(scopeKey, sessionID))
   }
 }

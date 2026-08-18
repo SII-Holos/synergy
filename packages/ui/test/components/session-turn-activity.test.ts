@@ -81,7 +81,6 @@ mock.module("../../src/components/session-turn.css", () => ({}))
 mock.module("../../src/components/turn-change-summary-panel", () => ({ TurnChangeSummaryPanel: Empty }))
 mock.module("../../src/components/special-user-message", () => ({ getSpecialUserMessageRenderer: () => undefined }))
 mock.module("../../src/components/tool-renders", () => ({}))
-mock.module("../../src/components/typewriter", () => ({ Typewriter: Empty }))
 
 const {
   activityItemStableKey,

@@ -34,7 +34,6 @@ const rawIconExceptionReasons: Record<string, string> = {
   "packages/ui/src/components/image-preview.tsx": "Shared image viewer controls are base media-control affordances.",
   "packages/ui/src/components/list.tsx": "Shared list primitive search, selected, and clear affordances.",
   "packages/ui/src/components/popover.tsx": "Shared popover primitive close affordance.",
-  "packages/ui/src/components/select.tsx": "Shared select primitive check and disclosure affordances.",
   "packages/ui/src/components/session-review.tsx":
     "Review outline uses structural grip controls for expand/collapse affordances.",
   "packages/ui/src/components/session-turn.tsx": "Diff accordion uses a structural grip affordance.",

@@ -16,14 +16,6 @@
     "reason": "Product brand name — not translated."
   },
   {
-    "path": "packages/ui/src/components/session-resonance-popover.tsx",
-    "kind": "jsx-text",
-    "literal": "Q",
-    "occurrence": 1,
-    "category": "machine-identifier",
-    "reason": "Quality score abbreviation — a mathematical metric label, not translateable."
-  },
-  {
     "path": "packages/ui/src/components/session-review.tsx",
     "kind": "jsx-text",
     "literal": "&lrm;",

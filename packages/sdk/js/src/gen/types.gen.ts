@@ -8609,16 +8609,6 @@ export type EventChannelDisconnected = {
   }
 }
 
-export type EventChannelMessageReceived = {
-  type: "channel.message.received"
-  properties: {
-    channelType: string
-    accountId: string
-    chatId: string
-    text: string
-  }
-}
-
 export type EventSynergyLinkTargetCreated = {
   type: "synergy_link.target.created"
   properties: {
@@ -8853,7 +8843,6 @@ export type Event =
   | EventChannelCommandExecuted
   | EventChannelConnected
   | EventChannelDisconnected
-  | EventChannelMessageReceived
   | EventSynergyLinkTargetCreated
   | EventSynergyLinkTargetUpdated
   | EventSynergyLinkTargetRemoved
