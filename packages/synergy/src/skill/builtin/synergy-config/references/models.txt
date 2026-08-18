@@ -106,7 +106,7 @@ Custom providers (including third-party relays / 中转站) get effort variants 
 }
 ```
 
-`reasoning: true` gates variant generation entirely. `reasoning_options` declares the effort values the API accepts; when omitted, Synergy falls back to `low`/`medium`/`high`. You can also hand-author `variants` under a model to add or override named option packs (e.g. a relay-specific `thinking` toggle) — explicit variants are merged after the automatic defaults. See `references/providers.txt` for the relay walkthrough and the provider/model option-level split.
+`reasoning: true` gates variant generation entirely. `reasoning_options` declares the effort values the API accepts; when omitted, most model families fall back to `low`/`medium`/`high` — except IDs containing `deepseek`, `glm`, or `mistral`, which produce no variants at all without explicit `reasoning_options` (declare efforts for those families). You can also hand-author `variants` under a model to add or override named option packs (e.g. a relay-specific `thinking` toggle) — explicit variants are merged after the automatic defaults. See `references/providers.txt` for the relay walkthrough and the provider/model option-level split.
 
 ## Role variants
 

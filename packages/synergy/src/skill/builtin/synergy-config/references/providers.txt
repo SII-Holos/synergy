@@ -270,6 +270,7 @@ Fields:
 - `models.<name>.interleaved` — declare streaming reasoning delivery, e.g. `{ "field": "reasoning_content" }` for DeepSeek-style APIs
 - `models.<name>.headers` — extra HTTP headers for this model (merged over provider headers)
 - `models.<name>.variants` — named variant option packs (see `references/models.txt`)
+- `models.<name>.provider.npm` — per-model SDK package override (e.g. route one relay model to the Anthropic SDK). Declared as `provider.npm` on the model — a direct model-level `npm` key is not part of the schema and is silently dropped.
 - `models.<name>.modalities` / `tool_call` / `attachment` / `temperature` — capability flags used by feature gating and the UI
 - `whitelist` — only load these models (from registry)
 - `blacklist` — exclude these models
@@ -355,7 +356,7 @@ Full relay example — one connection, two backends:
         "Claude via relay": {
           "id": "claude-sonnet-4-5",
           "name": "Claude via Relay",
-          "npm": "@ai-sdk/anthropic",
+          "provider": { "npm": "@ai-sdk/anthropic" },
           "limit": { "context": 200000, "output": 8192 },
           "options": { "thinking": { "type": "enabled", "budgetTokens": 8192 } }
         }
@@ -369,7 +370,7 @@ Notes:
 - `interleaved` with `reasoning_content` is required for DeepSeek-style relays that stream reasoning separately — without it Synergy does not pass `reasoning_content` back and the API errors with "The reasoning_content in the thinking mode must be passed back to the API."
 - `reasoning` + `reasoning_options` generate the effort variants (low/medium/high/...) shown in model role and variant pickers. Without them the relay's default reasoning behavior is used and no effort selector appears.
 - `queryParams` (e.g. `{ "api-version": "..." }`) is only honored at the SDK level, so it belongs in `provider.<id>.options`.
-- The Settings custom-provider wizard captures `reasoning` but not `reasoning_options` / `interleaved`; declare those fields in JSONC directly.
+- `reasoning_options` / `interleaved` / per-model `provider.npm` are declared in JSONC directly — no UI currently exposes them.
 
 ## Model token limits and soft compaction (context / input / output)
 
