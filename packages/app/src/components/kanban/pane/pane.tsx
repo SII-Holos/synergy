@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal, onCleanup, type JSX } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { useLingui } from "@lingui/solid"
 import type {
@@ -17,12 +17,16 @@ import { DataProvider } from "@ericsanchezok/synergy-ui/context"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
-import { SessionTurn, collectMessagesForTurnDisplay } from "@ericsanchezok/synergy-ui/session-turn"
+import { SessionTurn } from "@ericsanchezok/synergy-ui/session-turn"
+import { buildSessionTurnProjection } from "@ericsanchezok/synergy-ui/session-turn-projection"
 import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
 import { ConversationViewport } from "@/components/session/conversation-viewport"
+import { buildConversationTimelineSnapshot } from "@/components/session/conversation-timeline"
+import { messagesFrom, selectMessagesInCanonicalOrder } from "@/components/session/session-message-order"
 import { resolveSessionVisualState, type SessionVisualStore } from "@/components/sidebar/session-visual-state"
 import { hasMessageWindowSnapshot, type MessageWindowMetadata } from "@/context/session-message-window"
+import { useLocale } from "@/context/locale"
 import { kanbanPage } from "@/locales/messages"
 import type { BoardPane } from "../model/pane-selection"
 import "../kanban.css"
@@ -39,6 +43,24 @@ export type BoardPaneData = {
   session: Session[]
 }
 
+export type BoardPaneLoadState = {
+  phase: string
+  hasSnapshot: boolean
+  error?: string
+}
+
+/** Latest-mode turn window cap per pane, mirroring the session surface. */
+const MAX_RENDERED_TURNS = 40
+
+function isActionCommandMessage(message: Message): boolean {
+  const metadata = message.metadata as
+    | { command?: { kind?: string; promptVisible?: boolean }; promptVisible?: boolean }
+    | undefined
+  if (metadata?.command?.kind !== "action") return false
+  if (message.includeInContext !== undefined) return message.includeInContext === false
+  return metadata.promptVisible === false
+}
+
 export function KanbanPane(props: {
   pane: BoardPane
   data: BoardPaneData
@@ -52,10 +74,12 @@ export function KanbanPane(props: {
   compact?: boolean
   /** Waterfall variant: render a timestamp above every message for time-aligned comparison. */
   timeAlign?: boolean
+  loadState?: () => BoardPaneLoadState | undefined
+  onRetry?: () => void
 }) {
   const { _ } = useLingui()
+  const { fmt } = useLocale()
   const [scrolledUp, setScrolledUp] = createSignal(false)
-  const [scrollEl, setScrollEl] = createSignal<HTMLDivElement>()
 
   const messages = createMemo(() => props.data.message[props.pane.sessionID] ?? [])
   const hasSnapshot = createMemo(() =>
@@ -75,15 +99,54 @@ export function KanbanPane(props: {
   const visual = createMemo(() =>
     props.pane.entry ? resolveSessionVisualState(visualStore, props.pane.entry) : undefined,
   )
+
+  // Localized relative activity label with a one-minute update cadence so an
+  // idle pinned pane keeps advancing while mounted.
+  const [now, setNow] = createSignal(Date.now())
+  createEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60_000)
+    onCleanup(() => clearInterval(timer))
+  })
   const lastActivity = createMemo(() => {
     const at = props.pane.entry?.lastActivityAt
     if (!at) return ""
-    const minutes = Math.max(1, Math.round((Date.now() - at) / 60000))
-    if (minutes < 60) return `${minutes}m`
-    const hours = Math.round(minutes / 60)
-    if (hours < 24) return `${hours}h`
-    return `${Math.round(hours / 24)}d`
+    return fmt.relative(at, new Date(now()))
   })
+
+  // Turn projection + latest-mode trimming (mirrors the session conversation):
+  // roots render as SessionTurn rows, mailbox/action assistants render as
+  // standalone rows, and ordinary turn members render only inside their turn.
+  const projection = createMemo(() => buildSessionTurnProjection(messages()))
+  const trimmedRoots = createMemo(() => {
+    const roots = projection().roots
+    return roots.length > MAX_RENDERED_TURNS ? roots.slice(roots.length - MAX_RENDERED_TURNS) : roots
+  })
+  const lastRoot = createMemo(() => projection().roots.at(-1))
+  const firstRenderedID = createMemo(() => trimmedRoots()[0]?.id)
+  const canonical = createMemo(() => (firstRenderedID() ? messagesFrom(messages(), firstRenderedID()!) : messages()))
+  const timeline = createMemo(() => {
+    const mailbox: Message[] = []
+    const actionCommands: Message[] = []
+    for (const msg of canonical()) {
+      if (isActionCommandMessage(msg)) {
+        actionCommands.push(msg)
+        continue
+      }
+      if (msg.role !== "assistant") continue
+      if (!(msg as AssistantMessage).metadata?.mailbox) continue
+      mailbox.push(msg)
+    }
+    return selectMessagesInCanonicalOrder(messages(), [...trimmedRoots(), ...mailbox, ...actionCommands])
+  })
+  // Key rows by stable message id so window reloads / part deltas never
+  // destroy and recreate the whole SessionTurn tree (see conversation-timeline).
+  const timelineSnapshot = createMemo(() => buildConversationTimelineSnapshot(timeline()))
+
+  const loadError = createMemo(() => {
+    const load = props.loadState?.()
+    return load?.phase === "error" && !load.hasSnapshot ? (load.error ?? "") : ""
+  })
+
   onCleanup(() => {
     autoScroll.scrollRef(undefined)
   })
@@ -160,7 +223,22 @@ export function KanbanPane(props: {
             </div>
           }
         >
-          <Show when={hasSnapshot()} fallback={<div class="kanban-pane-empty">{_(kanbanPage.loading)}</div>}>
+          <Show
+            when={hasSnapshot()}
+            fallback={
+              <Show when={loadError()} fallback={<div class="kanban-pane-empty">{_(kanbanPage.loading)}</div>}>
+                <div class="kanban-pane-error">
+                  <span>{_(kanbanPage.loadError)}</span>
+                  <Show when={props.onRetry}>
+                    <button class="kanban-pane-action kanban-pane-retry" onClick={props.onRetry}>
+                      <Icon name={getSemanticIcon("action.refresh")} size="small" />
+                      <span>{_(kanbanPage.retry)}</span>
+                    </button>
+                  </Show>
+                </div>
+              </Show>
+            }
+          >
             <DataProvider
               data={props.data}
               directory={props.directory}
@@ -171,48 +249,48 @@ export function KanbanPane(props: {
                 scrolledUp={scrolledUp()}
                 onScrolledUpChange={setScrolledUp}
                 autoScroll={autoScroll}
-                setScrollRef={(el) => setScrollEl(el)}
+                setScrollRef={(el) => autoScroll.scrollRef(el)}
                 scrollButtonOffsetClass="bottom-3"
                 contentClass="px-2 py-2 flex flex-col items-start gap-3 text-sm"
               >
-                <For each={messages()}>
-                  {(message) => {
+                <For each={timelineSnapshot().keys}>
+                  {(key) => {
+                    const message = () => timelineSnapshot().map.get(key)
                     const row = (content: JSX.Element) => (
                       <div
-                        data-message-id={message.id}
-                        data-message-role={message.role}
+                        data-message-id={key}
+                        data-message-role={message()?.role}
                         class="kanban-pane-msg w-full min-w-0"
                       >
                         {props.timeAlign ? (
-                          <span class="kanban-msg-time">{formatMsgTime(message.time.created)}</span>
+                          <span class="kanban-msg-time">{formatMsgTime(message()!.time.created)}</span>
                         ) : null}
                         {content}
                       </div>
                     )
-                    if (message.role === "assistant") {
-                      const assistant = message as AssistantMessage
-                      const isCommand = assistant.metadata?.source === "command"
+                    if (message()?.role === "assistant") {
+                      const assistant = () => message() as AssistantMessage
+                      const isCommand = () => assistant().metadata?.source === "command"
                       return row(
                         <Dynamic
-                          component={isCommand ? CommandResultOutput : MailboxMessage}
-                          message={assistant}
+                          component={isCommand() ? CommandResultOutput : MailboxMessage}
+                          message={assistant()}
                           classes={{ root: "min-w-0 w-full relative", container: "w-full min-w-0 max-w-full" }}
                         />,
                       )
                     }
-                    if (message.role === "user" && (message as UserMessage).isRoot) {
-                      return row(
-                        <SessionTurn
-                          sessionID={props.pane.sessionID}
-                          messageID={message.id}
-                          rootMessage={message as UserMessage}
-                          messages={collectMessagesForTurnDisplay(messages(), message.id)}
-                          activityDisplay="minimal"
-                          classes={{ root: "min-w-0 w-full relative", container: "w-full min-w-0 max-w-full" }}
-                        />,
-                      )
-                    }
-                    return null
+                    const root = () => message() as UserMessage
+                    return row(
+                      <SessionTurn
+                        sessionID={props.pane.sessionID}
+                        messageID={key}
+                        rootMessage={root()}
+                        messages={projection().turnMessagesFor(root())}
+                        lastUserMessageID={lastRoot()?.id}
+                        activityDisplay="minimal"
+                        classes={{ root: "min-w-0 w-full relative", container: "w-full min-w-0 max-w-full" }}
+                      />,
+                    )
                   }}
                 </For>
               </ConversationViewport>

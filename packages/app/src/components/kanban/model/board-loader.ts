@@ -1,7 +1,10 @@
 import type { Message, Part } from "@ericsanchezok/synergy-sdk/client"
+import { batch } from "solid-js"
+import { produce, type SetStoreFunction } from "solid-js/store"
 import type { SyncResourceRequest } from "@/context/sync-resource-freshness"
-import { createSessionMessageLoader } from "@/context/session-message-loader"
+import { createSessionMessageLoader, type SessionMessageLoadState } from "@/context/session-message-loader"
 import type { planMessagePageApply } from "@/context/session-message-page"
+import type { SessionPartSnapshotAction, SessionPartSnapshotRequest } from "@/context/session-part-snapshot-freshness"
 import type { MessageWindowState } from "@/context/session-message-window"
 
 export type BoardMessagePageResult = {
@@ -15,9 +18,29 @@ export type BoardMessagePageResult = {
   response?: { headers?: Pick<Headers, "get"> }
 }
 
+type BoardLoadResult = {
+  response: BoardMessagePageResult
+  request: SyncResourceRequest
+  revision: number
+  partSnapshotRequest: SessionPartSnapshotRequest
+}
+
+type BoardScopeStore = {
+  message: Record<string, Message[]>
+  messageWindow: Record<string, MessageWindowState<Message>>
+  part: Record<string, Part[]>
+}
+
 export type BoardLoaderDeps = {
   ensureScopeState: (scopeKey: string) => unknown[]
   captureResourceRequest: (scopeKey: string, sessionID: string, resource: "message") => SyncResourceRequest
+  capturePartSnapshotRequest: (scopeKey: string, sessionID: string) => SessionPartSnapshotRequest
+  partSnapshotAction: (
+    scopeKey: string,
+    sessionID: string,
+    messageID: string,
+    request: SessionPartSnapshotRequest,
+  ) => SessionPartSnapshotAction
   unprotectMessageBucket: (scopeKey: string, sessionID: string) => void
   beginContextProjection: (scopeKey: string, sessionID: string) => number
   applyResourceResponse: (
@@ -45,11 +68,12 @@ export type BoardLoaderDeps = {
   scopeRequest: (scopeKey: string) => Record<string, string>
   plan: typeof planMessagePageApply
   reconcile: (value: unknown, options?: { key: string }) => unknown
+  onStateChange?: (key: string, state: SessionMessageLoadState) => void
 }
 
 export type BoardLoader = {
   load: (scopeKey: string, sessionID: string, options?: { force?: boolean }) => void
-  state: (scopeKey: string, sessionID: string) => { phase: string; hasSnapshot: boolean }
+  state: (scopeKey: string, sessionID: string) => { phase: string; hasSnapshot: boolean; error?: string }
   protect: (scopeKey: string, sessionID: string) => void
   unprotect: (scopeKey: string, sessionID: string) => void
   dispose: () => void
@@ -59,25 +83,23 @@ export type BoardLoader = {
 const LIMIT = 200
 
 export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
-  const loader = createSessionMessageLoader<
-    {
-      response: BoardMessagePageResult
-      request: SyncResourceRequest
-      revision: number
-    },
-    { scopeKey: string; sessionID: string }
-  >({
+  const loader = createSessionMessageLoader<BoardLoadResult, { scopeKey: string; sessionID: string }>({
     request: async (key, signal, input) => {
       if (!input) throw new Error("Missing board message load input")
       const { scopeKey, sessionID } = input
       deps.ensureScopeState(scopeKey)
       const request = deps.captureResourceRequest(scopeKey, sessionID, "message")
       const revision = deps.beginContextProjection(scopeKey, sessionID)
-      const response = await deps
-        .messagePage({ scopeRequest: deps.scopeRequest(scopeKey), sessionID, limit: LIMIT })
-        .catch(() => undefined)
+      // Capture part freshness before the request so deltas arriving while the
+      // page is in flight supersede this snapshot (mirrors the session loader).
+      const partSnapshotRequest = deps.capturePartSnapshotRequest(scopeKey, sessionID)
+      const response = await deps.messagePage({
+        scopeRequest: deps.scopeRequest(scopeKey),
+        sessionID,
+        limit: LIMIT,
+      })
       if (signal.aborted) throw new DOMException("Aborted", "AbortError")
-      return { response: response ?? { data: undefined }, request, revision }
+      return { response, request, revision, partSnapshotRequest }
     },
     apply: (key, result) => {
       const page = result.response.data
@@ -86,7 +108,7 @@ export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
       const scopeKey = key.slice(0, sep)
       const sessionID = key.slice(sep + 1)
       const store = deps.ensureScopeState(scopeKey) as unknown[]
-      const setStore = store[1] as (path: string, sessionID: string, value: unknown) => void
+      const setStore = store[1] as unknown as SetStoreFunction<BoardScopeStore>
       const current = deps.ensureScopeState(scopeKey)[0] as {
         message?: Record<string, Message[]>
         messageWindow?: Record<string, MessageWindowState<Message>>
@@ -104,6 +126,13 @@ export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
             }
           : undefined,
       })
+      const partActions = new Map(
+        Object.keys(plan.parts).map((messageID) => [
+          messageID,
+          deps.partSnapshotAction(scopeKey, sessionID, messageID, result.partSnapshotRequest),
+        ]),
+      )
+      if ([...partActions.values()].some((action) => action === "retry")) return "superseded"
       const accepted = deps.applyResourceResponse(
         scopeKey,
         sessionID,
@@ -111,22 +140,36 @@ export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
         result.request,
         result.response?.response?.headers,
         () => {
-          const reconcile = deps.reconcile
-          setStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
-          setStore("messageWindow", sessionID, reconcile(plan.metadata))
-          deps.setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage, result.revision)
-          for (const [messageID, parts] of Object.entries(plan.parts)) {
-            setStore("part", messageID, reconcile(parts, { key: "id" }))
-          }
+          batch(() => {
+            setStore(
+              produce((draft: BoardScopeStore) => {
+                // Drop part buckets for messages the refreshed page removed,
+                // so orphaned parts do not accumulate across board refreshes.
+                for (const messageID of plan.droppedIds) delete draft.part[messageID]
+              }),
+            )
+            setStore("message", sessionID, deps.reconcile(plan.window.messages, { key: "id" }) as Message[])
+            setStore("messageWindow", sessionID, deps.reconcile(plan.metadata) as MessageWindowState<Message>)
+            deps.setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage, result.revision)
+            for (const [messageID, parts] of Object.entries(plan.parts)) {
+              if (partActions.get(messageID) === "preserve") continue
+              setStore("part", messageID, deps.reconcile(parts, { key: "id" }) as Part[])
+            }
+          })
           deps.touchMessageBucket(scopeKey, sessionID)
         },
       )
       return accepted ? "applied" : "superseded"
     },
+    onState: (key, state) => deps.onStateChange?.(key, state),
     errorMessage: (error) => (error instanceof Error ? error.message : String(error)),
   })
 
   const lastReconnectVersion = new Map<string, number>()
+  // Keys that left the board (protection released) and may have been evicted;
+  // reload them the next time they rejoin instead of trusting a stale phase.
+  const dirty = new Set<string>()
+  let lastPanes = new Set<string>()
   let disposed = false
 
   function load(scopeKey: string, sessionID: string, options?: { force?: boolean }) {
@@ -142,26 +185,41 @@ export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
   function syncPanes(panes: { scopeKey: string; sessionID: string }[]) {
     if (disposed) return
     const seen = new Set<string>()
+    const wanted = new Set<string>()
     for (const pane of panes) {
       const key = `${pane.scopeKey}\n${pane.sessionID}`
       if (seen.has(key)) continue
       seen.add(key)
+      wanted.add(key)
       const version = deps.scopeReconnectVersion(pane.scopeKey)
       const last = lastReconnectVersion.get(pane.scopeKey) ?? 0
       if (version > last) {
         lastReconnectVersion.set(pane.scopeKey, version)
         void loader.load(key, { force: true, input: { scopeKey: pane.scopeKey, sessionID: pane.sessionID } })
-      } else {
+      } else if (dirty.has(key)) {
+        dirty.delete(key)
+        load(pane.scopeKey, pane.sessionID)
+      } else if (loader.state(key).phase === "idle") {
+        // Skip panes that are already loaded/loading; navigation updates must
+        // not refetch every visible transcript. Only reconnects force a reload.
         load(pane.scopeKey, pane.sessionID)
       }
     }
+    for (const key of lastPanes) {
+      if (wanted.has(key)) continue
+      const sep = key.indexOf("\n")
+      if (sep === -1) continue
+      dirty.add(key)
+      deps.unprotectMessageBucket(key.slice(0, sep), key.slice(sep + 1))
+    }
+    lastPanes = wanted
   }
 
   return {
     load,
     state: (scopeKey, sessionID) => {
       const s = loader.state(`${scopeKey}\n${sessionID}`)
-      return { phase: s.phase, hasSnapshot: s.hasSnapshot }
+      return { phase: s.phase, hasSnapshot: s.hasSnapshot, error: s.error }
     },
     protect: deps.protectMessageBucket,
     unprotect: deps.unprotectMessageBucket,

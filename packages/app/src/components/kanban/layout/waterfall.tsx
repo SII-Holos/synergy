@@ -1,6 +1,6 @@
-import { For } from "solid-js"
+import { For, createMemo } from "solid-js"
 import type { JSX } from "solid-js"
-import type { BoardPane } from "../model/pane-selection"
+import { buildPaneSnapshot, type BoardPane } from "../model/pane-selection"
 
 /**
  * Waterfall layout: exactly three columns, one session per column, columns
@@ -13,10 +13,18 @@ export function KanbanWaterfall(props: {
   panes: BoardPane[]
   renderPane: (pane: BoardPane, variant?: "waterfall") => JSX.Element
 }) {
+  // Key rows by the stable pane key so status/navigation updates never destroy
+  // and recreate the whole message tree (mirrors the session conversation).
+  const snapshot = createMemo(() => buildPaneSnapshot(props.panes))
   return (
     <div data-component="kanban-layout-waterfall" class="kanban-waterfall">
-      <For each={props.panes}>
-        {(pane) => <div class="kanban-waterfall-col">{props.renderPane(pane, "waterfall")}</div>}
+      <For each={snapshot().keys}>
+        {(key) => {
+          const pane = () => snapshot().map.get(key)
+          const current = pane()
+          if (!current) return null
+          return <div class="kanban-waterfall-col">{props.renderPane(current, "waterfall")}</div>
+        }}
       </For>
     </div>
   )

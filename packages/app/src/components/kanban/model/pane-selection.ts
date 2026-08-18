@@ -81,3 +81,25 @@ export function computeBoardPanes(input: { pinned: string[]; sources: BoardPaneS
 function paneKey(source: BoardPaneSource): string {
   return `${source.scopeKey}\n${source.entry.id}`
 }
+
+export type PaneSnapshot = {
+  keys: string[]
+  map: Map<string, BoardPane>
+}
+
+/**
+ * Keyed pane projection for layout rendering. Solid's `For` keys rows by item
+ * identity, so recomputing `panes()` creates fresh objects even when the same
+ * `pane.key` remains selected; keying rows by the stable key keeps each pane
+ * mounted across status/navigation updates instead of rebuilding the whole
+ * message tree (mirrors `buildConversationTimelineSnapshot`).
+ */
+export function buildPaneSnapshot(panes: BoardPane[]): PaneSnapshot {
+  const keys: string[] = []
+  const map = new Map<string, BoardPane>()
+  for (const pane of panes) {
+    keys.push(pane.key)
+    map.set(pane.key, pane)
+  }
+  return { keys, map }
+}

@@ -1331,6 +1331,8 @@ export const kanbanPage = {
   },
   unavailable: { id: "app.kanban.unavailable", message: "Session no longer available" },
   loading: { id: "app.kanban.loading", message: "Loading…" },
+  loadError: { id: "app.kanban.loadError", message: "Failed to load messages" },
+  retry: { id: "app.kanban.retry", message: "Retry" },
   addPane: { id: "app.kanban.addPane", message: "Add session" },
   addPaneHint: { id: "app.kanban.addPaneHint", message: "Pick a session to pin to the board" },
   ariaLayout: { id: "app.kanban.aria.layout", message: "Board layout" },

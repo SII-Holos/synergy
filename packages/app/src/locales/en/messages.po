@@ -2880,6 +2880,10 @@ msgid "app.kanban.layout.waterfall"
 msgstr "Waterfall"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.loadError"
+msgstr "Failed to load messages"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.loading"
 msgstr "Loading…"
 
@@ -2894,6 +2898,10 @@ msgstr "Pin"
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.removePane"
 msgstr "Remove"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.retry"
+msgstr "Retry"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.title"

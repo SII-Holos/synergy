@@ -153,11 +153,91 @@
   height: 100%;
   min-height: 0;
   align-items: start;
+  /* Columns wrap into rows; the board frame clips overflow, so let the
+     layout scroll vertically like the grid layout does. */
+  overflow-y: auto;
 }
 
 .kanban-waterfall-col {
   min-width: 0;
   min-height: 260px;
+}
+
+/* --- Add-session chooser --- */
+
+.kanban-add-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+  min-width: 220px;
+  padding: 4px;
+}
+
+.kanban-add-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.kanban-add-item:hover {
+  background: var(--surface-base-interactive-active);
+}
+
+.kanban-add-item-title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kanban-add-item-scope {
+  font-size: var(--font-size-xs);
+  color: var(--text-weaker);
+  border: 1px solid var(--border-base);
+  border-radius: 5px;
+  padding: 1px 6px;
+  flex: none;
+  font-family: var(--font-family-mono);
+}
+
+/* --- Pane error state --- */
+
+.kanban-pane-error {
+  margin: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-weak);
+  font-size: var(--font-size-sm);
+}
+
+.kanban-pane-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: auto;
+  height: auto;
+  padding: 4px 10px;
+  border: 1px solid var(--border-base);
+  border-radius: 6px;
+  color: var(--text-strong);
+  font-size: var(--font-size-sm);
+}
+
+.kanban-pane-retry:hover {
+  background: var(--surface-base-interactive-active);
 }
 
 /* --- Pane --- */

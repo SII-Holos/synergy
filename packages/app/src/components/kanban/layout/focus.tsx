@@ -2,7 +2,7 @@ import { For, Show, createMemo, createSignal } from "solid-js"
 import type { JSX } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { kanbanPage } from "@/locales/messages"
-import type { BoardPane } from "../model/pane-selection"
+import { buildPaneSnapshot, type BoardPane } from "../model/pane-selection"
 
 export function KanbanFocus(props: {
   panes: BoardPane[]
@@ -11,39 +11,46 @@ export function KanbanFocus(props: {
   const { _ } = useLingui()
   const [activeKey, setActiveKey] = createSignal<string | undefined>(props.panes[0]?.key)
 
+  // Key rows by the stable pane key so status/navigation updates never destroy
+  // and recreate the whole message tree (mirrors the session conversation).
+  const snapshot = createMemo(() => buildPaneSnapshot(props.panes))
   const active = createMemo(() => {
     const key = activeKey()
-    return props.panes.find((pane) => pane.key === key) ?? props.panes[0]
+    return (key ? snapshot().map.get(key) : undefined) ?? props.panes[0]
   })
-  const rail = createMemo(() => props.panes.filter((pane) => pane.key !== active()?.key).slice(0, 3))
+  const railKeys = createMemo(() => snapshot().keys.filter((key) => key !== active()?.key))
 
   return (
     <div data-component="kanban-layout-focus" class="kanban-focus">
       <Show when={active()}>
-        <div class="kanban-focus-main">{props.renderPane(active()!, "focus")}</div>
+        {(current) => <div class="kanban-focus-main">{props.renderPane(current(), "focus")}</div>}
       </Show>
       <div class="kanban-focus-rail">
-        <For each={rail()}>
-          {(pane) => (
+        <For each={railKeys()}>
+          {(key) => {
+            const pane = () => snapshot().map.get(key)
+            if (!pane()) return null
             // Promote control is a semantic button-like region, not a <button>:
             // the pane inside already contains interactive buttons, so nesting
             // them in an outer <button> would be invalid HTML.
-            <div
-              class="kanban-focus-promote"
-              role="button"
-              tabindex={0}
-              aria-label={_(kanbanPage.layoutFocus)}
-              onClick={() => setActiveKey(pane.key)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault()
-                  setActiveKey(pane.key)
-                }
-              }}
-            >
-              {props.renderPane(pane, "rail")}
-            </div>
-          )}
+            return (
+              <div
+                class="kanban-focus-promote"
+                role="button"
+                tabindex={0}
+                aria-label={_(kanbanPage.layoutFocus)}
+                onClick={() => setActiveKey(key)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault()
+                    setActiveKey(key)
+                  }
+                }}
+              >
+                {props.renderPane(pane()!, "rail")}
+              </div>
+            )
+          }}
         </For>
       </div>
     </div>

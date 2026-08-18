@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { createBoardLoader, type BoardLoaderDeps } from "../../../../src/components/kanban/model/board-loader"
 import type { SyncResourceRequest } from "../../../../src/context/sync-resource-freshness"
+import type { SessionPartSnapshotRequest } from "../../../../src/context/session-part-snapshot-freshness"
 import { planMessagePageApply } from "../../../../src/context/session-message-page"
 
 function message(id: string, created: number) {
@@ -19,12 +20,14 @@ function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
   touches: string[]
   messagePages: { sessionID: string; limit: number }[]
   scopeVersions: Record<string, number>
+  partActions: Record<string, "apply" | "preserve" | "retry">
 } {
   const protects: string[] = []
   const unprotects: string[] = []
   const touches: string[] = []
   const messagePages: { sessionID: string; limit: number }[] = []
   const scopeVersions: Record<string, number> = {}
+  const partActions: Record<string, "apply" | "preserve" | "retry"> = {}
   const stores = new Map<string, FakeStore>()
   const ensureScopeState = (scopeKey: string) => {
     let store = stores.get(scopeKey)
@@ -41,8 +44,11 @@ function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
     touches,
     messagePages,
     scopeVersions,
+    partActions,
     ensureScopeState,
     captureResourceRequest: (_s, sessionID) => ({ sessionID }) as unknown as SyncResourceRequest,
+    capturePartSnapshotRequest: (_s, _sid) => ({ generation: 1, revisions: new Map() }) as SessionPartSnapshotRequest,
+    partSnapshotAction: (_s, _sid, messageID) => partActions[messageID] ?? "apply",
     unprotectMessageBucket: (_s, sessionID) => unprotects.push(sessionID),
     beginContextProjection: () => 1,
     applyResourceResponse: (_s, _sid, _r, _req, _h, apply) => {
@@ -96,6 +102,19 @@ describe("createBoardLoader", () => {
     expect(deps.messagePages.map((p) => p.sessionID).sort()).toEqual(["s1", "s2"])
   })
 
+  test("syncPanes skips already-loaded panes on navigation updates", async () => {
+    const deps = makeDeps()
+    const loader = createBoardLoader(deps)
+    loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
+    await new Promise((r) => setTimeout(r, 10))
+    const first = deps.messagePages.length
+
+    // Same pane set again: phase is now ready, so no refetch.
+    loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
+    await new Promise((r) => setTimeout(r, 10))
+    expect(deps.messagePages.length).toBe(first)
+  })
+
   test("syncPanes forces a reload when the scope reconnect version bumps", async () => {
     const deps = makeDeps()
     const loader = createBoardLoader(deps)
@@ -110,6 +129,21 @@ describe("createBoardLoader", () => {
     await new Promise((r) => setTimeout(r, 10))
     expect(deps.messagePages.length).toBeGreaterThan(first)
     expect(deps.messagePages.at(-1)?.sessionID).toBe("s1")
+  })
+
+  test("syncPanes unprotects panes that left the board", async () => {
+    const deps = makeDeps()
+    const loader = createBoardLoader(deps)
+    loader.syncPanes([
+      { scopeKey: "/a", sessionID: "s1" },
+      { scopeKey: "/a", sessionID: "s2" },
+    ])
+    await new Promise((r) => setTimeout(r, 10))
+    expect(deps.unprotects).toEqual([])
+
+    // s2 drops out of the board; its protection must be released.
+    loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
+    expect(deps.unprotects).toEqual(["s2"])
   })
 
   test("unprotect removes the bucket from the protection set", () => {

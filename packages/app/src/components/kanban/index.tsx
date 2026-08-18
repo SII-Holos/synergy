@@ -12,11 +12,12 @@ import { useLayout, type NavEntry } from "@/context/layout"
 import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 import { planMessagePageApply } from "@/context/session-message-page"
 import { scopeKeyForNavEntry } from "@/components/sidebar/session-visual-state"
+import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { kanbanPage } from "@/locales/messages"
 import type { NavigationContentProps } from "@/plugin/registries/navigation-registry"
 import { computeBoardPanes, type BoardPane, type BoardPaneSource } from "./model/pane-selection"
-import { createBoardLoader } from "./model/board-loader"
-import { KanbanPane, type BoardPaneData } from "./pane/pane"
+import { createBoardLoader, type BoardLoaderDeps } from "./model/board-loader"
+import { KanbanPane, type BoardPaneData, type BoardPaneLoadState } from "./pane/pane"
 import { KanbanGrid } from "./layout/grid"
 import { KanbanFocus } from "./layout/focus"
 import { KanbanWaterfall } from "./layout/waterfall"
@@ -46,6 +47,16 @@ export function migrateKanbanPreferences(value: unknown): KanbanPersisted {
     follow: isRecord(value.follow) ? (value.follow as Record<string, boolean>) : {},
     pinned: Array.isArray(value.pinned) ? value.pinned.filter((x): x is string => typeof x === "string") : [],
   }
+}
+
+const EMPTY_BOARD_PANE_DATA: BoardPaneData = {
+  message: {},
+  messageWindow: {},
+  part: {},
+  session_diff: {},
+  session_status: {},
+  cortex: [],
+  session: [],
 }
 
 export function KanbanPanel() {
@@ -102,10 +113,14 @@ export function KanbanPanel() {
   const panes = createMemo(() => computeBoardPanes({ pinned: store.pinned, sources: sources() }))
 
   // --- Loader (cross-scope message page + eviction protection) ---
+  const [loadStates, setLoadStates] = createStore<Record<string, BoardPaneLoadState>>({})
   const boardLoader = createBoardLoader({
     ensureScopeState: (scopeKey) => globalSync.ensureScopeState(scopeKey),
     captureResourceRequest: (scopeKey, sessionID, resource) =>
       globalSync.captureResourceRequest(scopeKey, sessionID, resource),
+    capturePartSnapshotRequest: (scopeKey, sessionID) => globalSync.capturePartSnapshotRequest(scopeKey, sessionID),
+    partSnapshotAction: (scopeKey, sessionID, messageID, request) =>
+      globalSync.partSnapshotAction(scopeKey, sessionID, messageID, request),
     beginContextProjection: (scopeKey, sessionID) => globalSync.beginContextProjection(scopeKey, sessionID),
     applyResourceResponse: (scopeKey, sessionID, resource, request, headers, apply) =>
       globalSync.applyResourceResponse(scopeKey, sessionID, resource, request, headers, apply),
@@ -123,16 +138,25 @@ export function KanbanPanel() {
     },
     plan: planMessagePageApply,
     reconcile: (value, options) => reconcile(value, options) as never,
-  })
+    onStateChange: (key, state) =>
+      setLoadStates(key, { phase: state.phase, hasSnapshot: state.hasSnapshot, error: state.error }),
+  } satisfies BoardLoaderDeps)
 
-  // Load / protect panes; reload on reconnect version bump.
+  // Load / protect live panes; reload on reconnect version bump. Unavailable
+  // placeholders never reach the loader (their sessions no longer exist).
   createEffect(() => {
     const current = panes()
-    boardLoader.syncPanes(current.map((pane) => ({ scopeKey: pane.scopeKey, sessionID: pane.sessionID })))
+    boardLoader.syncPanes(
+      current
+        .filter((pane) => pane.kind === "live")
+        .map((pane) => ({ scopeKey: pane.scopeKey, sessionID: pane.sessionID })),
+    )
   })
 
   onCleanup(() => {
-    for (const pane of panes()) boardLoader.unprotect(pane.scopeKey, pane.sessionID)
+    for (const pane of panes()) {
+      if (pane.kind === "live") boardLoader.unprotect(pane.scopeKey, pane.sessionID)
+    }
     boardLoader.dispose()
   })
 
@@ -140,20 +164,34 @@ export function KanbanPanel() {
   const toggleFollow = (pane: BoardPane) =>
     setStore("follow", pane.key, (current: boolean | undefined) => current === false)
 
-  const pinPane = (pane: BoardPane) => {
-    if (store.pinned.includes(pane.key)) return
-    setStore("pinned", (pinned) => [...pinned, pane.key])
+  const pinKey = (key: string) => {
+    if (store.pinned.includes(key)) return
+    setStore("pinned", (pinned) => [...pinned, key])
   }
+  const pinSource = (source: BoardPaneSource) => pinKey(`${source.scopeKey}\n${source.entry.id}`)
   const unpinPane = (pane: BoardPane) => setStore("pinned", (pinned) => pinned.filter((key) => key !== pane.key))
 
   const openSession = (pane: BoardPane) => {
     if (pane.kind !== "live" || !pane.entry) return
-    const dir = pane.entry.scopeType === "home" ? HOME_SCOPE_KEY : pane.entry.scopeID
-    navigate(`/${base64Encode(dir)}/session/${pane.sessionID}`)
+    // pane.scopeKey is the worktree directory (or HOME_SCOPE_KEY) resolved by
+    // scopeKeyForNavEntry, matching the sidebar/mobile drawer route shape.
+    navigate(`/${base64Encode(pane.scopeKey)}/session/${pane.sessionID}`)
+  }
+
+  const loadStateFor = (pane: BoardPane) => () =>
+    pane.kind === "live" ? loadStates[`${pane.scopeKey}\n${pane.sessionID}`] : undefined
+  const retryPane = (pane: BoardPane) => () => {
+    if (pane.kind !== "live") return
+    boardLoader.load(pane.scopeKey, pane.sessionID, { force: true })
   }
 
   const renderPane = (pane: BoardPane, variant: "focus" | "rail" | "waterfall" | "default" = "default") => {
-    const child = globalSync.peekScopeState(pane.scopeKey)?.[0] as BoardPaneData | undefined
+    // Unavailable panes render their placeholder independently of Scope data:
+    // their session is gone, so no store exists and nothing should be loaded.
+    const child =
+      pane.kind === "unavailable"
+        ? EMPTY_BOARD_PANE_DATA
+        : (globalSync.peekScopeState(pane.scopeKey)?.[0] as BoardPaneData | undefined)
     if (!child) return null
     return (
       <KanbanPane
@@ -164,13 +202,20 @@ export function KanbanPanel() {
         follow={followFor(pane)}
         onToggleFollow={() => toggleFollow(pane)}
         onOpen={() => openSession(pane)}
-        onPinToggle={pane.pinned ? () => unpinPane(pane) : () => pinPane(pane)}
+        onPinToggle={pane.pinned ? () => unpinPane(pane) : () => pinKey(pane.key)}
         onRemove={pane.kind === "unavailable" ? () => unpinPane(pane) : undefined}
         compact={variant === "rail"}
         timeAlign={variant === "waterfall"}
+        loadState={loadStateFor(pane)}
+        onRetry={retryPane(pane)}
       />
     )
   }
+
+  const unpinnedSources = createMemo(() => {
+    const pinned = new Set(store.pinned)
+    return sources().filter((source) => !pinned.has(`${source.scopeKey}\n${source.entry.id}`))
+  })
 
   return (
     <div data-component="kanban-panel" class="kanban-panel">
@@ -199,24 +244,29 @@ export function KanbanPanel() {
             {_(kanbanPage.layoutWaterfall)}
           </button>
         </div>
-        <Show when={sources().some((source) => !store.pinned.includes(`${source.scopeKey}\n${source.entry.id}`))}>
-          <button
-            class="kanban-add-btn"
-            onClick={() => {
-              const first = sources().find((source) => !store.pinned.includes(`${source.scopeKey}\n${source.entry.id}`))
-              if (first)
-                pinPane({
-                  key: `${first.scopeKey}\n${first.entry.id}`,
-                  scopeKey: first.scopeKey,
-                  sessionID: first.entry.id,
-                  kind: "live",
-                  pinned: false,
-                  entry: first.entry,
-                })
-            }}
+        <Show when={unpinnedSources().length > 0}>
+          <Popover
+            trigger={
+              <button class="kanban-add-btn">
+                <span>{_(kanbanPage.addPane)}</span>
+              </button>
+            }
+            title={_(kanbanPage.addPane)}
+            description={_(kanbanPage.addPaneHint)}
           >
-            {_(kanbanPage.addPane)}
-          </button>
+            <div class="kanban-add-menu" role="listbox" aria-label={_(kanbanPage.addPane)}>
+              <For each={unpinnedSources()}>
+                {(source) => (
+                  <button class="kanban-add-item" role="option" onClick={() => pinSource(source)}>
+                    <span class="kanban-add-item-title">{source.entry.title}</span>
+                    <span class="kanban-add-item-scope">
+                      {source.entry.scopeType === "home" ? "HOME" : source.entry.scopeID}
+                    </span>
+                  </button>
+                )}
+              </For>
+            </div>
+          </Popover>
         </Show>
       </div>
 

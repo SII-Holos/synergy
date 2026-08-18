@@ -907,6 +907,20 @@ function createGlobalSync() {
     if (plan.activeSessionIDs.length === 0) return
 
     const sdk = createScopedClient(scopeKey)
+    // Capture freshness tokens before the batch so inbox/todo/DAG events that
+    // arrive while volatileBatch is in flight supersede the older snapshot
+    // instead of being overwritten by it (mirrors the message loader pattern).
+    const sessionRequests = new Map<
+      string,
+      { inbox: SyncResourceRequest; todo: SyncResourceRequest; dag: SyncResourceRequest }
+    >()
+    for (const sessionID of plan.activeSessionIDs) {
+      sessionRequests.set(sessionID, {
+        inbox: captureResourceRequest(scopeKey, sessionID, "inbox"),
+        todo: captureResourceRequest(scopeKey, sessionID, "todo"),
+        dag: captureResourceRequest(scopeKey, sessionID, "dag"),
+      })
+    }
     const states = await sdk.session
       .volatileBatch({
         ...scopeRequest(scopeKey),
@@ -917,17 +931,15 @@ function createGlobalSync() {
     if (!states) return
     for (const sessionID of plan.activeSessionIDs) {
       const state = states[sessionID]
-      if (!state) continue
-      const inboxRequest = captureResourceRequest(scopeKey, sessionID, "inbox")
-      const todoRequest = captureResourceRequest(scopeKey, sessionID, "todo")
-      const dagRequest = captureResourceRequest(scopeKey, sessionID, "dag")
-      applyResourceResponse(scopeKey, sessionID, "inbox", inboxRequest, undefined, () => {
+      const requests = sessionRequests.get(sessionID)
+      if (!state || !requests) continue
+      applyResourceResponse(scopeKey, sessionID, "inbox", requests.inbox, undefined, () => {
         setStore("inbox", sessionID, reconcile(state.inbox, { key: "id" }))
       })
-      applyResourceResponse(scopeKey, sessionID, "todo", todoRequest, undefined, () => {
+      applyResourceResponse(scopeKey, sessionID, "todo", requests.todo, undefined, () => {
         setStore("todo", sessionID, reconcile(state.todo, { key: "id" }))
       })
-      applyResourceResponse(scopeKey, sessionID, "dag", dagRequest, undefined, () => {
+      applyResourceResponse(scopeKey, sessionID, "dag", requests.dag, undefined, () => {
         setStore("dag", sessionID, reconcile(state.dag, { key: "id" }))
       })
     }
