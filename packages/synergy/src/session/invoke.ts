@@ -895,7 +895,6 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           historyBeforeBytes,
           baseline: SessionMemoryPressure.currentSnapshot(),
         })
-        memoryTurn.trackOwner("history.session_messages", sessionMessages, historyBeforeBytes)
         await memoryTurn.stabilizeBeforeProjection()
         let modelSessionMessages = WorkflowUserWrapper.projectMessages({
           messages: sessionMessages,
@@ -906,7 +905,6 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           maxHistoryImages: jobCtx.compactionMaxHistoryImages,
         })
         const projectedHistoryBytes = LLMTurnMemory.estimateBytes(modelProjection.messages)
-        memoryTurn.trackOwner("history.model_projection", modelProjection.messages, projectedHistoryBytes)
         memoryTurn.projected({ historyAfterBytes: projectedHistoryBytes })
         let preparedMessages = [
           ...modelProjection.messages,
@@ -1030,7 +1028,6 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           toolDefinitions: activeToolDefinitions,
         })
         const toolSchemaBytes = LLMTurnMemory.estimateBytes(activeToolDefinitions)
-        const promptMessagesBytes = LLMTurnMemory.estimateBytes(promptPlan.messages)
         const requestBytes = LLMTurnMemory.estimateBytes({
           system: promptPlan.system,
           lateSystem: promptPlan.lateSystem,
@@ -1041,8 +1038,6 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           toolSchemaBytes,
           requestBytes,
         })
-        memoryTurn.trackOwner("prompt.messages", promptPlan.messages, promptMessagesBytes)
-        memoryTurn.trackOwner("prompt.tools", activeToolDefinitions, toolSchemaBytes)
 
         let streamInput: SessionProcessor.ProcessInput | undefined
         function releaseTurnReferences(mutateStreamInput: boolean) {
@@ -1148,7 +1143,6 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           maxOutputTokens: promptDecision.maxOutputTokens,
           memoryTurn,
         }
-        memoryTurn.trackOwner("stream.input", streamInput, requestBytes)
         try {
           const currentStreamInput = streamInput
           const process = () => Promise.race([processor.process(currentStreamInput), deadlinePromise])
