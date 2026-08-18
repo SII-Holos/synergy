@@ -62,6 +62,7 @@ import {
   patchNoteGroupsMany,
   removeNotesFromGroups,
   shouldReplaceEditorContent,
+  isEmptyEditorDoc,
   type NoteChangedField,
   type NoteDirtyField,
   type NoteDirtyRevisions,
@@ -1736,8 +1737,8 @@ function NoteEditor(props: {
 
   function replaceEditorContent(content: unknown) {
     const ed = editor()
-    if (!ed || ed.isDestroyed) return
-    if (!shouldReplaceEditorContent(ed.getJSON(), content)) return
+    if (!ed || ed.isDestroyed) return false
+    if (!shouldReplaceEditorContent(ed.getJSON(), content)) return false
     const scrollParent = ed.view.dom.parentElement
     const scrollTop = scrollParent?.scrollTop
     const { from } = ed.state.selection
@@ -1756,6 +1757,27 @@ function NoteEditor(props: {
         scrollParent.scrollTop = scrollTop
       })
     }
+    return true
+  }
+
+  function seedEditorFromSnapshot(instance?: Editor) {
+    const snapshot = baseNote()
+    if (!snapshot || dirty().content) return
+    const ed = instance ?? editor()
+    if (!ed || ed.isDestroyed) return
+    const current = ed.getJSON()
+    if (!isEmptyEditorDoc(current) && !shouldReplaceEditorContent(current, snapshot.content)) return
+    if (instance) {
+      setEditor(instance)
+      instance.commands.setContent(snapshot.content as any, { emitUpdate: false })
+      return
+    }
+    replaceEditorContent(snapshot.content)
+  }
+
+  function handleEditorReady(instance: Editor) {
+    setEditor(instance)
+    seedEditorFromSnapshot(instance)
   }
 
   function applySnapshot(
@@ -2467,26 +2489,30 @@ function NoteEditor(props: {
       </Show>
 
       <Show when={noteLoaded()}>
-        <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <input
-            type="text"
-            class="w-full border-none bg-transparent text-16-medium text-text-strong outline-none placeholder:text-text-weaker"
-            placeholder={lingui._({ id: N.untitled.id, message: N.untitled.message })}
-            value={title()}
-            onInput={onTitleInput}
-          />
+        <div class="flex min-h-0 flex-1 flex-col">
+          <div class="shrink-0 px-4 pt-4">
+            <input
+              type="text"
+              class="w-full border-none bg-transparent text-16-medium text-text-strong outline-none placeholder:text-text-weaker"
+              placeholder={lingui._({ id: N.untitled.id, message: N.untitled.message })}
+              value={title()}
+              onInput={onTitleInput}
+            />
+          </div>
 
-          <DocumentEditorCore
-            content={baseNote()?.content}
-            onUpdate={() => markDirty("content")}
-            onEditorReady={setEditor}
-            uploadFile={uploadFile}
-            sdkClient={sdk.client}
-            sdkUrl={sdk.url}
-            saving={saving()}
-          />
+          <div class="min-h-0 flex-1 px-4 py-4">
+            <DocumentEditorCore
+              content={baseNote()?.content}
+              onUpdate={() => markDirty("content")}
+              onEditorReady={handleEditorReady}
+              uploadFile={uploadFile}
+              sdkClient={sdk.client}
+              sdkUrl={sdk.url}
+              saving={saving()}
+            />
+          </div>
 
-          <div class="flex flex-wrap items-center gap-1.5">
+          <div class="flex shrink-0 flex-wrap items-center gap-1.5 px-4 pb-4">
             <For each={tags()}>
               {(tag) => (
                 <span class="inline-flex items-center gap-1 rounded-full bg-surface-inset-base px-2.5 py-1 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/35">
