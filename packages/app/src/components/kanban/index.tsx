@@ -1,9 +1,8 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
-import { createStore } from "solid-js/store"
+import { createStore, reconcile } from "solid-js/store"
 import { useNavigate } from "@solidjs/router"
 import { useLingui } from "@lingui/solid"
-import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
-import { reconcile } from "solid-js/store"
+import { createSynergyClient, type WorkflowSetInput } from "@ericsanchezok/synergy-sdk/client"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { Persist, persisted } from "@/utils/persist"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -14,39 +13,24 @@ import { planMessagePageApply } from "@/context/session-message-page"
 import { scopeKeyForNavEntry } from "@/components/sidebar/session-visual-state"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { kanbanPage } from "@/locales/messages"
+import type { ControlProfileId } from "@/context/input"
 import type { NavigationContentProps } from "@/plugin/registries/navigation-registry"
 import { computeBoardPanes, type BoardPane, type BoardPaneSource } from "./model/pane-selection"
 import { createBoardLoader, type BoardLoaderDeps } from "./model/board-loader"
 import { KanbanPane, type BoardPaneData, type BoardPaneLoadState } from "./pane/pane"
+import type { BoardWorkflowKind } from "./pane/composer"
 import { KanbanGrid } from "./layout/grid"
 import { KanbanFocus } from "./layout/focus"
 import "./kanban.css"
 
-export type KanbanLayout = "grid" | "focus"
-
-type KanbanPersisted = {
-  layout: KanbanLayout
-  follow: Record<string, boolean>
-  pinned: string[]
-}
-
-function defaultKanbanPreferences(): KanbanPersisted {
-  return { layout: "grid", follow: {}, pinned: [] }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
-
-export function migrateKanbanPreferences(value: unknown): KanbanPersisted {
-  const base = defaultKanbanPreferences()
-  if (!isRecord(value)) return base
-  return {
-    layout: value.layout === "focus" ? "focus" : "grid",
-    follow: isRecord(value.follow) ? (value.follow as Record<string, boolean>) : {},
-    pinned: Array.isArray(value.pinned) ? value.pinned.filter((x): x is string => typeof x === "string") : [],
-  }
-}
+import {
+  defaultKanbanPreferences,
+  migrateKanbanPreferences,
+  spanFor,
+  type KanbanLayout,
+  type KanbanPersisted,
+  type PaneSpan,
+} from "./model/preferences"
 
 const EMPTY_BOARD_PANE_DATA: BoardPaneData = {
   message: {},
@@ -56,6 +40,7 @@ const EMPTY_BOARD_PANE_DATA: BoardPaneData = {
   session_status: {},
   cortex: [],
   session: [],
+  agent: [],
 }
 
 export function KanbanPanel() {
@@ -183,18 +168,40 @@ export function KanbanPanel() {
     if (pane.kind !== "live") return
     boardLoader.load(pane.scopeKey, pane.sessionID, { force: true })
   }
-
-  const sendToPane = (pane: BoardPane) => async (text: string) => {
-    if (pane.kind !== "live") return
-    // Session.input accepts a plain text part; agent/model fall back to the
-    // session's last used values server-side, so the board composer stays a
-    // thin, scope-aware send surface.
-    const client = createSynergyClient({
+  const clientFor = (pane: BoardPane) =>
+    createSynergyClient({
       baseUrl: globalSDK.url,
       ...(isHomeScope(pane.scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: pane.scopeKey }),
       throwOnError: true,
     })
-    await client.session.input({ sessionID: pane.sessionID, parts: [{ type: "text", text }] })
+
+  const sendToPane = (pane: BoardPane) => async (text: string, options?: { agent?: string }) => {
+    if (pane.kind !== "live") return
+    // Session.input accepts a plain text part; agent/model fall back to the
+    // session's last used values server-side. The composer may override the
+    // agent explicitly (matching the session page's agent selector).
+    await clientFor(pane).session.input({
+      sessionID: pane.sessionID,
+      parts: [{ type: "text", text }],
+      ...(options?.agent ? { agent: options.agent } : {}),
+    })
+  }
+  const updateProfileFor = (pane: BoardPane) => async (profile: ControlProfileId) => {
+    if (pane.kind !== "live") return
+    await clientFor(pane).session.update({
+      sessionID: pane.sessionID,
+      controlProfile: profile,
+      ...(profile === "full_access" ? { resolvePendingPermissions: true } : {}),
+    })
+  }
+
+  const setWorkflowFor = (pane: BoardPane) => async (kind: BoardWorkflowKind) => {
+    if (pane.kind !== "live") return
+    const workflowSetInput: WorkflowSetInput = kind === "lattice" ? { kind, mode: "auto" } : { kind }
+    await clientFor(pane).workflow.session.set({
+      id: pane.sessionID,
+      workflowSetInput,
+    })
   }
 
   const renderPane = (pane: BoardPane, variant: "focus" | "rail" | "default" = "default") => {
@@ -219,6 +226,10 @@ export function KanbanPanel() {
         loadState={loadStateFor(pane)}
         onRetry={retryPane(pane)}
         onSend={sendToPane(pane)}
+        onUpdateProfile={updateProfileFor(pane)}
+        onSetWorkflow={setWorkflowFor(pane)}
+        span={store.freeLayout ? spanFor(store.paneSpans, pane.key) : undefined}
+        onSpanChange={store.freeLayout ? (span) => setStore("paneSpans", pane.key, span) : undefined}
       />
     )
   }
@@ -248,6 +259,42 @@ export function KanbanPanel() {
             {_(kanbanPage.layoutFocus)}
           </button>
         </div>
+        <Show when={layoutMode() === "grid"}>
+          <div class="kanban-grid-config" role="group" aria-label={_(kanbanPage.gridLayoutLabel)}>
+            <label class="kanban-grid-config-field">
+              <span>{_(kanbanPage.gridColumns)}</span>
+              <select
+                value={store.gridCols}
+                onChange={(event) => setStore("gridCols", Number(event.currentTarget.value))}
+              >
+                <option value={1}>1</option>
+                <option value={2}>2</option>
+                <option value={3}>3</option>
+                <option value={4}>4</option>
+              </select>
+            </label>
+            <label class="kanban-grid-config-field">
+              <span>{_(kanbanPage.gridRows)}</span>
+              <select
+                value={store.gridRows}
+                onChange={(event) => setStore("gridRows", Number(event.currentTarget.value))}
+              >
+                <option value={1}>1</option>
+                <option value={2}>2</option>
+                <option value={3}>3</option>
+                <option value={4}>4</option>
+              </select>
+            </label>
+            <label class="kanban-grid-config-toggle" title={_(kanbanPage.gridFreeLayoutHint)}>
+              <input
+                type="checkbox"
+                checked={store.freeLayout}
+                onChange={(event) => setStore("freeLayout", event.currentTarget.checked)}
+              />
+              <span>{_(kanbanPage.gridFreeLayout)}</span>
+            </label>
+          </div>
+        </Show>
         <Show when={unpinnedSources().length > 0}>
           <Popover
             trigger={
@@ -285,7 +332,15 @@ export function KanbanPanel() {
           }
         >
           <Show when={ready()}>
-            <SwitchLayout mode={layoutMode()} panes={panes()} render={renderPane} />
+            <SwitchLayout
+              mode={layoutMode()}
+              panes={panes()}
+              render={renderPane}
+              gridCols={store.gridCols}
+              gridRows={store.gridRows}
+              freeLayout={store.freeLayout}
+              paneSpans={store.paneSpans}
+            />
           </Show>
         </Show>
       </div>
@@ -297,13 +352,24 @@ function SwitchLayout(props: {
   mode: KanbanLayout
   panes: BoardPane[]
   render: (pane: BoardPane, variant?: "focus" | "rail") => ReturnType<typeof KanbanPanel> | null
+  gridCols: number
+  gridRows: number
+  freeLayout: boolean
+  paneSpans: Record<string, PaneSpan>
 }) {
   const panes = () => props.panes
   const render = props.render
   return (
     <>
       <Show when={props.mode === "grid"} fallback={<></>}>
-        <KanbanGrid panes={panes()} renderPane={(pane) => render(pane)} />
+        <KanbanGrid
+          panes={panes()}
+          renderPane={(pane) => render(pane)}
+          cols={props.gridCols}
+          rows={props.gridRows}
+          freeLayout={props.freeLayout}
+          paneSpans={props.paneSpans}
+        />
       </Show>
       <Show when={props.mode === "focus"} fallback={<></>}>
         <KanbanFocus panes={panes()} renderPane={(pane, variant) => render(pane, variant) ?? <></>} />

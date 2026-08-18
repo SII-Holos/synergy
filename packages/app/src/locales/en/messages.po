@@ -2856,6 +2856,22 @@ msgid "app.kanban.aria.layout"
 msgstr "Board layout"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.agent"
+msgstr "Agent"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.defaultAgent"
+msgstr "Default agent"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.permission"
+msgstr "Permission"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.workflow"
+msgstr "Mode"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.empty"
 msgstr "No sessions on the board"
 
@@ -2866,6 +2882,26 @@ msgstr "Running and waiting sessions appear here automatically. Pin any session 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.follow"
 msgstr "Follow latest"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.columns"
+msgstr "Columns"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.freeLayout"
+msgstr "Free layout"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.freeLayoutHint"
+msgstr "Arrange panes freely; each pane can span multiple cells"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.layoutLabel"
+msgstr "Grid layout"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.rows"
+msgstr "Rows"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.layout.focus"
@@ -2888,6 +2924,26 @@ msgid "app.kanban.openSession"
 msgstr "Open session"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pane.span"
+msgstr "Size"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pane.span.1x1"
+msgstr "1 × 1"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pane.span.1x2"
+msgstr "1 × 2"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pane.span.2x1"
+msgstr "2 × 1"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pane.span.2x2"
+msgstr "2 × 2"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.pinPane"
 msgstr "Pin"
 
@@ -2908,6 +2964,22 @@ msgid "app.kanban.sendPlaceholder"
 msgstr "Message this session…"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.busy"
+msgstr "Working…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.idle"
+msgstr "Idle"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.recovering"
+msgstr "Recovering…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.retry"
+msgstr "Retrying…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.title"
 msgstr "Kanban"
 
@@ -2922,6 +2994,22 @@ msgstr "Paused"
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.unpinPane"
 msgstr "Unpin"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.boss"
+msgstr "Boss"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.lattice"
+msgstr "Lattice"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.none"
+msgstr "Default"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.plan"
+msgstr "Plan"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.arm"

@@ -1,7 +1,9 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
+import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
 import type {
+  Agent,
   AssistantMessage,
   CortexTask,
   FileDiff,
@@ -21,6 +23,7 @@ import { SessionTurn } from "@ericsanchezok/synergy-ui/session-turn"
 import { buildSessionTurnProjection } from "@ericsanchezok/synergy-ui/session-turn-projection"
 import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
+import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { ConversationViewport } from "@/components/session/conversation-viewport"
 import { buildConversationTimelineSnapshot } from "@/components/session/conversation-timeline"
 import { messagesFrom, selectMessagesInCanonicalOrder } from "@/components/session/session-message-order"
@@ -29,7 +32,11 @@ import { hasMessageWindowSnapshot, type MessageWindowMetadata } from "@/context/
 import { useLocale } from "@/context/locale"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { kanbanPage } from "@/locales/messages"
+import { translateDescriptor } from "@/locales/translate"
 import type { BoardPane } from "../model/pane-selection"
+import { parsePaneSpan, paneSpanLabel, type PaneSpan } from "../model/preferences"
+import { KanbanPaneComposer, type BoardWorkflowKind } from "./composer"
+import type { ControlProfileId } from "@/context/input"
 import "../kanban.css"
 
 export type BoardPaneData = {
@@ -42,6 +49,7 @@ export type BoardPaneData = {
   question?: Record<string, QuestionRequest[]>
   cortex: CortexTask[]
   session: Session[]
+  agent: Agent[]
 }
 
 export type BoardPaneLoadState = {
@@ -75,10 +83,16 @@ export function KanbanPane(props: {
   compact?: boolean
   loadState?: () => BoardPaneLoadState | undefined
   onRetry?: () => void
-  onSend: (text: string) => Promise<void>
+  onSend: (text: string, options?: { agent?: string }) => Promise<void>
+  onUpdateProfile: (profile: ControlProfileId) => Promise<void>
+  onSetWorkflow: (kind: BoardWorkflowKind) => Promise<void>
+  /** Free-layout span controls (grid mode only). */
+  span?: PaneSpan
+  onSpanChange?: (span: PaneSpan) => void
 }) {
   const { _ } = useLingui()
-  const { fmt } = useLocale()
+  const { fmt, i18n } = useLocale()
+  const translateCopy = (descriptor: MessageDescriptor) => translateDescriptor(descriptor, i18n)
   const [scrolledUp, setScrolledUp] = createSignal(false)
 
   const messages = createMemo(() => props.data.message[props.pane.sessionID] ?? [])
@@ -151,27 +165,11 @@ export function KanbanPane(props: {
     autoScroll.scrollRef(undefined)
   })
 
-  // Per-pane composer: a plain text input that posts to session.input, so the
-  // board stays a live control surface instead of a read-only monitor.
-  const [draft, setDraft] = createSignal("")
-  const [sending, setSending] = createSignal(false)
-  const submitDraft = async () => {
-    const text = draft().trim()
-    if (!text || sending()) return
-    setSending(true)
-    try {
-      await props.onSend(text)
-      setDraft("")
-    } catch (error) {
-      showToast({
-        type: "error",
-        title: _(kanbanPage.sendFailed),
-        description: error instanceof Error ? error.message : undefined,
-      })
-    } finally {
-      setSending(false)
-    }
-  }
+  // Session-level data for the full composer (agent picker / profile /
+  // workflow menu / status bar). Live panes only.
+  const liveSession = createMemo(() =>
+    props.pane.kind === "live" ? props.data.session.find((s) => s.id === props.pane.sessionID) : undefined,
+  )
 
   return (
     <div
@@ -202,6 +200,39 @@ export function KanbanPane(props: {
         </span>
         <span class="kanban-pane-time">{lastActivity()}</span>
         <div class="kanban-pane-actions">
+          <Show when={props.onSpanChange}>
+            <Popover
+              trigger={
+                <button class="kanban-pane-action" title={_(kanbanPage.paneSpan)}>
+                  <Icon name={getSemanticIcon("action.more")} size="small" />
+                </button>
+              }
+              title={_(kanbanPage.paneSpan)}
+            >
+              <div class="kanban-pane-span-menu" role="listbox" aria-label={_(kanbanPage.paneSpan)}>
+                <For
+                  each={
+                    [
+                      ["1x1", kanbanPage.paneSpan1x1],
+                      ["2x1", kanbanPage.paneSpan2x1],
+                      ["1x2", kanbanPage.paneSpan1x2],
+                      ["2x2", kanbanPage.paneSpan2x2],
+                    ] as const
+                  }
+                >
+                  {(item) => (
+                    <button
+                      class="kanban-pane-span-item"
+                      data-active={(props.span && paneSpanLabel(props.span) === item[0]) || undefined}
+                      onClick={() => props.onSpanChange?.(parsePaneSpan(item[0]))}
+                    >
+                      {translateCopy(item[1])}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </Popover>
+          </Show>
           <Show when={props.pane.kind === "live"}>
             <button
               class="kanban-pane-action"
@@ -315,25 +346,15 @@ export function KanbanPane(props: {
         </Show>
       </div>
       <Show when={props.pane.kind === "live"}>
-        <form
-          class="kanban-pane-composer"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void submitDraft()
-          }}
-        >
-          <input
-            class="kanban-pane-input"
-            type="text"
-            value={draft()}
-            placeholder={_(kanbanPage.sendPlaceholder)}
-            disabled={sending()}
-            onInput={(event) => setDraft(event.currentTarget.value)}
-          />
-          <button class="kanban-pane-send" type="submit" disabled={sending() || !draft().trim()}>
-            <Icon name={getSemanticIcon("prompt.send")} size="small" />
-          </button>
-        </form>
+        <KanbanPaneComposer
+          sessionID={props.pane.sessionID}
+          agents={props.data.agent}
+          session={liveSession()}
+          status={props.data.session_status[props.pane.sessionID]}
+          onSend={props.onSend}
+          onUpdateProfile={props.onUpdateProfile}
+          onSetWorkflow={props.onSetWorkflow}
+        />
       </Show>
     </div>
   )

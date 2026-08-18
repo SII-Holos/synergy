@@ -2856,6 +2856,22 @@ msgid "app.kanban.aria.layout"
 msgstr "看板布局"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.agent"
+msgstr "智能体"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.defaultAgent"
+msgstr "默认智能体"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.permission"
+msgstr "权限"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.workflow"
+msgstr "模式"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.empty"
 msgstr "看板上没有会话"
 
@@ -2866,6 +2882,26 @@ msgstr "运行中和等待中的会话会自动出现在这里。固定任意会
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.follow"
 msgstr "跟随最新"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.columns"
+msgstr "列数"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.freeLayout"
+msgstr "自由布局"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.freeLayoutHint"
+msgstr "自由排列窗格；每个窗格可跨多个单元格"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.layoutLabel"
+msgstr "网格布局"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.rows"
+msgstr "行数"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.layout.focus"
@@ -2888,6 +2924,26 @@ msgid "app.kanban.openSession"
 msgstr "打开会话"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pane.span"
+msgstr "尺寸"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pane.span.1x1"
+msgstr "1 × 1"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pane.span.1x2"
+msgstr "1 × 2"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pane.span.2x1"
+msgstr "2 × 1"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pane.span.2x2"
+msgstr "2 × 2"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.pinPane"
 msgstr "固定"
 
@@ -2908,6 +2964,22 @@ msgid "app.kanban.sendPlaceholder"
 msgstr "向此会话发送消息…"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.busy"
+msgstr "工作中…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.idle"
+msgstr "空闲"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.recovering"
+msgstr "恢复中…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.retry"
+msgstr "重试中…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.title"
 msgstr "看板"
 
@@ -2922,6 +2994,22 @@ msgstr "已暂停"
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.unpinPane"
 msgstr "取消固定"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.boss"
+msgstr "Boss"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.lattice"
+msgstr "Lattice"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.none"
+msgstr "默认"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.plan"
+msgstr "Plan"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.arm"
