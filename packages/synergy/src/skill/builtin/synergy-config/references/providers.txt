@@ -259,12 +259,18 @@ Fields:
 - `modelsDevProviderID` — canonical Models.dev provider ID whose model catalog this connection inherits
 - `api` — base API URL (alternative to `options.baseURL`)
 - `env` — array of env var names to check for API key
-- `options` — passed to SDK constructor. Common: `apiKey`, `baseURL`, `timeout`, `enterpriseUrl`, `setCacheKey`
+- `options` — passed to the SDK constructor. Common: `apiKey`, `baseURL`, `timeout`, `queryParams`, `enterpriseUrl`, `setCacheKey`
 - `options.timeout` — request timeout in ms (default 300000). Set `false` to disable.
 - `models` — manually specify models. Key is display name, `id` is what's sent to API.
 - `models.<name>.cost` — `input` and `output` per million tokens
 - `models.<name>.limit` — `context` and `output` token limits
-- `models.<name>.options` — model-level SDK options that override provider-level `options` (see below)
+- `models.<name>.options` — model-level SDK options that override provider-level `options`; unknown keys are forwarded into the request body as extra args (see the relay section below)
+- `models.<name>.reasoning` — declare the model as a reasoning model so effort variants are generated (boolean)
+- `models.<name>.reasoning_options` — effort values the API accepts, e.g. `[{ "type": "effort", "values": ["low", "medium", "high"] }]`
+- `models.<name>.interleaved` — declare streaming reasoning delivery, e.g. `{ "field": "reasoning_content" }` for DeepSeek-style APIs
+- `models.<name>.headers` — extra HTTP headers for this model (merged over provider headers)
+- `models.<name>.variants` — named variant option packs (see `references/models.txt`)
+- `models.<name>.modalities` / `tool_call` / `attachment` / `temperature` — capability flags used by feature gating and the UI
 - `whitelist` — only load these models (from registry)
 - `blacklist` — exclude these models
 
@@ -307,6 +313,63 @@ In this example:
 - **DeepSeek V3** overrides both `baseURL` and `apiKey` with its own values
 
 The merge rule: `model.options` spreads over `provider.options` (`{ ...provider.options, ...model.options }`). Any field set at the model level replaces the provider-level value.
+
+## Third-party relays and OpenAI-compatible gateways (中转站)
+
+Most third-party relay services — OpenAI-compatible aggregators, Chinese relay stations (中转站), corporate gateways — are configured as a custom provider with `@ai-sdk/openai-compatible`. `options` exist at two levels, and mixing them up is the most common failure:
+
+| Level | Reaches | Use for |
+|---|---|---|
+| `provider.<id>.options` | SDK constructor only | `baseURL`, `apiKey`, `headers`, `queryParams`, `timeout` |
+| `models.<name>.options` | SDK constructor AND request body | per-model endpoint/key overrides PLUS extra request-body args the relay requires |
+
+**Extra args (thinking switches, template args, vendor fields) must be written at the model level.** Unknown keys in `provider.<id>.options` are silently ignored; unknown keys in `models.<name>.options` are forwarded into the `/chat/completions` request body verbatim.
+
+Common relay-specific request-body args:
+- `enable_thinking: true` or `thinking: { "type": "enabled", "budgetTokens": 8192 }` — thinking-mode toggles (provider-dependent)
+- `reasoningEffort: "high"` — mapped by the SDK to `reasoning_effort`
+- `chat_template_kwargs`, `extra_body`, and other vendor fields — forwarded verbatim when written at the model level
+
+Full relay example — one connection, two backends:
+
+```jsonc
+{
+  "provider": {
+    "my-relay": {
+      "name": "My Relay",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "https://relay.example.com/v1",
+        "timeout": 600000
+      },
+      "models": {
+        "DeepSeek V4": {
+          "id": "deepseek-v4",
+          "name": "DeepSeek V4",
+          "reasoning": true,
+          "reasoning_options": [{ "type": "effort", "values": ["low", "medium", "high"] }],
+          "interleaved": { "field": "reasoning_content" },
+          "limit": { "context": 131072, "output": 16384 },
+          "options": { "enable_thinking": true }
+        },
+        "Claude via relay": {
+          "id": "claude-sonnet-4-5",
+          "name": "Claude via Relay",
+          "npm": "@ai-sdk/anthropic",
+          "limit": { "context": 200000, "output": 8192 },
+          "options": { "thinking": { "type": "enabled", "budgetTokens": 8192 } }
+        }
+      }
+    }
+  }
+}
+```
+
+Notes:
+- `interleaved` with `reasoning_content` is required for DeepSeek-style relays that stream reasoning separately — without it Synergy does not pass `reasoning_content` back and the API errors with "The reasoning_content in the thinking mode must be passed back to the API."
+- `reasoning` + `reasoning_options` generate the effort variants (low/medium/high/...) shown in model role and variant pickers. Without them the relay's default reasoning behavior is used and no effort selector appears.
+- `queryParams` (e.g. `{ "api-version": "..." }`) is only honored at the SDK level, so it belongs in `provider.<id>.options`.
+- The Settings custom-provider wizard captures `reasoning` but not `reasoning_options` / `interleaved`; declare those fields in JSONC directly.
 
 ## Bundled SDK packages
 
@@ -444,3 +507,6 @@ For any OpenAI-compatible server, use `@ai-sdk/openai-compatible` as the SDK and
 - **API key not working** — verify the key format matches the provider variant (e.g., Coding Plan keys need the `-coding-plan` provider variant); check for extra whitespace; try the key with `curl` against the provider's API directly.
 - **Local model connection refused** — verify the server is running and the `baseURL` is correct; check the port number; ensure the server exposes an OpenAI-compatible `/v1` endpoint.
 - **Registry fetch failed** — if `https://models.dev/api.json` is unreachable, Synergy falls back to the local cache at `~/.synergy/cache/models.json`; you can also manually add providers via config.
+- **Extra args not taking effect (e.g. `enable_thinking` ignored)** — extra request-body args must live in `models.<name>.options`, not `provider.<id>.options`. Unknown keys in provider-level options are silently ignored.
+- **"reasoning_content ... must be passed back" error** — declare `interleaved: { "field": "reasoning_content" }` on the model so Synergy replays reasoning content on assistant messages.
+- **No reasoning-effort variants for a relay model** — declare `reasoning: true` and `reasoning_options` on the model. Without `reasoning: true` no variants are generated.

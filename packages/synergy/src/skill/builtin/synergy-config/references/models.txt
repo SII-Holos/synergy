@@ -83,6 +83,31 @@ Models can have variants (e.g., different reasoning effort levels). Variants are
 }
 ```
 
+### Declaring reasoning variants for custom / relay models
+
+Custom providers (including third-party relays / 中转站) get effort variants only when the model is declared as a reasoning model. Without this, the model uses the relay's default reasoning behavior and no effort selector appears:
+
+```jsonc
+{
+  "provider": {
+    "my-relay": {
+      "npm": "@ai-sdk/openai-compatible",
+      "options": { "baseURL": "https://relay.example.com/v1" },
+      "models": {
+        "DeepSeek V4": {
+          "id": "deepseek-v4",
+          "reasoning": true,
+          "reasoning_options": [{ "type": "effort", "values": ["low", "medium", "high"] }],
+          "limit": { "context": 131072, "output": 16384 }
+        }
+      }
+    }
+  }
+}
+```
+
+`reasoning: true` gates variant generation entirely. `reasoning_options` declares the effort values the API accepts; when omitted, Synergy falls back to `low`/`medium`/`high`. You can also hand-author `variants` under a model to add or override named option packs (e.g. a relay-specific `thinking` toggle) — explicit variants are merged after the automatic defaults. See `references/providers.txt` for the relay walkthrough and the provider/model option-level split.
+
 ## Role variants
 
 Use `role_variant` in `10-models.jsonc` to select a default variant for each model role. Valid role keys are `vision`, `nano`, `mini`, `mid`, `thinking`, `long`, and `creative`; `default` applies to agents without a `modelRole`. Variant names are model-specific, so the model resolved for that role must expose the configured variant.
