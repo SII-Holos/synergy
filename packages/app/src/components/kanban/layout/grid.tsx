@@ -31,7 +31,8 @@ export function KanbanGrid(props: {
       : {
           display: "grid",
           "grid-template-columns": `repeat(${props.cols}, minmax(0, 1fr))`,
-          "grid-auto-rows": "minmax(260px, auto)",
+          "grid-template-rows": `repeat(${props.rows}, minmax(0, 1fr))`,
+          "grid-auto-rows": "260px",
         }
 
   return (

@@ -173,7 +173,7 @@
 
 .kanban-grid-cell {
   min-width: 0;
-  min-height: 260px;
+  min-height: 0;
 }
 
 /* --- Focus layout --- */
