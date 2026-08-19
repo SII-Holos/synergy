@@ -22,9 +22,15 @@
   }
 }
 
-.stb-folder {
+.stb-project-name {
   flex-shrink: 0;
-  color: var(--icon-base);
+  max-width: 13rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-base);
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .stb-slash {

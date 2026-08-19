@@ -364,12 +364,23 @@ async function checkGeneratedFreshness(root: string, errors: string[]): Promise<
   }
 }
 
+/**
+ * Restrict staged markdown files to the same document scope the full check
+ * covers, so pre-commit and `doc:check` agree on which files must satisfy the
+ * paragraph-wrap contract. Files outside that scope (e.g. PRODUCT.md) keep
+ * their own formatting conventions.
+ */
+export function filterStagedFiles(staged: string[], scope: string[], cwd: string): string[] {
+  return staged.filter((file) => scope.includes(path.resolve(cwd, file)))
+}
+
 export async function runDocCheck(options: DocCheckOptions = {}): Promise<DocCheckResult> {
   const root = options.root ?? REPO_ROOT
   const cwd = options.cwd ?? root
   const errors: string[] = []
   let fixed = 0
-  const files = options.staged ? await stagedFiles(cwd) : await collectMarkdownFiles(root)
+  const scope = await collectMarkdownFiles(root)
+  const files = options.staged ? filterStagedFiles(await stagedFiles(cwd), scope, cwd) : scope
   await checkLinks(files, cwd, errors)
   fixed += await checkWrap(files, cwd, errors, options.fix ?? false)
   if (!options.staged) {
