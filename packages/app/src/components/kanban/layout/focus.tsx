@@ -7,6 +7,8 @@ import { FlipPanes } from "../flip"
 import { FOCUS_RAIL_MAX, FOCUS_RAIL_MIN } from "../model/preferences"
 
 const KEYBOARD_RESIZE_STEP = 16
+/** Divider track width between the main pane and the rail. */
+const FOCUS_DIVIDER_WIDTH = 12
 
 export function KanbanFocus(props: {
   panes: BoardPane[]
@@ -65,11 +67,15 @@ export function KanbanFocus(props: {
   const railKeys = createMemo(() => snapshot().keys.filter((key) => key !== active()?.key))
 
   const focusStyle = () => ({
-    "grid-template-columns": `minmax(0, 1fr) ${railWidth()}px`,
+    "grid-template-columns": `minmax(0, 1fr) ${FOCUS_DIVIDER_WIDTH}px ${railWidth()}px`,
   })
 
+  const bindRoot = (element: HTMLDivElement) => {
+    container = element
+  }
+
   return (
-    <FlipPanes entries={props.panes} class="kanban-focus" style={focusStyle()}>
+    <FlipPanes entries={props.panes} class="kanban-focus" style={focusStyle} rootRef={bindRoot}>
       <Show when={active()}>
         {(current) => (
           <div class="kanban-focus-main" data-pane-key={current().key}>

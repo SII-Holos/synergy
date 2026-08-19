@@ -1,4 +1,4 @@
-import { createRenderEffect, on, type JSX, type ParentProps } from "solid-js"
+import { createMemo, createRenderEffect, on, type JSX, type ParentProps } from "solid-js"
 
 const EASING_REPOSITION = "cubic-bezier(0.2, 0, 0, 1)"
 const DURATION_REPOSITION = 250
@@ -19,12 +19,19 @@ export function FlipPanes(
   props: ParentProps<{
     entries: readonly unknown[]
     class?: string
-    style?: JSX.CSSProperties
+    style?: JSX.CSSProperties | (() => JSX.CSSProperties)
+    /** Bind the container element (e.g. for measuring during a resize drag). */
+    rootRef?: (element: HTMLDivElement) => void
   }>,
 ) {
   let container: HTMLDivElement | undefined
   let previousPositions: Map<string, { left: number; top: number }> | undefined
   const reduceMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+
+  const bindRoot = (element: HTMLDivElement) => {
+    container = element
+    props.rootRef?.(element)
+  }
 
   const query = () => Array.from(container?.querySelectorAll<HTMLElement>("[data-pane-key]") ?? [])
 
@@ -86,6 +93,11 @@ export function FlipPanes(
     })
   }
 
+  // Resolve the style prop explicitly: when a component passes an accessor
+  // (e.g. the focus layout's reactive grid-template-columns), call it inside a
+  // memo so Solid tracks its signal dependencies and re-applies on change.
+  const style = createMemo(() => (typeof props.style === "function" ? props.style() : props.style))
+
   createRenderEffect(
     on(
       () => props.entries,
@@ -94,7 +106,7 @@ export function FlipPanes(
   )
 
   return (
-    <div ref={container!} class={props.class} style={props.style}>
+    <div ref={bindRoot} class={props.class} style={style()}>
       {props.children}
     </div>
   )
