@@ -28,6 +28,9 @@ export function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps)
       .find((item) => item.id === messageID) as UserMessage | undefined
     return message?.summary?.diffs
   })
+  // Explicit exemption: undefined session_diff keeps the "loading" fallback
+  // and gates diff fetching below; the view layer's empty array (truthy)
+  // would change both semantics.
   const sessionDiffs = createMemo(() => (params.id ? sync.data.session_diff[params.id] : undefined))
   const diffs = createMemo(() => turnDiffs() ?? sessionDiffs())
   const selectedFile = createMemo(() => props.tab.resourceId)
@@ -36,6 +39,8 @@ export function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps)
     const id = params.id
     if (!id) return
     if (turnDiffs() !== undefined) return
+    // Explicit exemption: undefined means "not fetched yet" (same loading
+    // gate as above).
     if (sync.data.session_diff[id] !== undefined) return
     void sync.session.diff(id)
   }

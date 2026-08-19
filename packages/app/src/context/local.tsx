@@ -351,6 +351,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           hasDraft: session.has(model),
           draft: session.get(model),
           model,
+          // Explicit exemption: resolveSessionVariant treats messages ===
+          // undefined as "session not ready"; the view layer's empty array
+          // would flip the variant-ready semantics.
           messages: id ? sync.data.message[id] : undefined,
         })
       })

@@ -621,6 +621,9 @@ function SessionPageContent() {
           decideSessionTransitionHandoff({
             messageID: handoff.messageID,
             messages: messages(),
+            // Explicit exemption: decideSessionTransitionHandoff branches on
+            // inbox === undefined to trigger refresh; the view layer's shared
+            // empty array would change that loading semantics.
             inbox: sync.data.inbox[sessionID],
             elapsedMs: 0,
             refreshAttempted: true,
@@ -638,6 +641,9 @@ function SessionPageContent() {
     const sessionID = params.id
     if (!sessionID || visibleSessionTransitionEntry()) return
     const recovered = recoverSessionTransitionHandoff({
+      // Explicit exemption: recoverSessionTransitionHandoff distinguishes
+      // "not loaded" (undefined) from "loaded empty" via these buckets; the
+      // view layer's empty arrays would break the gate.
       messages: sync.data.message[sessionID],
       inbox: sync.data.inbox[sessionID],
     })
@@ -696,6 +702,7 @@ function SessionPageContent() {
     const decision = decideSessionTransitionHandoff({
       messageID: entry.handoff.messageID,
       messages: messages(),
+      // Explicit exemption: same undefined-loading semantics as above.
       inbox: sync.data.inbox[sessionID],
       elapsedMs: Math.max(0, Date.now() - acceptedAt),
       refreshAttempted: entry.handoff.refreshAttempted ?? false,
@@ -1656,6 +1663,9 @@ function SessionPageContent() {
             </div>
             <div class="flex-1 min-h-0 overflow-auto">
               <Show
+                // Explicit exemption: undefined session_diff shows the
+                // "loading changes" fallback; the view layer's shared empty
+                // array (truthy) would flip that loading semantics.
                 when={params.id && sync.data.session_diff[params.id]}
                 fallback={
                   <div class="px-4 py-4 text-13-regular text-text-weak">{i18n._(AP.sessionLoadingChanges.id)}</div>

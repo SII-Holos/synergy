@@ -35,3 +35,15 @@ Read paths keep their exact reactivity: accessors are thin closures whose store-
 Public API impact is additive only: `useData()` gains `view`, `Data` gains optional fields, `SessionTurn`/`TimelineDisplay` props are unchanged.
 
 Coverage: view-layer null-safety matrix + identity test, `session-switch-stress.dom.test.ts` (rapid bucket clearing/replacement and whole-store clear/restore with zero render errors), and `turnMessagesFor(undefined)` projection test.
+
+### Explicit exemptions (undefined-carrying loading semantics)
+
+The following direct store reads are intentionally NOT routed through the view layer. Each site branches on `undefined` to distinguish "not loaded" from "loaded empty"; the view layer's shared empty arrays (always truthy) would silently change that behavior. Each site carries an inline `Explicit exemption` comment in code.
+
+- `packages/app/src/pages/session.tsx` — `decideSessionTransitionHandoff` calls (inbox) and `recoverSessionTransitionHandoff` (messages + inbox): handoff resolution branches on `inbox === undefined` to trigger refresh and distinguishes "not loaded" from "loaded empty" during session recovery.
+- `packages/app/src/pages/session.tsx` — mobile review `Show when={session_diff}` and `tool-session-review.tsx` `sessionDiffs`/`loadDiffs`: `undefined` renders the "loading changes" fallback and gates diff fetching.
+- `packages/app/src/context/local.tsx` — `resolveSessionVariant` messages input: `undefined` means "session not ready" for variant resolution.
+- `packages/app/src/components/session/session-inbox.tsx` — `deriveSessionInboxView` input: `undefined` yields the `loading` status (this file WAS migrated to the view layer — `inboxFor` returns the shared empty array for a missing bucket, which `deriveSessionInboxView` maps to the `empty` status; see `session-inbox-utils.ts`).
+- `packages/app/src/context/session-data-view.ts` — the view layer itself and `sync.tsx` internals are the only remaining store reads by construction.
+
+The full migration inventory lives in the PR description for #1211; the grep gate (`sync.data.<sessionField>[` / `data.store.*` outside view-layer and the exemptions above) is part of the done criteria.

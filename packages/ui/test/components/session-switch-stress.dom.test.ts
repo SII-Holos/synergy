@@ -12,6 +12,7 @@ interface SessionSwitchStressHarness {
   replacePermissionBucket: (sessionID: string, permissions: unknown[] | undefined) => void
   replaceSessionStatus: (sessionID: string, status: unknown | undefined) => void
   replaceWithFreshObjects: () => void
+  replaceMessagesGrown: () => void
   clearAllBuckets: () => void
   restoreBuckets: () => void
   getErrors: () => number
@@ -88,6 +89,7 @@ beforeAll(async () => {
         providerID: "provider",
       }
       const doneAssistant = { ...baseAssistant, id: doneID, time: { created: 2, completed: 3 } }
+      const secondAssistant = { ...baseAssistant, id: "assistant-stress-2", time: { created: 4, completed: 5 } }
 
       // Replacement buckets must carry structurally complete messages: the
       // render chain reads time/role/rootID off them. In production these
@@ -200,6 +202,17 @@ beforeAll(async () => {
           setStore("part", doneID, [doneTextPart])
           setStore("permission", sessionID, [])
           setStore("session_status", sessionID, { type: "busy" })
+        },
+        replaceMessagesGrown: () => {
+          // Grows the display window (a second assistant becomes the latest)
+          // while simultaneously clearing the part buckets: the projection
+          // source is replaced in the same batch, so any stale index into
+          // displayItemProjections transiently lands on a missing/out-of-range
+          // slot. The ?.() ?? [] guard must degrade that to an empty array
+          // instead of throwing.
+          setStore("message", sessionID, [buildUser(rootID), buildAssistant(doneID), buildAssistant("assistant-stress-2")])
+          setStore("part", doneID, undefined)
+          setStore("permission", sessionID, undefined)
         },
         clearAllBuckets: () => setStore(emptyState()),
         restoreBuckets: () => setStore(fullState()),
@@ -319,6 +332,21 @@ describe("SessionTurn session-switch resilience", () => {
     expect(await waitUntil(() => answerRow() !== null)).toBe(true)
 
     harness.clearAllBuckets()
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    harness.restoreBuckets()
+
+    expect(harness.getErrors()).toBe(0)
+    expect(await waitUntil(() => answerRow() !== null)).toBe(true)
+  })
+
+  test("projection index miss degrades to an empty array without throwing", async () => {
+    // Done Criteria #3: grow the display window while clearing part buckets in
+    // the same batch. latestAssistantTimelineItems recomputes from a stale
+    // displayItems index during the switch, so displayItemProjections()[index]
+    // must be guarded with ?.() ?? [] instead of throwing on undefined.
+    expect(await waitUntil(() => answerRow() !== null)).toBe(true)
+
+    harness.replaceMessagesGrown()
     await new Promise((resolve) => setTimeout(resolve, 10))
     harness.restoreBuckets()
 
