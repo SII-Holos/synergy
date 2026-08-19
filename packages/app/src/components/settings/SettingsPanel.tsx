@@ -61,6 +61,7 @@ import {
   retainDraftAfterSave,
   saveExplicitSettingsChanges,
   snapshotSettingsDraft,
+  themeIdToSettingsValue,
 } from "./settings-explicit-save"
 import { prepareLocaleSettingsSave, rejectLocaleSettingsSave } from "./settings-locale-save"
 import { pluginSettingsResourceKey } from "./plugin-settings-resource"
@@ -485,6 +486,16 @@ export function SettingsPanel(props: SettingsPanelProps) {
     if (submittedDraft && currentDraft) {
       setSettings(reconcile(rebaseDraftAfterSave(snapshotSettingsDraft(settings), submittedDraft, currentDraft)))
     }
+    if (submittedDraft) restoreInstantTheme()
+  }
+
+  // Theme is applied instantly and persisted by a background update, so the
+  // server config resource may still hold the previous value when the panel
+  // re-initializes. Restore the live provider value on discard and after an
+  // explicit save so the picker stays in sync with the applied appearance.
+  // Config imports skip this: there the server value is the intended one.
+  function restoreInstantTheme() {
+    setSettings("general", "theme", themeIdToSettingsValue(theme.themeId()))
   }
 
   const serverPatch = createMemo<Record<string, unknown>>(() => {
@@ -528,7 +539,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
       plugin: pluginDraftVersion(),
       personalize: [personalizeController.content(), personalizeController.resetPending()],
       font: [font.selected("sans"), font.selected("mono")],
-      colorScheme: settings.general.colorScheme,
       desktopUpdate: desktopUpdateDraft(),
       desktopZoom: desktopZoomDraft(),
     }),
@@ -546,9 +556,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     setDesktopZoomDraft(undefined)
     resetEditor()
     doEnsureInit()
-    // Restore instant-applied theme — ensureInit reads `theme` from the server config resource
-    // which may still hold the previous value if the background save hasn't landed yet.
-    setSettings("general", "theme", theme.themeId() === "synergy" ? "" : theme.themeId())
+    restoreInstantTheme()
   }
 
   const save = useSettingsSave({

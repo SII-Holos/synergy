@@ -11,9 +11,14 @@ export function retainDraftAfterSave<T>(current: T | undefined, submitted: T): T
   return current === submitted ? undefined : current
 }
 
-// `themeIdToApplyAfterSave` was removed — theme is now applied instantly on
-// selection and persisted via a background domain update, so the normal
-// save-changes flow no longer needs to extract it from the patch.
+// Theme is applied instantly on selection and persisted via a background
+// domain update, so the explicit save flow no longer extracts it from the
+// patch. When the panel re-reads server config that has not yet received the
+// background update, callers restore the live provider value with
+// `themeIdToSettingsValue` so a stale server value never overrides it.
+export function themeIdToSettingsValue(themeId: string, defaultThemeId = "synergy"): string {
+  return themeId === defaultThemeId ? "" : themeId
+}
 
 export function snapshotSettingsDraft<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
