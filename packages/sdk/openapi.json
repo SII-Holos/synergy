@@ -6796,6 +6796,20 @@
                           }
                         },
                         "required": ["type", "messageID"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "through"
+                          },
+                          "messageID": {
+                            "type": "string",
+                            "pattern": "^msg.*"
+                          }
+                        },
+                        "required": ["type", "messageID"]
                       }
                     ]
                   },

@@ -20,7 +20,7 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { useTheme } from "@ericsanchezok/synergy-ui/theme"
+import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
 import type {
   ChannelStatus,
   ConfigDomainSummary,
@@ -61,7 +61,7 @@ import {
   retainDraftAfterSave,
   saveExplicitSettingsChanges,
   snapshotSettingsDraft,
-  themeIdToApplyAfterSave,
+  themeIdToSettingsValue,
 } from "./settings-explicit-save"
 import { prepareLocaleSettingsSave, rejectLocaleSettingsSave } from "./settings-locale-save"
 import { pluginSettingsResourceKey } from "./plugin-settings-resource"
@@ -210,6 +210,7 @@ const copy = {
     message: "Moved to {path}",
   },
   interfaceZoomRow: { id: "settings.catalog.general.row.zoom", message: "Interface Zoom" },
+  themeSaveFailed: { id: "settings.panel.theme.saveFailed", message: "Theme change could not be saved" },
 }
 
 export type SettingsPanelProps = DialogSettingsProps & {
@@ -486,6 +487,16 @@ export function SettingsPanel(props: SettingsPanelProps) {
     if (submittedDraft && currentDraft) {
       setSettings(reconcile(rebaseDraftAfterSave(snapshotSettingsDraft(settings), submittedDraft, currentDraft)))
     }
+    if (submittedDraft) restoreInstantTheme()
+  }
+
+  // Theme is applied instantly and persisted by a background update, so the
+  // server config resource may still hold the previous value when the panel
+  // re-initializes. Restore the live provider value on discard and after an
+  // explicit save so the picker stays in sync with the applied appearance.
+  // Config imports skip this: there the server value is the intended one.
+  function restoreInstantTheme() {
+    setSettings("general", "theme", themeIdToSettingsValue(theme.themeId()))
   }
 
   const serverPatch = createMemo<Record<string, unknown>>(() => {
@@ -502,7 +513,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
     pluginDraftVersion()
     return pluginDrafts.dirty()
   }
-  const colorSchemeDirty = () => settings.general.colorScheme !== theme.colorScheme()
   const desktopUpdateDirty = () => {
     const draft = desktopUpdateDraft()
     return draft !== undefined && draft !== (productUpdate.desktopStatus()?.mode ?? "auto")
@@ -521,7 +531,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
       hasPluginChanges() ||
       personalizeController.dirty() ||
       font.dirty() ||
-      colorSchemeDirty() ||
       desktopUpdateDirty() ||
       desktopZoomDirty(),
   )
@@ -531,7 +540,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
       plugin: pluginDraftVersion(),
       personalize: [personalizeController.content(), personalizeController.resetPending()],
       font: [font.selected("sans"), font.selected("mono")],
-      colorScheme: settings.general.colorScheme,
       desktopUpdate: desktopUpdateDraft(),
       desktopZoom: desktopZoomDraft(),
     }),
@@ -549,6 +557,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     setDesktopZoomDraft(undefined)
     resetEditor()
     doEnsureInit()
+    restoreInstantTheme()
   }
 
   const save = useSettingsSave({
@@ -561,10 +570,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
     preparePatchSave: (patch) => prepareLocaleSettingsSave(patch, locale.controller),
     rejectPatchSave: async (patch) => {
       await rejectLocaleSettingsSave(patch, locale.controller, globalSync.data.config.locale)
-    },
-    onPatchSaved: (patch) => {
-      const themeId = themeIdToApplyAfterSave(patch)
-      if (themeId !== undefined) theme.setThemeId(themeId)
     },
     discardChanges,
     closeDialog: () => props.onClose?.() ?? dialog.close(),
@@ -614,11 +619,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return font.save()
   }
 
-  async function saveColorSchemeChanges() {
-    theme.setColorScheme(settings.general.colorScheme)
-    return true
-  }
-
   async function saveDesktopUpdateChanges() {
     const mode = desktopUpdateDraft()
     if (mode === undefined) return true
@@ -644,7 +644,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
     { dirty: hasPluginChanges, save: savePluginChanges },
     { dirty: personalizeController.dirty, save: savePersonalizeChanges },
     { dirty: font.dirty, save: saveFontChanges },
-    { dirty: colorSchemeDirty, save: saveColorSchemeChanges },
     { dirty: desktopUpdateDirty, save: saveDesktopUpdateChanges },
     { dirty: desktopZoomDirty, save: saveDesktopZoomChanges },
   ]
@@ -794,7 +793,31 @@ export function SettingsPanel(props: SettingsPanelProps) {
     general: () => (
       <GeneralPanel
         general={settings.general}
-        onGeneralChange={(key, value) => setSettings("general", key, value)}
+        onGeneralChange={(key, value) => {
+          if (key === "colorScheme") {
+            const scheme = value as ColorScheme
+            theme.setColorScheme(scheme)
+            setSettings("general", "colorScheme", scheme)
+            return
+          }
+          if (key === "theme") {
+            const themeValue = value as string
+            theme.setThemeId(themeValue || "synergy")
+            setSettings("general", "theme", themeValue)
+            // Persist to server independently — fire-and-forget with error toast on failure.
+            void globalSDK.client.config.domain
+              .update({ domain: "general", configDomainUpdateInput: { config: { theme: themeValue } } })
+              .catch((error) => {
+                showToast({
+                  type: "error",
+                  title: _(copy.themeSaveFailed),
+                  description: requestErrorMessage(error),
+                })
+              })
+            return
+          }
+          setSettings("general", key, value)
+        }}
         desktopUpdateMode={desktopUpdateDraft() ?? productUpdate.desktopStatus()?.mode}
         onDesktopUpdateModeChange={stageDesktopUpdateMode}
         desktopZoom={desktopZoomDraft() ?? desktopZoomSaved() ?? 1}
