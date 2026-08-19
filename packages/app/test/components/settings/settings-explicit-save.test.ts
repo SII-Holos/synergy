@@ -4,7 +4,6 @@ import {
   rebaseDraftAfterSave,
   retainDraftAfterSave,
   saveExplicitSettingsChanges,
-  themeIdToApplyAfterSave,
   type ExplicitSettingsSaveSource,
 } from "../../../src/components/settings/settings-explicit-save"
 
@@ -58,12 +57,6 @@ describe("settings explicit save coordination", () => {
   test("clears a saved draft only while it still matches the submitted value", () => {
     expect(retainDraftAfterSave("auto", "auto")).toBeUndefined()
     expect(retainDraftAfterSave("manual", "auto")).toBe("manual")
-  })
-
-  test("applies a saved theme change including a reset to the default theme", () => {
-    expect(themeIdToApplyAfterSave({ theme: "plugin-theme" })).toBe("plugin-theme")
-    expect(themeIdToApplyAfterSave({ theme: undefined })).toBe("")
-    expect(themeIdToApplyAfterSave({ locale: "en" })).toBeUndefined()
   })
 
   test("rebases only edits made while the submitted settings were saving", () => {

@@ -20,7 +20,7 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { useTheme } from "@ericsanchezok/synergy-ui/theme"
+import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
 import type {
   ChannelStatus,
   ConfigDomainSummary,
@@ -787,16 +787,18 @@ export function SettingsPanel(props: SettingsPanelProps) {
         general={settings.general}
         onGeneralChange={(key, value) => {
           if (key === "colorScheme") {
-            theme.setColorScheme(value)
-            setSettings("general", "colorScheme", value)
+            const scheme = value as ColorScheme
+            theme.setColorScheme(scheme)
+            setSettings("general", "colorScheme", scheme)
             return
           }
           if (key === "theme") {
-            theme.setThemeId(value || "synergy")
-            setSettings("general", "theme", value)
+            const themeValue = value as string
+            theme.setThemeId(themeValue || "synergy")
+            setSettings("general", "theme", themeValue)
             // Persist to server independently — fire-and-forget with error toast on failure.
             void globalSDK.client.config.domain
-              .update({ domain: "general", configDomainUpdateInput: { config: { theme: value } } })
+              .update({ domain: "general", configDomainUpdateInput: { config: { theme: themeValue } } })
               .catch((error) => {
                 showToast({
                   type: "error",
