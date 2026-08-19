@@ -25,16 +25,21 @@ setExternalComposerSlotLookup((slot) =>
 )
 
 setExternalMessageSlotLookup((slot) =>
-  getMessageSlots(slot).map((entry) => ({
-    id: entry.id,
-    loader: async () => {
-      const loaded = await entry.loader()
-      return {
-        default: (props) =>
-          entry.roles && props.role && !entry.roles.includes(props.role) ? null : loaded.default(props),
-      }
-    },
-  })),
+  getMessageSlots(slot).flatMap((entry) => {
+    if (!entry.loader) return []
+    return [
+      {
+        id: entry.id,
+        loader: async () => {
+          const loaded = await entry.loader!()
+          return {
+            default: (props) =>
+              entry.roles && props.role && !entry.roles.includes(props.role) ? null : loaded.default(props),
+          }
+        },
+      },
+    ]
+  }),
 )
 
 export function PluginComposerSlotBridge() {

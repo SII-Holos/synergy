@@ -134,3 +134,4 @@ export interface PluginToolMessageSurfaceContext extends PluginMessageSurfaceCon
     status?: string
   }
 }
+export type PluginSlotSurfaceContext = PluginSurfaceContext

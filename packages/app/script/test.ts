@@ -37,6 +37,7 @@ await runBatchedTests({
     "test/context/font-preference-provider.test.ts",
     "test/pages/fatal-error.test.tsx",
     "test/plugin/builtin-navigation.test.ts",
+    "test/plugin/registries/slot-outlet.test.ts",
     "test/plugin/registries/tool-renderer-registry.test.ts",
   ],
   extraSerial: ["test/app-build-css-contract.test.ts"],

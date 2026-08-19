@@ -1,7 +1,7 @@
 import type { Component } from "solid-js"
 import type { MessageDescriptor } from "@lingui/core"
 import type { SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { SurfaceRegistry } from "@/surface/registry"
+import { SlotRegistry, type SlotEntryBase } from "../slot-registry"
 import type { SurfaceEntry } from "@/surface/types"
 
 export type NavigationPlacement = "sidebar" | "page"
@@ -25,10 +25,22 @@ export interface NavigationEntry extends SurfaceEntry {
   exportName?: string
 }
 
-const registry = new SurfaceRegistry<NavigationEntry>()
+/** Internal slot-backed entry: navigation items live in one slot. */
+type NavigationSlotEntry = SlotEntryBase &
+  NavigationEntry & {
+    slot: "navigation.item"
+  }
+
+const registry = new SlotRegistry<NavigationSlotEntry>()
+
+/** Strip the internal slot key so callers see the exact public entry shape. */
+function toEntry(entry: NavigationSlotEntry): NavigationEntry {
+  const { slot: _slot, ...rest } = entry
+  return rest
+}
 
 export function registerNavigation(entry: NavigationEntry): () => void {
-  return registry.register(entry)
+  return registry.register({ ...entry, slot: "navigation.item" })
 }
 
 export function navigationEntryLabel(
@@ -39,24 +51,28 @@ export function navigationEntryLabel(
 }
 
 export function listNavigation(placement?: NavigationPlacement): NavigationEntry[] {
-  if (placement) return registry.list((e) => e.placement === placement)
-  return registry.list()
+  if (placement) return registry.listAll((e) => e.placement === placement).map(toEntry)
+  return registry.listAll().map(toEntry)
 }
 
 export function getNavigation(id: string): NavigationEntry | undefined {
-  return registry.get(id)
+  const entry = registry.get(id)
+  return entry ? toEntry(entry) : undefined
 }
 
 export function getPluginNavigation(pluginId: string, navigationId: string): NavigationEntry | undefined {
-  return registry.get(`${pluginId}:${navigationId}`)
+  const entry = registry.get(`${pluginId}:${navigationId}`)
+  return entry ? toEntry(entry) : undefined
 }
 
 export function getBuiltinNavigation(navigationId: string): NavigationEntry | undefined {
-  return registry.get(navigationId)
+  const entry = registry.get(navigationId)
+  return entry ? toEntry(entry) : undefined
 }
 
 export function getNavigationByPath(path: string): NavigationEntry | undefined {
-  return registry.list().find((entry) => entry.path === path)
+  const entry = registry.listAll().find((item) => item.path === path)
+  return entry ? toEntry(entry) : undefined
 }
 
 export function clearNavigation(pluginId?: string): void {

@@ -105,6 +105,7 @@ import { resolveActivityDisplay } from "@ericsanchezok/synergy-ui/session-turn-a
 import { hasMessageWindowSnapshot } from "@/context/session-message-window"
 import { sessionSyncWatchKey, shouldRunSessionSync } from "@/context/session-sync-plan"
 import { messageAllowsCanonicalActions } from "@/context/session-optimistic-message"
+import { SlotOutlet } from "@/plugin/slot-outlet"
 
 const handoff = {
   prompt: "",
@@ -1547,6 +1548,7 @@ function SessionPageContent() {
                             </span>
                           </button>
                         </div>
+                        <SlotOutlet slot="session.empty" session={Boolean(params.id)} />
                       </Match>
                     </Switch>
                   </Match>

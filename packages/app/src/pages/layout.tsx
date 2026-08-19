@@ -35,6 +35,7 @@ import {
 } from "@/components/app-shell"
 import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
 import { WorkbenchPanelsProvider } from "@/context/workbench"
+import { SlotOutlet } from "@/plugin/slot-outlet"
 
 export default function Layout(props: ParentProps) {
   const [store, setStore] = createStore({
@@ -470,6 +471,7 @@ function LayoutContent(
       </div>
       <GlobalSearchModal open={props.searchOpen} onClose={props.onSearchClose} />
       <Toast.Region limit={5} swipeDirection="right" pauseOnInteraction={true} />
+      <SlotOutlet slot="app.footer" />
     </div>
   )
 }
