@@ -39,8 +39,8 @@ function buildGeneralPatch(cfg: Config, state: SettingsState, patch: Record<stri
   const username = general.username.trim()
   if (username !== (cfg.username ?? UI_DEFAULTS.username)) patch.username = username || undefined
 
-  const theme = general.theme.trim()
-  if (theme !== (cfg.theme ?? UI_DEFAULTS.theme)) patch.theme = theme
+  // Theme is applied instantly and persisted independently via a background
+  // domain update — it must not appear in the normal save-changes patch.
 
   const resolvedLocale = cfg.locale ?? UI_DEFAULTS.locale
   if (general.locale !== resolvedLocale) patch.locale = general.locale

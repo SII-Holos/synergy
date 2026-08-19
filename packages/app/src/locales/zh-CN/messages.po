@@ -16629,6 +16629,10 @@ msgid "settings.panel.section.unavailable"
 msgstr "{label} 不可用"
 
 #. js-lingui-explicit-id
+msgid "settings.panel.theme.saveFailed"
+msgstr "主题更改无法保存"
+
+#. js-lingui-explicit-id
 msgid "settings.pathRow.copied"
 msgstr "已复制"
 

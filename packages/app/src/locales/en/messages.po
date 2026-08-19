@@ -16629,6 +16629,10 @@ msgid "settings.panel.section.unavailable"
 msgstr "{label} is not available"
 
 #. js-lingui-explicit-id
+msgid "settings.panel.theme.saveFailed"
+msgstr "Theme change could not be saved"
+
+#. js-lingui-explicit-id
 msgid "settings.pathRow.copied"
 msgstr "Copied"
 
