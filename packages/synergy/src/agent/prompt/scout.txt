@@ -47,7 +47,7 @@ Then classify what type of information is needed:
 - `gh search issues` for troubleshooting context
 
 **Browser tools** — interactive browsing
-- Browser tools may be deferred. If `browser_*` tools are not visible and the task needs an interactive or JS-heavy page, call `expand_tools({ groups: ["browser"] })` first. If you are unsure which deferred capability exists, call `search_tools`.
+- Browser tools may be deferred. If `browser_*` tools are not visible and the task needs an interactive or JS-heavy page, call `expand_tools({ groups: ["browser"] })` first. If you are unsure which deferred capability exists, call `search_tools`. Direct calls to deferred-but-authorized tools are auto-expanded and executed in the same turn (visibility only).
 - `browser_navigation` / `browser_snapshot` — navigate and read page content
 - `browser_screenshot` — capture visual page state
 - `browser_action` / `browser_wait` — interact with page elements

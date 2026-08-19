@@ -252,6 +252,45 @@ describe("Feishu attachment durable prompt parts", () => {
     })
   })
 
+  test("image attachment prompt part persists a local path so look_at has a file to analyze", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const filepath = path.join(tmp.path, "inbound-image.png")
+        await Bun.write(filepath, new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3, 4]))
+
+        const parts = await ChannelBusyHandoff.buildDurablePromptParts({
+          ctx: {
+            channelType: "feishu",
+            accountId: "account_busy",
+            chatId: "chat_busy",
+            chatType: "dm",
+            senderId: CHANNEL_REQUESTER,
+            senderName: "Requester",
+            text: "look at this",
+            messageId: FEISHU_MESSAGE_ID,
+            timestamp: Date.now(),
+            attachments: [{ path: filepath, filename: "inbound-image.png", contentType: "image/png" }],
+          },
+          sessionID: session.id,
+          messageID: "msg_channel_image_00000000000000000000000",
+        })
+
+        const imagePart = parts.find((part) => part.type === "attachment")
+        expect(imagePart?.type).toBe("attachment")
+        if (imagePart?.type !== "attachment") return
+        expect(imagePart.localPath).toBeTruthy()
+        expect(imagePart.localPath).not.toBe(filepath)
+        // The persisted copy survives cleanup of the inbound temp file, so a
+        // later look_at(file_path=...) call and materialized history stay valid.
+        await fs.unlink(filepath)
+        expect(await Bun.file(imagePart.localPath!).exists()).toBe(true)
+      },
+    })
+  })
+
   test("duplicate attachment replay does not read a cleaned source file", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

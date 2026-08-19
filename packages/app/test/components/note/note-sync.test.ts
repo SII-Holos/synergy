@@ -11,6 +11,7 @@ import {
   patchNoteGroups,
   patchNoteGroupsMany,
   shouldReplaceEditorContent,
+  isEmptyEditorDoc,
 } from "../../../src/components/note/note-sync"
 
 function note(input: Partial<NoteInfo> = {}): NoteInfo {
@@ -76,6 +77,24 @@ describe("note sync helpers", () => {
 
     expect(noteChangedFields(before, after)).toEqual(["content"])
     expect(shouldReplaceEditorContent(before.content, after.content)).toBe(true)
+  })
+
+  test("detects blank starter docs that still need the loaded snapshot", () => {
+    expect(isEmptyEditorDoc(undefined)).toBe(true)
+    expect(isEmptyEditorDoc({ type: "doc", content: [] })).toBe(true)
+    expect(isEmptyEditorDoc({ type: "doc", content: [{ type: "paragraph" }] })).toBe(true)
+    expect(
+      isEmptyEditorDoc({
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "   " }] }],
+      }),
+    ).toBe(true)
+    expect(
+      isEmptyEditorDoc({
+        type: "doc",
+        content: [{ type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: "Title" }] }],
+      }),
+    ).toBe(false)
   })
 
   test("keeps dirty fields that changed again during an in-flight save", () => {

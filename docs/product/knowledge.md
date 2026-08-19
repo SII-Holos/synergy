@@ -149,7 +149,7 @@ Agents can create, read, search, edit, archive, restore, and delete Notes throug
 
 ## Blueprints
 
-A Blueprint has `kind: "blueprint"` and can add a description, default execution agent, and audit agent. Its content is an authored, decision-complete plan intended for later execution.
+A Blueprint has `kind: "blueprint"` and can add a description and default execution agent. Its content is an authored, decision-complete plan intended for later execution. The audit reviewer is host-selected: user-owned BlueprintLoops are audited by `supervisor` and Light Loops by `lightloop-reviewer`; only plugin Protocol 5 `blueprint.start` requests may select the audit agent explicitly.
 
 Blueprints remain readable everywhere, but note tools may create or modify them only while the session is in Plan or Lattice. This prevents an execution session from quietly rewriting the contract it is supposed to satisfy. BlueprintLoop stores the selected note ID and optional version separately from the Note itself, so execution history and document history remain distinct.
 

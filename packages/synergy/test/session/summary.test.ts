@@ -579,7 +579,7 @@ describe("SessionSummary", () => {
         await summarizing
         await expect(Storage.read(cursorPath)).rejects.toBeInstanceOf(Storage.NotFoundError)
         expect((await Session.get(session.id)).summary).toBeUndefined()
-        expect(await SessionSummary.diff({ sessionID: session.id })).toEqual([])
+        expect(await Session.diff(session.id)).toEqual([])
 
         await Session.remove(session.id)
       },
@@ -634,7 +634,7 @@ describe("SessionSummary", () => {
 
         expect(ranges).toContain(`${second.from}:${second.to}`)
         expect(ranges).toContain(`${first.from}:${second.to}`)
-        expect(await SessionSummary.diff({ sessionID: session.id })).toEqual([first.diff, second.diff])
+        expect(await Session.diff(session.id)).toEqual([first.diff, second.diff])
 
         await Session.remove(session.id)
       },
@@ -1247,13 +1247,13 @@ describe("SessionSummary", () => {
             status: "error",
             code: "timeout",
           })
-          expect(await SessionSummary.diff({ sessionID: session.id })).toEqual([first.diff, second.diff])
+          expect(await Session.diff(session.id)).toEqual([first.diff, second.diff])
 
           firstMessageResult.resolve([first.diff])
           firstSessionResult.resolve([first.diff])
           await Bun.sleep(10)
 
-          expect(await SessionSummary.diff({ sessionID: session.id })).toEqual([first.diff, second.diff])
+          expect(await Session.diff(session.id)).toEqual([first.diff, second.diff])
 
           await Session.remove(session.id)
         },

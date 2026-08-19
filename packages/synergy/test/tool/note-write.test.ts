@@ -82,6 +82,57 @@ describe("note_write", () => {
     })
   })
 
+  test("does not expose or persist a model-selected Blueprint audit agent", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.update(session.id, (draft) => {
+          draft.workflow = { kind: "lattice", runID: "ltr_test", mode: "auto" }
+        })
+        const tool = await NoteWriteTool.init()
+        const schema = z.toJSONSchema(tool.parameters) as { properties?: Record<string, unknown> }
+
+        expect(schema.properties).not.toHaveProperty("auditAgent")
+
+        const legacyInput = {
+          mode: "create",
+          title: "Model-authored Blueprint",
+          content: "Execute the current Step.",
+          kind: "blueprint",
+          auditAgent: "reviewer",
+          scope: "current",
+        } as unknown as Parameters<typeof tool.execute>[0]
+        const result = await tool.execute(legacyInput, ctx(session.id))
+
+        const note = await NoteStore.get(scope.id, result.metadata.id as string)
+        expect(note.blueprint?.auditAgent).toBeUndefined()
+
+        const existing = await NoteStore.create({
+          title: "Legacy-configured Blueprint",
+          content: NoteMarkdown.fromMarkdown("Original"),
+          kind: "blueprint",
+          blueprint: { auditAgent: "reviewer" },
+        })
+        await tool.execute(
+          {
+            mode: "replace",
+            id: existing.id,
+            content: "Updated",
+            scope: "current",
+          },
+          ctx(session.id),
+        )
+
+        const updated = await NoteStore.get(scope.id, existing.id)
+        expect(updated.blueprint?.auditAgent).toBe("reviewer")
+      },
+    })
+  })
+
   test("replace overwrites the latest note content as a stable full-document write", async () => {
     await using tmp = await tmpdir()
     const scope = (await Scope.fromDirectory(tmp.path)).scope

@@ -1,6 +1,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { createIsolatedTestEnv } from "./test-env"
 
 const DEFAULT_SHARD_COUNT = 4
 
@@ -35,10 +36,10 @@ export async function runSequentialShards(
 
 const packageRoot = fileURLToPath(new URL("..", import.meta.url))
 
-async function runBunTest(args: string[]): Promise<number> {
+export async function runBunTest(args: string[], env: Record<string, string | undefined>): Promise<number> {
   const child = Bun.spawn([process.execPath, ...args], {
     cwd: packageRoot,
-    env: process.env,
+    env,
     stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit",
@@ -49,7 +50,12 @@ async function runBunTest(args: string[]): Promise<number> {
 async function main() {
   const reporterDirectory = process.env["SYNERGY_TEST_JUNIT_DIR"]
   if (reporterDirectory) await fs.mkdir(path.resolve(packageRoot, reporterDirectory), { recursive: true })
-  return runSequentialShards(runBunTest, DEFAULT_SHARD_COUNT, reporterDirectory)
+  const isolated = await createIsolatedTestEnv()
+  try {
+    return await runSequentialShards((args) => runBunTest(args, isolated.env), DEFAULT_SHARD_COUNT, reporterDirectory)
+  } finally {
+    await isolated.dispose()
+  }
 }
 
 if (import.meta.main) process.exit(await main())

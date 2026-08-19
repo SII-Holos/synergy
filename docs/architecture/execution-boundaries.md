@@ -46,7 +46,7 @@ Classification failure never re-enters the in-process top-level classifier. Work
 
 The enforcement gate owns the security decision. A tool implementation can still reject malformed input or fail for ordinary runtime reasons after authorization.
 
-Tool exposure is a context-budget decision, not an authorization decision. `search_tools` and `expand_tools` let an eligible agent discover or activate deferred tools, but the resolver still removes every tool denied by agent, session, user-tool, or workflow policy.
+Tool exposure is a context-budget decision, not an authorization decision. `search_tools` and `expand_tools` let an eligible agent discover or activate deferred tools, but the resolver still removes every tool denied by agent, session, user-tool, or workflow policy. Deferred MCP server groups are discoverable through the "Connected MCP groups" directory in the `expand_tools` description whenever the MCP defer threshold is active; the directory lists connected servers and their tool names so an agent can expand `mcp:<server>` directly. A direct model call to a deferred-but-authorized tool is auto-expanded and executed in the same turn (the runtime equivalent of calling `expand_tools` for that tool); auto-expansion changes visibility only, never grants authorization, and is disabled when `expand_tools` itself is denied.
 
 ## Capability Model
 
@@ -190,7 +190,7 @@ These restrictions are evaluated before the tool implementation. A permissive co
 - ToolTask queues are bounded globally and per executor class; duplicate dispatch identity cannot execute twice.
 - Executor classification never bypasses capability classification, approval, sandboxing, or canonical runtime ownership.
 - Availability, authorization, and sandboxing remain separate decisions.
-- Expanding a deferred group never grants a tool whose effective permission is denied.
+- Expanding a deferred group never grants a tool whose effective permission is denied; auto-expansion on a direct tool call is equally visibility-only and respects the `expand_tools` permission.
 - `autonomous` never prompts the user.
 - `full_access` authorizes capabilities but cannot turn runtime failure into success.
 - Sensitive values are never sent raw to SmartAllow.

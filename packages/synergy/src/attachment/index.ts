@@ -2,6 +2,7 @@ import fs from "fs/promises"
 import os from "os"
 import path from "path"
 import { ulid } from "ulid"
+import { sha256Hex } from "../util/crypto"
 import { Identifier } from "@/id/id"
 import { Global } from "@/global"
 import type { MessageV2 } from "@/session/message-v2"
@@ -167,7 +168,11 @@ export namespace Attachment {
     const mediaDir = path.join(Global.Path.media, dateFolder)
     await fs.mkdir(mediaDir, { recursive: true })
     const ext = extension(part) || `.${fileExtensionFromMime(part.mime)}`
-    const filename = part.filename || `${ulid()}${ext}`
+    // Content hash keeps same-named attachments with different bytes from
+    // overwriting each other and makes identical content idempotent; basename
+    const digest = sha256Hex(new Uint8Array(buffer)).slice(0, 12)
+    const base = path.basename(part.filename ?? "", path.extname(part.filename ?? ""))
+    const filename = base ? `${base}-${digest}${ext}` : `${digest}${ext}`
     const localPath = path.join(mediaDir, filename)
     await Bun.write(localPath, buffer)
     return localPath

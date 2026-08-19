@@ -51,7 +51,7 @@ async function createLoop(noteID: string, sessionID: string) {
 }
 
 describe("BlueprintRoute start prompt", () => {
-  test("snapshots execution and audit agents onto the loop", async () => {
+  test("snapshots execution agent and host-selected audit agent onto the loop", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -61,7 +61,7 @@ describe("BlueprintRoute start prompt", () => {
         const loop = await createLoop(note.id, session.id)
 
         expect(loop.executionAgent).toBe("synergy-max")
-        expect(loop.auditAgent).toBe("security-reviewer")
+        expect(loop.auditAgent).toBe("supervisor")
       },
     })
   })

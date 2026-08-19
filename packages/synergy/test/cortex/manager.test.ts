@@ -13,6 +13,7 @@ import { ContinuationWait } from "../../src/session/continuation-wait"
 import { Identifier } from "../../src/id/id"
 import { CortexOutput } from "../../src/cortex/output"
 import { TaskOutputTool } from "../../src/tool/task-output"
+import { Agent } from "../../src/agent/agent"
 import { tmpdir } from "../fixture/fixture"
 
 async function launchAndCaptureCreatedTask(
@@ -238,6 +239,49 @@ describe.serial("Cortex", () => {
           expect(persisted.cortex?.outputConfig).toEqual({ mode: "final_response" })
           expect(persisted.cortex?.visibility).toBe("hidden")
           expect(persisted.completionNotice.silent).toBe(true)
+
+          await Cortex.cancel(task.id)
+        },
+      })
+    })
+
+    test("resets the delivery notification timestamp when reusing a child session", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const parent = await Session.create({})
+          const parentMessageID = Identifier.ascending("message")
+          const child = await Session.create({
+            parentID: parent.id,
+            cortex: {
+              taskID: "ctx_previous_task",
+              parentSessionID: parent.id,
+              parentMessageID,
+              description: "Previous task",
+              agent: "developer",
+              status: "completed",
+              startedAt: Date.now(),
+              completedAt: Date.now(),
+              deliveryNotifiedAt: Date.now(),
+            },
+          })
+
+          const task = await Cortex.prepare({
+            description: "Reused reviewer recovery",
+            prompt: "Review again",
+            agent: "developer",
+            executionRole: "delegated_subagent",
+            parentSessionID: parent.id,
+            parentMessageID,
+            sessionID: child.id,
+            visibility: "hidden",
+          })
+
+          const persisted = await Session.get(child.id)
+          expect(persisted.cortex?.taskID).toBe(task.id)
+          expect(persisted.cortex?.status).toBe("queued")
+          expect(persisted.cortex?.deliveryNotifiedAt).toBeUndefined()
 
           await Cortex.cancel(task.id)
         },
@@ -2073,6 +2117,63 @@ describe.serial("Cortex", () => {
             expect(statusAfterSlots?.queued).toBe(0)
           } finally {
             CortexConcurrency.reset()
+          }
+        },
+      })
+    })
+  })
+
+  describe("model resolution", () => {
+    test("falls back to parent session model when agent has no configured model", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          const originalGetAvailableModel = Agent.getAvailableModel
+          let receivedModel: unknown
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              receivedModel = input.model
+              return writeAssistantText(input.sessionID, "completed")
+            },
+          )
+          ;(Agent.getAvailableModel as any) = mock(async () => undefined)
+          try {
+            const parentSession = await Session.create({})
+            const rootID = Identifier.ascending("message")
+            await Session.updateMessage({
+              id: rootID,
+              role: "user",
+              sessionID: parentSession.id,
+              time: { created: Date.now() },
+              agent: "synergy",
+              model: { providerID: "test-provider", modelID: "parent-model" },
+              isRoot: true,
+              rootID,
+            } as any)
+            await Session.updatePart({
+              id: Identifier.ascending("part"),
+              messageID: rootID,
+              sessionID: parentSession.id,
+              type: "text",
+              text: "parent root",
+            })
+
+            const task = await Cortex.launch({
+              description: "No agent model falls back to parent",
+              prompt: "Do something",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: rootID,
+              output: { mode: "final_response" },
+            })
+
+            expect((await waitUntilTerminal(task.id))?.status).toBe("completed")
+            expect(receivedModel).toEqual({ providerID: "test-provider", modelID: "parent-model" })
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+            ;(Agent.getAvailableModel as any) = originalGetAvailableModel
           }
         },
       })

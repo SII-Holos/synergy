@@ -12,3 +12,5 @@ packages/app/src/locales/*/messages.mjs
 docs/reference/cli.md
 docs/reference/configuration.md
 docs/reference/tools.md
+# Emitted beside sources by packages/app composite typecheck (rootDir boundary)
+script/shared/*.d.ts

@@ -67,6 +67,25 @@ export function shouldReplaceEditorContent(currentContent: unknown, nextContent:
   return !deepEqual(currentContent, nextContent)
 }
 
+/** True when the editor is still a blank starter doc and should accept the loaded snapshot. */
+export function isEmptyEditorDoc(content: unknown) {
+  if (!content || typeof content !== "object") return true
+  const doc = content as { type?: unknown; content?: unknown }
+  if (doc.type !== "doc") return false
+  if (!Array.isArray(doc.content) || doc.content.length === 0) return true
+  if (doc.content.length > 1) return false
+  const only = doc.content[0]
+  if (!only || typeof only !== "object") return true
+  const node = only as { type?: unknown; content?: unknown; text?: unknown }
+  if (node.type !== "paragraph") return false
+  if (!Array.isArray(node.content) || node.content.length === 0) return true
+  return node.content.every((child) => {
+    if (!child || typeof child !== "object") return true
+    const textNode = child as { type?: unknown; text?: unknown }
+    return textNode.type === "text" && !String(textNode.text ?? "").trim()
+  })
+}
+
 function sortNotes(notes: NoteMetaInfo[]) {
   notes.sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
