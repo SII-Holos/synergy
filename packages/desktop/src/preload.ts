@@ -93,6 +93,15 @@ const update = {
   },
 }
 
+const desktopZoom = {
+  get() {
+    return ipcRenderer.invoke("desktop.zoom.get") as Promise<number>
+  },
+  set(zoomFactor: number) {
+    return ipcRenderer.invoke("desktop.zoom.set", zoomFactor) as Promise<number>
+  },
+}
+
 const desktopShell = {
   openExternal(url: string) {
     return ipcRenderer.invoke("desktop.shell.openExternal", url) as Promise<void>
@@ -167,5 +176,6 @@ contextBridge.exposeInMainWorld("synergyDesktop", {
   theme: desktopTheme,
   window: desktopWindow,
   badge: desktopBadge,
+  zoom: desktopZoom,
   browserNative,
 })

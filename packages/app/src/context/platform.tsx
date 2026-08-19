@@ -134,6 +134,11 @@ export type DesktopWindowBridge = {
   onEvent?(listener: (event: { type: "state"; state: DesktopWindowState }) => void): () => void
 }
 
+export type DesktopZoomBridge = {
+  get(): Promise<number>
+  set(zoomFactor: number): Promise<number>
+}
+
 export type ClipboardBridge = {
   writeText(text: string): Promise<boolean>
 }
@@ -184,6 +189,9 @@ export type Platform = {
 
   /** Desktop unread badge bridge, provided by the desktop shell. */
   desktopBadge?: DesktopBadgeBridge
+
+  /** Desktop window zoom bridge, provided by the desktop shell. */
+  desktopZoom?: DesktopZoomBridge
 
   /** Clipboard bridge, provided by the desktop shell when browser clipboard permissions are not enough. */
   clipboard?: ClipboardBridge

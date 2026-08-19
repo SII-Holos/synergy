@@ -9,6 +9,7 @@ const GENERATED_FILES = new Set([
 ])
 const COLOR_BOUNDARY_FILES = new Set([
   "../ui/src/theme/color.ts",
+  "../ui/src/theme/default-themes.ts",
   "../ui/src/theme/resolve.ts",
   "../ui/src/theme/schema-contract.ts",
   "../plugin/src/theme/color.ts",

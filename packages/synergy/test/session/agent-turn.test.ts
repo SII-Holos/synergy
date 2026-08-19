@@ -1,11 +1,11 @@
 import { expect, mock, test } from "bun:test"
 import { AgentTurn } from "../../src/session/agent-turn"
+import { runInProcessStream } from "../../src/session/agent-turn/in-process"
 import { AgentWorkerPool } from "../../src/session/agent-turn/worker-pool"
 import { ContextUsage } from "../../src/session/context-usage"
 import { LLM } from "../../src/session/llm"
 
 test("starts Context Usage estimation only after the Agent worker starts", async () => {
-  const originalTestHome = process.env.SYNERGY_TEST_HOME
   const originalPrepare = LLM.prepare
   const originalRun = AgentWorkerPool.prototype.run
   const originalMeasureDraft = ContextUsage.measureDraft
@@ -15,7 +15,7 @@ test("starts Context Usage estimation only after the Agent worker starts", async
   try {
     await AgentTurn.stop()
     AgentTurn.configure({ minIdle: 0 })
-    delete process.env.SYNERGY_TEST_HOME
+    AgentTurn.setInProcessStream(undefined)
     ;(LLM.prepare as any) = mock(async () => ({
       system: ["prepared system"],
       baseSystemLength: 1,
@@ -68,8 +68,7 @@ test("starts Context Usage estimation only after the Agent worker starts", async
     ;(LLM.prepare as any) = originalPrepare
     ;(AgentWorkerPool.prototype.run as any) = originalRun
     ;(ContextUsage.measureDraft as any) = originalMeasureDraft
-    if (originalTestHome === undefined) delete process.env.SYNERGY_TEST_HOME
-    else process.env.SYNERGY_TEST_HOME = originalTestHome
+    AgentTurn.setInProcessStream(runInProcessStream)
     await AgentTurn.stop()
     AgentTurn.configure()
   }

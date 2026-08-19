@@ -8426,6 +8426,18 @@ msgid "app.topBar.session.archive"
 msgstr ""
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.session.copyID"
+msgstr ""
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.session.copyIDCopied"
+msgstr ""
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.session.copyIDFailed"
+msgstr ""
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.session.enterWorktree"
 msgstr ""
 
@@ -8775,10 +8787,6 @@ msgstr ""
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.communication"
-msgstr ""
-
-#. ── Classifier category labels ──────────────────────────────────────
-msgid "classifier.label.community"
 msgstr ""
 
 #. ── Classifier category labels ──────────────────────────────────────
@@ -9271,10 +9279,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "dag.status.running"
-msgstr ""
-
-#. ── Diagram ─────────────────────────────────────────────────────────
-msgid "diagram.total-label"
 msgstr ""
 
 #. ── Diff preview ────────────────────────────────────────────────────
@@ -11397,10 +11401,6 @@ msgid "session-status.delegating-work"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "session-status.drawing-diagram"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "session-status.flashing-back"
 msgstr ""
 
@@ -11514,10 +11514,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session-status.reviewing-light-loop"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session-status.running-batch"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -13997,6 +13993,10 @@ msgid "settings.catalog.general.row.toastDuration"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.general.row.zoom"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.general.searchTerms"
 msgstr ""
 
@@ -15118,6 +15118,26 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.general.updates.web.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.aria"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.high"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.low"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.zoom.title"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -18105,10 +18125,6 @@ msgid "tool.label.pathwaySteps"
 msgstr ""
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
-msgid "tool.label.posts"
-msgstr ""
-
-#. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.results"
 msgstr ""
 
@@ -18241,14 +18257,6 @@ msgid "tool.title.attach"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.availability"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.batch"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.batch-stop"
 msgstr ""
 
@@ -18373,10 +18381,6 @@ msgid "tool.title.deploy-inference"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.diagram"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.disconnected"
 msgstr ""
 
@@ -18441,19 +18445,11 @@ msgid "tool.title.glob"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.gpu-usage"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.grep"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.harbor-login"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.hpc-usage"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
@@ -18660,10 +18656,6 @@ msgstr ""
 msgid "tool.title.questions"
 msgstr ""
 
-#. Legacy qzcli — TODO remove
-msgid "tool.title.qz-login"
-msgstr ""
-
 #. File ops
 msgid "tool.title.read"
 msgstr ""
@@ -18697,10 +18689,6 @@ msgid "tool.title.read-to-dos"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.refresh-resources"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.register-model"
 msgstr ""
 
@@ -18712,7 +18700,7 @@ msgstr ""
 msgid "tool.title.reject-light-loop"
 msgstr ""
 
-#. Render / diagram
+#. Render
 msgid "tool.title.render"
 msgstr ""
 
@@ -18800,10 +18788,6 @@ msgstr ""
 msgid "tool.title.sessions"
 msgstr ""
 
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.set-cookie"
-msgstr ""
-
 #. Inspire variant keys for getToolInfo dynamic title selection
 msgid "tool.title.set-default"
 msgstr ""
@@ -18826,10 +18810,6 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.start-notebook"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.status-catalog"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
@@ -18856,10 +18836,6 @@ msgstr ""
 msgid "tool.title.submit-hpc-job"
 msgstr ""
 
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.submit-job"
-msgstr ""
-
 #. DAG / task orchestration
 msgid "tool.title.task"
 msgstr ""
@@ -18882,14 +18858,6 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.to-dos"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.track-job"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.tracked-jobs"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
@@ -18930,10 +18898,6 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.wiki"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.workspaces"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
@@ -19094,6 +19058,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "ui.attachment.previewImage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.basicTool.autoExpanded"
 msgstr ""
 
 #. js-lingui-explicit-id

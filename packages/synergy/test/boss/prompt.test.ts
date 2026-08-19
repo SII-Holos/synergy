@@ -62,7 +62,7 @@ describe("Boss Mode prompt builders", () => {
       const text = renderBossTree(tree)
       expect(text).toContain(`- [idle] ${boss.title} (boss, ${boss.id})`)
       expect(text).toMatch(
-        new RegExp(`- \\[(running|idle)\\] ${escapeRegExp(worker.title)} \\(worker\\(code\\), ${worker.id}\\)`),
+        new RegExp(`- \\[(running|idle|queued)\\] ${escapeRegExp(worker.title)} \\(worker\\(code\\), ${worker.id}\\)`),
       )
       expect(text).toContain("task: task-1 — Implement the widget")
     })

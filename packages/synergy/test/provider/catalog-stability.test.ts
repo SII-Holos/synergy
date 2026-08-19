@@ -98,6 +98,11 @@ async function reset() {
   alternateFetchCalls = 0
   environmentDiscoveryAuth = undefined
   environmentDiscoveryByProvider.clear()
+  // Env.set mutates the process environment directly; clear it between tests
+  // so a leftover canonical key cannot drive the environment-profile refresh
+  // and clobber the shared discovery callback during a later test.
+  delete process.env[environmentName]
+  delete process.env[mappedEnvironmentName]
   configuredBaseURL = undefined
   configuredDiscovery = new Promise<void>((resolve) => {
     resolveConfiguredDiscovery = resolve
@@ -182,6 +187,114 @@ test("timeout and empty responses preserve the last successful model set", async
   ProviderCatalog.reset()
   const catalog = await ProviderCatalog.resolve({ config, includeLive: true })
   expect(catalog[providerID].models["model-stable"].catalog_state).toBe("active")
+})
+
+test("a failed refresh without a prior verified catalog keeps bundled fallback models", async () => {
+  fetchCatalog = async () => {
+    throw new DOMException("timed out", "TimeoutError")
+  }
+  await ProviderCatalog.refresh(providerID)
+  expect(ProviderCatalog.modelCatalogState(providerID)?.failure).toBe("timeout")
+
+  ProviderCatalog.reset()
+  const catalog = await ProviderCatalog.resolve({ config, includeLive: true })
+  expect(catalog[providerID].models["gpt-5.5"]).toBeDefined()
+})
+
+test("resolve serves the cached registry catalog without waiting on the network", async () => {
+  const previousDisableFetch = process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
+  delete process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
+  const server = Bun.serve({
+    port: 0,
+    async fetch() {
+      await Bun.sleep(30_000)
+      return new Response("unreachable", { status: 502 })
+    },
+  })
+  try {
+    const remoteConfig = {
+      providerCatalog: {
+        enabled: true,
+        registryUrl: `http://127.0.0.1:${server.port}/catalog.json`,
+        publicKey: "test-public-key",
+        cacheTtlMs: 60_000,
+      },
+    }
+    await fs.mkdir(Global.Path.cache, { recursive: true })
+    await Bun.write(
+      Global.Path.providerCatalogCache,
+      JSON.stringify({
+        version: 1,
+        providers: { "remote-cached-provider": { id: "remote-cached-provider", name: "Remote Cached Provider" } },
+      }),
+    )
+
+    const startedAt = Date.now()
+    const catalog = await ProviderCatalog.resolve({ config: remoteConfig })
+    expect(Date.now() - startedAt).toBeLessThan(1000)
+    expect(catalog["remote-cached-provider"]?.name).toBe("Remote Cached Provider")
+
+    // A cold first run (no cache) must also not block on the registry.
+    await fs.rm(Global.Path.providerCatalogCache, { force: true })
+    ProviderCatalog.reset()
+    const coldStart = Date.now()
+    const coldCatalog = await ProviderCatalog.resolve({ config: remoteConfig })
+    expect(Date.now() - coldStart).toBeLessThan(1000)
+    expect(coldCatalog["remote-cached-provider"]).toBeUndefined()
+  } finally {
+    server.stop(true)
+    await fs.rm(Global.Path.providerCatalogCache, { force: true })
+    if (previousDisableFetch === undefined) delete process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
+    else process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH = previousDisableFetch
+  }
+})
+
+test("offlineCache:false still applies the fetched remote catalog on forceRefresh and from memory", async () => {
+  const keyPair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])
+  const publicKey = Buffer.from(await crypto.subtle.exportKey("raw", keyPair.publicKey)).toString("base64")
+  const catalogText = JSON.stringify({
+    version: 1,
+    providers: { "remote-live-provider": { id: "remote-live-provider", name: "Remote Live Provider" } },
+  })
+  const signature = Buffer.from(
+    await crypto.subtle.sign("Ed25519", keyPair.privateKey, new TextEncoder().encode(catalogText)),
+  ).toString("base64")
+  const registryDir = `${Global.Path.cache}/registry-${Math.random().toString(36).slice(2)}`
+  await fs.mkdir(registryDir, { recursive: true })
+  await Bun.write(`${registryDir}/catalog.json`, catalogText)
+  await Bun.write(`${registryDir}/catalog.json.sig`, signature)
+  const previousDisableFetch = process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
+  delete process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
+  try {
+    const remoteConfig = {
+      providerCatalog: {
+        enabled: true,
+        registryUrl: `file://${registryDir}/catalog.json`,
+        publicKey,
+        offlineCache: false,
+        cacheTtlMs: 60_000,
+      },
+    }
+    await fs.rm(Global.Path.providerCatalogCache, { force: true })
+    ProviderCatalog.reset()
+    const forced = await ProviderCatalog.resolve({ config: remoteConfig, forceRefresh: true })
+    expect(forced["remote-live-provider"]?.name).toBe("Remote Live Provider")
+
+    // offlineCache:false never reads the cache file, so the in-memory
+    // last-known catalog must keep the registry providers available on
+    // subsequent resolves (which do not wait on the network).
+    const plain = await ProviderCatalog.resolve({ config: remoteConfig })
+    expect(plain["remote-live-provider"]?.name).toBe("Remote Live Provider")
+
+    await fs.rm(Global.Path.providerCatalogCache, { force: true })
+    const afterCacheRemoval = await ProviderCatalog.resolve({ config: remoteConfig })
+    expect(afterCacheRemoval["remote-live-provider"]?.name).toBe("Remote Live Provider")
+  } finally {
+    await fs.rm(registryDir, { recursive: true, force: true })
+    await fs.rm(Global.Path.providerCatalogCache, { force: true })
+    if (previousDisableFetch === undefined) delete process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
+    else process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH = previousDisableFetch
+  }
 })
 
 test("refresh is single-flight per provider", async () => {
@@ -463,8 +576,7 @@ test("configured inline credentials participate in live discovery", async () => 
       await ProviderCatalog.refresh(inlineProviderID, environmentProfileID, undefined, configured)
     },
   })
-
-  expect(environmentDiscoveryAuth).toBe("inline-catalog-key")
+  expect(environmentDiscoveryByProvider.get(inlineProviderID)).toBe("inline-catalog-key")
   expect(await Bun.file(Global.Path.providerModelCatalogCache).text()).not.toContain("inline-catalog-key")
 })
 

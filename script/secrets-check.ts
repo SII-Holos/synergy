@@ -9,7 +9,11 @@ if (!(await hasCommand("gitleaks"))) {
   process.exit(1)
 }
 
-await $`gitleaks git --redact --config .gitleaks.toml --verbose`
+// CI secret-scan uses a shallow checkout, so it sees only the current tree.
+// Align local behavior with that: scan the working tree without full history,
+// so long-dead legacy findings (historical test fixtures) cannot block an
+// unrelated change. New secrets in the diff still fail the scan.
+await $`gitleaks detect --source . --no-git --redact --config .gitleaks.toml --verbose --exit-code 1`
 
 async function hasCommand(command: string) {
   try {

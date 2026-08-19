@@ -1,0 +1,13 @@
+{
+  "defaults": {
+    "AGENTS.md": 600
+  },
+  "files": {
+    "AGENTS.md": 1600,
+    "docs/AGENTS.md": 1600,
+    "packages/synergy/AGENTS.md": 1100,
+    "packages/app/AGENTS.md": 1100,
+    "docs/decisions/README.md": 1200,
+    "docs/postmortem/README.md": 800
+  }
+}

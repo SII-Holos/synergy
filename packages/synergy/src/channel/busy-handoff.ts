@@ -1,9 +1,12 @@
 import path from "path"
 import { Attachment } from "../attachment"
+import { Log } from "../util/log"
 import { BusyError } from "../session/error"
 import { SessionInbox } from "../session/inbox"
 import { InvokeInput } from "../session/invoke"
 import { MessageContext } from "./types"
+
+const log = Log.create({ service: "channel.busy-handoff" })
 
 /**
  * Channel-owned busy handoff: when a message arrives for a Session that is
@@ -42,15 +45,27 @@ export namespace ChannelBusyHandoff {
 
     const attachments = input.ctx.attachments ?? []
     return Promise.all(
-      attachments.map(async (attachment) =>
-        Attachment.toPart({
+      attachments.map(async (attachment) => {
+        const part = await Attachment.toPart({
           filepath: attachment.path,
           mime: attachment.contentType,
           filename: attachment.filename ?? path.basename(attachment.path) ?? "attachment",
           sessionID: input.sessionID,
           messageID: input.messageID,
-        }),
-      ),
+        })
+        // Images are materialized as data URLs; persist a stable local copy so
+        // the model-visible "Local path:" text and look_at keep working after
+        // the inbound temp file is cleaned up — chat parity.
+        if (part.mime.startsWith("image/") && !part.localPath) {
+          try {
+            const localPath = await Attachment.saveDataPartLocally(part)
+            return { ...part, localPath }
+          } catch (error) {
+            log.warn("failed to persist channel image locally; look_at path unavailable", { error })
+          }
+        }
+        return part
+      }),
     ).then((durable) => [...parts, ...durable])
   }
 

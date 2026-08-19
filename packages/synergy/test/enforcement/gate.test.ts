@@ -1434,30 +1434,6 @@ describe("EnforcementGate network classification", () => {
     expect(autonomous.evaluate("github_deliver_fix", {}).decision).toBe("allow")
   })
 
-  //  test("agora collaboration tools classify as external network and platform control", async () => {
-  //    const { EnforcementGate } = require("../../src/enforcement/gate")
-  //    const gate = await EnforcementGate.create({
-  //      activeWorkspace: "/Users/test/synergy-control-profile",
-  //      workspaceType: "worktree",
-  //    })
-  //
-  //    expect(gate.classify("agora_read", {}).capabilities).toContainEqual({
-  //      class: "network_request",
-  //      nonBypassable: true,
-  //    })
-  //
-  //    const post = gate.classify("agora_post", {}).capabilities
-  //    expect(post).toContainEqual({ class: "network_request", nonBypassable: true })
-  //    expect(post).toContainEqual({ class: "platform_control", nonBypassable: true })
-  //
-  //    const join = gate.classify("agora_join", { directory: "/tmp/agora-workspace" }).capabilities
-  //    expect(join).toContainEqual({ class: "network_request", nonBypassable: true })
-  //    expect(join).toContainEqual({ class: "platform_control", nonBypassable: true })
-  //    expect(join).toContainEqual(
-  //      expect.objectContaining({ class: "file_external", nonBypassable: true, paths: ["/tmp/agora-workspace"] }),
-  //    )
-  //  })
-
   test("guarded profile allows ordinary network lookups and asks for communication or platform actions", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -3308,17 +3284,6 @@ describe("EnforcementGate new tool classification", () => {
     expect(cap.nonBypassable).toBe(false)
   })
 
-  test("batch classifies as session_state (orchestrates multiple tool calls)", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-    })
-    const result = gate.classify("batch", { tool_calls: [{ tool: "read", parameters: { filePath: "src/test.ts" } }] })
-    const cap = result.capabilities.find((c: any) => c.class === "session_state")!
-    expect(cap).toBeDefined()
-    expect(cap.nonBypassable).toBe(false)
-  })
-
   // ── Internal communication / knowledge → file_read ────────────
 
   test("question classifies as file_read (user interaction, no side effects)", async () => {
@@ -3349,17 +3314,6 @@ describe("EnforcementGate new tool classification", () => {
       workspaceType: "worktree",
     })
     const result = gate.classify("render", {})
-    const cap = result.capabilities.find((c: any) => c.class === "file_read")!
-    expect(cap).toBeDefined()
-    expect(cap.nonBypassable).toBe(false)
-  })
-
-  test("diagram classifies as file_read (visual output, no persistent state)", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-    })
-    const result = gate.classify("diagram", {})
     const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)

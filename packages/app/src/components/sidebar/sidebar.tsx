@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show, type JSX } from "solid-js"
 import { FlipList } from "./flip-list"
+import { shouldOpenProjectDisclosure } from "./project-disclosure"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { A, useLocation, useNavigate, useParams } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
@@ -34,6 +35,7 @@ import {
   scopeKeyForNavEntry,
   type SessionVisualStore,
 } from "@/components/sidebar/session-visual-state"
+import { setSessionDragData } from "@/utils/session-drag"
 import { SidebarAttentionNotice } from "./sidebar-attention-notice"
 import { projectMenuPlacement, type ProjectMenuPlacement } from "./project-menu-placement"
 import "./sidebar.css"
@@ -838,6 +840,14 @@ function SidebarProjectGroup(props: {
     const scope = props.scope()
     return scope ? props.navLoaded(scope) : false
   })
+  const disclosureOpen = createMemo(() =>
+    shouldOpenProjectDisclosure({
+      expanded: !!props.scope()?.expanded,
+      isSupplemental: isSupplemental(),
+      navLoaded: navLoaded(),
+    }),
+  )
+  const sessionsLoading = createMemo(() => !!props.scope()?.expanded && !isSupplemental() && !navLoaded())
   const entries = createMemo(() => {
     const scope = props.scope()
     return scope ? props.projectNavEntries(scope) : []
@@ -869,12 +879,18 @@ function SidebarProjectGroup(props: {
             class="sb-project-chevron-btn"
             aria-label={props.scope()?.expanded ? props._(sidebar.collapseProject) : props._(sidebar.expandProject)}
             aria-expanded={props.scope()?.expanded}
+            aria-busy={sessionsLoading() || undefined}
             onClick={(event) => {
               const scope = props.scope()
               if (scope) props.onProjectToggle(event, scope)
             }}
           >
-            <Icon name={props.scope()?.expanded ? "chevron-down" : "chevron-right"} size="small" />
+            <Show
+              when={sessionsLoading()}
+              fallback={<Icon name={props.scope()?.expanded ? "chevron-down" : "chevron-right"} size="small" />}
+            >
+              <Spinner class="size-3" />
+            </Show>
           </button>
           <button
             type="button"
@@ -964,7 +980,7 @@ function SidebarProjectGroup(props: {
           </div>
         </div>
 
-        <SidebarDisclosure open={!!props.scope()?.expanded}>
+        <SidebarDisclosure open={disclosureOpen()}>
           <Show
             when={!isSupplemental()}
             fallback={
@@ -1012,14 +1028,7 @@ function SidebarProjectGroup(props: {
               </Show>
             }
           >
-            <Show
-              when={navLoaded()}
-              fallback={
-                <div class="sb-sessions">
-                  <For each={Array(6)}>{() => <div class="sb-session-skeleton" />}</For>
-                </div>
-              }
-            >
+            <Show when={navLoaded()}>
               <GroupedSessionList
                 entries={entries()}
                 scope={props.scope()}
@@ -1223,6 +1232,17 @@ function SidebarSessionRow(props: {
     return v ? lingui._(v.label) : ""
   })
 
+  const handleDragStart = (event: DragEvent) => {
+    const directory = scopeKeyForNavEntry(props.entry, globalSync.data.scope) ?? props.entry.scopeID
+    if (!directory) return
+    setSessionDragData(event, {
+      id: props.entry.id,
+      directory,
+      title: props.entry.title || _(sidebar.untitled),
+      updatedAt: props.entry.lastActivityAt,
+    })
+  }
+
   return (
     <button
       type="button"
@@ -1232,6 +1252,8 @@ function SidebarSessionRow(props: {
         "sb-session-active": props.active,
       }}
       data-session-id={props.entry.id}
+      draggable={true}
+      onDragStart={handleDragStart}
       onClick={props.onClick}
     >
       <span classList={{ ...sessionIconClassList(visual()) }} title={sessionTooltip()}>

@@ -308,7 +308,7 @@ Anchored edit discipline:
 
 Use `scan_files` for text search and `parse_code` for AST-aware code search when results may feed an edit.
 
-Some capability groups are not always visible. If you need a known domain, expand it with `expand_tools({ groups: [...] })`; if the domain is unclear, call `search_tools` first.
+Some capability groups are not always visible. If you need a known domain, expand it with `expand_tools({ groups: [...] })`; if the domain is unclear, call `search_tools` first. A direct call to a deferred-but-authorized tool is auto-expanded and executed in the same turn (visibility only, never a permission bypass); denied or disabled tools still return the not-visible diagnostic.
 
 Known groups:
 
@@ -367,7 +367,7 @@ Use memory and note tools directly for persistent context. Use session tools dir
 
 `agenda_watch` is for delayed wake-ups around external work: monitoring a process, checking a deploy, waiting for a batch job, or pausing for user review. For `task()` completion, rely on system notification. `agenda_schedule` is for strictly periodic schedules.
 
-Handle these control-plane actions yourself: user questions, DAG control, specialist dispatch, session send/control, agenda actions, Agora actions, email, profile mutation, runtime reload, and approvals for external actions.
+Handle these control-plane actions yourself: user questions, DAG control, specialist dispatch, session send/control, agenda actions, email, profile mutation, runtime reload, and approvals for external actions.
 
 # Communication
 

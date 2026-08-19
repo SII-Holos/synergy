@@ -65,6 +65,7 @@ export const AttachTool = Tool.define("attach", {
             originTool: "attach",
             sourcePath: filePath,
             size: buffer.length,
+            deliverable: true,
           },
         },
       })

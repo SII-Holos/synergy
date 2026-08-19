@@ -642,6 +642,18 @@
         },
         "diffDelete": {
           "$ref": "#/definitions/OpaqueHexColor"
+        },
+        "syntaxString": {
+          "$ref": "#/definitions/OpaqueHexColor"
+        },
+        "syntaxKeyword": {
+          "$ref": "#/definitions/OpaqueHexColor"
+        },
+        "syntaxType": {
+          "$ref": "#/definitions/OpaqueHexColor"
+        },
+        "syntaxProperty": {
+          "$ref": "#/definitions/OpaqueHexColor"
         }
       }
     },

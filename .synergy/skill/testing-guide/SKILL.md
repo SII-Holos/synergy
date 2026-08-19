@@ -39,6 +39,21 @@ Tests that exercise the cold-cache path — where no disk or memory cache exists
 
 Use a fake or local boundary only where the external system is not the subject of the test. Do not add Jest/Vitest mocks to the Bun suite without an established package-specific reason.
 
+## Run Core Suites Through the Orchestrators
+
+Run `packages/synergy` tests through the package scripts, never a raw `bun test --coverage --parallel`:
+
+```bash
+cd packages/synergy
+bun test test/<domain>/<file>.test.ts
+bun run test:ci
+bun run test:coverage
+```
+
+`test:ci` and `test:coverage` spawn every Bun child with an injected `SYNERGY_TEST_HOME`/`SYNERGY_TEST_ROOT` and no `SYNERGY_HOME`, because Bun 1.3.x does not propagate `test/preload.ts` environment into `--parallel` worker processes — a raw parallel/coverage run falls through to the real user home and writes fixtures into `~/.synergy/data`.
+
+`src/global/index.ts` enforces this at module load: a test-entry process (`Bun.main`/argv matching `*.test.*`/`*.spec.*`, or `BUN_TEST_WORKER_ID`/`JEST_WORKER_ID` present) must carry the positive `SYNERGY_TEST_HOME` isolation marker, and is additionally blocked when the root is `os.homedir()/.synergy` or inside it (Windows paths normalized case-insensitively). If you see `TestHomeGuardError`, the run bypassed isolation: re-run through the package scripts or set `SYNERGY_TEST_HOME` to a dedicated test home. `SYNERGY_ALLOW_REAL_HOME=1` is the only escape hatch for a deliberate real-home run.
+
 ## Run Narrow to Broad
 
 Core runtime commands run from `packages/synergy`:
@@ -73,6 +88,13 @@ Extraction must leave tracked PO catalogs unchanged, strict compilation must rej
 Run the narrow failing test during iteration, then the affected package/domain suite, then `quality:quick`. Run the full suite when the change crosses shared abstractions, persistence, generated contracts, package publication, or release boundaries, or when the user requests it.
 
 `bun run test:ci` is the CI-equivalent core suite. It runs four shards sequentially in fresh Bun processes to bound process-global state and fixture accumulation without introducing cross-shard port or environment races. Set `SYNERGY_TEST_JUNIT_DIR` to emit one JUnit report per shard.
+
+Coverage has a floor. `bun run coverage:check` enforces per-package line/function thresholds (the only metrics Bun 1.3.14 exposes in lcov) with an auditable exemption list in `script/coverage-exempt.json`. The rules:
+
+- Cover product logic with real behavioral tests before exempting anything.
+- Every exemption entry carries a `reason`; entries that match nothing, overlap, or cover more than 25% of a package fail validation.
+- Bun 1.3.14 supports no ignore comments (`istanbul ignore`, `v8 ignore`, and `c8 ignore` are all inert), so whole-file exemption is the only exclusion mechanism. Do not add ignore comments expecting them to work.
+- A source file never loaded by any test counts as 0% and fails the package — add a real test that loads it rather than exempting blindly.
 
 Use [Development reference](../../../docs/reference/development.md) and [Open-source quality](../../../docs/operations/open-source-quality.md) for current command ownership. Do not invent a root `bun test`; the root script intentionally rejects that ambiguous command.
 

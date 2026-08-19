@@ -11,7 +11,6 @@ import { SessionInbox } from "@/session/inbox"
 import { SessionDrive } from "@/session/drive"
 
 export namespace ChannelHost {
-  export type ProviderStatus = { kind: string }
   export type ConversationMessage = Omit<MessageContext, "channelType" | "accountId">
   /**
    * Conversation acceptance result: the provider lane awaits only durable
@@ -112,23 +111,16 @@ export namespace ChannelHost {
   export function create(options: {
     channelType: string
     accountId: string
-    onStatus?: (status: ProviderStatus) => void
     onDiagnostic?: (record: DiagnosticRecordInput) => void | Promise<void>
     onConversationMessage?: (message: MessageContext) => Promise<ReceiveResult>
     activateTasks?: boolean
   }) {
-    const { channelType, accountId, onStatus, onDiagnostic, onConversationMessage, activateTasks = false } = options
+    const { channelType, accountId, onDiagnostic, onConversationMessage, activateTasks = false } = options
     const hostIdentity = { channelType, accountId }
 
     return {
       channelType,
       accountId,
-
-      status: {
-        update(status: ProviderStatus) {
-          onStatus?.(status)
-        },
-      },
 
       diagnostics: {
         async record(record: DiagnosticRecordInput) {

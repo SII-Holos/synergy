@@ -2,11 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import {
-  EMBEDDING_RUNTIME_REQUIRED_PATHS,
-  stageEmbeddingRuntimeAssets,
-  standaloneEmbeddingBuildPlugin,
-} from "../../script/embedding-runtime-assets"
+import { EMBEDDING_RUNTIME_REQUIRED_PATHS, stageEmbeddingRuntimeAssets } from "../../script/embedding-runtime-assets"
 
 const temporaryDirectories: string[] = []
 
@@ -15,6 +11,34 @@ afterEach(async () => {
     temporaryDirectories.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true })),
   )
 })
+
+/**
+ * Run a standalone embedding probe in a fresh child Bun process.
+ *
+ * Bun 1.3.14 fails the second Bun.build that bundles @huggingface/transformers
+ * inside the same process, and any earlier test in this process (e.g. through
+ * the session/channel runtime) may have already loaded transformers. The build,
+ * asset staging, and probe execution therefore run in a dedicated subprocess so
+ * the parent test process is never polluted and vice versa.
+ */
+async function runStandaloneProbe(
+  entry: string,
+  probeFile?: string,
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  const runtimeDir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-embedding-standalone-"))
+  temporaryDirectories.push(runtimeDir)
+  const binary = path.join(runtimeDir, "bin", process.platform === "win32" ? "probe.exe" : "probe")
+
+  const runner = path.join(import.meta.dir, "fixture", "embedding-standalone-runner.ts")
+  const args = probeFile ? [runner, entry, runtimeDir, binary, probeFile] : [runner, entry, runtimeDir, binary]
+  const proc = Bun.spawn([process.execPath, ...args], { stdout: "pipe", stderr: "pipe" })
+  const [code, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ])
+  return { code: code ?? 1, stdout, stderr }
+}
 
 describe("standalone embedding runtime", () => {
   test("stages the platform-independent ONNX runtime assets", async () => {
@@ -29,28 +53,8 @@ describe("standalone embedding runtime", () => {
   })
 
   test("loads transformers and initializes ONNX from a compiled artifact", async () => {
-    const runtimeDir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-embedding-standalone-"))
-    temporaryDirectories.push(runtimeDir)
-    const binary = path.join(runtimeDir, "bin", process.platform === "win32" ? "probe.exe" : "probe")
-    await fs.mkdir(path.dirname(binary), { recursive: true })
-
-    const output = await Bun.build({
-      entrypoints: [path.join(import.meta.dir, "fixture/embedding-standalone-entry.ts")],
-      conditions: ["browser"],
-      plugins: [standaloneEmbeddingBuildPlugin()],
-      define: { SYNERGY_STANDALONE: "true" },
-      compile: { outfile: binary },
-    })
-    expect(output.success, output.logs.map((log) => log.message).join("\n")).toBe(true)
-    await stageEmbeddingRuntimeAssets({ runtimeDir })
-
-    const proc = Bun.spawn([binary], { stdout: "pipe", stderr: "pipe" })
-    const [code, stdout, stderr] = await Promise.all([
-      proc.exited,
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ])
-
+    const entry = path.join(import.meta.dir, "fixture", "embedding-standalone-entry.ts")
+    const { code, stdout, stderr } = await runStandaloneProbe(entry)
     expect(code, stderr).toBe(0)
     expect(stdout).toContain("standalone embedding runtime ready")
   }, 30_000)
@@ -61,28 +65,8 @@ describe("standalone embedding runtime", () => {
     // read disk paths and falls back to fetch(path), which Bun rejects with
     // "fetch() URL is invalid". The build plugin shim must convert paths to
     // buffers so the backend reaches ONNX protobuf parsing instead.
-    const runtimeDir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-embedding-standalone-path-"))
-    temporaryDirectories.push(runtimeDir)
-    const binary = path.join(runtimeDir, "bin", process.platform === "win32" ? "probe.exe" : "probe")
-    await fs.mkdir(path.dirname(binary), { recursive: true })
-
-    const output = await Bun.build({
-      entrypoints: [path.join(import.meta.dir, "fixture/embedding-standalone-path-entry.ts")],
-      conditions: ["browser"],
-      plugins: [standaloneEmbeddingBuildPlugin()],
-      define: { SYNERGY_STANDALONE: "true" },
-      compile: { outfile: binary },
-    })
-    expect(output.success, output.logs.map((log) => log.message).join("\n")).toBe(true)
-    await stageEmbeddingRuntimeAssets({ runtimeDir })
-
-    const proc = Bun.spawn([binary], { stdout: "pipe", stderr: "pipe" })
-    const [code, stdout, stderr] = await Promise.all([
-      proc.exited,
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ])
-
+    const entry = path.join(import.meta.dir, "fixture", "embedding-standalone-path-entry.ts")
+    const { code, stdout, stderr } = await runStandaloneProbe(entry)
     expect(code, stderr).toBe(0)
     expect(stdout).toContain("standalone embedding path shim ready")
   }, 30_000)
@@ -90,28 +74,11 @@ describe("standalone embedding runtime", () => {
   test("serves local model files through fetch inside a compiled artifact", async () => {
     const runtimeDir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-embedding-standalone-fetch-"))
     temporaryDirectories.push(runtimeDir)
-    const binary = path.join(runtimeDir, "bin", process.platform === "win32" ? "probe.exe" : "probe")
-    await fs.mkdir(path.dirname(binary), { recursive: true })
     const probeFile = path.join(runtimeDir, "model.onnx")
     await fs.writeFile(probeFile, "onnx-model-content")
 
-    const output = await Bun.build({
-      entrypoints: [path.join(import.meta.dir, "fixture/embedding-local-file-entry.ts")],
-      conditions: ["browser"],
-      plugins: [standaloneEmbeddingBuildPlugin()],
-      define: { SYNERGY_STANDALONE: "true" },
-      compile: { outfile: binary },
-    })
-    expect(output.success, output.logs.map((log) => log.message).join("\n")).toBe(true)
-    await stageEmbeddingRuntimeAssets({ runtimeDir })
-
-    const proc = Bun.spawn([binary, probeFile], { stdout: "pipe", stderr: "pipe" })
-    const [code, stdout, stderr] = await Promise.all([
-      proc.exited,
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ])
-
+    const entry = path.join(import.meta.dir, "fixture", "embedding-local-file-entry.ts")
+    const { code, stdout, stderr } = await runStandaloneProbe(entry, probeFile)
     expect(code, stderr).toBe(0)
     expect(stdout).toContain("standalone local file fetch ready")
   }, 30_000)

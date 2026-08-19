@@ -76,7 +76,9 @@ bun test --watch
 
 `bun run test:ci` matches the CI core-suite boundary: four sequential shards run in separate Bun processes, limiting process-global state and temporary fixture accumulation while avoiding concurrent port and environment collisions. Set `SYNERGY_TEST_JUNIT_DIR` to a package-relative directory when per-shard JUnit reports are needed.
 
-Provider/model tests use the pinned `test/tool/fixtures/models-api.json` catalog loaded by `test/preload.ts`. Update the fixture deliberately when a test requires a new model; do not reintroduce live model-catalog fetching into deterministic tests.
+`bun run test:coverage` runs through `script/coverage-run.ts`, which spawns every coverage batch with an injected isolated test home. Both orchestrators (`test-ci.ts`, `coverage-run.ts`) set `SYNERGY_TEST_HOME`/`SYNERGY_TEST_ROOT` in the child environment and delete `SYNERGY_HOME`, because Bun 1.3.x does not propagate `test/preload.ts` environment into `--parallel` worker processes — a raw `bun test --coverage --parallel` run would fall through to the real user home and write fixtures into `~/.synergy/data`.
+
+For the full isolation procedure, the guard predicate, and the escape hatch, see the `testing-guide` Skill (`.synergy/skill/testing-guide/SKILL.md`). Run core suites through the package scripts; the only escape hatch for a deliberate real-home test run is `SYNERGY_ALLOW_REAL_HOME=1` (see [Configuration layout](configuration-layout.md)).
 
 The same pinned catalog is the default input for core binary builds. `packages/synergy/script/models-catalog.ts` validates it and requires non-empty OpenAI, Anthropic, and Google entries before compilation; `MODELS_DEV_API_JSON` can override the input for an ordinary local build, while release builds always force the repository-pinned snapshot.
 
@@ -179,6 +181,7 @@ The repository-local `.synergy/skill/` directory is the executable handbook for 
 | Plugin manifest, install/update, runtime, bridge, marketplace, or UI host                        | `change-plugin-runtime`                            |
 | Built-in agent, CLI command, or first-party tool                                                 | `add-agent`, `add-cli-command`, or `add-tool`      |
 | Test selection, isolated runtime, or Git operation                                               | `testing-guide`, `develop-synergy`, or `git-guide` |
+| Broad simplification audit, dead/duplicated/over-built surface, or decision-record coalescing    | `find-simplifications`                             |
 
 When implementation or review reveals a reusable required pattern, registration, safety constraint, or verification step, update the owning Skill in the same change. Create a focused verb-led Skill if no existing workflow would reliably trigger. Root and package `AGENTS.md` files retain safety, global invariants, and routing; canonical docs retain product and architecture truth; Skills retain the executable procedure.
 

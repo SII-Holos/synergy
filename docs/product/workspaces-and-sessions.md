@@ -25,17 +25,9 @@ The global runtime serves every Scope. Project services start lazily when the Sc
 
 ### Project folders
 
-A project Scope can declare multiple project folders — the main worktree plus
-additional folders such as sibling checkouts or related sub-projects. Opening a
-directory inside a Git repository records it under the same project; the
-project editor can also add or remove folders explicitly.
+A project Scope can declare multiple project folders — the main worktree plus additional folders such as sibling checkouts or related sub-projects. Opening a directory inside a Git repository records it under the same project; the project editor can also add or remove folders explicitly.
 
-Every declared project folder is trusted automatically by the active control
-profile, the execution sandbox, and the file tools: reading, writing, and
-building inside any project folder needs no per-path approval, matching the
-main worktree. In an isolated worktree session the original main checkout
-stays outside this trust boundary and requires explicit authorization, while
-other declared project folders remain trusted.
+Every declared project folder is trusted automatically by the active control profile, the execution sandbox, and the file tools: reading, writing, and building inside any project folder needs no per-path approval, matching the main worktree. In an isolated worktree session the original main checkout stays outside this trust boundary and requires explicit authorization, while other declared project folders remain trusted.
 
 ## Workspace Binding
 

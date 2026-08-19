@@ -538,6 +538,8 @@ export namespace Provider {
     }
   }
 
+  let lastSettledProviders: Record<string, Info> | undefined
+
   const state = ScopedState.create(async () => {
     if (process.env.SYNERGY_AGENT_WORKER === "1") return workerState
     using _ = log.time("state")
@@ -929,8 +931,20 @@ export namespace Provider {
     log.info("provider state reloaded")
   }
 
+  /**
+   * Providers from the most recent successfully built provider state, without
+   * triggering a build. Lets the global health handler answer from the last
+   * settled state when a state build exceeds its bounded wait window.
+   */
+  export function listSettled(): Record<string, Info> {
+    return lastSettledProviders ?? {}
+  }
+
   export async function list() {
-    return state().then((state) => state.providers)
+    return state().then((state) => {
+      lastSettledProviders = state.providers
+      return state.providers
+    })
   }
 
   export async function listConfiguredForClient() {

@@ -117,13 +117,7 @@ Parent delivery and child persistence are separate:
 
 A running parent is not interrupted with another model call in the middle of its turn. Its completion notice may already be durable in the Inbox; releasing the active session lease asks the shared drive to process that item before any workflow continuation proposal. Callers that need a direct result should await the task, while orchestration features can bind the task to a DAG node.
 
-When the parent session is an external Channel endpoint, Cortex follows the
-task's parent-message lineage to the originating root user message and copies
-its `channelReplyToMessageId` onto the completion notice together with
-`channelPush: true` and `channelReply: true`. The outbound delivery system then
-replies to that specific Channel topic rather than consulting mutable session
-endpoint state. Cortex only opts into reply delivery for a non-app Channel with
-an `accountId` and a valid message-level anchor.
+When the parent session is an external Channel endpoint, Cortex follows the task's parent-message lineage to the originating root user message and copies its `channelReplyToMessageId` onto the completion notice together with `channelPush: true` and `channelReply: true`. The outbound delivery system then replies to that specific Channel topic rather than consulting mutable session endpoint state. Cortex only opts into reply delivery for a non-app Channel with an `accountId` and a valid message-level anchor.
 
 At Synergy startup, durable child sessions left in `queued` or `running` state are changed to `interrupted` and emit the same observer so plugin control planes can make an explicit recovery decision. Cortex then reconciles eligible terminal notifications from child-session state: a missing delivery is restored with the stable key, while an already persisted but unprocessed Inbox item only re-requests the parent drive. Hidden tasks and old or explicitly suppressed records whose notification intent is not `true` do not create or recover parent notifications; workflow-owned silent handoffs follow the separate recovery path below.
 

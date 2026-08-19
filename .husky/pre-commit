@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+
+bun script/staged-lint.ts
+git diff --cached --check
+bun script/decision-check.ts --staged
+bun script/doc-check.ts --staged
+if git diff --cached --name-only | grep -q '^\.synergy/skill/'; then
+  bun run skill:check
+fi

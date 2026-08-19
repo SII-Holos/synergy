@@ -163,6 +163,9 @@ export namespace AttachmentDiscovery {
             sourcePath: canonical,
             size: info.size,
             detectedFrom: candidate.detectedFrom,
+            // Explicit references (markdown, file urls) are deliverables;
+            // paths that merely appeared in tool output are incidental.
+            deliverable: candidate.detectedFrom === "markdown" || candidate.detectedFrom === "file_url",
           },
         },
       })

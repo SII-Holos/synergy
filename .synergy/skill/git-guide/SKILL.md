@@ -130,27 +130,18 @@ Checkout type does not change ordinary `shell_remote_publish` into `shell_remote
 
 ## Bash tool GitHub CLI credential injection
 
-When a bash tool invocation contains a `gh` command and no `GH_TOKEN` or
-`GITHUB_TOKEN` is already present in the child environment, the local backend
-injects the managed GitHub credential (from `GH_TOKEN`/`GITHUB_TOKEN` env or
-the Synergy auth store) as `GH_TOKEN` in the child process environment.
+When a bash tool invocation contains a `gh` command and no `GH_TOKEN` or `GITHUB_TOKEN` is already present in the child environment, the local backend injects the managed GitHub credential (from `GH_TOKEN`/`GITHUB_TOKEN` env or the Synergy auth store) as `GH_TOKEN` in the child process environment.
 
 Behavior:
 
 - The token is passed through the environment only — it never appears in the
   command string, argv, or process listings.
 - Injection applies to any invocation that contains at least one `gh` command,
-  including mixed, chained, and piped commands (`echo ok; gh api user`,
-  `gh repo view owner/repo | head`).
+  including mixed, chained, and piped commands (`echo ok; gh api user`, `gh repo view owner/repo | head`).
 - The injected `GH_TOKEN` is inherited by every process in the invocation —
-  any command can read it via `$GH_TOKEN`. An explicit `GH_TOKEN=...` prefix
-  assignment or `export GH_TOKEN=...` earlier in the command takes precedence;
-  use `env -u GH_TOKEN <cmd>` to clear it for a single command. An explicit
-  `GITHUB_TOKEN=...` does not override the injected `GH_TOKEN`, because gh
-  prefers `GH_TOKEN`.
+  any command can read it via `$GH_TOKEN`. An explicit `GH_TOKEN=...` prefix assignment or `export GH_TOKEN=...` earlier in the command takes precedence; use `env -u GH_TOKEN <cmd>` to clear it for a single command. An explicit `GITHUB_TOKEN=...` does not override the injected `GH_TOKEN`, because gh prefers `GH_TOKEN`.
 - When no Synergy GitHub credential is connected, the invocation runs without
-  injection and the bash tool appends a `[GitHub CLI token skipped: ...]`
-  notice to the output.
+  injection and the bash tool appends a `[GitHub CLI token skipped: ...]` notice to the output.
 - If a credential is injected, telemetry emits `bash.github.token.injected`;
   if injection is skipped, `bash.github.token.skipped` records the reason.
 
