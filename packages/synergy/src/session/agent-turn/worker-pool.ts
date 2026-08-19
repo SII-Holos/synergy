@@ -562,7 +562,10 @@ export class AgentWorkerPool {
           this.dropLateMessage(worker, message.type, message.requestId)
           return
         }
-        this.terminateForProtocol(worker, "heartbeat referenced an unowned turn")
+        this.terminateForProtocol(worker, "heartbeat referenced an unowned turn", {
+          messageType: message.type,
+          requestId: message.requestId,
+        })
         return
       }
       this.recordWorkerMemory(
@@ -608,7 +611,10 @@ export class AgentWorkerPool {
         this.dropLateMessage(worker, message.type, lateRequestId)
         return
       }
-      this.terminateForProtocol(worker, "message referenced an unowned turn")
+      this.terminateForProtocol(worker, "message referenced an unowned turn", {
+        messageType: message.type,
+        ...(lateRequestId !== undefined ? { requestId: lateRequestId } : {}),
+      })
       return
     }
     if (message.type === "run-ready") {
@@ -1166,7 +1172,11 @@ export class AgentWorkerPool {
     }
   }
 
-  private terminateForProtocol(worker: PoolWorker, reason: string): void {
+  private terminateForProtocol(
+    worker: PoolWorker,
+    reason: string,
+    context?: { messageType?: string; requestId?: string },
+  ): void {
     if (worker.stopping || this.stopping) return
     worker.startupFailureEligible = false
     worker.stopping = true
@@ -1174,6 +1184,8 @@ export class AgentWorkerPool {
       workerID: worker.id,
       pid: worker.pid,
       reason,
+      ...(context?.messageType !== undefined ? { messageType: context.messageType } : {}),
+      ...(context?.requestId !== undefined ? { requestId: context.requestId } : {}),
     })
     ObservabilityMetrics.record({
       name: "agent.worker.recycle",
