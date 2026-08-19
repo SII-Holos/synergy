@@ -244,6 +244,49 @@ describe.serial("Cortex", () => {
         },
       })
     })
+
+    test("resets the delivery notification timestamp when reusing a child session", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const parent = await Session.create({})
+          const parentMessageID = Identifier.ascending("message")
+          const child = await Session.create({
+            parentID: parent.id,
+            cortex: {
+              taskID: "ctx_previous_task",
+              parentSessionID: parent.id,
+              parentMessageID,
+              description: "Previous task",
+              agent: "developer",
+              status: "completed",
+              startedAt: Date.now(),
+              completedAt: Date.now(),
+              deliveryNotifiedAt: Date.now(),
+            },
+          })
+
+          const task = await Cortex.prepare({
+            description: "Reused reviewer recovery",
+            prompt: "Review again",
+            agent: "developer",
+            executionRole: "delegated_subagent",
+            parentSessionID: parent.id,
+            parentMessageID,
+            sessionID: child.id,
+            visibility: "hidden",
+          })
+
+          const persisted = await Session.get(child.id)
+          expect(persisted.cortex?.taskID).toBe(task.id)
+          expect(persisted.cortex?.status).toBe("queued")
+          expect(persisted.cortex?.deliveryNotifiedAt).toBeUndefined()
+
+          await Cortex.cancel(task.id)
+        },
+      })
+    })
   })
 
   test("explicit sessionID has priority over reusableSession from reuseInterrupted search", async () => {
