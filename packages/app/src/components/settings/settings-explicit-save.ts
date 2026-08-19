@@ -11,10 +11,9 @@ export function retainDraftAfterSave<T>(current: T | undefined, submitted: T): T
   return current === submitted ? undefined : current
 }
 
-export function themeIdToApplyAfterSave(patch: Record<string, unknown>): string | undefined {
-  if (!("theme" in patch)) return undefined
-  return typeof patch.theme === "string" ? patch.theme : ""
-}
+// `themeIdToApplyAfterSave` was removed — theme is now applied instantly on
+// selection and persisted via a background domain update, so the normal
+// save-changes flow no longer needs to extract it from the patch.
 
 export function snapshotSettingsDraft<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T

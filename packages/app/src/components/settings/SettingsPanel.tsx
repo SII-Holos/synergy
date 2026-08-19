@@ -61,7 +61,6 @@ import {
   retainDraftAfterSave,
   saveExplicitSettingsChanges,
   snapshotSettingsDraft,
-  themeIdToApplyAfterSave,
 } from "./settings-explicit-save"
 import { prepareLocaleSettingsSave, rejectLocaleSettingsSave } from "./settings-locale-save"
 import { pluginSettingsResourceKey } from "./plugin-settings-resource"
@@ -209,6 +208,7 @@ const copy = {
     message: "Moved to {path}",
   },
   interfaceZoomRow: { id: "settings.catalog.general.row.zoom", message: "Interface Zoom" },
+  themeSaveFailed: { id: "settings.panel.theme.saveFailed", message: "Theme change could not be saved" },
 }
 
 export type SettingsPanelProps = DialogSettingsProps & {
@@ -501,7 +501,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
     pluginDraftVersion()
     return pluginDrafts.dirty()
   }
-  const colorSchemeDirty = () => settings.general.colorScheme !== theme.colorScheme()
   const desktopUpdateDirty = () => {
     const draft = desktopUpdateDraft()
     return draft !== undefined && draft !== (productUpdate.desktopStatus()?.mode ?? "auto")
@@ -520,7 +519,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
       hasPluginChanges() ||
       personalizeController.dirty() ||
       font.dirty() ||
-      colorSchemeDirty() ||
       desktopUpdateDirty() ||
       desktopZoomDirty(),
   )
@@ -548,6 +546,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
     setDesktopZoomDraft(undefined)
     resetEditor()
     doEnsureInit()
+    // Restore instant-applied theme — ensureInit reads `theme` from the server config resource
+    // which may still hold the previous value if the background save hasn't landed yet.
+    setSettings("general", "theme", theme.themeId() === "synergy" ? "" : theme.themeId())
   }
 
   const save = useSettingsSave({
@@ -560,10 +561,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
     preparePatchSave: (patch) => prepareLocaleSettingsSave(patch, locale.controller),
     rejectPatchSave: async (patch) => {
       await rejectLocaleSettingsSave(patch, locale.controller, globalSync.data.config.locale)
-    },
-    onPatchSaved: (patch) => {
-      const themeId = themeIdToApplyAfterSave(patch)
-      if (themeId !== undefined) theme.setThemeId(themeId)
     },
     discardChanges,
     closeDialog: () => props.onClose?.() ?? dialog.close(),
@@ -613,10 +610,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return font.save()
   }
 
-  async function saveColorSchemeChanges() {
-    theme.setColorScheme(settings.general.colorScheme)
-    return true
-  }
 
   async function saveDesktopUpdateChanges() {
     const mode = desktopUpdateDraft()
@@ -643,7 +636,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
     { dirty: hasPluginChanges, save: savePluginChanges },
     { dirty: personalizeController.dirty, save: savePersonalizeChanges },
     { dirty: font.dirty, save: saveFontChanges },
-    { dirty: colorSchemeDirty, save: saveColorSchemeChanges },
     { dirty: desktopUpdateDirty, save: saveDesktopUpdateChanges },
     { dirty: desktopZoomDirty, save: saveDesktopZoomChanges },
   ]
@@ -793,7 +785,29 @@ export function SettingsPanel(props: SettingsPanelProps) {
     general: () => (
       <GeneralPanel
         general={settings.general}
-        onGeneralChange={(key, value) => setSettings("general", key, value)}
+        onGeneralChange={(key, value) => {
+          if (key === "colorScheme") {
+            theme.setColorScheme(value)
+            setSettings("general", "colorScheme", value)
+            return
+          }
+          if (key === "theme") {
+            theme.setThemeId(value || "synergy")
+            setSettings("general", "theme", value)
+            // Persist to server independently — fire-and-forget with error toast on failure.
+            void globalSDK.client.config.domain
+              .update({ domain: "general", configDomainUpdateInput: { config: { theme: value } } })
+              .catch((error) => {
+                showToast({
+                  type: "error",
+                  title: _(copy.themeSaveFailed),
+                  description: requestErrorMessage(error),
+                })
+              })
+            return
+          }
+          setSettings("general", key, value)
+        }}
         desktopUpdateMode={desktopUpdateDraft() ?? productUpdate.desktopStatus()?.mode}
         onDesktopUpdateModeChange={stageDesktopUpdateMode}
         desktopZoom={desktopZoomDraft() ?? desktopZoomSaved() ?? 1}
