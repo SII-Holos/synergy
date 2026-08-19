@@ -2884,6 +2884,10 @@ msgid "app.kanban.emptyHint"
 msgstr "会话会按最近顺序自动出现在这里。从侧边栏拖入会话即可固定。"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.focus.resizeRail"
+msgstr "调整面板宽度"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.follow"
 msgstr "跟随最新"
 

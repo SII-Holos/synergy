@@ -2884,6 +2884,10 @@ msgid "app.kanban.emptyHint"
 msgstr "Sessions appear here in your recent order. Drag a session from the sidebar to pin it."
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.focus.resizeRail"
+msgstr "Resize panel"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.follow"
 msgstr "Follow latest"
 

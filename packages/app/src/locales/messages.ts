@@ -1342,6 +1342,7 @@ export const kanbanPage = {
   gridColumns: { id: "app.kanban.grid.columns", message: "Columns" },
   gridRows: { id: "app.kanban.grid.rows", message: "Rows" },
   gridLayoutLabel: { id: "app.kanban.grid.layoutLabel", message: "Grid layout" },
+  focusResizeRail: { id: "app.kanban.focus.resizeRail", message: "Resize panel" },
   composerAgent: { id: "app.kanban.composer.agent", message: "Agent" },
   composerDefaultAgent: { id: "app.kanban.composer.defaultAgent", message: "Default agent" },
   composerPermission: { id: "app.kanban.composer.permission", message: "Permission" },

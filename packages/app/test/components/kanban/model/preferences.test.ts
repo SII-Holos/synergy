@@ -7,12 +7,18 @@ describe("migrateKanbanPreferences", () => {
     expect(migrateKanbanPreferences(null)).toEqual(defaultKanbanPreferences())
     expect(migrateKanbanPreferences("garbage")).toEqual(defaultKanbanPreferences())
   })
-
   test("clamps grid dimensions into the 1-4 range", () => {
     expect(migrateKanbanPreferences({ gridCols: 99, gridRows: -3 }).gridCols).toBe(4)
     expect(migrateKanbanPreferences({ gridCols: 99, gridRows: -3 }).gridRows).toBe(1)
     expect(migrateKanbanPreferences({ gridCols: 2.6, gridRows: 1.4 }).gridCols).toBe(3)
     expect(migrateKanbanPreferences({ gridCols: "3", gridRows: "2" }).gridCols).toBe(3)
+  })
+
+  test("clamps the focus rail width into the 160-640 range", () => {
+    expect(migrateKanbanPreferences({ focusRailWidth: 9999 }).focusRailWidth).toBe(640)
+    expect(migrateKanbanPreferences({ focusRailWidth: -5 }).focusRailWidth).toBe(160)
+    expect(migrateKanbanPreferences({ focusRailWidth: 400 }).focusRailWidth).toBe(400)
+    expect(migrateKanbanPreferences({ focusRailWidth: "300" }).focusRailWidth).toBe(300)
   })
 
   test("keeps only the two known layout values", () => {

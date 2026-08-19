@@ -2884,6 +2884,10 @@ msgid "app.kanban.emptyHint"
 msgstr ""
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.focus.resizeRail"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.follow"
 msgstr ""
 

@@ -13,6 +13,8 @@ export type KanbanPersisted = {
   gridCols: number
   /** Grid layout: fixed number of visible rows (1–4); extra panes overflow. */
   gridRows: number
+  /** Focus layout: rail (right) width in px; the draggable divider persists it. */
+  focusRailWidth: number
 }
 
 export const GRID_COL_MIN = 1
@@ -20,8 +22,12 @@ export const GRID_COL_MAX = 4
 export const GRID_ROW_MIN = 1
 export const GRID_ROW_MAX = 4
 
+export const FOCUS_RAIL_MIN = 160
+export const FOCUS_RAIL_MAX = 640
+export const FOCUS_RAIL_DEFAULT = 300
+
 export function defaultKanbanPreferences(): KanbanPersisted {
-  return { layout: "grid", follow: {}, pinned: [], gridCols: 3, gridRows: 2 }
+  return { layout: "grid", follow: {}, pinned: [], gridCols: 3, gridRows: 2, focusRailWidth: FOCUS_RAIL_DEFAULT }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -42,5 +48,6 @@ export function migrateKanbanPreferences(value: unknown): KanbanPersisted {
     pinned: Array.isArray(value.pinned) ? value.pinned.filter((x): x is string => typeof x === "string") : [],
     gridCols: clampInt(value.gridCols, GRID_COL_MIN, GRID_COL_MAX, base.gridCols),
     gridRows: clampInt(value.gridRows, GRID_ROW_MIN, GRID_ROW_MAX, base.gridRows),
+    focusRailWidth: clampInt(value.focusRailWidth, FOCUS_RAIL_MIN, FOCUS_RAIL_MAX, base.focusRailWidth),
   }
 }

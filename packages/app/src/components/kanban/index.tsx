@@ -397,6 +397,8 @@ export function KanbanPanel() {
               render={renderPane}
               gridCols={store.gridCols}
               gridRows={store.gridRows}
+              focusRailWidth={store.focusRailWidth}
+              onRailResize={(width) => setStore("focusRailWidth", width)}
               onReorder={reorderPane}
             />
           </Show>
@@ -412,6 +414,8 @@ function SwitchLayout(props: {
   render: (pane: BoardPane, variant?: "focus" | "rail") => ReturnType<typeof KanbanPanel> | null
   gridCols: number
   gridRows: number
+  focusRailWidth: number
+  onRailResize: (width: number) => void
   onReorder: (fromKey: string, toKey: string) => void
 }) {
   const panes = () => props.panes
@@ -428,7 +432,12 @@ function SwitchLayout(props: {
         />
       </Show>
       <Show when={props.mode === "focus"} fallback={<></>}>
-        <KanbanFocus panes={panes()} renderPane={(pane, variant) => render(pane, variant) ?? <></>} />
+        <KanbanFocus
+          panes={panes()}
+          renderPane={(pane, variant) => render(pane, variant) ?? <></>}
+          railWidth={() => props.focusRailWidth}
+          onRailResize={props.onRailResize}
+        />
       </Show>
     </>
   )
