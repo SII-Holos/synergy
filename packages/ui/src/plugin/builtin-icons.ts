@@ -23,6 +23,7 @@ const builtinIconNames = [
   "book-down",
   "book-marked",
   "book-open",
+  "bookmark",
   "bot",
   "boxes",
   "braces",

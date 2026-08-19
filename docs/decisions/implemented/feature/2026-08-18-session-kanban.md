@@ -14,7 +14,7 @@ The board is a pure frontend view-layer feature. It reuses the existing global e
 
 One sync-layer generalization supports it:
 
-- **Volatile resync set.** `session-volatile-resync.ts` takes `activeBucketKeys: string[]` and returns `activeSessionIDs: string[]`; `refreshVolatileAfterResync` batch-refreshes inbox/todo/dag for the active session plus every board pane instead of only one. Board panes receive no LRU eviction protection: they enter the normal load path when the board is mounted (touching their message bucket) and refill from the loader after eviction, so memory stays bounded by the same 15-bucket cap as the rest of the app.
+- **Volatile resync set.** `session-volatile-resync.ts` takes the single `activeBucketKey` and returns `activeSessionIDs: string[]`; `refreshVolatileAfterResync` batch-refreshes inbox/todo/dag for the active session (the board dropped its per-pane volatile refresh along with the LRU protection). Board panes receive no LRU eviction protection: they enter the normal load path when the board is mounted (touching their message bucket) and refill from the loader after eviction, so memory stays bounded by the same 15-bucket cap as the rest of the app…
 
 The `KanbanPanel` component lives in `packages/app/src/components/kanban/` (panel, model, pane, layout subdirectories), wired through `builtin-navigation.tsx`, `app.tsx` (route + boot gate), `mobile-drawer.tsx`, a new `kanban.main` semantic icon token, and static i18n descriptors extracted into en/zh-CN/pseudo catalogs.
 

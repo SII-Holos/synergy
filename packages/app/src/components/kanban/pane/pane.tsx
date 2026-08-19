@@ -96,7 +96,10 @@ export function KanbanPane(props: {
     hasMessageWindowSnapshot(props.data.message[props.pane.sessionID], props.data.messageWindow[props.pane.sessionID]),
   )
   const working = createMemo(() => props.data.session_status[props.pane.sessionID]?.type !== "idle")
-  const autoScroll = createAutoScroll({ working })
+  // Autoscroll follows only while the pane's follow toggle is enabled, so
+  // "Paused" actually stops the stream from scrolling; the viewport's manual
+  // scroll-to-bottom button still forces a jump.
+  const autoScroll = createAutoScroll({ working: () => props.follow() && working() })
   const visualStore: SessionVisualStore | undefined = props.pane.entry
     ? {
         session_status: props.data.session_status,
@@ -239,7 +242,7 @@ export function KanbanPane(props: {
                 if (event.dataTransfer) event.dataTransfer.effectAllowed = "move"
               }}
             >
-              <Icon name="grip" size="small" />
+              <Icon name={getSemanticIcon("action.grip")} size="small" />
             </span>
           </Show>
           <Show when={props.onRemove}>

@@ -224,13 +224,14 @@ export function KanbanPanel() {
   }
 
   const renderPane = (pane: BoardPane, variant: "focus" | "rail" | "default" = "default") => {
-    // Unavailable panes render their placeholder independently of Scope data:
-    // their session is gone, so no store exists and nothing should be loaded.
+    // Render the pane shell unconditionally: the scope store may not exist
+    // yet on first paint (it is created lazily by the loader), so fall back to
+    // empty data and let the pane show its header/loading state until the
+    // first message-page apply populates the store (which re-renders).
     const child =
       pane.kind === "unavailable"
         ? EMPTY_BOARD_PANE_DATA
-        : (globalSync.peekScopeState(pane.scopeKey)?.[0] as BoardPaneData | undefined)
-    if (!child) return null
+        : ((globalSync.peekScopeState(pane.scopeKey)?.[0] as BoardPaneData | undefined) ?? EMPTY_BOARD_PANE_DATA)
     return (
       <KanbanPane
         pane={pane}

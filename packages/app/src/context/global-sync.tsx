@@ -880,10 +880,9 @@ function createGlobalSync() {
   }
 
   async function refreshVolatileAfterResync(scopeKey: string, store: State, setStore: SetStoreFunction<State>) {
-    const activeBucketKeys = [activeBucketKey].filter((key): key is string => !!key)
     const plan = planSessionVolatileResync({
       scopeKey,
-      activeBucketKeys,
+      activeBucketKey: activeBucketKey,
       inboxSessionIDs: Object.keys(store.inbox),
       todoSessionIDs: Object.keys(store.todo),
       dagSessionIDs: Object.keys(store.dag),
