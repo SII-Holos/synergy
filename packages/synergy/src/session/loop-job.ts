@@ -149,21 +149,6 @@ export namespace LoopJob {
     return flow
   }
 
-  export function backgroundStats() {
-    return {
-      active: background.size,
-      jobs: [...background.values()].map((state) => ({
-        type: state.type,
-        key: state.key,
-        ageMs: Math.max(0, Date.now() - state.startedAt),
-        payloadBytes: state.current.payloadBytes,
-        pending: state.pending !== undefined,
-        pendingPayloadBytes: state.pending?.payloadBytes,
-        sessionID: state.current.sessionID,
-      })),
-    }
-  }
-
   function scheduleBackground(job: RegisteredBackgroundJob, payload: JobInstance, fallbackSessionID: string) {
     const sessionID = typeof payload.sessionID === "string" ? payload.sessionID : fallbackSessionID
     const coalescingKey = job.key?.(payload)

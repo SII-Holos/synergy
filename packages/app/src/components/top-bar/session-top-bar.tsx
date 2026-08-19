@@ -25,12 +25,14 @@ import {
   type SessionWorkspaceTransitionRequest,
 } from "@/components/session/worktree-session"
 import { sessionActionVisibility, sessionModelControlVisibility } from "@/components/session/session-actions"
+import { copySessionID } from "@/utils/session-copy"
 import "./session-top-bar.css"
 
 function SessionActionMenu(props: {
   visibility: ReturnType<typeof sessionActionVisibility>
   isWorktree: () => boolean
   worktreeDisabled: () => boolean
+  sessionID: string
   onRename: () => void
   onWorktreeToggle: () => void
   onExport: () => void
@@ -43,6 +45,14 @@ function SessionActionMenu(props: {
   const run = (action: () => void) => {
     setOpen(false)
     action()
+  }
+
+  const handleCopySessionID = () => {
+    void copySessionID(props.sessionID, {
+      successTitle: _(topBar.sessionIDCopied),
+      failureLabel: _(topBar.copySessionID),
+      failureDescription: _(topBar.copySessionIDFailed),
+    })
   }
 
   return (
@@ -71,6 +81,12 @@ function SessionActionMenu(props: {
           <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onRename)}>
             <Icon name={getSemanticIcon("action.rename")} size="small" />
             <span>{_(topBar.rename)}</span>
+          </button>
+        </Show>
+        <Show when={props.visibility.copySessionID}>
+          <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(handleCopySessionID)}>
+            <Icon name={getSemanticIcon("action.copy")} size="small" />
+            <span>{_(topBar.copySessionID)}</span>
           </button>
         </Show>
         <Show when={props.visibility.worktree}>
@@ -306,6 +322,7 @@ export function SessionTopBar(props: {
               visibility={actionVisibility()}
               isWorktree={isWorktreeSession}
               worktreeDisabled={worktreeDisabled}
+              sessionID={params.id!}
               onRename={showRenameDialog}
               onWorktreeToggle={toggleWorktree}
               onExport={() => dialog.show(() => <DialogSessionExport />)}
@@ -332,6 +349,7 @@ export function SessionTopBar(props: {
               visibility={actionVisibility()}
               isWorktree={isWorktreeSession}
               worktreeDisabled={worktreeDisabled}
+              sessionID={params.id!}
               onRename={showRenameDialog}
               onWorktreeToggle={toggleWorktree}
               onExport={() => dialog.show(() => <DialogSessionExport />)}

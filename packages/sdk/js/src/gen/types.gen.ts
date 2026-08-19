@@ -4126,6 +4126,7 @@ export type SessionCortexDelegation = {
     modelID: string
   }
   error?: string
+  launchFailure?: boolean
   notifyParentOnComplete?: boolean
   deliveryNotifiedAt?: number
   visibility?: "visible" | "hidden"
@@ -4421,6 +4422,7 @@ export type CortexTask = {
   startedAt: number
   completedAt?: number
   error?: string
+  launchFailure?: boolean
   progress?: {
     toolCalls: number
     lastTool?: string
@@ -6281,6 +6283,13 @@ export type WorkspaceFileChildrenResponse = {
   truncated: boolean
 }
 
+export type WorkspaceFileWriteError = {
+  name: "WorkspaceFileAccessDeniedError" | "WorkspaceFileWriteConflictError" | "WorkspaceFileTooLargeError"
+  data: {
+    message: string
+  }
+}
+
 export type WorkspaceFileTextRange = {
   offset: number
   limit: number
@@ -6400,13 +6409,6 @@ export type WorkspaceFileWriteResult = {
   mtime: number
   size: number
   existed: boolean
-}
-
-export type WorkspaceFileWriteError = {
-  name: "WorkspaceFileAccessDeniedError" | "WorkspaceFileWriteConflictError" | "WorkspaceFileTooLargeError"
-  data: {
-    message: string
-  }
 }
 
 export type WorkspaceFileWriteFileInput = {
@@ -12224,6 +12226,10 @@ export type SessionForkData = {
           type: "before"
           messageID: string
         }
+      | {
+          type: "through"
+          messageID: string
+        }
     workspace?: SessionWorkspaceSelection
     title?: string
     controlProfile?: "guarded" | "autonomous" | "full_access"
@@ -14602,6 +14608,10 @@ export type WorkspaceFilesChildrenData = {
 
 export type WorkspaceFilesChildrenErrors = {
   /**
+   * Forbidden
+   */
+  403: WorkspaceFileWriteError
+  /**
    * Not found
    */
   404: NotFoundError
@@ -14640,6 +14650,10 @@ export type WorkspaceFilesReadData = {
 
 export type WorkspaceFilesReadErrors = {
   /**
+   * Forbidden
+   */
+  403: WorkspaceFileWriteError
+  /**
    * Not found
    */
   404: NotFoundError
@@ -14672,6 +14686,10 @@ export type WorkspaceFilesStatData = {
 }
 
 export type WorkspaceFilesStatErrors = {
+  /**
+   * Forbidden
+   */
+  403: WorkspaceFileWriteError
   /**
    * Not found
    */

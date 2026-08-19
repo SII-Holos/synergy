@@ -39,25 +39,11 @@ describe("settings config patch", () => {
       variant: "high",
     })
   })
-  test("clears a stored theme when the Synergy default is selected", () => {
+  test("does not include theme in the general patch", () => {
+    // Theme is applied instantly via a fire-and-forget server call, not through
+    // the explicit-save patch. The patch must never carry a theme field.
     const state = defaultSettingsState("enter")
     state.general.theme = ""
-
-    const patch = buildPatch({
-      cfg: { theme: "ayu" } as Config,
-      state,
-      originalMcps: {},
-    })
-
-    // The cleared value must survive JSON serialization: an undefined value
-    // is dropped by the SDK request serializer, so the server would keep the
-    // previous theme and the picker would jump back after refresh.
-    expect(JSON.parse(JSON.stringify(patch))).toHaveProperty("theme", "")
-  })
-
-  test("does not re-send the theme when it matches the server config", () => {
-    const state = defaultSettingsState("enter")
-    state.general.theme = "ayu"
 
     const patch = buildPatch({
       cfg: { theme: "ayu" } as Config,

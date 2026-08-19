@@ -6952,6 +6952,21 @@ msgstr "{count} 个文件已更改"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.fork.failed"
+msgstr "分叉失败"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.forked"
+msgstr "会话已分叉"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.forked.desc"
+msgstr "已将该消息之前的对话复制到新会话。"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.session.history.loadEarlierFailed"
 msgstr "无法加载之前的消息"
 
@@ -8446,6 +8461,18 @@ msgid "app.topBar.session.archive"
 msgstr "归档"
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.session.copyID"
+msgstr "复制会话 ID"
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.session.copyIDCopied"
+msgstr "会话 ID 已复制"
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.session.copyIDFailed"
+msgstr "复制会话 ID 失败"
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.session.enterWorktree"
 msgstr "进入隔离工作区"
 
@@ -8796,10 +8823,6 @@ msgstr "操作浏览器"
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.communication"
 msgstr "发送内容"
-
-#. ── Classifier category labels ──────────────────────────────────────
-msgid "classifier.label.community"
-msgstr "访问 Agora"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.config"
@@ -9292,10 +9315,6 @@ msgstr "等待中"
 #. js-lingui-explicit-id
 msgid "dag.status.running"
 msgstr "正在运行"
-
-#. ── Diagram ─────────────────────────────────────────────────────────
-msgid "diagram.total-label"
-msgstr "总计"
 
 #. ── Diff preview ────────────────────────────────────────────────────
 msgid "diff.file-diff-preview"
@@ -11417,10 +11436,6 @@ msgid "session-status.delegating-work"
 msgstr "正在委派工作"
 
 #. js-lingui-explicit-id
-msgid "session-status.drawing-diagram"
-msgstr "正在绘制图表"
-
-#. js-lingui-explicit-id
 msgid "session-status.flashing-back"
 msgstr "正在回溯"
 
@@ -11537,10 +11552,6 @@ msgid "session-status.reviewing-light-loop"
 msgstr "正在审阅 Light Loop"
 
 #. js-lingui-explicit-id
-msgid "session-status.running-batch"
-msgstr "正在运行批处理"
-
-#. js-lingui-explicit-id
 msgid "session-status.running-commands"
 msgstr "正在运行命令"
 
@@ -11603,6 +11614,10 @@ msgstr "无法复制消息。"
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.copy-markdown"
 msgstr "复制 Markdown"
+
+#. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.fork-message"
+msgstr "从此消息分叉会话"
 
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.model-unavailable"
@@ -16681,6 +16696,10 @@ msgid "settings.panel.section.unavailable"
 msgstr "{label} 不可用"
 
 #. js-lingui-explicit-id
+msgid "settings.panel.theme.saveFailed"
+msgstr "主题更改无法保存"
+
+#. js-lingui-explicit-id
 msgid "settings.pathRow.copied"
 msgstr "已复制"
 
@@ -18225,10 +18244,6 @@ msgid "tool.label.pathwaySteps"
 msgstr "{count} 个步骤"
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
-msgid "tool.label.posts"
-msgstr "{count} 篇帖子"
-
-#. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.results"
 msgstr "{count} 个结果"
 
@@ -18361,14 +18376,6 @@ msgid "tool.title.attach"
 msgstr "添加附件"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.availability"
-msgstr "查看可用资源"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.batch"
-msgstr "批量执行"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.batch-stop"
 msgstr "批量停止"
 
@@ -18493,10 +18500,6 @@ msgid "tool.title.deploy-inference"
 msgstr "部署推理服务"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.diagram"
-msgstr "生成图表"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.disconnected"
 msgstr "已断开连接"
 
@@ -18561,20 +18564,12 @@ msgid "tool.title.glob"
 msgstr "按 Glob 匹配文件"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.gpu-usage"
-msgstr "查看 GPU 用量"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.grep"
 msgstr "使用 Grep 搜索"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.harbor-login"
 msgstr "登录 Harbor"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.hpc-usage"
-msgstr "查看 HPC 用量"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.idea"
@@ -18780,10 +18775,6 @@ msgstr "问题已超时"
 msgid "tool.title.questions"
 msgstr "向你提问"
 
-#. Legacy qzcli — TODO remove
-msgid "tool.title.qz-login"
-msgstr "登录 QZ"
-
 #. File ops
 msgid "tool.title.read"
 msgstr "读取文件"
@@ -18817,10 +18808,6 @@ msgid "tool.title.read-to-dos"
 msgstr "读取待办"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.refresh-resources"
-msgstr "刷新资源"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.register-model"
 msgstr "注册模型"
 
@@ -18832,7 +18819,7 @@ msgstr "拒绝 BlueprintLoop"
 msgid "tool.title.reject-light-loop"
 msgstr "拒绝 Light Loop"
 
-#. Render / diagram
+#. Render
 msgid "tool.title.render"
 msgstr "渲染内容"
 
@@ -18920,10 +18907,6 @@ msgstr "查看会话状态"
 msgid "tool.title.sessions"
 msgstr "查看会话"
 
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.set-cookie"
-msgstr "设置 Cookie"
-
 #. Inspire variant keys for getToolInfo dynamic title selection
 msgid "tool.title.set-default"
 msgstr "设为默认"
@@ -18949,10 +18932,6 @@ msgid "tool.title.start-notebook"
 msgstr "启动笔记本"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.status-catalog"
-msgstr "查看状态列表"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.stop-inference"
 msgstr "停止推理服务"
 
@@ -18975,10 +18954,6 @@ msgstr "提交 GPU 作业"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.submit-hpc-job"
 msgstr "提交 HPC 作业"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.submit-job"
-msgstr "提交作业"
 
 #. DAG / task orchestration
 msgid "tool.title.task"
@@ -19003,14 +18978,6 @@ msgstr "管理研究进展"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.to-dos"
 msgstr "更新待办"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.track-job"
-msgstr "跟踪作业"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.tracked-jobs"
-msgstr "查看跟踪作业"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.trigger-agenda"
@@ -19051,10 +19018,6 @@ msgstr "读取网页"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.wiki"
 msgstr "管理研究资料"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.workspaces"
-msgstr "查看工作区"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.worktrees"
@@ -19215,6 +19178,10 @@ msgstr "打开 {filename}"
 #. js-lingui-explicit-id
 msgid "ui.attachment.previewImage"
 msgstr "预览 {filename}"
+
+#. js-lingui-explicit-id
+msgid "ui.basicTool.autoExpanded"
+msgstr "已自动加载"
 
 #. js-lingui-explicit-id
 msgid "ui.basicTool.chars"

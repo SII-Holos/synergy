@@ -33,6 +33,8 @@ function attachment(input: {
   filename: string
   hidden?: boolean
   localPath?: string
+  deliverable?: boolean
+  detectedFrom?: "markdown" | "file_url" | "line" | "path"
 }): MessageV2.AttachmentPart {
   return {
     id: input.id,
@@ -44,6 +46,18 @@ function attachment(input: {
     filename: input.filename,
     presentation: input.hidden ? { hidden: true } : { renderer: "image" },
     ...(input.localPath ? { localPath: input.localPath } : {}),
+    ...(input.deliverable !== undefined || input.detectedFrom
+      ? {
+          metadata: {
+            kind: "attachment",
+            attachment: {
+              originTool: "process",
+              ...(input.detectedFrom ? { detectedFrom: input.detectedFrom } : {}),
+              ...(input.deliverable !== undefined ? { deliverable: input.deliverable } : {}),
+            },
+          },
+        }
+      : {}),
   }
 }
 
@@ -243,4 +257,241 @@ describe("Channel task outbound parts", () => {
       }),
     ).toEqual([])
   })
+
+  test("deduplicates attachments that share the same asset url", async () => {
+    const pngID = await Asset.write(Buffer.from([137, 80, 78, 71]), "image/png", "preview.png")
+    const rootID = "message_root"
+    const toolMessageID = "message_tool"
+
+    expect(
+      await projectChannelTaskParts({
+        messages: [
+          message({
+            id: toolMessageID,
+            rootID,
+            finish: "tool-calls",
+            parts: [
+              completedTool({
+                id: "tool_dupe",
+                messageID: toolMessageID,
+                attachments: [
+                  attachment({
+                    id: "attachment_first",
+                    messageID: toolMessageID,
+                    url: `asset://${pngID}`,
+                    mime: "image/png",
+                    filename: "preview.png",
+                  }),
+                  attachment({
+                    id: "attachment_second",
+                    messageID: toolMessageID,
+                    url: `asset://${pngID}`,
+                    mime: "image/png",
+                    filename: "preview.png",
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+        rootID,
+        terminalMessageID: "message_terminal",
+        includeText: false,
+      }),
+    ).toEqual([
+      {
+        type: "image",
+        path: Asset.resolvePath(pngID),
+        filename: "preview.png",
+        contentType: "image/png",
+      },
+    ])
+  })
+
+  test("filters attachments classified as non-deliverables", async () => {
+    const pngID = await Asset.write(Buffer.from([137, 80, 78, 71]), "image/png", "preview.png")
+    const rootID = "message_root"
+    const toolMessageID = "message_tool"
+
+    expect(
+      await projectChannelTaskParts({
+        messages: [
+          message({
+            id: toolMessageID,
+            rootID,
+            finish: "tool-calls",
+            parts: [
+              completedTool({
+                id: "tool_incidental",
+                messageID: toolMessageID,
+                attachments: [
+                  attachment({
+                    id: "attachment_incidental",
+                    messageID: toolMessageID,
+                    url: `asset://${pngID}`,
+                    mime: "image/png",
+                    filename: "preview.png",
+                    deliverable: false,
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+        rootID,
+        terminalMessageID: "message_terminal",
+        includeText: false,
+      }),
+    ).toEqual([])
+  })
+
+  test("filters legacy incidental attachments via the detectedFrom fallback", async () => {
+    const pngID = await Asset.write(Buffer.from([137, 80, 78, 71]), "image/png", "preview.png")
+    const rootID = "message_root"
+    const toolMessageID = "message_tool"
+
+    expect(
+      await projectChannelTaskParts({
+        messages: [
+          message({
+            id: toolMessageID,
+            rootID,
+            finish: "tool-calls",
+            parts: [
+              completedTool({
+                id: "tool_legacy_incidental",
+                messageID: toolMessageID,
+                attachments: [
+                  attachment({
+                    id: "attachment_legacy_incidental",
+                    messageID: toolMessageID,
+                    url: `asset://${pngID}`,
+                    mime: "image/png",
+                    filename: "preview.png",
+                    detectedFrom: "path",
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+        rootID,
+        terminalMessageID: "message_terminal",
+        includeText: false,
+      }),
+    ).toEqual([])
+  })
+
+  test("keeps attachments referenced explicitly via markdown and file urls", async () => {
+    const markdownID = await Asset.write(Buffer.from([137, 80, 78, 71, 1]), "image/png", "markdown.png")
+    const fileUrlID = await Asset.write(Buffer.from([137, 80, 78, 71, 2]), "image/png", "file-url.png")
+    const rootID = "message_root"
+    const toolMessageID = "message_tool"
+
+    expect(
+      await projectChannelTaskParts({
+        messages: [
+          message({
+            id: toolMessageID,
+            rootID,
+            finish: "tool-calls",
+            parts: [
+              completedTool({
+                id: "tool_explicit",
+                messageID: toolMessageID,
+                attachments: [
+                  attachment({
+                    id: "attachment_markdown",
+                    messageID: toolMessageID,
+                    url: `asset://${markdownID}`,
+                    mime: "image/png",
+                    filename: "markdown.png",
+                    deliverable: true,
+                    detectedFrom: "markdown",
+                  }),
+                  attachment({
+                    id: "attachment_file_url",
+                    messageID: toolMessageID,
+                    url: `asset://${fileUrlID}`,
+                    mime: "image/png",
+                    filename: "file-url.png",
+                    deliverable: true,
+                    detectedFrom: "file_url",
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+        rootID,
+        terminalMessageID: "message_terminal",
+        includeText: false,
+      }),
+    ).toEqual([
+      {
+        type: "image",
+        path: Asset.resolvePath(markdownID),
+        filename: "markdown.png",
+        contentType: "image/png",
+      },
+      {
+        type: "image",
+        path: Asset.resolvePath(fileUrlID),
+        filename: "file-url.png",
+        contentType: "image/png",
+      },
+    ])
+  })
+})
+
+test("skips attachments already recorded as delivered on the root message", async () => {
+  const pngID = await Asset.write(Buffer.from([137, 80, 78, 71]), "image/png", "preview.png")
+  const rootID = "message_root"
+  const toolMessageID = "message_tool"
+  const rootMessage: MessageV2.WithParts = {
+    info: {
+      id: rootID,
+      sessionID: "session_test",
+      role: "user",
+      isRoot: true,
+      rootID,
+      agent: "synergy",
+      model: { providerID: "test-provider", modelID: "test-model" },
+      time: { created: Date.now() },
+      metadata: { channelOutboundAttachmentUrls: [`asset://${pngID}`] },
+    },
+    parts: [],
+  }
+
+  expect(
+    await projectChannelTaskParts({
+      messages: [
+        rootMessage,
+        message({
+          id: toolMessageID,
+          rootID,
+          finish: "tool-calls",
+          parts: [
+            completedTool({
+              id: "tool_delivered",
+              messageID: toolMessageID,
+              attachments: [
+                attachment({
+                  id: "attachment_delivered",
+                  messageID: toolMessageID,
+                  url: `asset://${pngID}`,
+                  mime: "image/png",
+                  filename: "preview.png",
+                  deliverable: true,
+                }),
+              ],
+            }),
+          ],
+        }),
+      ],
+      rootID,
+      terminalMessageID: "message_terminal",
+      includeText: false,
+    }),
+  ).toEqual([])
 })

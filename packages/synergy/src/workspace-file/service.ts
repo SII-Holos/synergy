@@ -92,8 +92,14 @@ export namespace WorkspaceFileService {
   }
 
   export async function assertRealpathInside(absolute: string) {
-    const real = await realpathIfExists(absolute)
-    if (real && !isPathContained(root(), real)) {
+    // Resolve both sides of the containment check to their physical paths.
+    // The workspace root may itself be reached through a symlink (e.g. the
+    // scope directory is a link), in which case comparing a real path
+    // against the lexical root would falsely report an escape. Falling back
+    // to the lexical root when it cannot be resolved preserves the old
+    // (conservative) behavior rather than silently widening access.
+    const [real, realRoot] = await Promise.all([realpathIfExists(absolute), realpathIfExists(root())])
+    if (real && !isPathContained(realRoot ?? root(), real)) {
       throw new AccessDeniedError("Access denied: real path escapes workspace")
     }
   }

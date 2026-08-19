@@ -6799,6 +6799,20 @@
                           }
                         },
                         "required": ["type", "messageID"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "through"
+                          },
+                          "messageID": {
+                            "type": "string",
+                            "pattern": "^msg.*"
+                          }
+                        },
+                        "required": ["type", "messageID"]
                       }
                     ]
                   },
@@ -11928,6 +11942,16 @@
               }
             }
           },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileWriteError"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found",
             "content": {
@@ -12039,6 +12063,16 @@
               }
             }
           },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileWriteError"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found",
             "content": {
@@ -12104,6 +12138,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WorkspaceFileNode"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileWriteError"
                 }
               }
             }
@@ -34095,6 +34139,9 @@
           "error": {
             "type": "string"
           },
+          "launchFailure": {
+            "type": "boolean"
+          },
           "notifyParentOnComplete": {
             "type": "boolean"
           },
@@ -34996,6 +35043,9 @@
           },
           "error": {
             "type": "string"
+          },
+          "launchFailure": {
+            "type": "boolean"
           },
           "progress": {
             "type": "object",
@@ -40316,6 +40366,25 @@
         },
         "required": ["path", "children", "truncated"]
       },
+      "WorkspaceFileWriteError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": ["WorkspaceFileAccessDeniedError", "WorkspaceFileWriteConflictError", "WorkspaceFileTooLargeError"]
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
       "WorkspaceFileTextRange": {
         "type": "object",
         "properties": {
@@ -40726,25 +40795,6 @@
           }
         },
         "required": ["path", "mtime", "size", "existed"]
-      },
-      "WorkspaceFileWriteError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "enum": ["WorkspaceFileAccessDeniedError", "WorkspaceFileWriteConflictError", "WorkspaceFileTooLargeError"]
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": ["message"]
-          }
-        },
-        "required": ["name", "data"]
       },
       "WorkspaceFileWriteFileInput": {
         "type": "object",

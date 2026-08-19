@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { $ } from "bun"
 import fs from "fs/promises"
+import os from "os"
 import path from "path"
 import { Server } from "../../src/server/server"
 import { tmpdir } from "../fixture/fixture"
@@ -90,6 +91,80 @@ describe("GET /workspace/files", () => {
     const body = await response.json()
     expect(body.name).toBe("NotFoundError")
     expect(JSON.stringify(body)).not.toContain(tmp.path)
+  })
+
+  test("returns 403 instead of 500 when a directory symlink escapes the workspace", async () => {
+    const sibling = path.join(os.tmpdir(), `synergy-test-sibling-${Date.now()}`)
+    await fs.mkdir(sibling, { recursive: true })
+    await Bun.write(path.join(sibling, "note.md"), "outside")
+    let linkCreated = false
+    try {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          try {
+            await fs.symlink(sibling, path.join(dir, "docs"), "dir")
+            linkCreated = true
+          } catch (error) {
+            const code = (error as { code?: unknown })?.code
+            if (process.platform !== "win32" || (code !== "EPERM" && code !== "EACCES")) throw error
+          }
+        },
+      })
+      if (!linkCreated) return
+      const app = Server.App()
+
+      const children = await app.request(workspaceUrl("children", tmp.path, { path: "docs" }))
+      expect(children.status).toBe(403)
+      const childrenBody = await children.json()
+      expect(childrenBody.name).toBe("WorkspaceFileAccessDeniedError")
+      expect(childrenBody.data.message).toContain("Access denied")
+
+      const read = await app.request(workspaceUrl("read", tmp.path, { path: "docs/note.md" }))
+      expect(read.status).toBe(403)
+      const readBody = await read.json()
+      expect(readBody.name).toBe("WorkspaceFileAccessDeniedError")
+
+      const stat = await app.request(workspaceUrl("stat", tmp.path, { path: "docs/note.md" }))
+      expect(stat.status).toBe(403)
+    } finally {
+      await fs.rm(sibling, { recursive: true, force: true }).catch(() => {})
+    }
+  })
+
+  test("serves children and read when the workspace root is a symlink", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await fs.mkdir(path.join(dir, "docs"), { recursive: true })
+        await Bun.write(path.join(dir, "docs", "note.md"), "# note")
+      },
+    })
+    const linkDir = path.join(os.tmpdir(), `synergy-test-root-link-${Math.random().toString(36).slice(2)}`)
+    let linkCreated = false
+    try {
+      try {
+        await fs.symlink(tmp.path, linkDir, "dir")
+        linkCreated = true
+      } catch (error) {
+        const code = (error as { code?: unknown })?.code
+        if (process.platform !== "win32" || (code !== "EPERM" && code !== "EACCES")) throw error
+      }
+      if (!linkCreated) return
+      const app = Server.App()
+
+      const children = await app.request(workspaceUrl("children", linkDir, { path: "" }))
+      expect(children.status).toBe(200)
+      const childrenBody = await children.json()
+      expect(childrenBody.children.some((node: any) => node.path === "docs")).toBe(true)
+
+      const read = await app.request(workspaceUrl("read", linkDir, { path: "docs/note.md" }))
+      expect(read.status).toBe(200)
+      const readBody = await read.json()
+      expect(readBody.kind).toBe("text")
+    } finally {
+      await fs.rm(linkDir, { recursive: true, force: true }).catch(() => {})
+    }
   })
 })
 

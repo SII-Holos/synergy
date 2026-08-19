@@ -21,26 +21,6 @@
           "reason": "types-only declarations, no runtime logic"
         },
         {
-          "glob": "src/agora/client.ts",
-          "reason": "requires live SSH/remote workspace"
-        },
-        {
-          "glob": "src/agora/index.ts",
-          "reason": "barrel re-export"
-        },
-        {
-          "glob": "src/agora/ssh.ts",
-          "reason": "requires live SSH/remote workspace"
-        },
-        {
-          "glob": "src/agora/types.ts",
-          "reason": "types-only declarations, no runtime logic"
-        },
-        {
-          "glob": "src/agora/workspace.ts",
-          "reason": "requires live SSH/remote workspace"
-        },
-        {
           "glob": "src/browser/driver.ts",
           "reason": "requires a real browser runtime"
         },
@@ -383,15 +363,6 @@
           "reason": "generated OpenAPI SDK code (script/generate.ts output)"
         }
       ]
-    },
-    "packages/script": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
-      "lcov": "coverage/lcov.info",
-      "thresholds": {
-        "lines": 80,
-        "functions": 75
-      },
-      "exempt": []
     },
     "packages/app": {
       "command": "bun run test -- --coverage",
@@ -1490,10 +1461,6 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
-          "glob": "src/components/diagram.tsx",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
-        },
-        {
           "glob": "src/components/dialog.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
@@ -1648,10 +1615,6 @@
         {
           "glob": "src/components/tool/renders/index.ts",
           "reason": "barrel re-export"
-        },
-        {
-          "glob": "src/components/tool/renders/special.tsx",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
           "glob": "src/components/tool/renders/standard.tsx",

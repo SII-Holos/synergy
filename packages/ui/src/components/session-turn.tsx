@@ -15,7 +15,21 @@ import type {
 } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
 
-import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, ParentProps, Show, Switch } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  ErrorBoundary,
+  For,
+  mapArray,
+  Match,
+  on,
+  onCleanup,
+  ParentProps,
+  Show,
+  Switch,
+} from "solid-js"
+import type { Accessor } from "solid-js"
 import { TurnChangeSummaryPanel } from "./turn-change-summary-panel"
 import {
   resolveTurnDiffPanelState,
@@ -717,7 +731,28 @@ function originIconToken(origin: { type: string; label?: string; detail?: string
   }
 }
 
-function TimelineDisplay(props: {
+export function TimelineDisplay(props: {
+  item: SessionTurnDisplayItem
+  serverUrl: string
+  rollbackActive: boolean
+  onRewind?: () => void
+  working: boolean
+  compactReasoning?: boolean
+}) {
+  return (
+    <ErrorBoundary
+      fallback={(err) => (
+        <div data-slot="session-turn-timeline-item-error">
+          <ErrorCard error={err?.message || String(err)} />
+        </div>
+      )}
+    >
+      <TimelineDisplayInner {...props} />
+    </ErrorBoundary>
+  )
+}
+
+function TimelineDisplayInner(props: {
   item: SessionTurnDisplayItem
   serverUrl: string
   rollbackActive: boolean
@@ -877,6 +912,7 @@ export function SessionTurn(
     onRewind?: () => void
     rollbackActive?: boolean
     onReviewChanges?: (input: { messageID: string; file?: string }) => void
+    onForkMessage?: (messageID: string) => void
     activityDisplay?: ActivityDisplayMode
     compactReasoning?: boolean
     classes?: {
@@ -992,63 +1028,93 @@ export function SessionTurn(
     })
   }
 
-  const timelineItems = createMemo(
+  // Per-display-message projection memoization. Each message gets a stable
+  // accessor, so a streaming delta re-projects only the message whose parts
+  // changed; every other accessor returns its cached array. The element-wise
+  // `same` guard below then short-circuits the whole downstream chain
+  // (snapshot, boundaries, slot indexes) while a reply streams.
+  const displayItemProjections = mapArray(
+    () => displayMessages(),
+    (item): Accessor<SessionTurnDisplayItem[]> => {
+      return createMemo<SessionTurnDisplayItem[]>(() => {
+        if (item.role === "user") {
+          const userMsg = item as UserMessage
+          if (userMsg.isRoot !== false) return emptyDisplayItems
+          const itemParts = data.store.part[item.id] ?? emptyParts
+          // A user's own mid-run message (steer / follow-up) renders as their
+          // message bubble; system-injected non-root messages (cortex, agenda,
+          // …) render as a compact origin chip.
+          const originType = userMsg.origin?.type ?? "user"
+          if (originType === "user") {
+            return [{ kind: "guided-user", message: userMsg, parts: itemParts }]
+          }
+          return [
+            {
+              kind: "non-root-user",
+              message: userMsg,
+              parts: itemParts,
+              originLabel: chipLabelFromOrigin(userMsg.origin),
+            },
+          ]
+        }
+        return projectAssistantMessage(item)
+      })
+    },
+  )
+
+  const userCompactionDisplayItems = createMemo(
     () => {
-      const result: SessionTurnDisplayItem[] = []
       const msg = message()
       const display = displayMessages()
       const hasCompactionAssistant = display.some(
         (item) => item.role === "assistant" && isCompactionAssistant(item as AssistantMessage),
       )
-      if (msg && !hasCompactionAssistant) result.push(...collectUserCompactionTimelineItems(msg, parts()))
-      for (const item of display) {
-        if (item.role === "user") {
-          const userMsg = item as UserMessage
-          if (userMsg.isRoot === false) {
-            const itemParts = data.store.part[item.id] ?? emptyParts
-            // A user's own mid-run message (steer / follow-up) renders as their
-            // message bubble; system-injected non-root messages (cortex, agenda,
-            // …) render as a compact origin chip.
-            const originType = userMsg.origin?.type ?? "user"
-            if (originType === "user") {
-              result.push({ kind: "guided-user", message: userMsg, parts: itemParts })
-            } else {
-              result.push({
-                kind: "non-root-user",
-                message: userMsg,
-                parts: itemParts,
-                originLabel: chipLabelFromOrigin(userMsg.origin),
-              })
-            }
-          }
-          continue
-        }
-        result.push(...projectAssistantMessage(item))
+      if (msg && !hasCompactionAssistant) return collectUserCompactionTimelineItems(msg, parts())
+      return emptyDisplayItems
+    },
+    emptyDisplayItems,
+    { equals: same },
+  )
+
+  const timelineItems = createMemo(
+    () => {
+      // Subscribe to working() directly: settling flips it and must re-project
+      // every message once (reasoning promotion/hiding in full mode). The
+      // per-message accessors below stay cached across streaming deltas.
+      const isWorking = working()
+      const result: SessionTurnDisplayItem[] = []
+      const msg = message()
+      result.push(...userCompactionDisplayItems())
+      for (const accessor of displayItemProjections()) {
+        result.push(...accessor())
       }
-      const assistants = display.filter(
+      const assistants = displayMessages().filter(
         (item): item is AssistantMessage =>
           item.role === "assistant" && !isCompactionAssistant(item as AssistantMessage),
       )
       if (activityDisplay() === "minimal") {
-        return projectMinimalActivityItems(result, msg?.id ?? props.messageID, !working()) as SessionTurnDisplayItem[]
+        return projectMinimalActivityItems(result, msg?.id ?? props.messageID, !isWorking) as SessionTurnDisplayItem[]
       }
       if (activityDisplay() === "balanced") {
-        const liveReasoningParts = new Map<string, ReasoningPart>()
-        for (const assistant of assistants) {
-          const reasoningPart = (data.store.part[assistant.id] ?? emptyParts).findLast(
-            (part): part is ReasoningPart => part.type === "reasoning" && Boolean(part.text.trim()),
-          )
-          if (reasoningPart) liveReasoningParts.set(assistant.id, reasoningPart)
+        let liveReasoningParts: Map<string, ReasoningPart> | undefined
+        if (props.compactReasoning && isWorking) {
+          liveReasoningParts = new Map()
+          for (const assistant of assistants) {
+            const reasoningPart = (data.store.part[assistant.id] ?? emptyParts).findLast(
+              (part): part is ReasoningPart => part.type === "reasoning" && Boolean(part.text.trim()),
+            )
+            if (reasoningPart) liveReasoningParts.set(assistant.id, reasoningPart)
+          }
         }
-        const projected = projectBalancedReasoningItems(result, working(), {
-          compactReasoningParts: props.compactReasoning && working() ? liveReasoningParts : undefined,
+        const projected = projectBalancedReasoningItems(result, isWorking, {
+          compactReasoningParts: liveReasoningParts,
         }) as SessionTurnDisplayItem[]
-        return props.compactReasoning && !working()
+        return props.compactReasoning && !isWorking
           ? injectPersistedReasoningItems(projected, assistants, data.store.part)
           : projected
       }
       if (props.compactReasoning) {
-        if (working()) return compactReasoningTimelineItems(result)
+        if (isWorking) return compactReasoningTimelineItems(result)
         return injectPersistedReasoningItems(result, assistants, data.store.part)
       }
       return result
@@ -1098,7 +1164,11 @@ export function SessionTurn(
   const latestAssistantTimelineItems = createMemo(() => {
     const latest = lastAssistantMessage()
     if (!latest) return []
-    const selected = projectAssistantMessage(latest)
+    const display = displayMessages()
+    const index = display.findIndex((item) => item.id === latest.id)
+    // latest comes from the same displayMessages() memo, so it is always
+    // present here — there is no fallback projection path.
+    const selected = displayItemProjections()[index]() as SessionTurnAssistantDisplayItem[]
     if (activityDisplay() !== "minimal") return selected
     return projectMinimalActivityItems(selected, message()?.id ?? props.messageID, !working())
   })
@@ -1126,6 +1196,10 @@ export function SessionTurn(
   })
 
   const markdownText = createMemo(() => {
+    // Copy Markdown is only presented after the turn settles; while the reply
+    // streams, return early so a token delta neither re-joins the accumulated
+    // text nor subscribes this memo to the streaming part's text leaf.
+    if (working()) return ""
     const last = lastAssistantMessage()
     if (!last) return ""
     const parts = data.store.part[last.id]
@@ -1142,7 +1216,7 @@ export function SessionTurn(
     }
     // Reasoning-only fallback: when the model produces no text parts,
     // collect reasoning content so Copy Markdown is still available.
-    if (!hasTextPart && !working()) {
+    if (!hasTextPart) {
       for (const part of parts) {
         if (part.type === "reasoning") {
           const text = (part as ReasoningPart).text?.trim()
@@ -1407,6 +1481,16 @@ export function SessionTurn(
                                   size="small"
                                 />
                               </button>
+                              <Show when={!!props.onForkMessage && !!lastAssistantMessage()}>
+                                <button
+                                  type="button"
+                                  data-slot="assistant-message-fork"
+                                  aria-label={_(SESSION_TURN_DESC.forkMessage)}
+                                  onClick={() => props.onForkMessage?.(lastAssistantMessage()!.id)}
+                                >
+                                  <Icon name={getSemanticIcon("action.fork")} size="small" />
+                                </button>
+                              </Show>
                             </div>
                           </div>
                         </Show>

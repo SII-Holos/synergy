@@ -78,4 +78,117 @@ describe("Note document editor", () => {
     expect(editor.state.doc.firstChild?.type.name).toBe("blockquote")
     expect(editor.state.doc.firstChild?.textContent).toBe("quoted")
   })
+
+  test("loads markdown-like note JSON that includes blockId attrs", () => {
+    const element = document.createElement("div")
+    document.body.append(element)
+    editor = new Editor({
+      element,
+      extensions: createExtensions(),
+      content: {
+        type: "doc",
+        content: [
+          {
+            type: "heading",
+            attrs: { level: 1, blockId: "blk_heading_1" },
+            content: [{ type: "text", text: "Goal and Requirements" }],
+          },
+          {
+            type: "paragraph",
+            attrs: { blockId: "blk_para_1" },
+            content: [{ type: "text", text: "为 chatgame 设计并落地剧本格式。" }],
+          },
+          {
+            type: "bulletList",
+            attrs: { blockId: "blk_list_1" },
+            content: [
+              {
+                type: "listItem",
+                attrs: { blockId: "blk_item_1" },
+                content: [
+                  {
+                    type: "paragraph",
+                    attrs: { blockId: "blk_item_para_1" },
+                    content: [{ type: "text", text: "pure config" }],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            type: "codeBlock",
+            attrs: { language: "yaml", blockId: "blk_code_1" },
+            content: [{ type: "text", text: "id: emberfall" }],
+          },
+          {
+            type: "table",
+            attrs: { blockId: "blk_table_1" },
+            content: [
+              {
+                type: "tableRow",
+                attrs: { blockId: "blk_row_1" },
+                content: [
+                  {
+                    type: "tableHeader",
+                    attrs: { blockId: "blk_th_1" },
+                    content: [
+                      {
+                        type: "paragraph",
+                        attrs: { blockId: "blk_th_para_1" },
+                        content: [{ type: "text", text: "A" }],
+                      },
+                    ],
+                  },
+                  {
+                    type: "tableHeader",
+                    attrs: { blockId: "blk_th_2" },
+                    content: [
+                      {
+                        type: "paragraph",
+                        attrs: { blockId: "blk_th_para_2" },
+                        content: [{ type: "text", text: "B" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: "tableRow",
+                attrs: { blockId: "blk_row_2" },
+                content: [
+                  {
+                    type: "tableCell",
+                    attrs: { blockId: "blk_td_1" },
+                    content: [
+                      {
+                        type: "paragraph",
+                        attrs: { blockId: "blk_td_para_1" },
+                        content: [{ type: "text", text: "1" }],
+                      },
+                    ],
+                  },
+                  {
+                    type: "tableCell",
+                    attrs: { blockId: "blk_td_2" },
+                    content: [
+                      {
+                        type: "paragraph",
+                        attrs: { blockId: "blk_td_para_2" },
+                        content: [{ type: "text", text: "2" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    })
+
+    expect(editor.state.doc.childCount).toBeGreaterThan(1)
+    expect(editor.getText()).toContain("Goal and Requirements")
+    expect(editor.getText()).toContain("pure config")
+    expect(editor.getText()).toContain("emberfall")
+  })
 })

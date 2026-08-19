@@ -31,7 +31,12 @@ import {
   iterate as iterateDiagnostics,
   DiagnosticRecord,
 } from "./diagnostics"
-import { loadChannelTaskMessages, replyChannelTaskAttachments } from "./outbound-parts"
+import {
+  collectChannelTaskTerminals,
+  deliverForegroundTaskTerminal,
+  loadChannelTaskMessages,
+  replyChannelTaskAttachments,
+} from "./outbound-parts"
 import { ResponseCardRuntime } from "./response-card"
 import { QuestionCardRuntime } from "./question-card"
 import { QuestionCardBridge } from "./question-card-bridge"
@@ -884,6 +889,12 @@ export namespace Channel {
                 await pushToolProgress()
               })
 
+              // Snapshot the session's terminal replies before the invoke:
+              // the inbox loop drains queued tasks and returns only the LAST
+              // terminal, so a terminal completed mid-drain for THIS lane's
+              // root would otherwise be skipped by the bridge (foreground
+              // registered) and never delivered. Deliver it here instead.
+              const terminalsBefore = await collectChannelTaskTerminals(sessionID)
               try {
                 const result = await SessionInvoke.invokeInboxWithLease(
                   {
@@ -910,6 +921,27 @@ export namespace Channel {
                     messageID: result.info.id,
                     metadata: { channelOutboundSent: true },
                   }).catch((err) => log.warn("failed to mark channel reply as sent", { sessionID, error: err }))
+                }
+                // Deliver a terminal this lane completed but the loop did not
+                // return (another queued task was drained afterwards). Only the
+                // current lane root is covered; other roots completed by the
+                // drain keep the bridge as their delivery path (they are not
+                // foreground-registered).
+                if (ownsTerminalDelivery && result.info.role === "assistant") {
+                  await deliverForegroundTaskTerminal({
+                    provider,
+                    accountId: ctx.accountId,
+                    messageId: replyToMessageId,
+                    chatId: ctx.chatId,
+                    chatType: ctx.chatType,
+                    scopeKey: ctx.scopeKey,
+                    sessionID,
+                    currentRootID: delivery.messageID,
+                    excludeTerminalID: result.info.id,
+                    terminalsBefore,
+                  }).catch((err) =>
+                    log.warn("foreground terminal compensation delivery failed", { sessionID, error: err }),
+                  )
                 }
                 const rootID =
                   result.info.role === "assistant" ? (result.info.rootID ?? result.info.parentID) : result.info.id

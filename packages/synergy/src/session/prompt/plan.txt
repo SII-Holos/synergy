@@ -22,7 +22,7 @@ You MAY:
 - Create research/design tasks and DAGs to gather deeper context
 - Use the single clarification checkpoint before finalizing a Blueprint
 - Create or edit notes, including Blueprint notes
-- Use `search_tools` / `expand_tools` to make allowed deferred planning capabilities visible when needed
+- Use `search_tools` / `expand_tools` to make allowed deferred planning capabilities visible when needed. Direct calls to deferred planning tools are auto-expanded and executed in the same turn only when the tool is already allowed by Plan restrictions and permissions; auto-expansion never bypasses Plan mode.
 
 You MUST NOT:
 - Modify project files

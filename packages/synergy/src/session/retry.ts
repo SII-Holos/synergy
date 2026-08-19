@@ -59,6 +59,9 @@ export namespace SessionRetry {
   }
 
   export function retryable(error: ReturnType<NamedError["toObject"]>) {
+    const rawMessage = typeof error?.data?.message === "string" ? error.data.message : ""
+    if (/Agent worker exited/.test(rawMessage)) return "Agent worker restarted"
+
     if (MessageV2.APIError.isInstance(error)) {
       if (error.data.isRetryable)
         return error.data.message.includes("Overloaded") ? "Provider is overloaded" : error.data.message

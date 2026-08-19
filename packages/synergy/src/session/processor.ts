@@ -34,6 +34,7 @@ import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import type { Tool as AITool } from "ai"
 import { AgentTurn } from "./agent-turn"
 import { ToolScheduler } from "./tool-scheduler"
+import type { ToolResolver } from "./tool-resolver"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -116,6 +117,8 @@ export namespace SessionProcessor {
     executionTools: Record<string, AITool>
     executorKinds: Record<string, import("./tool-scheduler").ToolExecutorKind>
     memoryTurn?: LLMTurnMemory.Handle
+    autoExpandable?: Set<string>
+    resolverInput?: Omit<ToolResolver.Input, "processor">
   }
 
   export function shouldAskDoomLoop(parts: MessageV2.Part[], toolName: string, input: unknown) {
@@ -809,6 +812,60 @@ export namespace SessionProcessor {
       async process(streamInput: ProcessInput) {
         log.info("process")
         const turnTraceId = ObservabilityContext.current().traceId ?? Observability.traceId("turn")
+        const autoExpandedByTool = new Map<string, ToolResolver.AutoExpandedTool>()
+        const resolveAutoExpand = async (toolName: string): Promise<ToolResolver.AutoExpandedTool | undefined> => {
+          const cached = autoExpandedByTool.get(toolName)
+          if (cached) return cached
+          if (!streamInput.resolverInput) return undefined
+          try {
+            const { ToolResolver: DynamicToolResolver } = await import("./tool-resolver")
+            const resolved = await DynamicToolResolver.autoExpandTool(
+              { ...streamInput.resolverInput, processor: result },
+              toolName,
+            )
+            if (resolved) autoExpandedByTool.set(toolName, resolved)
+            return resolved
+          } catch (error) {
+            // Fail closed: any resolution failure falls back to the diagnostic
+            // stub path (deferred diagnostic) instead of aborting the whole
+            // dispatch loop. The tool call settles as an error below.
+            log.warn("tool.auto_expand.resolution_failed", {
+              sessionID: input.sessionID,
+              messageID: input.assistantMessage.id,
+              tool: toolName,
+              error,
+            })
+            return undefined
+          }
+        }
+        const markAutoExpanded = async (
+          call: { callID: string; toolName: string },
+          expanded: ToolResolver.AutoExpandedTool,
+        ) => {
+          const part = toolcalls[call.callID]
+          if (part && part.state.status === "running") {
+            const updated = await Session.updatePart({
+              ...part,
+              state: {
+                ...part.state,
+                metadata: ToolTimeout.mergeMetadata(part.state.metadata as Record<string, any> | undefined, {
+                  autoExpanded: true,
+                }),
+              },
+            })
+            toolcalls[call.callID] = updated as MessageV2.ToolPart
+          }
+          await Observability.emit("tool.auto_expanded", {
+            sessionID: input.sessionID,
+            messageID: input.assistantMessage.id,
+            callID: call.callID,
+            tool: call.toolName,
+            data: {
+              ...(expanded.group ? { group: expanded.group } : {}),
+              ...(expanded.activatedTool ? { activatedTool: expanded.activatedTool } : {}),
+            },
+          }).catch(() => {})
+        }
         const turnStartedAt = Date.now()
         await Observability.emit("session.turn.start", {
           traceId: turnTraceId,
@@ -849,10 +906,11 @@ export namespace SessionProcessor {
                 executionTools: _executionTools,
                 executorKinds: _executorKinds,
                 memoryTurn: _memoryTurn,
+                autoExpandable: _autoExpandable,
+                resolverInput: _resolverInput,
                 ...agentTurnInput
               } = streamInput
               const stream = await AgentTurn.stream(agentTurnInput)
-              streamInput.memoryTurn?.trackOwner("agent_turn.stream", stream)
               SessionManager.setExecutionPhase(input.sessionID, "running_agent")
               streamInput.memoryTurn?.streamStarted()
               SessionMemoryPressure.probe("processor.after_llm_stream", {
@@ -918,7 +976,6 @@ export namespace SessionProcessor {
               }
 
               try {
-                streamInput.memoryTurn?.trackOwner("agent_turn.full_stream", stream.fullStream)
                 for await (const value of stream.fullStream) {
                   input.abort.throwIfAborted()
                   switch (value.type) {
@@ -1108,8 +1165,6 @@ export namespace SessionProcessor {
                       const streamedRaw = generatingAccum[value.toolCallId]
                       const toolInput = SessionToolInput.normalize(value.input)
                       const toolInputBytes = SessionBounds.toolInputByteLength(toolInput)
-                      streamInput.memoryTurn?.trackOwner("provider.tool_call_event", value, toolInputBytes)
-                      streamInput.memoryTurn?.trackOwner("tool.parsed_input", toolInput, toolInputBytes)
                       log.info("tool.stream.tool_call.input_ready", {
                         sessionID: input.sessionID,
                         messageID: input.assistantMessage.id,
@@ -1238,33 +1293,41 @@ export namespace SessionProcessor {
                       const rejected =
                         value.error instanceof PermissionNext.RejectedError ||
                         value.error instanceof Question.RejectedError
-                      if (
-                        !slot &&
-                        !rejected &&
-                        !settledToolCalls.has(value.toolCallId) &&
-                        !recordedToolFailures.has(value.toolCallId)
-                      ) {
-                        recordedToolFailures.add(value.toolCallId)
-                        const diagnostic = streamToolDiagnostic(value.toolName, value.error)
-                        ObservabilityToolFailures.record({
-                          tool: value.toolName,
-                          sessionID: input.sessionID,
-                          messageID: input.assistantMessage.id,
-                          callID: value.toolCallId,
-                          phase: "llm.tool_call",
-                          error: value.error,
-                          errorClass: diagnostic.code,
-                          owner: "llm",
-                        })
-                      }
-                      if (match && match.state.status === "running") {
-                        if (slot?.status === "pending") await raceWithTimeout(slot.promise, TOOL_SETTLE_TIMEOUT)
-                        const settlement = settleTrackedExecution(value.toolCallId)
-                        if (settlement) {
-                          await settlement
-                        } else if (!slot) {
-                          await settleToolPart(match, streamToolErrorOutcome(match, value.error))
-                          delete toolcalls[value.toolCallId]
+                      // A hidden-but-authorized tool call that the processor will
+                      // auto-expand must not be failure-recorded or error-settled
+                      // here; it stays `running` until the deferred dispatch below
+                      // executes the real tool.
+                      const pendingAutoExpand =
+                        streamInput.autoExpandable?.has(value.toolName) === true && match?.state.status === "running"
+                      if (!pendingAutoExpand) {
+                        if (
+                          !slot &&
+                          !rejected &&
+                          !settledToolCalls.has(value.toolCallId) &&
+                          !recordedToolFailures.has(value.toolCallId)
+                        ) {
+                          recordedToolFailures.add(value.toolCallId)
+                          const diagnostic = streamToolDiagnostic(value.toolName, value.error)
+                          ObservabilityToolFailures.record({
+                            tool: value.toolName,
+                            sessionID: input.sessionID,
+                            messageID: input.assistantMessage.id,
+                            callID: value.toolCallId,
+                            phase: "llm.tool_call",
+                            error: value.error,
+                            errorClass: diagnostic.code,
+                            owner: "llm",
+                          })
+                        }
+                        if (match && match.state.status === "running") {
+                          if (slot?.status === "pending") await raceWithTimeout(slot.promise, TOOL_SETTLE_TIMEOUT)
+                          const settlement = settleTrackedExecution(value.toolCallId)
+                          if (settlement) {
+                            await settlement
+                          } else if (!slot) {
+                            await settleToolPart(match, streamToolErrorOutcome(match, value.error))
+                            delete toolcalls[value.toolCallId]
+                          }
                         }
                       }
                       if (rejected) blocked = shouldBreak
@@ -1486,6 +1549,35 @@ export namespace SessionProcessor {
               await Promise.all(
                 deferredToolCalls.map(async (call) => {
                   if (!streamInput.executionTools) return
+                  let expanded: ToolResolver.AutoExpandedTool | undefined
+                  if (streamInput.autoExpandable?.has(call.toolName)) {
+                    expanded = await resolveAutoExpand(call.toolName)
+                    if (expanded) {
+                      streamInput.executionTools[call.toolName] = expanded.tool
+                      streamInput.executorKinds[call.toolName] = expanded.executor
+                      await markAutoExpanded(call, expanded)
+                    }
+                  }
+                  // Deferred tools are absent from toolDefinitions, so the AI
+                  // SDK never validated these arguments, and MCP/plugin
+                  // execution paths do not revalidate. Validate against the
+                  // freshly resolved schema before dispatching the real tool.
+                  if (expanded) {
+                    const { ToolResolver: DynamicToolResolver } = await import("./tool-resolver")
+                    const invalid = DynamicToolResolver.validateToolInput(
+                      call.toolName,
+                      expanded.inputSchema,
+                      call.input,
+                    )
+                    if (invalid) {
+                      const part = toolcalls[call.callID]
+                      if (part && part.state.status === "running") {
+                        await settleToolPart(part, streamToolErrorOutcome(part, new Error(invalid)))
+                        delete toolcalls[call.callID]
+                      }
+                      return
+                    }
+                  }
                   const task = await ToolScheduler.dispatch({
                     sessionID: input.sessionID,
                     generation: input.generation ?? 0,

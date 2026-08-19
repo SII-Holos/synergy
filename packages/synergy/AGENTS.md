@@ -78,6 +78,8 @@ bun run test:ci
 bun run test:coverage
 ```
 
+Never raw `bun test --coverage`/`--parallel` here: Bun 1.3.x does not propagate `test/preload.ts` env into `--parallel` workers, so those shapes write fixtures into the real home. `TestHomeGuardError` blocks any test-entry process without the `SYNERGY_TEST_HOME` isolation marker unless `SYNERGY_ALLOW_REAL_HOME=1`; run coverage through `bun run test:coverage`.
+
 Provider/model tests use `test/tool/fixtures/models-api.json`, never a live catalog. Use real temporary Scope/storage fixtures and test behavior rather than source text. Then run `bun run quality:quick` from the repository root.
 
 Run source/manual tests in an isolated `SYNERGY_HOME`; never restart the active runtime. Load `develop-synergy` for the procedure.

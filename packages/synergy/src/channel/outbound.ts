@@ -7,7 +7,11 @@ import { SessionManager } from "@/session/manager"
 import { SessionProgress } from "@/session/progress"
 import { Session } from "@/session"
 import { externalIdentityHash } from "./identity"
-import { loadChannelTaskMessages, projectChannelTaskParts } from "./outbound-parts"
+import {
+  loadChannelTaskMessages,
+  markChannelTaskAttachmentsDelivered,
+  projectChannelTaskPartsWithUrls,
+} from "./outbound-parts"
 import { ResponseCardRuntime } from "./response-card"
 import type { Provider } from "./types"
 
@@ -113,7 +117,7 @@ export namespace ChannelOutbound {
           rootID,
           terminal: current,
         })
-        const parts = await projectChannelTaskParts({
+        const { parts, urls } = await projectChannelTaskPartsWithUrls({
           messages,
           rootID,
           terminalMessageID: currentAssistant.id,
@@ -156,6 +160,13 @@ export namespace ChannelOutbound {
               })
             }
           }
+
+          await markChannelTaskAttachmentsDelivered({
+            sessionID: msg.sessionID,
+            rootID,
+            urls,
+            messages,
+          })
 
           await Session.mergeMessageMetadata({
             sessionID: msg.sessionID,

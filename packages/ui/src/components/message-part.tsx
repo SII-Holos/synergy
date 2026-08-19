@@ -291,10 +291,6 @@ export function getBrowserToolInfo(tool: string, input: any = {}, metadata: any 
   }
 }
 
-function qzScopeLabel(input: any = {}) {
-  return input.workspace || input.workspace_id || (input.all_workspaces ? "All workspaces" : undefined)
-}
-
 function titleFromToolResult(metadata: any = {}) {
   return firstString(metadata.title, metadata.resultTitle, metadata.display?.title)
 }
@@ -369,163 +365,7 @@ function researchWikiArgs(input: any = {}, metadata: any = {}) {
   return args
 }
 
-// TODO: legacy qzcli tool info — remove when qzcli MCP integration is fully replaced by native inspire tools
-export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}): ToolTriggerInfo | undefined {
-  switch (tool) {
-    case "qzcli_qz_auth_login": {
-      const args: string[] = []
-      pushArg(args, input.workspace_id ? `ws ${input.workspace_id}` : undefined)
-      return {
-        icon: "key-round",
-        title: TOOL_TITLE_DESC["qz_login"],
-        subtitle: input.username,
-        args,
-      }
-    }
-    case "qzcli_qz_set_cookie": {
-      const args: string[] = []
-      pushArg(args, input.test === false ? "save only" : "validate")
-      pushArg(args, input.workspace_id ? `ws ${input.workspace_id}` : undefined)
-      return {
-        icon: "fingerprint",
-        title: TOOL_TITLE_DESC["qz_set_cookie"],
-        subtitle: input.workspace_id || "Local auth",
-        args,
-      }
-    }
-    case "qzcli_qz_list_workspaces":
-      return {
-        icon: "building-2",
-        title: TOOL_TITLE_DESC["qz_workspaces"],
-        subtitle: input.refresh === false ? "Cached" : "Refresh",
-      }
-    case "qzcli_qz_refresh_resources": {
-      const args: string[] = []
-      pushArg(args, input.all_workspaces ? "all" : undefined)
-      return {
-        icon: "refresh-ccw",
-        title: TOOL_TITLE_DESC["qz_refresh_resources"],
-        subtitle: qzScopeLabel(input) || "Default workspace",
-        args,
-      }
-    }
-    case "qzcli_qz_get_availability": {
-      const args: string[] = []
-      pushArg(args, input.required_nodes ? `${input.required_nodes}+ nodes` : undefined)
-      pushArg(args, input.include_low_priority ? "low priority" : undefined)
-      return {
-        icon: "signal",
-        title: TOOL_TITLE_DESC["qz_availability"],
-        subtitle: input.group || qzScopeLabel(input) || "Default target",
-        args,
-      }
-    }
-    case "qzcli_qz_list_jobs": {
-      const args: string[] = []
-      pushArg(args, input.running_only ? "running" : undefined)
-      pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
-      return {
-        icon: "boxes",
-        title: TOOL_TITLE_DESC["qz_jobs"],
-        subtitle: qzScopeLabel(input) || "Default workspace",
-        args,
-      }
-    }
-    case "qzcli_qz_get_job_detail":
-      return {
-        icon: "scan",
-        title: TOOL_TITLE_DESC["qz_job_detail"],
-        subtitle: shortToken(input.job_id, 20),
-      }
-    case "qzcli_qz_stop_job":
-      return {
-        icon: "circle-stop",
-        title: TOOL_TITLE_DESC["qz_stop_job"],
-        subtitle: shortToken(input.job_id, 20),
-      }
-    case "qzcli_qz_get_usage":
-      return {
-        icon: "gauge",
-        title: TOOL_TITLE_DESC["qz_gpu_usage"],
-        subtitle: qzScopeLabel(input) || "All workspaces",
-      }
-    case "qzcli_qz_inspect_status_catalog": {
-      const args: string[] = []
-      pushArg(args, input.limit_per_workspace ? `limit ${input.limit_per_workspace}` : undefined)
-      pushArg(args, input.sample_limit ? `sample ${input.sample_limit}` : undefined)
-      return {
-        icon: "table",
-        title: TOOL_TITLE_DESC["qz_status_catalog"],
-        subtitle: qzScopeLabel(input) || "Default workspace",
-        args,
-      }
-    }
-    case "qzcli_qz_track_job": {
-      const args: string[] = []
-      pushArg(args, input.source)
-      pushArg(args, input.workspace_id ? `ws ${input.workspace_id}` : undefined)
-      return {
-        icon: "pin",
-        title: TOOL_TITLE_DESC["qz_track_job"],
-        subtitle: input.name || shortToken(input.job_id, 20),
-        args,
-      }
-    }
-    case "qzcli_qz_list_tracked_jobs": {
-      const args: string[] = []
-      pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
-      pushArg(args, input.refresh === false ? "cached" : "refresh")
-      return {
-        icon: "binoculars",
-        title: TOOL_TITLE_DESC["qz_tracked_jobs"],
-        subtitle: input.running_only ? "Running only" : "All tracked",
-        args,
-      }
-    }
-    case "qzcli_qz_create_job": {
-      const args: string[] = []
-      pushArg(args, input.workspace)
-      pushArg(args, input.compute_group)
-      pushArg(args, input.instances ? `${input.instances}x` : undefined)
-      return {
-        icon: "rocket",
-        title: TOOL_TITLE_DESC["qz_submit_job"],
-        subtitle: input.name,
-        args,
-      }
-    }
-    case "qzcli_qz_create_hpc_job": {
-      const args: string[] = []
-      pushArg(args, input.workspace)
-      pushArg(args, input.compute_group)
-      pushArg(args, input.instances ? `${input.instances} node${input.instances === 1 ? "" : "s"}` : undefined)
-      pushArg(args, input.cpu && input.mem_gi ? `${input.cpu} CPU / ${input.mem_gi}Gi` : undefined)
-      return {
-        icon: "cpu",
-        title: TOOL_TITLE_DESC["qz_submit_hpc"],
-        subtitle: input.name,
-        args,
-      }
-    }
-    case "qzcli_qz_get_hpc_usage": {
-      const args: string[] = []
-      pushArg(args, input.compute_group)
-      pushArg(args, input.verbose ? `top ${input.top || 30}` : undefined)
-      return {
-        icon: "server",
-        title: TOOL_TITLE_DESC["qz_hpc_usage"],
-        subtitle: qzScopeLabel(input) || "All workspaces",
-        args,
-      }
-    }
-    default:
-      return undefined
-  }
-}
-
 export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): ToolTriggerInfo {
-  const qz = getQzToolInfo(tool, input, metadata)
-  if (qz) return qz
   const browser = getBrowserToolInfo(tool, input, metadata)
   if (browser) return browser
   const lattice = getLatticeToolPresentation(tool, input, metadata)
@@ -770,12 +610,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         icon: "image",
         title: TOOL_TITLE_DESC["edit_image"],
         subtitle: input.output_path ? getDirectory(input.output_path) + getFilename(input.output_path) : input.prompt,
-      }
-    case "diagram":
-      return {
-        icon: "workflow",
-        title: TOOL_TITLE_DESC["diagram"],
-        subtitle: input.title,
       }
     case "render":
       return {
@@ -1193,54 +1027,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: TOOL_TITLE_DESC["agenda_logs"],
         subtitle: input.id,
       }
-    //    case "agora_search":
-    //      return {
-    //        icon: "compass",
-    //        title: "Agora Search",
-    //        subtitle: input.keyword,
-    //      }
-    //    case "agora_read":
-    //      return {
-    //        icon: "compass",
-    //        title: "Agora Read",
-    //        subtitle: input.post_id,
-    //      }
-    //    case "agora_post":
-    //      return {
-    //        icon: "megaphone",
-    //        title: "Agora Post",
-    //        subtitle: input.title,
-    //      }
-    //    case "agora_join":
-    //      return {
-    //        icon: "log-in",
-    //        title: "Agora Join",
-    //        subtitle: input.post_id,
-    //      }
-    //    case "agora_sync":
-    //      return {
-    //        icon: "arrow-down-to-line",
-    //        title: "Agora Sync",
-    //        subtitle: input.directory,
-    //      }
-    //    case "agora_submit":
-    //      return {
-    //        icon: "upload",
-    //        title: "Agora Submit",
-    //        subtitle: input.comment,
-    //      }
-    //    case "agora_accept":
-    //      return {
-    //        icon: "git-merge",
-    //        title: "Agora Accept",
-    //        subtitle: input.answer_id,
-    //      }
-    //    case "agora_comment":
-    //      return {
-    //        icon: "compass",
-    //        title: "Agora Comment",
-    //        subtitle: input.post_id,
-    //      }
     case "memory_search":
       return {
         icon: "brain",
@@ -1354,94 +1140,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: TOOL_TITLE_DESC["connect"],
         subtitle: input.linkID,
       }
-    // TODO: legacy qzcli — remove when replaced by native inspire tools
-    case "qzcli_qz_auth_login":
-      return {
-        icon: "key-round",
-        title: TOOL_TITLE_DESC["qz_login"],
-        subtitle: input.username,
-      }
-    case "qzcli_qz_set_cookie":
-      return {
-        icon: "fingerprint",
-        title: TOOL_TITLE_DESC["qz_set_cookie"],
-      }
-    case "qzcli_qz_list_workspaces":
-      return {
-        icon: "building-2",
-        title: TOOL_TITLE_DESC["qz_workspaces"],
-      }
-    case "qzcli_qz_refresh_resources":
-      return {
-        icon: "refresh-ccw",
-        title: TOOL_TITLE_DESC["qz_refresh_resources"],
-        subtitle: input.workspace || (input.all_workspaces ? "All" : undefined),
-      }
-    case "qzcli_qz_get_availability":
-      return {
-        icon: "signal",
-        title: TOOL_TITLE_DESC["qz_availability"],
-        subtitle: input.group || input.workspace,
-      }
-    case "qzcli_qz_list_jobs":
-      return {
-        icon: "boxes",
-        title: TOOL_TITLE_DESC["qz_jobs"],
-        subtitle: input.workspace,
-      }
-    case "qzcli_qz_get_job_detail":
-      return {
-        icon: "scan",
-        title: TOOL_TITLE_DESC["qz_job_detail"],
-        subtitle: input.job_id,
-      }
-    case "qzcli_qz_stop_job":
-      return {
-        icon: "circle-stop",
-        title: TOOL_TITLE_DESC["qz_stop_job"],
-        subtitle: input.job_id,
-      }
-    case "qzcli_qz_get_usage":
-      return {
-        icon: "gauge",
-        title: TOOL_TITLE_DESC["qz_gpu_usage"],
-        subtitle: input.workspace,
-      }
-    case "qzcli_qz_inspect_status_catalog":
-      return {
-        icon: "stethoscope",
-        title: TOOL_TITLE_DESC["qz_status_catalog"],
-        subtitle: input.workspace,
-      }
-    case "qzcli_qz_track_job":
-      return {
-        icon: "crosshair",
-        title: TOOL_TITLE_DESC["qz_track_job"],
-        subtitle: input.name || input.job_id,
-      }
-    case "qzcli_qz_list_tracked_jobs":
-      return {
-        icon: "binoculars",
-        title: TOOL_TITLE_DESC["qz_tracked_jobs"],
-      }
-    case "qzcli_qz_create_job":
-      return {
-        icon: "rocket",
-        title: TOOL_TITLE_DESC["qz_submit_job"],
-        subtitle: input.name,
-      }
-    case "qzcli_qz_create_hpc_job":
-      return {
-        icon: "cpu",
-        title: TOOL_TITLE_DESC["qz_submit_hpc"],
-        subtitle: input.name,
-      }
-    case "qzcli_qz_get_hpc_usage":
-      return {
-        icon: "hard-drive",
-        title: TOOL_TITLE_DESC["qz_hpc_usage"],
-        subtitle: input.workspace,
-      }
     // inspire — SII 启智平台 (native tools)
     case "inspire_status": {
       const args: string[] = []
@@ -1507,7 +1205,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const args: string[] = []
       pushArg(args, input.workspace)
       pushArg(args, input.cpu && input.mem_gi ? `${input.cpu} CPU / ${input.mem_gi}Gi` : undefined)
-      return { icon: "cpu", title: TOOL_TITLE_DESC["qz_submit_hpc"], subtitle: input.name, args }
+      return { icon: "cpu", title: TOOL_TITLE_DESC["inspire_submit_hpc"], subtitle: input.name, args }
     }
     case "inspire_stop": {
       const args: string[] = []
@@ -1528,13 +1226,17 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
       return {
         icon: "list-filter",
-        title: TOOL_TITLE_DESC["qz_jobs"],
+        title: TOOL_TITLE_DESC["inspire_jobs"],
         subtitle: metadata?.total !== undefined ? `${metadata.total} tasks` : input.workspace || "All",
         args,
       }
     }
     case "inspire_job_detail":
-      return { icon: "scan-search", title: TOOL_TITLE_DESC["qz_job_detail"], subtitle: shortToken(input.job_id, 20) }
+      return {
+        icon: "scan-search",
+        title: TOOL_TITLE_DESC["inspire_job_detail"],
+        subtitle: shortToken(input.job_id, 20),
+      }
     case "inspire_logs": {
       const args: string[] = []
       pushArg(args, input.keyword)

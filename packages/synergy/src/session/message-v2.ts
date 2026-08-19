@@ -737,6 +737,21 @@ export namespace MessageV2 {
     return part.synthetic === true
   }
 
+  /**
+   * Whether an attachment is an explicit deliverable. Prefers the canonical
+   * `metadata.attachment.deliverable` verdict written at creation (the attach
+   * tool and explicit markdown/file_url references are deliverables; paths
+   * that merely appeared in tool output are incidental). Falls back to the
+   * legacy `detectedFrom` heuristic for attachments persisted before the
+   * verdict existed. The single predicate consumers should use instead of
+   * reading attachment metadata directly.
+   */
+  export function isDeliverableAttachment(attachment: AttachmentPart): boolean {
+    const metadata = attachment.metadata?.attachment as { deliverable?: boolean; detectedFrom?: string } | undefined
+    if (metadata?.deliverable !== undefined) return metadata.deliverable
+    return metadata?.detectedFrom !== "line" && metadata?.detectedFrom !== "path"
+  }
+
   function partIsSystem(part: Part): boolean {
     return isSystemPart(part)
   }

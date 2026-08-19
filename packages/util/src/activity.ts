@@ -17,7 +17,6 @@ export type SemanticCategory =
   | "schedule"
   | "session"
   | "session-control"
-  | "community"
   | "network"
   | "analyze"
   | "config"
@@ -230,25 +229,9 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   github_deliver_fix: "communication",
   openai_image_gen: "communication",
   openai_image_edit: "communication",
-  diagram: "analyze",
   render: "analyze",
   attach: "communication",
   response_card: "communication",
-  qzcli_qz_auth_login: "config",
-  qzcli_qz_set_cookie: "config",
-  qzcli_qz_list_workspaces: "config",
-  qzcli_qz_refresh_resources: "config",
-  qzcli_qz_get_availability: "analyze",
-  qzcli_qz_list_jobs: "shell",
-  qzcli_qz_get_job_detail: "analyze",
-  qzcli_qz_stop_job: "shell",
-  qzcli_qz_get_usage: "analyze",
-  qzcli_qz_inspect_status_catalog: "analyze",
-  qzcli_qz_track_job: "task",
-  qzcli_qz_list_tracked_jobs: "task",
-  qzcli_qz_create_job: "shell",
-  qzcli_qz_create_hpc_job: "shell",
-  qzcli_qz_get_hpc_usage: "analyze",
   "context7_resolve-library-id": "search",
   "context7_query-docs": "web",
 }
@@ -290,7 +273,6 @@ const PATTERN_FALLBACKS: readonly { pattern: RegExp; category: SemanticCategory 
   { pattern: /^(send|notify|message)/i, category: "communication" },
   { pattern: /^question/i, category: "communication" },
   { pattern: /^(openai[-_])?image[-_](gen|edit)/i, category: "communication" },
-  { pattern: /^diagram/i, category: "analyze" },
   { pattern: /^attach/i, category: "communication" },
 ]
 
@@ -338,7 +320,7 @@ const COORDINATION_RECEIPT_TOOLS = new Set([
   "blueprint_loop_stop",
 ])
 
-const ACTIVITY_PRESENTATION_BOUNDARY_TOOLS = new Set(["render", "diagram"])
+const ACTIVITY_PRESENTATION_BOUNDARY_TOOLS = new Set(["render"])
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {}
@@ -444,7 +426,6 @@ export function activityFamilyForTool(
     case "network":
     case "config":
     case "skill":
-    case "community":
       return "coordination"
     case "generic":
       return "generic"
