@@ -610,7 +610,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return font.save()
   }
 
-
   async function saveDesktopUpdateChanges() {
     const mode = desktopUpdateDraft()
     if (mode === undefined) return true
