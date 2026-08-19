@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import path from "path"
 import { ConfigMarkdown } from "../../src/config/markdown"
 
 const template = `This is a @valid/path/to/a/file and it should also match at
@@ -86,4 +87,17 @@ test("should not match email addresses", () => {
   const emailTest = "Contact user@example.com for help"
   const emailMatches = ConfigMarkdown.files(emailTest)
   expect(emailMatches.length).toBe(0)
+})
+
+test("re-parsing the same broken frontmatter keeps throwing instead of serving the cached empty data", async () => {
+  const fixture = path.join(import.meta.dir, "..", "fixture", "broken-frontmatter.md")
+  await Bun.write(fixture, "---\ndescription: bad: yaml\n---\n# Broken\n")
+  try {
+    await expect(ConfigMarkdown.parse(fixture)).rejects.toBeInstanceOf(ConfigMarkdown.FrontmatterError)
+    await expect(ConfigMarkdown.parse(fixture)).rejects.toBeInstanceOf(ConfigMarkdown.FrontmatterError)
+  } finally {
+    await Bun.file(fixture)
+      .delete()
+      .catch(() => {})
+  }
 })

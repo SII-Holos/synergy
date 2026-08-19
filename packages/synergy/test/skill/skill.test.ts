@@ -143,6 +143,10 @@ describe.serial("skill discovery", () => {
         expect(diagnostics.map((diagnostic) => diagnostic.name)).toEqual(
           expect.arrayContaining(["no-frontmatter", "broken-skill"]),
         )
+        const broken = diagnostics.find((diagnostic) => diagnostic.name === "broken-skill")
+        expect(broken?.code).toBe("skill.frontmatter_parse_failed")
+        expect(broken?.message).toContain("'description'")
+        expect(broken?.message).toContain("quote")
       },
     })
   })

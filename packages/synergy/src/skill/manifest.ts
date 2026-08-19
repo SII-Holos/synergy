@@ -17,7 +17,7 @@ export namespace SkillManifest {
       license: z.string().optional(),
       compatibility: z.string().max(500).optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
-      "allowed-tools": z.string().optional(),
+      "allowed-tools": z.union([z.string(), z.array(z.string())]).optional(),
       "user-invocable": z.boolean().default(true),
       "disable-model-invocation": z.boolean().default(false),
     })
@@ -54,6 +54,63 @@ export namespace SkillManifest {
 
   const knownFields = new Set(Object.keys(Schema.shape))
 
+  function describeInput(input: unknown): string {
+    if (Array.isArray(input)) return "array"
+    if (input === null) return "null"
+    return typeof input
+  }
+
+  function issueMessage(issue: z.core.$ZodIssue): string {
+    const field = issue.path.length > 0 ? `'${issue.path.join(".")}'` : "manifest"
+    switch (issue.code) {
+      case "invalid_type":
+        return `Invalid field ${field}: expected ${issue.expected}, received ${describeInput(issue.input)}`
+      case "invalid_union": {
+        const expected = new Set<string>()
+        for (const branch of issue.errors) {
+          const firstType = branch.find((sub) => sub.code === "invalid_type")
+          if (firstType && firstType.code === "invalid_type") expected.add(String(firstType.expected))
+        }
+        const expectation = expected.size > 0 ? [...expected].join(" or ") : "a valid value"
+        return `Invalid field ${field}: expected ${expectation}, received ${describeInput(issue.input)}`
+      }
+      case "unrecognized_keys":
+        return `Invalid field ${field}: unknown field(s) ${issue.keys.map((key) => `'${key}'`).join(", ")}`
+      default:
+        return `Invalid field ${field}: ${issue.message}`
+    }
+  }
+
+  function issueReason(issue: z.core.$ZodIssue): Record<string, unknown> {
+    switch (issue.code) {
+      case "invalid_type":
+        return { kind: issue.code, expected: issue.expected, received: describeInput(issue.input) }
+      case "unrecognized_keys":
+        return { kind: issue.code, keys: issue.keys }
+      default:
+        return { kind: issue.code }
+    }
+  }
+
+  type FrontmatterMark = { position?: number; line?: number; column?: number; buffer?: string }
+
+  function frontmatterErrorDetails(error: unknown): {
+    field?: string
+    line?: number
+    column?: number
+    position?: number
+    detail?: string
+  } {
+    const cause = error instanceof Error && error.cause ? error.cause : error
+    const mark = (cause as { mark?: FrontmatterMark } | undefined)?.mark
+    if (!mark || typeof mark.position !== "number" || typeof mark.buffer !== "string") return {}
+    const before = mark.buffer.slice(0, mark.position)
+    const keys = [...before.matchAll(/^\s*([A-Za-z0-9_-]+):/gm)]
+    const field = keys.length > 0 ? keys[keys.length - 1]![1] : undefined
+    const detail = cause instanceof Error ? cause.message.split("\n")[0] : undefined
+    return { field, line: mark.line, column: mark.column, position: mark.position, detail }
+  }
+
   function issuesToDiagnostics(
     issues: z.core.$ZodIssue[],
     input: { name: string; source: SkillSourceProfile.SourceID; entryFile: string; severity: "error" | "warning" },
@@ -66,8 +123,8 @@ export namespace SkillManifest {
         source: input.source,
         path: input.entryFile,
         field: issue.path.length > 0 ? issue.path.join(".") : undefined,
-        reason: { kind: issue.code },
-        message: issue.message,
+        reason: issueReason(issue),
+        message: issueMessage(issue),
       }),
     )
   }
@@ -128,8 +185,8 @@ export namespace SkillManifest {
           name: input.manifest.name,
           source: input.source,
           field: issue.path.length > 0 ? issue.path.join(".") : undefined,
-          reason: { kind: issue.code },
-          message: issue.message,
+          reason: issueReason(issue),
+          message: issueMessage(issue),
         }),
       )
       return { diagnostics }
@@ -158,6 +215,7 @@ export namespace SkillManifest {
       document = await ConfigMarkdown.parse(input.entryFile)
     } catch (error) {
       const fallbackName = path.basename(path.dirname(input.entryFile))
+      const details = frontmatterErrorDetails(error)
       return {
         diagnostics: [
           {
@@ -166,8 +224,18 @@ export namespace SkillManifest {
             name: fallbackName,
             source: input.source,
             path: input.entryFile,
-            reason: { kind: "parse" },
-            message: error instanceof Error ? error.message : String(error),
+            reason: {
+              kind: "parse",
+              ...(details.field ? { field: details.field } : {}),
+              ...(details.line !== undefined ? { line: details.line } : {}),
+              ...(details.column !== undefined ? { column: details.column } : {}),
+              ...(details.position !== undefined ? { position: details.position } : {}),
+            },
+            message: details.field
+              ? `Failed to parse YAML frontmatter in field '${details.field}': ${details.detail ?? "invalid YAML"}. Tip: quote values containing ': ' with double quotes, e.g. description: "Keywords: foo".`
+              : error instanceof Error
+                ? error.message
+                : String(error),
           },
         ],
       }
@@ -253,7 +321,12 @@ export namespace SkillManifest {
               ? (raw.metadata as Record<string, unknown>)
               : undefined,
 
-          "allowed-tools": typeof raw["allowed-tools"] === "string" ? raw["allowed-tools"] : undefined,
+          "allowed-tools":
+            typeof raw["allowed-tools"] === "string"
+              ? raw["allowed-tools"]
+              : Array.isArray(raw["allowed-tools"])
+                ? raw["allowed-tools"].join(" ")
+                : undefined,
           "user-invocable": typeof raw["user-invocable"] === "boolean" ? raw["user-invocable"] : true,
           "disable-model-invocation":
             typeof raw["disable-model-invocation"] === "boolean" ? raw["disable-model-invocation"] : false,

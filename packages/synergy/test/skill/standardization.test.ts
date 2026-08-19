@@ -89,6 +89,93 @@ describe.serial("skill standardization", () => {
     expect(result.value).not.toHaveProperty("permission")
   })
 
+  test.each([
+    { label: "inline list", fields: "allowed-tools: [Read, Write]\n" },
+    { label: "block list", fields: "allowed-tools:\n  - Read\n  - Write\n" },
+  ])("accepts allowed-tools as a YAML $label in strict mode without diagnostics", async ({ fields }) => {
+    await using tmp = await tmpdir()
+    await writeSkill(tmp.path, "allowed-tools-list", { name: "allowed-tools-list", fields })
+
+    const result = await SkillManifest.normalizeFile({
+      entryFile: path.join(tmp.path, "allowed-tools-list", "SKILL.md"),
+      source: "synergy",
+      mode: "strict",
+    })
+    expect(result.diagnostics).toEqual([])
+    expect(result.value).toMatchObject({ name: "allowed-tools-list", invocation: { user: true, model: true } })
+    expect(result.value).not.toHaveProperty("allowed-tools")
+  })
+
+  test("accepts allowed-tools as a YAML list in lenient mode without diagnostics", async () => {
+    await using tmp = await tmpdir()
+    await writeSkill(tmp.path, "allowed-tools-lenient", {
+      name: "allowed-tools-lenient",
+      fields: "allowed-tools:\n  - Read\n  - Write\n",
+    })
+
+    const result = await SkillManifest.normalizeFile({
+      entryFile: path.join(tmp.path, "allowed-tools-lenient", "SKILL.md"),
+      source: "claude",
+      mode: "lenient",
+    })
+    expect(result.diagnostics).toEqual([])
+    expect(result.value).toMatchObject({ name: "allowed-tools-lenient" })
+  })
+
+  test("names the offending field when allowed-tools has the wrong type", async () => {
+    await using tmp = await tmpdir()
+    await writeSkill(tmp.path, "allowed-tools-typed", { name: "allowed-tools-typed", fields: "allowed-tools: 42\n" })
+
+    const result = await SkillManifest.normalizeFile({
+      entryFile: path.join(tmp.path, "allowed-tools-typed", "SKILL.md"),
+      source: "synergy",
+      mode: "strict",
+    })
+    expect(result.value).toBeUndefined()
+    expect(result.diagnostics[0]?.code).toBe("skill.manifest_invalid")
+    expect(result.diagnostics[0]?.message).toContain("'allowed-tools'")
+  })
+
+  test("names unknown fields in strict manifest diagnostics", async () => {
+    await using tmp = await tmpdir()
+    await writeSkill(tmp.path, "unknown-field", { name: "unknown-field", fields: "vendor-field: value\n" })
+
+    const result = await SkillManifest.normalizeFile({
+      entryFile: path.join(tmp.path, "unknown-field", "SKILL.md"),
+      source: "synergy",
+      mode: "strict",
+    })
+    expect(result.value).toBeUndefined()
+    expect(result.diagnostics[0]?.code).toBe("skill.manifest_invalid")
+    expect(result.diagnostics[0]?.message).toContain("vendor-field")
+  })
+
+  test("frontmatter_parse_failed names the field and suggests quoting", async () => {
+    await using tmp = await tmpdir()
+    await writeSkill(tmp.path, "broken-yaml", { name: "broken-yaml", description: "bad: yaml" })
+
+    const result = await SkillManifest.normalizeFile({
+      entryFile: path.join(tmp.path, "broken-yaml", "SKILL.md"),
+      source: "synergy",
+      mode: "strict",
+    })
+    expect(result.value).toBeUndefined()
+    expect(result.diagnostics[0]?.code).toBe("skill.frontmatter_parse_failed")
+    expect(result.diagnostics[0]?.message).toContain("'description'")
+    expect(result.diagnostics[0]?.message).toContain("quote")
+  })
+
+  test("keeps reporting frontmatter_parse_failed across repeated parses of the same broken file", async () => {
+    await using tmp = await tmpdir()
+    await writeSkill(tmp.path, "repeat-broken", { name: "repeat-broken", description: "bad: yaml" })
+    const entryFile = path.join(tmp.path, "repeat-broken", "SKILL.md")
+
+    const first = await SkillManifest.normalizeFile({ entryFile, source: "synergy", mode: "strict" })
+    const second = await SkillManifest.normalizeFile({ entryFile, source: "synergy", mode: "strict" })
+    expect(first.diagnostics[0]?.code).toBe("skill.frontmatter_parse_failed")
+    expect(second.diagnostics[0]?.code).toBe("skill.frontmatter_parse_failed")
+  })
+
   test("keeps agents strict while loading pre-standardization entries through a named shim", async () => {
     await using tmp = await tmpdir({ git: true })
     await writeSkill(tmp.path, ".agents/skills/valid-agent", {
