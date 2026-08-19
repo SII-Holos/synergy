@@ -72,7 +72,7 @@ export const NoteReadTool = Tool.define("note_read", {
             ? [
                 `Description: ${note.blueprint?.description ?? "none"}`,
                 `Default Agent: ${note.blueprint?.defaultAgent ?? "none"}`,
-                `Audit Agent: ${note.blueprint?.auditAgent ?? "supervisor"}`,
+                `Audit Agent: supervisor`,
                 `Active Loop: ${note.blueprint?.activeLoopID ?? "none"}`,
                 `Run Count: ${note.blueprint?.runCount ?? 0}`,
                 `Last Run: ${note.blueprint?.lastRunAt ? formatLocalDateTime(note.blueprint.lastRunAt) : "never"}`,

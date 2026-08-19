@@ -14,6 +14,7 @@ describe("session action visibility", () => {
       export: true,
       import: true,
       archive: true,
+      copySessionID: true,
     })
   })
 
@@ -25,6 +26,7 @@ describe("session action visibility", () => {
       export: true,
       import: true,
       archive: true,
+      copySessionID: true,
     })
   })
 
@@ -36,6 +38,7 @@ describe("session action visibility", () => {
       export: false,
       import: false,
       archive: false,
+      copySessionID: false,
     })
   })
 })

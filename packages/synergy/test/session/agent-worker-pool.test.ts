@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { AgentTurnProtocol } from "../../src/session/agent-turn/protocol"
@@ -8,6 +8,7 @@ import {
   type AgentWorkerPoolOptions,
 } from "../../src/session/agent-turn/worker-pool"
 import type { AgentWorkerProcess, SpawnAgentWorkerProcessOptions } from "../../src/session/agent-turn/process-host"
+import { ObservabilityMetrics } from "../../src/observability/metrics"
 
 interface FakeWorker {
   options: SpawnAgentWorkerProcessOptions
@@ -796,6 +797,232 @@ describe("AgentWorkerPool", () => {
 
     await expect(stream.fullStream[Symbol.asyncIterator]().next()).rejects.toThrow("Agent worker exited")
     expect(fake.workers).toHaveLength(1)
+    await pool.stop()
+  })
+
+  test("drops late messages that reference a recently released turn instead of killing the worker", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const firstRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: firstRun.requestId })
+    const first = await firstPromise
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: firstRun.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
+    })
+    releaseTurn(fake.workers[0], firstRun.requestId)
+    expect((await first.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+
+    const secondPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    const secondRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: secondRun.requestId })
+    const second = await secondPromise
+
+    // A late collect-memory response heartbeat referencing the released turn must not kill the worker.
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: firstRun.requestId,
+      turns: 1,
+      collection: "full",
+      memory: workerMemory(),
+    })
+    expect(fake.workers).toHaveLength(1)
+
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: secondRun.requestId,
+      turns: 2,
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
+    })
+    releaseTurn(fake.workers[0], secondRun.requestId)
+    expect((await second.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect(fake.workers).toHaveLength(1)
+    await pool.stop()
+  })
+  test("drops late non-heartbeat messages that reference a recently released turn and records the drop", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    using _metrics = spyOn(ObservabilityMetrics, "record")
+
+    const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const firstRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: firstRun.requestId })
+    const first = await firstPromise
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: firstRun.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
+    })
+    releaseTurn(fake.workers[0], firstRun.requestId)
+    expect((await first.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+
+    // The worker is already running its next turn when the late message arrives.
+    const secondPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    const secondRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: secondRun.requestId })
+    const second = await secondPromise
+
+    // A late duplicate terminal referencing the released turn hits the generic ownership
+    // branch and must be dropped without killing the worker.
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: firstRun.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
+    })
+    expect(fake.workers).toHaveLength(1)
+
+    const calls = (
+      _metrics as unknown as {
+        mock: { calls: Array<Array<{ name?: string; labels?: Record<string, unknown> }>> }
+      }
+    ).mock.calls
+    const lateCalls = calls.filter((call) => call[0]?.name === "agent.worker.late_message")
+    expect(lateCalls).toHaveLength(1)
+    expect(lateCalls[0][0].labels).toEqual({ messageType: "complete" })
+    expect(calls.some((call) => call[0]?.name === "agent.worker.recycle")).toBe(false)
+
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: secondRun.requestId,
+      turns: 2,
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
+    })
+    releaseTurn(fake.workers[0], secondRun.requestId)
+    expect((await second.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect(fake.workers).toHaveLength(1)
+    await pool.stop()
+  })
+
+  test("still kills the worker for a non-heartbeat message referencing a never-owned request", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    using _metrics = spyOn(ObservabilityMetrics, "record")
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: "never-owned-request",
+      turns: 1,
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
+    })
+
+    await expect(stream.fullStream[Symbol.asyncIterator]().next()).rejects.toThrow("Agent worker exited")
+    expect(fake.workers).toHaveLength(1)
+    const calls = (
+      _metrics as unknown as {
+        mock: { calls: Array<Array<{ name?: string; labels?: Record<string, unknown> }>> }
+      }
+    ).mock.calls
+    expect(
+      calls.some(
+        (call) => call[0]?.name === "agent.worker.recycle" && call[0]?.labels?.reason === "protocol_violation",
+      ),
+    ).toBe(true)
+    await pool.stop()
+  })
+
+  test("drops late heartbeat messages referencing a released turn while idle", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const firstRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: firstRun.requestId })
+    const first = await firstPromise
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: firstRun.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
+    })
+    releaseTurn(fake.workers[0], firstRun.requestId)
+    expect((await first.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: firstRun.requestId,
+      turns: 1,
+      collection: "full",
+      memory: workerMemory(),
+    })
+    expect(fake.workers).toHaveLength(1)
+    await pool.stop()
+  })
+
+  test("still kills the worker for a message referencing a never-owned request", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: "never-owned-request",
+      turns: 1,
+      collection: "none",
+      memory: workerMemory(),
+    })
+
+    await expect(stream.fullStream[Symbol.asyncIterator]().next()).rejects.toThrow("Agent worker exited")
+    expect(fake.workers).toHaveLength(1)
+    await pool.stop()
+  })
+
+  test("still kills the worker for a late message referencing a released turn after the grace window", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn, {
+      now: () => Date.now() + 31_000,
+    })
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: run.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(2, 2),
+      memory: workerMemory(),
+    })
+    releaseTurn(fake.workers[0], run.requestId)
+    expect((await stream.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+
+    const secondPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    const secondRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: secondRun.requestId })
+    const second = await secondPromise
+
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: run.requestId,
+      turns: 1,
+      collection: "full",
+      memory: workerMemory(),
+    })
+
+    await expect(second.fullStream[Symbol.asyncIterator]().next()).rejects.toThrow("Agent worker exited")
     await pool.stop()
   })
 

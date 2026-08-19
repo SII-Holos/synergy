@@ -885,6 +885,9 @@ export const statusBar = {
 export const topBar = {
   sessionActions: { id: "app.topBar.session.actions", message: "Session actions" },
   rename: { id: "app.topBar.session.rename", message: "Rename" },
+  copySessionID: { id: "app.topBar.session.copyID", message: "Copy session ID" },
+  sessionIDCopied: { id: "app.topBar.session.copyIDCopied", message: "Session ID copied" },
+  copySessionIDFailed: { id: "app.topBar.session.copyIDFailed", message: "Failed to copy session ID" },
   exitWorktree: { id: "app.topBar.session.exitWorktree", message: "Exit worktree" },
   enterWorktree: { id: "app.topBar.session.enterWorktree", message: "Enter worktree" },
   exportSessionData: { id: "app.topBar.session.export", message: "Export session data" },

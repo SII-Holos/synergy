@@ -270,6 +270,66 @@ describe("LightLoopContinuationPolicy", () => {
       },
     })
   })
+
+  test("terminalizes with the real launch error when the reviewer failed to launch", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const execution = await Session.create({})
+        const requesterMessageID = "msg_review_request"
+        const reviewer = await Session.create({
+          parentID: execution.id,
+          cortex: {
+            taskID: "ctx_launch_failed_review",
+            parentSessionID: execution.id,
+            parentMessageID: requesterMessageID,
+            description: "Review LightLoop",
+            agent: "lightloop-reviewer",
+            status: "error",
+            error: "No model configured for agent lightloop-reviewer",
+            launchFailure: true,
+            startedAt: Date.now(),
+            completedAt: Date.now(),
+          },
+        })
+        await Session.update(execution.id, (draft) => {
+          draft.workflow = {
+            kind: "lightloop",
+            instructions: "Write unit tests",
+            status: "reviewing",
+            stopRequest: {
+              summary: "done",
+              requestedAt: Date.now(),
+              requesterSessionID: execution.id,
+              requesterMessageID,
+              reviewTaskID: "ctx_launch_failed_review",
+              reviewSessionID: reviewer.id,
+            },
+          }
+        })
+        const prepare = mock(async () => {
+          throw new Error("recovery must not relaunch after a launch failure")
+        })
+        ;(Cortex as any).prepare = prepare
+
+        const proposal = await LightLoopContinuationPolicy.handle(gate(await Session.get(execution.id)))
+
+        expect(proposal).toEqual({ kind: "handled" })
+        expect(prepare).not.toHaveBeenCalled()
+        const finalized = await Session.get(execution.id)
+        expect(finalized.workflow).toBeUndefined()
+        const messages = await Session.messages({ sessionID: execution.id })
+        const failure = messages.find((message) => message.info.metadata?.source === "light_loop_exhaustion")
+        if (!failure) throw new Error("expected an exhaustion failure message")
+        const part = failure.parts.find((p) => p.type === "text")
+        if (!part || part.type !== "text") throw new Error("expected a text failure part")
+        expect(part.text).toContain("reviewer_launch_failed")
+        expect(part.text).toContain("No model configured for agent lightloop-reviewer")
+      },
+    })
+  })
+
   test.each(["error", "cancelled"] as const)(
     "retries when reviewer is %s by consuming recovery budget",
     async (status) => {

@@ -278,6 +278,36 @@ export namespace MCP {
 
   // ── Non-blocking snapshots ─────────────────────────────────────────
 
+  export interface DeferredGroupCatalogServer {
+    serverName: string
+    toolNames: string[]
+  }
+
+  export interface DeferredGroupCatalog {
+    totalTools: number
+    servers: DeferredGroupCatalogServer[]
+  }
+
+  /**
+   * Cheap snapshot of connected MCP servers and their tool names, used to
+   * render the deferred-group directory in the expand_tools description.
+   * Reads the supervisor's cached toolDefs directly — no dynamicTool
+   * conversion, no network calls.
+   */
+  export async function deferredGroupCatalog(): Promise<DeferredGroupCatalog> {
+    await McpSupervisor.ready()
+    const servers: DeferredGroupCatalogServer[] = []
+    let totalTools = 0
+    for (const handle of McpSupervisor.getAll()) {
+      if (mapStatus(handle).status !== "connected") continue
+      if (!handle.client || handle.toolDefs.length === 0) continue
+      const toolNames = ToolExposure.unique(handle.toolDefs.map((tool) => tool.name))
+      servers.push({ serverName: handle.name, toolNames })
+      totalTools += toolNames.length
+    }
+    return { totalTools, servers }
+  }
+
   export async function toolEntries(): Promise<ToolEntry[]> {
     await McpSupervisor.ready()
     const result: ToolEntry[] = []

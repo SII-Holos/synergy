@@ -4,6 +4,7 @@ import path from "path"
 import { pathToFileURL } from "url"
 import os from "os"
 import { Filesystem } from "../util/filesystem"
+import { assertIsolatedTestHome } from "./test-home-guard"
 
 const app = "synergy"
 
@@ -14,6 +15,13 @@ function homeDir() {
 function root() {
   return path.join(homeDir(), "." + app)
 }
+
+// Test processes must never resolve the Synergy home into a real instance:
+// Bun does not propagate test/preload.ts environment into --parallel workers,
+// so an unguarded run writes fixtures into ~/.synergy/data. The guard requires
+// the SYNERGY_TEST_HOME isolation marker and blocks real-home roots; it is pure
+// (no filesystem side effects) and throws before any directory creation below.
+assertIsolatedTestHome(root(), Bun.main, process.argv, process.env)
 
 export namespace Global {
   export const Path = {

@@ -16,7 +16,6 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { sidebar } from "@/locales/messages"
 import { BRAND_ASSETS, brandAssetPath, holosLogoPath } from "@/utils/brand-assets"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
-import { encodeSessionDragPayload, SESSION_DRAG_MIME } from "@/utils/session-drag"
 import { getScopeLabel } from "@/utils/scope"
 import { useHolos } from "@/context/holos"
 import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
@@ -36,6 +35,7 @@ import {
   scopeKeyForNavEntry,
   type SessionVisualStore,
 } from "@/components/sidebar/session-visual-state"
+import { setSessionDragData } from "@/utils/session-drag"
 import { SidebarAttentionNotice } from "./sidebar-attention-notice"
 import { projectMenuPlacement, type ProjectMenuPlacement } from "./project-menu-placement"
 import "./sidebar.css"
@@ -1222,18 +1222,6 @@ function SidebarSessionRow(props: {
   const lingui = useLingui()
   const globalSync = useGlobalSync()
 
-  const dragScopeKey = () => props.scope?.worktree ?? scopeKeyForNavEntry(props.entry, globalSync.data.scope) ?? ""
-
-  const handleDragStart = (event: DragEvent) => {
-    const scopeKey = dragScopeKey()
-    if (!scopeKey) {
-      event.preventDefault()
-      return
-    }
-    event.dataTransfer?.setData(SESSION_DRAG_MIME, encodeSessionDragPayload({ scopeKey, sessionID: props.entry.id }))
-    if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy"
-  }
-
   const visual = createMemo(() => {
     if (props.scope) return resolveSessionVisualState(globalSync.peekScopeState(props.scope.worktree)?.[0], props.entry)
     return resolveSessionVisualState(getStoreForEntry(globalSync, props.entry), props.entry)
@@ -1243,6 +1231,17 @@ function SidebarSessionRow(props: {
     const v = visual()
     return v ? lingui._(v.label) : ""
   })
+
+  const handleDragStart = (event: DragEvent) => {
+    const directory = scopeKeyForNavEntry(props.entry, globalSync.data.scope) ?? props.entry.scopeID
+    if (!directory) return
+    setSessionDragData(event, {
+      id: props.entry.id,
+      directory,
+      title: props.entry.title || _(sidebar.untitled),
+      updatedAt: props.entry.lastActivityAt,
+    })
+  }
 
   return (
     <button
