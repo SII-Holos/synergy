@@ -380,6 +380,16 @@ export namespace GitHealth {
     return { dir: repo.root, issues }
   }
 
+  /**
+   * Live repository probe shared with the env prompt block. Deliberately
+   * bypasses the scan cache: callers (per-turn env assembly) need the current
+   * answer, and a stale repo probe is exactly the bug this replaces.
+   */
+  export async function isGitRepo(cwd?: string): Promise<boolean> {
+    const repo = await resolveRepo(normalizeDir(cwd ?? process.cwd()))
+    return repo !== undefined
+  }
+
   export function refresh(cwd?: string): Promise<Issue[]> {
     const inputDir = normalizeDir(cwd ?? process.cwd())
     const key = cacheKey(inputDir)

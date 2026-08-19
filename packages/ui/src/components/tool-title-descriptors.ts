@@ -345,6 +345,7 @@ export const SESSION_TURN_DESC = {
   copyMarkdown: d("session-turn.copy-markdown", "Copy Markdown"),
   copied: d("session-turn.copied", "Copied!"),
   copyFailure: d("session-turn.copy-failure", "Unable to copy the message."),
+  forkMessage: d("session-turn.fork-message", "Fork session from this message"),
   input: d("session-turn.token-input", "input"),
   cacheRead: d("session-turn.token-cache-read", "cache read"),
   cacheWrite: d("session-turn.token-cache-write", "cache write"),

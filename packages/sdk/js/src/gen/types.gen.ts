@@ -12187,6 +12187,10 @@ export type SessionForkData = {
           type: "before"
           messageID: string
         }
+      | {
+          type: "through"
+          messageID: string
+        }
     workspace?: SessionWorkspaceSelection
     title?: string
     controlProfile?: "guarded" | "autonomous" | "full_access"
