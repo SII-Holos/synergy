@@ -2,6 +2,7 @@ import path from "path"
 import { Asset } from "@/asset/asset"
 import { MessageV2 } from "@/session/message-v2"
 import { Session } from "@/session"
+import { SessionProgress } from "@/session/progress"
 import { Log } from "@/util/log"
 import { Lock } from "@/util/lock"
 import type { OutboundPart, Provider } from "./types"
@@ -133,6 +134,94 @@ export async function loadChannelTaskMessages(input: {
   const messages = await Session.messages({ sessionID: input.sessionID })
   const hydrated = messages.map((message) => (message.info.id === input.terminal.info.id ? input.terminal : message))
   return MessageV2.deriveSemantics(hydrated)
+}
+
+/**
+ * Collect every terminal assistant message currently present in a session,
+ * keyed by its root user message id. The foreground delivery path snapshots
+ * this before invoking the inbox loop and again after: roots that gained a
+ * terminal during the invoke were completed by this foreground turn (the loop
+ * drains queued tasks too) and must each be delivered, not just the final
+ * result. Otherwise a terminal completed mid-drain is skipped by the bridge
+ * (foreground registered) yet never delivered by the foreground path.
+ */
+export async function collectChannelTaskTerminals(sessionID: string): Promise<Map<string, MessageV2.WithParts>> {
+  const messages = await Session.messages({ sessionID })
+  const terminals = new Map<string, MessageV2.WithParts>()
+  for (const message of MessageV2.deriveSemantics(messages)) {
+    if (message.info.role !== "assistant") continue
+    const assistant = message.info as MessageV2.Assistant
+    if (!SessionProgress.isTerminalAssistant(assistant)) continue
+    const rootID = assistant.rootID ?? assistant.parentID
+    if (rootID) terminals.set(rootID, message)
+  }
+  return terminals
+}
+
+/**
+ * Deliver a terminal that the foreground invoke completed but did not return.
+ * The inbox loop drains queued tasks and returns the LAST terminal; the root
+ * that owns this foreground lane may have finished earlier (mid-drain). The
+ * outbound bridge skipped it because the root is foreground-registered, so it
+ * must be delivered here: text + attachments via the provider reply, recorded
+ * as delivered on the root and marked sent on the terminal. Skips when the
+ * terminal already existed before the invoke (delivered elsewhere) or is the
+ * loop result (delivered by the normal foreground path).
+ */
+export async function deliverForegroundTaskTerminal(input: {
+  provider: Provider
+  accountId: string
+  messageId: string
+  chatId?: string
+  chatType?: "dm" | "group"
+  scopeKey?: string
+  sessionID: string
+  currentRootID: string
+  excludeTerminalID?: string
+  terminalsBefore: ReadonlyMap<string, MessageV2.WithParts>
+}): Promise<boolean> {
+  const terminalsAfter = await collectChannelTaskTerminals(input.sessionID)
+  const terminal = terminalsAfter.get(input.currentRootID)
+  if (!terminal) return false
+  if (terminal.info.id === input.excludeTerminalID) return false
+  if (input.terminalsBefore.get(input.currentRootID)?.info.id === terminal.info.id) return false
+
+  const messages = await loadChannelTaskMessages({
+    sessionID: input.sessionID,
+    rootID: input.currentRootID,
+    terminal,
+  })
+  const { parts, urls } = await projectChannelTaskPartsWithUrls({
+    messages,
+    rootID: input.currentRootID,
+    terminalMessageID: terminal.info.id,
+    includeText: true,
+  })
+  if (parts.length === 0) return false
+  const conversation = input.provider.conversation
+  const replyMessage =
+    conversation?.replyMessage?.bind(conversation) ?? input.provider.replyMessage?.bind(input.provider)
+  if (!replyMessage) return false
+  await replyMessage({
+    accountId: input.accountId,
+    messageId: input.messageId,
+    chatId: input.chatId,
+    chatType: input.chatType,
+    scopeKey: input.scopeKey,
+    parts,
+  })
+  await markChannelTaskAttachmentsDelivered({
+    sessionID: input.sessionID,
+    rootID: input.currentRootID,
+    urls,
+    messages,
+  })
+  await Session.mergeMessageMetadata({
+    sessionID: input.sessionID,
+    messageID: terminal.info.id,
+    metadata: { channelOutboundSent: true },
+  }).catch((err) => log.warn("failed to mark foreground terminal as sent", { sessionID: input.sessionID, error: err }))
+  return true
 }
 
 export async function replyChannelTaskAttachments(input: {

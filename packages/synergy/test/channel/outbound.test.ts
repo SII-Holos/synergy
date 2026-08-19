@@ -3,7 +3,11 @@ import { Bus } from "../../src/bus"
 import { Channel } from "../../src/channel"
 import { ChannelOutbound } from "../../src/channel/outbound"
 import { ResponseCardRuntime } from "../../src/channel/response-card"
-import { replyChannelTaskAttachments } from "../../src/channel/outbound-parts"
+import {
+  collectChannelTaskTerminals,
+  deliverForegroundTaskTerminal,
+  replyChannelTaskAttachments,
+} from "../../src/channel/outbound-parts"
 import { Asset } from "../../src/asset/asset"
 import type { OutboundPart, Provider, ResponseCard } from "../../src/channel/types"
 import { Identifier } from "../../src/id/id"
@@ -863,6 +867,142 @@ test("foreground registration ends so the bridge resumes delivery for the same r
       } finally {
         dispose()
       }
+    },
+  })
+})
+
+test("delivers a foreground-completed terminal that the loop did not return", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const calls: ProviderCalls = { replies: [], pushes: [], replyParts: [], pushParts: [] }
+      const session = await Session.create({
+        endpoint: SessionEndpoint.fromChannel({
+          type: `foreground-compensate-${crypto.randomUUID()}`,
+          accountId: "acct_test",
+          chatId: "chat_test",
+        }),
+      })
+      const rootID = Identifier.ascending("message")
+      await Session.updateMessage({
+        id: rootID,
+        sessionID: session.id,
+        role: "user",
+        isRoot: true,
+        rootID,
+        agent: "synergy",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        time: { created: Date.now() },
+      } as MessageV2.User)
+      const assetID = await Asset.write(Buffer.from([137, 80, 78, 71]), "image/png", "preview.png")
+      await completedToolAttachment({
+        sessionID: session.id,
+        rootID,
+        assetID,
+        mime: "image/png",
+        filename: "preview.png",
+      })
+
+      // Snapshot before the terminal exists, then complete the terminal:
+      // the foreground invoke returned a different (later) terminal, so this
+      // one must be delivered by the compensation path.
+      const terminalsBefore = await collectChannelTaskTerminals(session.id)
+      const terminal = await completedAssistant(
+        session.id,
+        "Compensated reply",
+        "stop",
+        { channelPush: true, channelReply: true, channelReplyToMessageId: "msg_topic_root" },
+        rootID,
+      )
+
+      expect(
+        await deliverForegroundTaskTerminal({
+          provider: provider("foreground-compensate", calls),
+          accountId: "acct_test",
+          messageId: "msg_topic_root",
+          chatId: "chat_test",
+          sessionID: session.id,
+          currentRootID: rootID,
+          excludeTerminalID: "msg_other_terminal",
+          terminalsBefore,
+        }),
+      ).toBe(true)
+
+      expect(calls.replies).toEqual(["msg_topic_root"])
+      expect(calls.replyParts).toEqual([
+        [
+          { type: "text", text: "Compensated reply" },
+          {
+            type: "image",
+            path: Asset.resolvePath(assetID),
+            filename: "preview.png",
+            contentType: "image/png",
+          },
+        ],
+      ])
+
+      const persisted = await MessageV2.get({ sessionID: session.id, messageID: terminal.id })
+      expect(persisted.info.metadata?.channelOutboundSent).toBe(true)
+      const root = await MessageV2.get({ sessionID: session.id, messageID: rootID })
+      expect(root.info.metadata?.channelOutboundAttachmentUrls).toEqual([`asset://${assetID}`])
+    },
+  })
+})
+
+test("does not re-deliver a terminal already present before the invoke", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const calls: ProviderCalls = { replies: [], pushes: [], replyParts: [], pushParts: [] }
+      const session = await Session.create({
+        endpoint: SessionEndpoint.fromChannel({
+          type: `foreground-compensate-skip-${crypto.randomUUID()}`,
+          accountId: "acct_test",
+          chatId: "chat_test",
+        }),
+      })
+      const rootID = Identifier.ascending("message")
+      await Session.updateMessage({
+        id: rootID,
+        sessionID: session.id,
+        role: "user",
+        isRoot: true,
+        rootID,
+        agent: "synergy",
+        model: { providerID: "test-provider", modelID: "test-model" },
+        time: { created: Date.now() },
+      } as MessageV2.User)
+      const terminal = await completedAssistant(session.id, "Already delivered", "stop", {}, rootID)
+
+      const terminalsBefore = await collectChannelTaskTerminals(session.id)
+      expect(
+        await deliverForegroundTaskTerminal({
+          provider: provider("foreground-compensate-skip", calls),
+          accountId: "acct_test",
+          messageId: "msg_topic_root",
+          sessionID: session.id,
+          currentRootID: rootID,
+          excludeTerminalID: "msg_other_terminal",
+          terminalsBefore,
+        }),
+      ).toBe(false)
+      expect(calls.replies).toEqual([])
+
+      // The excluded (loop result) terminal is never delivered either.
+      expect(
+        await deliverForegroundTaskTerminal({
+          provider: provider("foreground-compensate-skip", calls),
+          accountId: "acct_test",
+          messageId: "msg_topic_root",
+          sessionID: session.id,
+          currentRootID: rootID,
+          excludeTerminalID: terminal.id,
+          terminalsBefore: new Map(),
+        }),
+      ).toBe(false)
+      expect(calls.replies).toEqual([])
     },
   })
 })
