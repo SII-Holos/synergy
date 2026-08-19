@@ -9,6 +9,7 @@ import { ConfigMarkdown } from "../config/markdown"
 import { Plugin } from "../plugin"
 import { SkillManifest } from "./manifest"
 import { SkillSourceProfile } from "./source-profile"
+import { Config } from "../config/config"
 
 export namespace Skill {
   const log = Log.create({ service: "skill" })
@@ -68,6 +69,7 @@ export namespace Skill {
   export const State = z.object({
     skills: z.record(z.string(), Info),
     diagnostics: Diagnostic.array(),
+    sourceCounts: z.record(z.string(), z.number().int().nonnegative()),
   })
   export type State = z.infer<typeof State>
 
@@ -150,6 +152,13 @@ export namespace Skill {
 
   async function scanFilesystemCandidates() {
     const candidates = new Map<string, FilesystemCandidate>()
+    const sourceCounts: Record<Source, number> = {
+      synergy: 0,
+      agents: 0,
+      claude: 0,
+      codex: 0,
+      openclaw: 0,
+    }
 
     for (const root of SkillSourceProfile.existingRoots(ScopeContext.current.directory)) {
       try {
@@ -161,6 +170,7 @@ export namespace Skill {
           dot: true,
         })) {
           if (!root.acceptedEntryNames.includes(path.basename(match))) continue
+          sourceCounts[root.source]++
           const entryFile = await fs.realpath(match)
           const candidate: FilesystemCandidate = {
             kind: "filesystem",
@@ -180,7 +190,7 @@ export namespace Skill {
       }
     }
 
-    return [...candidates.values()]
+    return { candidates: [...candidates.values()], sourceCounts }
   }
 
   function programmaticInfo(input: {
@@ -421,13 +431,24 @@ export namespace Skill {
   }
 
   export const state = ScopedState.create(async () => {
+    const [config, filesystem, programmatic] = await Promise.all([
+      Config.current(),
+      scanFilesystemCandidates(),
+      programmaticCandidates(),
+    ])
+    const compatibility = config.skills?.compatibility ?? {}
+    const disabledSources = new Set<Source>()
+    for (const source of ["agents", "claude", "codex", "openclaw"] as const) {
+      if (compatibility[source] === false) disabledSources.add(source)
+    }
+
     const skills: Record<string, Info> = {}
     const diagnostics: Diagnostic[] = []
     const grouped = new Map<string, Array<{ candidate: Candidate; info: Info }>>()
-    const [filesystem, programmatic] = await Promise.all([scanFilesystemCandidates(), programmaticCandidates()])
     diagnostics.push(...programmatic.diagnostics)
 
-    for (const candidate of [...filesystem, ...programmatic.candidates]) {
+    for (const candidate of [...filesystem.candidates, ...programmatic.candidates]) {
+      if (candidate.kind === "filesystem" && disabledSources.has(candidate.source)) continue
       const materialized = await materialize(candidate)
       diagnostics.push(...materialized.diagnostics)
       if (!materialized.info) continue
@@ -447,7 +468,7 @@ export namespace Skill {
       skills[name] = winner.info
     }
 
-    return { skills, diagnostics }
+    return { skills, diagnostics, sourceCounts: filesystem.sourceCounts }
   })
 
   export async function reload() {
@@ -466,6 +487,10 @@ export namespace Skill {
 
   export async function all() {
     return state().then((value) => Object.values(value.skills))
+  }
+
+  export async function sourceCounts() {
+    return state().then((value) => value.sourceCounts)
   }
 
   export async function content(skill: Info) {

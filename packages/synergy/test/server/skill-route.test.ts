@@ -80,6 +80,27 @@ description: bad: yaml: here
     })
     expect(data.items.some((item: { name: string }) => item.name === "broken-skill")).toBe(false)
     expect(data.diagnostics.some((item: { name: string }) => item.name === "broken-skill")).toBe(true)
+    expect(data.sources).toContainEqual({ source: "synergy", count: 2 })
+  })
+
+  test("lists per-source counts including disabled compat sources", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      config: { skills: { compatibility: { claude: false } } },
+      init: async (dir) => {
+        await Bun.write(path.join(dir, ".synergy", "skill", "valid-skill", "SKILL.md"), manifest("valid-skill"))
+        await Bun.write(path.join(dir, ".claude", "skills", "claude-skill", "SKILL.md"), manifest("claude-skill"))
+      },
+    })
+
+    const response = await Server.App().request(scopedUrl(tmp.path, "/skill"), { method: "GET" })
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.items.some((item: { name: string }) => item.name === "claude-skill")).toBe(false)
+    expect(data.sources).toContainEqual({ source: "synergy", count: 1 })
+    // Disabled sources are still counted so the settings panel can show
+    // truthful per-source numbers even when the source is turned off.
+    expect(data.sources).toContainEqual({ source: "claude", count: 1 })
   })
 
   test("lists plugin metadata as non-exportable and prevents deletion", async () => {

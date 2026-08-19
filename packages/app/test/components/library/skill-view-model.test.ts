@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { setupI18n } from "@lingui/core"
 import type { SkillSummary } from "@ericsanchezok/synergy-sdk/client"
 import {
+  partitionSkillDiagnostics,
   skillCanExport,
   skillCanonicalDiagnostics,
   skillDeclaredCompatibility,
@@ -39,6 +40,21 @@ function makeI18n(locale: "en" | "zh-CN") {
         : Object.fromEntries(Object.values(skillViewCopy).map((descriptor) => [descriptor.id, descriptor.message])),
   })
   return i18n
+}
+
+type SkillDiagnostic = SkillSummary["diagnostics"][number]
+
+function makeDiagnostic(overrides: Partial<SkillDiagnostic> = {}): SkillDiagnostic {
+  return {
+    code: "skill.vendor_field_unsupported",
+    severity: "warning",
+    name: "vendor-skill",
+    source: "claude",
+    path: "/project/.claude/skills/vendor/SKILL.md",
+    reason: {},
+    message: "Unsupported field x-vendor",
+    ...overrides,
+  }
 }
 
 function baseSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
@@ -100,6 +116,74 @@ describe("Skill Library view model", () => {
     ]
 
     expect(skillCanonicalDiagnostics(baseSkill({ diagnostics }))).toBe(diagnostics)
+  })
+
+  test("partitions load diagnostics into failed, shadowed, and compatibility groups", () => {
+    const failed = makeDiagnostic({
+      code: "skill.manifest_invalid",
+      severity: "error",
+      name: "broken-skill",
+      source: "synergy",
+      path: "/project/.synergy/skill/broken/SKILL.md",
+      message: "Invalid manifest",
+    })
+    const shadowed = makeDiagnostic({
+      code: "skill.candidate_shadowed",
+      severity: "warning",
+      name: "dupe-skill",
+      path: "/project/.synergy/skill/dupe/SKILL.md",
+      message: "Skill candidate is shadowed",
+    })
+    const vendorNotice = makeDiagnostic({
+      code: "skill.vendor_field_unsupported",
+      severity: "warning",
+      message: "Unsupported field x-vendor",
+    })
+    const shimNotice = makeDiagnostic({
+      code: "skill.normalization_shim_applied",
+      severity: "info",
+      message: "Vendor layout normalized",
+    })
+
+    const partitioned = partitionSkillDiagnostics([failed, shadowed, vendorNotice, shimNotice])
+    expect(partitioned.failed).toEqual([failed])
+    expect(partitioned.shadowed).toEqual([shadowed])
+    expect(partitioned.compat).toEqual([vendorNotice, shimNotice])
+  })
+
+  test("dedupes diagnostics by path and code so winner and global shadow entries count once", () => {
+    const shadowed = makeDiagnostic({
+      code: "skill.candidate_shadowed",
+      severity: "warning",
+      name: "dupe-skill",
+      path: "/project/.synergy/skill/dupe/SKILL.md",
+      message: "Skill candidate is shadowed",
+    })
+    const duplicate = { ...shadowed, message: "Attached to the winner item" }
+
+    const partitioned = partitionSkillDiagnostics([shadowed, duplicate])
+    expect(partitioned.shadowed).toEqual([shadowed])
+    expect(partitioned.shadowed).toHaveLength(1)
+
+    const distinctPath = makeDiagnostic({
+      code: "skill.candidate_shadowed",
+      severity: "warning",
+      name: "dupe-skill",
+      path: "/other/.synergy/skill/dupe/SKILL.md",
+      message: "Skill candidate is shadowed",
+    })
+    const distinctCode = makeDiagnostic({
+      code: "skill.vendor_field_unsupported",
+      severity: "warning",
+      name: "dupe-skill",
+      path: "/project/.synergy/skill/dupe/SKILL.md",
+      message: "Unsupported field",
+    })
+    expect(partitionSkillDiagnostics([shadowed, distinctPath, distinctCode]).compat).toEqual([distinctCode])
+  })
+
+  test("returns empty groups for empty diagnostics input", () => {
+    expect(partitionSkillDiagnostics([])).toEqual({ failed: [], shadowed: [], compat: [] })
   })
 
   test("surfaces structured import errors with localized guidance and raw diagnostics", () => {

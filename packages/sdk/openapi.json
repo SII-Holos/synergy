@@ -4057,6 +4057,7 @@
                 "library",
                 "mcp",
                 "plugins",
+                "skills",
                 "agents",
                 "commands",
                 "permissions",
@@ -4139,6 +4140,7 @@
                 "library",
                 "mcp",
                 "plugins",
+                "skills",
                 "agents",
                 "commands",
                 "permissions",
@@ -4232,6 +4234,7 @@
                 "library",
                 "mcp",
                 "plugins",
+                "skills",
                 "agents",
                 "commands",
                 "permissions",
@@ -31779,6 +31782,38 @@
         },
         "additionalProperties": false
       },
+      "SkillsCompatibilityConfig": {
+        "description": "Per-source compatibility toggles for discovering Skills from other agent tools",
+        "type": "object",
+        "properties": {
+          "agents": {
+            "description": "Load Agent Skills from .agents/skills directories (default: true)",
+            "type": "boolean"
+          },
+          "claude": {
+            "description": "Load Claude Code Skills from .claude/skills directories (default: true)",
+            "type": "boolean"
+          },
+          "codex": {
+            "description": "Load Codex Skills from .codex/skills directories (default: true)",
+            "type": "boolean"
+          },
+          "openclaw": {
+            "description": "Load OpenClaw Skills from .openclaw/skills and workspace skills directories (default: true)",
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SkillsConfig": {
+        "type": "object",
+        "properties": {
+          "compatibility": {
+            "$ref": "#/components/schemas/SkillsCompatibilityConfig"
+          }
+        },
+        "additionalProperties": false
+      },
       "McpRetryConfig": {
         "description": "Retry policy for connecting to this server",
         "type": "object",
@@ -33258,6 +33293,9 @@
           },
           "library": {
             "$ref": "#/components/schemas/LibraryConfig"
+          },
+          "skills": {
+            "$ref": "#/components/schemas/SkillsConfig"
           },
           "mcp": {
             "description": "MCP (Model Context Protocol) server configurations",
@@ -35465,6 +35503,7 @@
               "library",
               "mcp",
               "plugins",
+              "skills",
               "agents",
               "commands",
               "permissions",
@@ -35640,6 +35679,7 @@
               "library",
               "mcp",
               "plugins",
+              "skills",
               "agents",
               "commands",
               "permissions",
@@ -35788,6 +35828,7 @@
                 "library",
                 "mcp",
                 "plugins",
+                "skills",
                 "agents",
                 "commands",
                 "permissions",
@@ -36005,6 +36046,7 @@
                     "library",
                     "mcp",
                     "plugins",
+                    "skills",
                     "agents",
                     "commands",
                     "permissions",
@@ -36060,6 +36102,7 @@
                 "library",
                 "mcp",
                 "plugins",
+                "skills",
                 "agents",
                 "commands",
                 "permissions",
@@ -39915,9 +39958,27 @@
               },
               "required": ["code", "severity", "name", "source", "reason", "message"]
             }
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": ["synergy", "agents", "claude", "codex", "openclaw"]
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": ["source", "count"]
+            }
           }
         },
-        "required": ["items", "diagnostics"]
+        "required": ["items", "diagnostics", "sources"]
       },
       "SkillExportNotStandardError": {
         "type": "object",

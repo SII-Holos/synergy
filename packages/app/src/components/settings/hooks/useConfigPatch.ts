@@ -25,6 +25,7 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
   buildEmailPatch(cfg, state, patch)
   buildChannelPatch(cfg, state, patch)
   buildLibraryPatch(cfg, state, patch)
+  buildSkillsPatch(cfg, state, patch)
 
   return patch
 }
@@ -524,6 +525,25 @@ function buildLibraryPatch(cfg: Config, state: SettingsState, patch: Record<stri
   nextLibrary.autonomy = library.autonomy !== "false"
 
   patch.library = nextLibrary
+}
+function buildSkillsPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
+  const { skills } = state
+  const compatibility = cfg.skills?.compatibility
+  const changed =
+    skills.agents !== (compatibility?.agents !== false) ||
+    skills.claude !== (compatibility?.claude !== false) ||
+    skills.codex !== (compatibility?.codex !== false) ||
+    skills.openclaw !== (compatibility?.openclaw !== false)
+  if (!changed) return
+
+  patch.skills = {
+    compatibility: {
+      agents: skills.agents,
+      claude: skills.claude,
+      codex: skills.codex,
+      openclaw: skills.openclaw,
+    },
+  }
 }
 
 function parseList(value: string): string[] {

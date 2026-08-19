@@ -798,3 +798,55 @@ describe("settings config patch performance monitoring", () => {
     expect((patch.observability as { performance?: { enabled?: boolean } })?.performance?.enabled).toBe(false)
   })
 })
+describe("settings config patch skills compatibility", () => {
+  test("does not emit a skills patch when the form matches compatibility defaults", () => {
+    const state = defaultSettingsState("enter")
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} })).not.toHaveProperty("skills")
+  })
+
+  test("emits the full compatibility object when one source diverges", () => {
+    const state = defaultSettingsState("enter")
+    state.skills.claude = false
+
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).skills).toEqual({
+      compatibility: { agents: true, claude: false, codex: true, openclaw: true },
+    })
+  })
+
+  test("re-enables a source stored as explicit false", () => {
+    const state = defaultSettingsState("enter")
+    state.skills.codex = true
+
+    expect(
+      buildPatch({
+        cfg: {
+          skills: {
+            compatibility: { agents: true, claude: true, codex: false, openclaw: true },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).skills,
+    ).toEqual({
+      compatibility: { agents: true, claude: true, codex: true, openclaw: true },
+    })
+  })
+
+  test("does not emit a skills patch when the form matches explicit server values", () => {
+    const state = defaultSettingsState("enter")
+    state.skills.agents = false
+    state.skills.openclaw = false
+
+    expect(
+      buildPatch({
+        cfg: {
+          skills: {
+            compatibility: { agents: false, claude: true, codex: true, openclaw: false },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("skills")
+  })
+})
