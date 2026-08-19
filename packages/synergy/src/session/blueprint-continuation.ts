@@ -34,29 +34,38 @@ export const BlueprintContinuationPolicy: ContinuationKernel.Policy = {
     if (loop.status !== "running") return undefined
     if (!loop.stopRequest) return continuationProposal(loop)
 
-    const task = await Cortex.prepare({
-      description: `[Review] Audit BlueprintLoop ${loop.id}`,
-      prompt: reviewPrompt(loop),
-      agent: loop.auditAgent || "supervisor",
-      executionRole: "delegated_subagent",
-      category: "general",
-      parentSessionID: loop.sessionID,
-      parentMessageID: loop.stopRequest.requesterMessageID,
-      tools: loop.auditTools,
-      reuseInterrupted: true,
-      notifyParentOnComplete: false,
-      visibility: "visible",
-    })
-    await Session.update(task.sessionID, (draft) => {
-      draft.blueprint = { loopID: loop.id, loopRole: "audit" }
-    })
-    await BlueprintLoopStore.updateStatus(gate.scopeID, loop.id, {
-      status: "auditing",
-      auditSessionID: task.sessionID,
-      auditTaskID: task.id,
-    })
-    await Bus.publish(LoopEvent.Auditing, { loopID: loop.id })
-    await Cortex.start(task.id)
+    let task: Awaited<ReturnType<typeof Cortex.prepare>> | undefined
+    try {
+      task = await Cortex.prepare({
+        description: `[Review] Audit BlueprintLoop ${loop.id}`,
+        prompt: reviewPrompt(loop),
+        agent: loop.auditAgent || "supervisor",
+        executionRole: "delegated_subagent",
+        category: "general",
+        parentSessionID: loop.sessionID,
+        parentMessageID: loop.stopRequest.requesterMessageID,
+        tools: loop.auditTools,
+        reuseInterrupted: true,
+        notifyParentOnComplete: false,
+        visibility: "visible",
+      })
+      await Session.update(task.sessionID, (draft) => {
+        draft.blueprint = { loopID: loop.id, loopRole: "audit" }
+      })
+      await BlueprintLoopStore.updateStatus(gate.scopeID, loop.id, {
+        status: "auditing",
+        auditSessionID: task.sessionID,
+        auditTaskID: task.id,
+      })
+      await Bus.publish(LoopEvent.Auditing, { loopID: loop.id })
+      await Cortex.start(task.id)
+    } catch (error) {
+      if (task) await Cortex.cancel(task.id).catch(() => undefined)
+      await BlueprintLoopStore.updateStatus(gate.scopeID, loop.id, {
+        status: "failed",
+        error: ReviewToolRecovery.launchError(error instanceof Error ? error.message : String(error)),
+      }).catch(() => undefined)
+    }
     return { kind: "handled" }
   },
 }
@@ -78,6 +87,13 @@ async function recoverTerminalReviewer(
     !CortexTypes.isTerminalStatus(reviewer.cortex.status)
   ) {
     return undefined
+  }
+  if (reviewer.cortex.launchFailure === true) {
+    await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
+      status: "failed",
+      error: ReviewToolRecovery.launchError(reviewer.cortex.error),
+    })
+    return { kind: "handled" }
   }
 
   const attempts = stopRequest.reviewToolRecoveryAttempts ?? 0

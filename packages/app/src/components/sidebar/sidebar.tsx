@@ -35,6 +35,7 @@ import {
   scopeKeyForNavEntry,
   type SessionVisualStore,
 } from "@/components/sidebar/session-visual-state"
+import { setSessionDragData } from "@/utils/session-drag"
 import { SidebarAttentionNotice } from "./sidebar-attention-notice"
 import { projectMenuPlacement, type ProjectMenuPlacement } from "./project-menu-placement"
 import "./sidebar.css"
@@ -1231,6 +1232,17 @@ function SidebarSessionRow(props: {
     return v ? lingui._(v.label) : ""
   })
 
+  const handleDragStart = (event: DragEvent) => {
+    const directory = scopeKeyForNavEntry(props.entry, globalSync.data.scope) ?? props.entry.scopeID
+    if (!directory) return
+    setSessionDragData(event, {
+      id: props.entry.id,
+      directory,
+      title: props.entry.title || _(sidebar.untitled),
+      updatedAt: props.entry.lastActivityAt,
+    })
+  }
+
   return (
     <button
       type="button"
@@ -1240,6 +1252,8 @@ function SidebarSessionRow(props: {
         "sb-session-active": props.active,
       }}
       data-session-id={props.entry.id}
+      draggable={true}
+      onDragStart={handleDragStart}
       onClick={props.onClick}
     >
       <span classList={{ ...sessionIconClassList(visual()) }} title={sessionTooltip()}>
