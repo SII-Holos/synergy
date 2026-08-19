@@ -1,8 +1,7 @@
 import type { Component } from "solid-js"
 import type { PluginSettingsComponentProps, PluginSettingsSurfaceContext } from "@ericsanchezok/synergy-plugin"
 import type { SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { SlotRegistry, type SlotEntryBase } from "../slot-registry"
-import type { SurfaceEntry } from "@/surface/types"
+import { SlotRegistry, type SlotEntryBase, type SurfaceEntry } from "../slot-registry"
 import { BUILTIN_SETTINGS_SECTIONS } from "@/components/settings/catalog"
 
 export interface SettingsSection extends SurfaceEntry {

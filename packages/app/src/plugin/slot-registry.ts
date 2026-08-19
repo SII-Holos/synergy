@@ -13,7 +13,19 @@
  * the shared `pluginSlots` instance backs the generic `ui.slot` contributions
  * and the host `SlotOutlet` renderer.
  */
-import type { SurfaceEntry } from "@/surface/types"
+/** Base surface metadata shared by domain entry types (built-in and plugin). */
+export interface SurfaceEntry {
+  /** Unique surface identifier — scoped per plugin via `pluginId:surfaceId` for plugins. */
+  id: string
+  /** Human-readable label. */
+  label: string
+  /** Optional icon name. */
+  icon?: string
+  /** Sort order — lower values appear first. Default 1000. */
+  order?: number
+  /** Owning plugin id. Undefined for built-in surfaces. */
+  pluginId?: string
+}
 
 export interface SlotEntryBase {
   /** Unique entry identifier — scoped per plugin via `pluginId:surfaceId`. */

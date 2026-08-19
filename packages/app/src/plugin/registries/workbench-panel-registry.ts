@@ -1,6 +1,5 @@
 import type { Component, JSX } from "solid-js"
-import { SlotRegistry, type SlotEntryBase } from "../slot-registry"
-import type { SurfaceEntry } from "@/surface/types"
+import { SlotRegistry, type SlotEntryBase, type SurfaceEntry } from "../slot-registry"
 
 export type WorkbenchPanelSurface = "side" | "bottom"
 export type WorkbenchPanelCardinality = "exclusive" | "singleton" | "multi"

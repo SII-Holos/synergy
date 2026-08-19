@@ -1,8 +1,7 @@
 import type { Component } from "solid-js"
 import type { MessageDescriptor } from "@lingui/core"
 import type { SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { SlotRegistry, type SlotEntryBase } from "../slot-registry"
-import type { SurfaceEntry } from "@/surface/types"
+import { SlotRegistry, type SlotEntryBase, type SurfaceEntry } from "../slot-registry"
 
 export type NavigationPlacement = "sidebar" | "page"
 
