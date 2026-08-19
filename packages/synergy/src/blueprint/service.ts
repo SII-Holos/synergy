@@ -71,10 +71,8 @@ export namespace BlueprintLoopService {
       .catch(() => undefined)
   }
 
-  export async function resolveBlueprintAuditAgent(noteID: string): Promise<string> {
-    const note = await NoteStore.getAny(ScopeContext.current.scope.id, noteID).catch(() => undefined)
-    const noteAgent = await knownAgentName(note?.blueprint?.auditAgent)
-    return noteAgent ?? "supervisor"
+  export function resolveBlueprintAuditAgent(): string {
+    return "supervisor"
   }
 
   export function normalizeStartUserPrompt(userPrompt?: string): string | undefined {
@@ -185,7 +183,7 @@ When the Blueprint is complete and verified, call blueprint_loop_stop with a con
     const [explicitExecutionAgent, fallbackExecutionAgent, auditAgent] = await Promise.all([
       knownAgentName(input.executionAgent),
       resolveBlueprintAgent(input.sessionID, input.noteID),
-      resolveBlueprintAuditAgent(input.noteID),
+      resolveBlueprintAuditAgent(),
     ])
     return BlueprintLoopStore.create({
       ...input,

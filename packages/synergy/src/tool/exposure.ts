@@ -237,6 +237,33 @@ export namespace ToolExposure {
       ...groups.map((group) => `| ${group.id} | ${group.description} | ${group.whenToExpand} |`),
     ].join("\n")
   }
+  export const MCP_GROUP_TABLE_MAX_SERVERS = 10
+  export const MCP_GROUP_TABLE_MAX_TOOL_NAMES = 6
+
+  export interface McpServerGroupSummary {
+    serverName: string
+    toolNames: string[]
+  }
+
+  /**
+   * Render the "Connected MCP groups" table appended to the expand_tools
+   * description. Returns "" when no servers are present so callers can drop
+   * the section (and its heading) entirely.
+   */
+  export function mcpGroupTable(servers: McpServerGroupSummary[]): string {
+    if (servers.length === 0) return ""
+    const visible = servers.slice(0, MCP_GROUP_TABLE_MAX_SERVERS)
+    const rows = visible.map((server) => {
+      const names = unique(server.toolNames).slice(0, MCP_GROUP_TABLE_MAX_TOOL_NAMES)
+      const remainder = unique(server.toolNames).length - names.length
+      const nameList = remainder > 0 ? `${names.join(", ")} … and ${remainder} more` : names.join(", ")
+      const groupID = mcpGroupID(server.serverName)
+      return `| ${groupID} | ${server.serverName} (${unique(server.toolNames).length} tools): ${nameList} | Expand with expand_tools({groups:["${groupID}"]}) when a task needs this server. |`
+    })
+    const remainderServers = servers.length - visible.length
+    if (remainderServers > 0) rows.push(`| … | +${remainderServers} more servers | … |`)
+    return ["| Group | What it does | When to expand |", "| --- | --- | --- |", ...rows].join("\n")
+  }
 
   export function state(input?: ToolState): Required<ToolState> {
     return {

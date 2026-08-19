@@ -1,6 +1,11 @@
 export namespace ReviewToolRecovery {
   export const MAX_ATTEMPTS = 2
   export const ERROR_CODE = "review_terminal_tool_missing"
+  export const LAUNCH_ERROR_CODE = "reviewer_launch_failed"
+
+  export function launchError(reason?: string): string {
+    return `${LAUNCH_ERROR_CODE}: ${reason ?? "reviewer failed before its first turn"}`
+  }
 
   export function tools(approveTool: string, rejectTool: string): Record<string, boolean> {
     return {
