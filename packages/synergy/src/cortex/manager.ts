@@ -260,6 +260,7 @@ export namespace Cortex {
       draft.cortex.completedAt = undefined
       draft.cortex.error = undefined
       draft.cortex.launchFailure = undefined
+      draft.cortex.deliveryNotifiedAt = undefined
       draft.cortex.output = undefined
       draft.cortex.owner = input.owner
       draft.cortex.timeoutMs = input.timeoutMs
