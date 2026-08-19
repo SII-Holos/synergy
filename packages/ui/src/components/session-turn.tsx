@@ -912,6 +912,7 @@ export function SessionTurn(
     onRewind?: () => void
     rollbackActive?: boolean
     onReviewChanges?: (input: { messageID: string; file?: string }) => void
+    onForkMessage?: (messageID: string) => void
     activityDisplay?: ActivityDisplayMode
     compactReasoning?: boolean
     classes?: {
@@ -1484,6 +1485,16 @@ export function SessionTurn(
                                   size="small"
                                 />
                               </button>
+                              <Show when={!!props.onForkMessage && !!lastAssistantMessage()}>
+                                <button
+                                  type="button"
+                                  data-slot="assistant-message-fork"
+                                  aria-label={_(SESSION_TURN_DESC.forkMessage)}
+                                  onClick={() => props.onForkMessage?.(lastAssistantMessage()!.id)}
+                                >
+                                  <Icon name={getSemanticIcon("action.fork")} size="small" />
+                                </button>
+                              </Show>
                             </div>
                           </div>
                         </Show>
