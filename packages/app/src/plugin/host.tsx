@@ -558,10 +558,33 @@ function registerPluginSurfaces(input: {
           fail(plugin.pluginId, `Slot ${item.slot} is not declared by the host`)
           return
         }
-        const loader = componentLoader<PluginSurfaceContext>(item)
-        if (!loader) {
+        if (!("component" in item) || !item.component) {
           fail(plugin.pluginId, `Slot contribution ${item.id} has no trusted component`)
           return
+        }
+        const component = item.component
+        const loader = async () => {
+          const loaded = await loadPluginExport<Component<{ context: PluginSurfaceContext }>>(
+            plugin.pluginId,
+            asset(component.entry),
+            component.exportName,
+            PLUGIN_UI_API_VERSION,
+          )
+          const Wrapper: Component<{ context: PluginSurfaceContext }> = () => {
+            const context = surfaceContext({
+              contribution: plugin,
+              contributionId: item.id,
+              kind: item.kind,
+              serverUrl: input.serverUrl,
+              client: input.client,
+              events: input.events,
+              scopeKey: input.scopeKey,
+              sessionId: currentSessionId(),
+              showConfirm: input.showConfirm,
+            })
+            return createComponent(loaded.default, { context })
+          }
+          return { default: Wrapper }
         }
         disposers.push(
           pluginSlots.register({

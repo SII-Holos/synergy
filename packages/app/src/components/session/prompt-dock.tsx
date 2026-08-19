@@ -6,6 +6,7 @@ import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { PromptInput } from "@/components/prompt-input"
 import { StatusBar } from "@/components/status-bar"
 import { NewSessionGreeting } from "./session-new-view"
+import { SlotOutlet } from "@/plugin/slot-outlet"
 import { QuestionPrompt } from "./question-prompt"
 import { PermissionDock } from "./permission-dock"
 import { SessionInbox } from "./session-inbox"
@@ -96,6 +97,7 @@ export function PromptDock(props: {
         </Show>
         <Show when={props.isNewSession()}>
           <NewSessionGreeting />
+          <SlotOutlet slot="session.empty" session={Boolean(props.sessionID)} />
         </Show>
         <Show
           when={props.prompt.ready()}

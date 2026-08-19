@@ -81,6 +81,7 @@ const kinds: PluginManifestContribution["kind"][] = [
   "ui.textAction",
   "ui.messageSlot",
   "ui.settings",
+  "ui.slot",
   "ui.theme",
   "ui.icon",
   "lifecycle.install",
