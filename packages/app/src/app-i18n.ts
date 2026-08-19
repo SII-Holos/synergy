@@ -222,6 +222,12 @@ export const AP = {
   sessionPartFile: { id: "app.session.part.file", message: "[file:{filename}]" },
   sessionPartNote: { id: "app.session.part.note", message: "[note:{title}]" },
   sessionPartSession: { id: "app.session.part.session", message: "[session:{title}]" },
+  sessionForked: { id: "app.session.forked", message: "Session forked" },
+  sessionForkedDesc: {
+    id: "app.session.forked.desc",
+    message: "Forked the conversation up to this message.",
+  },
+  sessionForkFailed: { id: "app.session.fork.failed", message: "Fork failed" },
 
   // ── pages/home.tsx ──────────────────────────────────────────────────
 

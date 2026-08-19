@@ -419,6 +419,35 @@ describe("session rollback history", () => {
       },
     })
   })
+  test("fork through a message copies the history including that message", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Through source" })
+        await writeTurn(session.id, tmp.path, "first", "one")
+        const secondTurn = await writeTurn(session.id, tmp.path, "second", "two")
+
+        const throughUserFork = await Session.fork({
+          sessionID: session.id,
+          position: { type: "through", messageID: secondTurn[0].info.id },
+        })
+        expect(throughUserFork.forkedFrom?.messageID).toBe(secondTurn[0].info.id)
+        expect(await visibleTexts(throughUserFork.id)).toEqual(["first", "one", "second"])
+
+        const throughAssistantFork = await Session.fork({
+          sessionID: session.id,
+          position: { type: "through", messageID: secondTurn[1].info.id },
+        })
+        expect(throughAssistantFork.forkedFrom?.messageID).toBe(secondTurn[1].info.id)
+        expect(await visibleTexts(throughAssistantFork.id)).toEqual(["first", "one", "second", "two"])
+
+        await Session.remove(session.id)
+        await Session.remove(throughUserFork.id)
+        await Session.remove(throughAssistantFork.id)
+      },
+    })
+  })
 })
 
 describe("rollback acknowledgment", () => {
