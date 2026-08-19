@@ -1,5 +1,4 @@
 import { Session } from "../session"
-import { Ripgrep } from "../file/ripgrep"
 import { formatLocalDate, formatLocalDateTime } from "../util/time-format"
 
 import { GitHealth } from "../project/git-health"
@@ -139,16 +138,6 @@ export namespace SystemPrompt {
         `<env>`,
         ...envLines,
         `</env>`,
-        `<files>`,
-        `  ${
-          scope.type === "project" && scope.vcs === "git" && false
-            ? await Ripgrep.tree({
-                cwd: ScopeContext.current.directory,
-                limit: 200,
-              })
-            : ""
-        }`,
-        `</files>`,
       ].join("\n"),
     ]
   }

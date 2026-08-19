@@ -15,6 +15,7 @@
 //     export async function check(cwd?: string): Promise<Issue[]>
 //     export async function isGitRepo(cwd?: string): Promise<boolean>
 //     export async function inject(cwd?: string): Promise<string | undefined>
+//     export function refresh(cwd?: string): Promise<Issue[]>
 //     export function injectCached(cwd?: string): string | undefined
 //     export function lastReport(): Issue[] | undefined
 //     export function invalidate(): void
