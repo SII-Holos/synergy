@@ -77,6 +77,7 @@ export const SemanticIconToken = {
   "notes.search": "scan-search",
   "notes.folder": "folder-open",
   "notes.pin": "bookmark",
+  "notes.archive": "archive",
   "notes.tag": "tag",
   "notes.select": "square-check",
   "notes.restore": "archive-restore",
