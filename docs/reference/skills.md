@@ -36,16 +36,16 @@ The body after frontmatter is the Skill content. Files under `references/`, `scr
 
 Strict manifests accept this field set and reject unknown fields.
 
-| Field                      | Required | Type    | Contract                                                                                                                                             |
-| -------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                     | yes      | string  | Skill identifier. It must be 1-64 characters, lowercase, and contain only letters, digits, and single hyphens. It cannot start or end with a hyphen. |
-| `description`              | yes      | string  | Catalog description shown to users and models. It must be 1-1024 characters.                                                                         |
-| `license`                  | no       | string  | Declared license text for display and export metadata.                                                                                               |
-| `compatibility`            | no       | string  | Declared author compatibility note, up to 500 characters.                                                                                            |
-| `metadata`                 | no       | object  | Accepted author metadata. Synergy does not place it in the canonical runtime record.                                                                 |
-| `allowed-tools`            | no       | string  | Accepted metadata describing author intent. It does not grant tool authorization.                                                                    |
-| `user-invocable`           | no       | boolean | Defaults to `true`. When `false`, Synergy does not register the Skill as a slash command.                                                            |
-| `disable-model-invocation` | no       | boolean | Defaults to `false`. When `true`, the Skill is omitted from the model-invocable `skill` tool catalog.                                                |
+| Field                      | Required | Type    | Contract                                                                                                                                                                     |
+| -------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                     | yes      | string  | Skill identifier. It must be 1-64 characters, lowercase, and contain only letters, digits, and single hyphens. It cannot start or end with a hyphen.                         |
+| `description`              | yes      | string  | Catalog description shown to users and models. It must be 1-1024 characters.                                                                                                 |
+| `license`                  | no       | string  | Declared license text for display and export metadata.                                                                                                                       |
+| `compatibility`            | no       | string  | Declared author compatibility note, up to 500 characters.                                                                                                                    |
+| `metadata`                 | no       | object  | Accepted author metadata. Synergy does not place it in the canonical runtime record.                                                                                         |
+| `allowed-tools`            | no       | string  | Accepted metadata describing author intent. A YAML list of strings is also accepted and normalized to the space-separated string form. It does not grant tool authorization. |
+| `user-invocable`           | no       | boolean | Defaults to `true`. When `false`, Synergy does not register the Skill as a slash command.                                                                                    |
+| `disable-model-invocation` | no       | boolean | Defaults to `false`. When `true`, the Skill is omitted from the model-invocable `skill` tool catalog.                                                                        |
 
 The runtime record stores normalized fields only: `name`, `description`, `declaredLicense`, `declaredCompatibility`, `invocation`, `origin`, `backing`, and `diagnostics`. It does not preserve raw frontmatter, arbitrary vendor fields, `allowed-tools`, or `metadata` as runtime authorization state.
 
@@ -87,6 +87,10 @@ For backward compatibility, a strict-source candidate is retried through lenient
 Lenient sources are Claude, Codex, and OpenClaw. They require only a non-empty `name` and `description` to load. Supported Synergy fields normalize when their types are valid. Unknown vendor fields are ignored and reported as warnings. Invalid optional fields also produce warnings rather than inventing alternate runtime state.
 
 Programmatic built-in Skills use strict manifest normalization. Programmatic plugin Skills retain the public plugin contract's compatible non-empty names and descriptions rather than inheriting filesystem filename constraints. The built-in creator Skill is `synergy-skill-creator`, invoked as `/synergy-skill-creator` when user invocation is enabled by the command catalog.
+
+### Diagnostics name the offending field
+
+Skill loader diagnostics name the manifest field that caused the failure so a broken Skill can be fixed without trial-and-error. `skill.frontmatter_parse_failed` reports the YAML field, file line/column, and a concrete fix hint when the parse error is caused by an unquoted value containing `: ` (quote the value with double quotes). `skill.manifest_invalid` prefixes the schema message with the field path and adds a fix hint when the field contract is the agent-skills standard (for example `allowed-tools` must be a space-separated string per agentskills.io, and a YAML list is accepted and normalized to that form).
 
 ## Deterministic Precedence
 

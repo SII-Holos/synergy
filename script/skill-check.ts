@@ -30,10 +30,7 @@ async function validateSkillDirectory(skillDir: string): Promise<string[]> {
 
   const standard = await SkillManifest.normalizeFile({ entryFile: skillFile, source: "synergy", mode: "strict" })
   errors.push(
-    ...standard.diagnostics.map(
-      (diagnostic) =>
-        `${relative(diagnostic.path ?? skillFile)}: ${diagnostic.field ? `${diagnostic.field}: ` : ""}${diagnostic.message}`,
-    ),
+    ...standard.diagnostics.map((diagnostic) => `${relative(diagnostic.path ?? skillFile)}: ${diagnostic.message}`),
   )
   const document = await ConfigMarkdown.parse(skillFile).catch(() => undefined)
   const name = typeof document?.data.name === "string" ? document.data.name : path.basename(skillDir)

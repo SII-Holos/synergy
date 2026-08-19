@@ -89,6 +89,66 @@ describe.serial("skill standardization", () => {
     expect(result.value).not.toHaveProperty("permission")
   })
 
+  test("frontmatter parse failures name the offending field and give a quote fix", async () => {
+    await using tmp = await tmpdir()
+    const entryFile = path.join(tmp.path, "repro", "SKILL.md")
+    await Bun.write(entryFile, "---\nname: repro\ndescription: Does things. Keywords: foo, bar\n---\n\n# Repro\n")
+
+    const result = await SkillManifest.normalizeFile({ entryFile, source: "synergy", mode: "strict" })
+    expect(result.value).toBeUndefined()
+    expect(result.diagnostics).toHaveLength(1)
+    const diagnostic = result.diagnostics[0]!
+    expect(diagnostic.code).toBe("skill.frontmatter_parse_failed")
+    expect(diagnostic.field).toBe("description")
+    expect(diagnostic.reason).toMatchObject({ kind: "parse", field: "description", line: expect.any(Number) })
+    expect(diagnostic.message).toContain("in field 'description'")
+    expect(diagnostic.message).toContain("quote the value with double quotes")
+    expect(diagnostic.message).toContain('description: "Does things. Keywords: foo, bar"')
+  })
+
+  test("manifest schema failures name the field and the expected type", async () => {
+    await using tmp = await tmpdir()
+    const entryFile = path.join(tmp.path, "repro", "SKILL.md")
+    await Bun.write(entryFile, '---\nname: repro\ndescription: "d"\nuser-invocable: maybe\n---\n# Repro\n')
+
+    const result = await SkillManifest.normalizeFile({ entryFile, source: "synergy", mode: "strict" })
+    expect(result.value).toBeUndefined()
+    expect(result.diagnostics).toHaveLength(1)
+    const diagnostic = result.diagnostics[0]!
+    expect(diagnostic.code).toBe("skill.manifest_invalid")
+    expect(diagnostic.field).toBe("user-invocable")
+    expect(diagnostic.message).toContain("Field 'user-invocable'")
+    expect(diagnostic.message).toContain("expected boolean")
+  })
+
+  test("non-string allowed-tools points at the agentskills.io string contract", async () => {
+    await using tmp = await tmpdir()
+    const entryFile = path.join(tmp.path, "repro", "SKILL.md")
+    await Bun.write(entryFile, '---\nname: repro\ndescription: "d"\nallowed-tools: 42\n---\n# Repro\n')
+
+    const result = await SkillManifest.normalizeFile({ entryFile, source: "synergy", mode: "strict" })
+    expect(result.diagnostics).toHaveLength(1)
+    const diagnostic = result.diagnostics[0]!
+    expect(diagnostic.field).toBe("allowed-tools")
+    expect(diagnostic.message).toContain("expected string")
+    expect(diagnostic.message).toContain("space-separated string")
+    expect(diagnostic.message).toContain("allowed-tools: Read Write")
+  })
+
+  test("accepts the YAML list form of allowed-tools as cross-tool metadata", async () => {
+    await using tmp = await tmpdir()
+    const entryFile = path.join(tmp.path, "repro", "SKILL.md")
+    await Bun.write(
+      entryFile,
+      '---\nname: repro\ndescription: "Does things. Keywords: foo, bar"\nallowed-tools:\n  - Read\n  - Write\n---\n# Repro\n',
+    )
+
+    const result = await SkillManifest.normalizeFile({ entryFile, source: "synergy", mode: "strict" })
+    expect(result.diagnostics).toEqual([])
+    expect(result.value).toMatchObject({ name: "repro", description: "Does things. Keywords: foo, bar" })
+    expect(result.value).not.toHaveProperty("allowed-tools")
+  })
+
   test("keeps agents strict while loading pre-standardization entries through a named shim", async () => {
     await using tmp = await tmpdir({ git: true })
     await writeSkill(tmp.path, ".agents/skills/valid-agent", {

@@ -30,7 +30,7 @@ metadata:
 
 Required standard fields are `name` and `description`. Skill names use lowercase letters, digits, and single hyphens. Synergy strict sources require `SKILL.md` and a directory name that matches `name`.
 
-Synergy accepts `allowed-tools` for Agent Skills compatibility, but `allowed-tools` has no authorization effect. Actual permission and tool access still come from the active agent, control profile, and existing tool permission system.
+Synergy accepts `allowed-tools` for Agent Skills compatibility as a space-separated string (`allowed-tools: Bash Read`) or a YAML list of strings; either form has no authorization effect. Actual permission and tool access still come from the active agent, control profile, and existing tool permission system.
 
 Treat unknown Claude, Codex, or OpenClaw fields as vendor-only fields. Synergy may read them leniently from vendor roots and report diagnostics, but do not add them to portable standard Skills.
 

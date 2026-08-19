@@ -54,22 +54,44 @@ export namespace SkillManifest {
 
   const knownFields = new Set(Object.keys(Schema.shape))
 
+  function issueFixHint(issue: z.core.$ZodIssue) {
+    if (issue.path[0] === "allowed-tools" && issue.code === "invalid_type" && issue.expected === "string") {
+      return "Use a space-separated string per agentskills.io, e.g. allowed-tools: Read Write"
+    }
+    return undefined
+  }
+
   function issuesToDiagnostics(
     issues: z.core.$ZodIssue[],
-    input: { name: string; source: SkillSourceProfile.SourceID; entryFile: string; severity: "error" | "warning" },
+    input: {
+      name: string
+      source: SkillSourceProfile.SourceID | "builtin" | "plugin"
+      entryFile?: string
+      severity: "error" | "warning"
+    },
   ) {
-    return issues.map(
-      (issue): Diagnostic => ({
+    return issues.map((issue): Diagnostic => {
+      const pathText = issue.path.length > 0 ? issue.path.join(".") : undefined
+      const field = issue.code === "unrecognized_keys" ? issue.keys.join(", ") : pathText
+      const hint = issueFixHint(issue)
+      const message = pathText ? `Field '${pathText}': ${issue.message}${hint ? ` ${hint}` : ""}` : issue.message
+      const reason: Record<string, unknown> = { kind: issue.code }
+      if (field) reason.field = field
+      if (issue.code === "invalid_type") {
+        reason.expected = issue.expected
+        if ("received" in issue) reason.received = issue.received
+      }
+      return {
         code: "skill.manifest_invalid",
         severity: input.severity,
         name: input.name,
         source: input.source,
-        path: input.entryFile,
-        field: issue.path.length > 0 ? issue.path.join(".") : undefined,
-        reason: { kind: issue.code },
-        message: issue.message,
-      }),
-    )
+        ...(input.entryFile ? { path: input.entryFile } : {}),
+        ...(field ? { field } : {}),
+        reason,
+        message,
+      }
+    })
   }
 
   export function validateDirectory(entryFile: string, manifest: Parsed) {
@@ -121,18 +143,13 @@ export namespace SkillManifest {
       "disable-model-invocation": input.manifest.disableModelInvocation,
     })
     if (!result.success) {
-      const diagnostics = result.error.issues.map(
-        (issue): Diagnostic => ({
-          code: "skill.manifest_invalid",
-          severity: "error",
+      return {
+        diagnostics: issuesToDiagnostics(result.error.issues, {
           name: input.manifest.name,
           source: input.source,
-          field: issue.path.length > 0 ? issue.path.join(".") : undefined,
-          reason: { kind: issue.code },
-          message: issue.message,
+          severity: "error",
         }),
-      )
-      return { diagnostics }
+      }
     }
     const value = normalized(result.data, "", [])
     return {
@@ -148,6 +165,41 @@ export namespace SkillManifest {
     }
   }
 
+  type FrontmatterMark = {
+    field?: string
+    line?: number
+    column?: number
+    quoteExample?: string
+  }
+
+  function yamlException(error: unknown) {
+    const candidate = (error as { cause?: unknown })?.cause ?? error
+    if (!candidate || typeof candidate !== "object" || (candidate as { name?: unknown }).name !== "YAMLException") {
+      return undefined
+    }
+    return candidate as {
+      reason?: unknown
+      mark?: { buffer?: unknown; line?: unknown; column?: unknown }
+    }
+  }
+
+  function frontmatterMark(error: unknown): FrontmatterMark {
+    const yaml = yamlException(error)
+    if (!yaml?.mark) return {}
+    const { buffer, line, column } = yaml.mark
+    if (typeof buffer !== "string" || typeof line !== "number") return {}
+    const blockLine = buffer.split("\n")[line]?.trim() ?? ""
+    const colon = blockLine.indexOf(":")
+    const field = colon > 0 ? blockLine.slice(0, colon).trim() : undefined
+    const value = colon > 0 ? blockLine.slice(colon + 1).trim() : ""
+    return {
+      field,
+      line: line + 1,
+      column: typeof column === "number" ? column + 1 : undefined,
+      quoteExample: field && value.includes(": ") && !value.includes('"') ? `${field}: "${value}"` : undefined,
+    }
+  }
+
   export async function normalizeFile(input: {
     entryFile: string
     source: SkillSourceProfile.SourceID
@@ -158,6 +210,18 @@ export namespace SkillManifest {
       document = await ConfigMarkdown.parse(input.entryFile)
     } catch (error) {
       const fallbackName = path.basename(path.dirname(input.entryFile))
+      const mark = frontmatterMark(error)
+      const yaml = yamlException(error)
+      const detail =
+        typeof yaml?.reason === "string" && yaml.reason
+          ? yaml.reason
+          : error instanceof Error
+            ? error.message
+            : String(error)
+      const location = mark.line ? ` (line ${mark.line}${mark.column ? `, column ${mark.column}` : ""})` : ""
+      const hint = mark.quoteExample
+        ? ` Fix: quote the value with double quotes if it contains ': ', e.g. ${mark.quoteExample}`
+        : ""
       return {
         diagnostics: [
           {
@@ -166,14 +230,25 @@ export namespace SkillManifest {
             name: fallbackName,
             source: input.source,
             path: input.entryFile,
-            reason: { kind: "parse" },
-            message: error instanceof Error ? error.message : String(error),
+            field: mark.field,
+            reason: {
+              kind: "parse",
+              ...(mark.field ? { field: mark.field } : {}),
+              ...(mark.line ? { line: mark.line } : {}),
+              ...(mark.column ? { column: mark.column } : {}),
+            },
+            message: mark.field
+              ? `Failed to parse YAML frontmatter in field '${mark.field}'${location}: ${detail}.${hint}`
+              : `Failed to parse YAML frontmatter: ${detail}`,
           },
         ],
       }
     }
 
     const raw = document.data && typeof document.data === "object" ? (document.data as Record<string, unknown>) : {}
+    if (Array.isArray(raw["allowed-tools"]) && raw["allowed-tools"].every((item) => typeof item === "string")) {
+      raw["allowed-tools"] = raw["allowed-tools"].join(" ")
+    }
     const fallbackName =
       typeof raw.name === "string" && raw.name ? raw.name : path.basename(path.dirname(input.entryFile))
     const strictResult = Schema.safeParse(raw)
