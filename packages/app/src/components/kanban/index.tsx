@@ -196,6 +196,12 @@ export function KanbanPanel() {
 
   const sendToPane = (pane: BoardPane) => async (text: string, options?: { agent?: string }) => {
     if (pane.kind !== "live") return
+    // Align with the session page submit path: invalidate the message
+    // resource before the input lands so any in-flight message-page snapshot
+    // is rejected as superseded instead of overwriting the SSE-merged window
+    // (which could drop the just-generated assistant message). The loader
+    // retries and applies the fresh snapshot.
+    globalSync.invalidateResource(pane.scopeKey, pane.sessionID, "message")
     // Session.input accepts a plain text part; agent/model fall back to the
     // session's last used values server-side. The composer may override the
     // agent explicitly (matching the session page's agent selector).
