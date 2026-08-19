@@ -7088,6 +7088,21 @@ msgstr "{count} Files Changed"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.fork.failed"
+msgstr "Fork failed"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.forked"
+msgstr "Session forked"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.forked.desc"
+msgstr "Forked the conversation up to this message."
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.session.history.loadEarlierFailed"
 msgstr "Couldn’t load earlier messages"
 
@@ -11739,6 +11754,10 @@ msgstr "Unable to copy the message."
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.copy-markdown"
 msgstr "Copy Markdown"
+
+#. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.fork-message"
+msgstr "Fork session from this message"
 
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.model-unavailable"
@@ -16787,6 +16806,10 @@ msgstr "Search settings..."
 #. js-lingui-explicit-id
 msgid "settings.panel.section.unavailable"
 msgstr "{label} is not available"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.theme.saveFailed"
+msgstr "Theme change could not be saved"
 
 #. js-lingui-explicit-id
 msgid "settings.pathRow.copied"

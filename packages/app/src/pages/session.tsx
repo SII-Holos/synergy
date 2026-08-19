@@ -467,6 +467,32 @@ function SessionPageContent() {
       />
     ))
   }
+  const forkMessageAt = async (messageID: string) => {
+    const sessionID = params.id
+    if (!sessionID) return
+    try {
+      const forked = await sdk.client.session.fork({
+        sessionID,
+        position: { type: "through", messageID },
+        workspace: { mode: "current" },
+        controlProfile: info()?.controlProfile ?? sync.data.config.controlProfile,
+      })
+      if (forked.data) {
+        showToast({
+          type: "success",
+          title: i18n._(AP.sessionForked.id),
+          description: i18n._(AP.sessionForkedDesc.id),
+        })
+        navigateToSession(forked.data.id)
+      }
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: i18n._(AP.sessionForkFailed.id),
+        description: requestErrorMessage(error),
+      })
+    }
+  }
   const messagesReady = createMemo(() => messageSnapshot() !== undefined)
   const messageLoad = createMemo(() => {
     const id = params.id
@@ -1486,6 +1512,7 @@ function SessionPageContent() {
                           }}
                           onPendingGuide={(item) => void guidePending(item)}
                           onPendingRemove={(item) => void removePending(item)}
+                          onForkMessage={(messageID) => void forkMessageAt(messageID)}
                           rollbackActive={rollbackActive()}
                         />
                       </Match>

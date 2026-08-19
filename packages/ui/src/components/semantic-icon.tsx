@@ -188,6 +188,7 @@ export const SemanticIconToken = {
   "action.clear": "circle-x",
   "action.close": "x",
   "action.copy": "copy",
+  "action.fork": "split",
   "action.open": "arrow-up-right",
   "action.more": "ellipsis",
   "action.rename": "pencil",

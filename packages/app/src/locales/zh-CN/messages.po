@@ -7088,6 +7088,21 @@ msgstr "{count} 个文件已更改"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.fork.failed"
+msgstr "分叉失败"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.forked"
+msgstr "会话已分叉"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.forked.desc"
+msgstr "已将该消息之前的对话复制到新会话。"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.session.history.loadEarlierFailed"
 msgstr "无法加载之前的消息"
 
@@ -11739,6 +11754,10 @@ msgstr "无法复制消息。"
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.copy-markdown"
 msgstr "复制 Markdown"
+
+#. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.fork-message"
+msgstr "从此消息分叉会话"
 
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.model-unavailable"
@@ -16787,6 +16806,10 @@ msgstr "搜索设置…"
 #. js-lingui-explicit-id
 msgid "settings.panel.section.unavailable"
 msgstr "{label} 不可用"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.theme.saveFailed"
+msgstr "主题更改无法保存"
 
 #. js-lingui-explicit-id
 msgid "settings.pathRow.copied"

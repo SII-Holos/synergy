@@ -7088,6 +7088,21 @@ msgstr ""
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.fork.failed"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.forked"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.forked.desc"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.session.history.loadEarlierFailed"
 msgstr ""
 
@@ -11738,6 +11753,10 @@ msgstr ""
 
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.copy-markdown"
+msgstr ""
+
+#. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.fork-message"
 msgstr ""
 
 #. ── Session turn chrome ─────────────────────────────────────────────
@@ -16786,6 +16805,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.panel.section.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.panel.theme.saveFailed"
 msgstr ""
 
 #. js-lingui-explicit-id
