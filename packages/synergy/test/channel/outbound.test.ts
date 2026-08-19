@@ -510,6 +510,76 @@ test("delivers tool attachments from earlier assistant steps in the same channel
   })
 })
 
+test("does not re-deliver already-delivered task attachments on a later terminal reply in the same root", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const type = `outbound-root-dedup-${crypto.randomUUID()}`
+      const calls: ProviderCalls = { replies: [], pushes: [], replyParts: [], pushParts: [] }
+      Channel.registerProvider(provider(type, calls))
+      const dispose = initOutbound()
+      try {
+        const session = await Session.create({
+          endpoint: SessionEndpoint.fromChannel({ type, accountId: "acct_test", chatId: "chat_test" }),
+        })
+        const rootID = Identifier.ascending("message")
+        await Session.updateMessage({
+          id: rootID,
+          sessionID: session.id,
+          role: "user",
+          isRoot: true,
+          rootID,
+          agent: "synergy",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          time: { created: Date.now() },
+        } as MessageV2.User)
+        const assetID = await Asset.write(Buffer.from([137, 80, 78, 71]), "image/png", "preview.png")
+        await completedToolAttachment({
+          sessionID: session.id,
+          rootID,
+          assetID,
+          mime: "image/png",
+          filename: "preview.png",
+        })
+
+        await completedAssistant(session.id, "First reply", "stop", undefined, rootID)
+        await waitFor(() => (calls.replyParts?.length ?? 0) === 1)
+        // Wait for the delivery record to be durable on the root message
+        // before the second terminal arrives, mirroring a later wake-up.
+        await waitFor(async () => {
+          const root = await MessageV2.get({ sessionID: session.id, messageID: rootID }).catch(() => undefined)
+          return Array.isArray(root?.info.metadata?.channelOutboundAttachmentUrls)
+        })
+
+        await completedAssistant(
+          session.id,
+          "Second reply",
+          "stop",
+          { channelPush: true, channelReply: true, channelReplyToMessageId: "msg_topic_root" },
+          rootID,
+        )
+        await waitFor(() => (calls.replyParts?.length ?? 0) === 2)
+
+        expect(calls.replyParts).toEqual([
+          [
+            { type: "text", text: "First reply" },
+            {
+              type: "image",
+              path: Asset.resolvePath(assetID),
+              filename: "preview.png",
+              contentType: "image/png",
+            },
+          ],
+          [{ type: "text", text: "Second reply" }],
+        ])
+      } finally {
+        dispose()
+      }
+    },
+  })
+})
+
 test("replies with foreground task attachments as media-only parts on the original message", async () => {
   await using tmp = await tmpdir({ git: true })
   await ScopeContext.provide({

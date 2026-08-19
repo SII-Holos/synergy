@@ -3,6 +3,7 @@ import { Asset } from "@/asset/asset"
 import { MessageV2 } from "@/session/message-v2"
 import { Session } from "@/session"
 import { Log } from "@/util/log"
+import { Lock } from "@/util/lock"
 import type { OutboundPart, Provider } from "./types"
 
 const log = Log.create({ service: "channel.outbound-parts" })
@@ -27,7 +28,23 @@ type ProjectInput = {
   includeText: boolean
 }
 
+/**
+ * Root-scoped record of attachment urls already delivered to the channel for
+ * this task tree. Stored on the root user message so re-projecting the same
+ * tree after a later terminal reply (steer wake-ups, boss reports, agenda)
+ * skips attachments that were already sent. A new task = a new root, so the
+ * record starts empty and attachments can be delivered again on purpose.
+ */
+const CHANNEL_OUTBOUND_ATTACHMENT_URLS = "channelOutboundAttachmentUrls"
+
 export async function projectChannelTaskParts(input: ProjectInput): Promise<OutboundPart[]> {
+  return (await projectChannelTaskPartsWithUrls(input)).parts
+}
+
+export async function projectChannelTaskPartsWithUrls(input: ProjectInput): Promise<{
+  parts: OutboundPart[]
+  urls: string[]
+}> {
   const messages = input.messages.filter(
     (message) => message.info.role === "assistant" && message.info.rootID === input.rootID,
   )
@@ -38,21 +55,74 @@ export async function projectChannelTaskParts(input: ProjectInput): Promise<Outb
     if (text) result.push({ type: "text", text })
   }
 
+  const delivered = deliveredAttachmentUrls(input.messages, input.rootID)
   const seen = new Set<string>()
+  const urls: string[] = []
   for (const message of messages) {
     for (const part of message.parts) {
       if (part.type !== "tool" || part.state.status !== "completed") continue
       for (const attachment of part.state.attachments ?? []) {
         if (attachment.presentation?.hidden) continue
         if (!MessageV2.isDeliverableAttachment(attachment)) continue
+        if (delivered.has(attachment.url)) continue
         if (seen.has(attachment.url)) continue
         seen.add(attachment.url)
         const outbound = await projectAttachment(attachment)
-        if (outbound) result.push(outbound)
+        if (outbound) {
+          result.push(outbound)
+          urls.push(attachment.url)
+        }
       }
     }
   }
-  return result
+  return { parts: result, urls }
+}
+
+/**
+ * Record the attachment urls actually delivered for a task tree on its root
+ * user message. Called after a successful channel send so a later re-projection
+ * of the same tree skips them; a failed send never records, so the next attempt
+ * re-delivers. Missing root (e.g. synthetic test trees) is tolerated.
+ */
+export async function markChannelTaskAttachmentsDelivered(input: {
+  sessionID: string
+  rootID: string
+  urls: string[]
+  messages: MessageV2.WithParts[]
+}): Promise<void> {
+  if (input.urls.length === 0) return
+  const root = input.messages.find(
+    (message) =>
+      message.info.role === "user" && (message.info.id === input.rootID || message.info.rootID === input.rootID),
+  )
+  if (!root) {
+    log.warn("channel task root missing for delivery record", {
+      sessionID: input.sessionID,
+      rootID: input.rootID,
+    })
+    return
+  }
+  try {
+    using _ = await Lock.write(`channel-outbound-attachments:${input.sessionID}:${input.rootID}`)
+    const current = await MessageV2.get({ sessionID: input.sessionID, messageID: root.info.id }).catch(() => undefined)
+    const existing = current?.info.metadata?.[CHANNEL_OUTBOUND_ATTACHMENT_URLS]
+    const merged = Array.from(new Set([...(Array.isArray(existing) ? existing : []), ...input.urls]))
+    await Session.mergeMessageMetadata({
+      sessionID: input.sessionID,
+      messageID: root.info.id,
+      metadata: { [CHANNEL_OUTBOUND_ATTACHMENT_URLS]: merged },
+    })
+  } catch (err) {
+    log.warn("failed to record channel attachment delivery", { sessionID: input.sessionID, error: err })
+  }
+}
+
+function deliveredAttachmentUrls(messages: MessageV2.WithParts[], rootID: string): Set<string> {
+  const root = messages.find(
+    (message) => message.info.role === "user" && (message.info.id === rootID || message.info.rootID === rootID),
+  )
+  const urls = root?.info.metadata?.[CHANNEL_OUTBOUND_ATTACHMENT_URLS]
+  return new Set(Array.isArray(urls) ? urls : [])
 }
 
 export async function loadChannelTaskMessages(input: {
@@ -82,7 +152,7 @@ export async function replyChannelTaskAttachments(input: {
       rootID,
       terminal: input.terminal,
     }))
-  const parts = await projectChannelTaskParts({
+  const { parts, urls } = await projectChannelTaskPartsWithUrls({
     messages,
     rootID,
     terminalMessageID: input.terminal.info.id,
@@ -97,6 +167,12 @@ export async function replyChannelTaskAttachments(input: {
     accountId: input.accountId,
     messageId: input.messageId,
     parts,
+  })
+  await markChannelTaskAttachmentsDelivered({
+    sessionID: input.sessionID,
+    rootID,
+    urls,
+    messages,
   })
   return true
 }

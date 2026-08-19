@@ -443,3 +443,55 @@ describe("Channel task outbound parts", () => {
     ])
   })
 })
+
+test("skips attachments already recorded as delivered on the root message", async () => {
+  const pngID = await Asset.write(Buffer.from([137, 80, 78, 71]), "image/png", "preview.png")
+  const rootID = "message_root"
+  const toolMessageID = "message_tool"
+  const rootMessage: MessageV2.WithParts = {
+    info: {
+      id: rootID,
+      sessionID: "session_test",
+      role: "user",
+      isRoot: true,
+      rootID,
+      agent: "synergy",
+      model: { providerID: "test-provider", modelID: "test-model" },
+      time: { created: Date.now() },
+      metadata: { channelOutboundAttachmentUrls: [`asset://${pngID}`] },
+    },
+    parts: [],
+  }
+
+  expect(
+    await projectChannelTaskParts({
+      messages: [
+        rootMessage,
+        message({
+          id: toolMessageID,
+          rootID,
+          finish: "tool-calls",
+          parts: [
+            completedTool({
+              id: "tool_delivered",
+              messageID: toolMessageID,
+              attachments: [
+                attachment({
+                  id: "attachment_delivered",
+                  messageID: toolMessageID,
+                  url: `asset://${pngID}`,
+                  mime: "image/png",
+                  filename: "preview.png",
+                  deliverable: true,
+                }),
+              ],
+            }),
+          ],
+        }),
+      ],
+      rootID,
+      terminalMessageID: "message_terminal",
+      includeText: false,
+    }),
+  ).toEqual([])
+})
