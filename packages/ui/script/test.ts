@@ -20,6 +20,7 @@ await runBatchedTests({
     "test/components/session-turn-timeline.test.ts",
     "test/components/session-turn-timeline-boundary.test.ts",
     "test/components/session-turn-projection.test.ts",
+    "test/components/session-turn-projection-memoization.dom.test.ts",
     "test/components/tool/renders/task.test.tsx",
     "test/components/tool/renders/standard.test.tsx",
     "test/components/tool/renders/file-ops.test.tsx",
