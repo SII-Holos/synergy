@@ -114,15 +114,15 @@ beforeAll(async () => {
       })
 
       // Balanced activity projection resolves the external tool renderer for
-      // every ordinary tool part, so each re-projection of the settled message
-      // invokes this lookup exactly once — a deterministic, DOM-independent
-      // signal for projection work.
+      // every ordinary tool part — twice per projection pass (group-key scan
+      // and main loop) — so re-projecting the settled message advances this
+      // counter by exactly two: a deterministic, DOM-independent signal for
+      // projection work.
       let toolLookups = 0
       setExternalToolLookup(() => {
         toolLookups++
         return undefined
       })
-
       const resourceController = {
         open: () => false,
         openAttachment: () => false,
@@ -275,9 +275,10 @@ describe("SessionTurn streaming projection memoization", () => {
     const lookupsBeforeSettle = harness.getToolLookups()
     harness.setSessionStatus({ type: "idle" })
 
-    // Settlement flips working() off and re-projects the settled message once
-    // (its tool part resolves the renderer again), revealing Copy Markdown.
-    expect(await waitUntil(() => harness.getToolLookups() > lookupsBeforeSettle)).toBe(true)
-    expect(document.querySelector('[data-slot="session-turn-timeline-item"][data-kind="copy-markdown"]')).not.toBeNull()
+    // Settlement flips working() off and re-projects the settled message
+    // exactly once, revealing Copy Markdown. Each projection pass resolves
+    // the tool renderer twice (group-key scan + main loop), so the exact
+    // delta is +2; a double re-projection would yield +4 and fail here.
+    expect(await waitUntil(() => harness.getToolLookups() === lookupsBeforeSettle + 2)).toBe(true)
   })
 })

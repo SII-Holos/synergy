@@ -1165,14 +1165,9 @@ export function SessionTurn(
     if (!latest) return []
     const display = displayMessages()
     const index = display.findIndex((item) => item.id === latest.id)
-    // Reuse the per-message projection cache so a streaming delta does not
-    // project the latest assistant twice (once here, once via timelineItems).
-    // The accessor at the assistant's index always returns an assistant
-    // projection (assistants never take the user branch).
-    const selected: SessionTurnAssistantDisplayItem[] =
-      index === -1
-        ? projectAssistantMessage(latest)
-        : ((displayItemProjections()[index]?.() ?? []) as SessionTurnAssistantDisplayItem[])
+    // latest comes from the same displayMessages() memo, so it is always
+    // present here — there is no fallback projection path.
+    const selected = displayItemProjections()[index]() as SessionTurnAssistantDisplayItem[]
     if (activityDisplay() !== "minimal") return selected
     return projectMinimalActivityItems(selected, message()?.id ?? props.messageID, !working())
   })
