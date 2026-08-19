@@ -2,6 +2,8 @@ import { Session } from "../session"
 import { Ripgrep } from "../file/ripgrep"
 import { formatLocalDate, formatLocalDateTime } from "../util/time-format"
 
+import { GitHealth } from "../project/git-health"
+
 import { ScopeContext } from "../scope/context"
 import { Scope } from "@/scope"
 import { SessionEndpoint } from "./endpoint"
@@ -39,9 +41,14 @@ export namespace SystemPrompt {
     const scope = ScopeContext.current.scope
     const endpointType = options?.endpointType
     const session = options?.session
+    // Probe live instead of trusting the session-scope snapshot: a scope
+    // created before `git init` keeps vcs undefined for the whole session,
+    // which used to contradict the git-health block forever. Same probe as
+    // git-health so the two can never disagree.
+    const isGitRepo = scope.type === "project" ? await GitHealth.isGitRepo(ScopeContext.current.directory) : false
     const envLines = [
       `  Working directory: ${ScopeContext.current.directory}`,
-      `  Is directory a git repo: ${scope.type === "project" && scope.vcs === "git" ? "yes" : "no"}`,
+      `  Is directory a git repo: ${isGitRepo ? "yes" : "no"}`,
       `  Platform: ${process.platform}`,
       `  Today's date: ${formatLocalDate(Date.now())}`,
     ]
