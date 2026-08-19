@@ -64,12 +64,12 @@ export interface SessionDataView {
 export function createSessionDataView(data: Data | undefined): SessionDataView {
   const sessions = data?.session ?? EMPTY_SESSIONS
   return {
-    partsFor: (messageID) => data?.part[messageID] ?? EMPTY_PARTS,
+    partsFor: (messageID) => data?.part?.[messageID] ?? EMPTY_PARTS,
     partTable: () => data?.part ?? EMPTY_PART_TABLE,
-    messagesFor: (sessionID) => data?.message[sessionID] ?? EMPTY_MESSAGES,
+    messagesFor: (sessionID) => data?.message?.[sessionID] ?? EMPTY_MESSAGES,
     permissionsFor: (sessionID) => data?.permission?.[sessionID] ?? EMPTY_PERMISSIONS,
-    statusFor: (sessionID) => data?.session_status[sessionID],
-    diffsFor: (sessionID) => data?.session_diff[sessionID] ?? EMPTY_DIFFS,
+    statusFor: (sessionID) => data?.session_status?.[sessionID],
+    diffsFor: (sessionID) => data?.session_diff?.[sessionID] ?? EMPTY_DIFFS,
     inboxFor: (sessionID) => data?.inbox?.[sessionID] ?? EMPTY_INBOX,
     todosFor: (sessionID) => data?.todo?.[sessionID] ?? EMPTY_TODOS,
     dagNodesFor: (sessionID) => data?.dag?.[sessionID] ?? EMPTY_DAG,

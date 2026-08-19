@@ -13,7 +13,7 @@ export function useSessionDataView(): Accessor<AppSessionDataView> {
     const view = createSessionDataView(sync.data)
     return {
       ...view,
-      planBlueprintOfferFor: (sessionID) => sync.data.planBlueprintOffer[sessionID],
+      planBlueprintOfferFor: (sessionID) => sync.data.planBlueprintOffer?.[sessionID],
     }
   })
 }
