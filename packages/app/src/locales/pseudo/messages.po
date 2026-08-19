@@ -16648,6 +16648,10 @@ msgid "settings.panel.section.unavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.panel.theme.saveFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.pathRow.copied"
 msgstr ""
 
