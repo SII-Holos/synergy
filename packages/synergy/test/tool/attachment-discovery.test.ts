@@ -46,6 +46,30 @@ describe("tool.attachment-discovery", () => {
         expect(attachments[0].url.startsWith("asset://")).toBe(true)
         expect(attachments[0].localPath).toBe(filepath)
         expect(attachments[0].metadata?.kind).toBe("attachment")
+        const attachmentMeta = attachments[0]?.metadata?.attachment as { deliverable?: boolean } | undefined
+        expect(attachmentMeta?.deliverable).toBe(false)
+      },
+    })
+  })
+
+  test("marks explicit markdown references as deliverables", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const filepath = path.join(tmp.path, "contact-sheet.png")
+    await Bun.write(filepath, "fake image")
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const attachments = await AttachmentDiscovery.discover({
+          output: `![sheet](${filepath})`,
+          cwd: tmp.path,
+          sessionID: "session_test",
+          messageID: "message_test",
+          tool: "bash",
+        })
+        expect(attachments).toHaveLength(1)
+        const attachmentMeta = attachments[0]?.metadata?.attachment as { deliverable?: boolean } | undefined
+        expect(attachmentMeta?.deliverable).toBe(true)
       },
     })
   })
