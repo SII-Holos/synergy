@@ -11608,6 +11608,10 @@ msgid "session-turn.model-variant-unavailable"
 msgstr "Variant {variant} is unavailable for model {modelID} from {providerID}. {availability, select, available {Available variants: {availableVariants}.} other {No variants are currently available.}} Choose another variant or model to continue."
 
 #. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.render-error"
+msgstr "This message could not be displayed."
+
+#. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.rewind"
 msgstr "Rewind"
 
