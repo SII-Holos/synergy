@@ -2,6 +2,8 @@ import { createMemo, Show } from "solid-js"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { ProgressCircle } from "@ericsanchezok/synergy-ui/progress-circle"
 import { useParams } from "@solidjs/router"
+import { useSessionDataView } from "@/context/session-data-view"
+
 import { useSync } from "@/context/sync"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { useLocale } from "@/context/locale"
@@ -23,11 +25,12 @@ function toneClass(tone: ReturnType<typeof buildContextPanelModel>["statusTone"]
 
 export function ContextStatusButton() {
   const sync = useSync()
+  const view = useSessionDataView()
   const params = useParams()
   const workbench = useWorkbenchPanels()
   const { i18n, fmt } = useLocale()
 
-  const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []))
+  const messages = createMemo(() => (params.id ? view().messagesFor(params.id) : []))
   const providers = createMemo(() =>
     Object.fromEntries(sync.data.provider.all.map((provider) => [provider.id, provider])),
   )
@@ -37,8 +40,8 @@ export function ContextStatusButton() {
       messages: messages(),
       latestMessage: params.id ? sync.session.latestContextMessage(params.id) : null,
       providers: providers(),
-      status: params.id ? sync.data.session_status[params.id] : undefined,
-      pendingItems: params.id ? (sync.data.inbox[params.id]?.length ?? 0) : 0,
+      status: params.id ? view().statusFor(params.id) : undefined,
+      pendingItems: params.id ? view().inboxFor(params.id).length : 0,
       presentation: createContextPanelPresentation(i18n, fmt),
     }),
   )

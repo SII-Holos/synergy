@@ -13,6 +13,7 @@ import { DialogSessionImport } from "@/components/dialog/dialog-session-import"
 import { useLayout } from "@/context/layout"
 import { useLocal } from "@/context/local"
 import { useCommand } from "@/context/command"
+import { useSessionDataView } from "@/context/session-data-view"
 import { useSync } from "@/context/sync"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
@@ -147,6 +148,7 @@ export function SessionTopBar(props: {
   const local = useLocal()
   const command = useCommand()
   const sync = useSync()
+  const view = useSessionDataView()
   const workbench = useWorkbenchPanels()
   const sideSurface = createMemo(() => workbench.surface("side"))
   const bottomSurface = createMemo(() => workbench.surface("bottom"))
@@ -161,14 +163,14 @@ export function SessionTopBar(props: {
   const worktreeDisabled = createMemo(() =>
     isSessionRunningForWorkspaceChange({
       pending: props.sessionTransitionPending?.(),
-      status: sync.data.session_status[params.id ?? ""],
+      status: view().statusFor(params.id ?? ""),
       working: sessionInfo()?.working,
     }),
   )
 
   const sessionHasMessages = createMemo(() => {
     if (!params.id) return false
-    return (sync.data.message[params.id] ?? []).length > 0
+    return view().messagesFor(params.id).length > 0
   })
 
   const sessionMeta = useSessionMeta(sessionInfo, sessionHasMessages)

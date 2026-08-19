@@ -3,6 +3,7 @@ import { useParams } from "@solidjs/router"
 import { useLingui } from "@lingui/solid"
 import { SessionReviewTab } from "@/components/session"
 import { useLayout } from "@/context/layout"
+import { useSessionDataView } from "@/context/session-data-view"
 import { useSync } from "@/context/sync"
 import type { FileDiff, UserMessage } from "@ericsanchezok/synergy-sdk/client"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
@@ -12,6 +13,7 @@ import { useFile } from "@/context/file"
 export function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps) {
   const params = useParams()
   const sync = useSync()
+  const dataView = useSessionDataView()
   const layout = useLayout()
   const file = useFile()
   const lingui = useLingui()
@@ -21,7 +23,9 @@ export function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps)
     const sessionID = params.id
     const messageID = props.tab.source
     if (!sessionID || !messageID) return undefined
-    const message = sync.data.message[sessionID]?.find((item) => item.id === messageID) as UserMessage | undefined
+    const message = dataView()
+      .messagesFor(sessionID)
+      .find((item) => item.id === messageID) as UserMessage | undefined
     return message?.summary?.diffs
   })
   const sessionDiffs = createMemo(() => (params.id ? sync.data.session_diff[params.id] : undefined))

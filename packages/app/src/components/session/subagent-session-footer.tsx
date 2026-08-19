@@ -1,11 +1,11 @@
 import { Show, createMemo, createEffect, onCleanup, untrack } from "solid-js"
-import { useSync } from "@/context/sync"
+import { useSessionDataView } from "@/context/session-data-view"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { AgentGlyph, getAgentVisual } from "@/components/agent-visual"
 import type { SessionCortexDelegation, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { useNavigateToSession } from "@/composables/use-navigate-to-session"
-import { SUBAGENT_FOOTER_MODEL_LABEL_CLASS, subagentFooterSessionStatus } from "./subagent-session-footer-model"
+import { SUBAGENT_FOOTER_MODEL_LABEL_CLASS } from "./subagent-session-footer-model"
 import { useLocale } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import { S } from "./session-i18n"
@@ -59,16 +59,14 @@ export function SubagentSessionFooter(props: {
   sessionID: string
   parentSessionID?: string
 }) {
-  const sync = useSync()
+  const view = useSessionDataView()
   const navigateToSession = useNavigateToSession()
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
 
   const visual = createMemo(() => getAgentVisual(props.cortex.agent))
   const preview = createMemo(() => cleanPreview(props.cortex.error ?? outputPreview(props.cortex.output)))
-  const sessionStatus = createMemo<SessionStatus | undefined>(() =>
-    subagentFooterSessionStatus(sync.data.session_status, props.sessionID),
-  )
+  const sessionStatus = createMemo<SessionStatus | undefined>(() => view().statusFor(props.sessionID))
   const secondTick = sharedSecondTick()
   // The running clock subscribes to the shared 1 Hz source, which pauses
   // while the document is hidden; non-running footers freeze at completedAt.

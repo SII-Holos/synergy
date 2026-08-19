@@ -55,7 +55,7 @@ export function AttachmentWorkbenchContent(props: WorkbenchPanelContentProps) {
   const locator = createMemo(() => attachmentResourceState(props.tab.state))
   const local = createMemo(() => {
     const value = locator()
-    return value ? findAttachmentByLocator(data.store.part[value.messageID], value) : undefined
+    return value ? findAttachmentByLocator(data.view.partsFor(value.messageID), value) : undefined
   })
   const [remoteParts] = createResource(
     () => {

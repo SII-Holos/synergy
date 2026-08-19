@@ -19,8 +19,9 @@ export function MailboxMessage(props: {
 }) {
   const { _ } = useLingui()
   const data = useData()
+  const view = data.view
 
-  const parts = createMemo(() => data.store.part[props.message.id] ?? [])
+  const parts = createMemo(() => view.partsFor(props.message.id))
 
   const sourceName = createMemo(() => props.message.metadata?.sourceName as string | undefined)
   const sourceSessionID = createMemo(() => {

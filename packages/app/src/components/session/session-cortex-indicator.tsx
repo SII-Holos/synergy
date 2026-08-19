@@ -1,5 +1,5 @@
 import { createMemo, Show } from "solid-js"
-import { useSync } from "@/context/sync"
+import { useSessionDataView } from "@/context/session-data-view"
 import { StatusBarIndicator } from "@/components/status-bar"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { computeCortexStats } from "./session-connection-stats"
@@ -9,9 +9,9 @@ interface Props {
 }
 
 export function SessionCortexIndicator(props: Props) {
-  const sync = useSync()
+  const view = useSessionDataView()
 
-  const stats = createMemo(() => computeCortexStats(sync.data.cortex, props.sessionID))
+  const stats = createMemo(() => computeCortexStats(view().cortexTasks(), props.sessionID))
 
   return (
     <Show when={stats().active > 0 || stats().completed > 0}>
