@@ -333,3 +333,105 @@ test("classifyError maps 401 and invalid_grant to relogin required but leaves 40
   expect(GrokProvider.classifyError({ status: 429 })).toMatchObject({ retryable: true, exhausted: true })
   expect(GrokProvider.classifyError({ status: 403, body: { error: { code: "not_allowed" } } })).toBeUndefined()
 })
+test("fetchModelCatalog hits /v1/language-models with Bearer and maps entries", async () => {
+  const token = accessToken()
+  const catalog = await GrokProvider.fetchModelCatalog(
+    token,
+    asFetch(async (input, init) => {
+      expect(String(input)).toBe("https://api.x.ai/v1/language-models")
+      const headers = new Headers(init?.headers)
+      expect(headers.get("authorization")).toBe(`Bearer ${token}`)
+      expect(headers.get("user-agent")).toBe("synergy")
+      expect(headers.get("x-grok-client-surface")).toBe("synergy")
+      return jsonResponse({
+        models: [
+          { id: "grok-4.6", input_modalities: ["text"], output_modalities: ["text"], context_length: 524_288 },
+          { id: "grok-4.3", input_modalities: ["text"], output_modalities: ["text"] },
+          { id: "grok-4.5", input_modalities: ["text", "image"], output_modalities: ["text"], context_length: 524_288 },
+        ],
+      })
+    }),
+  )
+  expect(catalog).toEqual([
+    { id: "grok-4.6", model: { limit: { context: 524_288, input: 524_288, output: 32_768 } } },
+    { id: "grok-4.3" },
+    { id: "grok-4.5", inputImage: true, model: { limit: { context: 524_288, input: 524_288, output: 32_768 } } },
+  ])
+})
+
+test("fetchModelCatalog returns [] on non-2xx and malformed envelopes", async () => {
+  const token = accessToken()
+  expect(
+    await GrokProvider.fetchModelCatalog(
+      token,
+      asFetch(async () => jsonResponse({ error: { code: "not_allowed" } }, { status: 403 })),
+    ),
+  ).toEqual([])
+  expect(
+    await GrokProvider.fetchModelCatalog(
+      token,
+      asFetch(async () => jsonResponse({ error: "boom" }, { status: 500 })),
+    ),
+  ).toEqual([])
+  expect(
+    await GrokProvider.fetchModelCatalog(
+      token,
+      asFetch(async () => jsonResponse({ data: [{ id: "grok-4.6" }] })),
+    ),
+  ).toEqual([])
+  expect(
+    await GrokProvider.fetchModelCatalog(
+      token,
+      asFetch(async () => jsonResponse({ models: [{ id: "" }, { id: "grok-4.6" }, null, "grok-4.5"] })),
+    ),
+  ).toEqual([{ id: "grok-4.6" }])
+})
+
+test("provider catalog caches static and live Grok models independently", async () => {
+  const token = accessToken()
+  await Auth.set(GrokProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-provider-catalog",
+    expires: nowSeconds() + 60 * 60,
+  })
+  let discoveryCalls = 0
+  globalThis.fetch = asFetch(async () => {
+    discoveryCalls += 1
+    return jsonResponse({ models: [{ id: "grok-4.6" }, { id: "grok-account-live-only" }] })
+  })
+  const config = { providerCatalog: { enabled: false, offlineCache: false } }
+
+  await ProviderCatalog.refresh(GrokProvider.PROVIDER_ID)
+  ProviderCatalog.reset()
+
+  const staticCatalog = await ProviderCatalog.resolve({ config, includeLive: false })
+  const liveCatalog = await ProviderCatalog.resolve({ config, includeLive: true })
+  const cachedLiveCatalog = await ProviderCatalog.resolve({ config, includeLive: true })
+
+  expect(staticCatalog[GrokProvider.PROVIDER_ID].models["grok-account-live-only"]).toBeUndefined()
+  expect(liveCatalog[GrokProvider.PROVIDER_ID].models["grok-4.6"]).toBeDefined()
+  expect(liveCatalog[GrokProvider.PROVIDER_ID].models["grok-account-live-only"]).toBeDefined()
+  expect(cachedLiveCatalog[GrokProvider.PROVIDER_ID].models["grok-account-live-only"]).toBeDefined()
+  expect(discoveryCalls).toBe(1)
+})
+
+test("failed Grok discovery falls back to the bundled list without error", async () => {
+  const token = accessToken()
+  await Auth.set(GrokProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-failure",
+    expires: nowSeconds() + 60 * 60,
+  })
+  globalThis.fetch = asFetch(async () => jsonResponse({ error: { code: "not_allowed" } }, { status: 403 }))
+
+  const catalog = await ProviderCatalog.resolve({
+    forceRefresh: true,
+    includeLive: true,
+    config: { providerCatalog: { enabled: false, offlineCache: false } },
+  })
+  const grok = catalog[GrokProvider.PROVIDER_ID]
+  expect(grok.models["grok-4.6"]).toBeDefined()
+  expect(Object.keys(grok.models).length).toBeGreaterThan(0)
+})

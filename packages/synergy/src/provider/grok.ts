@@ -25,7 +25,7 @@ export namespace GrokProvider {
   export const OAUTH_SCOPES = "openid profile email offline_access grok-cli:access api:access"
   export const AUTH_REFRESH_SKEW_SECONDS = 5 * 60
 
-  export const DEFAULT_MODEL_IDS = ["grok-4.5", "grok-4.3", "grok-build-0.1"] as const
+  export const DEFAULT_MODEL_IDS = ["grok-4.6", "grok-4.5", "grok-4.3", "grok-build-0.1"] as const
 
   type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
@@ -525,6 +525,46 @@ export namespace GrokProvider {
       refresh: refreshed.refresh,
       expires: refreshed.expires,
     }
+  }
+
+  export async function fetchModelCatalog(
+    accessToken: string,
+    fetchFn: FetchLike = fetch,
+    providerID = PROVIDER_ID,
+    discoveryBaseURL = BASE_URL,
+  ): Promise<ProviderProfile.ModelCatalogEntry[]> {
+    void providerID
+    const response = await fetchFn(`${discoveryBaseURL.trim().replace(/\/+$/, "")}/language-models`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+        "User-Agent": "synergy",
+        "x-grok-client-surface": "synergy",
+      },
+      signal: AbortSignal.timeout(10_000),
+    }).catch(() => undefined)
+    if (!response || !response.ok) return []
+    const payload = await safeJson(response)
+    if (!Array.isArray(payload.models)) return []
+    const entries: ProviderProfile.ModelCatalogEntry[] = []
+    for (const entry of payload.models) {
+      if (!entry || typeof entry !== "object") continue
+      const id = entry.id
+      if (typeof id !== "string" || !id.trim()) continue
+      const inputModalities = Array.isArray(entry.input_modalities) ? entry.input_modalities : []
+      const contextLength =
+        typeof entry.context_length === "number" && entry.context_length > 0 ? entry.context_length : undefined
+      entries.push({
+        id: id.trim(),
+        ...(inputModalities.includes("image") ? { inputImage: true } : {}),
+        ...(contextLength !== undefined
+          ? // xAI's /v1/language-models omits output limits; the snapshot schema
+            // requires one, so keep a safe default like Codex's computed output.
+            { model: { limit: { context: contextLength, input: contextLength, output: 32_768 } } }
+          : {}),
+      })
+    }
+    return entries
   }
 
   export async function fetchUsage(
