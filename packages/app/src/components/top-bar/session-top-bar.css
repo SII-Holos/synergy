@@ -22,6 +22,11 @@
   }
 }
 
+.stb-folder {
+  flex-shrink: 0;
+  color: var(--icon-base);
+}
+
 .stb-project-name {
   flex-shrink: 0;
   max-width: 13rem;

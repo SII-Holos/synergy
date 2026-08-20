@@ -134,15 +134,15 @@ describe("workbench surface polarity", () => {
     expect(sidebarCss).not.toContain("--sb-native-titlebar-height")
   })
 
-  test("desktop session top bar names the active project instead of a bare folder icon", () => {
+  test("desktop session top bar pairs the project name with the folder icon", () => {
     expect(sessionTopBar).toContain('class="stb-project-name"')
+    expect(sessionTopBar).toContain('getSemanticIcon("workspace.main")')
     expect(sessionTopBar).toContain("resolveProjectScope(directory()")
     expect(sessionTopBar).toContain("getScopeLabel(projectScope()")
     expect(sessionTopBar).toContain("value={projectPath()}")
-    expect(sessionTopBar).not.toContain('getSemanticIcon("workspace.main")')
     expect(sessionTopBarCss).toContain(".stb-project-name")
+    expect(sessionTopBarCss).toContain(".stb-folder")
     expect(sessionTopBarCss).toContain("text-overflow: ellipsis;")
-    expect(sessionTopBarCss).not.toContain(".stb-folder")
   })
 
   test("workbench panel tabs keep close and add controls compact", () => {

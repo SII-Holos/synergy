@@ -341,6 +341,7 @@ export function SessionTopBar(props: {
       <div class="hidden md:flex w-full items-center justify-between pointer-events-auto">
         <div class="stb-left">
           <Show when={!isGlobal()}>
+            <Icon name={getSemanticIcon("workspace.main")} size="normal" class="stb-folder" />
             <Tooltip placement="bottom" value={projectPath()}>
               <span class="stb-project-name">{projectLabel()}</span>
             </Tooltip>
