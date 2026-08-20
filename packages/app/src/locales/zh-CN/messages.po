@@ -527,6 +527,11 @@ msgstr "时区（可选）"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.agenda.form.unsupportedTriggers"
+msgstr "此议程包含表单无法编辑的触发器（如会话、Webhook、文件监听），保存时会保留。"
+
+#. Runtime Lingui descriptors for agenda host labels and wrappers.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.interval.days"
 msgstr "天"
 
@@ -2843,6 +2848,154 @@ msgstr "智能体切换失败"
 msgid "app.home.start"
 msgstr "开始"
 
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.addPane"
+msgstr "添加会话"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.addPaneHint"
+msgstr "选择一个会话固定到看板"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.aria.layout"
+msgstr "看板布局"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.agent"
+msgstr "智能体"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.defaultAgent"
+msgstr "默认智能体"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.permission"
+msgstr "权限"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.workflow"
+msgstr "模式"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.dragReorder"
+msgstr "拖动以调整固定会话顺序"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.empty"
+msgstr "看板上没有会话"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.emptyHint"
+msgstr "会话会按最近顺序自动出现在这里。从侧边栏拖入会话即可固定。"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.focus.resizeRail"
+msgstr "调整面板宽度"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.follow"
+msgstr "跟随最新"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.columns"
+msgstr "列数"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.layoutLabel"
+msgstr "网格布局"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.rows"
+msgstr "行数"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.layout.focus"
+msgstr "焦点"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.layout.grid"
+msgstr "网格"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.loadError"
+msgstr "消息加载失败"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.loading"
+msgstr "加载中…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.openSession"
+msgstr "打开会话"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pinPane"
+msgstr "固定"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pinToReorderHint"
+msgstr "先固定此会话才能调整顺序"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.retry"
+msgstr "重试"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.sendFailed"
+msgstr "发送消息失败"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.sendPlaceholder"
+msgstr "向此会话发送消息…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.busy"
+msgstr "工作中…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.idle"
+msgstr "空闲"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.recovering"
+msgstr "恢复中…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.retry"
+msgstr "重试中…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.title"
+msgstr "看板"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unavailable"
+msgstr "会话已不可用"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unfollow"
+msgstr "已暂停"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unpinPane"
+msgstr "取消固定"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.boss"
+msgstr "Boss"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.lattice"
+msgstr "Lattice"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.none"
+msgstr "默认"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.plan"
+msgstr "Plan"
+
 #. js-lingui-explicit-id
 msgid "app.lattice.config.arm"
 msgstr "在本条消息中启用 Lattice"
@@ -3945,8 +4098,28 @@ msgid "app.library.skills.detail.skillPath"
 msgstr "技能路径"
 
 #. js-lingui-explicit-id
-msgid "app.library.skills.diagnostics.count"
-msgstr "加载时跳过了 {count} 个技能{plural}"
+msgid "app.library.skills.diagnostics.compat"
+msgstr "{count, plural, other {# 条兼容性提示}}"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.compatGroup"
+msgstr "兼容性提示"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.failed"
+msgstr "{count, plural, other {# 个技能无法加载}}"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.failedGroup"
+msgstr "无法加载"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.shadowed"
+msgstr "{count, plural, other {# 个技能被遮蔽}}"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.shadowedGroup"
+msgstr "被遮蔽"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.empty.hint"
@@ -5865,6 +6038,10 @@ msgid "app.plugin.builtin.agenda"
 msgstr "日程"
 
 #. ── Plugin builtin navigation ─────────────────────────────────────────────────
+msgid "app.plugin.builtin.kanban"
+msgstr "看板"
+
+#. ── Plugin builtin navigation ─────────────────────────────────────────────────
 msgid "app.plugin.builtin.library"
 msgstr "知识库"
 
@@ -7071,6 +7248,10 @@ msgstr "日程"
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.tool.browser"
 msgstr "浏览器"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.tool.kanban"
+msgstr "看板"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.tool.library"
@@ -11752,6 +11933,12 @@ msgstr "等待中"
 #. Runtime translation descriptors for all wake-indicator UI strings.
  *  Each is a base MessageDescriptor with `id` + English `message`.
  *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.wake.trigger.session"
+msgstr "会话轮次结束"
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
 msgid "session.agenda.wake.trigger.watch"
 msgstr "条件触发"
 
@@ -14262,6 +14449,34 @@ msgstr "沙箱"
 #. js-lingui-explicit-id
 msgid "settings.catalog.sandbox.searchTerms"
 msgstr "沙箱 | 隔离 | 降级"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.description"
+msgstr "选择从哪些其他智能体工具发现技能。"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.label"
+msgstr "技能"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.agents"
+msgstr "Agent 技能"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.claude"
+msgstr "Claude Code"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.codex"
+msgstr "Codex"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.openclaw"
+msgstr "OpenClaw"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.searchTerms"
+msgstr "技能 | skill | claude | codex | openclaw | agents | 兼容性"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.synergyLink.description"
@@ -17626,6 +17841,54 @@ msgstr "已保存 {label}"
 #. js-lingui-explicit-id
 msgid "settings.save.unsaved"
 msgstr "未保存"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.agents.desc"
+msgstr "从 .agents/skills 目录加载 Agent 技能（默认：开）"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.agents.title"
+msgstr "Agent 技能"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.claude.desc"
+msgstr "从 .claude/skills 目录加载 Claude Code 技能（默认：开）"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.claude.title"
+msgstr "Claude Code"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.codex.desc"
+msgstr "从 .codex/skills 目录加载 Codex 技能（默认：开）"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.codex.title"
+msgstr "Codex"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.openclaw.desc"
+msgstr "从 .openclaw/skills 目录及工作区技能目录加载 OpenClaw 技能（默认：开）"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.openclaw.title"
+msgstr "OpenClaw"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.page.desc"
+msgstr "选择从哪些其他智能体工具中发现技能。"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.page.title"
+msgstr "技能"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.row.count"
+msgstr "{count, plural, other {# 个技能}}"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.section.title"
+msgstr "兼容性"
 
 #. js-lingui-explicit-id
 msgid "settings.stepScale.custom"

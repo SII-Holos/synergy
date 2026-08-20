@@ -264,6 +264,9 @@ export namespace Embedding {
 
     if (retrying) log.info("retrying local embedding model load (previous attempt failed)")
 
+    const originalSource = source
+    const originalRemoteHost = remoteHost
+
     try {
       const inspected = await inspectLocalAsset(source, remoteHost, cacheDir)
       loading.asset = inspected.cached ? "cached" : "downloading"
@@ -281,16 +284,51 @@ export namespace Embedding {
           progress_callback: progressCallback,
         })
       } catch (networkError) {
-        log.warn("local embedding model: network load failed, trying from disk cache", {
-          error: networkError instanceof Error ? networkError.message : String(networkError),
-        })
-        loading.asset = "cached"
-        extractor = await inspected.runtime.pipeline(LOCAL_TASK, LOCAL_MODEL, {
-          dtype: "q8",
-          local_files_only: true,
-          progress_callback: progressCallback,
-        })
-        log.info("local embedding model loaded from disk cache (offline)")
+        // Auto-fallback: when the primary source is huggingface.co and the
+        // download fails (timeout, DNS, connection refused), retry once from
+        // hf-mirror.com before resorting to the disk cache. This keeps the
+        // zero-config default working in networks where huggingface.co is
+        // unreachable without a proxy.
+        if (source === "huggingface") {
+          log.warn("local embedding model: huggingface.co download failed, falling back to hf-mirror.com", {
+            error: networkError instanceof Error ? networkError.message : String(networkError),
+          })
+          source = "hf-mirror"
+          remoteHost = HF_MIRROR_HOST
+          loading.source = source
+          loading.remoteHost = remoteHost
+          loading.asset = "downloading"
+          inspected.runtime.configure({ remoteHost, cacheDir })
+          try {
+            extractor = await inspected.runtime.pipeline(LOCAL_TASK, LOCAL_MODEL, {
+              dtype: "q8",
+              progress_callback: progressCallback,
+            })
+            log.info("local embedding model loaded from hf-mirror.com (auto-fallback)")
+          } catch (mirrorError) {
+            log.warn("local embedding model: hf-mirror fallback also failed, trying from disk cache", {
+              error: mirrorError instanceof Error ? mirrorError.message : String(mirrorError),
+            })
+            loading.asset = "cached"
+            extractor = await inspected.runtime.pipeline(LOCAL_TASK, LOCAL_MODEL, {
+              dtype: "q8",
+              local_files_only: true,
+              progress_callback: progressCallback,
+            })
+            log.info("local embedding model loaded from disk cache (offline)")
+          }
+        } else {
+          log.warn("local embedding model: network load failed, trying from disk cache", {
+            error: networkError instanceof Error ? networkError.message : String(networkError),
+          })
+          loading.asset = "cached"
+          extractor = await inspected.runtime.pipeline(LOCAL_TASK, LOCAL_MODEL, {
+            dtype: "q8",
+            local_files_only: true,
+            progress_callback: progressCallback,
+          })
+          log.info("local embedding model loaded from disk cache (offline)")
+        }
       }
 
       if (loadGeneration === generation) {
@@ -307,8 +345,8 @@ export namespace Embedding {
       if (loadGeneration === generation) {
         loadState = {
           phase: "unloaded",
-          source,
-          remoteHost,
+          source: originalSource,
+          remoteHost: originalRemoteHost,
           asset: "failed",
           error: { code: "load_failed", message: error.message },
         }

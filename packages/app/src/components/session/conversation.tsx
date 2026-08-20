@@ -159,7 +159,10 @@ export function SessionConversation(props: {
           const message = () => timelineSnapshot().map.get(key)
           const rootMessage = () => message() as UserMessage
           const isLast = () => key === lastTimelineID()
-          const turnMessages = () => turnProjection().turnMessagesFor(rootMessage())
+          const turnMessages = () => {
+            const root = rootMessage()
+            return root ? turnProjection().turnMessagesFor(root) : []
+          }
           if (!message()) return null
 
           if (message()?.role === "assistant") {

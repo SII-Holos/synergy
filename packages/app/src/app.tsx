@@ -55,6 +55,7 @@ function initialRouteWaitsForSessionSurface() {
   if (pathname.includes("/library")) return false
   if (pathname.includes("/plugins")) return false
   if (pathname.includes("/performance")) return false
+  if (pathname.includes("/kanban")) return false
   return true
 }
 
@@ -248,6 +249,7 @@ function ConnectedApp() {
                 >
                   <Route path="/" component={() => <Navigate href={`/${base64Encode("home")}/session`} />} />
                   <Route path="/agenda" component={() => <BuiltinNavigationPage navigationId="agenda" />} />
+                  <Route path="/kanban" component={() => <BuiltinNavigationPage navigationId="kanban" />} />
                   <Route path="/library" component={() => <BuiltinNavigationPage navigationId="library" />} />
                   <Route path="/performance" component={() => <BuiltinNavigationPage navigationId="performance" />} />
                   <Route

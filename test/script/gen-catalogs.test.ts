@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { generate as generateCli, parseCommandBlocks } from "../../script/gen/gen-cli-reference"
-import { generate as generateConfig, parseDefCall } from "../../script/gen/gen-config-reference"
+import { generate as generateConfig, parseDefCall, parseDomainObject } from "../../script/gen/gen-config-reference"
 import { generate as generateTools, parseTaxonomy } from "../../script/gen/gen-tool-catalog"
 import { findBlock, isFresh, matchClose, stringLiteral, templateLiteral } from "../../script/gen/shared"
 
@@ -67,10 +67,12 @@ describe("generated catalog completeness", () => {
       "holos",
       "email",
       "runtime",
+      "skills",
     ]) {
       expect(body).toContain(`| \`${domain}\` |`)
     }
     expect(body).toContain("| `00-general.jsonc` |")
+    expect(body).toContain("| `55-skills.jsonc` |")
   })
 
   test("tools catalog carries kind and description for builtin tools", async () => {
@@ -121,6 +123,28 @@ describe("parser behavior", () => {
     })
     const defaulted = parseDefCall('"library", "30-library.jsonc", "Library", ["library"]')
     expect(defaulted?.mergePolicy).toBe("merge")
+  })
+
+  test("parseDomainObject parses object-literal domain entries", () => {
+    const domain = parseDomainObject(
+      `{
+        id: "skills",
+        filename: "55-skills.jsonc",
+        label: "Skills",
+        ownedKeys: ["skills"],
+        mergePolicy: "merge",
+        reloadTargets: ["config", "skill"],
+        uiSection: "skills",
+        importable: true,
+      }`,
+    )
+    expect(domain).toEqual({
+      id: "skills",
+      filename: "55-skills.jsonc",
+      label: "Skills",
+      ownedKeys: ["skills"],
+      mergePolicy: "merge",
+    })
   })
 
   test("parseTaxonomy resolves exact, pattern fallback, and default kinds", () => {

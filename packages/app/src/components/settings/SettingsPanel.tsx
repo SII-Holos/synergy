@@ -28,6 +28,7 @@ import type {
   CortexConcurrencyStatus,
   ModelRoleSummary,
   SandboxStatus,
+  SkillList,
 } from "@ericsanchezok/synergy-sdk/client"
 import type { PluginSettingsComponentProps, PluginSettingsSurfaceContext } from "@ericsanchezok/synergy-plugin"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -96,6 +97,7 @@ import { ControlProfilePanel, PermissionsPanel, SandboxPanel } from "./panels/Sa
 import { CompactionPanel, QuestionsPanel, TimeoutsPanel, ObservabilityPanel } from "./panels/RuntimePanels"
 import { BossModePanel } from "./panels/BossModePanel"
 import { CodeChecksPanel } from "./panels/CodeChecksPanel"
+import { SkillsPanel } from "./panels/SkillsPanel"
 import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
 import { filterSettingsSections, SETTINGS_DEVELOPER_MODE_STORAGE_KEY } from "./settings-visibility"
 import { SaveIndicator } from "./components/SaveIndicator"
@@ -109,6 +111,7 @@ import {
   clarusDiagnosticsFilename,
   shouldRefreshChannelStatuses,
 } from "./channel-account-model"
+import { SlotOutlet } from "@/plugin/slot-outlet"
 
 function settingsValues(value: unknown, fallback: Record<string, unknown> = {}): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : fallback
@@ -365,6 +368,14 @@ export function SettingsPanel(props: SettingsPanelProps) {
     const res = await globalSDK.client.app.agents()
     return res.data ?? []
   })
+  const [skillSources, { refetch: refetchSkillSources }] = createResource(async () => {
+    try {
+      const res = await globalSDK.client.skill.list()
+      return (res.data?.sources ?? []) as SkillList["sources"]
+    } catch {
+      return [] as SkillList["sources"]
+    }
+  })
 
   const providerModels = createMemo(() => {
     const data = globalSync.data.provider
@@ -491,6 +502,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       ...(agentFields.some((field) => changed.has(field)) ? [refetchAgents()] : []),
       ...(changed.has("cortex") ? [refetchCortexConcurrencyStatus()] : []),
       ...(changed.has("channel") ? [refetchChannelStatuses()] : []),
+      ...(changed.has("skills") ? [refetchSkillSources()] : []),
     ])
     const currentDraft = submittedDraft ? snapshotSettingsDraft(settings) : undefined
     setRefreshing(false)
@@ -868,6 +880,13 @@ export function SettingsPanel(props: SettingsPanelProps) {
         onLibraryChange={(key, value) => setSettings("library", key, value)}
       />
     ),
+    skills: () => (
+      <SkillsPanel
+        skills={settings.skills}
+        sources={skillSources() ?? []}
+        onSkillsChange={(source, value) => setSettings("skills", source, value)}
+      />
+    ),
     mcp: () => (
       <McpPanel
         entries={settings.mcps.entries}
@@ -1171,7 +1190,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 </ul>
               </div>
             </Show>
-            <AppPanel.Body padding={false}>{renderActiveContent()}</AppPanel.Body>
+            <AppPanel.Body padding={false}>
+              {renderActiveContent()}
+              <SlotOutlet slot="settings.section" />
+            </AppPanel.Body>
 
             <AppPanel.Footer class="settings-panel-footer">
               <div class="settings-panel-footer-status flex flex-1 items-center gap-3">

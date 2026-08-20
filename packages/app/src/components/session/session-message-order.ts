@@ -60,3 +60,20 @@ export function selectMessagesInCanonicalOrder<T extends MessageWithID>(
   const selectedIDs = new Set(selected.map((message) => message.id))
   return canonical.filter((message) => selectedIDs.has(message.id))
 }
+
+/**
+ * Action-command assistants render as standalone rows only when the user
+ * explicitly hid them from context: prefer the canonical includeInContext;
+ * fall back to command.promptVisible for messages written before it was set.
+ */
+export function isActionCommandMessage(message: {
+  metadata?: { command?: { kind?: string; promptVisible?: boolean }; promptVisible?: boolean } | unknown
+  includeInContext?: boolean
+}): boolean {
+  const metadata = message.metadata as
+    | { command?: { kind?: string; promptVisible?: boolean }; promptVisible?: boolean }
+    | undefined
+  if (metadata?.command?.kind !== "action") return false
+  if (message.includeInContext !== undefined) return message.includeInContext === false
+  return metadata.promptVisible === false
+}

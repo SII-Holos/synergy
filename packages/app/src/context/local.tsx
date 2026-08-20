@@ -5,6 +5,7 @@ import type { ProviderListResponse } from "@ericsanchezok/synergy-sdk"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useParams } from "@solidjs/router"
 import { useSDK } from "./sdk"
+import { useSessionDataView } from "@/context/session-data-view"
 import { useSync } from "./sync"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { useProviders } from "@/hooks/use-providers"
@@ -48,6 +49,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const sdk = useSDK()
     const params = useParams()
     const sync = useSync()
+    const view = useSessionDataView()
     const providers = useProviders()
 
     function isModelValid(model: ModelKey) {
@@ -89,7 +91,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         draft: {},
       })
       const sessionDefault = createMemo(() =>
-        ComposerIntent.sessionDefaultAgent(params.id ? sync.data.message[params.id] : undefined),
+        ComposerIntent.sessionDefaultAgent(params.id ? view().messagesFor(params.id) : undefined),
       )
       const isSelectable = (name: string) => list().some((x) => x.name === name)
       const currentName = createMemo(() => {
@@ -306,7 +308,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const sessionDefaultModel = createMemo((): ModelKey | undefined => {
         const id = params.id
         if (!id) return undefined
-        return ComposerIntent.sessionDefaultModel(sync.session.get(id)?.modelOverride, sync.data.message[id])
+        return ComposerIntent.sessionDefaultModel(sync.session.get(id)?.modelOverride, view().messagesFor(id))
       })
 
       const current = createMemo(() => {
@@ -349,6 +351,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           hasDraft: session.has(model),
           draft: session.get(model),
           model,
+          // Explicit exemption: resolveSessionVariant treats messages ===
+          // undefined as "session not ready"; the view layer's empty array
+          // would flip the variant-ready semantics.
           messages: id ? sync.data.message[id] : undefined,
         })
       })
