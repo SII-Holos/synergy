@@ -212,6 +212,17 @@ export namespace WorkspaceFile {
     })
     .meta({ ref: "WorkspaceFileWriteError" })
   export type WriteFileError = z.infer<typeof WriteFileError>
+  export const ContentPreviewError = z
+    .object({
+      name: z.enum([
+        "WorkspaceFileAccessDeniedError",
+        "WorkspaceFileUnsupportedPreviewError",
+        "WorkspaceFileTooLargeError",
+      ]),
+      data: z.object({ message: z.string() }),
+    })
+    .meta({ ref: "WorkspaceFileContentError" })
+  export type ContentPreviewError = z.infer<typeof ContentPreviewError>
 
   export const CreateDirectoryInput = z
     .object({

@@ -247,6 +247,39 @@ export namespace WorkspaceFileService {
   }): Promise<WorkspaceFile.ReadResult> {
     return WorkspaceFileRead.read(input, { resolve, node })
   }
+  const PREVIEW_MAX_BYTES = 50 * 1024 * 1024
+  const PREVIEW_MIME_PDF = "application/pdf"
+
+  export class UnsupportedPreviewError extends Error {
+    constructor(message: string) {
+      super(message)
+      this.name = "WorkspaceFileUnsupportedPreviewError"
+    }
+  }
+
+  export async function content(input: {
+    path: string
+  }): Promise<{ absolute: string; node: WorkspaceFile.Node; stream: ReadableStream }> {
+    const absolute = resolve(input.path)
+    await assertRealpathInside(absolute)
+    const info = await node(absolute, { resolveGitStatus: false })
+    if (info.type !== "file") {
+      throw new AccessDeniedError(`Access denied: path is not a file (${info.path})`)
+    }
+    const file = Bun.file(absolute)
+    const mime = file.type
+    if (!(path.extname(absolute).toLowerCase() === ".pdf" || mime === PREVIEW_MIME_PDF)) {
+      throw new UnsupportedPreviewError(`Unsupported preview: only PDF files support content preview (${info.path})`)
+    }
+    if (info.size > PREVIEW_MAX_BYTES) {
+      throw new TooLargeError(`File too large to preview (${info.size} bytes, limit ${PREVIEW_MAX_BYTES})`)
+    }
+    return {
+      absolute,
+      node: info,
+      stream: file.stream(),
+    }
+  }
   const WRITE_MAX_BYTES = 8 * 1024 * 1024
 
   function assertWritableTarget(absolute: string) {
