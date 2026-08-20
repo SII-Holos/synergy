@@ -27,6 +27,7 @@ import {
 import { sessionActionVisibility, sessionModelControlVisibility } from "@/components/session/session-actions"
 import { copySessionID } from "@/utils/session-copy"
 import "./session-top-bar.css"
+import { SlotOutlet } from "@/plugin/slot-outlet"
 
 function SessionActionMenu(props: {
   visibility: ReturnType<typeof sessionActionVisibility>
@@ -395,6 +396,7 @@ export function SessionTopBar(props: {
             </button>
           </Tooltip>
         </div>
+        <SlotOutlet slot="session.header.actions" session={Boolean(params.id)} />
       </div>
     </div>
   )
