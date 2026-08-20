@@ -8,6 +8,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { SessionInboxItem } from "@ericsanchezok/synergy-sdk/client"
 import type { useSDK } from "@/context/sdk"
 import type { useSync } from "@/context/sync"
+import { createSessionDataView } from "@ericsanchezok/synergy-ui/context/session-data-view"
 import { useLocale } from "@/context/locale"
 import { deriveSessionInboxView, isInboxItemInteractive } from "./session-inbox-utils"
 import { S } from "./session-i18n"
@@ -174,7 +175,12 @@ function InboxRow(props: {
 export function SessionInbox(props: SessionInboxProps) {
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
-  const view = createMemo(() => deriveSessionInboxView(props.sync.data.inbox[props.sessionID]))
+  const dataView = createMemo(() => createSessionDataView(props.sync.data))
+  const view = createMemo(() =>
+    deriveSessionInboxView(
+      dataView().hasInboxBucket(props.sessionID) ? dataView().inboxFor(props.sessionID) : undefined,
+    ),
+  )
   const items = createMemo(() => view().items)
   const count = createMemo(() => view().count)
   const firstTaskLocked = (item: SessionInboxItem) => item.mode === "task" && props.hasCanonicalRoot === false

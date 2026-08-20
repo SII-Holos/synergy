@@ -507,6 +507,10 @@ export namespace Session {
             type: z.literal("before"),
             messageID: Identifier.schema("message"),
           }),
+          z.object({
+            type: z.literal("through"),
+            messageID: Identifier.schema("message"),
+          }),
         ])
         .optional(),
       workspace: WorkspaceSelection.optional(),
@@ -515,7 +519,10 @@ export namespace Session {
     }),
     async (input) => {
       const source = await SessionManager.requireSession(input.sessionID)
-      const forkPoint = input.position?.type === "before" ? input.position.messageID : input.messageID
+      const position = input.position
+      const forkPoint =
+        position?.type === "before" || position?.type === "through" ? position.messageID : input.messageID
+      const includeForkPoint = position?.type === "through"
       let session = await create({
         scope: source.scope as Scope,
         workspace: source.workspace,
@@ -530,7 +537,9 @@ export namespace Session {
       const msgs = await messages({ sessionID: input.sessionID })
       const messageMap = new Map<string, string>()
       for (const msg of msgs) {
-        if (forkPoint && msg.info.id === forkPoint) break
+        // "before" stops at the target message (exclusive); "through" copies
+        // the target message and stops after it (inclusive).
+        if (forkPoint && msg.info.id === forkPoint && !includeForkPoint) break
         const id = Identifier.ascending("message")
         messageMap.set(msg.info.id, id)
         const cloned = await updateMessage({
@@ -550,6 +559,8 @@ export namespace Session {
             sessionID: session.id,
           })
         }
+
+        if (includeForkPoint && forkPoint && msg.info.id === forkPoint) break
       }
 
       try {

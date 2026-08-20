@@ -1,6 +1,6 @@
 import { createEffect, createMemo, on, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
-import { useSync } from "@/context/sync"
+import { useSessionDataView } from "@/context/session-data-view"
 import {
   computeProgressMode,
   computeDagSummary,
@@ -25,7 +25,7 @@ interface SessionProgressPanelState {
 }
 
 export function SessionProgressPanel(props: SessionProgressPanelProps) {
-  const sync = useSync()
+  const view = useSessionDataView()
 
   const [state, setState] = createStore<SessionProgressPanelState>({
     activeTab: "dag",
@@ -41,16 +41,16 @@ export function SessionProgressPanel(props: SessionProgressPanelProps) {
     completionTimer = undefined
   }
 
-  const dagNodes = createMemo(() => sync.data.dag[props.sessionID])
-  const todos = createMemo(() => sync.data.todo[props.sessionID])
-  const dagList = createMemo(() => dagNodes() ?? [])
-  const todoList = createMemo(() => todos() ?? [])
+  const dagList = createMemo(() => view().dagNodesFor(props.sessionID))
+  const todoList = createMemo(() => view().todosFor(props.sessionID))
 
   const hasDag = createMemo(() => dagList().length > 0)
   const hasTodo = createMemo(() => todoList().length > 0)
-  const isUnknown = createMemo(() => dagNodes() === undefined && todos() === undefined)
 
-  const mode = createMemo<ProgressMode>(() => (isUnknown() ? "none" : computeProgressMode(hasDag(), hasTodo())))
+  // The view layer always resolves missing buckets to empty arrays, so an
+  // unloaded session is indistinguishable from an empty one: both compute
+  // mode "none" and keep the island hidden.
+  const mode = createMemo<ProgressMode>(() => computeProgressMode(hasDag(), hasTodo()))
   const dagSummary = createMemo(() => (hasDag() ? computeDagSummary(dagList()) : undefined))
   const todoSummary = createMemo(() => (hasTodo() ? computeTodoSummary(todoList()) : undefined))
   const snapshot = createMemo(() => computeProgressIslandSnapshot(mode(), dagSummary(), todoSummary()))

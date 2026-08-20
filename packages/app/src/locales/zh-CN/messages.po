@@ -3945,8 +3945,28 @@ msgid "app.library.skills.detail.skillPath"
 msgstr "技能路径"
 
 #. js-lingui-explicit-id
-msgid "app.library.skills.diagnostics.count"
-msgstr "加载时跳过了 {count} 个技能{plural}"
+msgid "app.library.skills.diagnostics.compat"
+msgstr "{count, plural, other {# 条兼容性提示}}"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.compatGroup"
+msgstr "兼容性提示"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.failed"
+msgstr "{count, plural, other {# 个技能无法加载}}"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.failedGroup"
+msgstr "无法加载"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.shadowed"
+msgstr "{count, plural, other {# 个技能被遮蔽}}"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.shadowedGroup"
+msgstr "被遮蔽"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.empty.hint"
@@ -6929,6 +6949,21 @@ msgstr "无法加载对话"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.session.filesChanged"
 msgstr "{count} 个文件已更改"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.fork.failed"
+msgstr "分叉失败"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.forked"
+msgstr "会话已分叉"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.forked.desc"
+msgstr "已将该消息之前的对话复制到新会话。"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11581,6 +11616,10 @@ msgid "session-turn.copy-markdown"
 msgstr "复制 Markdown"
 
 #. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.fork-message"
+msgstr "从此消息分叉会话"
+
+#. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.model-unavailable"
 msgstr "模型 {modelID} 当前无法从 {providerID} 使用。请选择其他模型后继续。"
 
@@ -14245,6 +14284,34 @@ msgid "settings.catalog.sandbox.searchTerms"
 msgstr "沙箱 | 隔离 | 降级"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.skills.description"
+msgstr "选择从哪些其他智能体工具发现技能。"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.label"
+msgstr "技能"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.agents"
+msgstr "Agent 技能"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.claude"
+msgstr "Claude Code"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.codex"
+msgstr "Codex"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.openclaw"
+msgstr "OpenClaw"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.searchTerms"
+msgstr "技能 | skill | claude | codex | openclaw | agents | 兼容性"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.synergyLink.description"
 msgstr "持久化的远程 Synergy 目标、授权状态和已观测的主机信息。"
 
@@ -16629,6 +16696,10 @@ msgid "settings.panel.section.unavailable"
 msgstr "{label} 不可用"
 
 #. js-lingui-explicit-id
+msgid "settings.panel.theme.saveFailed"
+msgstr "主题更改无法保存"
+
+#. js-lingui-explicit-id
 msgid "settings.pathRow.copied"
 msgstr "已复制"
 
@@ -17599,6 +17670,54 @@ msgstr "已保存 {label}"
 #. js-lingui-explicit-id
 msgid "settings.save.unsaved"
 msgstr "未保存"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.agents.desc"
+msgstr "从 .agents/skills 目录加载 Agent 技能（默认：开）"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.agents.title"
+msgstr "Agent 技能"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.claude.desc"
+msgstr "从 .claude/skills 目录加载 Claude Code 技能（默认：开）"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.claude.title"
+msgstr "Claude Code"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.codex.desc"
+msgstr "从 .codex/skills 目录加载 Codex 技能（默认：开）"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.codex.title"
+msgstr "Codex"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.openclaw.desc"
+msgstr "从 .openclaw/skills 目录及工作区技能目录加载 OpenClaw 技能（默认：开）"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.openclaw.title"
+msgstr "OpenClaw"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.page.desc"
+msgstr "选择从哪些其他智能体工具中发现技能。"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.page.title"
+msgstr "技能"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.row.count"
+msgstr "{count, plural, other {# 个技能}}"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.section.title"
+msgstr "兼容性"
 
 #. js-lingui-explicit-id
 msgid "settings.stepScale.custom"

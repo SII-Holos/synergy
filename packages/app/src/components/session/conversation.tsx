@@ -61,6 +61,7 @@ export function SessionConversation(props: {
   terminalHeight: Accessor<number>
   onRewind?: (message: UserMessage) => void
   onReviewChanges?: (input: { messageID: string; file?: string }) => void
+  onForkMessage?: (messageID: string) => void
   onPendingGuide?: (item: SessionInboxItem) => void
   onPendingRemove?: (item: SessionInboxItem) => void
   rollbackActive?: boolean
@@ -158,7 +159,10 @@ export function SessionConversation(props: {
           const message = () => timelineSnapshot().map.get(key)
           const rootMessage = () => message() as UserMessage
           const isLast = () => key === lastTimelineID()
-          const turnMessages = () => turnProjection().turnMessagesFor(rootMessage())
+          const turnMessages = () => {
+            const root = rootMessage()
+            return root ? turnProjection().turnMessagesFor(root) : []
+          }
           if (!message()) return null
 
           if (message()?.role === "assistant") {
@@ -216,6 +220,7 @@ export function SessionConversation(props: {
                 }
                 rollbackActive={props.rollbackActive}
                 onReviewChanges={props.onReviewChanges}
+                onForkMessage={props.onForkMessage}
                 classes={{
                   root: "min-w-0 w-full relative",
                   content: "flex flex-col justify-between !overflow-visible",

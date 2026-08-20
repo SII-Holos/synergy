@@ -18,6 +18,7 @@ ToolRegistry.register({
   name: "task",
   render(props) {
     const data = useData()
+    const view = data.view
     const { _ } = useLingui()
     const summary = () =>
       (props.metadata.summary ?? []) as { id: string; tool: string; state: { status: string; title?: string } }[]
@@ -37,8 +38,7 @@ ToolRegistry.register({
     const childPermission = createMemo(() => {
       const sessionId = childSessionId()
       if (!sessionId) return undefined
-      const permissions = data.store.permission?.[sessionId] ?? []
-      return permissions[0]
+      return view.permissionsFor(sessionId)[0]
     })
 
     const handleSubtitleClick = () => {

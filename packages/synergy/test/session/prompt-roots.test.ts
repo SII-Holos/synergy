@@ -153,3 +153,48 @@ describe("SystemPrompt.environment with project folders", () => {
     expect(text.split("Project folder:").length - 1).toBe(1)
   })
 })
+
+describe("SystemPrompt.environment git repo line", () => {
+  test("reports no for a project scope in a non-git directory (stale snapshot)", async () => {
+    await using tmp = await tmpdir()
+    // Simulates a session created before git init: the scope snapshot has
+    // vcs undefined even though the directory may later become a repo.
+    const scope: import("../../src/scope").Scope.Project = {
+      type: "project",
+      id: "d_test",
+      directory: tmp.path,
+      worktree: tmp.path,
+      sandboxes: [],
+      time: { created: 0, updated: 0 },
+    }
+
+    const [text] = await ScopeContext.provide({
+      scope,
+      fn: () => SystemPrompt.environment(),
+    })
+    expect(text).toContain(`Is directory a git repo: no`)
+  })
+
+  test("reports yes after git init even with the same stale scope snapshot", async () => {
+    await using tmp = await tmpdir()
+    const scope: import("../../src/scope").Scope.Project = {
+      type: "project",
+      id: "d_test",
+      directory: tmp.path,
+      worktree: tmp.path,
+      vcs: undefined,
+      sandboxes: [],
+      time: { created: 0, updated: 0 },
+    }
+
+    // Same scope object (no vcs) is reused across turns; the directory
+    // becomes a git repo after the session was created.
+    await $`git init`.cwd(tmp.path).quiet()
+
+    const [text] = await ScopeContext.provide({
+      scope,
+      fn: () => SystemPrompt.environment(),
+    })
+    expect(text).toContain(`Is directory a git repo: yes`)
+  })
+})

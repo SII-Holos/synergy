@@ -25,6 +25,7 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
   buildEmailPatch(cfg, state, patch)
   buildChannelPatch(cfg, state, patch)
   buildLibraryPatch(cfg, state, patch)
+  buildSkillsPatch(cfg, state, patch)
 
   return patch
 }
@@ -39,8 +40,8 @@ function buildGeneralPatch(cfg: Config, state: SettingsState, patch: Record<stri
   const username = general.username.trim()
   if (username !== (cfg.username ?? UI_DEFAULTS.username)) patch.username = username || undefined
 
-  const theme = general.theme.trim()
-  if (theme !== (cfg.theme ?? UI_DEFAULTS.theme)) patch.theme = theme
+  // Theme is applied instantly and persisted independently via a background
+  // domain update — it must not appear in the normal save-changes patch.
 
   const resolvedLocale = cfg.locale ?? UI_DEFAULTS.locale
   if (general.locale !== resolvedLocale) patch.locale = general.locale
@@ -524,6 +525,18 @@ function buildLibraryPatch(cfg: Config, state: SettingsState, patch: Record<stri
   nextLibrary.autonomy = library.autonomy !== "false"
 
   patch.library = nextLibrary
+}
+function buildSkillsPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
+  const { skills } = state
+  const compatibility = cfg.skills?.compatibility
+  const next: Record<string, boolean> = {}
+  for (const source of ["agents", "claude", "codex", "openclaw"] as const) {
+    const current = compatibility?.[source] !== false
+    if (skills[source] !== current) next[source] = skills[source]
+  }
+  if (Object.keys(next).length === 0) return
+
+  patch.skills = { compatibility: next }
 }
 
 function parseList(value: string): string[] {

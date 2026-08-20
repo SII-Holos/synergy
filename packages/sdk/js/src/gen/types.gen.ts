@@ -2803,6 +2803,32 @@ export type LibraryConfig = {
 }
 
 /**
+ * Per-source compatibility toggles for discovering Skills from other agent tools
+ */
+export type SkillsCompatibilityConfig = {
+  /**
+   * Load Agent Skills from .agents/skills directories (default: true)
+   */
+  agents?: boolean
+  /**
+   * Load Claude Code Skills from .claude/skills directories (default: true)
+   */
+  claude?: boolean
+  /**
+   * Load Codex Skills from .codex/skills directories (default: true)
+   */
+  codex?: boolean
+  /**
+   * Load OpenClaw Skills from .openclaw/skills and workspace skills directories (default: true)
+   */
+  openclaw?: boolean
+}
+
+export type SkillsConfig = {
+  compatibility?: SkillsCompatibilityConfig
+}
+
+/**
  * Retry policy for connecting to this server
  */
 export type McpRetryConfig = {
@@ -3790,6 +3816,7 @@ export type Config = {
   embedding?: EmbeddingConfig
   rerank?: RerankConfig
   library?: LibraryConfig
+  skills?: SkillsConfig
   /**
    * MCP (Model Context Protocol) server configurations
    */
@@ -4571,6 +4598,7 @@ export type ConfigDomainSummary = {
     | "library"
     | "mcp"
     | "plugins"
+    | "skills"
     | "agents"
     | "commands"
     | "permissions"
@@ -4637,6 +4665,7 @@ export type ConfigDomainImportDomainPlan = {
     | "library"
     | "mcp"
     | "plugins"
+    | "skills"
     | "agents"
     | "commands"
     | "permissions"
@@ -4694,6 +4723,7 @@ export type ConfigDomainImportPlanInput = {
     | "library"
     | "mcp"
     | "plugins"
+    | "skills"
     | "agents"
     | "commands"
     | "permissions"
@@ -4774,6 +4804,7 @@ export type ConfigImportRevisionConflictError = {
       | "library"
       | "mcp"
       | "plugins"
+      | "skills"
       | "agents"
       | "commands"
       | "permissions"
@@ -4802,6 +4833,7 @@ export type ConfigDomainImportApplyInput = {
     | "library"
     | "mcp"
     | "plugins"
+    | "skills"
     | "agents"
     | "commands"
     | "permissions"
@@ -6134,6 +6166,10 @@ export type SkillList = {
       [key: string]: unknown
     }
     message: string
+  }>
+  sources: Array<{
+    source: "synergy" | "agents" | "claude" | "codex" | "openclaw"
+    count: number
   }>
 }
 
@@ -10941,6 +10977,7 @@ export type ConfigDomainGetData = {
       | "library"
       | "mcp"
       | "plugins"
+      | "skills"
       | "agents"
       | "commands"
       | "permissions"
@@ -10988,6 +11025,7 @@ export type ConfigDomainUpdateData = {
       | "library"
       | "mcp"
       | "plugins"
+      | "skills"
       | "agents"
       | "commands"
       | "permissions"
@@ -11035,6 +11073,7 @@ export type ConfigDomainOpenData = {
       | "library"
       | "mcp"
       | "plugins"
+      | "skills"
       | "agents"
       | "commands"
       | "permissions"
@@ -12185,6 +12224,10 @@ export type SessionForkData = {
         }
       | {
           type: "before"
+          messageID: string
+        }
+      | {
+          type: "through"
           messageID: string
         }
     workspace?: SessionWorkspaceSelection
