@@ -1,7 +1,15 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from "bun:test"
 import type { Tool as AITool } from "ai"
 import { SessionProcessor } from "../../src/session/processor"
 import { ToolScheduler, ToolTaskScheduler } from "../../src/session/tool-scheduler"
+
+// These tests stop the module-level ToolScheduler to exercise shutdown
+// admission. Bun runs several test files per worker process, so restore the
+// default accepting state afterwards — otherwise the next file in the same
+// worker (e.g. auto-expand interception) gets its dispatches rejected.
+afterAll(() => {
+  ToolScheduler.configure()
+})
 
 function processor() {
   const slots = new Map<string, SessionProcessor.ToolExecutionSlot>()
