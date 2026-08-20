@@ -40,6 +40,7 @@ export interface DocCheckOptions {
 
 export interface DocCheckResult {
   errors: string[]
+  warnings: string[]
   fixed: number
 }
 
@@ -364,19 +365,44 @@ async function checkGeneratedFreshness(root: string, errors: string[]): Promise<
   }
 }
 
+/**
+ * Restrict staged markdown files to the same document scope the full check
+ * covers, so pre-commit and `doc:check` agree on which files must satisfy the
+ * paragraph-wrap contract. Files outside that scope (e.g. PRODUCT.md) keep
+ * their own formatting conventions.
+ *
+ * `stagedFiles` returns paths relative to the repository root regardless of
+ * the current working directory, so staged paths are resolved against `root`
+ * (not `cwd`). Resolving against `cwd` would silently drop every file when the
+ * hook runs from a subdirectory and the gate would pass without checking
+ * anything.
+ */
+export function filterStagedFiles(staged: string[], scope: string[], root: string): string[] {
+  return staged.filter((file) => scope.includes(path.resolve(root, file)))
+}
+
 export async function runDocCheck(options: DocCheckOptions = {}): Promise<DocCheckResult> {
   const root = options.root ?? REPO_ROOT
   const cwd = options.cwd ?? root
   const errors: string[] = []
+  const warnings: string[] = []
   let fixed = 0
-  const files = options.staged ? await stagedFiles(cwd) : await collectMarkdownFiles(root)
-  await checkLinks(files, cwd, errors)
-  fixed += await checkWrap(files, cwd, errors, options.fix ?? false)
+  const scope = await collectMarkdownFiles(root)
   if (!options.staged) {
+    await checkLinks(scope, cwd, errors)
+    fixed += await checkWrap(scope, cwd, errors, options.fix ?? false)
     await checkBudgets(root, cwd, errors)
     await checkGeneratedFreshness(root, errors)
+    return { errors, warnings, fixed }
   }
-  return { errors, fixed }
+  const staged = await stagedFiles(cwd)
+  const files = filterStagedFiles(staged, scope, root)
+  if (staged.length > 0 && files.length === 0) {
+    warnings.push(`staged markdown files (${staged.length}) are all outside the document scope; nothing was checked`)
+  }
+  await checkLinks(files, cwd, errors)
+  fixed += await checkWrap(files, cwd, errors, options.fix ?? false)
+  return { errors, warnings, fixed }
 }
 
 if (import.meta.main) {
@@ -384,6 +410,7 @@ if (import.meta.main) {
   const fix = process.argv.includes("--fix")
   const result = await runDocCheck({ staged, fix })
   if (result.fixed > 0) console.log(`Rewrapped ${result.fixed} paragraph block(s).`)
+  for (const warning of result.warnings) console.warn(`- ${warning}`)
   if (result.errors.length > 0) {
     for (const error of result.errors) console.error(`- ${error}`)
     console.error(`Document validation failed with ${result.errors.length} error(s).`)
