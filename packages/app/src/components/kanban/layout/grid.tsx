@@ -8,7 +8,7 @@ export function KanbanGrid(props: {
   renderPane: (pane: BoardPane) => JSX.Element
   /** Fixed grid columns (1–4). */
   cols: number
-  /** Fixed grid rows (1–4); extra panes overflow. */
+  /** Fixed grid rows (1–3); extra panes overflow. */
   rows: number
   /** Reorder pinned panes by swapping the dragged key onto a target key. */
   onReorder: (fromKey: string, toKey: string) => void

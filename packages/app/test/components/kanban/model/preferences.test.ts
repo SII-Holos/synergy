@@ -7,7 +7,7 @@ describe("migrateKanbanPreferences", () => {
     expect(migrateKanbanPreferences(null)).toEqual(defaultKanbanPreferences())
     expect(migrateKanbanPreferences("garbage")).toEqual(defaultKanbanPreferences())
   })
-  test("clamps grid dimensions into the 1-4 range", () => {
+  test("clamps grid dimensions (columns 1-4, rows 1-3)", () => {
     expect(migrateKanbanPreferences({ gridCols: 99, gridRows: -3 }).gridCols).toBe(4)
     expect(migrateKanbanPreferences({ gridCols: 99, gridRows: -3 }).gridRows).toBe(1)
     expect(migrateKanbanPreferences({ gridCols: 2.6, gridRows: 1.4 }).gridCols).toBe(3)

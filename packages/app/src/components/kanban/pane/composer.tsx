@@ -60,6 +60,7 @@ export function KanbanPaneComposer(props: {
   const [draft, setDraft] = createSignal("")
   const [sending, setSending] = createSignal(false)
   const [agent, setAgent] = createSignal<string | undefined>(props.session?.agentOverride)
+  const [switchingProfile, setSwitchingProfile] = createSignal(false)
 
   const profile = createMemo<ControlProfileId>(() => props.session?.controlProfile ?? "guarded")
   const workflow = createMemo<BoardWorkflowKind>(() => workflowKindOf(props.session))
@@ -118,11 +119,11 @@ export function KanbanPaneComposer(props: {
             }
             title={_(kanbanPage.composerAgent)}
           >
-            <div class="kanban-pane-span-menu" role="listbox" aria-label={_(kanbanPage.composerAgent)}>
+            <div class="kanban-composer-menu" role="listbox" aria-label={_(kanbanPage.composerAgent)}>
               <For each={visibleAgents()}>
                 {(candidate) => (
                   <button
-                    class="kanban-pane-span-item"
+                    class="kanban-composer-item"
                     data-active={candidate.name === currentAgent() || undefined}
                     onClick={() => setAgent(candidate.name)}
                   >
@@ -142,13 +143,19 @@ export function KanbanPaneComposer(props: {
           }
           title={_(kanbanPage.composerPermission)}
         >
-          <div class="kanban-pane-span-menu" role="listbox" aria-label={_(kanbanPage.composerPermission)}>
+          <div class="kanban-composer-menu" role="listbox" aria-label={_(kanbanPage.composerPermission)}>
             <For each={PERMISSION_MODES}>
               {(mode) => (
                 <button
-                  class="kanban-pane-span-item"
+                  class="kanban-composer-item"
                   data-active={mode.id === profile() || undefined}
-                  onClick={() => void run(() => props.onUpdateProfile(mode.id))}
+                  onClick={() => {
+                    // Debounce double-clicks: the update hits the session API
+                    // and a second in-flight call would race the first.
+                    if (switchingProfile()) return
+                    setSwitchingProfile(true)
+                    void run(() => props.onUpdateProfile(mode.id)).finally(() => setSwitchingProfile(false))
+                  }}
                 >
                   {translateModeCopy(mode.label)}
                 </button>
@@ -165,11 +172,11 @@ export function KanbanPaneComposer(props: {
           }
           title={_(kanbanPage.composerWorkflow)}
         >
-          <div class="kanban-pane-span-menu" role="listbox" aria-label={_(kanbanPage.composerWorkflow)}>
+          <div class="kanban-composer-menu" role="listbox" aria-label={_(kanbanPage.composerWorkflow)}>
             <For each={["none", "plan", "lattice", "boss"] as const}>
               {(kind) => (
                 <button
-                  class="kanban-pane-span-item"
+                  class="kanban-composer-item"
                   data-active={kind === workflow() || undefined}
                   onClick={() => void run(() => props.onSetWorkflow(kind))}
                 >

@@ -464,6 +464,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  contain: layout style;
 }
 
 .kanban-pane-empty {
@@ -477,6 +478,8 @@
 
 .kanban-pane-msg {
   border-radius: 8px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 96px;
 }
 
 .kanban-pane-composer {
@@ -525,6 +528,40 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* --- Composer menus --- */
+
+.kanban-composer-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 140px;
+  padding: 4px;
+}
+
+.kanban-composer-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-size: var(--font-size-small);
+  color: var(--text-strong);
+}
+
+.kanban-composer-item:hover {
+  background: var(--surface-base-interactive-active);
+}
+
+.kanban-composer-item[data-active] {
+  color: var(--text-strong);
+  background: var(--surface-base-active);
 }
 
 .kanban-pane-statusbar {

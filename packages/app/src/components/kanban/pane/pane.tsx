@@ -25,7 +25,11 @@ import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
 import { ConversationViewport } from "@/components/session/conversation-viewport"
 import { buildConversationTimelineSnapshot } from "@/components/session/conversation-timeline"
-import { messagesFrom, selectMessagesInCanonicalOrder } from "@/components/session/session-message-order"
+import {
+  isActionCommandMessage,
+  messagesFrom,
+  selectMessagesInCanonicalOrder,
+} from "@/components/session/session-message-order"
 import { resolveSessionVisualState, type SessionVisualStore } from "@/components/sidebar/session-visual-state"
 import { hasMessageWindowSnapshot, type MessageWindowMetadata } from "@/context/session-message-window"
 import { useLocale } from "@/context/locale"
@@ -59,15 +63,6 @@ export type BoardPaneLoadState = {
 /** Latest-mode turn window cap per pane, mirroring the session surface. */
 const MAX_RENDERED_TURNS = 40
 
-function isActionCommandMessage(message: Message): boolean {
-  const metadata = message.metadata as
-    | { command?: { kind?: string; promptVisible?: boolean }; promptVisible?: boolean }
-    | undefined
-  if (metadata?.command?.kind !== "action") return false
-  if (message.includeInContext !== undefined) return message.includeInContext === false
-  return metadata.promptVisible === false
-}
-
 export function KanbanPane(props: {
   pane: BoardPane
   data: BoardPaneData
@@ -77,7 +72,9 @@ export function KanbanPane(props: {
   onToggleFollow: () => void
   onOpen: () => void
   onPinToggle?: () => void
-  onRemove?: () => void
+  /** Reactive pinned flag: must be an accessor because Solid's keyed For
+   *  does not re-invoke pane rows on flag-only changes. */
+  pinned: () => boolean
   compact?: boolean
   activityDisplay: () => ActivityDisplayMode
   compactReasoning: () => boolean
@@ -173,8 +170,7 @@ export function KanbanPane(props: {
   return (
     <div
       data-component="kanban-pane"
-      data-pane-kind={props.pane.kind}
-      data-pane-pinned={props.pane.pinned || undefined}
+      data-pane-pinned={props.pinned() || undefined}
       data-compact={props.compact || undefined}
       class="kanban-pane"
     >
@@ -215,12 +211,12 @@ export function KanbanPane(props: {
           <Show when={props.onPinToggle}>
             <button
               class="kanban-pane-action"
-              data-active={props.pane.pinned || undefined}
+              data-active={props.pinned() || undefined}
               onClick={props.onPinToggle}
-              title={props.pane.pinned ? _(kanbanPage.unpinPane) : _(kanbanPage.pinPane)}
+              title={props.pinned() ? _(kanbanPage.unpinPane) : _(kanbanPage.pinPane)}
             >
               <Icon
-                name={props.pane.pinned ? getSemanticIcon("action.unpin") : getSemanticIcon("action.pin")}
+                name={props.pinned() ? getSemanticIcon("action.unpin") : getSemanticIcon("action.pin")}
                 size="small"
               />
             </button>
@@ -228,12 +224,11 @@ export function KanbanPane(props: {
           <Show when={props.pane.kind === "live"}>
             <span
               class="kanban-pane-grip"
-              draggable="true"
-              data-locked={!props.pane.pinned || undefined}
-              title={props.pane.pinned ? _(kanbanPage.dragReorder) : _(kanbanPage.pinToReorderHint)}
-              aria-label={props.pane.pinned ? _(kanbanPage.dragReorder) : _(kanbanPage.pinToReorderHint)}
+              data-locked={!props.pinned() || undefined}
+              title={props.pinned() ? _(kanbanPage.dragReorder) : _(kanbanPage.pinToReorderHint)}
+              aria-label={props.pinned() ? _(kanbanPage.dragReorder) : _(kanbanPage.pinToReorderHint)}
               onDragStart={(event) => {
-                if (!props.pane.pinned) {
+                if (!props.pinned()) {
                   event.preventDefault()
                   showToast({ type: "info", title: _(kanbanPage.pinToReorderHint) })
                   return
@@ -244,11 +239,6 @@ export function KanbanPane(props: {
             >
               <Icon name={getSemanticIcon("action.grip")} size="small" />
             </span>
-          </Show>
-          <Show when={props.onRemove}>
-            <button class="kanban-pane-action" onClick={props.onRemove} title={_(kanbanPage.removePane)}>
-              <Icon name={getSemanticIcon("action.clear")} size="small" />
-            </button>
           </Show>
         </div>
       </div>

@@ -2932,10 +2932,6 @@ msgid "app.kanban.pinToReorderHint"
 msgstr ""
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.removePane"
-msgstr ""
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.retry"
 msgstr ""
 

@@ -920,25 +920,25 @@ function createGlobalSync() {
         dag: captureResourceRequest(scopeKey, sessionID, "dag"),
       })
     }
-    const states = await sdk.session
+    const batch = await sdk.session
       .volatileBatch({
         ...scopeRequest(scopeKey),
         sessionVolatileBatchInput: { sessionIDs: plan.activeSessionIDs },
       })
-      .then((result) => result.data?.sessions)
+      .then((result) => ({ sessions: result.data?.sessions, headers: result.response?.headers }))
       .catch(() => undefined)
-    if (!states) return
+    if (!batch) return
     for (const sessionID of plan.activeSessionIDs) {
-      const state = states[sessionID]
+      const state = batch.sessions?.[sessionID]
       const requests = sessionRequests.get(sessionID)
       if (!state || !requests) continue
-      applyResourceResponse(scopeKey, sessionID, "inbox", requests.inbox, undefined, () => {
+      applyResourceResponse(scopeKey, sessionID, "inbox", requests.inbox, batch.headers, () => {
         setStore("inbox", sessionID, reconcile(state.inbox, { key: "id" }))
       })
-      applyResourceResponse(scopeKey, sessionID, "todo", requests.todo, undefined, () => {
+      applyResourceResponse(scopeKey, sessionID, "todo", requests.todo, batch.headers, () => {
         setStore("todo", sessionID, reconcile(state.todo, { key: "id" }))
       })
-      applyResourceResponse(scopeKey, sessionID, "dag", requests.dag, undefined, () => {
+      applyResourceResponse(scopeKey, sessionID, "dag", requests.dag, batch.headers, () => {
         setStore("dag", sessionID, reconcile(state.dag, { key: "id" }))
       })
     }
@@ -1010,6 +1010,10 @@ function createGlobalSync() {
   const messageLru: string[] = []
   let activeBucketKey: string | undefined
   const bucketKey = (scopeKey: string, sessionID: string) => `${scopeKey}\n${sessionID}`
+  // Bumped whenever a message bucket is actually evicted, so live views that
+  // render several sessions at once (the kanban board) can refetch panes
+  // whose snapshot disappeared while still visible.
+  const [messageEvictionVersion, setMessageEvictionVersion] = createSignal(0)
 
   function evictMessageBuckets() {
     const protectedIds = new Set<string>(activeBucketKey ? [activeBucketKey] : [])
@@ -1037,6 +1041,7 @@ function createGlobalSync() {
     for (let i = messageLru.length - 1; i >= 0; i--) {
       if (evictSet.has(messageLru[i])) messageLru.splice(i, 1)
     }
+    setMessageEvictionVersion((version) => version + 1)
   }
 
   function touchMessageBucket(scopeKey: string, sessionID: string) {
@@ -1919,6 +1924,7 @@ function createGlobalSync() {
     releaseScopeState,
     markActiveSession,
     touchMessageBucket,
+    messageEvictionVersion,
     beginContextProjection: contextProjectionRevision.begin,
     setLatestContextMessage,
     recover,

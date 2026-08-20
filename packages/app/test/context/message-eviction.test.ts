@@ -32,9 +32,9 @@ describe("planBucketEviction", () => {
     expect(planBucketEviction(["a", "b"], 1, S("a", "b"))).toEqual([])
   })
 
-  test("evicts around multiple protected ids (board pane set)", () => {
-    // 8 loaded, cap 6, protect two board panes → budget 4; keep newest 4 of the
-    // remaining 6, evict oldest 2 of them, never touching the protected panes.
+  test("evicts around multiple protected ids", () => {
+    // 8 loaded, cap 6, protect two ids → budget 4; keep newest 4 of the
+    // remaining 6, evict oldest 2 of them, never touching the protected ids.
     const evicted = planBucketEviction(["a", "b", "c", "d", "e", "f", "g", "h"], 6, S("b", "f"))
     expect(evicted).not.toContain("b")
     expect(evicted).not.toContain("f")

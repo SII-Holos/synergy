@@ -1323,7 +1323,6 @@ export const kanbanPage = {
   follow: { id: "app.kanban.follow", message: "Follow latest" },
   unfollow: { id: "app.kanban.unfollow", message: "Paused" },
   openSession: { id: "app.kanban.openSession", message: "Open session" },
-  removePane: { id: "app.kanban.removePane", message: "Remove" },
   pinPane: { id: "app.kanban.pinPane", message: "Pin" },
   unpinPane: { id: "app.kanban.unpinPane", message: "Unpin" },
   dragReorder: { id: "app.kanban.dragReorder", message: "Drag to reorder pinned sessions" },

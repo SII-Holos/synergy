@@ -2932,10 +2932,6 @@ msgid "app.kanban.pinToReorderHint"
 msgstr "先固定此会话才能调整顺序"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
-msgid "app.kanban.removePane"
-msgstr "移除"
-
-#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.retry"
 msgstr "重试"
 

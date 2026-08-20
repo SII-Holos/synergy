@@ -15,7 +15,6 @@ import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { kanbanPage } from "@/locales/messages"
 import { resolveActivityDisplay } from "@ericsanchezok/synergy-ui/session-turn-activity"
 import type { ControlProfileId } from "@/context/input"
-import type { NavigationContentProps } from "@/plugin/registries/navigation-registry"
 import {
   computeBoardPanes,
   reorderPinnedKeys,
@@ -146,6 +145,11 @@ export function KanbanPanel() {
   // placeholders never reach the loader (their sessions no longer exist).
   createEffect(() => {
     const current = panes()
+    // Track the bucket-eviction version so a pane whose message bucket was
+    // LRU-evicted while still visible refetches instead of lingering on a
+    // stale loading shell (syncPanes force-reloads ready panes whose bucket
+    // snapshot is gone).
+    globalSync.messageEvictionVersion()
     boardLoader.syncPanes(
       current
         .filter((pane) => pane.kind === "live")
@@ -248,6 +252,7 @@ export function KanbanPanel() {
         onToggleFollow={() => toggleFollow(pane)}
         onOpen={() => openSession(pane)}
         onPinToggle={pane.pinned ? () => unpinPane(pane) : () => pinKey(pane.key)}
+        pinned={() => store.pinned.includes(pane.key)}
         compact={variant === "rail"}
         activityDisplay={activityDisplay}
         compactReasoning={compactReasoning}
@@ -302,8 +307,14 @@ export function KanbanPanel() {
     if (!payload) return
     const session = parseSessionDragPayload(payload)
     if (!session) return
+    // Drag payloads are attacker-controllable: only pin sessions the sidebar
+    // actually shows. An unmatched key would persist as a permanent
+    // "unavailable" placeholder pane.
+    const key = `${session.scopeKey}\n${session.sessionID}`
+    const known = sources().some((source) => `${source.scopeKey}\n${source.entry.id}` === key)
+    if (!known) return
     event.preventDefault()
-    pinKey(`${session.scopeKey}\n${session.sessionID}`)
+    pinKey(key)
   }
 
   return (
@@ -357,7 +368,6 @@ export function KanbanPanel() {
                 <option value={1}>1</option>
                 <option value={2}>2</option>
                 <option value={3}>3</option>
-                <option value={4}>4</option>
               </select>
             </label>
           </div>

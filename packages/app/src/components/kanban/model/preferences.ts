@@ -11,7 +11,7 @@ export type KanbanPersisted = {
   pinned: string[]
   /** Grid layout: fixed number of columns (1–4). */
   gridCols: number
-  /** Grid layout: fixed number of visible rows (1–4); extra panes overflow. */
+  /** Grid layout: fixed number of visible rows (1–3); extra panes overflow. */
   gridRows: number
   /** Focus layout: rail (right) width in px; the draggable divider persists it. */
   focusRailWidth: number
@@ -20,7 +20,7 @@ export type KanbanPersisted = {
 export const GRID_COL_MIN = 1
 export const GRID_COL_MAX = 4
 export const GRID_ROW_MIN = 1
-export const GRID_ROW_MAX = 4
+export const GRID_ROW_MAX = 3
 
 export const FOCUS_RAIL_MIN = 160
 export const FOCUS_RAIL_MAX = 640
