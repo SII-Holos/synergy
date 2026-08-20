@@ -12378,6 +12378,60 @@ msgstr "父会话"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.action"
+msgstr "分叉会话"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.cancel"
+msgstr "取消"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.copiedNote"
+msgstr "将从这条回复在 {time} 分叉。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.description"
+msgstr "将此回复之前的对话复制到一个新会话中。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.description.preview"
+msgstr "将对话复制到「{preview}」这条回复为止，并放入一个新会话中。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.failed"
+msgstr "分叉失败"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.forking"
+msgstr "正在分叉…"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.intoNewSession"
+msgstr "到一个新会话中。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.requestFailed"
+msgstr "请求失败"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.thisCopies"
+msgstr "这将复制"
+
+#. dialog-fork-confirm.tsx
+msgid "session.fork.confirm.title"
+msgstr "从此消息分叉会话"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.inbox.afterTurn"
 msgstr "回合后"
 

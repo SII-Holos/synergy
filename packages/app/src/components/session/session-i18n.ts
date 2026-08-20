@@ -198,6 +198,28 @@ export const S = {
   },
   rewindRequestFailed: { id: "session.rewind.requestFailed", message: "Request failed" },
 
+  // dialog-fork-confirm.tsx
+  forkConfirmTitle: { id: "session.fork.confirm.title", message: "Fork session from this message" },
+  forkConfirmDescription: {
+    id: "session.fork.confirm.description",
+    message: "Copy the conversation through this reply into a new session.",
+  },
+  forkConfirmDescriptionPreview: {
+    id: "session.fork.confirm.description.preview",
+    message: 'Copy the conversation through "{preview}" into a new session.',
+  },
+  forkConfirmThisCopies: { id: "session.fork.confirm.thisCopies", message: "This will copy" },
+  forkConfirmIntoNewSession: { id: "session.fork.confirm.intoNewSession", message: "into a new session." },
+  forkConfirmCopiedNote: {
+    id: "session.fork.confirm.copiedNote",
+    message: "Forked from this reply at {time}.",
+  },
+  forkConfirmAction: { id: "session.fork.confirm.action", message: "Fork session" },
+  forkConfirmForking: { id: "session.fork.confirm.forking", message: "Forking…" },
+  forkConfirmCancel: { id: "session.fork.confirm.cancel", message: "Cancel" },
+  forkConfirmFailed: { id: "session.fork.confirm.failed", message: "Fork failed" },
+  forkConfirmRequestFailed: { id: "session.fork.confirm.requestFailed", message: "Request failed" },
+
   // session-progress summary labels
   progressDone: { id: "session.progress.done", message: "Done · {count, plural, one {# task} other {# tasks}}" },
   progressNeedsAttention: {

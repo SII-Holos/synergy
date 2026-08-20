@@ -12,11 +12,15 @@ Two coordinated changes:
 
 1. **Backend: `position.through` fork semantics.** `Session.fork` accepts `position: { type: "through", messageID }`, which copies history through the target message inclusive (the existing `before` stays exclusive). The fork records `forkedFrom.messageID` as the target message, matching the existing lineage contract. The OpenAPI schema and generated SDK (`session.fork` client) are regenerated, so the new discriminator arm is part of the wire contract.
 
-2. **Frontend: fork icon beside Copy Markdown.** The settled assistant output footer (`assistant-message-meta`, previously timestamp + copy button) gains a fork button using the new `action.fork` semantic token (`split` Lucide glyph, registered in the built-in icon registry). The button only renders when a handler is wired (`onForkMessage` prop on `SessionTurn`, threaded through `SessionConversation` from the session page). Clicking it calls `sdk.client.session.fork({ sessionID, position: { type: "through", messageID } })`, shows a success toast, and navigates to the new session. Failures surface an error toast via the standard `requestErrorMessage` path.
+2. **Frontend: fork icon beside Copy Markdown.** The settled assistant output footer (`assistant-message-meta`, previously timestamp + copy button) gains a fork button using the new `action.fork` semantic token (`split` Lucide glyph, registered in the built-in icon registry). The button only renders when a handler is wired (`onForkMessage` prop on `SessionTurn`, threaded through `SessionConversation` from the session page). Clicking it opens a compact confirmation dialog (`DialogForkConfirm`, modeled on the rewind-confirm dialog) that shows what will be copied — the user/assistant message counts through the target reply inclusive, a text preview of the reply when available, and the reply time — with Cancel / Fork session actions. Confirming calls `sdk.client.session.fork({ sessionID, position: { type: "through", messageID } })`, shows a success toast, and navigates to the new session. Failures surface an error toast via the standard `requestErrorMessage` path and keep the dialog open for retry.
 
-New i18n strings: `session-turn.fork-message` (tooltip), `app.session.forked` / `app.session.forked.desc` / `app.session.fork.failed` (toasts), translated in `zh-CN` alongside the extracted `en`/`pseudo` catalogs.
+New i18n strings: `session-turn.fork-message` (tooltip), `session.fork.confirm.*` (dialog copy), `app.session.forked` / `app.session.forked.desc` / `app.session.fork.failed` (toasts), translated in `zh-CN` alongside the extracted `en`/`pseudo` catalogs.
 
 ## Alternatives considered
+
+- **Fork immediately on icon click** — rejected: forking is a destructive-ish history split that creates a new session and navigates away; the rewind flow already established a confirmation dialog for history-changing actions, and a one-click fork gives no chance to cancel an accidental tap.
+- **Inline confirm popover instead of a dialog** — rejected: the rewind confirm dialog is the established shared pattern for history-affecting confirmations in the session surface; reusing its structure (impact card + Cancel/confirm + pending spinner) keeps visual and interaction consistency.
+- **Reuse `DialogRewindConfirm` directly** — rejected: its props, copy, and actions are rewind/retry-specific; a dedicated dialog with fork-specific impact copy is clearer than generalizing the rewind component.
 
 - **Expose the existing `before` position instead of adding `through`** — rejected: `before` excludes the target message, so forking "from this reply" would silently drop the reply the user clicked. A dedicated inclusive arm matches the interaction and keeps `before`'s rewind-style semantics untouched.
 - **Place the entry in a message context/overflow menu** — rejected: assistant rows have no existing context menu surface, and the copy-markdown footer is the established quick-action row for settled outputs; a visible icon there is discoverable without new chrome.
@@ -25,7 +29,8 @@ New i18n strings: `session-turn.fork-message` (tooltip), `app.session.forked` / 
 
 ## Consequences
 
-- Users can fork a session at any settled assistant reply directly from the conversation, with the new session opening immediately and lineage (`forkedFrom`) preserved.
+- Users can fork a session at any settled assistant reply directly from the conversation, with a confirmation step before the new session opens; lineage (`forkedFrom`) is preserved.
 - The fork API gains a third `position` arm; existing callers using `current`/`before`/`messageID` are unaffected.
 - The UI button only appears where a handler exists, so embedded or plugin-driven `SessionTurn` usages without the prop keep the previous footer.
 - The `split` icon addition expands the built-in icon registry and Lucide component map; the semantic-icon contract test enforces the new token's uniqueness and registration.
+- The confirmation dialog adds a small interaction cost to each fork; the impact card communicates exactly what will be copied so the confirmation is informative rather than a blind gate.

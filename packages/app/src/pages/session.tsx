@@ -81,6 +81,7 @@ import { rollbackDialogAction } from "@/components/session/rollback-dialog-model
 import { resolveRollbackDialogSeenKey } from "@/context/rollback-dialog"
 import { DialogRewindConfirm } from "@/components/session/dialog-rewind-confirm"
 import { createRewindRetryInput } from "@/components/session/rewind-retry"
+import { DialogForkConfirm, forkReplyPreview } from "@/components/session/dialog-fork-confirm"
 import { hasSessionRenderableContent, sessionLoadView } from "@/components/session/session-load-state"
 import { TerminalProvider } from "@/context/terminal"
 import { PromptProvider } from "@/context/prompt"
@@ -470,31 +471,44 @@ function SessionPageContent() {
       />
     ))
   }
-  const forkMessageAt = async (messageID: string) => {
+  const openForkConfirm = (messageID: string) => {
     const sessionID = params.id
     if (!sessionID) return
-    try {
-      const forked = await sdk.client.session.fork({
-        sessionID,
-        position: { type: "through", messageID },
-        workspace: { mode: "current" },
-        controlProfile: info()?.controlProfile ?? sync.data.config.controlProfile,
-      })
-      if (forked.data) {
-        showToast({
-          type: "success",
-          title: i18n._(AP.sessionForked.id),
-          description: i18n._(AP.sessionForkedDesc.id),
-        })
-        navigateToSession(forked.data.id)
-      }
-    } catch (error) {
-      showToast({
-        type: "error",
-        title: i18n._(AP.sessionForkFailed.id),
-        description: requestErrorMessage(error),
-      })
-    }
+    const target = messages().find((message) => message.id === messageID)
+    if (!target) return
+    const timeline = messages().filter((message) => message.role === "user" || message.role === "assistant")
+    dialog.push(() => (
+      <DialogForkConfirm
+        message={{ id: messageID, time: target.time }}
+        allMessages={timeline}
+        preview={forkReplyPreview(dataView().partsFor(messageID))}
+        onConfirm={async () => {
+          try {
+            const forked = await sdk.client.session.fork({
+              sessionID,
+              position: { type: "through", messageID },
+              workspace: { mode: "current" },
+              controlProfile: info()?.controlProfile ?? sync.data.config.controlProfile,
+            })
+            if (!forked.data) return false
+            showToast({
+              type: "success",
+              title: i18n._(AP.sessionForked.id),
+              description: i18n._(AP.sessionForkedDesc.id),
+            })
+            navigateToSession(forked.data.id)
+            return true
+          } catch (error) {
+            showToast({
+              type: "error",
+              title: i18n._(AP.sessionForkFailed.id),
+              description: requestErrorMessage(error),
+            })
+            return false
+          }
+        }}
+      />
+    ))
   }
   const messagesReady = createMemo(() => messageSnapshot() !== undefined)
   const messageLoad = createMemo(() => {
@@ -1512,7 +1526,7 @@ function SessionPageContent() {
                           }}
                           onPendingGuide={(item) => void guidePending(item)}
                           onPendingRemove={(item) => void removePending(item)}
-                          onForkMessage={(messageID) => void forkMessageAt(messageID)}
+                          onForkMessage={(messageID) => openForkConfirm(messageID)}
                           rollbackActive={rollbackActive()}
                         />
                       </Match>
