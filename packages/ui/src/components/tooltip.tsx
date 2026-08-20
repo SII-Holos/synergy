@@ -1,5 +1,6 @@
 import { Tooltip as KobalteTooltip } from "@kobalte/core/tooltip"
-import { children, createSignal, Match, onMount, splitProps, Switch, type JSX } from "solid-js"
+import { children, createSignal, Match, onCleanup, onMount, splitProps, Switch, type JSX } from "solid-js"
+import { attachFocusListeners } from "./tooltip-focus"
 import type { ComponentProps } from "solid-js"
 
 export interface TooltipProps extends ComponentProps<typeof KobalteTooltip> {
@@ -36,17 +37,15 @@ export function Tooltip(props: TooltipProps) {
 
   onMount(() => {
     const childElements = c()
-    if (childElements instanceof HTMLElement) {
-      childElements.addEventListener("focus", () => setOpen(true))
-      childElements.addEventListener("blur", () => setOpen(false))
-    } else if (Array.isArray(childElements)) {
-      for (const child of childElements) {
-        if (child instanceof HTMLElement) {
-          child.addEventListener("focus", () => setOpen(true))
-          child.addEventListener("blur", () => setOpen(false))
-        }
-      }
-    }
+    const elements =
+      childElements instanceof HTMLElement ? [childElements] : Array.isArray(childElements) ? childElements : []
+    onCleanup(
+      attachFocusListeners(
+        elements,
+        () => setOpen(true),
+        () => setOpen(false),
+      ),
+    )
   })
 
   return (
