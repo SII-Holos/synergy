@@ -25,37 +25,42 @@
 .stb-folder {
   flex-shrink: 0;
   color: var(--icon-base);
-  margin-right: 8px;
+}
+
+.stb-project {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .stb-project-name {
-  flex-shrink: 0;
   max-width: 13rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-base);
-  font-size: 18px;
-  font-weight: 600;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  line-height: 20px;
 }
 
 .stb-slash {
-  font-size: 21px;
-  line-height: 1;
-  font-weight: 400;
+  flex-shrink: 0;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-regular);
+  line-height: 20px;
   color: var(--text-subtle);
-  font-family: var(--font-family-mono);
+  /* Selector buttons carry 8px inner padding; pull the slash into it so the
+     visible gap to the button label matches the gap to the project name. */
+  margin-right: -8px;
 }
 .stb-left {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
   overflow: visible;
-
-  .stb-selector-btn + .stb-selector-btn {
-    margin-left: -4px;
-  }
 }
 
 .stb-right {
@@ -85,14 +90,15 @@
   align-items: center;
   gap: 6px;
   min-width: max-content;
-  height: 38px;
-  padding: 0 11px;
-  border-radius: 10px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 8px;
   background: transparent;
   border: none;
   color: var(--text-strong);
-  font-size: 18px;
-  font-weight: 650;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  line-height: 20px;
   transition:
     background-color 150ms,
     color 150ms;
@@ -114,10 +120,12 @@
 .stb-selector-label {
   white-space: nowrap;
   overflow: visible;
+  line-height: 20px;
 }
 .stb-variant-label {
-  font-size: 15px;
-  font-weight: 520;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+  line-height: 20px;
   color: var(--text-weak);
   white-space: nowrap;
 }
@@ -226,8 +234,8 @@
     height: 32px;
     padding: 0 8px;
     border-radius: 8px;
-    font-size: 15px;
-    font-weight: 600;
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-semibold);
   }
 
   .stb-icon-btn {
