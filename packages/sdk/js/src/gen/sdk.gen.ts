@@ -657,6 +657,8 @@ import type {
   WorkflowSetInput,
   WorkspaceFilesChildrenErrors,
   WorkspaceFilesChildrenResponses,
+  WorkspaceFilesContentErrors,
+  WorkspaceFilesContentResponses,
   WorkspaceFilesReadErrors,
   WorkspaceFilesReadResponses,
   WorkspaceFilesSearchErrors,
@@ -1568,6 +1570,42 @@ export class Files extends HeyApiClient {
       ThrowOnError
     >({
       url: "/workspace/files/status",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read workspace file bytes
+   *
+   * Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected.
+   */
+  public content<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      path: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "path" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      WorkspaceFilesContentResponses,
+      WorkspaceFilesContentErrors,
+      ThrowOnError
+    >({
+      url: "/workspace/files/content",
       ...options,
       ...params,
     })

@@ -154,6 +154,23 @@ describe("workbench surface polarity", () => {
     expect(sessionTopBarCss).toContain("text-overflow: ellipsis;")
   })
 
+  test("desktop session top bar shares one type scale and baseline across the left cluster", () => {
+    expect(sessionTopBar).toContain('class="stb-project"')
+    expect(sessionTopBarCss).toContain(".stb-project {")
+    expect(sessionTopBarCss).toContain("font-size: var(--font-size-base);")
+    expect(sessionTopBarCss).toContain("font-size: var(--font-size-small);")
+    expect(sessionTopBarCss).toContain("line-height: 20px;")
+    expect(sessionTopBarCss).toContain("font-weight: var(--font-weight-semibold);")
+    expect(sessionTopBarCss).toContain("font-weight: var(--font-weight-medium);")
+    expect(sessionTopBarCss).not.toContain("font-family: var(--font-family-mono);")
+    expect(sessionTopBarCss).not.toContain("font-size: 18px;")
+    expect(sessionTopBarCss).not.toContain("font-size: 21px;")
+    expect(sessionTopBarCss).not.toContain("font-size: 15px;")
+    expect(sessionTopBarCss).not.toContain("font-weight: 650;")
+    expect(sessionTopBarCss).not.toContain("font-weight: 520;")
+    expect(sessionTopBarCss).not.toContain("margin-left: -4px;")
+  })
+
   test("workbench panel tabs keep close and add controls compact", () => {
     expect(builtinWorkbenchPanels.match(/cardinality: "singleton"/g)?.length).toBeGreaterThanOrEqual(3)
     expect(builtinWorkbenchPanels).toContain('id: "file"')

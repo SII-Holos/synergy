@@ -2548,6 +2548,14 @@ msgid "app.file.mode.source"
 msgstr "Source"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.pdf.previewFailed"
+msgstr "Unable to preview this PDF."
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.pdf.tooLarge"
+msgstr "This PDF is too large to preview inline."
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toast.saveConflict"
 msgstr "File changed on disk"
 

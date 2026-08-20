@@ -2548,6 +2548,14 @@ msgid "app.file.mode.source"
 msgstr "源码"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.pdf.previewFailed"
+msgstr "无法预览此 PDF。"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.pdf.tooLarge"
+msgstr "此 PDF 过大，无法内联预览。"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toast.saveConflict"
 msgstr "文件已在磁盘上被修改"
 

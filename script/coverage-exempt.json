@@ -913,6 +913,10 @@
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
+          "glob": "src/components/settings/panels/interface-zoom.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
           "glob": "src/components/settings/panels/LibraryPanels.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
@@ -954,6 +958,10 @@
         },
         {
           "glob": "src/components/settings/panels/WorktreesPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/interface-zoom.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {

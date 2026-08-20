@@ -1,10 +1,27 @@
 export type FileViewMode = "source" | "preview"
-export type FilePreviewKind = "source" | "markdown" | "svg" | "image" | "unsupported"
+export type FilePreviewKind = "source" | "markdown" | "svg" | "image" | "pdf" | "unsupported"
 
 export type FilePreviewCapability = {
   kind: FilePreviewKind
   defaultMode: FileViewMode
   dual: boolean
+}
+
+export const PDF_PREVIEW_MAX_BYTES = 50 * 1024 * 1024
+
+export type PdfPreviewAction = "fetch" | "cached" | "too-large"
+
+export function pdfPreviewAction(input: { nodeSize?: number; hasBytes: boolean; force?: boolean }): PdfPreviewAction {
+  if (input.nodeSize !== undefined && input.nodeSize > PDF_PREVIEW_MAX_BYTES) return "too-large"
+  if (!input.force && input.hasBytes) return "cached"
+  return "fetch"
+}
+
+export async function pdfPreviewBytes(data: unknown): Promise<Uint8Array | undefined> {
+  if (data instanceof Uint8Array) return data
+  if (data instanceof ArrayBuffer) return new Uint8Array(data)
+  if (data instanceof Blob) return new Uint8Array(await data.arrayBuffer())
+  return undefined
 }
 
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "ico"])
@@ -47,12 +64,21 @@ export function shortestUniqueFileTitle(path: string, siblings: string[]) {
   return `${name} · ${parent.join("/")}`
 }
 
-export function classifyFilePreview(path: string, resultKind: "text" | "image" | "binary"): FilePreviewCapability {
+export function classifyFilePreview(
+  path: string,
+  resultKind: "text" | "image" | "binary",
+  mimeType?: string,
+): FilePreviewCapability {
   const extension = filename(path).split(".").at(-1)?.toLowerCase() ?? ""
   if (resultKind === "image" || IMAGE_EXTENSIONS.has(extension)) {
     return { kind: "image", defaultMode: "preview", dual: false }
   }
-  if (resultKind === "binary") return { kind: "unsupported", defaultMode: "preview", dual: false }
+  if (resultKind === "binary") {
+    if (extension === "pdf" || mimeType === "application/pdf") {
+      return { kind: "pdf", defaultMode: "preview", dual: false }
+    }
+    return { kind: "unsupported", defaultMode: "preview", dual: false }
+  }
   if (extension === "md" || extension === "markdown") {
     return { kind: "markdown", defaultMode: "preview", dual: true }
   }

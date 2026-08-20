@@ -1,7 +1,15 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from "bun:test"
 import type { Tool as AITool } from "ai"
 import { SessionProcessor } from "../../src/session/processor"
 import { ToolScheduler, ToolTaskScheduler } from "../../src/session/tool-scheduler"
+
+afterAll(() => {
+  // The shutdown tests below stop the module-level ToolScheduler singleton
+  // (accepting=false). Restore it so sibling files sharing the same shard
+  // process — e.g. test/tool/auto-expand.test.ts dispatching through the real
+  // scheduler — are not rejected with "Tool scheduler is stopping".
+  ToolScheduler.configure()
+})
 
 function processor() {
   const slots = new Map<string, SessionProcessor.ToolExecutionSlot>()

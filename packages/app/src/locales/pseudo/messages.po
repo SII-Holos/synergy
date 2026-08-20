@@ -2548,6 +2548,14 @@ msgid "app.file.mode.source"
 msgstr ""
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.pdf.previewFailed"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.pdf.tooLarge"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toast.saveConflict"
 msgstr ""
 

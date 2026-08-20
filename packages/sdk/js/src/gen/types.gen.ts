@@ -6442,6 +6442,13 @@ export type WorkspaceFileStatusSummary = {
   }>
 }
 
+export type WorkspaceFileContentError = {
+  name: "WorkspaceFileAccessDeniedError" | "WorkspaceFileUnsupportedPreviewError" | "WorkspaceFileTooLargeError"
+  data: {
+    message: string
+  }
+}
+
 export type WorkspaceFileWriteResult = {
   path: string
   mtime: number
@@ -14843,6 +14850,45 @@ export type WorkspaceFilesStatusResponses = {
 }
 
 export type WorkspaceFilesStatusResponse = WorkspaceFilesStatusResponses[keyof WorkspaceFilesStatusResponses]
+
+export type WorkspaceFilesContentData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    path: string
+  }
+  url: "/workspace/files/content"
+}
+
+export type WorkspaceFilesContentErrors = {
+  /**
+   * Bad request
+   */
+  400: WorkspaceFileContentError
+  /**
+   * Forbidden
+   */
+  403: WorkspaceFileWriteError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceFilesContentError = WorkspaceFilesContentErrors[keyof WorkspaceFilesContentErrors]
+
+export type WorkspaceFilesContentResponses = {
+  /**
+   * PDF file bytes
+   */
+  200: unknown
+}
 
 export type WorkspaceFilesWriteData = {
   body?: WorkspaceFileWriteFileInput
