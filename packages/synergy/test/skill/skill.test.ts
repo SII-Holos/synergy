@@ -95,6 +95,26 @@ describe.serial("skill discovery", () => {
     })
   })
 
+  test("does not index nested SKILL.md entries under a references directory", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (directory) => {
+        await createSkill(directory, ".synergy/skill/host-skill", { name: "host-skill" })
+        await createSkill(directory, ".synergy/skill/host-skill/references/inner", { name: "inner" })
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const [skills, diagnostics] = await Promise.all([Skill.all(), Skill.diagnostics()])
+        expect(skills.find((skill) => skill.name === "host-skill")).toBeDefined()
+        expect(skills.some((skill) => skill.name === "inner")).toBe(false)
+        expect(diagnostics.some((diagnostic) => diagnostic.name === "inner")).toBe(false)
+      },
+    })
+  })
+
   test("loads legacy Synergy Skill.md entries through the compatibility shim", async () => {
     await using tmp = await tmpdir({
       git: true,

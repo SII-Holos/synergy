@@ -784,3 +784,78 @@ describe("settings config patch performance monitoring", () => {
     expect((patch.observability as { performance?: { enabled?: boolean } })?.performance?.enabled).toBe(false)
   })
 })
+describe("settings config patch skills compatibility", () => {
+  test("does not emit a skills patch when the form matches compatibility defaults", () => {
+    const state = defaultSettingsState("enter")
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} })).not.toHaveProperty("skills")
+  })
+
+  test("emits only the diverging compatibility field", () => {
+    const state = defaultSettingsState("enter")
+    state.skills.claude = false
+
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).skills).toEqual({
+      compatibility: { claude: false },
+    })
+  })
+
+  test("re-enables a source stored as explicit false", () => {
+    const state = defaultSettingsState("enter")
+    state.skills.codex = true
+
+    expect(
+      buildPatch({
+        cfg: {
+          skills: {
+            compatibility: { agents: true, claude: true, codex: false, openclaw: true },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).skills,
+    ).toEqual({
+      compatibility: { codex: true },
+    })
+  })
+
+  test("leaves untouched sources (including project-level overrides) out of the patch", () => {
+    // agents:false is a project-level override the home-scope form hydrated
+    // from the merged config. Changing only claude must not re-write agents
+    // into the global domain, otherwise the project override gets baked in.
+    const state = defaultSettingsState("enter")
+    state.skills.agents = false
+    state.skills.claude = false
+
+    expect(
+      buildPatch({
+        cfg: {
+          skills: {
+            compatibility: { agents: false, claude: true, codex: true, openclaw: true },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).skills,
+    ).toEqual({
+      compatibility: { claude: false },
+    })
+  })
+
+  test("does not emit a skills patch when the form matches explicit server values", () => {
+    const state = defaultSettingsState("enter")
+    state.skills.agents = false
+    state.skills.openclaw = false
+
+    expect(
+      buildPatch({
+        cfg: {
+          skills: {
+            compatibility: { agents: false, claude: true, codex: true, openclaw: false },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("skills")
+  })
+})
