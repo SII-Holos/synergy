@@ -13,6 +13,7 @@
 //       detail: Record<string, unknown>
 //     }
 //     export async function check(cwd?: string): Promise<Issue[]>
+//     export async function isGitRepo(cwd?: string): Promise<boolean>
 //     export async function inject(cwd?: string): Promise<string | undefined>
 //     export function refresh(cwd?: string): Promise<Issue[]>
 //     export function injectCached(cwd?: string): string | undefined
@@ -730,4 +731,42 @@ describe("GitHealth — multiple issues at once", () => {
     },
     GIT_HEALTH_TEST_TIMEOUT,
   )
+})
+
+// ---------------------------------------------------------------------------
+describe("GitHealth.isGitRepo", () => {
+  gitHealthTest("returns false for a plain directory (no .git)", async () => {
+    const repo = makeRepo()
+    try {
+      expect(await GitHealth.isGitRepo(repo.path)).toBe(false)
+    } finally {
+      repo.cleanup()
+    }
+  })
+
+  gitHealthTest("returns true after git init", async () => {
+    const repo = makeRepo()
+    try {
+      await gitInit(repo.path)
+      expect(await GitHealth.isGitRepo(repo.path)).toBe(true)
+    } finally {
+      repo.cleanup()
+    }
+  })
+
+  gitHealthTest("returns true for a subdirectory inside a repo", async () => {
+    const repo = makeRepo()
+    try {
+      await gitInit(repo.path)
+      const sub = join(repo.path, "nested")
+      mkdirSync(sub, { recursive: true })
+      expect(await GitHealth.isGitRepo(sub)).toBe(true)
+    } finally {
+      repo.cleanup()
+    }
+  })
+
+  gitHealthTest("returns false for a directory that does not exist", async () => {
+    expect(await GitHealth.isGitRepo("/tmp/does-not-exist-git-health-test")).toBe(false)
+  })
 })
