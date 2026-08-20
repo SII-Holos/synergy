@@ -37,6 +37,10 @@ function promote(value: string): string {
 }
 
 export function internString(value: string): string {
+  // The generated provider types claim api.id/npm/url are always strings,
+  // but real payloads carry undefined for models without an api block.
+  // Never let a missing field crash interning (or the whole bootstrap).
+  if (typeof value !== "string") return value as string
   const cached = internByValue.get(value)
   if (cached !== undefined) return cached
 

@@ -65,6 +65,16 @@ describe("string interning", () => {
     expect(secondInclude[0]).toBe(firstInclude[0])
   })
 
+  test("tolerates missing api fields in real provider payloads", () => {
+    // The generated types claim api.id/npm/url are always strings, but real
+    // payloads carry undefined for models without an api block. Interning
+    // must not crash (this crash broke scope bootstrap on a real instance).
+    const data = providerData()
+    ;(data.all[0]!.models["gpt-5"]!.api as { id?: unknown; npm?: unknown; url?: unknown }).npm = undefined
+    ;(data.all[0]!.models["gpt-5"]!.api as { id?: unknown; npm?: unknown; url?: unknown }).url = undefined
+    expect(() => internProviderList(data)).not.toThrow()
+  })
+
   test("interns system text parts and user system prompts", () => {
     const prompt = "You are synergy, a general-purpose AI agent."
 
