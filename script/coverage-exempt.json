@@ -941,6 +941,10 @@
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
+          "glob": "src/components/settings/panels/SkillsPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
           "glob": "src/components/settings/panels/SynergyLinkPanel.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },

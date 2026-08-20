@@ -134,7 +134,7 @@ All domains are importable and default to `merge` mode. `append` recursively mer
 
 JSONC comments in existing domain files are preserved. Committed files trigger a runtime config reload; reload failure does not roll back the committed changes.
 
-The `openai-codex` provider uses ChatGPT/Codex OAuth credentials and the Codex backend. The `openai` provider uses OpenAI Platform API-key credentials. The `grok` provider uses xAI subscription OAuth credentials (SuperGrok / X Premium+) against the OpenAI-compatible `https://api.x.ai/v1` API. Their login, storage, usage, and billing semantics are intentionally separate.
+The `openai-codex` provider uses ChatGPT/Codex OAuth credentials and the Codex backend. The `openai` provider uses OpenAI Platform API-key credentials. The `grok` provider uses xAI subscription OAuth credentials (SuperGrok / X Premium+) against the OpenAI-compatible `https://api.x.ai/v1` API. Their login, storage, usage, and billing semantics are intentionally separate. The Grok model list is discovered live from the xAI `/v1/language-models` API with the stored subscription OAuth credential and refreshes automatically (≤1h TTL, or via `synergy models --refresh`); offline or failed discovery falls back to the bundled list.
 
 See [Configuration](configuration.md) for files, precedence, domains, and instruction discovery.
 
@@ -156,6 +156,8 @@ The command displays:
 On failure, the command prints the error and suggests troubleshooting steps: check the network connection, verify the configured download source in `embedding.local.source`, or configure a remote embedding API with `synergy config embedding`.
 
 The download source is set in `00-general.jsonc` under `embedding.local.source` (`"huggingface"`, `"hf-mirror"`, or `"custom"`). The `custom` source requires `embedding.local.remoteHost` to be a public HTTPS origin.
+
+When `source` is `"huggingface"` (the default) and a download fails, Synergy automatically retries once from hf-mirror.com, then falls back to the on-disk cache. Explicit `"hf-mirror"` and `"custom"` sources skip the auto-fallback and go straight to the disk cache. Remote downloads abort with an error if no response bytes arrive within 30 seconds (time-to-first-byte), so an unreachable source fails with a clear message instead of hanging at 0%.
 
 Model files are cached under `~/.synergy/data/embedding/models`; customize the location with `embedding.local.cacheDir`.
 

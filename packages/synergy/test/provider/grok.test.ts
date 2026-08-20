@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, expect, test } from "bun:test"
+import fs from "fs/promises"
 import { Auth } from "../../src/provider/api-key"
 import { GrokProvider } from "../../src/provider/grok"
 import { ProviderCatalog } from "../../src/provider/catalog"
 import { Provider } from "../../src/provider/provider"
-
+import { Global } from "../../src/global"
 const originalFetch = globalThis.fetch
 const secondaryProviderID = "grok-secondary-test"
 
@@ -17,8 +18,12 @@ function makeJWT(claims: Record<string, unknown>) {
   return `${header}.${payload}.signature`
 }
 
-function accessToken(input?: { exp?: number }) {
-  return makeJWT({ exp: input?.exp ?? nowSeconds() + 60 * 60 })
+function accessToken(input?: { exp?: number; sub?: string; email?: string }) {
+  return makeJWT({
+    exp: input?.exp ?? nowSeconds() + 60 * 60,
+    ...(input?.sub !== undefined ? { sub: input.sub } : {}),
+    ...(input?.email !== undefined ? { email: input.email } : {}),
+  })
 }
 
 function jsonResponse(payload: unknown, init?: ResponseInit) {
@@ -40,6 +45,9 @@ async function resetGrokState() {
   await Auth.remove(secondaryProviderID)
   await ProviderCatalog.reset()
   await Provider.reload()
+  // ProviderCatalog snapshots persist under the real provider ID; delete the
+  // cache file so tests cannot leak snapshots into each other.
+  await fs.rm(Global.Path.providerModelCatalogCache, { force: true })
 }
 beforeEach(resetGrokState)
 afterEach(resetGrokState)
@@ -332,4 +340,176 @@ test("classifyError maps 401 and invalid_grant to relogin required but leaves 40
   })
   expect(GrokProvider.classifyError({ status: 429 })).toMatchObject({ retryable: true, exhausted: true })
   expect(GrokProvider.classifyError({ status: 403, body: { error: { code: "not_allowed" } } })).toBeUndefined()
+})
+test("grokAccountID extracts a stable account identity from JWT claims", () => {
+  expect(GrokProvider.grokAccountID(accessToken({ sub: "user-123" }))).toBe("sub:user-123")
+  expect(GrokProvider.grokAccountID(accessToken({ email: "a@example.com" }))).toBe("email:a@example.com")
+  expect(GrokProvider.grokAccountID(accessToken({ sub: "user-123", email: "a@example.com" }))).toBe("sub:user-123")
+  expect(GrokProvider.grokAccountID(accessToken())).toBeUndefined()
+  expect(GrokProvider.grokAccountID("not-a-jwt")).toBeUndefined()
+})
+
+test("fetchModelCatalog hits /v1/language-models with Bearer and maps entries without inventing limits", async () => {
+  const token = accessToken()
+  const catalog = await GrokProvider.fetchModelCatalog(
+    token,
+    asFetch(async (input, init) => {
+      expect(String(input)).toBe("https://api.x.ai/v1/language-models")
+      const headers = new Headers(init?.headers)
+      expect(headers.get("authorization")).toBe(`Bearer ${token}`)
+      expect(headers.get("user-agent")).toBe("synergy")
+      expect(headers.get("x-grok-client-surface")).toBe("synergy")
+      return jsonResponse({
+        models: [
+          { id: "grok-4.6", input_modalities: ["text"], output_modalities: ["text"], context_length: 524_288 },
+          { id: "grok-4.3", input_modalities: ["text"], output_modalities: ["text"] },
+          { id: "grok-4.5", input_modalities: ["text", "image"], output_modalities: ["text"] },
+        ],
+      })
+    }),
+  )
+  // xAI /v1/language-models documents no context_length and no output limit;
+  // entries carry only the id plus the vision flag so limit metadata inherits
+  // from models.dev / the bundled fallback.
+  expect(catalog).toEqual([{ id: "grok-4.6" }, { id: "grok-4.3" }, { id: "grok-4.5", inputImage: true }])
+})
+
+test("fetchModelCatalog returns [] on non-2xx and malformed envelopes", async () => {
+  const token = accessToken()
+  expect(
+    await GrokProvider.fetchModelCatalog(
+      token,
+      asFetch(async () => jsonResponse({ error: { code: "not_allowed" } }, { status: 403 })),
+    ),
+  ).toEqual([])
+  expect(
+    await GrokProvider.fetchModelCatalog(
+      token,
+      asFetch(async () => jsonResponse({ error: "boom" }, { status: 500 })),
+    ),
+  ).toEqual([])
+  expect(
+    await GrokProvider.fetchModelCatalog(
+      token,
+      asFetch(async () => jsonResponse({ data: [{ id: "grok-4.6" }] })),
+    ),
+  ).toEqual([])
+  expect(
+    await GrokProvider.fetchModelCatalog(
+      token,
+      asFetch(async () => jsonResponse({ models: [{ id: "" }, { id: "grok-4.6" }, null, "grok-4.5"] })),
+    ),
+  ).toEqual([{ id: "grok-4.6" }])
+})
+
+test("fetchModelCatalog propagates timeouts and network errors for failure classification", async () => {
+  const token = accessToken()
+  await expect(
+    GrokProvider.fetchModelCatalog(
+      token,
+      asFetch(async () => {
+        throw new DOMException("timed out", "TimeoutError")
+      }),
+    ),
+  ).rejects.toMatchObject({ name: "TimeoutError" })
+  await expect(
+    GrokProvider.fetchModelCatalog(
+      token,
+      asFetch(async () => {
+        throw new TypeError("fetch failed")
+      }),
+    ),
+  ).rejects.toMatchObject({ name: "TypeError", message: "fetch failed" })
+})
+
+test("provider catalog caches static and live Grok models independently", async () => {
+  // First ProviderCatalog.resolve in the suite pays the models.dev runtime
+  // warm-up cost; allow extra time so a cold cache does not flake the test.
+  const token = accessToken({ sub: "catalog-account" })
+  await Auth.set(GrokProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-provider-catalog",
+    expires: nowSeconds() + 60 * 60,
+  })
+  let discoveryCalls = 0
+  globalThis.fetch = asFetch(async () => {
+    discoveryCalls += 1
+    return jsonResponse({ models: [{ id: "grok-4.6" }, { id: "grok-account-live-only" }] })
+  })
+  const config = { providerCatalog: { enabled: false, offlineCache: false } }
+
+  await ProviderCatalog.refresh(GrokProvider.PROVIDER_ID)
+  ProviderCatalog.reset()
+
+  const staticCatalog = await ProviderCatalog.resolve({ config, includeLive: false })
+  const liveCatalog = await ProviderCatalog.resolve({ config, includeLive: true })
+  const cachedLiveCatalog = await ProviderCatalog.resolve({ config, includeLive: true })
+
+  expect(staticCatalog[GrokProvider.PROVIDER_ID].models["grok-account-live-only"]).toBeUndefined()
+  expect(liveCatalog[GrokProvider.PROVIDER_ID].models["grok-4.6"]).toBeDefined()
+  expect(liveCatalog[GrokProvider.PROVIDER_ID].models["grok-account-live-only"]).toBeDefined()
+  expect(cachedLiveCatalog[GrokProvider.PROVIDER_ID].models["grok-account-live-only"]).toBeDefined()
+  expect(discoveryCalls).toBe(1)
+}, 30_000)
+
+test("failed Grok discovery falls back to the bundled list without error", async () => {
+  const token = accessToken({ sub: "fallback-account" })
+  await Auth.set(GrokProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-failure",
+    expires: nowSeconds() + 60 * 60,
+  })
+  globalThis.fetch = asFetch(async () => jsonResponse({ error: { code: "not_allowed" } }, { status: 403 }))
+
+  const catalog = await ProviderCatalog.resolve({
+    forceRefresh: true,
+    includeLive: true,
+    config: { providerCatalog: { enabled: false, offlineCache: false } },
+  })
+  const grok = catalog[GrokProvider.PROVIDER_ID]
+  expect(grok.models["grok-4.6"]).toBeDefined()
+  expect(Object.keys(grok.models).length).toBeGreaterThan(0)
+})
+
+test("Grok catalog identity stays stable across refresh-token rotation", async () => {
+  const config = { providerCatalog: { enabled: false, offlineCache: false } }
+  globalThis.fetch = asFetch(async () => jsonResponse({ models: [{ id: "grok-4.6" }] }))
+
+  await Auth.set(GrokProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: accessToken({ sub: "stable-user" }),
+    refresh: "refresh-rotated-1",
+    expires: nowSeconds() + 60 * 60,
+  })
+  await ProviderCatalog.refresh(GrokProvider.PROVIDER_ID)
+  ProviderCatalog.reset()
+
+  // xAI rotates and revokes the refresh token on every refresh; the access
+  // token's subject stays stable, so the live snapshot must survive rotation.
+  await Auth.set(GrokProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: accessToken({ sub: "stable-user" }),
+    refresh: "refresh-rotated-2",
+    expires: nowSeconds() + 60 * 60,
+  })
+  const rotated = await ProviderCatalog.resolve({ config, includeLive: true })
+  expect(rotated[GrokProvider.PROVIDER_ID].models["grok-4.6"].catalog_state).toBe("active")
+})
+
+test("Grok catalog refresh classifies timeouts as timeout failures", async () => {
+  const token = accessToken({ sub: "timeout-account" })
+  await Auth.set(GrokProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-timeout",
+    expires: nowSeconds() + 60 * 60,
+  })
+  globalThis.fetch = asFetch(async () => {
+    throw new DOMException("timed out", "TimeoutError")
+  })
+
+  const state = await ProviderCatalog.refresh(GrokProvider.PROVIDER_ID)
+  expect(state.failure).toBe("timeout")
 })

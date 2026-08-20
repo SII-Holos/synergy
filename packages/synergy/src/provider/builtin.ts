@@ -124,7 +124,7 @@ export function registerBuiltinProviderProfiles() {
       rank: 25,
       headline: "Grok subscription",
       reason: "Connect a SuperGrok or X Premium+ subscription for Grok models.",
-      defaultModel: "grok-4.5",
+      defaultModel: "grok-4.6",
     }),
     baseURL: GrokProvider.BASE_URL,
     apiMode: "chat_completions",
@@ -144,6 +144,19 @@ export function registerBuiltinProviderProfiles() {
         baseURL: GrokProvider.BASE_URL,
         fetch: ProviderAuthRecovery.handled(GrokProvider.grokFetchFor(input.providerID)),
       }
+    },
+    fetchModelCatalog: async (input) => {
+      const access = await GrokProvider.resolveToken({
+        providerID: input.providerID,
+        allowMissing: true,
+        fetch: input.fetch,
+      }).catch(() => undefined)
+      if (!access) return []
+      return GrokProvider.fetchModelCatalog(access, input.fetch, input.providerID, input.baseURL)
+    },
+    modelCatalogIdentity: ({ auth }) => {
+      if (auth?.type !== "oauth") return undefined
+      return GrokProvider.grokAccountID(auth.access)
     },
     fetchUsage: (input) => GrokProvider.fetchUsage(input.fetch, input.providerID),
     refreshAuth: (input) =>

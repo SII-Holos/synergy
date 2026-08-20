@@ -54,6 +54,16 @@ import type { MessageSlotProps } from "@ericsanchezok/synergy-ui/message-slots"
 import { createPluginSurfaceSettings } from "./surface-settings"
 import { createPluginToolMessageContext } from "./tool-message-context"
 import { createPluginSettingsSurfaceLoader } from "./settings-surface-loader"
+import { pluginSlots } from "./slot-registry"
+
+/** Host-declared slots that generic `ui.slot` contributions may target. */
+export const HOST_SLOTS = new Set([
+  "settings.section",
+  "sidebar.footer",
+  "session.header.actions",
+  "session.empty",
+  "app.footer",
+])
 
 export type PluginUIStatus = PluginLifecycleState
 export interface PluginUIError {
@@ -407,6 +417,7 @@ function registerPluginSurfaces(input: {
         disposers.push(
           registerComposerExtension({
             id: pluginSurfaceId(plugin.pluginId, item.id),
+            slot: "composer.extension",
             order: item.order,
             pluginId: plugin.pluginId,
             loader,
@@ -434,6 +445,7 @@ function registerPluginSurfaces(input: {
         disposers.push(
           registerSelectionExtension({
             id: pluginSurfaceId(plugin.pluginId, item.id),
+            slot: "selection.extension",
             order: item.order,
             pluginId: plugin.pluginId,
             loader,
@@ -537,6 +549,52 @@ function registerPluginSurfaces(input: {
             pluginId: plugin.pluginId,
             scopeId: plugin.scopeId,
             context,
+            loader,
+          }),
+        )
+      },
+      "ui.slot": (item: Extract<PluginManifestContribution, { kind: "ui.slot" }>) => {
+        if (!HOST_SLOTS.has(item.slot)) {
+          fail(plugin.pluginId, `Slot ${item.slot} is not declared by the host`)
+          return
+        }
+        if (!("component" in item) || !item.component) {
+          fail(plugin.pluginId, `Slot contribution ${item.id} has no trusted component`)
+          return
+        }
+        const component = item.component
+        const loader = async () => {
+          const loaded = await loadPluginExport<Component<{ context: PluginSurfaceContext }>>(
+            plugin.pluginId,
+            asset(component.entry),
+            component.exportName,
+            PLUGIN_UI_API_VERSION,
+          )
+          const Wrapper: Component<{ context: PluginSurfaceContext }> = () => {
+            const context = surfaceContext({
+              contribution: plugin,
+              contributionId: item.id,
+              kind: item.kind,
+              serverUrl: input.serverUrl,
+              client: input.client,
+              events: input.events,
+              scopeKey: input.scopeKey,
+              sessionId: currentSessionId(),
+              showConfirm: input.showConfirm,
+            })
+            return createComponent(loaded.default, { context })
+          }
+          return { default: Wrapper }
+        }
+        disposers.push(
+          pluginSlots.register({
+            id: pluginSurfaceId(plugin.pluginId, item.id),
+            slot: item.slot,
+            label: item.label,
+            icon: resolvePluginIconReference(plugin, item.icon),
+            order: item.order,
+            when: item.when,
+            pluginId: plugin.pluginId,
             loader,
           }),
         )

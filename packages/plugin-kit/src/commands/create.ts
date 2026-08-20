@@ -5,9 +5,9 @@ import { renderThemeSchemaJson } from "@ericsanchezok/synergy-plugin/theme"
 import { cmd } from "../cmd.js"
 import { UI } from "../ui.js"
 
-type TemplateName = "tool-ui" | "workbench-panel" | "navigation" | "api-connector" | "theme-icon"
+type TemplateName = "tool-ui" | "workbench-panel" | "navigation" | "api-connector" | "theme-icon" | "slot"
 
-const templates: TemplateName[] = ["tool-ui", "workbench-panel", "navigation", "api-connector", "theme-icon"]
+const templates: TemplateName[] = ["tool-ui", "workbench-panel", "navigation", "api-connector", "theme-icon", "slot"]
 
 function currentPackageRange(): string {
   const pkg = JSON.parse(fs.readFileSync(path.resolve(import.meta.dir, "..", "..", "package.json"), "utf-8")) as {
@@ -140,6 +140,22 @@ export default definePlugin({
 })
 `
   }
+  if (template === "slot") {
+    return `import { definePlugin, slot } from "@ericsanchezok/synergy-plugin"
+
+export default definePlugin({
+  id: "${name}",
+  version: "0.1.0",
+  description: "${name} plugin",
+  contributions: [slot({
+    id: "main",
+    slot: "sidebar.footer",
+    label: "${name}",
+    component: { source: "./src/ui.tsx" },
+  })],
+})
+`
+  }
   return `import { definePlugin, icon, theme } from "@ericsanchezok/synergy-plugin"
 
 export default definePlugin({
@@ -155,7 +171,7 @@ export default definePlugin({
 }
 
 function ui(template: TemplateName): string | undefined {
-  if (!(["tool-ui", "workbench-panel", "navigation"] as TemplateName[]).includes(template)) return undefined
+  if (!(["tool-ui", "workbench-panel", "navigation", "slot"] as TemplateName[]).includes(template)) return undefined
   return `import type { Component } from "solid-js"
 import type { PluginSurfaceContext } from "@ericsanchezok/synergy-plugin/ui"
 

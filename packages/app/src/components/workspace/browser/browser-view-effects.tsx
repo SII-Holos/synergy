@@ -16,7 +16,7 @@ export function BrowserViewEffects(props: { timeline: () => Message[] }) {
     // advance, session switch) are released instead of accumulating forever.
     const callIDs: string[] = []
     for (const message of props.timeline()) {
-      for (const part of data.store.part[message.id] ?? []) {
+      for (const part of data.view.partsFor(message.id)) {
         if (part.type !== "tool") continue
         const tool = part as ToolPart
         if (tool.state.status === "completed") callIDs.push(tool.callID)
@@ -29,7 +29,7 @@ export function BrowserViewEffects(props: { timeline: () => Message[] }) {
     handledCallIDs = nextHandled
 
     for (const message of props.timeline()) {
-      for (const part of data.store.part[message.id] ?? []) {
+      for (const part of data.view.partsFor(message.id)) {
         if (part.type !== "tool") continue
         const tool = part as ToolPart
         if (tool.state.status !== "completed") continue

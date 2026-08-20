@@ -34,9 +34,11 @@ await runBatchedTests({
   browserOnly: [
     "test/components/note/document-editor-core.test.ts",
     "test/components/terminal/dispose-reentrancy.test.ts",
+    "test/components/workspace/builtin-workbench-panels.test.ts",
     "test/context/font-preference-provider.test.ts",
     "test/pages/fatal-error.test.tsx",
     "test/plugin/builtin-navigation.test.ts",
+    "test/plugin/registries/slot-outlet.test.ts",
     "test/plugin/registries/tool-renderer-registry.test.ts",
   ],
   extraSerial: ["test/app-build-css-contract.test.ts"],
