@@ -376,6 +376,8 @@ export const fileWorkbench = {
   dismiss: { id: "app.file.action.dismiss", message: "Dismiss" },
   saveDenied: { id: "app.file.toast.saveDenied", message: "This file cannot be edited" },
   saveFailed: { id: "app.file.toast.saveFailed", message: "Failed to save file" },
+  pdfTooLarge: { id: "app.file.pdf.tooLarge", message: "This PDF is too large to preview inline." },
+  pdfPreviewFailed: { id: "app.file.pdf.previewFailed", message: "Unable to preview this PDF." },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 export const attachmentWorkbench = {

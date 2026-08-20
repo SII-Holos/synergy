@@ -27,13 +27,15 @@ The Settings worktree browser queries only Git project Scopes and keeps successf
 
 ## Web Workspace File Service
 
-The Web file workspace exposes scoped routes for directory children, file metadata, text/image preview, file/content/symbol search, VCS status, and user-direct file writes. Every path is resolved inside `ScopeContext.current.directory`. Lexical escapes, control characters, and symlinks whose real path escapes the workspace are denied.
+The Web file workspace exposes scoped routes for directory children, file metadata, text/image preview, PDF byte streaming, file/content/symbol search, VCS status, and user-direct file writes. Every path is resolved inside `ScopeContext.current.directory`. Lexical escapes, control characters, and symlinks whose real path escapes the workspace are denied.
 
 Directory results can hide ignored and dot-prefixed entries, are sorted with directories first, and use bounded cursor pages. Reads distinguish:
 
 - UTF-8 text with line range, byte size, truncation, and next range
 - bounded inline images encoded for preview
 - unsupported binary or oversized content with a reason
+
+PDF preview is a separate bounded byte stream: `GET /workspace/files/content` (operationId `workspace.files.content`) serves the raw bytes of a workspace PDF with `Content-Type: application/pdf` and `Cache-Control: no-store`. It accepts `.pdf` by extension or `application/pdf` MIME, rejects non-PDF files with `WorkspaceFileUnsupportedPreviewError` (400) and files over 50 MiB with `WorkspaceFileTooLargeError` (400), and reuses the same 403/404 error shapes as the other routes. PDF bytes never enter the JSON `read` union, so a PDF still reads back as `kind: "binary"` metadata.
 
 Search has three independent modes:
 
@@ -69,6 +71,7 @@ The workbench keeps resource use bounded:
 - server directory pages resolve nodes with concurrency 16
 - frontend directory requests use concurrency 6 and document reads use concurrency 3
 - document content keeps at most 24 entries or about 32 MiB
+- PDF preview bytes live in a separate cache with a 50 MiB per-file cap and at most two decoded buffers, keeping open tabs protected
 - Monaco keeps at most 12 models or about 24 MiB
 - the Explorer keeps at most 25,000 loaded nodes and virtualizes visible rows
 

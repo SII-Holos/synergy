@@ -361,15 +361,8 @@ describe("session rollback history", () => {
         const session = await Session.create({ title: "Source" })
         const [u1] = await writeTurn(session.id, tmp.path, "first", "one")
         const [u2] = await writeTurn(session.id, tmp.path, "second", "two")
-        await Session.rollback({ sessionID: session.id, numTurns: 1 })
 
-        const currentFork = await Session.fork({ sessionID: session.id })
-        expect(currentFork.forkedFrom?.sessionID).toBe(session.id)
-        expect(currentFork.forkedFrom?.title).toBe("Source")
-        expect(currentFork.forkedFrom?.messageID).toBeUndefined()
-        expect(currentFork.parentID).toBeUndefined()
-        expect(await visibleTexts(currentFork.id)).toEqual(["first", "one"])
-
+        // Fork "before" while the target is still part of the effective history.
         const beforeFork = await Session.fork({
           sessionID: session.id,
           position: {
@@ -384,9 +377,18 @@ describe("session rollback history", () => {
         )
         expect((assistant?.info as MessageV2.Assistant).parentID).not.toBe(u1.info.id)
 
+        // After rollback, only the effective (rolled-back) history is copied.
+        await Session.rollback({ sessionID: session.id, numTurns: 1 })
+        const currentFork = await Session.fork({ sessionID: session.id })
+        expect(currentFork.forkedFrom?.sessionID).toBe(session.id)
+        expect(currentFork.forkedFrom?.title).toBe("Source")
+        expect(currentFork.forkedFrom?.messageID).toBeUndefined()
+        expect(currentFork.parentID).toBeUndefined()
+        expect(await visibleTexts(currentFork.id)).toEqual(["first", "one"])
+
         await Session.remove(session.id)
-        await Session.remove(currentFork.id)
         await Session.remove(beforeFork.id)
+        await Session.remove(currentFork.id)
       },
     })
   })
@@ -445,6 +447,27 @@ describe("session rollback history", () => {
         await Session.remove(session.id)
         await Session.remove(throughUserFork.id)
         await Session.remove(throughAssistantFork.id)
+      },
+    })
+  })
+  test("fork rejects a fork point that left the effective history", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Stale source" })
+        await writeTurn(session.id, tmp.path, "first", "one")
+        const secondTurn = await writeTurn(session.id, tmp.path, "second", "two")
+        await Session.rollback({ sessionID: session.id, numTurns: 1 })
+
+        await expect(
+          Session.fork({
+            sessionID: session.id,
+            position: { type: "through", messageID: secondTurn[1].info.id },
+          }),
+        ).rejects.toBeInstanceOf(Session.ForkPointMissingError)
+
+        await Session.remove(session.id)
       },
     })
   })
