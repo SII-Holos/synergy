@@ -14,6 +14,8 @@ The settings patch writes only the diverging compatibility fields (`patch.skills
 
 The library banner is replaced with grouped truthful copy: `failed` (severity error), `shadowed` (`skill.candidate_shadowed`), `compat` (other warnings/info), deduplicated by path+code, with proper lingui pluralization in en and zh-CN.
 
+Standard Agent Skills / Claude Code frontmatter fields (`argument-hint`, `model`, `effort`, `context`, `agent`, `hooks`) are declared in the strict manifest schema as ignored `unknown` fields, so ecosystem-authored skills load under strict sources (`synergy`, `agents`) without diagnostics. Nested `SKILL.md` entries under a skill's `references/` directory are resource material, not skill candidates, and are excluded from the filesystem scan so they cannot surface as load errors.
+
 ## Alternatives considered
 
 - **Env-flag-only toggles** — rejected: not discoverable, not persistable per user, no UI, duplicates the claude-flag mechanism.

@@ -170,6 +170,11 @@ export namespace Skill {
           dot: true,
         })) {
           if (!root.acceptedEntryNames.includes(path.basename(match))) continue
+          // A skill's own references/ directory is resource material (docs,
+          // scripts, fixtures), not a nested skill collection. Its entries can
+          // look like skills (e.g. SKILL.md inside references/numen-official/)
+          // but would fail strict validation and surface as load errors.
+          if (path.dirname(match).split(path.sep).includes("references")) continue
           sourceCounts[root.source]++
           const entryFile = await fs.realpath(match)
           const candidate: FilesystemCandidate = {

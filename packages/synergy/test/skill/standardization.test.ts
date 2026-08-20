@@ -89,6 +89,19 @@ describe.serial("skill standardization", () => {
     expect(result.value).not.toHaveProperty("permission")
   })
 
+  test("accepts standard Agent Skills vendor fields in strict manifests without diagnostics", async () => {
+    await using tmp = await tmpdir()
+    const entryFile = path.join(tmp.path, "vendor-fields", "SKILL.md")
+    await Bun.write(
+      entryFile,
+      `---\nname: vendor-fields\ndescription: Vendor fields fixture.\nargument-hint: [issue-number]\nmodel: opus\neffort: high\ncontext: fork\nagent: general-purpose\nhooks:\n  PreToolUse:\n    - matcher: "Bash"\n      hooks:\n        - type: command\n          command: "./validate.sh"\n---\n\n# Vendor fields\n`,
+    )
+
+    const result = await SkillManifest.normalizeFile({ entryFile, source: "synergy", mode: "strict" })
+    expect(result.diagnostics).toEqual([])
+    expect(result.value).toMatchObject({ name: "vendor-fields" })
+  })
+
   test("keeps agents strict while loading pre-standardization entries through a named shim", async () => {
     await using tmp = await tmpdir({ git: true })
     await writeSkill(tmp.path, ".agents/skills/valid-agent", {
