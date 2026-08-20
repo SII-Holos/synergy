@@ -25,6 +25,7 @@
 .stb-folder {
   flex-shrink: 0;
   color: var(--icon-base);
+  margin-right: 4px;
 }
 
 .stb-project-name {
