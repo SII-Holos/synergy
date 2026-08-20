@@ -8,7 +8,7 @@ The pre-commit hook ran `doc-check --staged`, which checked every staged Markdow
 
 ## Decision
 
-`script/doc-check.ts` now computes the canonical document scope once and, in staged mode, restricts the staged Markdown files to that same scope before running link and wrap checks. The new pure helper `filterStagedFiles(staged, scope, cwd)` keeps staged files whose resolved absolute path is in the scope and drops the rest, with unit coverage in `test/script/doc-check.test.ts`.
+`script/doc-check.ts` now computes the canonical document scope once and, in staged mode, restricts the staged Markdown files to that same scope before running link and wrap checks. The new pure helper `filterStagedFiles(staged, scope, root)` resolves staged paths against the repository root (git prints staged paths relative to the root regardless of the invoking directory; resolving against the cwd would silently drop every file when the hook runs from a subdirectory). When staged markdown exists but every file is outside the scope, the run reports a warning instead of passing silently. Unit coverage lives in `test/script/doc-check.test.ts`.
 
 ## Alternatives considered
 
@@ -19,5 +19,5 @@ The pre-commit hook ran `doc-check --staged`, which checked every staged Markdow
 ## Consequences
 
 - Pre-commit and `doc:check` now agree on which Markdown files must satisfy the paragraph-wrap contract.
-- Files outside the engineering document scope keep their own formatting conventions while still receiving link checks only when they enter the scope.
+- Files outside the engineering document scope keep their own formatting conventions; in staged mode they are now excluded from link checks as well as wrap checks (previously staged mode checked links on every staged Markdown file).
 - The gate fix is small, tested, and does not change the full `doc:check` behavior or its budgets/generator freshness checks.

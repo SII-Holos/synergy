@@ -123,4 +123,18 @@ describe("doc-check staged scope", () => {
     const staged = ["AGENTS.md", "packages/app/PRODUCT.md"]
     expect(filterStagedFiles(staged, scope, "/repo")).toEqual(["AGENTS.md"])
   })
+  test("resolves staged paths against the repository root, not the cwd", () => {
+    const scope = ["/repo/docs/decisions/implemented/feature/x.md"]
+    // git prints staged paths relative to the repo root even when the hook
+    // runs from a subdirectory; resolving against root keeps them in scope.
+    expect(filterStagedFiles(["docs/decisions/implemented/feature/x.md"], scope, "/repo")).toEqual([
+      "docs/decisions/implemented/feature/x.md",
+    ])
+  })
+
+  test("drops out-of-scope staged files resolved from the repository root", () => {
+    const scope = ["/repo/docs/decisions/implemented/feature/x.md"]
+    const staged = ["packages/app/PRODUCT.md", "docs/decisions/implemented/feature/x.md"]
+    expect(filterStagedFiles(staged, scope, "/repo")).toEqual(["docs/decisions/implemented/feature/x.md"])
+  })
 })
