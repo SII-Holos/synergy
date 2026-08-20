@@ -102,6 +102,7 @@ import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
 import { filterSettingsSections, SETTINGS_DEVELOPER_MODE_STORAGE_KEY } from "./settings-visibility"
 import { SaveIndicator } from "./components/SaveIndicator"
 import { canUseConfigFileOpen, configFileOpenFailure } from "./config-file-open-model"
+import { createDesktopZoomController } from "./desktop-zoom-model"
 import { localizeSettingsSection, settingsSectionGroupKey } from "./settings-section-copy"
 import {
   canRefreshChannelAccount,
@@ -213,6 +214,7 @@ const copy = {
   },
   interfaceZoomRow: { id: "settings.catalog.general.row.zoom", message: "Interface Zoom" },
   themeSaveFailed: { id: "settings.panel.theme.saveFailed", message: "Theme change could not be saved" },
+  zoomSaveFailed: { id: "settings.panel.zoom.saveFailed", message: "Interface zoom could not be saved" },
 }
 
 export type SettingsPanelProps = DialogSettingsProps & {
@@ -278,7 +280,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [aggregateSaveStatus, setAggregateSaveStatus] = createSignal<"idle" | "saving" | "saved" | "error">("idle")
   const [saveResultFingerprint, setSaveResultFingerprint] = createSignal<string>()
   const [desktopUpdateDraft, setDesktopUpdateDraft] = createSignal<DesktopUpdateMode>()
-  const [desktopZoomDraft, setDesktopZoomDraft] = createSignal<number>()
   const [pluginDraftVersion, setPluginDraftVersion] = createSignal(0)
   const pluginDrafts = createPluginSettingsDrafts(() => setPluginDraftVersion((version) => version + 1))
   const [refreshing, setRefreshing] = createSignal(false)
@@ -343,6 +344,17 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [desktopZoomSaved, { mutate: setDesktopZoomSaved }] = createResource(async () => {
     if (!platform.desktopZoom) return undefined
     return platform.desktopZoom.get().catch(() => undefined)
+  })
+  const desktopZoomController = createDesktopZoomController({
+    bridge: platform.desktopZoom,
+    onApplied: (factor) => setDesktopZoomSaved(factor),
+    onFailure: (error) => {
+      showToast({
+        type: "error",
+        title: _(copy.zoomSaveFailed),
+        description: requestErrorMessage(error),
+      })
+    },
   })
 
   const canOpenConfigFiles = createMemo(() => canUseConfigFileOpen(platform, desktopServerStatus()))
@@ -498,7 +510,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
     if (submittedDraft && currentDraft) {
       setSettings(reconcile(rebaseDraftAfterSave(snapshotSettingsDraft(settings), submittedDraft, currentDraft)))
     }
-    if (submittedDraft) restoreInstantTheme()
+    if (submittedDraft) {
+      restoreInstantTheme()
+      void restoreInstantZoom()
+    }
   }
 
   // Theme is applied instantly and persisted by a background update, so the
@@ -508,6 +523,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
   // Config imports skip this: there the server value is the intended one.
   function restoreInstantTheme() {
     setSettings("general", "theme", themeIdToSettingsValue(theme.themeId()))
+  }
+  // Zoom is applied instantly and persisted by the desktop bridge, so
+  // re-read the live value on discard and after an explicit save to keep
+  // the slider in sync with the actually applied zoom factor.
+  function restoreInstantZoom() {
+    void desktopZoomController.restore()
   }
 
   const serverPatch = createMemo<Record<string, unknown>>(() => {
@@ -528,22 +549,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
     const draft = desktopUpdateDraft()
     return draft !== undefined && draft !== (productUpdate.desktopStatus()?.mode ?? "auto")
   }
-  const desktopZoomDirty = () => {
-    const draft = desktopZoomDraft()
-    if (draft === undefined) return false
-    // The slider steps in whole percent points; treat values within half a
-    // step of the saved factor as unchanged to avoid rounding-induced dirt.
-    return Math.abs(draft - (desktopZoomSaved() ?? 1)) > 0.005
-  }
   const editingLabel = createMemo(() => _(copy.globalConfig))
   const hasAnyChanges = createMemo(
     () =>
-      hasServerChanges() ||
-      hasPluginChanges() ||
-      personalizeController.dirty() ||
-      font.dirty() ||
-      desktopUpdateDirty() ||
-      desktopZoomDirty(),
+      hasServerChanges() || hasPluginChanges() || personalizeController.dirty() || font.dirty() || desktopUpdateDirty(),
   )
   const draftFingerprint = createMemo(() =>
     JSON.stringify({
@@ -552,7 +561,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
       personalize: [personalizeController.content(), personalizeController.resetPending()],
       font: [font.selected("sans"), font.selected("mono")],
       desktopUpdate: desktopUpdateDraft(),
-      desktopZoom: desktopZoomDraft(),
     }),
   )
 
@@ -565,10 +573,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
     personalizeController.discard()
     font.discard()
     setDesktopUpdateDraft(undefined)
-    setDesktopZoomDraft(undefined)
     resetEditor()
     doEnsureInit()
     restoreInstantTheme()
+    void restoreInstantZoom()
   }
 
   const save = useSettingsSave({
@@ -639,24 +647,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return true
   }
 
-  async function saveDesktopZoomChanges() {
-    const draft = desktopZoomDraft()
-    const bridge = platform.desktopZoom
-    if (draft === undefined || !bridge) return true
-    const applied = await bridge.set(draft)
-    if (Math.abs(applied - draft) > 1e-6) return false
-    setDesktopZoomSaved(applied)
-    setDesktopZoomDraft((current) => retainDraftAfterSave(current, draft))
-    return true
-  }
-
   const explicitSaveSources = () => [
     { dirty: save.explicitDirty, save: save.saveServerChanges },
     { dirty: hasPluginChanges, save: savePluginChanges },
     { dirty: personalizeController.dirty, save: savePersonalizeChanges },
     { dirty: font.dirty, save: saveFontChanges },
     { dirty: desktopUpdateDirty, save: saveDesktopUpdateChanges },
-    { dirty: desktopZoomDirty, save: saveDesktopZoomChanges },
   ]
   const hasExplicitChanges = createMemo(() => hasExplicitSettingsChanges(explicitSaveSources()))
   const explicitSaveBlocked = createMemo(
@@ -732,9 +728,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
     const saved = productUpdate.desktopStatus()?.mode ?? "auto"
     setDesktopUpdateDraft(mode === saved ? undefined : mode)
   }
-  function stageDesktopZoomFactor(factor: number) {
-    const saved = desktopZoomSaved() ?? 1
-    setDesktopZoomDraft(Math.abs(factor - saved) < 0.005 ? undefined : factor)
+  function applyDesktopZoomFactor(factor: number) {
+    desktopZoomController.apply(factor)
   }
 
   const saveFooterStatus = createMemo(() =>
@@ -831,8 +826,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
         }}
         desktopUpdateMode={desktopUpdateDraft() ?? productUpdate.desktopStatus()?.mode}
         onDesktopUpdateModeChange={stageDesktopUpdateMode}
-        desktopZoom={desktopZoomDraft() ?? desktopZoomSaved() ?? 1}
-        onDesktopZoomChange={stageDesktopZoomFactor}
+        desktopZoom={desktopZoomSaved() ?? 1}
+        onDesktopZoomChange={applyDesktopZoomFactor}
         popoverLayer={settingsPopoverLayer()}
       />
     ),
