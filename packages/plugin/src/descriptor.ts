@@ -315,7 +315,7 @@ function compileContribution(
         order: contribution.order,
         slot: contribution.slot,
         when: contribution.when,
-        component: compiledComponent(contribution.component, artifacts, `${contribution.kind}:${contribution.id}`),
+        component: compiledComponent(contribution.component, artifacts, `${contribution.kind}:${contribution.id}`)!,
       }
     case "ui.composerExtension":
     case "ui.selectionExtension":

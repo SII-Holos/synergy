@@ -233,6 +233,8 @@ export interface SlotContribution extends UISurfaceContributionBase<"ui.slot"> {
   slot: string
   /** Minimal visibility conditions. Omit to always show. */
   when?: { session?: boolean }
+  /** A slot is a render position: it always needs a trusted component. */
+  component: TrustedComponentReference
 }
 
 export interface ThemeContribution extends ContributionBase<"ui.theme"> {

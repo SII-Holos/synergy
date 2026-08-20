@@ -55,6 +55,8 @@ Declared host slots (v1):
 
 The component receives `PluginSlotSurfaceContext` (the same `PluginSurfaceContext` contract). An optional `when: { session: boolean }` condition hides the entry unless the outlet reports the matching session context; a `session.header.actions` contribution typically sets `when: { session: true }` so it only appears inside an open session.
 
+A slot is a render position, so `component` is required — a contribution without a trusted component is rejected. If a slot's component fails to load or render, the host renders the shared plugin error card in that slot position instead of leaving it blank.
+
 Styling a surface (for example a parchment or brushed-metal footer) is done with the component's own CSS: plugin-kit extracts imported stylesheets into the plugin's `ui/index.css`, the host injects it as a `<link>` on registration, and selectors are namespaced by your own class names — prefix them with the plugin ID to avoid collisions. The theme color contract is not extended for surfaces; colors come from the theme's semantic tokens and surfaces are component-owned.
 
 ## Trusted Components

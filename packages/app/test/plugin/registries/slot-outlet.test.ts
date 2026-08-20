@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import { render } from "solid-js/web"
-import { createComponent } from "solid-js"
+import { ErrorBoundary, createComponent, type JSX } from "solid-js"
 
 mock.module("@lingui/solid", () => ({
   useLingui: () => ({
@@ -10,11 +10,25 @@ mock.module("@lingui/solid", () => ({
 
 // PluginErrorBoundary is a JSX component; bun's test transform compiles JSX to
 // React.createElement in this harness (see font-preference-provider.test.ts for
-// the same convention). Substitute a pass-through so the outlet's real
-// lazy-load/dispose logic stays exercised. The boundary itself is covered by
-// its own render path in the app (PluginErrorBoundary is pre-existing).
+// the same convention). Substitute a real Solid error boundary so the outlet's
+// lazy-load/dispose logic — including the loader-failure error card — stays
+// exercised. The boundary's own rendering is covered by the app.
 mock.module("../../../src/plugin/components/plugin-error-boundary", () => ({
-  PluginErrorBoundary: (props: { children?: unknown }) => props.children,
+  PluginErrorBoundary: (props: { pluginId?: string; componentName?: string; children?: unknown }) =>
+    createComponent(ErrorBoundary, {
+      fallback: (error: unknown) => {
+        const element = document.createElement("div")
+        element.dataset.testid = "plugin-error"
+        element.textContent = error instanceof Error ? error.message : String(error)
+        return element
+      },
+      // Getter children, mirroring the JSX compile output of the real boundary:
+      // children must be created inside the ErrorBoundary's protected scope so
+      // render errors from the outlet's Dynamic component are caught.
+      get children() {
+        return props.children as JSX.Element
+      },
+    }),
 }))
 
 const { SlotOutlet } = await import("../../../src/plugin/slot-outlet")
@@ -138,6 +152,55 @@ describe("SlotOutlet", () => {
     expect(texts).toEqual(["hi", "hi"])
     unregisterA()
     unregisterB()
+    dispose()
+  })
+  test("renders the error card when a loader rejects", async () => {
+    const reg = registry()
+    const target = document.createElement("div")
+    document.body.append(target)
+    const dispose = render(() => createComponent(SlotOutlet, { slot: "sidebar.footer", registry: reg }), target)
+    const unregister = reg.register(
+      simpleEntry({
+        loader: async () => {
+          throw new Error("boom")
+        },
+      }),
+    )
+    for (let attempt = 0; attempt < 20 && !target.querySelector('[data-testid="plugin-error"]'); attempt++) {
+      await Bun.sleep(1)
+    }
+    expect(target.querySelector('[data-testid="plugin-error"]')?.textContent).toBe("boom")
+    unregister()
+    dispose()
+  })
+
+  test("recovers from a failed load when the entry is replaced", async () => {
+    const reg = registry()
+    const target = document.createElement("div")
+    document.body.append(target)
+    const dispose = render(() => createComponent(SlotOutlet, { slot: "sidebar.footer", registry: reg }), target)
+    const unregisterBad = reg.register(
+      simpleEntry({
+        id: "test:flaky",
+        loader: async () => {
+          throw new Error("first load failed")
+        },
+      }),
+    )
+    for (let attempt = 0; attempt < 20 && !target.querySelector('[data-testid="plugin-error"]'); attempt++) {
+      await Bun.sleep(1)
+    }
+    expect(target.querySelector('[data-testid="plugin-error"]')?.textContent).toBe("first load failed")
+
+    // Reload the same slot with a healthy entry: the stale error card must go away.
+    unregisterBad()
+    const unregisterGood = reg.register(simpleEntry({ id: "test:flaky" }))
+    for (let attempt = 0; attempt < 20 && !target.querySelector('[data-testid="slot-entry"]'); attempt++) {
+      await Bun.sleep(1)
+    }
+    expect(target.querySelector('[data-testid="slot-entry"]')?.textContent).toBe("hi")
+    expect(target.querySelector('[data-testid="plugin-error"]')).toBeNull()
+    unregisterGood()
     dispose()
   })
 })

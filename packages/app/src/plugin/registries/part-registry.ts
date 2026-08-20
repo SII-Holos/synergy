@@ -13,7 +13,9 @@ interface PartSlotEntry extends SlotEntryBase {
 const registry = new SlotRegistry<PartSlotEntry>()
 /** Per-type disposer so re-registering a type replaces the previous entry. */
 const disposers = new Map<string, () => void>()
-const loading = new Set<string>()
+/** In-flight loader per type, keyed by loader identity so a stale loader
+ *  resolving after a reload cannot clear the replacement's in-flight mark. */
+const loading = new Map<string, () => Promise<{ default: PartRenderer }>>()
 
 export function registerPartRenderer(
   type: string,
@@ -32,7 +34,7 @@ export function registerPartRenderer(
     disposers.delete(type)
     dispose()
     delete PART_MAPPING[type]
-    loading.delete(type)
+    if (loading.get(type) === loader) loading.delete(type)
   }
 }
 
@@ -42,14 +44,16 @@ export function resolvePartRenderer(type: string): PartRenderer | undefined {
   if (existing) return existing
   const entry = registry.get(type)
   const loader = entry?.loader
-  if (loader && !loading.has(type)) {
-    loading.add(type)
+  if (loader && loading.get(type) !== loader) {
+    loading.set(type, loader)
     loader().then(
       (mod) => {
         if (registry.get(type) === entry) registerPartComponent(type, mod.default as any)
-        loading.delete(type)
+        if (loading.get(type) === loader) loading.delete(type)
       },
-      () => loading.delete(type),
+      () => {
+        if (loading.get(type) === loader) loading.delete(type)
+      },
     )
   }
   return undefined

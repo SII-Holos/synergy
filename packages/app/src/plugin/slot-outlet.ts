@@ -7,6 +7,10 @@
  * the shared plugin error boundary, and ordered by the registry's stable
  * sort. When the slot has no entries the caller's fallback renders.
  *
+ * A failed loader renders the shared plugin error card instead of silently
+ * disappearing: the entry's component becomes a throwing component so the
+ * existing plugin error boundary surfaces the failure.
+ *
  * Implemented without JSX so bun:test can import and exercise it directly
  * (bun's test transform compiles .tsx JSX to React.createElement).
  */
@@ -34,11 +38,16 @@ export function filterSlotEntry(entry: SlotEntryBase, context: { session?: boole
 
 function SlotEntryView(props: { entry: SlotEntryBase; session?: boolean }) {
   const [component, setComponent] = createSignal<Component<object>>()
+  const [loadError, setLoadError] = createSignal<unknown>()
   createEffect(() => {
     const loader = props.entry.loader
     props.entry
     props.session
     if (!loader) return
+    // The entry (or session context) changed: drop the previous entry's
+    // component/error state before starting the new load.
+    setComponent()
+    setLoadError()
     let disposed = false
     void loader().then(
       (value) => {
@@ -46,27 +55,46 @@ function SlotEntryView(props: { entry: SlotEntryBase; session?: boolean }) {
         const Loaded = value.default as Component<object>
         setComponent(() => (props: object) => createComponent(Loaded, props))
       },
-      () => {
-        if (!disposed) setComponent()
+      (error: unknown) => {
+        if (disposed) return
+        setLoadError(error)
       },
     )
     onCleanup(() => {
       disposed = true
     })
   })
-  return Show({
-    get when() {
-      return component()
-    },
-    children: createComponent(PluginErrorBoundary, {
-      pluginId: props.entry.pluginId ?? "",
-      componentName: props.entry.id,
-      children: createComponent(Dynamic, {
-        get component() {
-          return component()!
+  // A failed loader surfaces as a component that throws on render, so the
+  // shared plugin error boundary below renders the standard error card.
+  const viewComponent = createMemo<Component<object> | undefined>(() => {
+    const loaded = component()
+    if (loaded) return loaded
+    if (loadError())
+      return () => {
+        throw loadError()
+      }
+    return undefined
+  })
+  return createComponent(PluginErrorBoundary, {
+    pluginId: props.entry.pluginId ?? "",
+    componentName: props.entry.id,
+    // Getter children: the entry element is created each time the boundary
+    // reads children, so rendering (including the throwing component produced
+    // by a failed loader) happens inside the boundary's protected scope.
+    // Eager elements or plain function children would render outside it and
+    // escape the boundary.
+    get children() {
+      return Show({
+        get when() {
+          return viewComponent()
         },
-      }),
-    }),
+        children: createComponent(Dynamic, {
+          get component() {
+            return viewComponent()!
+          },
+        }),
+      })
+    },
   })
 }
 
@@ -75,16 +103,13 @@ export function SlotOutlet(props: {
   session?: boolean
   fallback?: JSX.Element
   registry?: SlotRegistry
-  /** Render only the entry with this id (used by single-entry surfaces). */
-  only?: string
 }) {
   const registry = props.registry ?? pluginSlots
   const [version, setVersion] = createSignal(0)
   onCleanup(registry.subscribe(() => setVersion((value) => value + 1)))
   const entries = createMemo(() => {
     version()
-    const listed = registry.list(props.slot).filter((entry) => filterSlotEntry(entry, { session: props.session }))
-    return props.only ? listed.filter((entry) => entry.id === props.only) : listed
+    return registry.list(props.slot).filter((entry) => filterSlotEntry(entry, { session: props.session }))
   })
   return Show({
     get when() {

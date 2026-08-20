@@ -214,6 +214,7 @@ const SlotContribution = UIBase.extend({
   kind: z.literal("ui.slot"),
   slot: z.string().min(1),
   when: z.object({ session: z.boolean().optional() }).strict().optional(),
+  component: Component,
 }).strict()
 
 const ThemeContribution = ContributionBase.extend({
