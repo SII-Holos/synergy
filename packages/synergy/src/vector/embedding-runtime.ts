@@ -33,10 +33,11 @@ async function fetchLocalFile(target: string): Promise<Response> {
 // that requires a proxy) causes fetch to hang indefinitely, leaving the
 // embedding download stuck at 0% with no error. The timeout only covers
 // TTFB — once response headers arrive, the body streams at its own pace.
+type EnvFetch = (input: string | URL, init?: any) => Promise<any>
 async function fetchRemoteWithTimeout(
-  delegate: typeof fetch,
-  input: Parameters<typeof fetch>[0],
-  init: Parameters<typeof fetch>[1],
+  delegate: EnvFetch,
+  input: string | URL,
+  init?: any,
 ): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), REMOTE_FETCH_TTFB_TIMEOUT_MS).unref()
@@ -105,7 +106,7 @@ export function installLocalFileFetch(runtime: TransformersRuntime): void {
   if (standaloneFetchInstalled.has(runtime.env)) return
   standaloneFetchInstalled.add(runtime.env)
   const delegate = runtime.env.fetch
-  runtime.env.fetch = (async (input: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]) => {
+  runtime.env.fetch = (async (input: string | URL, init?: any) => {
     const target = typeof input === "string" ? input : input instanceof URL ? input.href : undefined
     if (typeof target === "string" && !REMOTE_PROTOCOL.test(target)) return fetchLocalFile(target)
     return fetchRemoteWithTimeout(delegate, input, init)
