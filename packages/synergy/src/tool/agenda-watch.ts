@@ -1,23 +1,36 @@
 import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
 import { Tool } from "./tool"
-import { Agenda } from "../agenda"
+import { Agenda, AgendaTypes } from "../agenda"
 import { AgendaDedup } from "../agenda/dedup"
 import { AgendaStore } from "../agenda/store"
 import { SessionManager } from "../session/manager"
 import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./agenda-watch.txt"
 
-const parameters = z.object({
-  title: z.string().describe("Short name, e.g. 'Check pipeline health'"),
-  prompt: z
-    .string()
-    .describe(
-      "Instruction you'll receive when woken up. Write it for yourself — you'll see it with full conversation history.",
-    ),
-  delay: z.string().describe("How long to wait before waking you, e.g. '30m', '2h', '1d'"),
-  global: z.boolean().optional().describe("If true, visible from all scopes. Default: false (current project only)"),
-})
+const parameters = z
+  .object({
+    title: z.string().describe("Short name, e.g. 'Check pipeline health'"),
+    prompt: z
+      .string()
+      .describe(
+        "Instruction you'll receive when woken up. Write it for yourself — you'll see it with full conversation history.",
+      ),
+    delay: z.string().optional().describe("How long to wait before waking you, e.g. '30m', '2h', '1d'"),
+    onSessionEnd: z
+      .object({
+        sessionID: z.string().describe("Session to watch — wake when it ends a turn"),
+        agent: z.string().optional().describe("Only wake when the turn's agent matches"),
+        finish: z.string().optional().describe("Only wake when the turn's finish state matches (e.g. 'stop', 'error')"),
+      })
+      .optional()
+      .describe("Wake when another session ends a turn instead of after a delay"),
+    global: z.boolean().optional().describe("If true, visible from all scopes. Default: false (current project only)"),
+  })
+  .refine((v) => (v.delay !== undefined) !== (v.onSessionEnd !== undefined), {
+    message: "Pass exactly one of delay or onSessionEnd",
+    path: ["delay"],
+  })
 
 export const AgendaWatchTool = Tool.define("agenda_watch", {
   description: DESCRIPTION,
@@ -56,7 +69,16 @@ export const AgendaWatchTool = Tool.define("agenda_watch", {
     }
 
     const session = await SessionManager.getSession(ctx.sessionID).catch(() => undefined)
-    const trigger = { type: "delay" as const, delay: params.delay }
+    const trigger: AgendaTypes.Trigger = params.onSessionEnd
+      ? {
+          type: "session",
+          sessionID: params.onSessionEnd.sessionID,
+          event: "turn.end",
+          agent: params.onSessionEnd.agent,
+          finish: params.onSessionEnd.finish,
+          once: true,
+        }
+      : { type: "delay" as const, delay: params.delay! }
 
     const conflicts = await AgendaDedup.findConflicts(
       ScopeContext.current.scope.id,
@@ -85,8 +107,10 @@ export const AgendaWatchTool = Tool.define("agenda_watch", {
       endpoint: session?.endpoint,
     })
 
-    const delayMs = AgendaStore.parseDuration(params.delay)
-    const firesAt = formatLocalDateTime(Date.now() + delayMs)
+    const delayMs = params.onSessionEnd ? 0 : AgendaStore.parseDuration(params.delay!)
+    const firesAt = params.onSessionEnd
+      ? `when session "${params.onSessionEnd.sessionID}" ends a turn`
+      : formatLocalDateTime(Date.now() + delayMs)
 
     return {
       title: `Watch: ${params.title}`,
@@ -94,12 +118,16 @@ export const AgendaWatchTool = Tool.define("agenda_watch", {
         `Watch set — you'll be woken up in THIS session.`,
         ``,
         `ID: ${item.id}`,
-        `Fires in: ${params.delay} (${firesAt})`,
+        `Fires: ${firesAt}`,
         ``,
         `When it fires, you receive the prompt as a message and continue with full conversation history.`,
         `To cancel: agenda_cancel(id="${item.id}")`,
       ].join("\n"),
-      metadata: { id: item.id, status: item.status, delay: params.delay } as Record<string, any>,
+      metadata: {
+        id: item.id,
+        status: item.status,
+        ...(params.onSessionEnd ? { sessionID: params.onSessionEnd.sessionID } : { delay: params.delay }),
+      } as Record<string, any>,
     }
   },
 })

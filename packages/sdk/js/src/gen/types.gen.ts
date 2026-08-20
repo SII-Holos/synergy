@@ -1266,6 +1266,30 @@ export type AgendaTriggerWebhook = {
   token?: string
 }
 
+export type AgendaTriggerSession = {
+  type: "session"
+  /**
+   * Target session to watch for turn events
+   */
+  sessionID: string
+  /**
+   * Session turn event to react to
+   */
+  event?: "turn.end" | "turn.start"
+  /**
+   * Only fire when the turn's agent matches
+   */
+  agent?: string
+  /**
+   * Only fire when the turn's finish state matches (e.g. 'stop', 'error'). Only applies to turn.end
+   */
+  finish?: string
+  /**
+   * If true, the item auto-completes after the first fire
+   */
+  once?: boolean
+}
+
 export type AgendaTrigger =
   | AgendaTriggerAt
   | AgendaTriggerCron
@@ -1273,6 +1297,7 @@ export type AgendaTrigger =
   | AgendaTriggerDelay
   | AgendaTriggerWatch
   | AgendaTriggerWebhook
+  | AgendaTriggerSession
 
 /**
  * Control profile used by sessions created for this item
@@ -5017,7 +5042,7 @@ export type DagNode = {
 }
 
 export type SessionAgendaTrigger = {
-  type: "cron" | "every" | "at" | "delay" | "watch" | "webhook"
+  type: "cron" | "every" | "at" | "delay" | "watch" | "webhook" | "session"
   /**
    * Interval for every triggers, e.g. '30m'
    */
@@ -5026,6 +5051,10 @@ export type SessionAgendaTrigger = {
    * Delay for delay triggers, e.g. '2h'
    */
   delay?: string
+  /**
+   * Target session for session triggers
+   */
+  sessionID?: string
 }
 
 export type SessionAgendaItem = {
@@ -5045,7 +5074,7 @@ export type SessionAgendaItem = {
   /**
    * Trigger types that can activate this agenda item
    */
-  triggerTypes: Array<"cron" | "every" | "at" | "delay" | "watch" | "webhook">
+  triggerTypes: Array<"cron" | "every" | "at" | "delay" | "watch" | "webhook" | "session">
   /**
    * Display-safe trigger details for client-side formatting
    */
@@ -8351,6 +8380,25 @@ export type EventSessionIdle = {
   }
 }
 
+export type EventSessionTurnStart = {
+  type: "session.turn.start"
+  properties: {
+    sessionID: string
+    messageID: string
+    agent?: string
+  }
+}
+
+export type EventSessionTurnEnd = {
+  type: "session.turn.end"
+  properties: {
+    sessionID: string
+    messageID: string
+    finish?: string
+    agent?: string
+  }
+}
+
 export type EventSessionInboxUpdated = {
   type: "session.inbox.updated"
   properties: {
@@ -8812,6 +8860,8 @@ export type Event =
   | EventSessionStatus
   | EventSessionCompletion
   | EventSessionIdle
+  | EventSessionTurnStart
+  | EventSessionTurnEnd
   | EventSessionInboxUpdated
   | EventBlueprintLoopCreated
   | EventBlueprintLoopUpdated

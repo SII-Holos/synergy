@@ -180,6 +180,18 @@ function parseTriggersToSchedule(triggers: AgendaTrigger[]): ScheduleState {
   return defaults
 }
 
+/**
+ * Triggers the schedule form cannot represent (session, webhook, watch, or
+ * anything beyond the first at/every/cron). Edit saves preserve these so the
+ * form never silently deletes triggers it cannot render.
+ */
+function unrepresentedTriggers(triggers: AgendaTrigger[]): AgendaTrigger[] {
+  if (!triggers || triggers.length === 0) return []
+  const [first] = triggers
+  if (first.type === "at" || first.type === "every" || first.type === "cron") return triggers.slice(1)
+  return triggers
+}
+
 // ---------------------------------------------------------------------------
 
 function formatDate(ts: number, fmt: IntlFormatter): string {
@@ -293,6 +305,7 @@ export function AgendaForm(props: {
       .map((s) => s.trim())
       .filter(Boolean)
     const promptValue = prompt().trim()
+    const preserved = unrepresentedTriggers(props.item?.triggers ?? [])
 
     try {
       if (isEdit()) {
@@ -300,10 +313,9 @@ export function AgendaForm(props: {
           title: t,
           description: description().trim() || undefined,
           tags: tags.length > 0 ? tags : undefined,
-          triggers,
+          triggers: [...preserved, ...triggers],
           prompt: promptValue || undefined,
         }
-        await sdk.client.agenda.update({ id: props.item!.id, directory: props.directory, agendaPatchInput: patch })
       } else {
         const input: AgendaCreateInput = {
           title: t,
@@ -417,6 +429,9 @@ export function AgendaForm(props: {
             </div>
           </Field>
 
+          <Show when={isEdit() && unrepresentedTriggers(props.item?.triggers ?? []).length > 0}>
+            <p class="text-11-regular text-text-weaker -mt-1">{_(A.formUnsupportedTriggers)}</p>
+          </Show>
           {/* Repeat */}
           <Show when={hasSchedule()}>
             <Field label={_(A.formRepeat)}>
