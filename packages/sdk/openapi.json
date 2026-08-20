@@ -6753,6 +6753,36 @@
               }
             }
           },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Fork point message is no longer part of the effective history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionForkPointMissingError"
+                }
+              }
+            }
+          },
           "503": {
             "description": "Runtime shutting down",
             "content": {
@@ -36966,6 +36996,31 @@
             "required": ["mode"]
           }
         ]
+      },
+      "SessionForkPointMissingError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SessionForkPointMissingError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "messageID", "message"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "AttachmentSourceText": {
         "type": "object",

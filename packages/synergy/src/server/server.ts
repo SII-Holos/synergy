@@ -418,7 +418,8 @@ export namespace Server {
               err instanceof ConfigImport.RevisionConflictError ||
               err instanceof ConfigImport.LockedError ||
               err instanceof Worktree.UnavailableError ||
-              err instanceof ManagedProjectArchiveError
+              err instanceof ManagedProjectArchiveError ||
+              err instanceof Session.ForkPointMissingError
             )
               status = 409
             else if (err instanceof ConfigImport.SourceTooLargeError) status = 413
