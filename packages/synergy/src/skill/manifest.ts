@@ -94,21 +94,41 @@ export namespace SkillManifest {
 
   type FrontmatterMark = { position?: number; line?: number; column?: number; buffer?: string }
 
+  // js-yaml reports an unquoted plain scalar containing ': ' as one of these
+  // errors; other syntax failures (bad indentation, unterminated flow
+  // collections, ...) must not get a quoting hint that does not apply.
+  const UNQUOTED_COLON_DETAIL_PATTERNS = [/incomplete explicit mapping pair/, /mapping values are not allowed/]
+
   function frontmatterErrorDetails(error: unknown): {
     field?: string
     line?: number
     column?: number
     position?: number
     detail?: string
+    quotingTip?: boolean
   } {
     const cause = error instanceof Error && error.cause ? error.cause : error
     const mark = (cause as { mark?: FrontmatterMark } | undefined)?.mark
     if (!mark || typeof mark.position !== "number" || typeof mark.buffer !== "string") return {}
-    const before = mark.buffer.slice(0, mark.position)
+    // Include the character at the mark: for "bad indentation" errors the
+    // position points at the key's colon, which would otherwise be cut off
+    // and the nearest field lookup would fall back to the previous key.
+    const before = mark.buffer.slice(0, mark.position + 1)
     const keys = [...before.matchAll(/^\s*([A-Za-z0-9_-]+):/gm)]
     const field = keys.length > 0 ? keys[keys.length - 1]![1] : undefined
     const detail = cause instanceof Error ? cause.message.split("\n")[0] : undefined
-    return { field, line: mark.line, column: mark.column, position: mark.position, detail }
+    // js-yaml marks are zero-based; expose one-based line/column so the
+    // structured reason matches the "at line N, column M" text in the message.
+    const line = typeof mark.line === "number" ? mark.line + 1 : undefined
+    const column = typeof mark.column === "number" ? mark.column + 1 : undefined
+    return {
+      field,
+      line,
+      column,
+      position: mark.position,
+      detail,
+      quotingTip: detail !== undefined && UNQUOTED_COLON_DETAIL_PATTERNS.some((pattern) => pattern.test(detail)),
+    }
   }
 
   function issuesToDiagnostics(
@@ -232,7 +252,9 @@ export namespace SkillManifest {
               ...(details.position !== undefined ? { position: details.position } : {}),
             },
             message: details.field
-              ? `Failed to parse YAML frontmatter in field '${details.field}': ${details.detail ?? "invalid YAML"}. Tip: quote values containing ': ' with double quotes, e.g. description: "Keywords: foo".`
+              ? `Failed to parse YAML frontmatter in field '${details.field}': ${
+                  details.detail?.replace(/:$/, "") ?? "invalid YAML"
+                }.${details.quotingTip ? ` Tip: quote values containing ': ' with double quotes, e.g. description: "Keywords: foo".` : ""}`
               : error instanceof Error
                 ? error.message
                 : String(error),

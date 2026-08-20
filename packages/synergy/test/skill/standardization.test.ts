@@ -165,6 +165,36 @@ describe.serial("skill standardization", () => {
     expect(result.diagnostics[0]?.message).toContain("quote")
   })
 
+  test("frontmatter_parse_failed reports one-based line/column in reason", async () => {
+    await using tmp = await tmpdir()
+    await writeSkill(tmp.path, "broken-yaml", { name: "broken-yaml", description: "bad: yaml" })
+
+    const result = await SkillManifest.normalizeFile({
+      entryFile: path.join(tmp.path, "broken-yaml", "SKILL.md"),
+      source: "synergy",
+      mode: "strict",
+    })
+    expect(result.diagnostics[0]?.reason).toMatchObject({ line: 3, column: 17 })
+  })
+
+  test("frontmatter_parse_failed omits the quoting tip for non-colon syntax errors", async () => {
+    await using tmp = await tmpdir()
+    await Bun.write(
+      path.join(tmp.path, "bad-indent", "SKILL.md"),
+      "---\nname: bad-indent\ndescription: d\n  indented-bad: y\n---\n",
+    )
+
+    const result = await SkillManifest.normalizeFile({
+      entryFile: path.join(tmp.path, "bad-indent", "SKILL.md"),
+      source: "synergy",
+      mode: "strict",
+    })
+    expect(result.diagnostics[0]?.code).toBe("skill.frontmatter_parse_failed")
+    expect(result.diagnostics[0]?.message).toContain("'indented-bad'")
+    expect(result.diagnostics[0]?.message).not.toContain("quote")
+    expect(result.diagnostics[0]?.reason).toMatchObject({ line: 4, column: 15 })
+  })
+
   test("keeps reporting frontmatter_parse_failed across repeated parses of the same broken file", async () => {
     await using tmp = await tmpdir()
     await writeSkill(tmp.path, "repeat-broken", { name: "repeat-broken", description: "bad: yaml" })
