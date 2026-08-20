@@ -77,6 +77,15 @@ export namespace Session {
     z.object({ sessionID: z.string() }),
   )
 
+  export const ForkPointMissingError = NamedError.create(
+    "SessionForkPointMissingError",
+    z.object({
+      sessionID: z.string(),
+      messageID: z.string(),
+      message: z.string(),
+    }),
+  )
+
   const log = Log.create({ service: "session" })
   const { asScopeID, asSessionID, asMessageID, asPartID } = Identifier
 
@@ -523,6 +532,17 @@ export namespace Session {
       const forkPoint =
         position?.type === "before" || position?.type === "through" ? position.messageID : input.messageID
       const includeForkPoint = position?.type === "through"
+      // Validate the fork point against the effective (rollback-projected)
+      // history before creating the fork, so a stale point from a bounded
+      // client window cannot silently fork at the head or create an orphan.
+      const msgs = await messages({ sessionID: input.sessionID })
+      if (forkPoint && !msgs.some((msg) => msg.info.id === forkPoint)) {
+        throw new ForkPointMissingError({
+          sessionID: input.sessionID,
+          messageID: forkPoint,
+          message: "The fork point message is no longer part of the effective session history.",
+        })
+      }
       let session = await create({
         scope: source.scope as Scope,
         workspace: source.workspace,
@@ -534,7 +554,6 @@ export namespace Session {
           title: source.title,
         },
       })
-      const msgs = await messages({ sessionID: input.sessionID })
       const messageMap = new Map<string, string>()
       for (const msg of msgs) {
         // "before" stops at the target message (exclusive); "through" copies

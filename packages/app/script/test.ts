@@ -23,6 +23,7 @@ const playwrightIsolated = [
   "test/components/session/session-progress-island-motion.test.ts",
   "test/components/session/session-progress-todo-layout.test.ts",
   "test/components/session/conversation-row-retention.test.ts",
+  "test/components/session/dialog-fork-confirm.dom.test.tsx",
   "test/components/sidebar/channel-sidebar-layout.test.ts",
 ]
 

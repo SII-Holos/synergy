@@ -34,3 +34,11 @@ New i18n strings: `session-turn.fork-message` (tooltip), `session.fork.confirm.*
 - The UI button only appears where a handler exists, so embedded or plugin-driven `SessionTurn` usages without the prop keep the previous footer.
 - The `split` icon addition expands the built-in icon registry and Lucide component map; the semantic-icon contract test enforces the new token's uniqueness and registration.
 - The confirmation dialog adds a small interaction cost to each fork; the impact card communicates exactly what will be copied so the confirmation is informative rather than a blind gate.
+
+## Review hardening (PR #1226)
+
+- **Stale fork points are rejected.** `Session.fork` validates the requested point against the effective (rollback-projected) history before creating the fork. A point that left the effective history (for example, hidden by a later rewind) now fails with `SessionForkPointMissingError` mapped to HTTP 409, instead of silently forking at the head or producing an orphaned session. The error schema is part of the regenerated OpenAPI/SDK contract.
+- **The impact copy never claims precision it lacks.** When the loaded message window does not cover the complete effective history (`hasMore` set), the dialog shows a generic "copy the conversation" summary instead of exact message/reply counts. Exact counts are only shown for a complete window.
+- **The dialog cannot be dismissed while the fork is pending.** `dismissible={false}` disables Escape and outside-pointer dismissal during the request; the close button is also disabled and carries an explicit `aria-label`.
+- **Count copy uses full ICU sentences.** The summary is a single nested `select`/`plural` message ("Copy 2 messages and 2 replies into a new session.") rather than concatenated fragments, so pluralization and locale word order stay correct in every translation.
+- **Dialog behavior is covered by a real-browser DOM test** (Vite fixture + Playwright) asserting rendered copy, aria-label, dismissal guards, and close-on-success; the earlier source-text markup assertions were removed.

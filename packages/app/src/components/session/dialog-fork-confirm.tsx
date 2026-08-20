@@ -10,13 +10,15 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useLocale } from "@/context/locale"
 import "./dialog-fork-confirm.css"
 import { S } from "./session-i18n"
-import { computeForkCounts, joinParts, pluralize, type ForkConfirmMessage } from "./dialog-fork-confirm-model"
+import { computeForkCounts, copiedSummaryKind, type ForkConfirmMessage } from "./dialog-fork-confirm-model"
 export { forkReplyPreview } from "./dialog-fork-confirm-model"
 
 interface DialogForkConfirmProps {
   message: ForkConfirmMessage
   /** All user/assistant messages in canonical order */
   allMessages: { id: string; role: string }[]
+  /** Whether the loaded window covers the complete effective history */
+  hasCompleteHistory: boolean
   /** Short text preview of the target reply, when available */
   preview?: string
   /** Returns true when the fork succeeded and the dialog can close. */
@@ -31,11 +33,17 @@ export function DialogForkConfirm(props: DialogForkConfirmProps) {
 
   const counts = createMemo(() => computeForkCounts(props.allMessages, props.message.id))
 
-  const copiedText = createMemo(() => {
-    const parts: string[] = []
-    if (counts().userMessages > 0) parts.push(pluralize(counts().userMessages, "message"))
-    if (counts().assistantReplies > 0) parts.push(pluralize(counts().assistantReplies, "reply", "replies"))
-    return joinParts(parts)
+  const summaryText = createMemo(() => {
+    const c = counts()
+    const kind = props.hasCompleteHistory ? copiedSummaryKind(c) : "other"
+    return i18n._({
+      ...S.forkConfirmCopiedSummary,
+      values: {
+        kind,
+        messages: c.userMessages,
+        replies: c.assistantReplies,
+      },
+    })
   })
 
   const description = createMemo(() => {
@@ -72,12 +80,14 @@ export function DialogForkConfirm(props: DialogForkConfirmProps) {
       description={description()}
       size="compact"
       class="fork-confirm-dialog"
+      dismissible={!state.pending}
       action={
         <button
           type="button"
           data-slot="dialog-close-button"
           data-component="icon-button"
           data-variant="ghost"
+          aria-label={_(S.forkConfirmClose)}
           disabled={state.pending}
           onClick={() => {
             if (!state.pending) dialog.close()
@@ -88,10 +98,7 @@ export function DialogForkConfirm(props: DialogForkConfirmProps) {
       }
     >
       <div class="fork-confirm-impact">
-        <span class="fork-confirm-impact-label">{_(S.forkConfirmThisCopies)}</span>
-        <span class="fork-confirm-impact-value">
-          {copiedText()} {_(S.forkConfirmIntoNewSession)}
-        </span>
+        <span class="fork-confirm-impact-value">{summaryText()}</span>
         <span class="fork-confirm-impact-note">
           {i18n._({ ...S.forkConfirmCopiedNote, values: { time: forkedAt() ?? "\u2014" } })}
         </span>

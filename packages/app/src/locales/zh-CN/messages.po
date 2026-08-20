@@ -12388,8 +12388,18 @@ msgstr "取消"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.close"
+msgstr "关闭对话框"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.fork.confirm.copiedNote"
 msgstr "将从这条回复在 {time} 分叉。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.copiedSummary"
+msgstr "{kind, select, both {将 {messages, plural, one {# 条消息} other {# 条消息}} 和 {replies, plural, one {# 条回复} other {# 条回复}} 复制到一个新会话中。} messages {将 {messages, plural, one {# 条消息} other {# 条消息}} 复制到一个新会话中。} replies {将 {replies, plural, one {# 条回复} other {# 条回复}} 复制到一个新会话中。} other {将对话复制到一个新会话中。}}"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -12413,18 +12423,8 @@ msgstr "正在分叉…"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.fork.confirm.intoNewSession"
-msgstr "到一个新会话中。"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.fork.confirm.requestFailed"
 msgstr "请求失败"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.fork.confirm.thisCopies"
-msgstr "这将复制"
 
 #. dialog-fork-confirm.tsx
 msgid "session.fork.confirm.title"

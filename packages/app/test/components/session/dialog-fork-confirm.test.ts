@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { computeForkCounts, forkReplyPreview } from "../../../src/components/session/dialog-fork-confirm-model"
+import {
+  computeForkCounts,
+  copiedSummaryKind,
+  forkReplyPreview,
+} from "../../../src/components/session/dialog-fork-confirm-model"
 
 const timeline = [
   { id: "u1", role: "user" },
@@ -28,6 +32,15 @@ describe("fork confirm counts", () => {
 
   test("returns zero counts when the target message is not in the timeline", () => {
     expect(computeForkCounts([...timeline], "missing")).toEqual({ userMessages: 0, assistantReplies: 0 })
+  })
+})
+
+describe("copied summary kind", () => {
+  test("picks the ICU branch matching the copied roles", () => {
+    expect(copiedSummaryKind({ userMessages: 2, assistantReplies: 2 })).toBe("both")
+    expect(copiedSummaryKind({ userMessages: 1, assistantReplies: 0 })).toBe("messages")
+    expect(copiedSummaryKind({ userMessages: 0, assistantReplies: 3 })).toBe("replies")
+    expect(copiedSummaryKind({ userMessages: 0, assistantReplies: 0 })).toBe("other")
   })
 })
 

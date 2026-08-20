@@ -12388,7 +12388,17 @@ msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.close"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.fork.confirm.copiedNote"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.copiedSummary"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
@@ -12413,17 +12423,7 @@ msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.fork.confirm.intoNewSession"
-msgstr ""
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.fork.confirm.requestFailed"
-msgstr ""
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.fork.confirm.thisCopies"
 msgstr ""
 
 #. dialog-fork-confirm.tsx

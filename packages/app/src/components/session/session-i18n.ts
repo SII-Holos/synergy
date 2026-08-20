@@ -208,8 +208,11 @@ export const S = {
     id: "session.fork.confirm.description.preview",
     message: 'Copy the conversation through "{preview}" into a new session.',
   },
-  forkConfirmThisCopies: { id: "session.fork.confirm.thisCopies", message: "This will copy" },
-  forkConfirmIntoNewSession: { id: "session.fork.confirm.intoNewSession", message: "into a new session." },
+  forkConfirmCopiedSummary: {
+    id: "session.fork.confirm.copiedSummary",
+    message:
+      "{kind, select, both {Copy {messages, plural, one {# message} other {# messages}} and {replies, plural, one {# reply} other {# replies}} into a new session.} messages {Copy {messages, plural, one {# message} other {# messages}} into a new session.} replies {Copy {replies, plural, one {# reply} other {# replies}} into a new session.} other {Copy the conversation into a new session.}}",
+  },
   forkConfirmCopiedNote: {
     id: "session.fork.confirm.copiedNote",
     message: "Forked from this reply at {time}.",
@@ -217,6 +220,7 @@ export const S = {
   forkConfirmAction: { id: "session.fork.confirm.action", message: "Fork session" },
   forkConfirmForking: { id: "session.fork.confirm.forking", message: "Forking…" },
   forkConfirmCancel: { id: "session.fork.confirm.cancel", message: "Cancel" },
+  forkConfirmClose: { id: "session.fork.confirm.close", message: "Close dialog" },
   forkConfirmFailed: { id: "session.fork.confirm.failed", message: "Fork failed" },
   forkConfirmRequestFailed: { id: "session.fork.confirm.requestFailed", message: "Request failed" },
 

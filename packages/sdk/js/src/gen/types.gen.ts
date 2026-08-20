@@ -5144,6 +5144,15 @@ export type SessionWorkspaceSelection =
       baseRevision?: string
     }
 
+export type SessionForkPointMissingError = {
+  name: "SessionForkPointMissingError"
+  data: {
+    sessionID: string
+    messageID: string
+    message: string
+  }
+}
+
 export type AttachmentSourceText = {
   value: string
   start: number
@@ -12295,6 +12304,18 @@ export type SessionForkData = {
 }
 
 export type SessionForkErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Fork point message is no longer part of the effective history
+   */
+  409: SessionForkPointMissingError
   /**
    * Runtime shutting down
    */

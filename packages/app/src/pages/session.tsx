@@ -481,6 +481,7 @@ function SessionPageContent() {
       <DialogForkConfirm
         message={{ id: messageID, time: target.time }}
         allMessages={timeline}
+        hasCompleteHistory={!historyMore()}
         preview={forkReplyPreview(dataView().partsFor(messageID))}
         onConfirm={async () => {
           try {
