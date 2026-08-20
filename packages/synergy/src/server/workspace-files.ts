@@ -241,11 +241,12 @@ export const WorkspaceFilesRoute = new Hono()
           description: "Bad request",
           content: {
             "application/json": {
-              schema: resolver(WorkspaceFile.WriteFileError),
+              schema: resolver(WorkspaceFile.ContentPreviewError),
             },
           },
         },
-        ...errors(403, 404),
+        ...AccessDeniedResponse,
+        ...errors(404),
       },
     }),
     validator(

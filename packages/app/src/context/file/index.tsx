@@ -406,6 +406,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
           const bytes = await pdfPreviewBytes(response.data)
           if (pdfGeneration.get(path) !== generation) return
           if (!bytes) throw new Error("The server returned an empty PDF response")
+          const latest = store.documents[path]
           setStore("pdfs", path, {
             path,
             bytes,
@@ -413,7 +414,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
             stale: false,
             tooLarge: false,
             error: undefined,
-            version: document?.version,
+            version: latest?.version ?? document?.version,
           })
           prunePdfs()
         } catch (error) {
@@ -755,6 +756,13 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
         }),
       )
       setScope("expanded", (items) => items.map((item) => replacePrefix(item, from, to)))
+      for (const key of [...pdfAccess.keys()]) {
+        const next = replacePrefix(key, from, to)
+        if (next === key) continue
+        const access = pdfAccess.get(key)!
+        pdfAccess.delete(key)
+        pdfAccess.set(next, access)
+      }
       for (const tab of workbench.surface("side").tabs()) {
         if (tab.panelId !== "file" || !tab.resourceId) continue
         const next = replacePrefix(tab.resourceId, from, to)

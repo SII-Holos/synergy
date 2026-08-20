@@ -6433,8 +6433,11 @@ export type WorkspaceFileStatusSummary = {
   }>
 }
 
-export type ForbiddenError = {
-  message: string
+export type WorkspaceFileContentError = {
+  name: "WorkspaceFileAccessDeniedError" | "WorkspaceFileUnsupportedPreviewError" | "WorkspaceFileTooLargeError"
+  data: {
+    message: string
+  }
 }
 
 export type WorkspaceFileWriteResult = {
@@ -7725,6 +7728,10 @@ export type BrowserControlRequest = {
       }
   commandId: string
   traceId?: string
+}
+
+export type ForbiddenError = {
+  message: string
 }
 
 export type PluginConfigUpdate = {
@@ -14838,11 +14845,11 @@ export type WorkspaceFilesContentErrors = {
   /**
    * Bad request
    */
-  400: WorkspaceFileWriteError
+  400: WorkspaceFileContentError
   /**
    * Forbidden
    */
-  403: ForbiddenError
+  403: WorkspaceFileWriteError
   /**
    * Not found
    */
