@@ -965,6 +965,10 @@
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
+          "glob": "src/components/settings/panels/interface-zoom.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
           "glob": "src/components/settings/settings-dialog-frame.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },

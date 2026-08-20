@@ -1,7 +1,16 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from "bun:test"
 import type { Tool as AITool } from "ai"
 import { SessionProcessor } from "../../src/session/processor"
 import { ToolScheduler, ToolTaskScheduler } from "../../src/session/tool-scheduler"
+
+afterAll(async () => {
+  // The global ToolScheduler is module-level state shared with every test file
+  // in the same worker. stop() permanently closes admission until configure()
+  // is called again; restore the pristine accepting state so later files in the
+  // same worker (e.g. auto-expand's real dispatch path) can still run.
+  await ToolScheduler.stop()
+  ToolScheduler.configure()
+})
 
 function processor() {
   const slots = new Map<string, SessionProcessor.ToolExecutionSlot>()
