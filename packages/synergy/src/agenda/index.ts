@@ -7,6 +7,7 @@ import { AgendaTypes } from "./types"
 import { Log } from "../util/log"
 import { AgendaSessionWakeup } from "./session-wakeup"
 import { AgendaSessionTrigger } from "./session-trigger"
+import { AgendaGithubTrigger } from "./github-trigger"
 
 export { AgendaTypes } from "./types"
 export { AgendaEvent } from "./event"
@@ -18,6 +19,7 @@ export { AgendaWatcher } from "./watcher"
 export { AgendaWebhook } from "./webhook"
 export { AgendaBootstrap } from "./bootstrap"
 export { AgendaSessionTrigger } from "./session-trigger"
+export { AgendaGithubTrigger } from "./github-trigger"
 
 const log = Log.create({ service: "agenda" })
 
@@ -54,11 +56,13 @@ export namespace Agenda {
     AgendaWatcher.start(handler, items)
     AgendaWebhook.start(handler, items)
     AgendaSessionTrigger.start(handler, items)
+    AgendaGithubTrigger.start(handler, items)
     log.info("agenda started", {
       clock: AgendaClock.active(),
       watcher: AgendaWatcher.active(),
       webhooks: AgendaWebhook.active(),
       sessionTriggers: AgendaSessionTrigger.active(),
+      githubTriggers: AgendaGithubTrigger.active(),
     })
   }
 
@@ -67,6 +71,7 @@ export namespace Agenda {
     AgendaWatcher.stop()
     AgendaWebhook.stop()
     AgendaSessionTrigger.stop()
+    AgendaGithubTrigger.stop()
     inflight.clear()
     log.info("agenda stopped")
   }
@@ -173,6 +178,8 @@ export namespace Agenda {
     AgendaWebhook.register(item.id, scopeID, item.triggers)
     AgendaSessionTrigger.unregister(item.id)
     AgendaSessionTrigger.register(item.id, scopeID, item.triggers)
+    AgendaGithubTrigger.unregister(item.id)
+    AgendaGithubTrigger.register(item.id, scopeID, item.triggers)
   }
 
   function teardownItem(itemID: string): void {
@@ -180,5 +187,6 @@ export namespace Agenda {
     AgendaWatcher.unregister(itemID)
     AgendaWebhook.unregister(itemID)
     AgendaSessionTrigger.unregister(itemID)
+    AgendaGithubTrigger.unregister(itemID)
   }
 }

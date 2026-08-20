@@ -55,6 +55,10 @@ export namespace AgendaDedup {
         const bs = b as Extract<typeof b, { type: "session" }>
         return a.sessionID === bs.sessionID && a.event === bs.event && a.agent === bs.agent && a.finish === bs.finish
       }
+      case "github": {
+        const bg = b as Extract<typeof b, { type: "github" }>
+        return a.resource === bg.resource && a.repository === bg.repository && a.number === bg.number
+      }
     }
 
     return false
@@ -131,6 +135,10 @@ export namespace AgendaDedup {
     if (trigger.type === "cron") return `cron: ${trigger.expr}`
     if (trigger.type === "every") return `every: ${trigger.interval}`
     if (trigger.type === "delay") return `delay: ${trigger.delay}`
+    if (trigger.type === "github") {
+      const target = trigger.number !== undefined ? ` #${trigger.number}` : ""
+      return `github: ${trigger.resource} ${trigger.repository}${target}`
+    }
     if (trigger.type === "session") {
       const event = trigger.event === "turn.end" ? "" : ` (${trigger.event})`
       const filters = [trigger.agent && ` agent=${trigger.agent}`, trigger.finish && ` finish=${trigger.finish}`]

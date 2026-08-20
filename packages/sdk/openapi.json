@@ -4064,6 +4064,7 @@
                 "channels",
                 "holos",
                 "email",
+                "github",
                 "runtime"
               ]
             },
@@ -4147,6 +4148,7 @@
                 "channels",
                 "holos",
                 "email",
+                "github",
                 "runtime"
               ]
             },
@@ -4241,6 +4243,7 @@
                 "channels",
                 "holos",
                 "email",
+                "github",
                 "runtime"
               ]
             },
@@ -11164,6 +11167,118 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.auth.githubLogout({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/auth/github/identity": {
+      "get": {
+        "operationId": "provider.auth.githubIdentity",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get GitHub git identity sync state",
+        "description": "Inspect the git global identity and the GitHub-account-derived identity the sync would apply.",
+        "responses": {
+          "200": {
+            "description": "Git identity sync state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubIdentityState"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.auth.githubIdentity({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/auth/github/identity/sync": {
+      "post": {
+        "operationId": "provider.auth.githubIdentitySync",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Sync git identity from GitHub",
+        "description": "Apply the GitHub-account-derived (or explicitly configured) identity to git config --global.",
+        "responses": {
+          "200": {
+            "description": "Sync result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubIdentitySyncResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.auth.githubIdentitySync({\n  ...\n})"
           }
         ]
       }
@@ -28965,6 +29080,43 @@
         },
         "required": ["type", "sessionID"]
       },
+      "AgendaTriggerGithub": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "github"
+          },
+          "resource": {
+            "description": "GitHub resource kind to watch",
+            "type": "string",
+            "enum": ["pr", "issue", "workflow", "check"]
+          },
+          "repository": {
+            "description": "Repository in owner/repo form",
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
+          },
+          "number": {
+            "description": "PR/issue number, or workflow/check run number. If omitted for pr/issue, watches the repository's most recent items",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "interval": {
+            "description": "Poll interval, e.g. '5m'. Default: '5m'",
+            "type": "string"
+          },
+          "states": {
+            "description": "Only fire when the state transitions into one of these values (e.g. ['merged'], ['failure'], ['completed'])",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["type", "resource", "repository"]
+      },
       "AgendaTrigger": {
         "anyOf": [
           {
@@ -28987,6 +29139,9 @@
           },
           {
             "$ref": "#/components/schemas/AgendaTriggerSession"
+          },
+          {
+            "$ref": "#/components/schemas/AgendaTriggerGithub"
           }
         ]
       },
@@ -32985,6 +33140,55 @@
         },
         "additionalProperties": false
       },
+      "GithubIdentitySyncConfig": {
+        "description": "Git identity sync settings",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Sync git user.name/user.email from the connected GitHub account",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Optional git user.name override (defaults to the GitHub account login)",
+            "type": "string"
+          },
+          "email": {
+            "description": "Optional git user.email override (defaults to the GitHub noreply email)",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GithubWatchConfig": {
+        "description": "GitHub agenda trigger settings",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Allow GitHub agenda triggers (PR/issue/workflow status polling). Default: true",
+            "type": "boolean"
+          },
+          "defaultIntervalMs": {
+            "description": "Default poll interval for GitHub agenda triggers in milliseconds (default 300000)",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      },
+      "GithubConfig": {
+        "description": "GitHub integration settings (git identity sync, agenda watch)",
+        "type": "object",
+        "properties": {
+          "identitySync": {
+            "$ref": "#/components/schemas/GithubIdentitySyncConfig"
+          },
+          "watch": {
+            "$ref": "#/components/schemas/GithubWatchConfig"
+          }
+        },
+        "additionalProperties": false
+      },
       "LayoutConfig": {
         "description": "@deprecated Always uses stretch layout.",
         "type": "string",
@@ -33557,6 +33761,9 @@
           },
           "email": {
             "$ref": "#/components/schemas/EmailConfig"
+          },
+          "github": {
+            "$ref": "#/components/schemas/GithubConfig"
           },
           "formatter": {
             "anyOf": [
@@ -35708,6 +35915,7 @@
               "channels",
               "holos",
               "email",
+              "github",
               "runtime"
             ]
           },
@@ -35884,6 +36092,7 @@
               "channels",
               "holos",
               "email",
+              "github",
               "runtime"
             ]
           },
@@ -36033,6 +36242,7 @@
                 "channels",
                 "holos",
                 "email",
+                "github",
                 "runtime"
               ]
             }
@@ -36251,6 +36461,7 @@
                     "channels",
                     "holos",
                     "email",
+                    "github",
                     "runtime"
                   ]
                 }
@@ -36307,6 +36518,7 @@
                 "channels",
                 "holos",
                 "email",
+                "github",
                 "runtime"
               ]
             }
@@ -36839,7 +37051,7 @@
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["cron", "every", "at", "delay", "watch", "webhook", "session"]
+            "enum": ["cron", "every", "at", "delay", "watch", "webhook", "session", "github"]
           },
           "interval": {
             "description": "Interval for every triggers, e.g. '30m'",
@@ -36887,7 +37099,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "enum": ["cron", "every", "at", "delay", "watch", "webhook", "session"]
+              "enum": ["cron", "every", "at", "delay", "watch", "webhook", "session", "github"]
             }
           },
           "triggers": {
@@ -39989,6 +40201,66 @@
           }
         },
         "required": ["providerID", "status"]
+      },
+      "GithubIdentityState": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "configuredName": {
+            "type": "string"
+          },
+          "configuredEmail": {
+            "type": "string"
+          },
+          "gitName": {
+            "type": "string"
+          },
+          "gitEmail": {
+            "type": "string"
+          },
+          "accountLogin": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "accountEmail": {
+            "type": "string"
+          },
+          "accountUrl": {
+            "type": "string"
+          },
+          "pendingChanges": {
+            "type": "boolean"
+          }
+        },
+        "required": ["enabled"]
+      },
+      "GithubIdentitySyncResult": {
+        "type": "object",
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "changed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": ["applied", "changed"]
       },
       "ProviderAuthAuthorization": {
         "type": "object",

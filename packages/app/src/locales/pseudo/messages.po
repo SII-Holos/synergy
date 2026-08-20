@@ -11935,6 +11935,12 @@ msgstr ""
 #. Runtime translation descriptors for all wake-indicator UI strings.
  *  Each is a base MessageDescriptor with `id` + English `message`.
  *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.wake.trigger.github"
+msgstr ""
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
 msgid "session.agenda.wake.trigger.pending"
 msgstr ""
 
@@ -15481,6 +15487,74 @@ msgid "settings.github.envRecoveryDesc"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.github.identity.alreadyInSync"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.alreadyInSyncDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.applied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.appliedDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.current"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.email"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.emailDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.nameDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.sync.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.sync.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.syncFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.syncing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.syncNow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.target"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.unset"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.github.invalid"
 msgstr ""
 
@@ -15514,6 +15588,18 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.github.unverified"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.watch.enabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.watch.enabledDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.watch.title"
 msgstr ""
 
 #. js-lingui-explicit-id

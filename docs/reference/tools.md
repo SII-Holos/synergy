@@ -245,6 +245,11 @@ Set a one-time wake-up in THIS session. The primary use case is **recursive adap
 | `agent` | params.onSessionEnd.agent | yes |  |
 | `finish` | params.onSessionEnd.finish | yes |  |
 | `once` | true | yes |  |
+| `type` | - | yes |  |
+| `resource` | params.onGithub.resource | yes |  |
+| `repository` | params.onGithub.repository | yes |  |
+| `number` | params.onGithub.number | yes |  |
+| `states` | params.onGithub.states | yes |  |
 | `title` | - | yes |  |
 | `output` | AgendaDedup.formatConflictMessage | yes |  |
 | `metadata` | - | yes |  |

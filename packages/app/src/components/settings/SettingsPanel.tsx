@@ -854,7 +854,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
         providerFocusID={providerFocusID()}
       />
     ),
-    github: GitHubPanel,
+    github: () => (
+      <GitHubPanel
+        github={settings.github}
+        onGithubChange={(key, value) => setSettings("github", key, value as never)}
+      />
+    ),
     "synergy-link": SynergyLinkPanel,
     usage: () => (
       <UsagePanel

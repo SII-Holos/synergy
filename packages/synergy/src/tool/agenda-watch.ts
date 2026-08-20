@@ -25,10 +25,29 @@ const parameters = z
       })
       .optional()
       .describe("Wake when another session ends a turn instead of after a delay"),
+    onGithub: z
+      .object({
+        resource: z.enum(["pr", "issue", "workflow", "check"]).describe("GitHub resource kind to watch"),
+        repository: z.string().describe("Repository in owner/repo form"),
+        number: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe(
+            "PR/issue number or workflow run id. Omit for repository-wide pr/issue watch. For checks this is the commit's latest run set",
+          ),
+        states: z
+          .array(z.string())
+          .optional()
+          .describe("Only wake on transitions into these states (e.g. ['merged'], ['failure'], ['completed'])"),
+      })
+      .optional()
+      .describe("Wake when a GitHub PR / issue / workflow / check changes state instead of after a delay"),
     global: z.boolean().optional().describe("If true, visible from all scopes. Default: false (current project only)"),
   })
-  .refine((v) => (v.delay !== undefined) !== (v.onSessionEnd !== undefined), {
-    message: "Pass exactly one of delay or onSessionEnd",
+  .refine((v) => [v.delay, v.onSessionEnd, v.onGithub].filter(Boolean).length === 1, {
+    message: "Pass exactly one of delay, onSessionEnd, or onGithub",
     path: ["delay"],
   })
 
@@ -78,7 +97,15 @@ export const AgendaWatchTool = Tool.define("agenda_watch", {
           finish: params.onSessionEnd.finish,
           once: true,
         }
-      : { type: "delay" as const, delay: params.delay! }
+      : params.onGithub
+        ? {
+            type: "github",
+            resource: params.onGithub.resource,
+            repository: params.onGithub.repository,
+            number: params.onGithub.number,
+            states: params.onGithub.states,
+          }
+        : { type: "delay" as const, delay: params.delay! }
 
     const conflicts = await AgendaDedup.findConflicts(
       ScopeContext.current.scope.id,
@@ -107,10 +134,12 @@ export const AgendaWatchTool = Tool.define("agenda_watch", {
       endpoint: session?.endpoint,
     })
 
-    const delayMs = params.onSessionEnd ? 0 : AgendaStore.parseDuration(params.delay!)
+    const delayMs = params.delay ? AgendaStore.parseDuration(params.delay) : 0
     const firesAt = params.onSessionEnd
       ? `when session "${params.onSessionEnd.sessionID}" ends a turn`
-      : formatLocalDateTime(Date.now() + delayMs)
+      : params.onGithub
+        ? `when GitHub ${params.onGithub.resource} in ${params.onGithub.repository}${params.onGithub.number !== undefined ? ` #${params.onGithub.number}` : ""} changes state${params.onGithub.states?.length ? ` to ${params.onGithub.states.join("|")}` : ""}`
+        : formatLocalDateTime(Date.now() + delayMs)
 
     return {
       title: `Watch: ${params.title}`,
@@ -126,7 +155,11 @@ export const AgendaWatchTool = Tool.define("agenda_watch", {
       metadata: {
         id: item.id,
         status: item.status,
-        ...(params.onSessionEnd ? { sessionID: params.onSessionEnd.sessionID } : { delay: params.delay }),
+        ...(params.onSessionEnd
+          ? { sessionID: params.onSessionEnd.sessionID }
+          : params.onGithub
+            ? { github: params.onGithub }
+            : { delay: params.delay }),
       } as Record<string, any>,
     }
   },

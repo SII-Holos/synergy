@@ -16,7 +16,7 @@ const parameters = z.object({
       "Instruction for the agent to execute when triggered. Write as a complete brief — the executing agent has no access to this conversation.",
     ),
   trigger: AgendaTypes.ScheduleTrigger.describe(
-    "Schedule trigger. One of: {type:'cron', expr:'0 9 * * *', tz?:'Asia/Shanghai'}, {type:'every', interval:'30m'}, {type:'at', at:1742569200000}, {type:'delay', delay:'2h'}, {type:'session', sessionID:'ses_xxx', event:'turn.end', agent?:'research', finish?:'stop', once?:true}",
+    "Schedule trigger. One of: {type:'cron', expr:'0 9 * * *', tz?:'Asia/Shanghai'}, {type:'every', interval:'30m'}, {type:'at', at:1742569200000}, {type:'delay', delay:'2h'}, {type:'session', sessionID:'ses_xxx', event:'turn.end', agent?:'research', finish?:'stop', once?:true}, {type:'github', resource:'pr'|'issue'|'workflow'|'check', repository:'owner/repo', number?:123, interval?:'5m', states?:['merged','failure']}",
   ),
   tags: z.array(z.string()).optional().describe("Tags for organization and filtering"),
   global: z.boolean().optional().describe("If true, visible from all scopes. Default: false (current project only)"),
@@ -138,6 +138,11 @@ function formatTrigger(t: AgendaTypes.ScheduleTrigger): string {
       const event = t.event === "turn.start" ? "turn start" : "turn end"
       const filters = [t.agent && ` agent=${t.agent}`, t.finish && ` finish=${t.finish}`].filter(Boolean).join("")
       return `session "${t.sessionID}" on ${event}${filters}${t.once === false ? " (recurring)" : ""}`
+    }
+    case "github": {
+      const target = t.number !== undefined ? ` #${t.number}` : ""
+      const states = t.states?.length ? ` states=${t.states.join("|")}` : ""
+      return `github ${t.resource} ${t.repository}${target}${t.interval ? ` every ${t.interval}` : ""}${states}`
     }
   }
 }
