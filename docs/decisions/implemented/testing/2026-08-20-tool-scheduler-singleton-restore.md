@@ -4,9 +4,7 @@ Status: implemented
 
 ## Problem
 
-On 2026-08-20, every CI run containing commit `f7b8e68956` (feat(agenda): session turn-event triggers) failed the same three `SessionProcessor auto-expand interception` tests in `packages/synergy/test/tool/auto-expand.test.ts`, expecting `completed` and receiving `error`. `test/workspace/policy.test.ts` was green throughout. The failure started the moment the agenda commit merged into `dev` and reproduced on every later run, on Linux CI only.
-
-The mechanism: `ToolScheduler` is a module-level singleton (`src/session/tool-scheduler.ts`) whose `stop()` sets `accepting = false` and never restores it; `dispatch()` rejects with "Tool scheduler is stopping" while admission is closed. `test/session/tool-scheduler.test.ts` exercises shutdown semantics and ends with `await ToolScheduler.stop()` without restoring the singleton. Bun runs each `--shard` file group inside one shared process, so the stopped singleton leaked into sibling files in the same shard. The agenda commit added two test files (`test/agenda/session-trigger.test.ts`, `test/tool/agenda-watch.test.ts`), which shifted the shard boundary: `auto-expand.test.ts` moved from shard 2 (green run) to shard 4 alongside `tool-scheduler.test.ts`, which executed first. Auto-expand's real `ToolScheduler.dispatch()` then rejected, settling every tool part as `error` — exactly the three failed assertions. Reproduced locally with `bun test --shard=1/1 test/session/tool-scheduler.test.ts test/tool/auto-expand.test.ts` (3 fail) and by injecting `await ToolScheduler.stop()` at the top of an auto-expand copy (same 3 fail).
+`ToolScheduler` (`packages/synergy/src/session/tool-scheduler.ts`) is a module-level singleton whose `stop()` closes admission (`accepting = false`) without restoring it, and `dispatch()` rejects with "Tool scheduler is stopping" while admission is closed. `test/session/tool-scheduler.test.ts` exercises shutdown semantics and leaves the singleton stopped. Bun runs each `--shard` file group inside one shared process, so the closed singleton leaks into sibling files of the same shard and settles their tool parts as `error`. The incident that surfaced this, including the shard-boundary shift that exposed it, is recorded in [postmortem 0002](../../../postmortem/0002-tool-scheduler-singleton-leakage.md).
 
 ## Decision
 
@@ -15,7 +13,7 @@ Restore the module-level scheduler singleton in test cleanup so a file that stop
 1. `test/session/tool-scheduler.test.ts` — add `afterAll(() => ToolScheduler.configure())`. `configure()` resets `accepting = true` and options when no scheduler instance is live, leaving the singleton admitting work for subsequent files in the same shard process.
 2. `test/tool/auto-expand.test.ts` — add a defensive `afterAll` that `await ToolScheduler.stop()` then `ToolScheduler.configure()`, so this file leaves the singleton clean regardless of what ran before it in the shard.
 
-Both files still pass standalone (11 pass, 18 pass) and the exact reproduction command is green after the fix (29 pass / 0 fail).
+Both files still pass standalone (11 pass, 18 pass) and the exact reproduction command from the postmortem is green after the fix (29 pass / 0 fail).
 
 ## Alternatives considered
 
@@ -29,4 +27,4 @@ Both files still pass standalone (11 pass, 18 pass) and the exact reproduction c
 
 - The shard-boundary sensitivity is removed: whichever file order Bun assigns, the scheduler singleton admits work between files.
 - Both touched test files remain order-independent and pass under `--shard=1/1`, standalone, and in the full `test:ci` suite.
-- The repository convention is reinforced: tests that stop or reconfigure a module-level singleton must restore it, because Bun shards share one process per shard (see the postmortem and decision record for test-home isolation and the shared-process flake lessons).
+- The repository convention is reinforced: tests that stop or reconfigure a module-level singleton must restore it, because Bun shards share one process per shard (see [postmortem 0002](../../../postmortem/0002-tool-scheduler-singleton-leakage.md) and [test-home isolation guard](./2026-08-18-test-home-isolation-guard.md)).
