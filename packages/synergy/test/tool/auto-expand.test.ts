@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test"
+import { afterAll, describe, expect, mock, test } from "bun:test"
 import z from "zod"
 import { MCP } from "../../src/mcp"
 import { PermissionNext } from "../../src/permission/next"
@@ -10,6 +10,15 @@ import { ToolExposure } from "../../src/tool/exposure"
 import { ToolRegistry } from "../../src/tool/registry"
 import { Tool } from "../../src/tool/tool"
 import { tmpdir } from "../fixture/fixture"
+import { ToolScheduler } from "../../src/session/tool-scheduler"
+
+afterAll(async () => {
+  // These tests dispatch through the module-level ToolScheduler singleton.
+  // Leave it admitting work for sibling files sharing the same shard process:
+  // stop() clears any scheduler created here, configure() re-opens admission.
+  await ToolScheduler.stop()
+  ToolScheduler.configure()
+})
 
 const model = {
   id: "test-model",
