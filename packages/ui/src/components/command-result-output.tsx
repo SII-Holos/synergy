@@ -18,7 +18,7 @@ export function CommandResultOutput(props: {
     container?: string
   }
 }) {
-  const { _ } = useLingui()
+  const { _, i18n } = useLingui()
   const data = useData()
   const view = data.view
 
@@ -26,7 +26,7 @@ export function CommandResultOutput(props: {
 
   const commandName = createMemo(() => props.message.metadata?.commandName as string | undefined)
 
-  const timestamp = createMemo(() => messageCreatedTime(props.message.time.created))
+  const timestamp = createMemo(() => messageCreatedTime(props.message.time.created, i18n?.()?.locale))
 
   const textContent = createMemo(() => {
     return parts()

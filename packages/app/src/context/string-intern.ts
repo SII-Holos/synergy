@@ -8,13 +8,25 @@ import type { Message, Part, ProviderListResponse } from "@ericsanchezok/synergy
 // provider refresh and message load duplicated them. Interning merges equal
 // values into one shared reference; distinct values are never merged, so the
 // change is semantically transparent.
+//
+// Retention discipline: only repeated values are promoted into the long-term
+// intern table, so one-off session content is never pinned beyond the
+// session bucket LRU. Short values pass through a bounded FIFO "seen" set;
+// long values (e.g. agent system prompts) have their own smaller sighting
+// set and promote only on a repeat.
 const INTERN_LIMIT = 512
+const SHORT_SEEN_LIMIT = 1024
+const LONG_SEEN_LIMIT = 64
+const SHORT_MAX_LENGTH = 2048
+
 const internByValue = new Map<string, string>()
 const internOrder: string[] = []
+const shortSeen = new Set<string>()
+const shortSeenOrder: string[] = []
+const longSeen = new Map<string, string>()
+const longSeenOrder: string[] = []
 
-export function internString(value: string): string {
-  const cached = internByValue.get(value)
-  if (cached !== undefined) return cached
+function promote(value: string): string {
   if (internByValue.size >= INTERN_LIMIT) {
     const oldest = internOrder.shift()
     if (oldest !== undefined) internByValue.delete(oldest)
@@ -24,7 +36,38 @@ export function internString(value: string): string {
   return value
 }
 
-/** Number of entries currently held by the interning table (test/diagnostic). */
+export function internString(value: string): string {
+  const cached = internByValue.get(value)
+  if (cached !== undefined) return cached
+
+  if (value.length <= SHORT_MAX_LENGTH) {
+    if (shortSeen.has(value)) {
+      shortSeen.delete(value)
+      return promote(value)
+    }
+    if (shortSeen.size >= SHORT_SEEN_LIMIT) {
+      const oldest = shortSeenOrder.shift()
+      if (oldest !== undefined) shortSeen.delete(oldest)
+    }
+    shortSeen.add(value)
+    shortSeenOrder.push(value)
+    return value
+  }
+
+  if (longSeen.has(value)) {
+    longSeen.delete(value)
+    return promote(value)
+  }
+  if (longSeen.size >= LONG_SEEN_LIMIT) {
+    const oldest = longSeenOrder.shift()
+    if (oldest !== undefined) longSeen.delete(oldest)
+  }
+  longSeen.set(value, value)
+  longSeenOrder.push(value)
+  return value
+}
+
+/** Number of entries currently held by the long-term intern table (test/diagnostic). */
 export function internCacheSize(): number {
   return internByValue.size
 }
@@ -52,14 +95,14 @@ export function internProviderList(data: ProviderListResponse): ProviderListResp
 }
 
 export function internPart(part: Part): Part {
-  if (part.type === "text" && part.origin === "system" && typeof part.text === "string" && part.text.length <= 65536) {
+  if (part.type === "text" && part.origin === "system" && typeof part.text === "string") {
     part.text = internString(part.text)
   }
   return part
 }
 
 export function internMessage(message: Message): Message {
-  if (message.role === "user" && typeof message.system === "string" && message.system.length <= 65536) {
+  if (message.role === "user" && typeof message.system === "string") {
     message.system = internString(message.system)
   }
   return message

@@ -55,7 +55,7 @@ function attemptState(message: AssistantMessage): CompactionAttemptState | undef
 }
 
 const CompactionCard: Component<CompactionCardProps> = (props) => {
-  const { _ } = useLingui()
+  const { _, i18n } = useLingui()
   const assistant = createMemo<AssistantMessage | undefined>(() => {
     const message = props.message
     return message.role === "assistant" ? message : undefined
@@ -90,7 +90,7 @@ const CompactionCard: Component<CompactionCardProps> = (props) => {
 
   const [expanded, setExpanded] = createSignal(props.defaultOpen ?? false)
 
-  const timestamp = createMemo(() => messageCreatedTime(props.message.time.created))
+  const timestamp = createMemo(() => messageCreatedTime(props.message.time.created, i18n?.()?.locale))
   const title = createMemo(() => {
     if (presentation().status === "failed") return _(COMPACTION_CARD_DESC.failedTitle)
     if (presentation().status === "running") return _(COMPACTION_CARD_DESC.runningTitle)

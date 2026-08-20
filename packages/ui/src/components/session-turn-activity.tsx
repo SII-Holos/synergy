@@ -180,13 +180,13 @@ function hasStableInput(part: ToolPart): boolean {
 // Frozen terminal step projections keyed by part identity. The store keeps
 // stable references for unchanged parts, so a completed/error tool step is
 // projected once and reused across every downstream re-projection (streaming
-// deltas, settle flip, window rewrites). Pending steps and steps with an
-// approval are never cached: their state changes with stream/permission
-// events and must re-derive. WeakMap entries collect with their part.
+// deltas, settle flip, window rewrites). Steps with a pending approval never
+// touch the cache: the waiting-approval projection must be replaced by the
+// terminal projection once the approval is replied, and a cached waiting
+// step would leave the row stuck. WeakMap entries collect with their part.
 const frozenStepByPart = new WeakMap<ToolPart, ActivityStepProjection>()
 
-function frozenStep(part: ToolPart, permission: PermissionRequest | undefined): ActivityStepProjection | undefined {
-  if (permission) return undefined
+function frozenStep(part: ToolPart): ActivityStepProjection | undefined {
   const status = part.state.status
   if (status !== "completed" && status !== "error") return undefined
   return frozenStepByPart.get(part)
@@ -321,9 +321,10 @@ export function projectAssistantActivityItems(input: {
       flush()
       continue
     }
-    const step =
-      frozenStep(source.part, permission) ??
-      freezeStep(source.part, makeStep(input.message, source.part, input.permissions, input.resolveToolInfo))
+    const step = permission
+      ? makeStep(input.message, source.part, input.permissions, input.resolveToolInfo)
+      : (frozenStep(source.part) ??
+        freezeStep(source.part, makeStep(input.message, source.part, input.permissions, input.resolveToolInfo)))
     const receipt = isActivityReceiptTool(source.part.tool, step.family)
     const defaultKey = activityGroupKey(input.message.id, step.family, step.scopeKey, step.part.id)
     const legacyStored = metadata?.groups?.[defaultKey]

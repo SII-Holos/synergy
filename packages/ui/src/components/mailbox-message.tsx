@@ -18,7 +18,7 @@ export function MailboxMessage(props: {
     container?: string
   }
 }) {
-  const { _ } = useLingui()
+  const { _, i18n } = useLingui()
   const data = useData()
   const view = data.view
 
@@ -31,7 +31,7 @@ export function MailboxMessage(props: {
   })
   const sourceLabel = createMemo(() => sourceName() ?? sourceSessionID() ?? "another session")
 
-  const timestamp = createMemo(() => messageCreatedTime(props.message.time.created))
+  const timestamp = createMemo(() => messageCreatedTime(props.message.time.created, i18n?.()?.locale))
 
   const textContent = createMemo(() => {
     return parts()

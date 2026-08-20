@@ -77,18 +77,26 @@ describe("string interning", () => {
     expect((msgB as UserMessage).system).toBe((msgA as UserMessage).system)
   })
 
-  test("leaves user text parts untouched and only interns system content", () => {
+  test("leaves user text parts untouched and only promotes repeated system content", () => {
     // Reference-identity assertions on equal strings cannot work here:
     // Bun runs on JavaScriptCore, which atomizes strings produced by
-    // JSON.parse and literals alike. Assert the behavioral contract instead:
-    // user-origin text never enters the interning table, system content does.
+    // JSON.parse and literals alike. Assert the retention contract instead:
+    // user-origin text never enters the intern table; system content enters
+    // the long-term table only once it repeats (a single sighting must not
+    // pin one-off session content beyond the bucket LRU).
     const baseline = internCacheSize()
     const userText = `user-text-${Math.random()}`
     internPart({ type: "text", origin: "user", text: userText } as TextPart)
     expect(internCacheSize()).toBe(baseline)
 
-    const systemText = `system-text-${Math.random()}`
-    internPart({ type: "text", origin: "system", text: systemText } as TextPart)
+    const oneOff = `system-text-${Math.random()}`
+    internPart({ type: "text", origin: "system", text: oneOff } as TextPart)
+    expect(internCacheSize()).toBe(baseline)
+
+    const repeated = `system-text-${Math.random()}`
+    internPart({ type: "text", origin: "system", text: repeated } as TextPart)
+    expect(internCacheSize()).toBe(baseline)
+    internPart({ type: "text", origin: "system", text: repeated } as TextPart)
     expect(internCacheSize()).toBe(baseline + 1)
   })
 })

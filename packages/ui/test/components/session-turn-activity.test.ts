@@ -1164,4 +1164,22 @@ describe("terminal step projection freezing", () => {
     expect(firstStep?.state).toBe("waiting-approval")
     expect(secondStep).not.toBe(firstStep)
   })
+
+  test("recovers the terminal projection once a pending approval is removed", () => {
+    const message = assistant()
+    const part = tool({ id: "approve-b" })
+    const parts = [part]
+    const permission = {
+      tool: { messageID: message.id, callID: part.callID },
+    } as PermissionRequest
+
+    const waiting = project({ message, parts, permissions: [permission] })
+    expect(activities(waiting)[0]?.steps[0]?.state).toBe("waiting-approval")
+
+    // The approval is replied and disappears from the permission list: the
+    // projection must re-derive the terminal state instead of serving a
+    // cached waiting-approval step.
+    const settled = project({ message, parts, permissions: [] })
+    expect(activities(settled)[0]?.steps[0]?.state).toBe("done")
+  })
 })

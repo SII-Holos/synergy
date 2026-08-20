@@ -103,15 +103,24 @@ export function formatTurnTokenCount(value: number): string {
   return value.toLocaleString()
 }
 
-const turnCostFormat = new Intl.NumberFormat(undefined, {
-  style: "currency",
-  currency: "USD",
-})
+const turnCostByLocale = new Map<string, Intl.NumberFormat>()
 
-export function formatTurnCost(value: number): string | undefined {
+function turnCostFormatter(locale: string | undefined): Intl.NumberFormat {
+  const key = locale ?? ""
+  const cached = turnCostByLocale.get(key)
+  if (cached) return cached
+  const created = new Intl.NumberFormat(locale ? [locale] : undefined, {
+    style: "currency",
+    currency: "USD",
+  })
+  turnCostByLocale.set(key, created)
+  return created
+}
+
+export function formatTurnCost(value: number, locale?: string): string | undefined {
   if (value <= 0) return undefined
   if (value < 0.01) return `$${value.toFixed(4)}`
-  return turnCostFormat.format(value)
+  return turnCostFormatter(locale).format(value)
 }
 export function resolveSessionTurnError(value: NonNullable<AssistantMessage["error"]>) {
   if (value.name === "ProviderModelUnavailableError") {
@@ -140,7 +149,10 @@ export function resolveSessionTurnError(value: NonNullable<AssistantMessage["err
   }
 }
 
-export function turnCompletionStats(messages: readonly AssistantMessage[]): TurnCompletionStats | undefined {
+export function turnCompletionStats(
+  messages: readonly AssistantMessage[],
+  locale?: string,
+): TurnCompletionStats | undefined {
   const completed = messages.filter((message) => message.time.completed != null)
   if (completed.length === 0 || completed.length !== messages.length) return undefined
 
@@ -179,7 +191,7 @@ export function turnCompletionStats(messages: readonly AssistantMessage[]): Turn
   if (totals.cacheWrite > 0) segments.push(`${formatTurnTokenCount(totals.cacheWrite)} cache write`)
   if (totals.output > 0) segments.push(`${formatTurnTokenCount(totals.output)} output`)
   if (totals.reasoning > 0) segments.push(`${formatTurnTokenCount(totals.reasoning)} reasoning`)
-  const cost = formatTurnCost(totals.cost)
+  const cost = formatTurnCost(totals.cost, locale)
   if (cost) segments.push(cost)
 
   return { duration, segments }
@@ -926,7 +938,7 @@ export function SessionTurn(
 ) {
   const data = useData()
   const view = data.view
-  const { _ } = useLingui()
+  const { _, i18n } = useLingui()
   const activityDisplay = createMemo(() => resolveActivityDisplay(props.activityDisplay))
 
   const emptyParts: PartType[] = []
@@ -1271,7 +1283,7 @@ export function SessionTurn(
   )
   const completedTurnStats = createMemo(() => {
     if (working() || hasCompactionEvent() || error()) return undefined
-    return turnCompletionStats(assistantMessages())
+    return turnCompletionStats(assistantMessages(), i18n?.()?.locale)
   })
 
   createEffect(() => {
