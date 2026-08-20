@@ -23,6 +23,7 @@ import {
   createSynergyClient,
 } from "@ericsanchezok/synergy-sdk/client"
 import { resolveWorkspaceTransition } from "./workspace-transition"
+import { internMessage, internMessages, internPart, internParts, internProviderList } from "./string-intern"
 import { planMessagePageApply } from "./session-message-page"
 import { shouldRefreshGlobalConfig, type ConfigUpdatedProperties } from "./global-config-sync"
 import { LocaleConfigReconciler } from "./locale-config-reconciler"
@@ -558,7 +559,7 @@ function createGlobalSync() {
   async function loadGlobalProviders() {
     return Promise.all([
       globalSDK.client.provider.list().then((x) => {
-        const data = x.data!
+        const data = internProviderList(x.data!)
         setGlobalStore("provider", data)
       }),
       globalSDK.client.provider.auth().then((x) => {
@@ -573,7 +574,7 @@ function createGlobalSync() {
 
     return Promise.all([
       sdk.provider.list().then((x) => {
-        const data = x.data!
+        const data = internProviderList(x.data!)
         setStore("provider", data)
       }),
       sdk.app.agents().then((x) => setStore("agent", x.data ?? [])),
@@ -679,7 +680,7 @@ function createGlobalSync() {
       if (targets.has("provider") || targets.has("config")) {
         scopePromises.push(
           sdk.provider.list().then((x) => {
-            const data = x.data!
+            const data = internProviderList(x.data!)
             setStore("provider", data)
           }),
         )
@@ -846,7 +847,7 @@ function createGlobalSync() {
     const sessions = data.sessions?.data.filter((session) => !!session?.id && !session.time?.archived)
     batch(() => {
       setStore("scopeID", data.scopeID)
-      setStore("provider", data.provider)
+      setStore("provider", internProviderList(data.provider))
       setStore("agent", reconcile(data.agent, { key: "name" }))
       setStore("config", reconcile(data.config))
       if (data.path) setStore("path", reconcile(data.path))
@@ -1123,7 +1124,7 @@ function createGlobalSync() {
                 }
               }),
             )
-            setStore("message", input.sessionID, reconcile(plan.window.messages, { key: "id" }))
+            setStore("message", input.sessionID, reconcile(internMessages(plan.window.messages), { key: "id" }))
             setStore("messageWindow", input.sessionID, reconcile(plan.metadata))
             setLatestContextMessage(
               input.scopeKey,
@@ -1133,7 +1134,7 @@ function createGlobalSync() {
             )
             for (const [messageID, parts] of Object.entries(plan.parts)) {
               if (partActions.get(messageID) === "preserve") continue
-              setStore("part", messageID, reconcile(parts, { key: "id" }))
+              setStore("part", messageID, reconcile(internParts(parts), { key: "id" }))
             }
           })
           touchMessageBucket(input.scopeKey, input.sessionID)
@@ -1340,7 +1341,7 @@ function createGlobalSync() {
         break
       }
       case "message.updated": {
-        const info = event.properties.info as Message
+        const info = internMessage(event.properties.info as Message)
         const sessionID = info.sessionID
         applyResourceEvent(scopeKey, sessionID, "message", event, () => {
           contextProjectionRevision.invalidate(scopeKey, sessionID)
@@ -1473,7 +1474,7 @@ function createGlobalSync() {
         break
       }
       case "message.part.updated": {
-        const part = event.properties.part
+        const part = internPart(event.properties.part)
         const messages = store.message[part.sessionID]
         const metadata = store.messageWindow[part.sessionID]
         const messageLoaded =

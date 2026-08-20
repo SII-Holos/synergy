@@ -22,6 +22,7 @@ import { hasMessageWindowSnapshot, type MessageWindowState } from "./session-mes
 import { planMessagePageApply } from "./session-message-page"
 import { loadOlderOrRecoverLatest } from "./session-message-page-recovery"
 import type { SyncResourceRequest } from "./sync-resource-freshness"
+import { internMessages, internParts } from "./string-intern"
 import { findSessionByID, findSessionIndex } from "./session-collection"
 
 type RefreshOptions = { force?: boolean }
@@ -164,7 +165,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                 for (const messageID of plan.droppedIds) delete draft.part[messageID]
               }),
             )
-            setStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
+            setStore("message", sessionID, reconcile(internMessages(plan.window.messages), { key: "id" }))
             setStore("messageWindow", sessionID, reconcile(plan.metadata))
             if (plan.latestContextMessage !== undefined) {
               globalSync.setLatestContextMessage(
@@ -176,7 +177,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             }
             for (const [messageID, parts] of Object.entries(plan.parts)) {
               if (partActions.get(messageID) === "preserve") continue
-              setStore("part", messageID, reconcile(parts, { key: "id" }))
+              setStore("part", messageID, reconcile(internParts(parts), { key: "id" }))
             }
           })
           globalSync.touchMessageBucket(sdk.scopeKey, sessionID)
