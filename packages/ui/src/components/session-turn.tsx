@@ -912,6 +912,7 @@ export function SessionTurn(
     onRewind?: () => void
     rollbackActive?: boolean
     onReviewChanges?: (input: { messageID: string; file?: string }) => void
+    onForkMessage?: (messageID: string) => void
     activityDisplay?: ActivityDisplayMode
     compactReasoning?: boolean
     classes?: {
@@ -922,6 +923,7 @@ export function SessionTurn(
   }>,
 ) {
   const data = useData()
+  const view = data.view
   const { _ } = useLingui()
   const activityDisplay = createMemo(() => resolveActivityDisplay(props.activityDisplay))
 
@@ -946,7 +948,7 @@ export function SessionTurn(
   const parts = createMemo(() => {
     const msg = message()
     if (!msg) return emptyParts
-    return data.store.part[msg.id] ?? emptyParts
+    return view.partsFor(msg.id)
   })
 
   const turnMessages = createMemo(() => props.messages, emptyDisplayMessages, { equals: same })
@@ -979,7 +981,7 @@ export function SessionTurn(
     return _(SESSION_TURN_DESC.modelVariantUnavailable.id, presentation.values)
   })
 
-  const permissions = createMemo(() => data.store.permission?.[props.sessionID] ?? emptyPermissions)
+  const permissions = createMemo(() => view.permissionsFor(props.sessionID))
   const permissionCount = createMemo(() => permissions().length)
 
   const shellModePart = createMemo(() => {
@@ -989,7 +991,7 @@ export function SessionTurn(
     const msgs = assistantMessages()
     if (msgs.length !== 1) return
 
-    const msgParts = data.store.part[msgs[0].id] ?? emptyParts
+    const msgParts = view.partsFor(msgs[0].id)
     if (msgParts.length !== 1) return
 
     const assistantPart = msgParts[0]
@@ -1000,7 +1002,7 @@ export function SessionTurn(
     resolveTurnWorking({
       isLastUserMessage: isLastUserMessage(),
       messages: turnMessages(),
-      sessionStatus: data.store.session_status[props.sessionID],
+      sessionStatus: view.statusFor(props.sessionID),
     }),
   )
 
@@ -1013,10 +1015,10 @@ export function SessionTurn(
   }
 
   const projectAssistantMessage = (item: AssistantMessage): SessionTurnAssistantDisplayItem[] => {
-    const visibleItems = collectSessionTurnTimelineItems([item], data.store.part, working())
+    const visibleItems = collectSessionTurnTimelineItems([item], view.partTable(), working())
     if (activityDisplay() === "full") return visibleItems
 
-    const sourceItems = collectSessionTurnTimelineItems([item], data.store.part, true)
+    const sourceItems = collectSessionTurnTimelineItems([item], view.partTable(), true)
     return projectAssistantActivityItems({
       message: item,
       sourceItems,
@@ -1039,7 +1041,7 @@ export function SessionTurn(
         if (item.role === "user") {
           const userMsg = item as UserMessage
           if (userMsg.isRoot !== false) return emptyDisplayItems
-          const itemParts = data.store.part[item.id] ?? emptyParts
+          const itemParts = view.partsFor(item.id)
           // A user's own mid-run message (steer / follow-up) renders as their
           // message bubble; system-injected non-root messages (cortex, agenda,
           // …) render as a compact origin chip.
@@ -1099,9 +1101,9 @@ export function SessionTurn(
         if (props.compactReasoning && isWorking) {
           liveReasoningParts = new Map()
           for (const assistant of assistants) {
-            const reasoningPart = (data.store.part[assistant.id] ?? emptyParts).findLast(
-              (part): part is ReasoningPart => part.type === "reasoning" && Boolean(part.text.trim()),
-            )
+            const reasoningPart = view
+              .partsFor(assistant.id)
+              .findLast((part): part is ReasoningPart => part.type === "reasoning" && Boolean(part.text.trim()))
             if (reasoningPart) liveReasoningParts.set(assistant.id, reasoningPart)
           }
         }
@@ -1109,12 +1111,12 @@ export function SessionTurn(
           compactReasoningParts: liveReasoningParts,
         }) as SessionTurnDisplayItem[]
         return props.compactReasoning && !isWorking
-          ? injectPersistedReasoningItems(projected, assistants, data.store.part)
+          ? injectPersistedReasoningItems(projected, assistants, view.partTable())
           : projected
       }
       if (props.compactReasoning) {
         if (isWorking) return compactReasoningTimelineItems(result)
-        return injectPersistedReasoningItems(result, assistants, data.store.part)
+        return injectPersistedReasoningItems(result, assistants, view.partTable())
       }
       return result
     },
@@ -1165,10 +1167,13 @@ export function SessionTurn(
     if (!latest) return []
     const display = displayMessages()
     const index = display.findIndex((item) => item.id === latest.id)
-    // latest comes from the same displayMessages() memo, so it is always
-    // present here — there is no fallback projection path.
-    const selected = displayItemProjections()[index]() as SessionTurnAssistantDisplayItem[]
-    if (activityDisplay() !== "minimal") return selected
+    // `display` and `displayItemProjections` are both derived from
+    // displayMessages(), but the two memos lazily recompute on their own
+    // schedule during a window replacement, so the index can transiently be
+    // -1 (or the projection array shorter than display). Guard the access —
+    // an empty projection is the graceful degradation path.
+    const selected = (displayItemProjections()[index]?.() ?? []) as SessionTurnAssistantDisplayItem[]
+    if (activityDisplay() !== "minimal") return selected as SessionTurnAssistantDisplayItem[]
     return projectMinimalActivityItems(selected, message()?.id ?? props.messageID, !working())
   })
   const emptyTimelineItemSnapshot = {
@@ -1201,8 +1206,7 @@ export function SessionTurn(
     if (working()) return ""
     const last = lastAssistantMessage()
     if (!last) return ""
-    const parts = data.store.part[last.id]
-    if (!parts) return ""
+    const parts = view.partsFor(last.id)
     const texts: string[] = []
     let hasTextPart = false
     for (const part of parts) {
@@ -1247,7 +1251,7 @@ export function SessionTurn(
     <MessageSlotOutlet slot={slot} sessionId={props.sessionID} messageId={messageId} role={role} />
   )
   const hasTimelineItems = createMemo(() => timelineItems().length > 0)
-  const sessionStatus = createMemo(() => data.store.session_status[props.sessionID])
+  const sessionStatus = createMemo(() => view.statusFor(props.sessionID))
   const [providerPreludeNow, setProviderPreludeNow] = createSignal(Date.now())
   const providerPreludeStarted = createMemo(() => message()?.time.created)
   const providerPreludeElapsed = createMemo(() =>
@@ -1480,6 +1484,16 @@ export function SessionTurn(
                                   size="small"
                                 />
                               </button>
+                              <Show when={!!props.onForkMessage && !!lastAssistantMessage()}>
+                                <button
+                                  type="button"
+                                  data-slot="assistant-message-fork"
+                                  aria-label={_(SESSION_TURN_DESC.forkMessage)}
+                                  onClick={() => props.onForkMessage?.(lastAssistantMessage()!.id)}
+                                >
+                                  <Icon name={getSemanticIcon("action.fork")} size="small" />
+                                </button>
+                              </Show>
                             </div>
                           </div>
                         </Show>

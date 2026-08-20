@@ -5,6 +5,7 @@ import { useHolosAgentActions } from "@/components/holos/agent-actions"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useServer } from "@/context/server"
 import { useGlobalSync } from "@/context/global-sync"
+import { useSessionDataView } from "@/context/session-data-view"
 import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
 import { useNavigateToSession } from "@/composables/use-navigate-to-session"
@@ -535,6 +536,7 @@ export function StatusBar() {
   const holos = useHolos()
   const server = useServer()
   const sync = useSync()
+  const view = useSessionDataView()
   const { i18n } = useLocale()
   const [expanded, setExpanded] = createSignal(false)
 
@@ -548,11 +550,11 @@ export function StatusBar() {
     if (!id) return undefined
     return sync.session.get(id)
   })
-  const status = createMemo(() => (params.id ? sync.data.session_status[params.id] : undefined))
+  const status = createMemo(() => (params.id ? view().statusFor(params.id) : undefined))
   const waiting = createMemo(() => {
     const id = params.id
     if (!id) return false
-    return !!sync.data.permission[id]?.length || !!sync.data.question[id]?.length
+    return view().permissionsFor(id).length > 0 || view().questionsFor(id).length > 0
   })
   const workspaceType = createMemo(() => session()?.workspace?.type ?? "main")
   const isWorktree = () => workspaceType() === "git_worktree"
@@ -584,16 +586,20 @@ export function StatusBar() {
   }
   const mcpTotal = () => Object.keys(sync.data.mcp ?? {}).length
   const cortexRunning = () =>
-    params.id ? sync.data.cortex.filter((t) => t.parentSessionID === params.id && t.status === "running").length : 0
+    params.id
+      ? view()
+          .cortexTasks()
+          .filter((t) => t.parentSessionID === params.id && t.status === "running").length
+      : 0
   const cortexCompleted = () =>
     params.id
-      ? sync.data.cortex.filter(
-          (t) => t.parentSessionID === params.id && (t.status === "completed" || t.status === "error"),
-        ).length
+      ? view()
+          .cortexTasks()
+          .filter((t) => t.parentSessionID === params.id && (t.status === "completed" || t.status === "error")).length
       : 0
   const childSessionStatus = (sessionID: string) => {
-    const status = sync.data.session_status[sessionID]
-    const waiting = !!sync.data.permission[sessionID]?.length || !!sync.data.question[sessionID]?.length
+    const status = view().statusFor(sessionID)
+    const waiting = view().permissionsFor(sessionID).length > 0 || view().questionsFor(sessionID).length > 0
     const state = resolveSubsessionStatus({
       waiting,
       running: status?.type === "busy" || status?.type === "retry" || status?.type === "recovering",

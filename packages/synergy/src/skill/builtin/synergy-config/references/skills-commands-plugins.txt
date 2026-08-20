@@ -58,6 +58,8 @@ Skills are discovered from these directories:
 | OpenClaw compat (global) | `~/.openclaw/skills/**/SKILL.md` |
 | Legacy project root | `<project>/skills/**/SKILL.md` |
 
+Each compatibility source (Claude, Codex, Agents, OpenClaw) is governed by the `skills.compatibility` settings in the Skills config domain (`55-skills.jsonc`, edited in Settings → Library → Skills). All sources are enabled by default; disabling a source stops its skills from loading without touching the files, and the change applies immediately on save.
+
 Skill entry files support `SKILL.md` and `Skill.md` (both casings). Plugin skills may supply content via `content.txt` or `content.md` as an alternative to `SKILL.md`.
 
 Example layout:

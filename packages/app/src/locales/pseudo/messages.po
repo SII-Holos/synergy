@@ -3950,7 +3950,27 @@ msgid "app.library.skills.detail.skillPath"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.library.skills.diagnostics.count"
+msgid "app.library.skills.diagnostics.compat"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.compatGroup"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.failedGroup"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.shadowed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.shadowedGroup"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -6933,6 +6953,21 @@ msgstr ""
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.session.filesChanged"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.fork.failed"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.forked"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.forked.desc"
 msgstr ""
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
@@ -11586,6 +11621,10 @@ msgid "session-turn.copy-markdown"
 msgstr ""
 
 #. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.fork-message"
+msgstr ""
+
+#. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.model-unavailable"
 msgstr ""
 
@@ -14256,6 +14295,34 @@ msgid "settings.catalog.sandbox.searchTerms"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.skills.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.agents"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.claude"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.codex"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.openclaw"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.searchTerms"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.synergyLink.description"
 msgstr ""
 
@@ -16640,6 +16707,10 @@ msgid "settings.panel.section.unavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.panel.theme.saveFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.pathRow.copied"
 msgstr ""
 
@@ -17609,6 +17680,54 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.save.unsaved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.agents.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.agents.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.claude.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.claude.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.codex.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.codex.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.openclaw.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.openclaw.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.page.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.page.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.row.count"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.section.title"
 msgstr ""
 
 #. js-lingui-explicit-id

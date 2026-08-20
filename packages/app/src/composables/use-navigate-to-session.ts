@@ -3,7 +3,7 @@ import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useSDK } from "@/context/sdk"
-import { useSync } from "@/context/sync"
+import { useSessionDataView } from "@/context/session-data-view"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 import { proxyPrefix } from "@/utils/proxy"
 import {
@@ -18,7 +18,7 @@ export function useNavigateToSession() {
   const location = useLocation()
   const navigate = useNavigate()
   const sdk = useSDK()
-  const sync = useSync()
+  const view = useSessionDataView()
   const globalSync = useGlobalSync()
   const globalSDK = useGlobalSDK()
   const basePath = proxyPrefix()
@@ -44,7 +44,7 @@ export function useNavigateToSession() {
         basePath,
       })
 
-    const localMatch = sync.data.session.find((s) => s.id === sessionID)
+    const localMatch = view().sessionFor(sessionID)
     if (localMatch) {
       navigateResolved(`/${routeDir(localMatch.scope)}/session/${sessionID}`)
       return

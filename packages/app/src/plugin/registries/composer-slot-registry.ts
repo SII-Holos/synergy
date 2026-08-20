@@ -1,4 +1,5 @@
 import type { Component } from "solid-js"
+import { SlotRegistry, type SlotEntryBase } from "../slot-registry"
 
 export type ComposerSlotName =
   | "composer.above"
@@ -13,57 +14,27 @@ export interface ComposerSlotProps {
   sessionId?: string
 }
 
-export interface ComposerSlotEntry {
-  id: string
+export interface ComposerSlotEntry extends SlotEntryBase {
   slot: ComposerSlotName
-  order?: number
   component?: Component<ComposerSlotProps>
   loader?: () => Promise<{ default: Component<ComposerSlotProps> }>
-  pluginId: string
 }
 
-const entries: ComposerSlotEntry[] = []
-const listeners = new Set<() => void>()
-
-function notify() {
-  for (const listener of listeners) listener()
-}
+/** Composer slot entries, grouped by slot name via the shared slot registry. */
+const registry = new SlotRegistry<ComposerSlotEntry>()
 
 export function registerComposerSlot(entry: ComposerSlotEntry): () => void {
-  entries.push(entry)
-  notify()
-  return () => {
-    const index = entries.indexOf(entry)
-    if (index === -1) return
-    entries.splice(index, 1)
-    notify()
-  }
+  return registry.register(entry)
 }
 
 export function getComposerSlotsByName(slot: ComposerSlotName): ComposerSlotEntry[] {
-  return entries
-    .filter((entry) => entry.slot === slot)
-    .toSorted((a, b) => (a.order ?? 1000) - (b.order ?? 1000) || a.id.localeCompare(b.id))
+  return registry.list(slot)
 }
 
 export function clearComposerSlots(pluginId?: string): void {
-  if (!pluginId) {
-    if (entries.length === 0) return
-    entries.length = 0
-    notify()
-    return
-  }
-
-  let changed = false
-  for (let index = entries.length - 1; index >= 0; index--) {
-    if (entries[index]?.pluginId !== pluginId) continue
-    entries.splice(index, 1)
-    changed = true
-  }
-  if (changed) notify()
+  registry.clear(pluginId)
 }
 
 export function subscribeComposerSlots(listener: () => void): () => void {
-  listeners.add(listener)
-  return () => listeners.delete(listener)
+  return registry.subscribe(listener)
 }

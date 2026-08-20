@@ -3950,8 +3950,28 @@ msgid "app.library.skills.detail.skillPath"
 msgstr "Skill path"
 
 #. js-lingui-explicit-id
-msgid "app.library.skills.diagnostics.count"
-msgstr "{count} skill{plural} skipped during load"
+msgid "app.library.skills.diagnostics.compat"
+msgstr "{count, plural, one {# compatibility notice} other {# compatibility notices}}"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.compatGroup"
+msgstr "Compatibility notices"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.failed"
+msgstr "{count, plural, one {# skill failed to load} other {# skills failed to load}}"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.failedGroup"
+msgstr "Failed to load"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.shadowed"
+msgstr "{count, plural, one {# skill shadowed} other {# skills shadowed}}"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.shadowedGroup"
+msgstr "Shadowed"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.empty.hint"
@@ -6934,6 +6954,21 @@ msgstr "Couldn’t load conversation"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.session.filesChanged"
 msgstr "{count} Files Changed"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.fork.failed"
+msgstr "Fork failed"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.forked"
+msgstr "Session forked"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.forked.desc"
+msgstr "Forked the conversation up to this message."
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11586,6 +11621,10 @@ msgid "session-turn.copy-markdown"
 msgstr "Copy Markdown"
 
 #. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.fork-message"
+msgstr "Fork session from this message"
+
+#. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.model-unavailable"
 msgstr "Model {modelID} is unavailable from {providerID}. Choose another model to continue."
 
@@ -14256,6 +14295,34 @@ msgid "settings.catalog.sandbox.searchTerms"
 msgstr "sandbox | isolation | fallback"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.skills.description"
+msgstr "Skill discovery compatibility with other agent tools."
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.label"
+msgstr "Skills"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.agents"
+msgstr "Agent Skills"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.claude"
+msgstr "Claude Code"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.codex"
+msgstr "Codex"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.openclaw"
+msgstr "OpenClaw"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.searchTerms"
+msgstr "skill | skills | claude | codex | openclaw | agents | compatibility"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.synergyLink.description"
 msgstr "Persisted remote Synergy targets, authorization, and observed host details."
 
@@ -16640,6 +16707,10 @@ msgid "settings.panel.section.unavailable"
 msgstr "{label} is not available"
 
 #. js-lingui-explicit-id
+msgid "settings.panel.theme.saveFailed"
+msgstr "Theme change could not be saved"
+
+#. js-lingui-explicit-id
 msgid "settings.pathRow.copied"
 msgstr "Copied"
 
@@ -17610,6 +17681,54 @@ msgstr "Saved {label}"
 #. js-lingui-explicit-id
 msgid "settings.save.unsaved"
 msgstr "Unsaved"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.agents.desc"
+msgstr "Load Agent Skills from .agents/skills directories (default: on)."
+
+#. js-lingui-explicit-id
+msgid "settings.skills.agents.title"
+msgstr "Agent Skills"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.claude.desc"
+msgstr "Load Claude Code skills from .claude/skills directories (default: on)."
+
+#. js-lingui-explicit-id
+msgid "settings.skills.claude.title"
+msgstr "Claude Code"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.codex.desc"
+msgstr "Load Codex skills from .codex/skills directories (default: on)."
+
+#. js-lingui-explicit-id
+msgid "settings.skills.codex.title"
+msgstr "Codex"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.openclaw.desc"
+msgstr "Load OpenClaw skills from .openclaw/skills and workspace skills directories (default: on)."
+
+#. js-lingui-explicit-id
+msgid "settings.skills.openclaw.title"
+msgstr "OpenClaw"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.page.desc"
+msgstr "Choose which other agent tools Synergy discovers skills from."
+
+#. js-lingui-explicit-id
+msgid "settings.skills.page.title"
+msgstr "Skills"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.row.count"
+msgstr "{count, plural, one {# skill} other {# skills}}"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.section.title"
+msgstr "Compatibility"
 
 #. js-lingui-explicit-id
 msgid "settings.stepScale.custom"

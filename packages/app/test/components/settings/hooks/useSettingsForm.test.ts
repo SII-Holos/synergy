@@ -262,6 +262,50 @@ describe("settings form activity display hydration", () => {
     expect(initializedActivityDisplay({ activityDisplay: "minimal" })).toBe("minimal")
   })
 })
+describe("settings form skills compatibility hydration", () => {
+  test("defaults all skill sources on when compatibility config is absent", () => {
+    expect(initializedSkills({})).toEqual({
+      agents: true,
+      claude: true,
+      codex: true,
+      openclaw: true,
+    })
+  })
+
+  test("hydrates explicit per-source compatibility toggles", () => {
+    expect(
+      initializedSkills({
+        skills: {
+          compatibility: { agents: false, claude: true, codex: false, openclaw: true },
+        },
+      }),
+    ).toEqual({
+      agents: false,
+      claude: true,
+      codex: false,
+      openclaw: true,
+    })
+  })
+})
+
+function initializedSkills(config: Record<string, unknown>) {
+  const [settings, setSettings] = createStore(defaultSettingsState("enter"))
+
+  ensureInit({
+    cfg: config as Config,
+    setName: "global",
+    refreshing: () => false,
+    initialized: () => false,
+    initializedForSet: undefined,
+    sendShortcut: () => "enter",
+    colorScheme: () => "system",
+    setSettings,
+    setInitialized: () => undefined,
+    originalMcpsRef: { current: {} },
+  })
+
+  return settings.skills
+}
 
 function initializedActivityDisplay(config: Record<string, unknown>) {
   const [settings, setSettings] = createStore(defaultSettingsState("enter"))

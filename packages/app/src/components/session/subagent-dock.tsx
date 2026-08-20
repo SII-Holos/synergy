@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js"
-import { useSync } from "@/context/sync"
+import { useSessionDataView } from "@/context/session-data-view"
 import { useSDK } from "@/context/sdk"
 import { useNavigateToSession } from "@/composables/use-navigate-to-session"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
@@ -37,13 +37,13 @@ interface SubagentAvatarProps {
 }
 
 function SubagentAvatar(props: SubagentAvatarProps) {
-  const sync = useSync()
+  const view = useSessionDataView()
   const navigateToSession = useNavigateToSession()
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const config = createMemo(() => getAgentVisual(props.task.agent))
   const isQueued = () => props.task.status === "queued"
-  const sessionStatus = createMemo<SessionStatus | undefined>(() => sync.data.session_status[props.task.sessionID])
+  const sessionStatus = createMemo<SessionStatus | undefined>(() => view().statusFor(props.task.sessionID))
   const runtimeState = createMemo(() => resolveRuntimeIconState(sessionStatus(), false, i18n))
   const isRetrying = () => sessionStatus()?.type === "retry"
   const [holdProgress, setHoldProgress] = createSignal(0)
@@ -281,11 +281,12 @@ interface SubagentDockProps {
 }
 
 export function SubagentDock(props: SubagentDockProps) {
-  const sync = useSync()
+  const view = useSessionDataView()
   const sdk = useSDK()
 
   const activeTasks = createMemo(() =>
-    sync.data.cortex
+    view()
+      .cortexTasks()
       .filter(
         (task) => task.parentSessionID === props.sessionID && (task.status === "running" || task.status === "queued"),
       )

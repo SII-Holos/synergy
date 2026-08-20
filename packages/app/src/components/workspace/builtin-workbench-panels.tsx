@@ -18,7 +18,10 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
 
   createEffect(() => {
     controller.activeLocale()
-    const previousDisposers = disposers.splice(0)
+    // Dispose the previous registrations before re-registering: the slot
+    // registry rejects duplicate ids, and the effect re-runs on locale
+    // switches to relabel the builtin panels.
+    for (const dispose of disposers.splice(0)) dispose()
     disposers.push(
       registerWorkbenchPanel({
         id: "notes",
@@ -132,12 +135,11 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         },
       }),
     )
-    for (const dispose of previousDisposers) dispose()
   })
 
   onCleanup(() => {
     for (const dispose of disposers.splice(0)) dispose()
   })
 
-  return <>{props.children}</>
+  return props.children
 }

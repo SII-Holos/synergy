@@ -20,6 +20,15 @@ export namespace SkillManifest {
       "allowed-tools": z.string().optional(),
       "user-invocable": z.boolean().default(true),
       "disable-model-invocation": z.boolean().default(false),
+      // Standard Agent Skills / Claude Code fields that Synergy does not
+      // consume. They are accepted so ecosystem-authored manifests load under
+      // strict sources; values are ignored at runtime.
+      "argument-hint": z.unknown().optional(),
+      model: z.unknown().optional(),
+      effort: z.unknown().optional(),
+      context: z.unknown().optional(),
+      agent: z.unknown().optional(),
+      hooks: z.unknown().optional(),
     })
     .strict()
 
