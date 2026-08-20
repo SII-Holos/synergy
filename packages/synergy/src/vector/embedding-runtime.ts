@@ -34,11 +34,7 @@ async function fetchLocalFile(target: string): Promise<Response> {
 // embedding download stuck at 0% with no error. The timeout only covers
 // TTFB — once response headers arrive, the body streams at its own pace.
 type EnvFetch = (input: string | URL, init?: any) => Promise<any>
-async function fetchRemoteWithTimeout(
-  delegate: EnvFetch,
-  input: string | URL,
-  init?: any,
-): Promise<Response> {
+async function fetchRemoteWithTimeout(delegate: EnvFetch, input: string | URL, init?: any): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), REMOTE_FETCH_TTFB_TIMEOUT_MS).unref()
   const callerSignal = init?.signal
