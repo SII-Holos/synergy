@@ -16652,6 +16652,10 @@ msgid "settings.panel.theme.saveFailed"
 msgstr "Theme change could not be saved"
 
 #. js-lingui-explicit-id
+msgid "settings.panel.zoom.saveFailed"
+msgstr "Interface zoom could not be saved"
+
+#. js-lingui-explicit-id
 msgid "settings.pathRow.copied"
 msgstr "Copied"
 

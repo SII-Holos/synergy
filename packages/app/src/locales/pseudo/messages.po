@@ -16652,6 +16652,10 @@ msgid "settings.panel.theme.saveFailed"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.panel.zoom.saveFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.pathRow.copied"
 msgstr ""
 
