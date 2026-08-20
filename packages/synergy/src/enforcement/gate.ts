@@ -453,6 +453,142 @@ function extractShellPathArguments(command: string, cwd: string): string[] {
   return paths
 }
 
+const COPY_OPERAND_COMMANDS = new Set(["cp", "install", "ln"])
+const COPY_VALUE_LONG_FLAGS = new Set(["target-directory"])
+const COPY_OPTIONAL_VALUE_LONG_FLAGS = new Set(["backup", "context", "group", "mode", "owner", "preserve", "suffix"])
+const COPY_BOOLEAN_LONG_FLAGS = new Set([
+  "archive",
+  "attributes-only",
+  "compare",
+  "copy-contents",
+  "dereference",
+  "force",
+  "interactive",
+  "link",
+  "no-clobber",
+  "no-dereference",
+  "no-target-directory",
+  "parents",
+  "preserve-timestamps",
+  "recursive",
+  "reflink",
+  "reflink=always",
+  "reflink=auto",
+  "reflink=never",
+  "remove-destination",
+  "sparse",
+  "strip",
+  "strip-trailing-slashes",
+  "symbolic",
+  "update",
+  "verbose",
+])
+const COPY_VALUE_SHORT_FLAGS = new Set(["t"])
+const COPY_OPTIONAL_VALUE_SHORT_FLAGS = new Set(["S", "Z", "g", "m", "o", "b"])
+const COPY_BOOLEAN_SHORT_FLAGS = new Set([
+  "a",
+  "b",
+  "c",
+  "D",
+  "H",
+  "i",
+  "L",
+  "l",
+  "n",
+  "P",
+  "p",
+  "R",
+  "r",
+  "s",
+  "T",
+  "u",
+  "v",
+  "x",
+])
+
+function copyOperandPath(raw: string, cwd: string): string | undefined {
+  const arg = raw.replace(/^["']/, "").replace(/["']$/, "")
+  if (arg.includes('"') || arg.includes("'") || arg.includes("`")) return undefined
+  if (arg.startsWith("/") || arg.startsWith("~") || /^\$(\{?HOME\}?)/.test(arg)) return arg
+  if (arg.includes("$")) return undefined
+  return `${cwd}/${arg}`
+}
+
+/**
+ * Resolve the read-only source operands of a plain cp/install/ln segment.
+ * Copy commands write only their final positional operand (or the
+ * -t/--target-directory value); every other operand is read-only. Returns
+ * undefined for any spelling the static parser cannot fully resolve so the
+ * caller keeps the conservative all-write classification.
+ */
+function copyOperandSources(segment: string, cwd: string): string[] | undefined {
+  const tokens = segment.trim().split(/\s+/)
+  if (!COPY_OPERAND_COMMANDS.has(tokens[0] ?? "")) return undefined
+  const positionals: string[] = []
+  let targetDirectory: string | undefined
+  let expectValue: string | undefined
+  let endOfFlags = false
+  for (const token of tokens.slice(1)) {
+    if (token === "") continue
+    if (expectValue) {
+      const path = copyOperandPath(token, cwd)
+      if (path === undefined) return undefined
+      if (expectValue === "t" || expectValue === "target-directory") targetDirectory = path
+      expectValue = undefined
+      continue
+    }
+    if (!endOfFlags && token === "--") {
+      endOfFlags = true
+      continue
+    }
+    if (!endOfFlags && token.startsWith("--")) {
+      const body = token.slice(2)
+      const eq = body.indexOf("=")
+      const flag = eq === -1 ? body : body.slice(0, eq)
+      if (COPY_VALUE_LONG_FLAGS.has(flag)) {
+        if (eq === -1) {
+          expectValue = flag
+        } else if (flag === "target-directory") {
+          const path = copyOperandPath(body.slice(eq + 1), cwd)
+          if (path === undefined) return undefined
+          targetDirectory = path
+        }
+        continue
+      }
+      if (COPY_OPTIONAL_VALUE_LONG_FLAGS.has(flag)) {
+        if (eq === -1) expectValue = flag
+        continue
+      }
+      if (eq !== -1 || !COPY_BOOLEAN_LONG_FLAGS.has(flag)) return undefined
+      continue
+    }
+    if (!endOfFlags && token.startsWith("-") && token !== "-") {
+      const cluster = token.slice(1)
+      if (cluster.length === 1 && COPY_VALUE_SHORT_FLAGS.has(cluster)) {
+        expectValue = cluster
+        continue
+      }
+      if (cluster.split("").some((ch) => COPY_VALUE_SHORT_FLAGS.has(ch) || COPY_OPTIONAL_VALUE_SHORT_FLAGS.has(ch)))
+        return undefined
+      if (cluster.split("").some((ch) => !COPY_BOOLEAN_SHORT_FLAGS.has(ch))) return undefined
+      continue
+    }
+    if (token === "-") return undefined
+    const path = copyOperandPath(token, cwd)
+    if (path === undefined) return undefined
+    positionals.push(path)
+  }
+  if (expectValue) return undefined
+  if (targetDirectory !== undefined) {
+    if (/[*?[]/.test(targetDirectory)) return undefined
+    return positionals
+  }
+  if (positionals.length < 2) return undefined
+  const target = positionals[positionals.length - 1]
+  if (/[*?[]/.test(target)) return undefined
+  return positionals.slice(0, -1)
+}
+
 function hasNetworkActivity(command: string): boolean {
   const lower = command.toLowerCase()
   return NETWORK_PATTERNS.some((p) => lower.includes(p))
@@ -768,17 +904,41 @@ export namespace EnforcementGate {
           classifyPathCapability(caps, candidate, { ...pathOptions, write: aggregateWriteCapable })
         }
         for (const segment of pathSegments) {
+          const writeCapable = aggregateWriteCapable || ShellSafety.classifyBashRisk(segment) !== "shell_read"
           const pathCandidates = [...extractAbsolutePaths(segment), ...extractShellPathArguments(segment, cwd)].filter(
             (candidate) => !BashVirtualPath.isShellCandidate(candidate),
           )
-          const writeCapable = aggregateWriteCapable || ShellSafety.classifyBashRisk(segment) !== "shell_read"
+          if (!writeCapable || aggregateWriteCapable) {
+            for (const candidate of pathCandidates) {
+              classifyProtectedPathCapability(caps, candidate, writeCapable ? "write" : "read", {
+                activeWorkspace,
+                originalCheckout,
+                synergyRoot,
+              })
+              classifyPathCapability(caps, candidate, { ...pathOptions, write: writeCapable })
+            }
+            continue
+          }
+          const copySources = copyOperandSources(segment, cwd)
+          if (copySources === undefined) {
+            for (const candidate of pathCandidates) {
+              classifyProtectedPathCapability(caps, candidate, "write", {
+                activeWorkspace,
+                originalCheckout,
+                synergyRoot,
+              })
+              classifyPathCapability(caps, candidate, { ...pathOptions, write: true })
+            }
+            continue
+          }
           for (const candidate of pathCandidates) {
-            classifyProtectedPathCapability(caps, candidate, writeCapable ? "write" : "read", {
+            const sourceRead = copySources.includes(candidate)
+            classifyProtectedPathCapability(caps, candidate, sourceRead ? "read" : "write", {
               activeWorkspace,
               originalCheckout,
               synergyRoot,
             })
-            classifyPathCapability(caps, candidate, { ...pathOptions, write: writeCapable })
+            classifyPathCapability(caps, candidate, { ...pathOptions, write: !sourceRead })
           }
         }
 
