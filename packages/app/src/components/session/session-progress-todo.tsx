@@ -1,5 +1,5 @@
 import { createMemo, createSignal, For, Show } from "solid-js"
-import { useSync } from "@/context/sync"
+import { useSessionDataView } from "@/context/session-data-view"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
 import type { TodoItem, TodoSummary } from "./session-progress-summary"
@@ -70,10 +70,10 @@ function labelClass(status: string): string {
 }
 
 export function SessionProgressTodo(props: SessionProgressTodoProps) {
-  const sync = useSync()
+  const view = useSessionDataView()
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
-  const todos = createMemo<TodoItem[]>(() => sync.data.todo[props.sessionID] ?? [])
+  const todos = createMemo<TodoItem[]>(() => view().todosFor(props.sessionID))
 
   const summaryParts = createMemo(() => {
     const s = props.summary

@@ -55,16 +55,16 @@ export function PermissionDock(props: PermissionDockProps) {
   const { _ } = useLingui()
   const toolTitle = (title: string | MessageDescriptor) => (typeof title === "string" ? title : _(title))
 
-  const childSessions = createMemo(() => (data.store.session ?? []).filter((s) => s.parentID === props.sessionID))
+  const childSessions = createMemo(() => data.view.sessions().filter((s) => s.parentID === props.sessionID))
 
   const permissions = createMemo(() => {
     const result: PermissionItem[] = []
-    const selfPerms = data.store.permission?.[props.sessionID] ?? []
+    const selfPerms = data.view.permissionsFor(props.sessionID)
     for (const perm of selfPerms) {
       result.push({ permission: perm, origin: "self" })
     }
     for (const child of childSessions()) {
-      const perms = data.store.permission?.[child.id] ?? []
+      const perms = data.view.permissionsFor(child.id)
       for (const perm of perms) {
         result.push({
           permission: perm,
@@ -90,10 +90,10 @@ export function PermissionDock(props: PermissionDockProps) {
     const item = activeItem()
     if (!item?.permission.tool) return undefined
     const { messageID, callID } = item.permission.tool
-    const messages = data.store.message[item.permission.sessionID] ?? []
+    const messages = data.view.messagesFor(item.permission.sessionID)
     const message = messages.findLast((m) => m.id === messageID)
     if (!message) return undefined
-    const parts = data.store.part[message.id] ?? []
+    const parts = data.view.partsFor(message.id)
     for (const part of parts) {
       if (part?.type === "tool" && (part as ToolPart).callID === callID) {
         return part as ToolPart
@@ -154,10 +154,10 @@ export function PermissionDock(props: PermissionDockProps) {
     const perm = item.permission
     if (!perm.tool) return perm.permission ?? _(copy.permission)
     const { messageID, callID } = perm.tool
-    const messages = data.store.message[perm.sessionID] ?? []
+    const messages = data.view.messagesFor(perm.sessionID)
     const message = messages.findLast((candidate) => candidate.id === messageID)
     if (message) {
-      const parts = data.store.part[message.id] ?? []
+      const parts = data.view.partsFor(message.id)
       for (const part of parts) {
         if (part?.type === "tool" && (part as ToolPart).callID === callID) {
           const info = getToolInfo((part as ToolPart).tool, (part as ToolPart).state?.input, perm.metadata)
