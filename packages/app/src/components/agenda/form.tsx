@@ -316,6 +316,7 @@ export function AgendaForm(props: {
           triggers: [...preserved, ...triggers],
           prompt: promptValue || undefined,
         }
+        await sdk.client.agenda.update({ id: props.item!.id, directory: props.directory, agendaPatchInput: patch })
       } else {
         const input: AgendaCreateInput = {
           title: t,

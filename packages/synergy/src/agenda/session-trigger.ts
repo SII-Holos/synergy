@@ -33,9 +33,9 @@ export namespace AgendaSessionTrigger {
   /** Watched sessionID → registered entries. */
   const bySession = new Map<string, Entry[]>()
 
-  /** entry 指纹（itemID + event + filters）→ last fired messageID。
-   *  按条目而不是按 itemID 去重，使同一 item 的多个 session trigger
-   *  （如 turn.start 与 turn.end 并存）都能独立触发。 */
+  /** Entry fingerprint (itemID + event + filters) → last fired messageID.
+   *  Dedup is per entry, not per item, so multiple session triggers on the
+   *  same item (e.g. turn.start + turn.end) can each fire independently. */
   const lastFiredMessage = new Map<string, string>()
   let handler: Handler | null = null
   let unsubscribers: Array<() => void> = []
