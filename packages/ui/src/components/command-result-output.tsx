@@ -7,6 +7,7 @@ import { Icon } from "./icon"
 
 import "./command-result-output.css"
 import { getSemanticIcon } from "./semantic-icon"
+import { messageCreatedTime } from "./message-time"
 
 const commandOutputLabelDescriptor = { id: "ui.commandResultOutput.label", message: "Command output" }
 
@@ -25,10 +26,7 @@ export function CommandResultOutput(props: {
 
   const commandName = createMemo(() => props.message.metadata?.commandName as string | undefined)
 
-  const timestamp = createMemo(() => {
-    const ms = props.message.time.created
-    return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-  })
+  const timestamp = createMemo(() => messageCreatedTime(props.message.time.created))
 
   const textContent = createMemo(() => {
     return parts()

@@ -13,6 +13,7 @@ import {
 } from "./compaction-card-model"
 
 import "./compaction-card.css"
+import { messageCreatedTime } from "./message-time"
 
 interface CompactionRecoveryPayload {
   type: string
@@ -89,10 +90,7 @@ const CompactionCard: Component<CompactionCardProps> = (props) => {
 
   const [expanded, setExpanded] = createSignal(props.defaultOpen ?? false)
 
-  const timestamp = createMemo(() => {
-    const date = new Date(props.message.time.created)
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-  })
+  const timestamp = createMemo(() => messageCreatedTime(props.message.time.created))
   const title = createMemo(() => {
     if (presentation().status === "failed") return _(COMPACTION_CARD_DESC.failedTitle)
     if (presentation().status === "running") return _(COMPACTION_CARD_DESC.runningTitle)

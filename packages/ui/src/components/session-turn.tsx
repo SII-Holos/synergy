@@ -103,13 +103,15 @@ export function formatTurnTokenCount(value: number): string {
   return value.toLocaleString()
 }
 
+const turnCostFormat = new Intl.NumberFormat(undefined, {
+  style: "currency",
+  currency: "USD",
+})
+
 export function formatTurnCost(value: number): string | undefined {
   if (value <= 0) return undefined
   if (value < 0.01) return `$${value.toFixed(4)}`
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-  }).format(value)
+  return turnCostFormat.format(value)
 }
 export function resolveSessionTurnError(value: NonNullable<AssistantMessage["error"]>) {
   if (value.name === "ProviderModelUnavailableError") {
