@@ -3,11 +3,11 @@ import type { Tool as AITool } from "ai"
 import { SessionProcessor } from "../../src/session/processor"
 import { ToolScheduler, ToolTaskScheduler } from "../../src/session/tool-scheduler"
 
-// These tests stop the module-level ToolScheduler to exercise shutdown
-// admission. Bun runs several test files per worker process, so restore the
-// default accepting state afterwards — otherwise the next file in the same
-// worker (e.g. auto-expand interception) gets its dispatches rejected.
 afterAll(() => {
+  // The shutdown tests below stop the module-level ToolScheduler singleton
+  // (accepting=false). Restore it so sibling files sharing the same shard
+  // process — e.g. test/tool/auto-expand.test.ts dispatching through the real
+  // scheduler — are not rejected with "Tool scheduler is stopping".
   ToolScheduler.configure()
 })
 

@@ -6,6 +6,7 @@ import { createSessionMessageLoader, type SessionMessageLoadState } from "@/cont
 import type { planMessagePageApply } from "@/context/session-message-page"
 import type { SessionPartSnapshotAction, SessionPartSnapshotRequest } from "@/context/session-part-snapshot-freshness"
 import type { MessageWindowState } from "@/context/session-message-window"
+import { internMessages, internParts } from "@/context/string-intern"
 
 export type BoardMessagePageResult = {
   data?: {
@@ -147,12 +148,15 @@ export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
                 for (const messageID of plan.droppedIds) delete draft.part[messageID]
               }),
             )
-            setStore("message", sessionID, deps.reconcile(plan.window.messages, { key: "id" }) as Message[])
-            setStore("messageWindow", sessionID, deps.reconcile(plan.metadata) as MessageWindowState<Message>)
+            setStore(
+              "message",
+              sessionID,
+              deps.reconcile(internMessages(plan.window.messages), { key: "id" }) as Message[],
+            )
             deps.setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage, result.revision)
             for (const [messageID, parts] of Object.entries(plan.parts)) {
               if (partActions.get(messageID) === "preserve") continue
-              setStore("part", messageID, deps.reconcile(parts, { key: "id" }) as Part[])
+              setStore("part", messageID, deps.reconcile(internParts(parts), { key: "id" }) as Part[])
             }
           })
           deps.touchMessageBucket(scopeKey, sessionID)

@@ -7,6 +7,7 @@ import { Icon } from "./icon"
 
 import "./mailbox-message.css"
 import { getSemanticIcon } from "./semantic-icon"
+import { messageCreatedTime } from "./message-time"
 
 const fromSessionDescriptor = { id: "ui.mailbox.fromSession", message: "From {source}" }
 
@@ -17,7 +18,7 @@ export function MailboxMessage(props: {
     container?: string
   }
 }) {
-  const { _ } = useLingui()
+  const { _, i18n } = useLingui()
   const data = useData()
   const view = data.view
 
@@ -30,10 +31,7 @@ export function MailboxMessage(props: {
   })
   const sourceLabel = createMemo(() => sourceName() ?? sourceSessionID() ?? "another session")
 
-  const timestamp = createMemo(() => {
-    const ms = props.message.time.created
-    return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-  })
+  const timestamp = createMemo(() => messageCreatedTime(props.message.time.created, i18n?.()?.locale))
 
   const textContent = createMemo(() => {
     return parts()
