@@ -405,6 +405,8 @@ When `embedding.apiKey` is absent, Synergy uses the bundled `Xenova/all-MiniLM-L
 
 The model ID and quantization dtype are not configurable. The cache directory defaults to `~/.synergy/data/embedding/models` and can be redirected with `embedding.local.cacheDir`.
 
+When `source` is `"huggingface"` (the default) and the download fails, the runtime retries once from hf-mirror.com before falling back to the on-disk cache (`local_files_only: true`). Explicit `"hf-mirror"` and `"custom"` sources skip the auto-fallback and go straight to the disk cache on failure. Remote downloads abort with an error if no response bytes arrive within 30 seconds (time-to-first-byte); the timeout covers only the connection/header phase, so an in-flight download body streams at its own pace. After a successful mirror fallback the status reports `source: "hf-mirror"`; a failed load reports the configured source.
+
 ### Remote
 
 When `embedding.apiKey` is set, Synergy queries an embedding API instead of using the local model. The remote provider defaults to SiliconFlow with `Qwen/Qwen3-Embedding-8B`.

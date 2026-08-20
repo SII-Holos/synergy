@@ -157,6 +157,8 @@ On failure, the command prints the error and suggests troubleshooting steps: che
 
 The download source is set in `00-general.jsonc` under `embedding.local.source` (`"huggingface"`, `"hf-mirror"`, or `"custom"`). The `custom` source requires `embedding.local.remoteHost` to be a public HTTPS origin.
 
+When `source` is `"huggingface"` (the default) and a download fails, Synergy automatically retries once from hf-mirror.com, then falls back to the on-disk cache. Explicit `"hf-mirror"` and `"custom"` sources skip the auto-fallback and go straight to the disk cache. Remote downloads abort with an error if no response bytes arrive within 30 seconds (time-to-first-byte), so an unreachable source fails with a clear message instead of hanging at 0%.
+
 Model files are cached under `~/.synergy/data/embedding/models`; customize the location with `embedding.local.cacheDir`.
 
 See [Knowledge: Embedding Model](../product/knowledge.md#embedding-model) for the embedding lifecycle and [Configuration: Embedding](configuration-layout.md#embedding) for the full config schema.
