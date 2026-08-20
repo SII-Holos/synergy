@@ -34,11 +34,13 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@types/jsdom": "21.1.7",
     "@types/node": "catalog:",
     "@types/unzipper": "0.10.11",
     "electron": "42.5.0",
     "electron-builder": "26.15.7",
     "electron-builder-squirrel-windows": "26.15.7",
+    "jsdom": "25.0.1",
     "typescript": "catalog:",
     "unzipper": "^0.12.3"
   }

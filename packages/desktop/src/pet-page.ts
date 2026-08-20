@@ -233,7 +233,7 @@ export function petPage(options: PetPageOptions): string {
       const dy = e.clientY - lastY
       lastX = e.clientX
       lastY = e.clientY
-      bridge.moveBy(dx, dy)
+      bridge.dragBy(dx, dy)
       return
     }
     if (Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY) > 4) {

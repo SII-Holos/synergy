@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { JSDOM } from "jsdom"
 import { petPage } from "../src/pet-page.js"
 import { PET_ANIMATIONS, type PetSettingsV1, type PetSpriteSheet } from "../src/pet-types.js"
 
@@ -52,5 +53,98 @@ describe("pet page", () => {
     const malicious: PetSpriteSheet = { ...sprite, dataUrl: 'data:image/png;base64,AAAA" onerror="alert(1)' }
     const html = decodeURIComponent(petPage({ settings, sprite: malicious }).slice("data:text/html,".length))
     expect(html).not.toContain('onerror="alert(1)')
+  })
+})
+
+interface PetBridge {
+  poke(): Promise<{ ok: boolean }>
+  moveBy(dx: number, dy: number): Promise<{ ok: boolean }>
+  dragBy(dx: number, dy: number): Promise<{ ok: boolean }>
+  setDragging(dragging: boolean): Promise<{ ok: boolean }>
+  getState(): Promise<{ ok: boolean }>
+  onState(listener: (state: unknown) => void): () => void
+  onSettings(listener: (settings: unknown) => void): () => void
+  onSprite(listener: (sprite: unknown) => void): () => void
+}
+
+describe("pet page drag gesture", () => {
+  function loadPage(bridge: PetBridge): JSDOM {
+    const html = decodeURIComponent(
+      petPage({ settings, sprite: { ...sprite, dataUrl: null } }).slice("data:text/html,".length),
+    )
+    return new JSDOM(html, {
+      runScripts: "dangerously",
+      url: "data:text/html,",
+      pretendToBeVisual: true,
+      beforeParse(window) {
+        ;(window as unknown as { synergyPet: PetBridge }).synergyPet = bridge
+        window.Element.prototype.setPointerCapture = () => {}
+        // jsdom does not implement PointerEvent; polyfill the minimal surface
+        // the page uses (clientX/clientY/pointerId).
+        if (typeof window.PointerEvent !== "function") {
+          class PointerEventPolyfill extends window.MouseEvent {
+            readonly pointerId: number
+            constructor(type: string, init: Record<string, unknown> = {}) {
+              super(type, init)
+              this.pointerId = typeof init.pointerId === "number" ? init.pointerId : 0
+            }
+          }
+          ;(window as unknown as { PointerEvent: typeof PointerEvent }).PointerEvent =
+            PointerEventPolyfill as unknown as typeof PointerEvent
+        }
+      },
+    })
+  }
+
+  test("a drag past the threshold moves the window through the dragBy bridge", () => {
+    const calls: string[] = []
+    const bridge: PetBridge = {
+      poke: () => {
+        calls.push("poke")
+        return Promise.resolve({ ok: true })
+      },
+      moveBy: (dx: number, dy: number) => {
+        calls.push(`moveBy:${dx}:${dy}`)
+        return Promise.resolve({ ok: true })
+      },
+      dragBy: (dx: number, dy: number) => {
+        calls.push(`dragBy:${dx}:${dy}`)
+        return Promise.resolve({ ok: true })
+      },
+      setDragging: (dragging: boolean) => {
+        calls.push(`setDragging:${dragging}`)
+        return Promise.resolve({ ok: true })
+      },
+      getState: () => Promise.resolve({ ok: true }),
+      onState: () => () => {},
+      onSettings: () => () => {},
+      onSprite: () => () => {},
+    }
+    const dom = loadPage(bridge)
+    try {
+      const window = dom.window as unknown as {
+        document: Document
+        PointerEvent: typeof PointerEvent
+      }
+      const stage = window.document.getElementById("stage")!
+      stage.dispatchEvent(
+        new window.PointerEvent("pointerdown", { bubbles: true, clientX: 10, clientY: 10, pointerId: 1 }),
+      )
+      stage.dispatchEvent(
+        new window.PointerEvent("pointermove", { bubbles: true, clientX: 20, clientY: 15, pointerId: 1 }),
+      )
+      stage.dispatchEvent(
+        new window.PointerEvent("pointermove", { bubbles: true, clientX: 25, clientY: 20, pointerId: 1 }),
+      )
+      stage.dispatchEvent(
+        new window.PointerEvent("pointerup", { bubbles: true, clientX: 25, clientY: 20, pointerId: 1 }),
+      )
+      expect(calls).toContain("setDragging:true")
+      expect(calls).toContain("setDragging:false")
+      expect(calls).toContain("dragBy:5:5")
+      expect(calls).not.toContain("moveBy:5:5")
+    } finally {
+      dom.window.close()
+    }
   })
 })
