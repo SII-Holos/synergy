@@ -1005,7 +1005,12 @@ export namespace MessageV2 {
     if (!shouldSendAttachmentFile(part)) {
       const summary = attachmentSummary(part)
       const localPath = attachmentModelPath(part)
-      const description = options.includeLocalPath && localPath ? `${summary}. Local path: ${localPath}` : summary
+      const toolHint =
+        options.includeLocalPath && localPath && !Attachment.isText(part.mime) && !part.mime.startsWith("image/")
+          ? ". Attached as-is; use file tools to inspect"
+          : ""
+      const description =
+        options.includeLocalPath && localPath ? `${summary}. Local path: ${localPath}${toolHint}` : summary
       const text = `[Attachment: ${description}]`
       parts.push({ type: "text", text })
       provenance.categories.filesReferences.push({ text })

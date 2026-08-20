@@ -1,115 +1,121 @@
 import { describe, expect, test } from "bun:test"
 import {
-  formatUnsupportedAttachmentToast,
-  isPromptAttachmentFileAccepted,
+  FILE_INPUT_ACCEPT,
+  formatAttachmentBatchToast,
+  formatOversizedAttachmentToast,
+  isPromptAttachmentOversized,
+  MAX_ATTACHMENT_FILE_BYTES,
+  MAX_ATTACHMENT_FILES,
+  MAX_ATTACHMENT_TOTAL_BYTES,
   partitionPromptAttachmentFiles,
-  SUPPORTED_ATTACHMENT_DESCRIPTION,
 } from "../../../src/components/prompt-input/files"
 
-function file(name: string, type = "") {
-  return new File(["content"], name, { type })
+function file(name: string, type = "", size = 0) {
+  return new File([new Uint8Array(size)], name, { type })
+}
+
+function oversizedFile(name: string, type = "") {
+  return file(name, type, MAX_ATTACHMENT_FILE_BYTES + 1)
 }
 
 describe("prompt attachment file support", () => {
-  test("accepts images, PDF and Office documents", () => {
-    expect(isPromptAttachmentFileAccepted(file("image.png", "image/png"))).toBe(true)
-    expect(isPromptAttachmentFileAccepted(file("image.jpg", "image/jpeg"))).toBe(true)
-    expect(isPromptAttachmentFileAccepted(file("image.gif", "image/gif"))).toBe(true)
-    expect(isPromptAttachmentFileAccepted(file("image.webp", "image/webp"))).toBe(true)
-    expect(isPromptAttachmentFileAccepted(file("document.pdf", "application/pdf"))).toBe(true)
-    expect(
-      isPromptAttachmentFileAccepted(
-        file("document.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-      ),
-    ).toBe(true)
-    expect(
-      isPromptAttachmentFileAccepted(
-        file("sheet.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-      ),
-    ).toBe(true)
-    expect(
-      isPromptAttachmentFileAccepted(
-        file("deck.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
-      ),
-    ).toBe(true)
+  test("accepts any file type as an attachment", () => {
+    expect(isPromptAttachmentOversized(file("archive.zip", "application/zip"))).toBe(false)
+    expect(isPromptAttachmentOversized(file("clip.mp4", "video/mp4"))).toBe(false)
+    expect(isPromptAttachmentOversized(file("song.mp3", "audio/mpeg"))).toBe(false)
+    expect(isPromptAttachmentOversized(file("setup.exe", "application/x-msdownload"))).toBe(false)
+    expect(isPromptAttachmentOversized(file("payload.bin", "application/octet-stream"))).toBe(false)
+    expect(isPromptAttachmentOversized(file("payload"))).toBe(false)
+    expect(isPromptAttachmentOversized(file("image.png", "image/png"))).toBe(false)
+    expect(isPromptAttachmentOversized(file("notes.txt", "text/plain"))).toBe(false)
   })
 
-  test("accepts text and code files by MIME or extension", () => {
-    expect(isPromptAttachmentFileAccepted(file("notes.txt", "text/plain"))).toBe(true)
-    expect(isPromptAttachmentFileAccepted(file("component.ts", "application/octet-stream"))).toBe(true)
-    expect(isPromptAttachmentFileAccepted(file("README.md"))).toBe(true)
-    expect(isPromptAttachmentFileAccepted(file("data.json", "application/json"))).toBe(true)
-    expect(isPromptAttachmentFileAccepted(file("schema.xml", "application/xml"))).toBe(true)
-    expect(isPromptAttachmentFileAccepted(file("config.yml", "application/x-yaml"))).toBe(true)
-    expect(isPromptAttachmentFileAccepted(file("event.json", "application/vnd.synergy.event+json"))).toBe(true)
-    expect(isPromptAttachmentFileAccepted(file("icon.svg", "image/svg+xml"))).toBe(true)
+  test("rejects files larger than the per-file limit", () => {
+    expect(isPromptAttachmentOversized(oversizedFile("big.zip", "application/zip"))).toBe(true)
+    expect(isPromptAttachmentOversized(oversizedFile("big.png", "image/png"))).toBe(true)
+    expect(isPromptAttachmentOversized(file("exact.bin", "application/octet-stream", MAX_ATTACHMENT_FILE_BYTES))).toBe(
+      false,
+    )
   })
 
-  test("rejects archives, media, executables and arbitrary binary files", () => {
-    expect(isPromptAttachmentFileAccepted(file("archive.zip", "application/zip"))).toBe(false)
-    expect(isPromptAttachmentFileAccepted(file("archive.tar.gz", "application/gzip"))).toBe(false)
-    expect(isPromptAttachmentFileAccepted(file("clip.mp4", "video/mp4"))).toBe(false)
-    expect(isPromptAttachmentFileAccepted(file("song.mp3", "audio/mpeg"))).toBe(false)
-    expect(isPromptAttachmentFileAccepted(file("setup.exe", "application/x-msdownload"))).toBe(false)
-    expect(isPromptAttachmentFileAccepted(file("payload.bin", "application/octet-stream"))).toBe(false)
-    expect(isPromptAttachmentFileAccepted(file("payload"))).toBe(false)
+  test("uses a permissive file picker accept", () => {
+    expect(FILE_INPUT_ACCEPT).toBe("*/*")
   })
 
-  test("partitions mixed files without reordering them", () => {
+  test("partitions oversized files without reordering accepted files", () => {
     const files = [
-      file("a.zip", "application/zip"),
-      file("b.ts", "application/octet-stream"),
+      file("a.bin", "application/octet-stream"),
+      oversizedFile("b.bin", "application/octet-stream"),
       file("c.png", "image/png"),
-      file("d.mp4", "video/mp4"),
+      oversizedFile("d.zip", "application/zip"),
       file("e.pdf", "application/pdf"),
     ]
 
     const partitioned = partitionPromptAttachmentFiles(files)
 
-    expect(partitioned.accepted.map((item) => item.name)).toEqual(["b.ts", "c.png", "e.pdf"])
-    expect(partitioned.rejected.map((item) => item.name)).toEqual(["a.zip", "d.mp4"])
+    expect(partitioned.accepted.map((item) => item.name)).toEqual(["a.bin", "c.png", "e.pdf"])
+    expect(partitioned.rejected.map((item) => item.name)).toEqual(["b.bin", "d.zip"])
   })
 })
 
-describe("unsupported prompt attachment toast copy", () => {
-  test("uses a singular warning for one rejected file", () => {
-    const toast = formatUnsupportedAttachmentToast([file("archive.zip", "application/zip")], 0)
+describe("prompt attachment batch limits", () => {
+  test("rejects batches with more than the file-count limit", () => {
+    const files = Array.from({ length: MAX_ATTACHMENT_FILES + 1 }, (_, index) => file(`f${index}.txt`))
+
+    expect(formatAttachmentBatchToast(files)).toEqual({
+      type: "warning",
+      title: "Too many files",
+      description: `Choose at most ${MAX_ATTACHMENT_FILES} files.`,
+    })
+  })
+
+  test("rejects batches whose total size exceeds the limit", () => {
+    const files = Array.from({ length: 3 }, (_, index) =>
+      file(`f${index}.txt`, "text/plain", Math.ceil(MAX_ATTACHMENT_TOTAL_BYTES / 3)),
+    )
+
+    const toast = formatAttachmentBatchToast(files)
+    expect(toast?.type).toBe("warning")
+    expect(toast?.title).toBe("Files too large")
+    expect(toast?.description).toContain(`${MAX_ATTACHMENT_TOTAL_BYTES / (1024 * 1024)} MB`)
+  })
+
+  test("returns no toast for an acceptable batch", () => {
+    const files = [file("a.txt", "text/plain"), file("b.png", "image/png")]
+    expect(formatAttachmentBatchToast(files)).toBeUndefined()
+  })
+})
+
+describe("oversized attachment toast copy", () => {
+  test("uses a singular warning for one oversized file", () => {
+    const toast = formatOversizedAttachmentToast([oversizedFile("big.zip")], 0)
 
     expect(toast).toEqual({
       type: "warning",
-      title: "Unsupported file type",
-      description: `Unsupported: archive.zip. ${SUPPORTED_ATTACHMENT_DESCRIPTION}`,
+      title: "File too large",
+      description: `Too large: big.zip. Files must be ${MAX_ATTACHMENT_FILE_BYTES / (1024 * 1024)} MB or smaller.`,
     })
   })
 
   test("uses a partial-warning title when some files were accepted", () => {
-    const toast = formatUnsupportedAttachmentToast(
-      [file("archive.zip", "application/zip"), file("clip.mp4", "video/mp4")],
-      2,
-    )
+    const toast = formatOversizedAttachmentToast([oversizedFile("a.zip"), oversizedFile("b.mp4")], 2)
 
     expect(toast?.title).toBe("Some files were not attached")
-    expect(toast?.description).toContain("archive.zip, clip.mp4")
+    expect(toast?.description).toContain("a.zip, b.mp4")
   })
 
   test("uses an all-rejected title and truncates long file lists", () => {
-    const toast = formatUnsupportedAttachmentToast(
-      [
-        file("a.zip", "application/zip"),
-        file("b.mp4", "video/mp4"),
-        file("c.exe", "application/x-msdownload"),
-        file("d.bin", "application/octet-stream"),
-      ],
+    const toast = formatOversizedAttachmentToast(
+      [oversizedFile("a.zip"), oversizedFile("b.mp4"), oversizedFile("c.exe"), oversizedFile("d.bin")],
       0,
     )
 
-    expect(toast?.title).toBe("No supported files attached")
+    expect(toast?.title).toBe("No files attached")
     expect(toast?.description).toContain("a.zip, b.mp4, c.exe, and 1 more")
     expect(toast?.description).not.toContain("d.bin")
-    expect(toast?.description).toContain(SUPPORTED_ATTACHMENT_DESCRIPTION)
   })
 
-  test("returns no toast when every file was accepted", () => {
-    expect(formatUnsupportedAttachmentToast([], 3)).toBeUndefined()
+  test("returns no toast when nothing was rejected", () => {
+    expect(formatOversizedAttachmentToast([], 3)).toBeUndefined()
   })
 })

@@ -95,11 +95,14 @@ export namespace Attachment {
       }
     }
 
+    // Arbitrary files are attached as-is: persist them so model projection can
+    // expose a durable local path the agent can inspect through file tools
+    // (read/bash/file) instead of a transient data: URL.
     return {
       kind: "other",
       extractText: false,
       keepBinary: false,
-      saveLocal: false,
+      saveLocal: true,
       model: { mode: "summary", summary: attachmentSummary(target, mime) },
     }
   }

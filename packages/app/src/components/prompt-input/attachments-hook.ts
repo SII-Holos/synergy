@@ -9,8 +9,9 @@ import type { ContentPart, NoteAttachmentPart, SessionAttachmentPart } from "@/c
 import { PromptAttachmentError, uploadPromptAttachment } from "@/utils/prompt-attachment"
 import { useLocale } from "@/context/locale"
 import {
-  formatUnsupportedAttachmentToast,
-  isPromptAttachmentFileAccepted,
+  formatAttachmentBatchToast,
+  formatOversizedAttachmentToast,
+  isPromptAttachmentOversized,
   partitionPromptAttachmentFiles,
 } from "./files"
 import { createPromptPartID } from "./content"
@@ -49,8 +50,8 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
   const { i18n } = useLocale()
 
   const addAttachment = async (file: File) => {
-    if (!isPromptAttachmentFileAccepted(file)) {
-      const toast = formatUnsupportedAttachmentToast([file], 0)
+    if (isPromptAttachmentOversized(file)) {
+      const toast = formatOversizedAttachmentToast([file], 0)
       if (toast) showToast(toast)
       return
     }
@@ -91,8 +92,14 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
   }
 
   const addAttachments = async (files: Iterable<File>) => {
-    const { accepted, rejected } = partitionPromptAttachmentFiles(files)
-    const toast = formatUnsupportedAttachmentToast(rejected, accepted.length)
+    const all = Array.from(files)
+    const batchToast = formatAttachmentBatchToast(all)
+    if (batchToast) {
+      showToast(batchToast)
+      return
+    }
+    const { accepted, rejected } = partitionPromptAttachmentFiles(all)
+    const toast = formatOversizedAttachmentToast(rejected, accepted.length)
     if (toast) showToast(toast)
     for (const file of accepted) {
       await addAttachment(file)
