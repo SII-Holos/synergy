@@ -85,6 +85,7 @@ import {
   desktopWindowState,
 } from "./window-chrome.js"
 import { applyDesktopUnreadUpdate, desktopUnreadAssetPaths, desktopUnreadPresentation } from "./unread-indicator.js"
+import { DesktopPetWindow, petPreloadPath, type PetWindowManager } from "./pet-window.js"
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET ??= randomBytes(32).toString("hex")
@@ -114,6 +115,7 @@ let desktopTrayDefaultIcon: ReturnType<typeof nativeImage.createFromPath> | null
 let emitDesktopWindowState: (() => void) | null = null
 let currentDesktopZoomFactor = DEFAULT_DESKTOP_ZOOM_FACTOR
 let zoomWriteQueue: Promise<void> = Promise.resolve()
+let petWindow: PetWindowManager | null = null
 
 const updateQuitApp = app as typeof app & {
   on(event: "before-quit-for-update", listener: () => void): typeof app
@@ -338,7 +340,21 @@ async function createWindow() {
     throw error
   }
   await dismissStartupOverlay()
+
   runtimeLog("windowLoaded", { url: mainWindow.webContents.getURL() })
+}
+async function initializePetWindow(): Promise<void> {
+  if (petWindow) return
+  const url = currentAppURL ?? serverManager?.status().url ?? null
+  if (!url) return
+  petWindow = new DesktopPetWindow({
+    serverUrl: url,
+    userDataPath: app.getPath("userData"),
+    preloadPath: petPreloadPath(),
+    platform: process.platform,
+    runtimeLog,
+  })
+  await petWindow.start()
 }
 
 async function initializeDesktopTheme(): Promise<void> {
@@ -611,9 +627,16 @@ function registerIpcHandlers() {
     const url = await serverManager.restart()
     currentAppURL = url
     await syncLocalBrowserBroker(true)
+    petWindow?.setServerUrl(url)
     await mainWindow?.loadURL(url)
     return serverManager.status()
   })
+  for (const channel of ["pet.poke", "pet.dragBy", "pet.setDragging", "pet.getState"] as const) {
+    ipcMain.handle(channel, (event, input: unknown) => {
+      if (!petWindow) return { ok: false, error: "pet_unavailable" }
+      return petWindow.handleIpc(channel, event, input)
+    })
+  }
   ipcMain.handle("desktop.update.status", () => updater?.getStatus() ?? null)
   ipcMain.handle("desktop.update.setMode", (_event, input: unknown) => {
     const mode = DesktopUpdateMode.parse(input)
@@ -886,6 +909,7 @@ app.on("before-quit", (event) => {
       browserBroker?.close() ?? Promise.resolve(),
       serverManager?.stop() ?? Promise.resolve(),
       zoomWriteQueue,
+      petWindow?.stop() ?? Promise.resolve(),
     ])
     results.push(...(await Promise.allSettled([nativePagePool?.destroy() ?? Promise.resolve()])))
     const failures = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
@@ -896,6 +920,7 @@ app.on("before-quit", (event) => {
     }
     browserBroker = null
     browserBrokerOrigin = null
+    petWindow = null
     app.exit(failures.length ? 1 : 0)
   })()
 })
@@ -929,6 +954,7 @@ async function start() {
   registerProtocolHandler()
   registerIpcHandlers()
   await ensureMainWindow()
+  await initializePetWindow()
 }
 
 void start().catch((error) => {
