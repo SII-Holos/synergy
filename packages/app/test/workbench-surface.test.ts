@@ -121,6 +121,15 @@ describe("workbench surface polarity", () => {
     expect(nativeTitlebarCss).toContain("position: relative;")
     expect(nativeTitlebarCss).toContain("flex: 0 0 var(--desktop-native-titlebar-height);")
     expect(nativeTitlebarCss).toContain("-webkit-app-region: drag;")
+    // The native titlebar strip must paint the page background itself instead
+    // of relying on the Electron window layer, or a mismatched strip appears
+    // at the top when the desktop theme is changed. Both surfaces below the
+    // strip (sidebar header and session top bar) use --background-base, so
+    // the strip matches them with a single uniform color.
+    expect(nativeTitlebarCss).toContain("background: var(--background-base, var(--synergy-boot-bg));")
+    expect(nativeTitlebarCss).not.toContain("background: transparent;")
+    expect(nativeTitlebarCss).not.toContain(".desktop-native-titlebar::before")
+    expect(css).not.toContain("--desktop-native-titlebar-sidebar-width")
     expect(css).toContain("--desktop-native-titlebar-height: 18px;")
     expect(css).toContain("--desktop-native-titlebar-traffic-width: 90px;")
     expect(nativeTitlebarCss).toContain(".desktop-native-titlebar__traffic-space")
