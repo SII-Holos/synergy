@@ -8,9 +8,11 @@ The prompt input gate kept a strict extension/MIME whitelist: images (png/jpeg/g
 
 ## Decision
 
-- Frontend (`packages/app/src/components/prompt-input/files.ts`): the type whitelist is removed; `FILE_INPUT_ACCEPT` is `*/*` and any file type is attachable. Only size/batch ceilings remain: 20 files, 25 MB per file, 50 MB total (aligned with Browser upload limits). Toast copy now reports oversized files instead of unsupported types.
-- Backend (`packages/synergy/src/attachment/index.ts`): the `other` policy now sets `saveLocal: true`, so arbitrary binary attachments (including data: URL sources) are materialized to durable Asset paths the model projection can expose.
-- Model projection (`packages/synergy/src/session/message-v2.ts`): summary-mode user attachments that are neither text nor image append `. Attached as-is; use file tools to inspect` to the projected text, steering the agent to inspect the file through tools rather than assuming direct readability.
+- Frontend (`packages/app/src/components/prompt-input/files.ts`): the type whitelist is removed; `FILE_INPUT_ACCEPT` is `*/*` and any file type is attachable. Only size/batch ceilings remain: 20 files, 25 MB per file, 50 MB total (aligned with Browser upload limits), enforced against the composer's already-attached count and bytes. Limit toasts use Lingui runtime descriptors so feedback follows the selected locale.
+- Backend (`packages/synergy/src/attachment/index.ts`): the `other` policy keeps `saveLocal: false`; data: URL inputs are externalized exactly once into the Asset store by `MessageV2.externalizeAttachment()`, while `asset://` uploads already carry their durable path, so no redundant media copy is persisted.
+- Model projection (`packages/synergy/src/session/message-v2.ts`): summary-mode user attachments that are neither text nor image append `. Attached as-is; use file tools to inspect` to the projected text, steering the agent to inspect the record through tools rather than assuming direct readability.
+- Provider safety (`packages/synergy/src/provider/image-capability.ts`): when a model omits `supportedImageMediaTypes`, only the provider-safe set (png/jpeg/gif/webp) is forwarded as vision input; exotic image formats (TIFF/HEIC/BMP) are downgraded by the existing `ProviderTransform` replacement hint instead of risking provider rejection.
+- Asset IDs (`packages/synergy/src/asset/asset.ts`): filename-derived extensions are normalized to the asset-ID alphabet; extensions outside `[a-z0-9]+` (e.g. `x86_64`) fall back to `.bin` so generated `asset://` IDs remain valid for `Asset.isValidId()` and prompt submission.
 - Attachment execution boundaries are unchanged: autonomous worktree policy still denies executing attachments through interpreters (PR #1119 semantics); this change only broadens uploads and read-only inspection.
 
 ## Alternatives considered
@@ -22,6 +24,6 @@ The prompt input gate kept a strict extension/MIME whitelist: images (png/jpeg/g
 ## Consequences
 
 - Any file can be attached; direct-read formats (images, documents, text/code) keep their exact prior behavior and token cost.
-- Binary attachments now occupy durable Asset storage; the 25 MB / 50 MB / 20-file ceilings bound that cost, and oversized uploads are rejected with clear copy.
+- Binary attachments occupy durable Asset storage once (never twice); the 25 MB / 50 MB / 20-file ceilings — counted across selections already sitting in the composer — bound that cost, and oversized uploads are rejected with localized copy.
 - Model context grows by at most one summary line plus local path plus tool hint per attachment — no binary content is inlined.
-- Frontend tests (`files.test.ts`) flipped from asserting zip/mp4/exe rejection to asserting acceptance and size limits; backend policy tests assert `other` persists locally; message-v2 projection tests cover the tool hint.
+- Frontend tests (`files.test.ts`) assert acceptance, size limits, composer-capacity accounting, and the i18n descriptor contract; backend tests cover the single-copy `other` policy, asset-ID extension normalization, the provider-safe image fallback, and the tool hint projection.

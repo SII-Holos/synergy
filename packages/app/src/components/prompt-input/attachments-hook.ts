@@ -51,7 +51,7 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
 
   const addAttachment = async (file: File) => {
     if (isPromptAttachmentOversized(file)) {
-      const toast = formatOversizedAttachmentToast([file], 0)
+      const toast = formatOversizedAttachmentToast([file], 0, i18n)
       if (toast) showToast(toast)
       return
     }
@@ -93,16 +93,28 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
 
   const addAttachments = async (files: Iterable<File>) => {
     const all = Array.from(files)
-    const batchToast = formatAttachmentBatchToast(all)
+    const existing = composerAttachmentScope()
+    const batchToast = formatAttachmentBatchToast(all, existing, i18n)
     if (batchToast) {
       showToast(batchToast)
       return
     }
     const { accepted, rejected } = partitionPromptAttachmentFiles(all)
-    const toast = formatOversizedAttachmentToast(rejected, accepted.length)
+    const toast = formatOversizedAttachmentToast(rejected, accepted.length, i18n)
     if (toast) showToast(toast)
     for (const file of accepted) {
       await addAttachment(file)
+    }
+  }
+
+  const composerAttachmentScope = () => {
+    const parts = prompt.current()
+    const attachments = parts.filter(
+      (part): part is Extract<ContentPart, { type: "attachment" }> => part.type === "attachment",
+    )
+    return {
+      count: attachments.length,
+      bytes: attachments.reduce((total, part) => total + (typeof part.size === "number" ? part.size : 0), 0),
     }
   }
 

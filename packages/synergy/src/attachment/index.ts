@@ -95,14 +95,15 @@ export namespace Attachment {
       }
     }
 
-    // Arbitrary files are attached as-is: persist them so model projection can
-    // expose a durable local path the agent can inspect through file tools
-    // (read/bash/file) instead of a transient data: URL.
+    // Arbitrary files are attached as-is. data: URL inputs are externalized
+    // once into the Asset store by MessageV2.externalizeAttachment(); asset://
+    // uploads already carry their durable path, so a second media copy would
+    // be redundant durable storage.
     return {
       kind: "other",
       extractText: false,
       keepBinary: false,
-      saveLocal: true,
+      saveLocal: false,
       model: { mode: "summary", summary: attachmentSummary(target, mime) },
     }
   }

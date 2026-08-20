@@ -10051,6 +10051,46 @@ msgstr "Plan"
 msgid "prompt.externalAgentBlocked"
 msgstr "Create a new session to use this external agent"
 
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.fileTooLarge.title"
+msgstr "File too large"
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.noFilesAttached.title"
+msgstr "No files attached"
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.someFilesNotAttached.title"
+msgstr "Some files were not attached"
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooLargeNames.description"
+msgstr "Too large: {names}. Files must be {limit} MB or smaller."
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooLargeTotal.description"
+msgstr "Choose files totaling at most {total} MB."
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooLargeTotal.title"
+msgstr "Files too large"
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooManyFiles.description"
+msgstr "Choose at most {count} files."
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooManyFiles.title"
+msgstr "Too many files"
+
 #. prompt-input.tsx — generic error / request failed
 msgid "prompt.generic.requestFailed"
 msgstr "Request failed"

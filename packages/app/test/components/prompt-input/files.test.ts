@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   FILE_INPUT_ACCEPT,
+  FILE_LIMIT_MESSAGES,
   formatAttachmentBatchToast,
   formatOversizedAttachmentToast,
   isPromptAttachmentOversized,
@@ -77,12 +78,28 @@ describe("prompt attachment batch limits", () => {
     const toast = formatAttachmentBatchToast(files)
     expect(toast?.type).toBe("warning")
     expect(toast?.title).toBe("Files too large")
-    expect(toast?.description).toContain(`${MAX_ATTACHMENT_TOTAL_BYTES / (1024 * 1024)} MB`)
+    expect(toast?.description).toBe(`Choose files totaling at most ${MAX_ATTACHMENT_TOTAL_BYTES / (1024 * 1024)} MB.`)
   })
 
-  test("returns no toast for an acceptable batch", () => {
-    const files = [file("a.txt", "text/plain"), file("b.png", "image/png")]
-    expect(formatAttachmentBatchToast(files)).toBeUndefined()
+  test("counts attachments already sitting in the composer", () => {
+    const existing = { count: MAX_ATTACHMENT_FILES - 5, bytes: 0 }
+    expect(
+      formatAttachmentBatchToast(
+        Array.from({ length: 6 }, (_, i) => file(`f${i}.txt`)),
+        existing,
+      )?.title,
+    ).toBe("Too many files")
+
+    const existingBytes = { count: 0, bytes: MAX_ATTACHMENT_TOTAL_BYTES - 1024 }
+    expect(formatAttachmentBatchToast([file("one.bin", "application/octet-stream", 4096)], existingBytes)?.title).toBe(
+      "Files too large",
+    )
+  })
+
+  test("returns no toast for an acceptable batch including composer capacity", () => {
+    const existing = { count: 1, bytes: 1024 }
+    const files = [file("a.txt", "text/plain", 2048), file("b.png", "image/png", 4096)]
+    expect(formatAttachmentBatchToast(files, existing)).toBeUndefined()
   })
 })
 
@@ -117,5 +134,20 @@ describe("oversized attachment toast copy", () => {
 
   test("returns no toast when nothing was rejected", () => {
     expect(formatOversizedAttachmentToast([], 3)).toBeUndefined()
+  })
+})
+
+describe("attachment limit i18n descriptors", () => {
+  test("exposes Lingui descriptors with stable ids for every limit message", () => {
+    expect(FILE_LIMIT_MESSAGES.tooManyFilesTitle.id).toBe("prompt.files.tooManyFiles.title")
+    expect(FILE_LIMIT_MESSAGES.tooManyFilesDescription.message).toContain("{count}")
+    expect(FILE_LIMIT_MESSAGES.tooLargeTotalDescription.message).toContain("{total}")
+    expect(FILE_LIMIT_MESSAGES.tooLargeNamesDescription.message).toContain("{names}")
+    expect(FILE_LIMIT_MESSAGES.tooLargeNamesDescription.message).toContain("{limit}")
+  })
+
+  test("formats ICU values into the fallback message when no i18n runtime is provided", () => {
+    const toast = formatAttachmentBatchToast(Array.from({ length: 25 }, (_, i) => file(`f${i}.txt`)))
+    expect(toast?.description).toBe(`Choose at most ${MAX_ATTACHMENT_FILES} files.`)
   })
 })

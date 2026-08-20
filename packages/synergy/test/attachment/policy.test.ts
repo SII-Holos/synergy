@@ -40,19 +40,20 @@ describe("Attachment.policy", () => {
       saveLocal: false,
     })
   })
-  test("keeps arbitrary files as-is and saves them locally", () => {
+  test("keeps arbitrary files as-is without a second media copy", () => {
     expect(Attachment.policy({ filename: "setup.exe", mime: "application/x-msdownload" })).toMatchObject({
       kind: "other",
       extractText: false,
       keepBinary: false,
-      saveLocal: true,
+      saveLocal: false,
       model: { mode: "summary" },
     })
     expect(Attachment.policy({ filename: "payload.bin" })).toMatchObject({
       kind: "other",
       extractText: false,
       keepBinary: false,
-      saveLocal: true,
+      saveLocal: false,
+      model: { mode: "summary" },
     })
   })
 })
