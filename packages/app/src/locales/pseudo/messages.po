@@ -11608,6 +11608,10 @@ msgid "session-turn.model-variant-unavailable"
 msgstr ""
 
 #. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.render-error"
+msgstr ""
+
+#. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.rewind"
 msgstr ""
 

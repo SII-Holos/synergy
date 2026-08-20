@@ -360,6 +360,7 @@ export const SESSION_TURN_DESC = {
     "session-turn.model-variant-unavailable",
     "Variant {variant} is unavailable for model {modelID} from {providerID}. {availability, select, available {Available variants: {availableVariants}.} other {No variants are currently available.}} Choose another variant or model to continue.",
   ),
+  renderError: d("session-turn.render-error", "This message could not be displayed."),
 } as const
 
 // ── Tool misc labels ────────────────────────────────────────────────

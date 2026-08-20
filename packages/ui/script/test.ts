@@ -16,6 +16,7 @@ await runBatchedTests({
     "test/components/compact-reasoning.dom.test.ts",
     "test/components/compact-reasoning-settlement.dom.test.ts",
     "test/components/session-turn-activity.test.ts",
+    "test/components/session-turn-dispose-guard.dom.test.ts",
     "test/components/session-turn-activity-switch.dom.test.ts",
     "test/components/session-turn-timeline.test.ts",
     "test/components/session-turn-timeline-boundary.test.ts",
