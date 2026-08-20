@@ -176,7 +176,11 @@ export function SessionInbox(props: SessionInboxProps) {
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const dataView = createMemo(() => createSessionDataView(props.sync.data))
-  const view = createMemo(() => deriveSessionInboxView(dataView().inboxFor(props.sessionID)))
+  const view = createMemo(() =>
+    deriveSessionInboxView(
+      dataView().hasInboxBucket(props.sessionID) ? dataView().inboxFor(props.sessionID) : undefined,
+    ),
+  )
   const items = createMemo(() => view().items)
   const count = createMemo(() => view().count)
   const firstTaskLocked = (item: SessionInboxItem) => item.mode === "task" && props.hasCanonicalRoot === false

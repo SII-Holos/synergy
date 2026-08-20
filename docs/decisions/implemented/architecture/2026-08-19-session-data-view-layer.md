@@ -10,7 +10,7 @@ Session switching crashed the Solid.js render chain with a rotating set of `Type
 
 Add a **session data view layer** that owns every session-shaped store read in the render chain:
 
-- `packages/ui/src/context/session-data-view.ts` exports `createSessionDataView(data)` — a factory of thin null-safe accessors (`partsFor`/`messagesFor`/`permissionsFor`/`statusFor`/`diffsFor`/`inboxFor`/`todosFor`/`dagNodesFor`/`questionsFor`/`cortexTasks`/`sessions`/`sessionFor`/`partTable`). Every accessor applies its `?? EMPTY` fallback **inside the function body** on each evaluation, so it never depends on `createMemo` default-value semantics.
+- `packages/ui/src/context/session-data-view.ts` exports `createSessionDataView(data)` — a factory of thin null-safe accessors (`partsFor`/`messagesFor`/`permissionsFor`/`statusFor`/`inboxFor`/`hasInboxBucket`/`todosFor`/`dagNodesFor`/`questionsFor`/`cortexTasks`/`sessions`/`sessionFor`/`partTable`). Every accessor applies its `?? EMPTY` fallback **inside the function body** on each evaluation, so it never depends on `createMemo` default-value semantics. `sessions`/`sessionFor` also read the store at call time — a view must never freeze the session list at creation.
 - Missing buckets return **module-level shared empty arrays** (`EMPTY_PARTS`, `EMPTY_MESSAGES`, …), never fresh literals: the render chain's `same()` equality guards (session-turn.tsx) short-circuit on reference identity, so a fresh literal per evaluation would invalidate every downstream memo on each store tick and regress the projection-memoization work (`013a2271b`).
 - `useData()` keeps its existing shape (`store`/`directory`/`serverUrl`/callbacks) and gains a `view` getter; the `Data` type gains the session fields that already existed at runtime (`inbox`/`todo`/`dag`/`question`/`cortex`). Existing consumers and test mocks are untouched.
 - App components read through `useSessionDataView()` (a `createMemo` wrapping `createSessionDataView(sync.data)`); ui components read `data.view`.
@@ -28,7 +28,7 @@ Add a **session data view layer** that owns every session-shaped store read in t
 
 New components that read session-shaped store fields through the view layer cannot observe `undefined` for array fields, so the crash class is closed at the mechanism level instead of per call site.
 
-The shared empty constants are a hard constraint: a fresh array literal in an accessor silently defeats the `same()` guards and regresses streaming projection performance. Enforced by `develop-frontend` skill rule and by the view-layer unit test that asserts reference identity (`===`).
+The shared empty constants are a hard constraint: a fresh array literal in an accessor silently defeats the `same()` guards and regresses streaming projection performance. Enforced by `develop-frontend` skill rule and by the view-layer unit test that asserts reference identity (`===`). Each constant is `Object.freeze`d so a consumer cannot mutate shared state across sessions.
 
 Read paths keep their exact reactivity: accessors are thin closures whose store-field access happens inside the calling memo, so Solid store path subscription is unchanged.
 
@@ -43,7 +43,7 @@ The following direct store reads are intentionally NOT routed through the view l
 - `packages/app/src/pages/session.tsx` — `decideSessionTransitionHandoff` calls (inbox) and `recoverSessionTransitionHandoff` (messages + inbox): handoff resolution branches on `inbox === undefined` to trigger refresh and distinguishes "not loaded" from "loaded empty" during session recovery.
 - `packages/app/src/pages/session.tsx` — mobile review `Show when={session_diff}` and `tool-session-review.tsx` `sessionDiffs`/`loadDiffs`: `undefined` renders the "loading changes" fallback and gates diff fetching.
 - `packages/app/src/context/local.tsx` — `resolveSessionVariant` messages input: `undefined` means "session not ready" for variant resolution.
-- `packages/app/src/components/session/session-inbox.tsx` — `deriveSessionInboxView` input: `undefined` yields the `loading` status (this file WAS migrated to the view layer — `inboxFor` returns the shared empty array for a missing bucket, which `deriveSessionInboxView` maps to the `empty` status; see `session-inbox-utils.ts`).
+- `packages/app/src/components/session/session-inbox.tsx` — `deriveSessionInboxView` input: `undefined` yields the `loading` status. The inbox is migrated through the view layer, and the loading gate is preserved with `hasInboxBucket`: a missing bucket feeds `undefined` into `deriveSessionInboxView` (loading), while a loaded-but-empty bucket feeds `inboxFor`'s shared empty array (empty); see `session-inbox-utils.ts`.
 - `packages/app/src/context/session-data-view.ts` — the view layer itself and `sync.tsx` internals are the only remaining store reads by construction.
 
 The full migration inventory lives in the PR description for #1211; the grep gate (`sync.data.<sessionField>[` / `data.store.*` outside view-layer and the exemptions above) is part of the done criteria.

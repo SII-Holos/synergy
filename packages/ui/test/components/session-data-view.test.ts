@@ -3,7 +3,6 @@ import {
   createSessionDataView,
   EMPTY_CORTEX,
   EMPTY_DAG,
-  EMPTY_DIFFS,
   EMPTY_INBOX,
   EMPTY_MESSAGES,
   EMPTY_PARTS,
@@ -60,7 +59,6 @@ describe("createSessionDataView", () => {
     expect(view.partsFor("m1")).toEqual([PART])
     expect(view.messagesFor("s1")).toEqual([MESSAGE])
     expect(view.permissionsFor("s1")).toEqual([])
-    expect(view.diffsFor("s1")).toEqual([])
     expect(view.statusFor("s1")).toEqual({ type: "idle" })
     expect(view.inboxFor("s1")).toEqual([])
     expect(view.todosFor("s1")).toEqual([])
@@ -75,7 +73,6 @@ describe("createSessionDataView", () => {
     expect(view.partsFor("missing-message")).toBe(EMPTY_PARTS)
     expect(view.messagesFor("missing-session")).toBe(EMPTY_MESSAGES)
     expect(view.permissionsFor("missing-session")).toBe(EMPTY_PERMISSIONS)
-    expect(view.diffsFor("missing-session")).toBe(EMPTY_DIFFS)
     expect(view.inboxFor("missing-session")).toBe(EMPTY_INBOX)
     expect(view.todosFor("missing-session")).toBe(EMPTY_TODOS)
     expect(view.dagNodesFor("missing-session")).toBe(EMPTY_DAG)
@@ -107,7 +104,6 @@ describe("createSessionDataView", () => {
     expect(view.partsFor("m1")).toBe(EMPTY_PARTS)
     expect(view.messagesFor("s1")).toBe(EMPTY_MESSAGES)
     expect(view.permissionsFor("s1")).toBe(EMPTY_PERMISSIONS)
-    expect(view.diffsFor("s1")).toBe(EMPTY_DIFFS)
     expect(view.statusFor("s1")).toBeUndefined()
     expect(view.inboxFor("s1")).toBe(EMPTY_INBOX)
     expect(view.todosFor("s1")).toBe(EMPTY_TODOS)
@@ -126,6 +122,40 @@ describe("createSessionDataView", () => {
     expect(view.inboxFor("a")).toBe(view.inboxFor("b"))
     expect(view.sessions()).toBe(view.sessions())
     expect(view.cortexTasks()).toBe(view.cortexTasks())
+  })
+
+  test("sessions and sessionFor read the store at call time, not view creation", () => {
+    const data = fullData()
+    const view = createSessionDataView(data)
+    expect(view.sessionFor("s1")).toBeDefined()
+    // Wholesale session-list replacement (the intermediate state a session
+    // switch can leave behind): a view created before the swap must observe
+    // the new list on every call.
+    const replacement = [{ id: "s2" } as never]
+    data.session = replacement
+    expect(view.sessions()).toBe(replacement)
+    expect(view.sessionFor("s1")).toBeUndefined()
+    expect(view.sessionFor("s2")).toBeDefined()
+  })
+
+  test("hasInboxBucket distinguishes a loaded empty bucket from a missing one", () => {
+    const view = createSessionDataView(fullData())
+    expect(view.hasInboxBucket("s1")).toBe(true)
+    expect(view.hasInboxBucket("missing")).toBe(false)
+    expect(createSessionDataView(undefined).hasInboxBucket("s1")).toBe(false)
+  })
+
+  test("shared empty constants are frozen against consumer mutation", () => {
+    expect(Object.isFrozen(EMPTY_PARTS)).toBe(true)
+    expect(Object.isFrozen(EMPTY_MESSAGES)).toBe(true)
+    expect(Object.isFrozen(EMPTY_PERMISSIONS)).toBe(true)
+    expect(Object.isFrozen(EMPTY_INBOX)).toBe(true)
+    expect(Object.isFrozen(EMPTY_TODOS)).toBe(true)
+    expect(Object.isFrozen(EMPTY_DAG)).toBe(true)
+    expect(Object.isFrozen(EMPTY_QUESTIONS)).toBe(true)
+    expect(Object.isFrozen(EMPTY_CORTEX)).toBe(true)
+    expect(Object.isFrozen(EMPTY_SESSIONS)).toBe(true)
+    expect(Object.isFrozen(EMPTY_PART_TABLE)).toBe(true)
   })
 
   test("sessionFor finds by id across the session list", () => {

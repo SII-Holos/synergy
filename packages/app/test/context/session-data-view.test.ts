@@ -73,4 +73,17 @@ describe("useSessionDataView", () => {
       expect(view().planBlueprintOfferFor("s1")).toBeUndefined()
     })
   })
+
+  test("sessionFor reads the current session list through a stable store reference", () => {
+    runWithData(storeState(), (view) => {
+      expect(view().sessionFor("s1")?.id).toBe("s1")
+      // The shared scope store is a stable proxy: updates mutate the existing
+      // object (setStore), they never replace the `data` reference. A view
+      // created once must observe the new session list at call time.
+      const current = dataSignal[0]()
+      current.session = [{ id: "s2" }]
+      expect(view().sessionFor("s1")).toBeUndefined()
+      expect(view().sessionFor("s2")?.id).toBe("s2")
+    })
+  })
 })

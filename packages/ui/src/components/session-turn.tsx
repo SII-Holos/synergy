@@ -1207,7 +1207,6 @@ export function SessionTurn(
     const last = lastAssistantMessage()
     if (!last) return ""
     const parts = view.partsFor(last.id)
-    if (!parts) return ""
     const texts: string[] = []
     let hasTextPart = false
     for (const part of parts) {
