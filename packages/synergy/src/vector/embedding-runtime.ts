@@ -105,11 +105,11 @@ export function installLocalFileFetch(runtime: TransformersRuntime): void {
   if (standaloneFetchInstalled.has(runtime.env)) return
   standaloneFetchInstalled.add(runtime.env)
   const delegate = runtime.env.fetch
-  runtime.env.fetch = async (input, init) => {
+  runtime.env.fetch = (async (input: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]) => {
     const target = typeof input === "string" ? input : input instanceof URL ? input.href : undefined
     if (typeof target === "string" && !REMOTE_PROTOCOL.test(target)) return fetchLocalFile(target)
     return fetchRemoteWithTimeout(delegate, input, init)
-  }
+  }) as typeof runtime.env.fetch
 }
 
 export async function loadEmbeddingTransformersRuntime(): Promise<{
