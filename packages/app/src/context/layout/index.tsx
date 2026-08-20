@@ -39,6 +39,7 @@ import {
 import { createDesktopBadgeSync } from "./desktop-badge"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 import { planMessagePageApply } from "../session-message-page"
+import { internMessages, internParts } from "../string-intern"
 import { findSessionIndex } from "../session-collection"
 import { classifyScopeEvent } from "./event-routing"
 
@@ -1084,11 +1085,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           globalSync.applyResourceResponse(scopeKey, sessionID, "message", request, response.response?.headers, () => {
             const plan = planMessagePageApply({ page: response.data! })
             batch(() => {
-              setChildStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
+              setChildStore("message", sessionID, reconcile(internMessages(plan.window.messages), { key: "id" }))
               setChildStore("messageWindow", sessionID, reconcile(plan.metadata))
               globalSync.setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage, revision)
               for (const [messageID, parts] of Object.entries(plan.parts)) {
-                setChildStore("part", messageID, reconcile(parts, { key: "id" }))
+                setChildStore("part", messageID, reconcile(internParts(parts), { key: "id" }))
               }
             })
             globalSync.touchMessageBucket(scopeKey, sessionID)
