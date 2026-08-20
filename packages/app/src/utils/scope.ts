@@ -20,9 +20,12 @@ export type ProjectScopeCandidate = {
 }
 
 /**
- * Resolve the project scope behind a route directory. The active scope (when
- * ready) is authoritative; otherwise match a known scope by its worktree or by
- * a sandbox directory so sub-directory routes still name their parent project.
+ * Resolve the project scope behind a route directory. A sandbox mapping is
+ * authoritative: the bootstrap-resolved scope for a sub-directory route is the
+ * sub-directory's own scope (server-side `Scope.fromDirectory` never maps a
+ * sandbox back to its parent), so we match known scopes by sandbox directory
+ * first. Otherwise trust the active scope only when it actually covers the
+ * route directory, and finally fall back to an exact worktree match.
  * Returns undefined for home or unknown directories.
  */
 export function resolveProjectScope(
@@ -31,6 +34,10 @@ export function resolveProjectScope(
   scopes: ReadonlyArray<ProjectScopeCandidate>,
 ): ProjectScopeCandidate | undefined {
   if (!directory || isHomeScope(directory)) return undefined
-  if (activeScope?.worktree) return activeScope
-  return scopes.find((scope) => scope.worktree === directory || scope.sandboxes?.includes(directory))
+  const bySandbox = scopes.find((scope) => scope.sandboxes?.includes(directory))
+  if (bySandbox) return bySandbox
+  if (activeScope && (activeScope.worktree === directory || activeScope.sandboxes?.includes(directory))) {
+    return activeScope
+  }
+  return scopes.find((scope) => scope.worktree === directory)
 }
