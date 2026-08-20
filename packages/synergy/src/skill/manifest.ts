@@ -60,19 +60,43 @@ export namespace SkillManifest {
     return typeof input
   }
 
-  function issueMessage(issue: z.core.$ZodIssue): string {
+  // zod 4.1.x does not populate `input` on emitted issues at runtime, so the
+  // received value is derived from the original manifest input at the issue
+  // path instead. Falls back to undefined when the path cannot be resolved.
+  function valueAtPath(input: unknown, path: readonly PropertyKey[]): unknown {
+    let current = input
+    for (const segment of path) {
+      if (current === null || typeof current !== "object") return undefined
+      if (typeof segment === "symbol") return undefined
+      current = (current as Record<string | number, unknown>)[segment]
+    }
+    return current
+  }
+
+  // Derives the branch type for a union diagnostic. A root-level invalid_type
+  // means the branch type itself mismatched (expected carries it). A failure
+  // only at a numeric path means the input is an array whose element failed,
+  // so the branch type is "array". Other nested failures contribute nothing.
+  function branchType(branch: z.core.$ZodIssue[]): string | undefined {
+    const root = branch.find((sub) => sub.code === "invalid_type" && sub.path.length === 0)
+    if (root) return String((root as z.core.$ZodIssue & { expected: string }).expected)
+    const element = branch.find((sub) => sub.code === "invalid_type" && typeof sub.path[0] === "number")
+    return element ? "array" : undefined
+  }
+
+  function issueMessage(issue: z.core.$ZodIssue, input: unknown): string {
     const field = issue.path.length > 0 ? `'${issue.path.join(".")}'` : "manifest"
     switch (issue.code) {
       case "invalid_type":
-        return `Invalid field ${field}: expected ${issue.expected}, received ${describeInput(issue.input)}`
+        return `Invalid field ${field}: expected ${issue.expected}, received ${describeInput(valueAtPath(input, issue.path))}`
       case "invalid_union": {
         const expected = new Set<string>()
         for (const branch of issue.errors) {
-          const firstType = branch.find((sub) => sub.code === "invalid_type")
-          if (firstType && firstType.code === "invalid_type") expected.add(String(firstType.expected))
+          const type = branchType(branch)
+          if (type) expected.add(type)
         }
         const expectation = expected.size > 0 ? [...expected].join(" or ") : "a valid value"
-        return `Invalid field ${field}: expected ${expectation}, received ${describeInput(issue.input)}`
+        return `Invalid field ${field}: expected ${expectation}, received ${describeInput(valueAtPath(input, issue.path))}`
       }
       case "unrecognized_keys":
         return `Invalid field ${field}: unknown field(s) ${issue.keys.map((key) => `'${key}'`).join(", ")}`
@@ -81,10 +105,16 @@ export namespace SkillManifest {
     }
   }
 
-  function issueReason(issue: z.core.$ZodIssue): Record<string, unknown> {
+  function issueReason(issue: z.core.$ZodIssue, input: unknown): Record<string, unknown> {
     switch (issue.code) {
       case "invalid_type":
-        return { kind: issue.code, expected: issue.expected, received: describeInput(issue.input) }
+        return {
+          kind: issue.code,
+          expected: issue.expected,
+          received: describeInput(valueAtPath(input, issue.path)),
+        }
+      case "invalid_union":
+        return { kind: issue.code, received: describeInput(valueAtPath(input, issue.path)) }
       case "unrecognized_keys":
         return { kind: issue.code, keys: issue.keys }
       default:
@@ -133,7 +163,13 @@ export namespace SkillManifest {
 
   function issuesToDiagnostics(
     issues: z.core.$ZodIssue[],
-    input: { name: string; source: SkillSourceProfile.SourceID; entryFile: string; severity: "error" | "warning" },
+    input: {
+      name: string
+      source: SkillSourceProfile.SourceID
+      entryFile: string
+      severity: "error" | "warning"
+      manifest: unknown
+    },
   ) {
     return issues.map(
       (issue): Diagnostic => ({
@@ -143,8 +179,8 @@ export namespace SkillManifest {
         source: input.source,
         path: input.entryFile,
         field: issue.path.length > 0 ? issue.path.join(".") : undefined,
-        reason: issueReason(issue),
-        message: issueMessage(issue),
+        reason: issueReason(issue, input.manifest),
+        message: issueMessage(issue, input.manifest),
       }),
     )
   }
@@ -189,14 +225,15 @@ export namespace SkillManifest {
     }
     source: "builtin" | "plugin"
   }): { value?: Omit<Normalized, "content">; diagnostics: Diagnostic[] } {
-    const result = (input.source === "plugin" ? ProgrammaticSchema : Schema).safeParse({
+    const manifestInput = {
       name: input.manifest.name,
       description: input.manifest.description,
       license: input.manifest.license,
       compatibility: input.manifest.compatibility,
       "user-invocable": input.manifest.userInvocable,
       "disable-model-invocation": input.manifest.disableModelInvocation,
-    })
+    }
+    const result = (input.source === "plugin" ? ProgrammaticSchema : Schema).safeParse(manifestInput)
     if (!result.success) {
       const diagnostics = result.error.issues.map(
         (issue): Diagnostic => ({
@@ -205,8 +242,8 @@ export namespace SkillManifest {
           name: input.manifest.name,
           source: input.source,
           field: issue.path.length > 0 ? issue.path.join(".") : undefined,
-          reason: issueReason(issue),
-          message: issueMessage(issue),
+          reason: issueReason(issue, manifestInput),
+          message: issueMessage(issue, manifestInput),
         }),
       )
       return { diagnostics }
@@ -276,6 +313,7 @@ export namespace SkillManifest {
             source: input.source,
             entryFile: input.entryFile,
             severity: "error",
+            manifest: raw,
           }),
         }
       }
@@ -301,6 +339,7 @@ export namespace SkillManifest {
           source: input.source,
           entryFile: input.entryFile,
           severity: "error",
+          manifest: raw,
         }),
       }
     }
@@ -327,6 +366,7 @@ export namespace SkillManifest {
           source: input.source,
           entryFile: input.entryFile,
           severity: "warning",
+          manifest: raw,
         }).filter((diagnostic) => diagnostic.reason.kind !== "unrecognized_keys"),
       )
     }

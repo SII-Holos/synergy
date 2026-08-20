@@ -134,6 +134,26 @@ describe.serial("skill standardization", () => {
     expect(result.value).toBeUndefined()
     expect(result.diagnostics[0]?.code).toBe("skill.manifest_invalid")
     expect(result.diagnostics[0]?.message).toContain("'allowed-tools'")
+    expect(result.diagnostics[0]?.message).toContain("expected string or array")
+    expect(result.diagnostics[0]?.message).toContain("received number")
+    expect(result.diagnostics[0]?.reason).toMatchObject({ kind: "invalid_union", received: "number" })
+  })
+
+  test("union diagnostics keep the full expected set for mixed element errors", async () => {
+    await using tmp = await tmpdir()
+    await writeSkill(tmp.path, "allowed-tools-mixed", {
+      name: "allowed-tools-mixed",
+      fields: "allowed-tools: [Read, 42]\n",
+    })
+
+    const result = await SkillManifest.normalizeFile({
+      entryFile: path.join(tmp.path, "allowed-tools-mixed", "SKILL.md"),
+      source: "synergy",
+      mode: "strict",
+    })
+    expect(result.value).toBeUndefined()
+    expect(result.diagnostics[0]?.message).toContain("expected string or array")
+    expect(result.diagnostics[0]?.message).toContain("received array")
   })
 
   test("names unknown fields in strict manifest diagnostics", async () => {
