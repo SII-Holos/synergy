@@ -10,11 +10,16 @@
 
 import type { PetMood } from "./pet-state.js"
 import type { PetSettingsV1, PetSpriteSheet } from "./pet-types.js"
+import { defaultDesktopSkinState, desktopThemeSnapshot, type DesktopThemeSnapshot } from "./theme.js"
 
 export interface PetPageOptions {
   settings: PetSettingsV1
   sprite: PetSpriteSheet
+  /** Theme snapshot used for the CSS fallback palette; defaults to the light shell skin. */
+  theme?: DesktopThemeSnapshot
 }
+
+const FALLBACK_THEME: DesktopThemeSnapshot = desktopThemeSnapshot(defaultDesktopSkinState("light"), false)
 
 const MOOD_ROW: Record<PetMood, number> = {
   idle: 0,
@@ -27,16 +32,23 @@ const MOOD_ROW: Record<PetMood, number> = {
 }
 
 export function petPage(options: PetPageOptions): string {
-  const { settings, sprite } = options
+  const { settings, sprite, theme = FALLBACK_THEME } = options
+  const colors = theme.colors
   const html = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Synergy Pet</title>
 <style>
-  :root { color-scheme: light; }
+  :root {
+    color-scheme: ${theme.effective};
+    --pet-primary: ${colors.markBackground};
+    --pet-secondary: ${colors.control};
+    --pet-accent: ${colors.focus};
+    --pet-shadow: ${colors.border};
+    --pet-eye: ${colors.text};
+  }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
   body { user-select: none; -webkit-user-select: none; cursor: grab; }
@@ -55,17 +67,17 @@ export function petPage(options: PetPageOptions): string {
   .pet-fallback {
     width: 64%; height: 64%;
     border-radius: 42% 58% 55% 45% / 50% 44% 56% 50%;
-    background: radial-gradient(circle at 35% 30%, #7dd3fc, #38bdf8 55%, #0284c7);
+    background: radial-gradient(circle at 35% 30%, var(--pet-primary), var(--pet-secondary) 55%, var(--pet-accent));
     animation: pet-breathe 2.4s ease-in-out infinite;
-    box-shadow: inset 0 -8px 18px rgba(2, 42, 84, 0.35);
+    box-shadow: inset 0 -8px 18px var(--pet-shadow);
   }
   .pet-fallback::after {
     content: "";
     position: absolute; top: 32%; left: 24%;
     width: 10%; height: 12%;
     border-radius: 50%;
-    background: rgba(8, 47, 73, 0.85);
-    box-shadow: 420% 0 0 rgba(8, 47, 73, 0.85);
+    background: var(--pet-eye);
+    box-shadow: 420% 0 0 var(--pet-eye);
     animation: pet-blink 4s step-end infinite;
   }
   body.mood-sleepy .pet-fallback { animation: pet-breathe 3.6s ease-in-out infinite; }
