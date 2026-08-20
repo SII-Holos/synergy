@@ -17,7 +17,7 @@ import { useSessionDataView } from "@/context/session-data-view"
 import { useSync } from "@/context/sync"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
-import { isHomeScope } from "@/utils/scope"
+import { getScopeLabel, isHomeScope, resolveProjectScope } from "@/utils/scope"
 import { useSessionMeta } from "@/composables/use-session-meta"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { WorktreeEnterConfirmDialog } from "@/components/session/worktree-transition-dialog"
@@ -154,8 +154,12 @@ export function SessionTopBar(props: {
   const bottomSurface = createMemo(() => workbench.surface("bottom"))
 
   const directory = () => (params.dir ? base64Decode(params.dir) : "")
-  const isGlobal = () => (params.dir ? isHomeScope(directory()) : false)
+  const isGlobal = () => !params.dir || isHomeScope(directory())
   const actionVisibility = createMemo(() => sessionActionVisibility({ sessionID: params.id, scopeKey: directory() }))
+
+  const projectScope = createMemo(() => resolveProjectScope(directory() || undefined, sync.scope, layout.scopes.list()))
+  const projectLabel = createMemo(() => getScopeLabel(projectScope(), directory()))
+  const projectPath = createMemo(() => directory())
 
   const sessionInfo = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const sessionDirectory = createMemo(() => sessionInfo()?.scope.directory ?? directory())
@@ -340,6 +344,9 @@ export function SessionTopBar(props: {
         <div class="stb-left">
           <Show when={!isGlobal()}>
             <Icon name={getSemanticIcon("workspace.main")} size="normal" class="stb-folder" />
+            <Tooltip placement="bottom" value={projectPath()}>
+              <span class="stb-project-name">{projectLabel()}</span>
+            </Tooltip>
             <span class="stb-slash">/</span>
           </Show>
           <ModelSelectorButton />
