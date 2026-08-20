@@ -26,6 +26,7 @@ await runBatchedTests({
     "test/components/tool/renders/standard.test.tsx",
     "test/components/tool/renders/file-ops.test.tsx",
     "test/components/tooltip.test.ts",
+    "test/components/tooltip-focus.test.ts",
     "test/components/provider-icon.test.ts",
   ],
   browserOnly: ["test/hooks/use-filtered-list.test.tsx"],

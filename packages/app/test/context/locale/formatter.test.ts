@@ -138,4 +138,62 @@ describe("createIntlFormatter", () => {
       expect(fmt.date(date, { month: "long", timeZone: "UTC" })).toBe("January")
     })
   })
+  describe("result freezing", () => {
+    test("date reuses the frozen result for the same timestamp and options", () => {
+      const desc = Object.getOwnPropertyDescriptor(Intl.DateTimeFormat.prototype, "format")!
+      let calls = 0
+      Object.defineProperty(Intl.DateTimeFormat.prototype, "format", {
+        configurable: true,
+        get() {
+          calls++
+          return desc.get!.call(this)
+        },
+      })
+      try {
+        const fmt = createIntlFormatter(() => en)
+        const ts = new Date(2026, 0, 15, 14, 30, 0)
+        const options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" }
+        const first = fmt.date(ts, options)
+        expect(fmt.date(ts, options)).toBe(first)
+        expect(fmt.date(ts, options)).toBe(first)
+        expect(calls).toBe(1)
+
+        // A different options key formats once and stays isolated.
+        expect(fmt.date(ts, { year: "numeric" })).toContain("2026")
+        expect(calls).toBe(2)
+      } finally {
+        Object.defineProperty(Intl.DateTimeFormat.prototype, "format", desc)
+      }
+    })
+
+    test("relative reuses the frozen result while the rounded unit is unchanged", () => {
+      const desc = Object.getOwnPropertyDescriptor(Intl.RelativeTimeFormat.prototype, "format")!
+      let calls = 0
+      const original = desc.value!
+      Object.defineProperty(Intl.RelativeTimeFormat.prototype, "format", {
+        configurable: true,
+        writable: true,
+        value(...args: Parameters<Intl.RelativeTimeFormat["format"]>) {
+          calls++
+          return original.apply(this, args)
+        },
+      })
+      try {
+        const fmt = createIntlFormatter(() => en)
+        const base = new Date(2026, 0, 15, 12, 0, 0)
+        const then = new Date(base.getTime() - 5 * 60_000)
+        const sameWindow = new Date(base.getTime() + 29_000)
+        const acrossWindow = new Date(base.getTime() + 31_000)
+
+        const first = fmt.relative(then, base)
+        expect(fmt.relative(then, sameWindow)).toBe(first)
+        expect(calls).toBe(1)
+
+        expect(fmt.relative(then, acrossWindow)).not.toBe(first)
+        expect(calls).toBe(2)
+      } finally {
+        Object.defineProperty(Intl.RelativeTimeFormat.prototype, "format", desc)
+      }
+    })
+  })
 })

@@ -27,6 +27,17 @@ function hasDateTimeComponents(options: Intl.DateTimeFormatOptions | undefined):
   return dateTimeComponentKeys.some((key) => options?.[key] !== undefined)
 }
 
+const relativeUnits: Array<{ unit: Intl.RelativeTimeFormatUnit; ms: number }> = [
+  { unit: "year", ms: 365 * 24 * 60 * 60 * 1000 },
+  { unit: "month", ms: 30 * 24 * 60 * 60 * 1000 },
+  { unit: "week", ms: 7 * 24 * 60 * 60 * 1000 },
+  { unit: "day", ms: 24 * 60 * 60 * 1000 },
+  { unit: "hour", ms: 60 * 60 * 1000 },
+  { unit: "minute", ms: 60 * 1000 },
+  { unit: "second", ms: 1000 },
+]
+
+const RESULT_CACHE_LIMIT = 4096
 export interface IntlFormatter {
   number(value: number, options?: Intl.NumberFormatOptions): string
   percent(value: number, options?: Intl.NumberFormatOptions): string
@@ -44,6 +55,8 @@ export function createIntlFormatter(getLocale: () => ActiveLocale): IntlFormatte
   const dateTimeFormats = new Map<string, Intl.DateTimeFormat>()
   const listFormats = new Map<string, Intl.ListFormat>()
   let rtf: Intl.RelativeTimeFormat | undefined
+  const dateResults = new Map<string, string>()
+  const relativeResults = new Map<string, string>()
 
   function ensureLocale(): ActiveLocale {
     const locale = getLocale()
@@ -52,6 +65,8 @@ export function createIntlFormatter(getLocale: () => ActiveLocale): IntlFormatte
       numberFormats.clear()
       dateTimeFormats.clear()
       listFormats.clear()
+      dateResults.clear()
+      relativeResults.clear()
       rtf = undefined
     }
     return locale
@@ -95,6 +110,16 @@ export function createIntlFormatter(getLocale: () => ActiveLocale): IntlFormatte
     return rtf
   }
 
+  function toTimestamp(value: Date | number): number {
+    return value instanceof Date ? value.getTime() : value
+  }
+
+  function remember(map: Map<string, string>, key: string, result: string): string {
+    if (map.size >= RESULT_CACHE_LIMIT) map.clear()
+    map.set(key, result)
+    return result
+  }
+
   const res: IntlFormatter = {
     number(value, options?) {
       ensureLocale()
@@ -118,7 +143,10 @@ export function createIntlFormatter(getLocale: () => ActiveLocale): IntlFormatte
 
     date(value, options?) {
       ensureLocale()
-      return getDTF(options).format(value)
+      const key = `${lastLocale}|${optionsKey(options)}|${toTimestamp(value)}`
+      const hit = dateResults.get(key)
+      if (hit !== undefined) return hit
+      return remember(dateResults, key, getDTF(options).format(value))
     },
 
     dateTime(value, options?) {
@@ -126,7 +154,10 @@ export function createIntlFormatter(getLocale: () => ActiveLocale): IntlFormatte
       const resolved: Intl.DateTimeFormatOptions | undefined = hasDateTimeComponents(options)
         ? options
         : { dateStyle: "medium", timeStyle: "short", ...options }
-      return getDTF(resolved).format(value)
+      const key = `${lastLocale}|${optionsKey(resolved)}|${toTimestamp(value)}`
+      const hit = dateResults.get(key)
+      if (hit !== undefined) return hit
+      return remember(dateResults, key, getDTF(resolved).format(value))
     },
 
     time(value, options?) {
@@ -134,7 +165,10 @@ export function createIntlFormatter(getLocale: () => ActiveLocale): IntlFormatte
       const resolved: Intl.DateTimeFormatOptions | undefined = hasDateTimeComponents(options)
         ? options
         : { timeStyle: "short", ...options }
-      return getDTF(resolved).format(value)
+      const key = `${lastLocale}|${optionsKey(resolved)}|${toTimestamp(value)}`
+      const hit = dateResults.get(key)
+      if (hit !== undefined) return hit
+      return remember(dateResults, key, getDTF(resolved).format(value))
     },
 
     relative(value, base?) {
@@ -144,26 +178,20 @@ export function createIntlFormatter(getLocale: () => ActiveLocale): IntlFormatte
       const diffMs = then.getTime() - now.getTime()
       const absMs = Math.abs(diffMs)
 
-      const formatter = ensureRTF()
-
-      const units: Array<{ unit: Intl.RelativeTimeFormatUnit; ms: number }> = [
-        { unit: "year", ms: 365 * 24 * 60 * 60 * 1000 },
-        { unit: "month", ms: 30 * 24 * 60 * 60 * 1000 },
-        { unit: "week", ms: 7 * 24 * 60 * 60 * 1000 },
-        { unit: "day", ms: 24 * 60 * 60 * 1000 },
-        { unit: "hour", ms: 60 * 60 * 1000 },
-        { unit: "minute", ms: 60 * 1000 },
-        { unit: "second", ms: 1000 },
-      ]
-
-      for (const { unit, ms } of units) {
-        if (absMs >= ms || unit === "second") {
-          const value = Math.round(diffMs / ms)
-          return formatter.format(value, unit)
+      let unit: Intl.RelativeTimeFormatUnit = "second"
+      let unitMs = 1000
+      for (const candidate of relativeUnits) {
+        if (absMs >= candidate.ms || candidate.unit === "second") {
+          unit = candidate.unit
+          unitMs = candidate.ms
+          break
         }
       }
-
-      return formatter.format(0, "second")
+      const rounded = Math.round(diffMs / unitMs)
+      const key = `${lastLocale}|${unit}|${rounded}`
+      const hit = relativeResults.get(key)
+      if (hit !== undefined) return hit
+      return remember(relativeResults, key, ensureRTF().format(rounded, unit))
     },
   }
 

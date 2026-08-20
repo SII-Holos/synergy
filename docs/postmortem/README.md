@@ -37,6 +37,7 @@ Entries are added only when an incident qualifies; the table stays empty until t
 | Number | Title                                                            | Status      | Date       |
 | ------ | ---------------------------------------------------------------- | ----------- | ---------- |
 | 0001   | Coverage-mode test run wrote fixtures into the real Synergy home | implemented | 2026-08-18 |
+| 0002   | ToolScheduler singleton leaked across CI shard-process tests     | implemented | 2026-08-20 |
 
 ## History rules
 
