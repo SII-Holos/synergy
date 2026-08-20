@@ -790,12 +790,12 @@ describe("settings config patch skills compatibility", () => {
     expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} })).not.toHaveProperty("skills")
   })
 
-  test("emits the full compatibility object when one source diverges", () => {
+  test("emits only the diverging compatibility field", () => {
     const state = defaultSettingsState("enter")
     state.skills.claude = false
 
     expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).skills).toEqual({
-      compatibility: { agents: true, claude: false, codex: true, openclaw: true },
+      compatibility: { claude: false },
     })
   })
 
@@ -814,7 +814,30 @@ describe("settings config patch skills compatibility", () => {
         originalMcps: {},
       }).skills,
     ).toEqual({
-      compatibility: { agents: true, claude: true, codex: true, openclaw: true },
+      compatibility: { codex: true },
+    })
+  })
+
+  test("leaves untouched sources (including project-level overrides) out of the patch", () => {
+    // agents:false is a project-level override the home-scope form hydrated
+    // from the merged config. Changing only claude must not re-write agents
+    // into the global domain, otherwise the project override gets baked in.
+    const state = defaultSettingsState("enter")
+    state.skills.agents = false
+    state.skills.claude = false
+
+    expect(
+      buildPatch({
+        cfg: {
+          skills: {
+            compatibility: { agents: false, claude: true, codex: true, openclaw: true },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).skills,
+    ).toEqual({
+      compatibility: { claude: false },
     })
   })
 

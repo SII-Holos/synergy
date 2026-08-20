@@ -529,21 +529,14 @@ function buildLibraryPatch(cfg: Config, state: SettingsState, patch: Record<stri
 function buildSkillsPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
   const { skills } = state
   const compatibility = cfg.skills?.compatibility
-  const changed =
-    skills.agents !== (compatibility?.agents !== false) ||
-    skills.claude !== (compatibility?.claude !== false) ||
-    skills.codex !== (compatibility?.codex !== false) ||
-    skills.openclaw !== (compatibility?.openclaw !== false)
-  if (!changed) return
-
-  patch.skills = {
-    compatibility: {
-      agents: skills.agents,
-      claude: skills.claude,
-      codex: skills.codex,
-      openclaw: skills.openclaw,
-    },
+  const next: Record<string, boolean> = {}
+  for (const source of ["agents", "claude", "codex", "openclaw"] as const) {
+    const current = compatibility?.[source] !== false
+    if (skills[source] !== current) next[source] = skills[source]
   }
+  if (Object.keys(next).length === 0) return
+
+  patch.skills = { compatibility: next }
 }
 
 function parseList(value: string): string[] {

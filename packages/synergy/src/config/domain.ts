@@ -87,7 +87,7 @@ export namespace ConfigDomain {
       label: "Skills",
       ownedKeys: ["skills"],
       mergePolicy: "merge",
-      reloadTargets: ["config", "skill"],
+      reloadTargets: ["config"],
       uiSection: "skills",
       importable: true,
     },

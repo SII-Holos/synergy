@@ -33,7 +33,7 @@ test("config domain filenames are stable and ordered", () => {
 
 test("skills compatibility toggles belong to the skills domain", () => {
   expect(ConfigDomain.domainForKey("skills")?.id).toBe("skills")
-  expect(ConfigDomain.domainForKey("skills")?.reloadTargets).toEqual(["config", "skill"])
+  expect(ConfigDomain.domainForKey("skills")?.reloadTargets).toEqual(["config"])
   expect(ConfigDomain.filepath("skills")).toMatch(/55-skills\.jsonc$/)
   expect(ConfigDomain.extract({ skills: { compatibility: { claude: false } } }, "skills")).toEqual({
     skills: { compatibility: { claude: false } },
