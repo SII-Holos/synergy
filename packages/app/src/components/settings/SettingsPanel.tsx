@@ -108,6 +108,7 @@ import {
   clarusDiagnosticsFilename,
   shouldRefreshChannelStatuses,
 } from "./channel-account-model"
+import { SlotOutlet } from "@/plugin/slot-outlet"
 
 function settingsValues(value: unknown, fallback: Record<string, unknown> = {}): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : fallback
@@ -1176,7 +1177,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 </ul>
               </div>
             </Show>
-            <AppPanel.Body padding={false}>{renderActiveContent()}</AppPanel.Body>
+            <AppPanel.Body padding={false}>
+              {renderActiveContent()}
+              <SlotOutlet slot="settings.section" />
+            </AppPanel.Body>
 
             <AppPanel.Footer class="settings-panel-footer">
               <div class="settings-panel-footer-status flex flex-1 items-center gap-3">

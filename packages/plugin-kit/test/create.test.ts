@@ -81,6 +81,31 @@ describe("plugin project scaffolds", () => {
     }
   })
 
+  test("slot template scaffolds a slot contribution that survives build", async () => {
+    const parent = fs.mkdtempSync(path.join(import.meta.dir, "slot-fixture-"))
+    const root = path.join(parent, "slot-demo")
+    try {
+      scaffoldPluginProject("slot-demo", "slot", root)
+      expect(fs.existsSync(path.join(root, "src", "ui.tsx"))).toBe(true)
+
+      expect(await buildPluginProject(root)).toBe(true)
+      const manifest = PluginManifest.parse(
+        JSON.parse(fs.readFileSync(path.join(root, "dist", "plugin.json"), "utf-8")),
+      )
+      expect(manifest.contributions).toContainEqual({
+        kind: "ui.slot",
+        id: "main",
+        slot: "sidebar.footer",
+        label: "slot-demo",
+        order: 1000,
+        component: { entry: "ui/index.js", exportName: "plugin_component_0" },
+      })
+      expect((await validatePluginProject(root)).filter((result) => result.type === "error")).toEqual([])
+    } finally {
+      fs.rmSync(parent, { recursive: true, force: true })
+    }
+  })
+
   test("build and validate reject every invalid Theme JSON boundary", async () => {
     const cases: Array<{ name: string; mutate: (root: string, theme: Theme) => void }> = [
       {

@@ -228,6 +228,14 @@ export interface SettingsContribution extends UISurfaceContributionBase<"ui.sett
   formSchema?: PluginJsonSchema
   visibility?: "standard" | "developer"
 }
+export interface SlotContribution extends UISurfaceContributionBase<"ui.slot"> {
+  /** Host-declared slot name, e.g. "sidebar.footer" or "session.empty". */
+  slot: string
+  /** Minimal visibility conditions. Omit to always show. */
+  when?: { session?: boolean }
+  /** A slot is a render position: it always needs a trusted component. */
+  component: TrustedComponentReference
+}
 
 export interface ThemeContribution extends ContributionBase<"ui.theme"> {
   label: string
@@ -269,6 +277,7 @@ export type PluginContribution =
   | TextActionContribution
   | MessageSlotContribution
   | SettingsContribution
+  | SlotContribution
   | ThemeContribution
   | IconContribution
   | LifecycleInstallContribution
@@ -398,6 +407,9 @@ export function settings(
   input: Omit<SettingsContribution, "kind" | "order"> & { order?: number },
 ): SettingsContribution {
   return { ...input, kind: "ui.settings", order: input.order ?? 1000 }
+}
+export function slot(input: Omit<SlotContribution, "kind" | "order"> & { order?: number }): SlotContribution {
+  return { ...input, kind: "ui.slot", order: input.order ?? 1000 }
 }
 
 export function theme(input: Omit<ThemeContribution, "kind">): ThemeContribution {

@@ -5,6 +5,7 @@ import type {
 } from "@ericsanchezok/synergy-plugin"
 import type { Component } from "solid-js"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
+import { SlotRegistry, type SlotEntryBase } from "../plugin/slot-registry"
 
 export type TextSelectionSnapshot = PluginTextSelectionSnapshot
 
@@ -36,6 +37,12 @@ export interface TextAction {
     load(): Promise<{ default: Component<TextActionPresentationProps> }>
   }
   run(input: { selection: TextSelectionSnapshot }, signal: AbortSignal): Promise<unknown>
+}
+
+/** Internal slot-backed action: headless text actions live in one slot. */
+type TextActionSlotEntry = Omit<SlotEntryBase, "when" | "loader"> & {
+  slot: "text.action"
+  action: TextAction
 }
 
 export type TextActionGroup = {
@@ -90,7 +97,7 @@ export class TextSelectionController {
   readonly #maxChars: number
   readonly #listeners = new Set<(snapshot: TextSelectionSnapshot | undefined) => void>()
   readonly #actionListeners = new Set<() => void>()
-  readonly #actions = new Map<string, TextAction>()
+  readonly #actions = new SlotRegistry<TextActionSlotEntry>()
   #timer?: ReturnType<typeof setTimeout>
   #generation = 0
   #current?: TextSelectionSnapshot
@@ -161,16 +168,30 @@ export class TextSelectionController {
 
   registerAction(action: TextAction) {
     if (this.#actions.has(action.id)) throw new Error(`Text action is already registered: ${action.id}`)
-    this.#actions.set(action.id, action)
+    const dispose = this.#actions.register({
+      id: action.id,
+      label: action.label,
+      icon: action.icon,
+      order: action.order,
+      pluginId: action.pluginId,
+      slot: "text.action",
+      action,
+    })
     for (const listener of this.#actionListeners) listener()
+    let disposed = false
     return () => {
-      if (!this.#actions.delete(action.id)) return
+      if (disposed) return
+      disposed = true
+      dispose()
       for (const listener of this.#actionListeners) listener()
     }
   }
 
   actions() {
-    return [...this.#actions.values()].toSorted(actionOrder)
+    return this.#actions
+      .listAll()
+      .map((entry) => entry.action)
+      .toSorted(actionOrder)
   }
 
   hasAction(id: string) {
@@ -187,7 +208,7 @@ export class TextSelectionController {
   }
 
   async run(actionId: string, snapshot: TextSelectionSnapshot, signal: AbortSignal) {
-    const action = this.#actions.get(actionId)
+    const action = this.#actions.get(actionId)?.action
     if (!action) throw new Error(`Unknown text action: ${actionId}`)
     if (!actionApplies(action, snapshot)) throw new Error("Text action is not available for this selection")
     return action.run({ selection: { ...snapshot } }, signal)
