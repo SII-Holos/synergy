@@ -251,7 +251,7 @@ export function KanbanPanel() {
         follow={followFor(pane)}
         onToggleFollow={() => toggleFollow(pane)}
         onOpen={() => openSession(pane)}
-        onPinToggle={pane.pinned ? () => unpinPane(pane) : () => pinKey(pane.key)}
+        onPinToggle={() => (store.pinned.includes(pane.key) ? unpinPane(pane) : pinKey(pane.key))}
         pinned={() => store.pinned.includes(pane.key)}
         compact={variant === "rail"}
         activityDisplay={activityDisplay}

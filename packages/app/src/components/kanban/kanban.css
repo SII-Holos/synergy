@@ -422,12 +422,12 @@
 }
 
 .kanban-pane-action[data-active] {
-  background: var(--surface-brand-base);
-  color: var(--text-on-brand-base);
+  background: var(--surface-base-active);
+  color: var(--text-strong);
 }
 
 .kanban-pane-action[data-active]:hover {
-  background: var(--surface-brand-hover);
+  background: var(--surface-base-interactive-active);
 }
 
 .kanban-pane-grip {
