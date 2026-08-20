@@ -746,9 +746,7 @@ export function Sidebar(props: SidebarProps) {
       {/* Bottom: Agent Hub */}
       <SidebarAgentHub isExpanded={isExpanded()} globalSDK={globalSDK} />
       {/* Plugin footer slot */}
-      <div class="sb-plugin-footer">
-        <SlotOutlet slot="sidebar.footer" />
-      </div>
+      <SlotOutlet slot="sidebar.footer" />
 
       {/* Projects flyout (collapsed mode only) */}
       <Show when={!isExpanded() && projectsFlyoutOpen()}>
