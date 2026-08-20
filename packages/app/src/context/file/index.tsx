@@ -8,9 +8,14 @@ import { useSDK } from "../sdk"
 import { useSync } from "../sync"
 import { useWorkbenchPanels } from "../workbench"
 import { Persist, persisted } from "@/utils/persist"
-import { normalizeWorkspacePath } from "@/components/file-workbench/model"
+import { normalizeWorkspacePath, pdfPreviewAction, pdfPreviewBytes } from "@/components/file-workbench/model"
 import { releaseFileSourceScope } from "@/components/file-workbench/source-model-cache"
-import { isWorkspaceFileNotFoundError, removePathTree } from "./errors"
+import {
+  fileWriteErrorMessage,
+  isWorkspaceFileNotFoundError,
+  isWorkspaceFileTooLargeError,
+  removePathTree,
+} from "./errors"
 
 export type FileSelection = {
   startLine: number
@@ -44,6 +49,16 @@ export type FileDocumentState = {
   loading: boolean
   stale: boolean
   deleted: boolean
+  error?: string
+  version?: { mtime: number; size: number }
+}
+
+export type PdfDocumentState = {
+  path: string
+  bytes?: Uint8Array
+  loading: boolean
+  stale: boolean
+  tooLarge: boolean
   error?: string
   version?: { mtime: number; size: number }
 }
@@ -106,6 +121,7 @@ const MAX_EXPLORER_NODES = 25_000
 const DIRECTORY_PAGE_SIZE = 200
 const MAX_DIRECTORY_CONCURRENCY = 6
 const MAX_DOCUMENT_CONCURRENCY = 3
+const MAX_PDF_BUFFERS = 2
 
 type ViewSession = ReturnType<typeof createViewSession>
 type ViewCacheEntry = { value: ViewSession; dispose: VoidFunction }
@@ -192,14 +208,18 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     )
     const [store, setStore] = createStore<{
       documents: Record<string, FileDocumentState>
+      pdfs: Record<string, PdfDocumentState>
       nodes: Record<string, WorkspaceFileNode>
       directories: Record<string, ExplorerDirectoryState>
-    }>({ documents: {}, nodes: {}, directories: {} })
+    }>({ documents: {}, pdfs: {}, nodes: {}, directories: {} })
 
     const viewCache = new Map<string, ViewCacheEntry>()
     const documentAccess = new Map<string, number>()
     const documentGeneration = new Map<string, number>()
     const documentInflight = new Map<string, Promise<void>>()
+    const pdfAccess = new Map<string, number>()
+    const pdfGeneration = new Map<string, number>()
+    const pdfInflight = new Map<string, Promise<void>>()
     const directoryInflight = new Map<string, Promise<void>>()
     const controllers = new Set<AbortController>()
     const openInflight = new Map<string, Promise<unknown>>()
@@ -309,6 +329,138 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
         setStore("documents", document.path, "content", undefined)
         setStore("documents", document.path, "stale", true)
       }
+    }
+    const prunePdfs = () => {
+      const protectedPaths = openPaths()
+      const entries = Object.values(store.pdfs).filter((pdf) => !!pdf.bytes)
+      if (entries.length <= MAX_PDF_BUFFERS) return
+      const candidates = entries
+        .filter((pdf) => pdf.path !== activePath() && !protectedPaths.has(pdf.path))
+        .toSorted((a, b) => (pdfAccess.get(a.path) ?? 0) - (pdfAccess.get(b.path) ?? 0))
+      let count = entries.length
+      for (const pdf of candidates) {
+        if (count <= MAX_PDF_BUFFERS) break
+        count -= 1
+        setStore(
+          "pdfs",
+          pdf.path,
+          produce((draft) => {
+            draft.bytes = undefined
+            draft.stale = true
+          }),
+        )
+      }
+    }
+
+    const ensurePdf = (path: string) => {
+      if (store.pdfs[path]) return
+      setStore("pdfs", path, { path, loading: false, stale: true, tooLarge: false })
+    }
+
+    const loadPdf = (input: string, options?: { force?: boolean }) => {
+      const path = normalize(input)
+      if (!path) return Promise.resolve()
+      ensurePdf(path)
+      pdfAccess.set(path, Date.now())
+      const document = store.documents[path]
+      const nodeSize = document?.node?.size ?? document?.version?.size
+      const action = pdfPreviewAction({
+        nodeSize,
+        hasBytes: !!store.pdfs[path]?.bytes,
+        force: options?.force,
+      })
+      if (action === "too-large") {
+        setStore(
+          "pdfs",
+          path,
+          produce((draft) => {
+            draft.loading = false
+            draft.stale = false
+            draft.tooLarge = true
+            draft.error = undefined
+          }),
+        )
+        return Promise.resolve()
+      }
+      if (action === "cached") return Promise.resolve()
+      const existing = pdfInflight.get(path)
+      if (existing) return existing
+      const generation = (pdfGeneration.get(path) ?? 0) + 1
+      pdfGeneration.set(path, generation)
+      setStore(
+        "pdfs",
+        path,
+        produce((draft) => {
+          draft.loading = true
+          draft.error = undefined
+          draft.tooLarge = false
+        }),
+      )
+      const promise = (async () => {
+        const release = await acquire("document")
+        const controller = new AbortController()
+        controllers.add(controller)
+        try {
+          const response = await sdk.client.workspace.files.content({ path }, { signal: controller.signal })
+          if (pdfGeneration.get(path) !== generation) return
+          const bytes = await pdfPreviewBytes(response.data)
+          if (pdfGeneration.get(path) !== generation) return
+          if (!bytes) throw new Error("The server returned an empty PDF response")
+          setStore("pdfs", path, {
+            path,
+            bytes,
+            loading: false,
+            stale: false,
+            tooLarge: false,
+            error: undefined,
+            version: document?.version,
+          })
+          prunePdfs()
+        } catch (error) {
+          if (controller.signal.aborted) return
+          if (pdfGeneration.get(path) !== generation) return
+          if (isWorkspaceFileNotFoundError(error)) {
+            setStore(
+              "pdfs",
+              path,
+              produce((draft) => {
+                draft.loading = false
+                draft.stale = true
+                draft.error = "not-found"
+              }),
+            )
+            return
+          }
+          if (isWorkspaceFileTooLargeError(error)) {
+            setStore(
+              "pdfs",
+              path,
+              produce((draft) => {
+                draft.loading = false
+                draft.stale = false
+                draft.tooLarge = true
+                draft.error = undefined
+              }),
+            )
+            return
+          }
+          const message = fileWriteErrorMessage(error) ?? (error instanceof Error ? error.message : String(error))
+          setStore(
+            "pdfs",
+            path,
+            produce((draft) => {
+              draft.loading = false
+              draft.stale = true
+              draft.error = message
+            }),
+          )
+        } finally {
+          controllers.delete(controller)
+          release()
+        }
+      })().finally(() => pdfInflight.delete(path))
+      pdfInflight.set(path, promise)
+      return promise
     }
 
     const pruneExplorer = () => {
@@ -567,6 +719,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
       for (const path of scope.expanded) void loadChildren(path, { reset: true, force: true })
       const active = activePath()
       if (active) void load(active, { force: true })
+      if (active && store.pdfs[active]) void loadPdf(active, { force: true })
     }
 
     const renameCachedPath = (from: string, to: string) => {
@@ -577,6 +730,12 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
             if (next === key) continue
             draft.documents[next] = { ...draft.documents[key]!, path: next }
             delete draft.documents[key]
+          }
+          for (const key of Object.keys(draft.pdfs)) {
+            const next = replacePrefix(key, from, to)
+            if (next === key) continue
+            draft.pdfs[next] = { ...draft.pdfs[key]!, path: next }
+            delete draft.pdfs[key]
           }
           for (const key of Object.keys(draft.nodes)) {
             const next = replacePrefix(key, from, to)
@@ -638,10 +797,17 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
                 document.loading = false
               }
             }
+            for (const [key, pdf] of Object.entries(draft.pdfs)) {
+              if (key === path || key.startsWith(path + "/")) {
+                pdf.stale = true
+                pdf.loading = false
+              }
+            }
           }),
         )
       } else if (event.properties.event === "changed" && store.documents[path]) {
         void load(path, { force: true })
+        if (store.pdfs[path]) void loadPdf(path, { force: true })
       } else if (event.properties.event === "added" && store.documents[path]?.deleted) {
         void load(path, { force: true })
       }
@@ -669,6 +835,13 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
         return path ? store.documents[path] : undefined
       },
       load,
+      pdf: {
+        get: (input: string) => {
+          const path = normalize(input)
+          return path ? store.pdfs[path] : undefined
+        },
+        load: loadPdf,
+      },
       view: {
         state: (input: string) => {
           const path = normalize(input)
