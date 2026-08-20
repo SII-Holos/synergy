@@ -122,6 +122,7 @@ export function petPage(options: PetPageOptions): string {
   let frameIndex = 0
   let lastFrameAt = 0
   let dragging = false
+  let pressed = false
   let dragStartX = 0
   let dragStartY = 0
   let moved = false
@@ -218,6 +219,7 @@ export function petPage(options: PetPageOptions): string {
   }
 
   function onPointerDown(e) {
+    pressed = true
     dragStartX = e.clientX
     dragStartY = e.clientY
     lastX = e.clientX
@@ -228,6 +230,7 @@ export function petPage(options: PetPageOptions): string {
   }
 
   function onPointerMove(e) {
+    if (!pressed) return
     if (dragging) {
       const dx = e.clientX - lastX
       const dy = e.clientY - lastY
@@ -247,6 +250,7 @@ export function petPage(options: PetPageOptions): string {
   }
 
   function onPointerUp(e) {
+    pressed = false
     if (dragging) {
       dragging = false
       document.body.classList.remove("dragging")

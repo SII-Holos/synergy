@@ -96,9 +96,8 @@ describe("pet page drag gesture", () => {
     })
   }
 
-  test("a drag past the threshold moves the window through the dragBy bridge", () => {
-    const calls: string[] = []
-    const bridge: PetBridge = {
+  function recordingBridge(calls: string[]): PetBridge {
+    return {
       poke: () => {
         calls.push("poke")
         return Promise.resolve({ ok: true })
@@ -120,7 +119,11 @@ describe("pet page drag gesture", () => {
       onSettings: () => () => {},
       onSprite: () => () => {},
     }
-    const dom = loadPage(bridge)
+  }
+
+  test("a drag past the threshold moves the window through the dragBy bridge", () => {
+    const calls: string[] = []
+    const dom = loadPage(recordingBridge(calls))
     try {
       const window = dom.window as unknown as {
         document: Document
@@ -143,6 +146,28 @@ describe("pet page drag gesture", () => {
       expect(calls).toContain("setDragging:false")
       expect(calls).toContain("dragBy:5:5")
       expect(calls).not.toContain("moveBy:5:5")
+    } finally {
+      dom.window.close()
+    }
+  })
+
+  test("hover movement without a pressed pointer never enters drag", () => {
+    const calls: string[] = []
+    const dom = loadPage(recordingBridge(calls))
+    try {
+      const window = dom.window as unknown as {
+        document: Document
+        PointerEvent: typeof PointerEvent
+      }
+      const stage = window.document.getElementById("stage")!
+      // No pointerdown: moving the cursor across the pet is hover, not drag.
+      stage.dispatchEvent(
+        new window.PointerEvent("pointermove", { bubbles: true, clientX: 120, clientY: 120, pointerId: 1 }),
+      )
+      stage.dispatchEvent(
+        new window.PointerEvent("pointermove", { bubbles: true, clientX: 150, clientY: 140, pointerId: 1 }),
+      )
+      expect(calls).toEqual([])
     } finally {
       dom.window.close()
     }
