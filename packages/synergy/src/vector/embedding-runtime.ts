@@ -11,6 +11,7 @@ type TransformersRuntime = typeof import("@huggingface/transformers")
 let standaloneOnnxRuntime: Promise<typeof import("onnxruntime-web/wasm")> | undefined
 
 const REMOTE_PROTOCOL = /^(https?|blob|data):/i
+const REMOTE_FETCH_TTFB_TIMEOUT_MS = 30_000
 const standaloneFetchInstalled = new WeakSet<object>()
 let localFileFetchInstalled = false
 function isStandalone(): boolean {
@@ -26,6 +27,39 @@ async function fetchLocalFile(target: string): Promise<Response> {
   const file = Bun.file(filePath)
   if (!(await file.exists())) throw new Error(`local embedding asset not found: ${filePath}`)
   return new Response(file.stream(), { headers: { "content-length": String(file.size) } })
+}
+// Wraps a remote fetch with a TTFB (time-to-first-byte) timeout. Without
+// this, an unreachable download source (e.g. huggingface.co behind a network
+// that requires a proxy) causes fetch to hang indefinitely, leaving the
+// embedding download stuck at 0% with no error. The timeout only covers
+// TTFB — once response headers arrive, the body streams at its own pace.
+async function fetchRemoteWithTimeout(
+  delegate: typeof fetch,
+  input: Parameters<typeof fetch>[0],
+  init: Parameters<typeof fetch>[1],
+): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REMOTE_FETCH_TTFB_TIMEOUT_MS).unref()
+  const callerSignal = init?.signal
+  if (callerSignal) {
+    if (callerSignal.aborted) controller.abort()
+    else callerSignal.addEventListener("abort", () => controller.abort(), { once: true })
+  }
+  try {
+    const response = await delegate(input, { ...init, signal: controller.signal })
+    clearTimeout(timer)
+    return response
+  } catch (error) {
+    clearTimeout(timer)
+    if (controller.signal.aborted && !(callerSignal?.aborted ?? false)) {
+      throw new Error(
+        `Embedding model download timed out after ${REMOTE_FETCH_TTFB_TIMEOUT_MS / 1000}s — ` +
+          "the download source may be unreachable. Check your network/proxy settings " +
+          "(HTTPS_PROXY) or switch to an alternative source (e.g. hf-mirror) in the embedding config.",
+      )
+    }
+    throw error
+  }
 }
 
 // onnxruntime-web's browser build reads model files through the global fetch,
@@ -74,7 +108,7 @@ export function installLocalFileFetch(runtime: TransformersRuntime): void {
   runtime.env.fetch = async (input, init) => {
     const target = typeof input === "string" ? input : input instanceof URL ? input.href : undefined
     if (typeof target === "string" && !REMOTE_PROTOCOL.test(target)) return fetchLocalFile(target)
-    return delegate(input, init)
+    return fetchRemoteWithTimeout(delegate, input, init)
   }
 }
 
