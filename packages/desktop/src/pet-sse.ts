@@ -1,10 +1,10 @@
 /**
- * Minimal SSE client for the Synergy global event stream.
+ * Minimal SSE client for the Synergy event stream.
  *
- * The desktop pet subscribes to `GET /global/event` on the local Synergy
- * server (the same endpoint the Web app uses) and forwards bus events to the
- * pet state machine. The endpoint is a global route trusted from loopback, so
- * no token is required for the local desktop runtime.
+ * The desktop pet subscribes to `GET /event?stream=delta` on the local Synergy
+ * server (the top-level bus event stream the Web app also consumes) and
+ * forwards bus events to the pet state machine. The endpoint is trusted from
+ * loopback, so no token is required for the local desktop runtime.
  *
  * This client is intentionally small: it parses `data:` lines, reconnects with
  * backoff, and stops cleanly. It exposes the raw event objects to the caller.

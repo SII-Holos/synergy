@@ -202,7 +202,9 @@ export class DesktopPetWindow implements PetWindowManager {
   private connectSse(): void {
     if (!this.serverUrl) return
     const base = this.serverUrl.replace(/\/+$/, "")
-    const url = `${base}/global/event?stream=delta`
+    // The Synergy server exposes the bus event stream as a top-level SSE route
+    // (GET /event?stream=delta), not under /global.
+    const url = `${base}/event?stream=delta`
     this.sse = new PetSseClient({
       url,
       onEvent: (event: PetBusEvent) => {

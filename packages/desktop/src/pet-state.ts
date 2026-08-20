@@ -1,8 +1,8 @@
 /**
  * Pet mood state machine.
  *
- * Pure logic: it maps Synergy bus events (as delivered over the /global/event
- * SSE stream) to a small set of moods, and applies idle/sleepy degradation and
+ * Pure logic: it maps Synergy bus events (as delivered over the `/event` SSE
+ * stream) to a small set of moods, and applies idle/sleepy degradation and
  * transient mood expiry on tick. It owns no timers and no Electron state, so it
  * is unit-testable without mocks.
  */
@@ -11,7 +11,7 @@ export type PetMood = "idle" | "working" | "happy" | "celebrate" | "angry" | "sl
 
 export const PET_MOODS: readonly PetMood[] = ["idle", "working", "happy", "celebrate", "angry", "sleepy", "dragging"]
 
-/** Raw SSE bus event as delivered by GET /global/event. */
+/** Raw SSE bus event as delivered by GET /event. */
 export interface PetBusEvent {
   type?: string
   properties?: Record<string, unknown>

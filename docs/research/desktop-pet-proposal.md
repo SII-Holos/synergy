@@ -30,11 +30,11 @@
 
 ### 2.2 状态感知通道（服务器 SSE）
 
-| 位置                                    | 能力                                                                                                                    |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `packages/synergy/src/server/server.ts` | `GET /global/event` SSE 事件流，`Bus.subscribeAll` 广播全量事件，30s 心跳，支持 `?stream=delta` 压缩协议（`EventWire`） |
-| `packages/synergy/src/session/types.ts` | session 状态枚举：`queued / running / completed / error / cancelled / interrupted`                                      |
-| Bus 事件                                | `session.updated` / `session.idle` / `session.error` / `message.part.updated` 等（`packages/synergy/src/bus`）          |
+| 位置                                    | 能力                                                                                                             |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `packages/synergy/src/server/server.ts` | `GET /event` SSE 事件流，`Bus.subscribeAll` 广播全量事件，30s 心跳，支持 `?stream=delta` 压缩协议（`EventWire`） |
+| `packages/synergy/src/session/types.ts` | session 状态枚举：`queued / running / completed / error / cancelled / interrupted`                               |
+| Bus 事件                                | `session.updated` / `session.idle` / `session.error` / `message.part.updated` 等（`packages/synergy/src/bus`）   |
 
 ### 2.3 插件边界
 
@@ -69,13 +69,13 @@ packages/desktop (Electron 主进程)
 └── Pet 窗口（新增）: BrowserWindow{ transparent, frame:false, alwaysOnTop, skipTaskbar }
     └── pet.html + sprite-animator.js（精灵图动画引擎 + 状态机）
          ↑ SSE 订阅（主进程转发或渲染进程直连）
-GET /global/event?stream=delta ──── Synergy 本地服务器（Bus 广播）
+GET /event?stream=delta ──── Synergy 本地服务器（Bus 广播）
 ```
 
 实现要点：
 
 - 主进程新增 `pet-window.ts`：创建/销毁 Pet 窗口，生命周期跟随主窗口与服务器健康状态（`/global/health` 已由 server-manager 轮询）。已实施。
-- 状态通道：主进程通过 server-manager 的 URL 订阅 `GET /global/event?stream=delta`，将 `session.*` 事件规约为动画状态机输入（`pet-sse.ts` + `pet-state.ts`）。已实施。
+- 状态通道：主进程通过 server-manager 的 URL 订阅 `GET /event?stream=delta`，将 `session.*` 事件规约为动画状态机输入（`pet-sse.ts` + `pet-state.ts`）。已实施。
 - 动画引擎：纯 HTML/JS（无框架）加载 sprite sheet，按 `MOOD_ROW` 映射切行播放（`pet-page.ts`），`image-rendering: pixelated`，与 desktop-pet-demo 同构。已实施。
 
 ### 4.2 动画行 ↔ 状态映射（复用 8×7 精灵图规范）
@@ -114,7 +114,7 @@ GET /global/event?stream=delta ──── Synergy 本地服务器（Bus 广播
 ## 6. 风险与不确定性
 
 - macOS 透明窗口注意 `transparent:true` 的渲染与性能（多窗口合成成本）。
-- `GET /global/event` 鉴权方式未在本次调研中核实（desktop 本机信任机制待实施时确认）。
+- `GET /event` 鉴权方式未在本次调研中核实（desktop 本机信任机制待实施时确认）。
 - 事件 → 动画映射的语义细节（如 completed 与 milestone 的区分、error 的降级路径）需在 Phase 1 用真实事件流校准。
 - gpt-image-2 输出的网格精度（8×7、每帧正方形、无留白）可能不稳定，需要脚本校正兜底。
 

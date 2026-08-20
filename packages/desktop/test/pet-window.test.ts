@@ -123,7 +123,7 @@ describe("desktop pet window", () => {
       await pet.start()
       await new Promise((resolve) => setTimeout(resolve, 10))
       expect(sseConnections).toHaveLength(1)
-      expect(sseConnections[0].url).toContain("/global/event?stream=delta")
+      expect(sseConnections[0].url).toContain("/event?stream=delta")
       await pet.stop()
     })
   })
