@@ -60,6 +60,13 @@ export namespace AgendaPrompt {
         case "webhook":
           parts.push("webhook")
           break
+        case "session": {
+          const filter = [trigger.agent && ` agent=${trigger.agent}`, trigger.finish && ` finish=${trigger.finish}`]
+            .filter(Boolean)
+            .join("")
+          parts.push(`session "${trigger.sessionID}" on ${trigger.event}${filter}`)
+          break
+        }
       }
     }
     const triggerDesc = parts.length > 0 ? parts.join(", ") : "manual"
@@ -85,6 +92,14 @@ export namespace AgendaPrompt {
       const json = JSON.stringify(signal.payload, null, 2)
       const truncated = json.length > 4096 ? json.slice(0, 4096) + "\n…(truncated)" : json
       return `<webhook-payload>\n${truncated}\n</webhook-payload>`
+    }
+
+    if (signal.type === "session") {
+      const p = signal.payload
+      const finish = typeof p.finish === "string" ? ` finish="${p.finish}"` : ""
+      const agent = typeof p.agent === "string" ? ` agent="${p.agent}"` : ""
+      const messageID = typeof p.messageID === "string" ? ` messageID="${p.messageID}"` : ""
+      return `<session-event sessionID="${String(p.sessionID)}"${messageID}${finish}${agent} />`
     }
 
     const json = JSON.stringify(signal.payload)

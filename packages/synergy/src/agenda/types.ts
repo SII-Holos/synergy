@@ -92,14 +92,36 @@ export namespace AgendaTypes {
     })
     .meta({ ref: "AgendaTriggerWebhook" })
 
+  export const TriggerSession = z
+    .object({
+      type: z.literal("session"),
+      sessionID: z.string().describe("Target session to watch for turn events"),
+      event: z.enum(["turn.end", "turn.start"]).default("turn.end").describe("Session turn event to react to"),
+      agent: z.string().optional().describe("Only fire when the turn's agent matches"),
+      finish: z
+        .string()
+        .optional()
+        .describe("Only fire when the turn's finish state matches (e.g. 'stop', 'error'). Only applies to turn.end"),
+      once: z.boolean().default(true).describe("If true, the item auto-completes after the first fire"),
+    })
+    .meta({ ref: "AgendaTriggerSession" })
+
   export const Trigger = z
-    .discriminatedUnion("type", [TriggerAt, TriggerCron, TriggerEvery, TriggerDelay, TriggerWatch, TriggerWebhook])
+    .discriminatedUnion("type", [
+      TriggerAt,
+      TriggerCron,
+      TriggerEvery,
+      TriggerDelay,
+      TriggerWatch,
+      TriggerWebhook,
+      TriggerSession,
+    ])
     .meta({ ref: "AgendaTrigger" })
   export type Trigger = z.infer<typeof Trigger>
 
   /** Trigger types exposed via the agenda_schedule tool. No watch or webhook. */
   export const ScheduleTrigger = z
-    .discriminatedUnion("type", [TriggerCron, TriggerEvery, TriggerAt, TriggerDelay])
+    .discriminatedUnion("type", [TriggerCron, TriggerEvery, TriggerAt, TriggerDelay, TriggerSession])
     .meta({ ref: "AgendaScheduleTrigger" })
   export type ScheduleTrigger = z.infer<typeof ScheduleTrigger>
 
@@ -124,7 +146,10 @@ export namespace AgendaTypes {
    */
   export function inferSessionMode(triggers: Trigger[], override?: SessionMode): SessionMode {
     if (override) return override
-    const hasRecurring = triggers.some((t) => t.type === "cron" || t.type === "every" || t.type === "watch")
+    const hasRecurring = triggers.some(
+      (t) =>
+        t.type === "cron" || t.type === "every" || t.type === "watch" || (t.type === "session" && t.once === false),
+    )
     return hasRecurring ? "persistent" : "ephemeral"
   }
 
@@ -323,7 +348,7 @@ export namespace AgendaTypes {
     .meta({ ref: "AgendaActivityPage" })
   export type ActivityPage = z.infer<typeof ActivityPage>
 
-  export const SessionAgendaTriggerType = z.enum(["cron", "every", "at", "delay", "watch", "webhook"])
+  export const SessionAgendaTriggerType = z.enum(["cron", "every", "at", "delay", "watch", "webhook", "session"])
   export type SessionAgendaTriggerType = z.infer<typeof SessionAgendaTriggerType>
 
   export const SessionAgendaTrigger = z
@@ -331,6 +356,7 @@ export namespace AgendaTypes {
       type: SessionAgendaTriggerType,
       interval: z.string().optional().describe("Interval for every triggers, e.g. '30m'"),
       delay: z.string().optional().describe("Delay for delay triggers, e.g. '2h'"),
+      sessionID: z.string().optional().describe("Target session for session triggers"),
     })
     .meta({ ref: "SessionAgendaTrigger" })
   export type SessionAgendaTrigger = z.infer<typeof SessionAgendaTrigger>

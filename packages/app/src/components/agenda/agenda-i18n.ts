@@ -77,6 +77,10 @@ export const A = {
   formTitleRequired: { id: "app.agenda.form.titleRequired", message: "Title is required" },
   formSchedule: { id: "app.agenda.form.schedule", message: "Schedule" },
   formAddTime: { id: "app.agenda.form.addTime", message: "Add time" },
+  formUnsupportedTriggers: {
+    id: "app.agenda.form.unsupportedTriggers",
+    message: "This item has triggers the form can't edit (e.g. session, webhook, watch). They are preserved on save.",
+  },
   formRepeat: { id: "app.agenda.form.repeat", message: "Repeat" },
   formRepeatOff: { id: "app.agenda.form.repeatOff", message: "Does not repeat" },
   formRepeatCustom: { id: "app.agenda.form.repeatCustom", message: "Custom cron" },
