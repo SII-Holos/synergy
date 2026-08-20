@@ -306,6 +306,17 @@ function compileContribution(
         slot: contribution.slot,
         component: compiledComponent(contribution.component, artifacts, `${contribution.kind}:${contribution.id}`),
       }
+    case "ui.slot":
+      return {
+        ...base,
+        kind: "ui.slot",
+        label: contribution.label,
+        icon: contribution.icon,
+        order: contribution.order,
+        slot: contribution.slot,
+        when: contribution.when,
+        component: compiledComponent(contribution.component, artifacts, `${contribution.kind}:${contribution.id}`)!,
+      }
     case "ui.composerExtension":
     case "ui.selectionExtension":
       return {

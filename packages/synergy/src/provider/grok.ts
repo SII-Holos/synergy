@@ -25,7 +25,7 @@ export namespace GrokProvider {
   export const OAUTH_SCOPES = "openid profile email offline_access grok-cli:access api:access"
   export const AUTH_REFRESH_SKEW_SECONDS = 5 * 60
 
-  export const DEFAULT_MODEL_IDS = ["grok-4.5", "grok-4.3", "grok-build-0.1"] as const
+  export const DEFAULT_MODEL_IDS = ["grok-4.6", "grok-4.5", "grok-4.3"] as const
 
   type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
@@ -83,6 +83,21 @@ export namespace GrokProvider {
   function accessTokenExpiresAt(token: string): number | undefined {
     const exp = parseJWTClaims(token)?.exp
     return typeof exp === "number" ? exp : undefined
+  }
+
+  // Stable account identity for live-catalog snapshot isolation. The default
+  // credential identity includes the refresh token, which xAI rotates (and
+  // revokes the previous one) on every refresh; deriving the identity from the
+  // JWT subject keeps the catalog snapshot stable across token rotation. Falls
+  // back to the default credential identity when neither claim is present.
+  export function grokAccountID(token: string): string | undefined {
+    const claims = parseJWTClaims(token)
+    if (!claims) return undefined
+    const sub = claims.sub
+    if (typeof sub === "string" && sub) return `sub:${sub}`
+    const email = claims.email
+    if (typeof email === "string" && email) return `email:${email}`
+    return undefined
   }
 
   function isAccessTokenExpiring(token: string, skewSeconds = AUTH_REFRESH_SKEW_SECONDS) {
@@ -527,6 +542,57 @@ export namespace GrokProvider {
     }
   }
 
+  async function fetchModelPayload(
+    accessToken: string,
+    fetchFn: FetchLike = fetch,
+    providerID = PROVIDER_ID,
+    discoveryBaseURL = BASE_URL,
+  ) {
+    const response = await ProviderAuthRecovery.execute({
+      providerID,
+      request: async () => {
+        const current =
+          (await resolveToken({ providerID, allowMissing: true, fetch: fetchFn }).catch(() => undefined)) ?? accessToken
+        return fetchFn(`${discoveryBaseURL.trim().replace(/\/+$/, "")}/language-models`, {
+          headers: {
+            Authorization: `Bearer ${current}`,
+            Accept: "application/json",
+            "User-Agent": "synergy",
+            "x-grok-client-surface": "synergy",
+          },
+          signal: AbortSignal.timeout(10_000),
+        })
+      },
+      refresh: (auth) => refreshAuth(auth, fetchFn, providerID),
+      classify: classifyError,
+      reloadOnTransition: false,
+      throwOnActionRequired: false,
+    })
+    if (!response.ok) return []
+    const payload = await safeJson(response)
+    return Array.isArray(payload.models) ? payload.models : []
+  }
+
+  export async function fetchModelCatalog(
+    accessToken: string,
+    fetchFn: FetchLike = fetch,
+    providerID = PROVIDER_ID,
+    discoveryBaseURL = BASE_URL,
+  ): Promise<ProviderProfile.ModelCatalogEntry[]> {
+    const entries = await fetchModelPayload(accessToken, fetchFn, providerID, discoveryBaseURL)
+    const models: ProviderProfile.ModelCatalogEntry[] = []
+    for (const entry of entries) {
+      if (!entry || typeof entry !== "object") continue
+      const id = entry.id
+      if (typeof id !== "string" || !id.trim()) continue
+      const inputModalities = Array.isArray(entry.input_modalities) ? entry.input_modalities : []
+      models.push({
+        id: id.trim(),
+        ...(inputModalities.includes("image") ? { inputImage: true } : {}),
+      })
+    }
+    return models
+  }
   export async function fetchUsage(
     fetchFn: FetchLike = fetch,
     providerID = PROVIDER_ID,

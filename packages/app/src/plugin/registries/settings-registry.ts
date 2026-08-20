@@ -1,8 +1,7 @@
 import type { Component } from "solid-js"
 import type { PluginSettingsComponentProps, PluginSettingsSurfaceContext } from "@ericsanchezok/synergy-plugin"
 import type { SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { SurfaceRegistry } from "@/surface/registry"
-import type { SurfaceEntry } from "@/surface/types"
+import { SlotRegistry, type SlotEntryBase, type SurfaceEntry } from "../slot-registry"
 import { BUILTIN_SETTINGS_SECTIONS } from "@/components/settings/catalog"
 
 export interface SettingsSection extends SurfaceEntry {
@@ -22,18 +21,30 @@ export interface SettingsSection extends SurfaceEntry {
   exportName?: string
 }
 
-const registry = new SurfaceRegistry<SettingsSection>()
+/** Internal slot-backed entry: settings sections live in one slot. */
+type SettingsSlotEntry = SlotEntryBase &
+  SettingsSection & {
+    slot: "settings.section"
+  }
+const registry = new SlotRegistry<SettingsSlotEntry>()
+
+/** Strip the internal slot key so callers see the exact public section shape. */
+function toSection(entry: SettingsSlotEntry): SettingsSection {
+  const { slot: _slot, ...rest } = entry
+  return rest
+}
 
 export function registerSettingsSection(section: SettingsSection): () => void {
-  return registry.register(section)
+  return registry.register({ ...section, slot: "settings.section" })
 }
 
 export function getSettingsSections(): SettingsSection[] {
-  return registry.list()
+  return registry.listAll().map(toSection)
 }
 
 export function getSettingsSection(id: string): SettingsSection | undefined {
-  return registry.get(id)
+  const entry = registry.get(id)
+  return entry ? toSection(entry) : undefined
 }
 
 export function subscribeSettingsSections(listener: () => void): () => void {
