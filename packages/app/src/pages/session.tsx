@@ -211,6 +211,7 @@ function SessionPageContent() {
   const rollbackActive = createMemo(() => rollback()?.canUnrollback === true)
   let activeRollbackKey: string | undefined
   let rollbackDialogID: string | undefined
+  let forkDialogID: string | undefined
   createEffect(
     on(
       () => params.id,
@@ -477,40 +478,49 @@ function SessionPageContent() {
     const target = messages().find((message) => message.id === messageID)
     if (!target) return
     const timeline = messages().filter((message) => message.role === "user" || message.role === "assistant")
-    dialog.push(() => (
-      <DialogForkConfirm
-        message={{ id: messageID, time: target.time }}
-        allMessages={timeline}
-        hasCompleteHistory={!historyMore()}
-        preview={forkReplyPreview(dataView().partsFor(messageID))}
-        onConfirm={async () => {
-          try {
-            const forked = await sdk.client.session.fork({
-              sessionID,
-              position: { type: "through", messageID },
-              workspace: { mode: "current" },
-              controlProfile: info()?.controlProfile ?? sync.data.config.controlProfile,
-            })
-            if (!forked.data) return false
-            showToast({
-              type: "success",
-              title: i18n._(AP.sessionForked.id),
-              description: i18n._(AP.sessionForkedDesc.id),
-            })
-            navigateToSession(forked.data.id)
-            return true
-          } catch (error) {
-            showToast({
-              type: "error",
-              title: i18n._(AP.sessionForkFailed.id),
-              description: requestErrorMessage(error),
-            })
-            return false
-          }
-        }}
-      />
-    ))
+    dialog.push(
+      () => (
+        <DialogForkConfirm
+          message={{ id: messageID, time: target.time }}
+          allMessages={timeline}
+          hasCompleteHistory={!historyMore()}
+          preview={forkReplyPreview(dataView().partsFor(messageID))}
+          onConfirm={async () => {
+            try {
+              const forked = await sdk.client.session.fork({
+                sessionID,
+                position: { type: "through", messageID },
+                workspace: { mode: "current" },
+                controlProfile: info()?.controlProfile ?? sync.data.config.controlProfile,
+              })
+              if (!forked.data) return false
+              showToast({
+                type: "success",
+                title: i18n._(AP.sessionForked.id),
+                description: i18n._(AP.sessionForkedDesc.id),
+              })
+              navigateToSession(forked.data.id)
+              return true
+            } catch (error) {
+              showToast({
+                type: "error",
+                title: i18n._(AP.sessionForkFailed.id),
+                description: requestErrorMessage(error),
+              })
+              return false
+            }
+          }}
+        />
+      ),
+      () => {
+        forkDialogID = undefined
+      },
+    )
+    forkDialogID = dialog.active?.id
   }
+  onCleanup(() => {
+    if (forkDialogID && dialog.active?.id === forkDialogID) dialog.close()
+  })
   const messagesReady = createMemo(() => messageSnapshot() !== undefined)
   const messageLoad = createMemo(() => {
     const id = params.id

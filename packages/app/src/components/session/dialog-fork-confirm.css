@@ -5,7 +5,6 @@
 
 [data-slot="dialog-content"].fork-confirm-dialog {
   --fork-border: color-mix(in oklch, var(--border-base) 28%, transparent);
-  --fork-border-strong: color-mix(in oklch, var(--border-base) 44%, transparent);
   --fork-row-bg: color-mix(in srgb, var(--dialog-control-bg) 62%, transparent);
 
   width: min(460px, calc(100vw - 32px));

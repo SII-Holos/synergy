@@ -12404,7 +12404,7 @@ msgstr "{kind, select, both {将 {messages, plural, one {# 条消息} other {# �
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.fork.confirm.description"
-msgstr "将此回复之前的对话复制到一个新会话中。"
+msgstr "将此回复及其之前的对话复制到一个新会话中。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

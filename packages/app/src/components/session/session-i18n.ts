@@ -215,7 +215,7 @@ export const S = {
   },
   forkConfirmCopiedNote: {
     id: "session.fork.confirm.copiedNote",
-    message: "Forked from this reply at {time}.",
+    message: "Will fork from this reply at {time}.",
   },
   forkConfirmAction: { id: "session.fork.confirm.action", message: "Fork session" },
   forkConfirmForking: { id: "session.fork.confirm.forking", message: "Forking…" },
