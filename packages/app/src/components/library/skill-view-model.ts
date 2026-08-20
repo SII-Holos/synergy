@@ -116,6 +116,32 @@ export function skillCanonicalDiagnostics(skill: Pick<SkillSummary, "diagnostics
   return skill.diagnostics
 }
 
+export type SkillDiagnostic = SkillSummary["diagnostics"][number]
+
+export type PartitionedSkillDiagnostics = {
+  failed: SkillDiagnostic[]
+  shadowed: SkillDiagnostic[]
+  compat: SkillDiagnostic[]
+}
+
+export function partitionSkillDiagnostics(diagnostics: readonly SkillDiagnostic[]): PartitionedSkillDiagnostics {
+  const groups: PartitionedSkillDiagnostics = { failed: [], shadowed: [], compat: [] }
+  const seen = { failed: new Set<string>(), shadowed: new Set<string>(), compat: new Set<string>() }
+  for (const diagnostic of diagnostics) {
+    const group =
+      diagnostic.code === "skill.candidate_shadowed"
+        ? "shadowed"
+        : diagnostic.severity === "error"
+          ? "failed"
+          : "compat"
+    const key = `${diagnostic.path ?? ""}\u0000${diagnostic.code}`
+    if (seen[group].has(key)) continue
+    seen[group].add(key)
+    groups[group].push(diagnostic)
+  }
+  return groups
+}
+
 export function skillPathLabel(path?: string) {
   if (!path || path === "builtin") return undefined
   return path

@@ -36,16 +36,16 @@ The body after frontmatter is the Skill content. Files under `references/`, `scr
 
 Strict manifests accept this field set and reject unknown fields.
 
-| Field                      | Required | Type    | Contract                                                                                                                                             |
-| -------------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                     | yes      | string  | Skill identifier. It must be 1-64 characters, lowercase, and contain only letters, digits, and single hyphens. It cannot start or end with a hyphen. |
-| `description`              | yes      | string  | Catalog description shown to users and models. It must be 1-1024 characters.                                                                         |
-| `license`                  | no       | string  | Declared license text for display and export metadata.                                                                                               |
-| `compatibility`            | no       | string  | Declared author compatibility note, up to 500 characters.                                                                                            |
-| `metadata`                 | no       | object  | Accepted author metadata. Synergy does not place it in the canonical runtime record.                                                                 |
-| `allowed-tools`            | no       | string  | Accepted metadata describing author intent. It does not grant tool authorization.                                                                    |
-| `user-invocable`           | no       | boolean | Defaults to `true`. When `false`, Synergy does not register the Skill as a slash command.                                                            |
-| `disable-model-invocation` | no       | boolean | Defaults to `false`. When `true`, the Skill is omitted from the model-invocable `skill` tool catalog.                                                |
+| Field                      | Required | Type                           | Contract                                                                                                                                             |
+| -------------------------- | -------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                     | yes      | string                         | Skill identifier. It must be 1-64 characters, lowercase, and contain only letters, digits, and single hyphens. It cannot start or end with a hyphen. |
+| `description`              | yes      | string                         | Catalog description shown to users and models. It must be 1-1024 characters.                                                                         |
+| `license`                  | no       | string                         | Declared license text for display and export metadata.                                                                                               |
+| `compatibility`            | no       | string                         | Declared author compatibility note, up to 500 characters.                                                                                            |
+| `metadata`                 | no       | object                         | Accepted author metadata. Synergy does not place it in the canonical runtime record.                                                                 |
+| `allowed-tools`            | no       | string or YAML list of strings | Accepted metadata describing author intent. A YAML list normalizes to a space-separated string. It does not grant tool authorization.                |
+| `user-invocable`           | no       | boolean                        | Defaults to `true`. When `false`, Synergy does not register the Skill as a slash command.                                                            |
+| `disable-model-invocation` | no       | boolean                        | Defaults to `false`. When `true`, the Skill is omitted from the model-invocable `skill` tool catalog.                                                |
 
 The runtime record stores normalized fields only: `name`, `description`, `declaredLicense`, `declaredCompatibility`, `invocation`, `origin`, `backing`, and `diagnostics`. It does not preserve raw frontmatter, arbitrary vendor fields, `allowed-tools`, or `metadata` as runtime authorization state.
 

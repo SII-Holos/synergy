@@ -13,6 +13,7 @@ import { sessionSideWorkspaceMounts, WORKSPACE_SESSION_MIN_WIDTH } from "@/conte
 import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 
 import { useSync } from "@/context/sync"
+import { useSessionDataView } from "@/context/session-data-view"
 import { useTerminal } from "@/context/terminal"
 import { useLayout } from "@/context/layout"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
@@ -131,6 +132,7 @@ function SessionPageContent() {
   const local = useLocal()
   const file = useFile()
   const sync = useSync()
+  const dataView = useSessionDataView()
   const terminal = useTerminal()
   const dialog = useDialog()
   const command = useCommand()
@@ -183,7 +185,7 @@ function SessionPageContent() {
   createEffect(() => {
     const id = params.id
     if (!id) return
-    if (!hasMessageWindowSnapshot(sync.data.message[id], sync.data.messageWindow[id])) return
+    if (!hasMessageWindowSnapshot(dataView().messagesFor(id), sync.data.messageWindow[id])) return
     navMark({ dir: params.dir, to: id, name: "session:data-ready" })
   })
 
@@ -400,7 +402,7 @@ function SessionPageContent() {
   const messageSnapshot = createMemo(() => {
     const id = params.id
     if (!id) return [] as Message[]
-    const messages = sync.data.message[id]
+    const messages = dataView().messagesFor(id)
     return hasMessageWindowSnapshot(messages, sync.data.messageWindow[id]) ? messages : undefined
   })
   const messages = createMemo(() => {
@@ -419,13 +421,13 @@ function SessionPageContent() {
     const targetID = targetMsg.id
     const sessionID = params.id
     if (!sessionID) return
-    const cutParts = sync.data.part[targetID] ?? []
+    const cutParts = dataView().partsFor(targetID)
     const retryInput = createRewindRetryInput({ message: targetMsg, parts: cutParts })
     dialog.push(() => (
       <DialogRewindConfirm
         cutMessage={targetMsg}
         allMessages={messages().filter((m) => m.role === "user" || m.role === "assistant")}
-        partsByMessage={sync.data.part}
+        partsByMessage={dataView().partTable()}
         canRetry={retryInput !== undefined}
         onConfirm={async (action, cutMessageID, restoreFiles) => {
           if (!sessionID || !cutMessageID) return
@@ -619,6 +621,9 @@ function SessionPageContent() {
           decideSessionTransitionHandoff({
             messageID: handoff.messageID,
             messages: messages(),
+            // Explicit exemption: decideSessionTransitionHandoff branches on
+            // inbox === undefined to trigger refresh; the view layer's shared
+            // empty array would change that loading semantics.
             inbox: sync.data.inbox[sessionID],
             elapsedMs: 0,
             refreshAttempted: true,
@@ -636,6 +641,9 @@ function SessionPageContent() {
     const sessionID = params.id
     if (!sessionID || visibleSessionTransitionEntry()) return
     const recovered = recoverSessionTransitionHandoff({
+      // Explicit exemption: recoverSessionTransitionHandoff distinguishes
+      // "not loaded" (undefined) from "loaded empty" via these buckets; the
+      // view layer's empty arrays would break the gate.
       messages: sync.data.message[sessionID],
       inbox: sync.data.inbox[sessionID],
     })
@@ -694,6 +702,7 @@ function SessionPageContent() {
     const decision = decideSessionTransitionHandoff({
       messageID: entry.handoff.messageID,
       messages: messages(),
+      // Explicit exemption: same undefined-loading semantics as above.
       inbox: sync.data.inbox[sessionID],
       elapsedMs: Math.max(0, Date.now() - acceptedAt),
       refreshAttempted: entry.handoff.refreshAttempted ?? false,
@@ -753,7 +762,7 @@ function SessionPageContent() {
   const pendingTimeline = createMemo(() => {
     const sessionID = params.id
     if (!sessionID) return [] as SessionInboxItem[]
-    return selectPendingTimelineItems(sync.data.inbox[sessionID], messages())
+    return selectPendingTimelineItems(dataView().inboxFor(sessionID), messages())
   })
   const isNewSession = createMemo(() => {
     if (!params.id) return true
@@ -907,9 +916,9 @@ function SessionPageContent() {
     ),
   )
 
-  const currentSession = createMemo(() => sync.data.session.find((s) => s.id === params.id))
+  const currentSession = createMemo(() => dataView().sessionFor(params.id ?? ""))
   const status = createMemo<SessionStatus>(() => {
-    const runtimeStatus = sync.data.session_status[params.id ?? ""]
+    const runtimeStatus = dataView().statusFor(params.id ?? "")
     if (runtimeStatus && runtimeStatus.type !== "idle") return runtimeStatus
     const working = currentSession()?.working
     if (working?.status === "busy") return { type: "busy", description: working.description }
@@ -964,12 +973,12 @@ function SessionPageContent() {
   const parentSession = createMemo(() => {
     const current = currentSession()
     if (!current?.parentID) return undefined
-    return sync.data.session.find((s) => s.id === current.parentID)
+    return dataView().sessionFor(current.parentID)
   })
   const forkedFromSession = createMemo(() => {
     const source = currentSession()?.forkedFrom
     if (!source) return undefined
-    return sync.data.session.find((s) => s.id === source.sessionID)
+    return dataView().sessionFor(source.sessionID)
   })
   const backPath = createMemo(() => {
     if (parentSession()) return undefined
@@ -1654,6 +1663,9 @@ function SessionPageContent() {
             </div>
             <div class="flex-1 min-h-0 overflow-auto">
               <Show
+                // Explicit exemption: undefined session_diff shows the
+                // "loading changes" fallback; the view layer's shared empty
+                // array (truthy) would flip that loading semantics.
                 when={params.id && sync.data.session_diff[params.id]}
                 fallback={
                   <div class="px-4 py-4 text-13-regular text-text-weak">{i18n._(AP.sessionLoadingChanges.id)}</div>

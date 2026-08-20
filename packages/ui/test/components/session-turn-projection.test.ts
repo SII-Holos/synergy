@@ -199,4 +199,12 @@ describe("buildSessionTurnProjection", () => {
     // the projection carries raw members so the component keeps its semantics.
     expect(projection.turnMessagesFor(projection.roots[0]).map((m) => m.id)).toEqual(["a1", "a2"])
   })
+
+  test("turnMessagesFor(undefined) returns an empty array without throwing", () => {
+    // conversation.tsx passes the row-level getter result as the anchor; a
+    // session-switch window replacement can transiently yield undefined, which
+    // must degrade to an empty turn instead of crashing on anchor.rootID.
+    const projection = buildSessionTurnProjection([user("r1", { isRoot: true }), assistantFor("a1", "r1")])
+    expect(projection.turnMessagesFor(undefined)).toEqual([])
+  })
 })

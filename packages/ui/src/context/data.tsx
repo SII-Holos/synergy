@@ -1,8 +1,21 @@
-import type { Message, Session, Part, FileDiff, SessionStatus, PermissionRequest } from "@ericsanchezok/synergy-sdk"
+import type { SessionInboxItem } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  CortexTask,
+  DagNode,
+  Message,
+  Part,
+  PermissionRequest,
+  QuestionRequest,
+  Session,
+  SessionStatus,
+  FileDiff,
+  Todo,
+} from "@ericsanchezok/synergy-sdk"
 import { createSimpleContext } from "./helper"
+import { createSessionDataView } from "./session-data-view"
 import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
 
-type Data = {
+export type Data = {
   session: Session[]
   session_status: {
     [sessionID: string]: SessionStatus
@@ -22,6 +35,19 @@ type Data = {
   part: {
     [messageID: string]: Part[]
   }
+  inbox?: {
+    [sessionID: string]: SessionInboxItem[]
+  }
+  todo?: {
+    [sessionID: string]: Todo[]
+  }
+  dag?: {
+    [sessionID: string]: DagNode[]
+  }
+  question?: {
+    [sessionID: string]: QuestionRequest[]
+  }
+  cortex?: CortexTask[]
 }
 
 export type PermissionRespondFn = (input: {
@@ -44,6 +70,9 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
     return {
       get store() {
         return props.data
+      },
+      get view() {
+        return createSessionDataView(props.data)
       },
       get directory() {
         return props.directory

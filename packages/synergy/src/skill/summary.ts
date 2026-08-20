@@ -32,8 +32,19 @@ export namespace SkillSummary {
     .object({
       items: z.array(Info),
       diagnostics: Skill.Diagnostic.array(),
+      sources: z.array(
+        z.object({
+          source: z.enum(["synergy", "agents", "claude", "codex", "openclaw"]),
+          count: z.number().int().nonnegative(),
+        }),
+      ),
     })
     .meta({ ref: "SkillList" })
+
+  export function fromSourceCounts(counts: Partial<Record<Skill.Source, number>>) {
+    const order = ["synergy", "agents", "claude", "codex", "openclaw"] as const
+    return order.filter((source) => (counts[source] ?? 0) > 0).map((source) => ({ source, count: counts[source] ?? 0 }))
+  }
 
   export function from(skill: Skill.Info): Info {
     const warnings = skill.diagnostics

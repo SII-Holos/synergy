@@ -1,11 +1,21 @@
 import { HOST_OWNED_MESSAGE_TYPES } from "@ericsanchezok/synergy-plugin"
 import { registerPartComponent, PART_MAPPING, type PartComponent } from "@ericsanchezok/synergy-ui/message-part"
+import { SlotRegistry, type SlotEntryBase } from "../slot-registry"
 
 export type PartRenderer = PartComponent
 
-/** Loader stored alongside a registered part type (no component yet). */
-const loaders = new Map<string, () => Promise<{ default: PartRenderer }>>()
-const loading = new Set<string>()
+/** Internal slot entry: one renderer per message type (single-replace). */
+interface PartSlotEntry extends SlotEntryBase {
+  slot: "message.renderer"
+  loader?: () => Promise<{ default: PartRenderer }>
+}
+
+const registry = new SlotRegistry<PartSlotEntry>()
+/** Per-type disposer so re-registering a type replaces the previous entry. */
+const disposers = new Map<string, () => void>()
+/** In-flight loader per type, keyed by loader identity so a stale loader
+ *  resolving after a reload cannot clear the replacement's in-flight mark. */
+const loading = new Map<string, () => Promise<{ default: PartRenderer }>>()
 
 export function registerPartRenderer(
   type: string,
@@ -15,12 +25,16 @@ export function registerPartRenderer(
   if ((HOST_OWNED_MESSAGE_TYPES as readonly string[]).includes(type)) {
     throw new Error(`Plugin message renderer cannot replace host-owned message type: ${type}`)
   }
+  disposers.get(type)?.()
   registerPartComponent(type, renderer as any)
-  if (loader) loaders.set(type, loader)
+  const dispose = registry.register({ id: type, slot: "message.renderer", loader })
+  disposers.set(type, dispose)
   return () => {
+    if (disposers.get(type) !== dispose) return
+    disposers.delete(type)
+    dispose()
     delete PART_MAPPING[type]
-    loaders.delete(type)
-    loading.delete(type)
+    if (loading.get(type) === loader) loading.delete(type)
   }
 }
 
@@ -28,15 +42,18 @@ export function registerPartRenderer(
 export function resolvePartRenderer(type: string): PartRenderer | undefined {
   const existing = PART_MAPPING[type] as PartRenderer | undefined
   if (existing) return existing
-  const loader = loaders.get(type)
-  if (loader && !loading.has(type)) {
-    loading.add(type)
+  const entry = registry.get(type)
+  const loader = entry?.loader
+  if (loader && loading.get(type) !== loader) {
+    loading.set(type, loader)
     loader().then(
       (mod) => {
-        registerPartComponent(type, mod.default as any)
-        loading.delete(type)
+        if (registry.get(type) === entry) registerPartComponent(type, mod.default as any)
+        if (loading.get(type) === loader) loading.delete(type)
       },
-      () => loading.delete(type),
+      () => {
+        if (loading.get(type) === loader) loading.delete(type)
+      },
     )
   }
   return undefined
@@ -47,5 +64,5 @@ export function getPartRenderer(type: string): PartRenderer | undefined {
 }
 
 export function hasPartRenderer(type: string): boolean {
-  return type in PART_MAPPING || loaders.has(type)
+  return type in PART_MAPPING || registry.get(type)?.loader !== undefined
 }

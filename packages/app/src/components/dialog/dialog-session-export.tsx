@@ -6,6 +6,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useLingui } from "@lingui/solid"
 import { dialog } from "@/locales/messages"
+import { useSessionDataView } from "@/context/session-data-view"
 import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
 import { useParams } from "@solidjs/router"
@@ -40,6 +41,7 @@ export function DialogSessionExport() {
   const dialogContext = useDialog()
   const sdk = useSDK()
   const sync = useSync()
+  const view = useSessionDataView()
   const { _ } = useLingui()
 
   const [mode, setMode] = createSignal<SessionExportMode>("standard")
@@ -56,7 +58,9 @@ export function DialogSessionExport() {
   const childSessions = () => {
     const id = sessionID()
     if (!id) return []
-    return sync.data.session.filter((session) => session.parentID === id)
+    return view()
+      .sessions()
+      .filter((session) => session.parentID === id)
   }
 
   const [estimate] = createResource(

@@ -62,6 +62,8 @@ export { PluginComposerSlotBridge, PluginThemeConfigBridge, PluginTextInteractio
 export { PluginErrorBoundary } from "./components/plugin-error-boundary"
 export { initDevReload } from "./dev-reload"
 export { PluginHostProvider, usePluginHost, type PluginUIStatus, type PluginUIError } from "./host"
+export { SlotOutlet } from "./slot-outlet"
+export { pluginSlots, type SlotEntry, type SlotRegistry } from "./slot-registry"
 export { PluginRouteScope } from "./route-scope"
 export { resolvePluginScopeKey } from "./scope-key"
 export { fetchUIContributions } from "./api"

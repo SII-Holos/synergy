@@ -1,51 +1,38 @@
 import { ErrorBoundary, For, Show, createEffect, createMemo, createSignal, onCleanup, type Component } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import type { ComposerDocumentController } from "@/components/prompt-input/composer-document"
+import { SlotRegistry, type SlotEntryBase } from "../slot-registry"
 
 export interface ComposerExtensionProps {
   controller: ComposerDocumentController
   sessionId?: string
 }
 
-export interface ComposerExtensionEntry {
-  id: string
-  order: number
-  pluginId: string
-  loader: () => Promise<{ default: Component<ComposerExtensionProps> }>
+export interface ComposerExtensionEntry extends SlotEntryBase {
+  slot: "composer.extension"
+  loader?: () => Promise<{ default: Component<ComposerExtensionProps> }>
 }
 
-const entries: ComposerExtensionEntry[] = []
-const listeners = new Set<() => void>()
-
-function notify() {
-  for (const listener of listeners) listener()
-}
+/** Composer extension entries, grouped via the shared slot registry. */
+const registry = new SlotRegistry<ComposerExtensionEntry>()
 
 export function registerComposerExtension(entry: ComposerExtensionEntry): () => void {
-  if (entries.some((candidate) => candidate.id === entry.id))
-    throw new Error(`Duplicate composer extension ${entry.id}`)
-  entries.push(entry)
-  notify()
-  return () => {
-    const index = entries.indexOf(entry)
-    if (index < 0) return
-    entries.splice(index, 1)
-    notify()
-  }
+  return registry.register(entry)
 }
 
 function subscribe(listener: () => void) {
-  listeners.add(listener)
-  return () => listeners.delete(listener)
+  return registry.subscribe(listener)
 }
 
 function EntryView(props: { entry: ComposerExtensionEntry; outlet: ComposerExtensionProps }) {
   const [component, setComponent] = createSignal<Component<ComposerExtensionProps>>()
   createEffect(() => {
     let disposed = false
-    void props.entry.loader().then(
+    const loader = props.entry.loader
+    if (!loader) return
+    void loader().then(
       (value) => {
-        if (!disposed) setComponent(() => value.default)
+        if (!disposed) setComponent(() => value.default as Component<ComposerExtensionProps>)
       },
       () => {
         if (!disposed) setComponent()
@@ -71,7 +58,7 @@ export function ComposerExtensionOutlet(props: ComposerExtensionProps) {
   onCleanup(subscribe(() => setVersion((value) => value + 1)))
   const ordered = createMemo(() => {
     version()
-    return entries.toSorted((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+    return registry.list("composer.extension")
   })
   return <For each={ordered()}>{(entry) => <EntryView entry={entry} outlet={props} />}</For>
 }

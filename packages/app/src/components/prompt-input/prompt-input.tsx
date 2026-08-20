@@ -38,6 +38,7 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { LatticeConfigDialog, type LatticeEnableConfig } from "@/components/lattice/lattice-config-dialog"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { useParams } from "@solidjs/router"
+import { useSessionDataView } from "@/context/session-data-view"
 import { useSync } from "@/context/sync"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
@@ -176,6 +177,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const workflowDialog = useDialog()
   const globalSync = useGlobalSync()
   const sync = useSync()
+  const view = useSessionDataView()
   const input = useInput()
   const local = useLocal()
   const files = useFile()
@@ -210,7 +212,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const sendShortcut = createMemo(() => input.sendShortcut())
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const activeWorkflow = createMemo(() => (params.id ? info()?.workflow : undefined))
-  const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
+  const status = createMemo(() => view().statusFor(params.id ?? "") ?? idle)
   const working = createMemo(() => status()?.type !== "idle")
   const [pendingPlan, setPendingPlan] = createSignal(false)
   const [pendingLattice, setPendingLattice] = createSignal<{
@@ -620,7 +622,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const equipPlanBlueprintOffer = async () => {
     const sessionID = params.id
-    const offer = sessionID ? untrack(() => sync.data.planBlueprintOffer[sessionID]?.offer) : undefined
+    const offer = sessionID ? untrack(() => view().planBlueprintOfferFor(sessionID)?.offer) : undefined
     if (!offer || !sessionID) return
     if (working()) {
       showToast({
@@ -875,7 +877,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const sessionHasMessages = createMemo(() => {
     if (!params.id) return false
-    return (sync.data.message[params.id] ?? []).length > 0
+    return view().messagesFor(params.id).length > 0
   })
 
   const addMenuSections = createMemo<PromptAddMenuSection[]>(() => {
@@ -1100,7 +1102,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const planBlueprintOfferState = createMemo(() =>
     params.id
-      ? (sync.data.planBlueprintOffer[params.id] ?? emptyPlanBlueprintOfferState)
+      ? (view().planBlueprintOfferFor(params.id) ?? emptyPlanBlueprintOfferState)
       : emptyPlanBlueprintOfferState,
   )
 
@@ -1146,12 +1148,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const activePermissionMode = createMemo(() => permissionModeVisual(selectedControlProfile()))
   const assistantMessages = createMemo(() => {
     if (!params.id) return [] as Message[]
-    return (sync.data.message[params.id] ?? []).filter((message) => message.role === "assistant") as Message[]
+    return view()
+      .messagesFor(params.id)
+      .filter((message) => message.role === "assistant") as Message[]
   })
   const cortexRunning = createMemo(() => {
     const id = params.id
     if (!id) return 0
-    return sync.data.cortex.filter((task) => task.parentSessionID === id && task.status === "running").length
+    return view()
+      .cortexTasks()
+      .filter((task) => task.parentSessionID === id && task.status === "running").length
   })
   const agentName = createMemo(() => {
     const latestAssistant = assistantMessages().at(-1)
