@@ -374,6 +374,7 @@ Loaded message and part buckets are memory-bounded independently of session meta
 - the global LRU spans Scope/session bucket keys;
 - at most 15 session buckets are retained;
 - the actively viewed session is protected even if it is the oldest;
+- board panes get no eviction protection: they enter the normal load path when the board is mounted (touching their bucket, which keeps them near the LRU head) and refill from the loader after eviction, so a board pane can never silently show a blanked timeline;
 - eviction removes that session's message array, all parts owned by those messages, the session's `messageWindow` metadata, and its latest Context projection;
 - revisiting an evicted session reloads it through normal message page sync.
 

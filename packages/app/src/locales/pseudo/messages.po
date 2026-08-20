@@ -2848,6 +2848,154 @@ msgstr ""
 msgid "app.home.start"
 msgstr ""
 
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.addPane"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.addPaneHint"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.aria.layout"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.agent"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.defaultAgent"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.permission"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.workflow"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.dragReorder"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.empty"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.emptyHint"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.focus.resizeRail"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.follow"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.columns"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.layoutLabel"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.rows"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.layout.focus"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.layout.grid"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.loadError"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.loading"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.openSession"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pinPane"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pinToReorderHint"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.retry"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.sendFailed"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.sendPlaceholder"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.busy"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.idle"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.recovering"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.retry"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.title"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unavailable"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unfollow"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unpinPane"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.boss"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.lattice"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.none"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.plan"
+msgstr ""
+
 #. js-lingui-explicit-id
 msgid "app.lattice.config.arm"
 msgstr ""
@@ -5890,6 +6038,10 @@ msgid "app.plugin.builtin.agenda"
 msgstr ""
 
 #. ── Plugin builtin navigation ─────────────────────────────────────────────────
+msgid "app.plugin.builtin.kanban"
+msgstr ""
+
+#. ── Plugin builtin navigation ─────────────────────────────────────────────────
 msgid "app.plugin.builtin.library"
 msgstr ""
 
@@ -7095,6 +7247,10 @@ msgstr ""
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.tool.browser"
+msgstr ""
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.tool.kanban"
 msgstr ""
 
 #. ── App Shell ────────────────────────────────────────────────────────────────

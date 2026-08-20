@@ -2848,6 +2848,154 @@ msgstr "智能体切换失败"
 msgid "app.home.start"
 msgstr "开始"
 
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.addPane"
+msgstr "添加会话"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.addPaneHint"
+msgstr "选择一个会话固定到看板"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.aria.layout"
+msgstr "看板布局"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.agent"
+msgstr "智能体"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.defaultAgent"
+msgstr "默认智能体"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.permission"
+msgstr "权限"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.workflow"
+msgstr "模式"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.dragReorder"
+msgstr "拖动以调整固定会话顺序"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.empty"
+msgstr "看板上没有会话"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.emptyHint"
+msgstr "会话会按最近顺序自动出现在这里。从侧边栏拖入会话即可固定。"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.focus.resizeRail"
+msgstr "调整面板宽度"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.follow"
+msgstr "跟随最新"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.columns"
+msgstr "列数"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.layoutLabel"
+msgstr "网格布局"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.rows"
+msgstr "行数"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.layout.focus"
+msgstr "焦点"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.layout.grid"
+msgstr "网格"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.loadError"
+msgstr "消息加载失败"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.loading"
+msgstr "加载中…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.openSession"
+msgstr "打开会话"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pinPane"
+msgstr "固定"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pinToReorderHint"
+msgstr "先固定此会话才能调整顺序"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.retry"
+msgstr "重试"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.sendFailed"
+msgstr "发送消息失败"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.sendPlaceholder"
+msgstr "向此会话发送消息…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.busy"
+msgstr "工作中…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.idle"
+msgstr "空闲"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.recovering"
+msgstr "恢复中…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.retry"
+msgstr "重试中…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.title"
+msgstr "看板"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unavailable"
+msgstr "会话已不可用"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unfollow"
+msgstr "已暂停"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unpinPane"
+msgstr "取消固定"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.boss"
+msgstr "Boss"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.lattice"
+msgstr "Lattice"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.none"
+msgstr "默认"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.plan"
+msgstr "Plan"
+
 #. js-lingui-explicit-id
 msgid "app.lattice.config.arm"
 msgstr "在本条消息中启用 Lattice"
@@ -5890,6 +6038,10 @@ msgid "app.plugin.builtin.agenda"
 msgstr "日程"
 
 #. ── Plugin builtin navigation ─────────────────────────────────────────────────
+msgid "app.plugin.builtin.kanban"
+msgstr "看板"
+
+#. ── Plugin builtin navigation ─────────────────────────────────────────────────
 msgid "app.plugin.builtin.library"
 msgstr "知识库"
 
@@ -7096,6 +7248,10 @@ msgstr "日程"
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.tool.browser"
 msgstr "浏览器"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.tool.kanban"
+msgstr "看板"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.tool.library"

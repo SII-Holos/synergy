@@ -2848,6 +2848,154 @@ msgstr "Agent switch failed"
 msgid "app.home.start"
 msgstr "Start"
 
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.addPane"
+msgstr "Add session"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.addPaneHint"
+msgstr "Pick a session to pin to the board"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.aria.layout"
+msgstr "Board layout"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.agent"
+msgstr "Agent"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.defaultAgent"
+msgstr "Default agent"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.permission"
+msgstr "Permission"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.workflow"
+msgstr "Mode"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.dragReorder"
+msgstr "Drag to reorder pinned sessions"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.empty"
+msgstr "No sessions on the board"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.emptyHint"
+msgstr "Sessions appear here in your recent order. Drag a session from the sidebar to pin it."
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.focus.resizeRail"
+msgstr "Resize panel"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.follow"
+msgstr "Follow latest"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.columns"
+msgstr "Columns"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.layoutLabel"
+msgstr "Grid layout"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.rows"
+msgstr "Rows"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.layout.focus"
+msgstr "Focus"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.layout.grid"
+msgstr "Grid"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.loadError"
+msgstr "Failed to load messages"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.loading"
+msgstr "Loading…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.openSession"
+msgstr "Open session"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pinPane"
+msgstr "Pin"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pinToReorderHint"
+msgstr "Pin this session to reorder it"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.retry"
+msgstr "Retry"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.sendFailed"
+msgstr "Failed to send message"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.sendPlaceholder"
+msgstr "Message this session…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.busy"
+msgstr "Working…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.idle"
+msgstr "Idle"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.recovering"
+msgstr "Recovering…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.retry"
+msgstr "Retrying…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.title"
+msgstr "Kanban"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unavailable"
+msgstr "Session no longer available"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unfollow"
+msgstr "Paused"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unpinPane"
+msgstr "Unpin"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.boss"
+msgstr "Boss"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.lattice"
+msgstr "Lattice"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.none"
+msgstr "Default"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.plan"
+msgstr "Plan"
+
 #. js-lingui-explicit-id
 msgid "app.lattice.config.arm"
 msgstr "Arm Lattice for this message"
@@ -5890,6 +6038,10 @@ msgid "app.plugin.builtin.agenda"
 msgstr "Agenda"
 
 #. ── Plugin builtin navigation ─────────────────────────────────────────────────
+msgid "app.plugin.builtin.kanban"
+msgstr "Kanban"
+
+#. ── Plugin builtin navigation ─────────────────────────────────────────────────
 msgid "app.plugin.builtin.library"
 msgstr "Library"
 
@@ -7096,6 +7248,10 @@ msgstr "Agenda"
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.tool.browser"
 msgstr "Browser"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.tool.kanban"
+msgstr "Kanban"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.tool.library"
