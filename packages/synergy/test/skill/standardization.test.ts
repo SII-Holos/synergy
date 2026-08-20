@@ -89,6 +89,143 @@ describe.serial("skill standardization", () => {
     expect(result.value).not.toHaveProperty("permission")
   })
 
+  test.each([
+    { label: "inline list", fields: "allowed-tools: [Read, Write]\n" },
+    { label: "block list", fields: "allowed-tools:\n  - Read\n  - Write\n" },
+  ])("accepts allowed-tools as a YAML $label in strict mode without diagnostics", async ({ fields }) => {
+    await using tmp = await tmpdir()
+    await writeSkill(tmp.path, "allowed-tools-list", { name: "allowed-tools-list", fields })
+
+    const result = await SkillManifest.normalizeFile({
+      entryFile: path.join(tmp.path, "allowed-tools-list", "SKILL.md"),
+      source: "synergy",
+      mode: "strict",
+    })
+    expect(result.diagnostics).toEqual([])
+    expect(result.value).toMatchObject({ name: "allowed-tools-list", invocation: { user: true, model: true } })
+    expect(result.value).not.toHaveProperty("allowed-tools")
+  })
+
+  test("accepts allowed-tools as a YAML list in lenient mode without diagnostics", async () => {
+    await using tmp = await tmpdir()
+    await writeSkill(tmp.path, "allowed-tools-lenient", {
+      name: "allowed-tools-lenient",
+      fields: "allowed-tools:\n  - Read\n  - Write\n",
+    })
+
+    const result = await SkillManifest.normalizeFile({
+      entryFile: path.join(tmp.path, "allowed-tools-lenient", "SKILL.md"),
+      source: "claude",
+      mode: "lenient",
+    })
+    expect(result.diagnostics).toEqual([])
+    expect(result.value).toMatchObject({ name: "allowed-tools-lenient" })
+  })
+
+  test("names the offending field when allowed-tools has the wrong type", async () => {
+    await using tmp = await tmpdir()
+    await writeSkill(tmp.path, "allowed-tools-typed", { name: "allowed-tools-typed", fields: "allowed-tools: 42\n" })
+
+    const result = await SkillManifest.normalizeFile({
+      entryFile: path.join(tmp.path, "allowed-tools-typed", "SKILL.md"),
+      source: "synergy",
+      mode: "strict",
+    })
+    expect(result.value).toBeUndefined()
+    expect(result.diagnostics[0]?.code).toBe("skill.manifest_invalid")
+    expect(result.diagnostics[0]?.message).toContain("'allowed-tools'")
+    expect(result.diagnostics[0]?.message).toContain("expected string or array")
+    expect(result.diagnostics[0]?.message).toContain("received number")
+    expect(result.diagnostics[0]?.reason).toMatchObject({ kind: "invalid_union", received: "number" })
+  })
+
+  test("union diagnostics keep the full expected set for mixed element errors", async () => {
+    await using tmp = await tmpdir()
+    await writeSkill(tmp.path, "allowed-tools-mixed", {
+      name: "allowed-tools-mixed",
+      fields: "allowed-tools: [Read, 42]\n",
+    })
+
+    const result = await SkillManifest.normalizeFile({
+      entryFile: path.join(tmp.path, "allowed-tools-mixed", "SKILL.md"),
+      source: "synergy",
+      mode: "strict",
+    })
+    expect(result.value).toBeUndefined()
+    expect(result.diagnostics[0]?.message).toContain("expected string or array")
+    expect(result.diagnostics[0]?.message).toContain("received array")
+  })
+
+  test("names unknown fields in strict manifest diagnostics", async () => {
+    await using tmp = await tmpdir()
+    await writeSkill(tmp.path, "unknown-field", { name: "unknown-field", fields: "vendor-field: value\n" })
+
+    const result = await SkillManifest.normalizeFile({
+      entryFile: path.join(tmp.path, "unknown-field", "SKILL.md"),
+      source: "synergy",
+      mode: "strict",
+    })
+    expect(result.value).toBeUndefined()
+    expect(result.diagnostics[0]?.code).toBe("skill.manifest_invalid")
+    expect(result.diagnostics[0]?.message).toContain("vendor-field")
+  })
+
+  test("frontmatter_parse_failed names the field and suggests quoting", async () => {
+    await using tmp = await tmpdir()
+    await writeSkill(tmp.path, "broken-yaml", { name: "broken-yaml", description: "bad: yaml" })
+
+    const result = await SkillManifest.normalizeFile({
+      entryFile: path.join(tmp.path, "broken-yaml", "SKILL.md"),
+      source: "synergy",
+      mode: "strict",
+    })
+    expect(result.value).toBeUndefined()
+    expect(result.diagnostics[0]?.code).toBe("skill.frontmatter_parse_failed")
+    expect(result.diagnostics[0]?.message).toContain("'description'")
+    expect(result.diagnostics[0]?.message).toContain("quote")
+  })
+
+  test("frontmatter_parse_failed reports one-based line/column in reason", async () => {
+    await using tmp = await tmpdir()
+    await writeSkill(tmp.path, "broken-yaml", { name: "broken-yaml", description: "bad: yaml" })
+
+    const result = await SkillManifest.normalizeFile({
+      entryFile: path.join(tmp.path, "broken-yaml", "SKILL.md"),
+      source: "synergy",
+      mode: "strict",
+    })
+    expect(result.diagnostics[0]?.reason).toMatchObject({ line: 3, column: 17 })
+  })
+
+  test("frontmatter_parse_failed omits the quoting tip for non-colon syntax errors", async () => {
+    await using tmp = await tmpdir()
+    await Bun.write(
+      path.join(tmp.path, "bad-indent", "SKILL.md"),
+      "---\nname: bad-indent\ndescription: d\n  indented-bad: y\n---\n",
+    )
+
+    const result = await SkillManifest.normalizeFile({
+      entryFile: path.join(tmp.path, "bad-indent", "SKILL.md"),
+      source: "synergy",
+      mode: "strict",
+    })
+    expect(result.diagnostics[0]?.code).toBe("skill.frontmatter_parse_failed")
+    expect(result.diagnostics[0]?.message).toContain("'indented-bad'")
+    expect(result.diagnostics[0]?.message).not.toContain("quote")
+    expect(result.diagnostics[0]?.reason).toMatchObject({ line: 4, column: 15 })
+  })
+
+  test("keeps reporting frontmatter_parse_failed across repeated parses of the same broken file", async () => {
+    await using tmp = await tmpdir()
+    await writeSkill(tmp.path, "repeat-broken", { name: "repeat-broken", description: "bad: yaml" })
+    const entryFile = path.join(tmp.path, "repeat-broken", "SKILL.md")
+
+    const first = await SkillManifest.normalizeFile({ entryFile, source: "synergy", mode: "strict" })
+    const second = await SkillManifest.normalizeFile({ entryFile, source: "synergy", mode: "strict" })
+    expect(first.diagnostics[0]?.code).toBe("skill.frontmatter_parse_failed")
+    expect(second.diagnostics[0]?.code).toBe("skill.frontmatter_parse_failed")
+  })
+
   test("accepts standard Agent Skills vendor fields in strict manifests without diagnostics", async () => {
     await using tmp = await tmpdir()
     const entryFile = path.join(tmp.path, "vendor-fields", "SKILL.md")
