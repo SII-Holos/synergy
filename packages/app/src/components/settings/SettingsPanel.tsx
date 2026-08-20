@@ -100,6 +100,7 @@ import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
 import { filterSettingsSections, SETTINGS_DEVELOPER_MODE_STORAGE_KEY } from "./settings-visibility"
 import { SaveIndicator } from "./components/SaveIndicator"
 import { canUseConfigFileOpen, configFileOpenFailure } from "./config-file-open-model"
+import { createDesktopZoomController } from "./desktop-zoom-model"
 import { localizeSettingsSection, settingsSectionGroupKey } from "./settings-section-copy"
 import {
   canRefreshChannelAccount,
@@ -341,6 +342,17 @@ export function SettingsPanel(props: SettingsPanelProps) {
     if (!platform.desktopZoom) return undefined
     return platform.desktopZoom.get().catch(() => undefined)
   })
+  const desktopZoomController = createDesktopZoomController({
+    bridge: platform.desktopZoom,
+    onApplied: (factor) => setDesktopZoomSaved(factor),
+    onFailure: (error) => {
+      showToast({
+        type: "error",
+        title: _(copy.zoomSaveFailed),
+        description: requestErrorMessage(error),
+      })
+    },
+  })
 
   const canOpenConfigFiles = createMemo(() => canUseConfigFileOpen(platform, desktopServerStatus()))
 
@@ -503,8 +515,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
   // Zoom is applied instantly and persisted by the desktop bridge, so
   // re-read the live value on discard and after an explicit save to keep
   // the slider in sync with the actually applied zoom factor.
-  async function restoreInstantZoom() {
-    if (platform.desktopZoom) setDesktopZoomSaved(await platform.desktopZoom.get().catch(() => undefined))
+  function restoreInstantZoom() {
+    void desktopZoomController.restore()
   }
 
   const serverPatch = createMemo<Record<string, unknown>>(() => {
@@ -705,18 +717,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     setDesktopUpdateDraft(mode === saved ? undefined : mode)
   }
   function applyDesktopZoomFactor(factor: number) {
-    const bridge = platform.desktopZoom
-    if (!bridge) return
-    void bridge
-      .set(factor)
-      .then((applied) => setDesktopZoomSaved(applied))
-      .catch((error) => {
-        showToast({
-          type: "error",
-          title: _(copy.zoomSaveFailed),
-          description: requestErrorMessage(error),
-        })
-      })
+    desktopZoomController.apply(factor)
   }
 
   const saveFooterStatus = createMemo(() =>
