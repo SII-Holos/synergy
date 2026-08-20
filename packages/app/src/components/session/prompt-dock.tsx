@@ -6,6 +6,7 @@ import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { PromptInput } from "@/components/prompt-input"
 import { StatusBar } from "@/components/status-bar"
 import { NewSessionGreeting } from "./session-new-view"
+import { SlotOutlet } from "@/plugin/slot-outlet"
 import { QuestionPrompt } from "./question-prompt"
 import { PermissionDock } from "./permission-dock"
 import { SessionInbox } from "./session-inbox"
@@ -13,6 +14,7 @@ import { SubagentSessionFooter } from "./subagent-session-footer"
 import { type SessionMeta } from "@/composables/use-session-meta"
 import type { SessionNavigationIntent } from "@/composables/use-navigate-to-session"
 import type { usePrompt } from "@/context/prompt"
+import { useSessionDataView } from "@/context/session-data-view"
 import type { useSync } from "@/context/sync"
 import type { useSDK } from "@/context/sdk"
 import type { NewSessionWorkspaceSelection } from "./worktree-session"
@@ -62,6 +64,7 @@ export function PromptDock(props: {
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const nav = useNavigate()
+  const view = useSessionDataView()
   const meta = createMemo(() => props.meta())
   const backToParentID = createMemo(() => promptDockBackToParentID(meta()))
   const forkSourceID = createMemo(() => promptDockForkSourceID(meta(), props.forkedFromID))
@@ -96,6 +99,7 @@ export function PromptDock(props: {
         </Show>
         <Show when={props.isNewSession()}>
           <NewSessionGreeting />
+          <SlotOutlet slot="session.empty" session={Boolean(props.sessionID)} />
         </Show>
         <Show
           when={props.prompt.ready()}
@@ -112,7 +116,7 @@ export function PromptDock(props: {
                 <Show when={props.sessionID}>
                   <PermissionDock sessionID={props.sessionID!} />
                 </Show>
-                <Show when={props.sessionID ? props.sync.data.question[props.sessionID]?.[0] : undefined}>
+                <Show when={props.sessionID ? view().questionsFor(props.sessionID)[0] : undefined}>
                   {(request) => (
                     <div class="mb-3">
                       <QuestionPrompt request={request()} />

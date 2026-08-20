@@ -527,6 +527,11 @@ msgstr "Timezone (optional)"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.agenda.form.unsupportedTriggers"
+msgstr "This item has triggers the form can't edit (e.g. session, webhook, watch). They are preserved on save."
+
+#. Runtime Lingui descriptors for agenda host labels and wrappers.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.interval.days"
 msgstr "days"
 
@@ -2843,6 +2848,154 @@ msgstr "Agent switch failed"
 msgid "app.home.start"
 msgstr "Start"
 
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.addPane"
+msgstr "Add session"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.addPaneHint"
+msgstr "Pick a session to pin to the board"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.aria.layout"
+msgstr "Board layout"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.agent"
+msgstr "Agent"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.defaultAgent"
+msgstr "Default agent"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.permission"
+msgstr "Permission"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.workflow"
+msgstr "Mode"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.dragReorder"
+msgstr "Drag to reorder pinned sessions"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.empty"
+msgstr "No sessions on the board"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.emptyHint"
+msgstr "Sessions appear here in your recent order. Drag a session from the sidebar to pin it."
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.focus.resizeRail"
+msgstr "Resize panel"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.follow"
+msgstr "Follow latest"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.columns"
+msgstr "Columns"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.layoutLabel"
+msgstr "Grid layout"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.rows"
+msgstr "Rows"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.layout.focus"
+msgstr "Focus"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.layout.grid"
+msgstr "Grid"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.loadError"
+msgstr "Failed to load messages"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.loading"
+msgstr "Loading…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.openSession"
+msgstr "Open session"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pinPane"
+msgstr "Pin"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pinToReorderHint"
+msgstr "Pin this session to reorder it"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.retry"
+msgstr "Retry"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.sendFailed"
+msgstr "Failed to send message"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.sendPlaceholder"
+msgstr "Message this session…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.busy"
+msgstr "Working…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.idle"
+msgstr "Idle"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.recovering"
+msgstr "Recovering…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.retry"
+msgstr "Retrying…"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.title"
+msgstr "Kanban"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unavailable"
+msgstr "Session no longer available"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unfollow"
+msgstr "Paused"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unpinPane"
+msgstr "Unpin"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.boss"
+msgstr "Boss"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.lattice"
+msgstr "Lattice"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.none"
+msgstr "Default"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.plan"
+msgstr "Plan"
+
 #. js-lingui-explicit-id
 msgid "app.lattice.config.arm"
 msgstr "Arm Lattice for this message"
@@ -3945,8 +4098,28 @@ msgid "app.library.skills.detail.skillPath"
 msgstr "Skill path"
 
 #. js-lingui-explicit-id
-msgid "app.library.skills.diagnostics.count"
-msgstr "{count} skill{plural} skipped during load"
+msgid "app.library.skills.diagnostics.compat"
+msgstr "{count, plural, one {# compatibility notice} other {# compatibility notices}}"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.compatGroup"
+msgstr "Compatibility notices"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.failed"
+msgstr "{count, plural, one {# skill failed to load} other {# skills failed to load}}"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.failedGroup"
+msgstr "Failed to load"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.shadowed"
+msgstr "{count, plural, one {# skill shadowed} other {# skills shadowed}}"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.shadowedGroup"
+msgstr "Shadowed"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.empty.hint"
@@ -5865,6 +6038,10 @@ msgid "app.plugin.builtin.agenda"
 msgstr "Agenda"
 
 #. ── Plugin builtin navigation ─────────────────────────────────────────────────
+msgid "app.plugin.builtin.kanban"
+msgstr "Kanban"
+
+#. ── Plugin builtin navigation ─────────────────────────────────────────────────
 msgid "app.plugin.builtin.library"
 msgstr "Library"
 
@@ -6932,6 +7109,21 @@ msgstr "{count} Files Changed"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.fork.failed"
+msgstr "Fork failed"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.forked"
+msgstr "Session forked"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.forked.desc"
+msgstr "Forked the conversation up to this message."
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.session.history.loadEarlierFailed"
 msgstr "Couldn’t load earlier messages"
 
@@ -7056,6 +7248,10 @@ msgstr "Agenda"
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.tool.browser"
 msgstr "Browser"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.tool.kanban"
+msgstr "Kanban"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.tool.library"
@@ -11581,6 +11777,10 @@ msgid "session-turn.copy-markdown"
 msgstr "Copy Markdown"
 
 #. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.fork-message"
+msgstr "Fork session from this message"
+
+#. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.model-unavailable"
 msgstr "Model {modelID} is unavailable from {providerID}. Choose another model to continue."
 
@@ -11729,6 +11929,12 @@ msgstr "Every {duration}"
  *  Call sites spread in `values` when the message contains ICU placeholders.
 msgid "session.agenda.wake.trigger.pending"
 msgstr "Pending"
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.wake.trigger.session"
+msgstr "On session turn"
 
 #. Runtime translation descriptors for all wake-indicator UI strings.
  *  Each is a base MessageDescriptor with `id` + English `message`.
@@ -14245,6 +14451,34 @@ msgid "settings.catalog.sandbox.searchTerms"
 msgstr "sandbox | isolation | fallback"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.skills.description"
+msgstr "Skill discovery compatibility with other agent tools."
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.label"
+msgstr "Skills"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.agents"
+msgstr "Agent Skills"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.claude"
+msgstr "Claude Code"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.codex"
+msgstr "Codex"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.openclaw"
+msgstr "OpenClaw"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.searchTerms"
+msgstr "skill | skills | claude | codex | openclaw | agents | compatibility"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.synergyLink.description"
 msgstr "Persisted remote Synergy targets, authorization, and observed host details."
 
@@ -16629,6 +16863,14 @@ msgid "settings.panel.section.unavailable"
 msgstr "{label} is not available"
 
 #. js-lingui-explicit-id
+msgid "settings.panel.theme.saveFailed"
+msgstr "Theme change could not be saved"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.zoom.saveFailed"
+msgstr "Interface zoom could not be saved"
+
+#. js-lingui-explicit-id
 msgid "settings.pathRow.copied"
 msgstr "Copied"
 
@@ -17599,6 +17841,54 @@ msgstr "Saved {label}"
 #. js-lingui-explicit-id
 msgid "settings.save.unsaved"
 msgstr "Unsaved"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.agents.desc"
+msgstr "Load Agent Skills from .agents/skills directories (default: on)."
+
+#. js-lingui-explicit-id
+msgid "settings.skills.agents.title"
+msgstr "Agent Skills"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.claude.desc"
+msgstr "Load Claude Code skills from .claude/skills directories (default: on)."
+
+#. js-lingui-explicit-id
+msgid "settings.skills.claude.title"
+msgstr "Claude Code"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.codex.desc"
+msgstr "Load Codex skills from .codex/skills directories (default: on)."
+
+#. js-lingui-explicit-id
+msgid "settings.skills.codex.title"
+msgstr "Codex"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.openclaw.desc"
+msgstr "Load OpenClaw skills from .openclaw/skills and workspace skills directories (default: on)."
+
+#. js-lingui-explicit-id
+msgid "settings.skills.openclaw.title"
+msgstr "OpenClaw"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.page.desc"
+msgstr "Choose which other agent tools Synergy discovers skills from."
+
+#. js-lingui-explicit-id
+msgid "settings.skills.page.title"
+msgstr "Skills"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.row.count"
+msgstr "{count, plural, one {# skill} other {# skills}}"
+
+#. js-lingui-explicit-id
+msgid "settings.skills.section.title"
+msgstr "Compatibility"
 
 #. js-lingui-explicit-id
 msgid "settings.stepScale.custom"

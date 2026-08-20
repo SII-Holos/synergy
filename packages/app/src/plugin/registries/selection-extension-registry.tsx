@@ -10,37 +10,22 @@ import {
   type Component,
 } from "solid-js"
 import { Dynamic } from "solid-js/web"
+import { SlotRegistry, type SlotEntryBase } from "../slot-registry"
 
-export interface SelectionExtensionEntry {
-  id: string
-  order: number
-  pluginId: string
-  loader: () => Promise<{ default: Component<object> }>
+export interface SelectionExtensionEntry extends SlotEntryBase {
+  slot: "selection.extension"
+  loader?: () => Promise<{ default: Component<object> }>
 }
 
-const entries: SelectionExtensionEntry[] = []
-const listeners = new Set<() => void>()
+/** Selection extension entries, grouped via the shared slot registry. */
+const registry = new SlotRegistry<SelectionExtensionEntry>()
 
-function notify() {
-  for (const listener of listeners) listener()
+export function registerSelectionExtension(entry: SelectionExtensionEntry): () => void {
+  return registry.register(entry)
 }
 
 function subscribe(listener: () => void) {
-  listeners.add(listener)
-  return () => listeners.delete(listener)
-}
-
-export function registerSelectionExtension(entry: SelectionExtensionEntry) {
-  if (entries.some((candidate) => candidate.id === entry.id))
-    throw new Error(`Duplicate selection extension ${entry.id}`)
-  entries.push(entry)
-  notify()
-  return () => {
-    const index = entries.indexOf(entry)
-    if (index < 0) return
-    entries.splice(index, 1)
-    notify()
-  }
+  return registry.subscribe(listener)
 }
 
 function EntryView(props: { entry: SelectionExtensionEntry; mountKey: string }) {
@@ -48,11 +33,13 @@ function EntryView(props: { entry: SelectionExtensionEntry; mountKey: string }) 
   createEffect(() => {
     props.mountKey
     let disposed = false
-    void props.entry.loader().then(
+    const loader = props.entry.loader
+    if (!loader) return
+    void loader().then(
       (value) => {
         if (!disposed) {
-          const Loaded = value.default
-          setComponent(() => (props) => createComponent(Loaded, props))
+          const Loaded = value.default as Component<object>
+          setComponent(() => (props: object) => createComponent(Loaded, props))
         }
       },
       () => {
@@ -79,7 +66,7 @@ export function SelectionExtensionOutlet(props: { mountKey: string }) {
   onCleanup(subscribe(() => setVersion((value) => value + 1)))
   const ordered = createMemo(() => {
     version()
-    return entries.toSorted((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+    return registry.list("selection.extension")
   })
   return <For each={ordered()}>{(entry) => <EntryView entry={entry} mountKey={props.mountKey} />}</For>
 }

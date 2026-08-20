@@ -6,6 +6,7 @@ import { AgendaWebhook } from "./webhook"
 import { AgendaTypes } from "./types"
 import { Log } from "../util/log"
 import { AgendaSessionWakeup } from "./session-wakeup"
+import { AgendaSessionTrigger } from "./session-trigger"
 
 export { AgendaTypes } from "./types"
 export { AgendaEvent } from "./event"
@@ -16,6 +17,7 @@ export { AgendaDelivery } from "./delivery"
 export { AgendaWatcher } from "./watcher"
 export { AgendaWebhook } from "./webhook"
 export { AgendaBootstrap } from "./bootstrap"
+export { AgendaSessionTrigger } from "./session-trigger"
 
 const log = Log.create({ service: "agenda" })
 
@@ -36,6 +38,12 @@ export namespace Agenda {
           teardownItem(itemID)
         } else {
           AgendaClock.rearm(scopeID, itemID, result.nextRunAt)
+          // One-shot session triggers auto-complete in updateRunState; drop
+          // their registration so later turns don't keep re-reading a done item.
+          if (signal.type === "session") {
+            const stored = await AgendaStore.get(scopeID, itemID).catch(() => undefined)
+            if (stored && stored.status !== "active") teardownItem(itemID)
+          }
         }
       } finally {
         inflight.delete(itemID)
@@ -45,10 +53,12 @@ export namespace Agenda {
     AgendaClock.start(handler, items)
     AgendaWatcher.start(handler, items)
     AgendaWebhook.start(handler, items)
+    AgendaSessionTrigger.start(handler, items)
     log.info("agenda started", {
       clock: AgendaClock.active(),
       watcher: AgendaWatcher.active(),
       webhooks: AgendaWebhook.active(),
+      sessionTriggers: AgendaSessionTrigger.active(),
     })
   }
 
@@ -56,6 +66,7 @@ export namespace Agenda {
     AgendaClock.stop()
     AgendaWatcher.stop()
     AgendaWebhook.stop()
+    AgendaSessionTrigger.stop()
     inflight.clear()
     log.info("agenda stopped")
   }
@@ -160,11 +171,14 @@ export namespace Agenda {
     AgendaWatcher.register(item.id, scopeID, item.triggers, { autoDone: item.autoDone })
     AgendaWebhook.unregister(item.id)
     AgendaWebhook.register(item.id, scopeID, item.triggers)
+    AgendaSessionTrigger.unregister(item.id)
+    AgendaSessionTrigger.register(item.id, scopeID, item.triggers)
   }
 
   function teardownItem(itemID: string): void {
     AgendaClock.unload(itemID)
     AgendaWatcher.unregister(itemID)
     AgendaWebhook.unregister(itemID)
+    AgendaSessionTrigger.unregister(itemID)
   }
 }

@@ -11,6 +11,7 @@
     "./pierre/*": "./src/pierre/*.ts",
     "./hooks": "./src/hooks/index.ts",
     "./context": "./src/context/index.ts",
+    "./context/session-data-view": "./src/context/session-data-view.ts",
     "./context/*": "./src/context/*.tsx",
     "./styles": "./src/styles/index.css",
     "./styles/tailwind": "./src/styles/tailwind/index.css",

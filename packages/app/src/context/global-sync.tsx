@@ -882,7 +882,7 @@ function createGlobalSync() {
   async function refreshVolatileAfterResync(scopeKey: string, store: State, setStore: SetStoreFunction<State>) {
     const plan = planSessionVolatileResync({
       scopeKey,
-      activeBucketKey,
+      activeBucketKey: activeBucketKey,
       inboxSessionIDs: Object.keys(store.inbox),
       todoSessionIDs: Object.keys(store.todo),
       dagSessionIDs: Object.keys(store.dag),
@@ -892,42 +892,56 @@ function createGlobalSync() {
       invalidateResource(scopeKey, sessionID, "todo")
       invalidateResource(scopeKey, sessionID, "dag")
     }
+    const activeSessionIDSet = new Set(plan.activeSessionIDs)
     setStore(
       produce((draft) => {
         for (const sessionID of plan.retainedSessionIDs) {
-          if (sessionID === plan.activeSessionID) continue
+          if (activeSessionIDSet.has(sessionID)) continue
           delete draft.inbox[sessionID]
           delete draft.todo[sessionID]
           delete draft.dag[sessionID]
         }
       }),
     )
-    if (!plan.activeSessionID) return
+    if (plan.activeSessionIDs.length === 0) return
 
-    const sessionID = plan.activeSessionID
-    const inboxRequest = captureResourceRequest(scopeKey, sessionID, "inbox")
-    const todoRequest = captureResourceRequest(scopeKey, sessionID, "todo")
-    const dagRequest = captureResourceRequest(scopeKey, sessionID, "dag")
     const sdk = createScopedClient(scopeKey)
-    await sdk.session
+    // Capture freshness tokens before the batch so inbox/todo/DAG events that
+    // arrive while volatileBatch is in flight supersede the older snapshot
+    // instead of being overwritten by it (mirrors the message loader pattern).
+    const sessionRequests = new Map<
+      string,
+      { inbox: SyncResourceRequest; todo: SyncResourceRequest; dag: SyncResourceRequest }
+    >()
+    for (const sessionID of plan.activeSessionIDs) {
+      sessionRequests.set(sessionID, {
+        inbox: captureResourceRequest(scopeKey, sessionID, "inbox"),
+        todo: captureResourceRequest(scopeKey, sessionID, "todo"),
+        dag: captureResourceRequest(scopeKey, sessionID, "dag"),
+      })
+    }
+    const batch = await sdk.session
       .volatileBatch({
         ...scopeRequest(scopeKey),
-        sessionVolatileBatchInput: { sessionIDs: [sessionID] },
+        sessionVolatileBatchInput: { sessionIDs: plan.activeSessionIDs },
       })
-      .then((result) => {
-        const state = result.data?.sessions[sessionID]
-        if (!state) return
-        applyResourceResponse(scopeKey, sessionID, "inbox", inboxRequest, result.response?.headers, () => {
-          setStore("inbox", sessionID, reconcile(state.inbox, { key: "id" }))
-        })
-        applyResourceResponse(scopeKey, sessionID, "todo", todoRequest, result.response?.headers, () => {
-          setStore("todo", sessionID, reconcile(state.todo, { key: "id" }))
-        })
-        applyResourceResponse(scopeKey, sessionID, "dag", dagRequest, result.response?.headers, () => {
-          setStore("dag", sessionID, reconcile(state.dag, { key: "id" }))
-        })
+      .then((result) => ({ sessions: result.data?.sessions, headers: result.response?.headers }))
+      .catch(() => undefined)
+    if (!batch) return
+    for (const sessionID of plan.activeSessionIDs) {
+      const state = batch.sessions?.[sessionID]
+      const requests = sessionRequests.get(sessionID)
+      if (!state || !requests) continue
+      applyResourceResponse(scopeKey, sessionID, "inbox", requests.inbox, batch.headers, () => {
+        setStore("inbox", sessionID, reconcile(state.inbox, { key: "id" }))
       })
-      .catch(() => {})
+      applyResourceResponse(scopeKey, sessionID, "todo", requests.todo, batch.headers, () => {
+        setStore("todo", sessionID, reconcile(state.todo, { key: "id" }))
+      })
+      applyResourceResponse(scopeKey, sessionID, "dag", requests.dag, batch.headers, () => {
+        setStore("dag", sessionID, reconcile(state.dag, { key: "id" }))
+      })
+    }
   }
 
   async function resyncInstance(scopeKey: string): Promise<boolean> {
@@ -987,17 +1001,22 @@ function createGlobalSync() {
   const replayInFlight = new Map<string, Promise<boolean>>()
 
   // LRU eviction of loaded message/part buckets to bound memory as the user
-  // switches between sessions (C7). The actively-viewed session is protected, so
-  // eviction can never blank the current timeline; evicted sessions reload on
-  // next view.
+  // switches between sessions (C7). Only the actively-viewed session is never
+  // evicted, so eviction can never blank the current timeline; evicted buckets
+  // reload on next view. Board panes get no special protection: they enter the
+  // normal load path when the board is mounted (touching their bucket) and
+  // refill from the loader after eviction.
   const MESSAGE_BUCKET_CAP = 15
   const messageLru: string[] = []
   let activeBucketKey: string | undefined
   const bucketKey = (scopeKey: string, sessionID: string) => `${scopeKey}\n${sessionID}`
+  // Bumped whenever a message bucket is actually evicted, so live views that
+  // render several sessions at once (the kanban board) can refetch panes
+  // whose snapshot disappeared while still visible.
+  const [messageEvictionVersion, setMessageEvictionVersion] = createSignal(0)
 
   function evictMessageBuckets() {
-    const protectedIds = new Set<string>()
-    if (activeBucketKey) protectedIds.add(activeBucketKey)
+    const protectedIds = new Set<string>(activeBucketKey ? [activeBucketKey] : [])
     const toEvict = planBucketEviction(messageLru, MESSAGE_BUCKET_CAP, protectedIds)
     if (toEvict.length === 0) return
     const evictSet = new Set(toEvict)
@@ -1022,6 +1041,7 @@ function createGlobalSync() {
     for (let i = messageLru.length - 1; i >= 0; i--) {
       if (evictSet.has(messageLru[i])) messageLru.splice(i, 1)
     }
+    setMessageEvictionVersion((version) => version + 1)
   }
 
   function touchMessageBucket(scopeKey: string, sessionID: string) {
@@ -1904,6 +1924,7 @@ function createGlobalSync() {
     releaseScopeState,
     markActiveSession,
     touchMessageBucket,
+    messageEvictionVersion,
     beginContextProjection: contextProjectionRevision.begin,
     setLatestContextMessage,
     recover,

@@ -2356,6 +2356,10 @@ export class Session extends HeyApiClient {
             type: "before"
             messageID: string
           }
+        | {
+            type: "through"
+            messageID: string
+          }
       workspace?: SessionWorkspaceSelection
       title?: string
       controlProfile?: "guarded" | "autonomous" | "full_access"
@@ -5881,6 +5885,7 @@ export class Domain extends HeyApiClient {
         | "library"
         | "mcp"
         | "plugins"
+        | "skills"
         | "agents"
         | "commands"
         | "permissions"
@@ -5926,6 +5931,7 @@ export class Domain extends HeyApiClient {
         | "library"
         | "mcp"
         | "plugins"
+        | "skills"
         | "agents"
         | "commands"
         | "permissions"
@@ -5978,6 +5984,7 @@ export class Domain extends HeyApiClient {
         | "library"
         | "mcp"
         | "plugins"
+        | "skills"
         | "agents"
         | "commands"
         | "permissions"

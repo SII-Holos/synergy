@@ -17,8 +17,47 @@ Synergy supports two UI paths: host-rendered declarations and user-approved trus
 | `ui.selectionExtension` | headless lifecycle for settled selected text                |
 | `ui.textAction`         | host-rendered action for the selected-text menu             |
 | `ui.messageSlot`        | additive content around canonical messages                  |
+| `ui.slot`               | trusted component in a host-declared surface position       |
 
 The host owns placement, lifecycle, Scope/Session binding, accessibility shell, and disposal. Each registration returns one disposer and is removed before reload.
+
+## Slots
+
+`slot()` contributes a trusted component into a host-declared surface position. The host owns the slot vocabulary: a contribution targeting an undeclared slot is rejected with a contribution error, so the slot list below is the contract.
+
+```ts
+import { definePlugin, slot } from "@ericsanchezok/synergy-plugin"
+
+export default definePlugin({
+  id: "status-widget",
+  version: "1.0.0",
+  description: "Status widget",
+  contributions: [
+    slot({
+      id: "status",
+      slot: "sidebar.footer",
+      label: "Status",
+      component: { source: "./src/ui.tsx" },
+    }),
+  ],
+})
+```
+
+Declared host slots (v1):
+
+| Slot                     | Location                      | Notes                                            |
+| ------------------------ | ----------------------------- | ------------------------------------------------ |
+| `settings.section`       | settings content area         | appended below the active section                |
+| `sidebar.footer`         | sidebar bottom                | below the agent hub                              |
+| `session.header.actions` | session top bar right actions | `when: { session: true }` gates to open sessions |
+| `session.empty`          | empty conversation state      | fallback keeps the built-in empty state          |
+| `app.footer`             | app shell footer              | global footer                                    |
+
+The component receives `PluginSlotSurfaceContext` (the same `PluginSurfaceContext` contract). An optional `when: { session: boolean }` condition hides the entry unless the outlet reports the matching session context; a `session.header.actions` contribution typically sets `when: { session: true }` so it only appears inside an open session.
+
+A slot is a render position, so `component` is required — a contribution without a trusted component is rejected. If a slot's component fails to load or render, the host renders the shared plugin error card in that slot position instead of leaving it blank.
+
+Styling a surface (for example a parchment or brushed-metal footer) is done with the component's own CSS: plugin-kit extracts imported stylesheets into the plugin's `ui/index.css`, the host injects it as a `<link>` on registration, and selectors are namespaced by your own class names — prefix them with the plugin ID to avoid collisions. The theme color contract is not extended for surfaces; colors come from the theme's semantic tokens and surfaces are component-owned.
 
 ## Trusted Components
 

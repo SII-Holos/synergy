@@ -31,6 +31,7 @@ export const BUILTIN_SETTINGS_IDS = [
   "learning",
   "memory",
   "experience",
+  "skills",
   "mcp",
   "channels",
   "email",
@@ -247,6 +248,24 @@ const BUILTIN_SETTINGS_COPY = {
       { id: "settings.catalog.experience.row.similarity", message: "Experience Similarity" },
       { id: "settings.catalog.experience.row.count", message: "Experience Count" },
       { id: "settings.catalog.experience.row.explorationRate", message: "Exploration Rate" },
+    ],
+  },
+  skills: {
+    label: { id: "settings.catalog.skills.label", message: "Skills" },
+    description: {
+      id: "settings.catalog.skills.description",
+      message: "Skill discovery compatibility with other agent tools.",
+    },
+    searchTerms: {
+      id: "settings.catalog.skills.searchTerms",
+      message: "skill | skills | claude | codex | openclaw | agents | compatibility",
+      comment: SEARCH_TERMS_COMMENT,
+    },
+    rowLabels: [
+      { id: "settings.catalog.skills.row.agents", message: "Agent Skills" },
+      { id: "settings.catalog.skills.row.claude", message: "Claude Code" },
+      { id: "settings.catalog.skills.row.codex", message: "Codex" },
+      { id: "settings.catalog.skills.row.openclaw", message: "OpenClaw" },
     ],
   },
   mcp: {
@@ -490,6 +509,7 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
   section("learning", "library", 10, "settings.learning", ["library"]),
   section("memory", "library", 20, "memory.main", ["library", "general"]),
   section("experience", "library", 30, "experience.main", ["library"]),
+  section("skills", "library", 40, "command.rmslop", ["skills"]),
   section("mcp", "integrations", 10, "mcp.main", ["mcp"]),
   section("channels", "integrations", 20, "channels.main", ["channels"]),
   section("email", "integrations", 30, "email.main", ["email"]),

@@ -39,6 +39,7 @@ import { setSessionDragData } from "@/utils/session-drag"
 import { SidebarAttentionNotice } from "./sidebar-attention-notice"
 import { projectMenuPlacement, type ProjectMenuPlacement } from "./project-menu-placement"
 import "./sidebar.css"
+import { SlotOutlet } from "@/plugin/slot-outlet"
 import {
   channelProviderGroups,
   filterGenericScopeWorktrees,
@@ -744,6 +745,8 @@ export function Sidebar(props: SidebarProps) {
 
       {/* Bottom: Agent Hub */}
       <SidebarAgentHub isExpanded={isExpanded()} globalSDK={globalSDK} />
+      {/* Plugin footer slot */}
+      <SlotOutlet slot="sidebar.footer" />
 
       {/* Projects flyout (collapsed mode only) */}
       <Show when={!isExpanded() && projectsFlyoutOpen()}>
@@ -1252,7 +1255,7 @@ function SidebarSessionRow(props: {
         "sb-session-active": props.active,
       }}
       data-session-id={props.entry.id}
-      draggable={true}
+      draggable={props.flyout ? "false" : "true"}
       onDragStart={handleDragStart}
       onClick={props.onClick}
     >

@@ -12,7 +12,7 @@ Plugin API 4 is the stable compatibility baseline. Future Synergy releases keep 
 | Understand the generated `plugin.json` contract                                           | [Generated manifest](manifest.md)                              |
 | Understand capabilities, Host Services, runtime generations, hooks, events, and lifecycle | [Runtime and capabilities](runtime-and-permissions.md)         |
 | Contribute agent-callable tools, delegation, BlueprintLoop, and LightLoop workflows       | [Tools and delegation](tools-and-delegation.md)                |
-| Add workbench, navigation, renderer, settings, theme, or icon contributions               | [UI contributions](ui-contributions.md)                        |
+| Add workbench, navigation, renderer, settings, theme, icon, or slot contributions         | [UI contributions](ui-contributions.md)                        |
 | Browse, publish, install, update, or remove packages                                      | [Marketplace](marketplace.md)                                  |
 | Review trust and operational boundaries                                                   | [Security](security.md)                                        |
 | Look up TypeScript APIs                                                                   | [`packages/plugin` reference](../../packages/plugin/README.md) |

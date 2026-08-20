@@ -5,6 +5,7 @@ import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
+import { useSessionDataView } from "@/context/session-data-view"
 import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
 import { useLocal } from "@/context/local"
@@ -41,12 +42,13 @@ function DeveloperDetails(props: { title: string; children: JSX.Element }) {
 export function ContextWorkbenchContent(_props: WorkbenchPanelContentProps) {
   const params = useParams()
   const sync = useSync()
+  const view = useSessionDataView()
   const sdk = useSDK()
   const local = useLocal()
   const dialog = useDialog()
   const { i18n, fmt } = useLocale()
   const sessionID = createMemo(() => params.id)
-  const messages = createMemo(() => (sessionID() ? (sync.data.message[sessionID()!] ?? []) : []))
+  const messages = createMemo(() => (sessionID() ? view().messagesFor(sessionID()!) : []))
   const session = createMemo(() => (sessionID() ? sync.session.get(sessionID()!) : undefined))
   const providers = createMemo(() =>
     Object.fromEntries(sync.data.provider.all.map((provider) => [provider.id, provider])),
@@ -57,8 +59,8 @@ export function ContextWorkbenchContent(_props: WorkbenchPanelContentProps) {
       messages: messages(),
       latestMessage: sessionID() ? sync.session.latestContextMessage(sessionID()!) : null,
       providers: providers(),
-      status: sessionID() ? sync.data.session_status[sessionID()!] : undefined,
-      pendingItems: sessionID() ? (sync.data.inbox[sessionID()!]?.length ?? 0) : 0,
+      status: sessionID() ? view().statusFor(sessionID()!) : undefined,
+      pendingItems: sessionID() ? view().inboxFor(sessionID()!).length : 0,
       compactRequestPending: isSessionCompactionPending(sessionID()),
       presentation: createContextPanelPresentation(i18n, fmt),
     }),

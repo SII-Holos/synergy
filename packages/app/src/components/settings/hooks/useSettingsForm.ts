@@ -223,6 +223,12 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     embeddingRemoteHost: cfg.embedding?.local?.remoteHost ?? UI_DEFAULTS.embeddingRemoteHost,
     embeddingCacheDir: cfg.embedding?.local?.cacheDir ?? UI_DEFAULTS.embeddingCacheDir,
   })
+  params.setSettings("skills", {
+    agents: cfg.skills?.compatibility?.agents !== false,
+    claude: cfg.skills?.compatibility?.claude !== false,
+    codex: cfg.skills?.compatibility?.codex !== false,
+    openclaw: cfg.skills?.compatibility?.openclaw !== false,
+  })
 
   params.setInitialized(true)
   return setName

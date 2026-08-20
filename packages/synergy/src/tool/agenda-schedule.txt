@@ -3,6 +3,7 @@ Create a recurring task that runs in its own separate session, isolated from thi
 Triggers:
 - `{type:"cron", expr:"0 9 * * *", tz:"Asia/Shanghai"}` — recurring cron
 - `{type:"every", interval:"30m"}` — recurring at a fixed interval
+- `{type:"session", sessionID:"ses_xxx", event:"turn.end"}` — fires once when the target session ends a turn. Optional filters: `agent`, `finish`. Set `once:false` to keep firing on every matching turn.
 
 By default, results are delivered back to this session and wake you (wake=true). Set silent=true to suppress delivery.
 Set controlProfile to "full_access", "autonomous", or "guarded" when the scheduled session needs an explicit permission profile.

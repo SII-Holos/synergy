@@ -183,10 +183,15 @@ export const SkillRoute = new Hono()
       },
     }),
     async (c) => {
-      const [skills, diagnostics] = await Promise.all([Skill.all(), Skill.diagnostics()])
+      const [skills, diagnostics, sourceCounts] = await Promise.all([
+        Skill.all(),
+        Skill.diagnostics(),
+        Skill.sourceCounts(),
+      ])
       return c.json({
         items: skills.map(SkillSummary.from),
         diagnostics,
+        sources: SkillSummary.fromSourceCounts(sourceCounts),
       })
     },
   )

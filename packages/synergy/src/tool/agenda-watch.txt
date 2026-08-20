@@ -6,6 +6,8 @@ Also use for deliberate pauses: wait for a deploy, batch job, or user review bef
 
 When the watch fires, you continue in this session with full conversation history. The watch auto-completes after firing.
 
+You can also wake on another session's turn instead of a delay: pass `onSessionEnd: {sessionID, agent?, finish?}` (mutually exclusive with `delay`). When the watched session ends a turn — optionally filtered by agent or finish state — you are woken in THIS session with your prompt and full conversation history. The watch auto-completes after firing. Example: `onSessionEnd: {sessionID:"ses_research", finish:"stop"}` to react when the research session finishes its turn.
+
 **Never use `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion — no watch or polling is needed.
 
 Use agenda_list to see active watches. Use agenda_cancel(id) to cancel before it fires.

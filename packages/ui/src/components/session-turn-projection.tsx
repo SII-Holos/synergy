@@ -35,7 +35,7 @@ export type SessionTurnProjection = {
   byRoot: Map<string, TurnDisplayMessage[]>
   memberIndex: Map<string, number>
   compactionParentIDs: Set<string>
-  turnMessagesFor(anchor: UserMessage): TurnDisplayMessage[]
+  turnMessagesFor(anchor: UserMessage | undefined): TurnDisplayMessage[]
 }
 
 export function buildSessionTurnProjection(messages: readonly MessageType[]): SessionTurnProjection {
@@ -79,7 +79,8 @@ export function buildSessionTurnProjection(messages: readonly MessageType[]): Se
     if (members) members.push(message as TurnDisplayMessage)
   }
 
-  const turnMessagesFor = (anchor: UserMessage): TurnDisplayMessage[] => {
+  const turnMessagesFor = (anchor: UserMessage | undefined): TurnDisplayMessage[] => {
+    if (!anchor) return []
     const rootID = anchor.rootID ?? anchor.id
     const members = byRoot.get(rootID)
     if (!members) return []

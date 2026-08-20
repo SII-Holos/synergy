@@ -236,7 +236,8 @@ export namespace AgendaStore {
       draft.state.nextRunAt = newNextRunAt
 
       const hasNonTimeTriggers = triggers.some((t) => t.type === "watch" || t.type === "webhook")
-      if (newNextRunAt === undefined && signalType !== "manual" && !hasNonTimeTriggers) {
+      const hasRecurringSessionTrigger = triggers.some((t) => t.type === "session" && t.once === false)
+      if (newNextRunAt === undefined && signalType !== "manual" && !hasNonTimeTriggers && !hasRecurringSessionTrigger) {
         draft.status = "done"
       }
 
@@ -559,6 +560,8 @@ export namespace AgendaStore {
         return { type: trigger.type, interval: trigger.interval }
       case "delay":
         return { type: trigger.type, delay: trigger.delay }
+      case "session":
+        return { type: trigger.type, sessionID: trigger.sessionID }
       default:
         return { type: trigger.type }
     }

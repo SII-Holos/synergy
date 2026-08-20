@@ -667,6 +667,7 @@ export const appShell = {
   library: { id: "app.shell.mobile.tool.library", message: "Library" },
   performance: { id: "app.shell.mobile.tool.performance", message: "Performance" },
   plugins: { id: "app.shell.mobile.tool.plugins", message: "Plugins" },
+  kanban: { id: "app.shell.mobile.tool.kanban", message: "Kanban" },
   notes: { id: "app.shell.mobile.tool.notes", message: "Notes" },
   browser: { id: "app.shell.mobile.tool.browser", message: "Browser" },
 } as const satisfies Record<string, AppMessageDescriptor>
@@ -1307,9 +1308,55 @@ export const library = {
 
 export const pluginNav = {
   agenda: { id: "app.plugin.builtin.agenda", message: "Agenda" },
+  kanban: { id: "app.plugin.builtin.kanban", message: "Kanban" },
   library: { id: "app.plugin.builtin.library", message: "Library" },
   performance: { id: "app.plugin.builtin.performance", message: "Performance" },
   plugins: { id: "app.plugin.builtin.plugins", message: "Plugins" },
+} as const satisfies Record<string, AppMessageDescriptor>
+
+// ── Kanban page ─────────────────────────────────────────────────────────────
+
+export const kanbanPage = {
+  title: { id: "app.kanban.title", message: "Kanban" },
+  layoutGrid: { id: "app.kanban.layout.grid", message: "Grid" },
+  layoutFocus: { id: "app.kanban.layout.focus", message: "Focus" },
+  follow: { id: "app.kanban.follow", message: "Follow latest" },
+  unfollow: { id: "app.kanban.unfollow", message: "Paused" },
+  openSession: { id: "app.kanban.openSession", message: "Open session" },
+  pinPane: { id: "app.kanban.pinPane", message: "Pin" },
+  unpinPane: { id: "app.kanban.unpinPane", message: "Unpin" },
+  dragReorder: { id: "app.kanban.dragReorder", message: "Drag to reorder pinned sessions" },
+  pinToReorderHint: { id: "app.kanban.pinToReorderHint", message: "Pin this session to reorder it" },
+  empty: { id: "app.kanban.empty", message: "No sessions on the board" },
+  emptyHint: {
+    id: "app.kanban.emptyHint",
+    message: "Sessions appear here in your recent order. Drag a session from the sidebar to pin it.",
+  },
+  unavailable: { id: "app.kanban.unavailable", message: "Session no longer available" },
+  loading: { id: "app.kanban.loading", message: "Loading…" },
+  loadError: { id: "app.kanban.loadError", message: "Failed to load messages" },
+  retry: { id: "app.kanban.retry", message: "Retry" },
+  addPane: { id: "app.kanban.addPane", message: "Add session" },
+  addPaneHint: { id: "app.kanban.addPaneHint", message: "Pick a session to pin to the board" },
+  ariaLayout: { id: "app.kanban.aria.layout", message: "Board layout" },
+  sendPlaceholder: { id: "app.kanban.sendPlaceholder", message: "Message this session…" },
+  sendFailed: { id: "app.kanban.sendFailed", message: "Failed to send message" },
+  gridColumns: { id: "app.kanban.grid.columns", message: "Columns" },
+  gridRows: { id: "app.kanban.grid.rows", message: "Rows" },
+  gridLayoutLabel: { id: "app.kanban.grid.layoutLabel", message: "Grid layout" },
+  focusResizeRail: { id: "app.kanban.focus.resizeRail", message: "Resize panel" },
+  composerAgent: { id: "app.kanban.composer.agent", message: "Agent" },
+  composerDefaultAgent: { id: "app.kanban.composer.defaultAgent", message: "Default agent" },
+  composerPermission: { id: "app.kanban.composer.permission", message: "Permission" },
+  composerWorkflow: { id: "app.kanban.composer.workflow", message: "Mode" },
+  workflowNone: { id: "app.kanban.workflow.none", message: "Default" },
+  workflowPlan: { id: "app.kanban.workflow.plan", message: "Plan" },
+  workflowLattice: { id: "app.kanban.workflow.lattice", message: "Lattice" },
+  workflowBoss: { id: "app.kanban.workflow.boss", message: "Boss" },
+  statusIdle: { id: "app.kanban.status.idle", message: "Idle" },
+  statusBusy: { id: "app.kanban.status.busy", message: "Working…" },
+  statusRetry: { id: "app.kanban.status.retry", message: "Retrying…" },
+  statusRecovering: { id: "app.kanban.status.recovering", message: "Recovering…" },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 // ── Plugin marketplace ────────────────────────────────────────────────────────
@@ -1474,6 +1521,7 @@ export const messages = {
   providerFlow,
   agentVisual,
   pluginNav,
+  kanbanPage,
   pluginMarketplace,
   pluginPermission,
 } as const
