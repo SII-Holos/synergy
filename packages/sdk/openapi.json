@@ -28820,6 +28820,39 @@
         },
         "required": ["type"]
       },
+      "AgendaTriggerSession": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session"
+          },
+          "sessionID": {
+            "description": "Target session to watch for turn events",
+            "type": "string"
+          },
+          "event": {
+            "description": "Session turn event to react to",
+            "default": "turn.end",
+            "type": "string",
+            "enum": ["turn.end", "turn.start"]
+          },
+          "agent": {
+            "description": "Only fire when the turn's agent matches",
+            "type": "string"
+          },
+          "finish": {
+            "description": "Only fire when the turn's finish state matches (e.g. 'stop', 'error'). Only applies to turn.end",
+            "type": "string"
+          },
+          "once": {
+            "description": "If true, the item auto-completes after the first fire",
+            "default": true,
+            "type": "boolean"
+          }
+        },
+        "required": ["type", "sessionID"]
+      },
       "AgendaTrigger": {
         "anyOf": [
           {
@@ -28839,6 +28872,9 @@
           },
           {
             "$ref": "#/components/schemas/AgendaTriggerWebhook"
+          },
+          {
+            "$ref": "#/components/schemas/AgendaTriggerSession"
           }
         ]
       },
@@ -36691,7 +36727,7 @@
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["cron", "every", "at", "delay", "watch", "webhook"]
+            "enum": ["cron", "every", "at", "delay", "watch", "webhook", "session"]
           },
           "interval": {
             "description": "Interval for every triggers, e.g. '30m'",
@@ -36699,6 +36735,10 @@
           },
           "delay": {
             "description": "Delay for delay triggers, e.g. '2h'",
+            "type": "string"
+          },
+          "sessionID": {
+            "description": "Target session for session triggers",
             "type": "string"
           }
         },
@@ -36735,7 +36775,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "enum": ["cron", "every", "at", "delay", "watch", "webhook"]
+              "enum": ["cron", "every", "at", "delay", "watch", "webhook", "session"]
             }
           },
           "triggers": {
@@ -46785,6 +46825,59 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.session.turn.start": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.turn.start"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              },
+              "agent": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "messageID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.session.turn.end": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.turn.end"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              },
+              "finish": {
+                "type": "string"
+              },
+              "agent": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "messageID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.session.inbox.updated": {
         "type": "object",
         "properties": {
@@ -48103,6 +48196,12 @@
           },
           {
             "$ref": "#/components/schemas/Event.session.idle"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.turn.start"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.turn.end"
           },
           {
             "$ref": "#/components/schemas/Event.session.inbox.updated"

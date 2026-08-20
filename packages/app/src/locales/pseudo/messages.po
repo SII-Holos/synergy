@@ -527,6 +527,11 @@ msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.agenda.form.unsupportedTriggers"
+msgstr ""
+
+#. Runtime Lingui descriptors for agenda host labels and wrappers.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.interval.days"
 msgstr ""
 
@@ -11767,6 +11772,12 @@ msgstr ""
  *  Each is a base MessageDescriptor with `id` + English `message`.
  *  Call sites spread in `values` when the message contains ICU placeholders.
 msgid "session.agenda.wake.trigger.pending"
+msgstr ""
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.wake.trigger.session"
 msgstr ""
 
 #. Runtime translation descriptors for all wake-indicator UI strings.

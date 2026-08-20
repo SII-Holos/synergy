@@ -52,4 +52,21 @@ export const SessionEvent = {
       sessionID: z.string(),
     }),
   ),
+  TurnStart: BusEvent.define(
+    "session.turn.start",
+    z.object({
+      sessionID: z.string(),
+      messageID: z.string(),
+      agent: z.string().optional(),
+    }),
+  ),
+  TurnEnd: BusEvent.define(
+    "session.turn.end",
+    z.object({
+      sessionID: z.string(),
+      messageID: z.string(),
+      finish: z.string().optional(),
+      agent: z.string().optional(),
+    }),
+  ),
 }
