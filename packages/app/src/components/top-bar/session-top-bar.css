@@ -35,7 +35,6 @@
 }
 
 .stb-project-name {
-  flex-shrink: 1;
   max-width: 13rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -52,6 +51,9 @@
   font-weight: var(--font-weight-regular);
   line-height: 20px;
   color: var(--text-subtle);
+  /* Selector buttons carry 8px inner padding; pull the slash into it so the
+     visible gap to the button label matches the gap to the project name. */
+  margin-right: -8px;
 }
 .stb-left {
   display: flex;
