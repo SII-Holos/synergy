@@ -177,6 +177,26 @@ function hasStableInput(part: ToolPart): boolean {
   return Object.keys(part.state.input).length > 0
 }
 
+// Frozen terminal step projections keyed by part identity. The store keeps
+// stable references for unchanged parts, so a completed/error tool step is
+// projected once and reused across every downstream re-projection (streaming
+// deltas, settle flip, window rewrites). Pending steps and steps with an
+// approval are never cached: their state changes with stream/permission
+// events and must re-derive. WeakMap entries collect with their part.
+const frozenStepByPart = new WeakMap<ToolPart, ActivityStepProjection>()
+
+function frozenStep(part: ToolPart, permission: PermissionRequest | undefined): ActivityStepProjection | undefined {
+  if (permission) return undefined
+  const status = part.state.status
+  if (status !== "completed" && status !== "error") return undefined
+  return frozenStepByPart.get(part)
+}
+
+function freezeStep(part: ToolPart, step: ActivityStepProjection): ActivityStepProjection {
+  if (part.state.status === "completed" || part.state.status === "error") frozenStepByPart.set(part, step)
+  return step
+}
+
 function makeStep(
   message: AssistantMessage,
   part: ToolPart,
@@ -301,7 +321,9 @@ export function projectAssistantActivityItems(input: {
       flush()
       continue
     }
-    const step = makeStep(input.message, source.part, input.permissions, input.resolveToolInfo)
+    const step =
+      frozenStep(source.part, permission) ??
+      freezeStep(source.part, makeStep(input.message, source.part, input.permissions, input.resolveToolInfo))
     const receipt = isActivityReceiptTool(source.part.tool, step.family)
     const defaultKey = activityGroupKey(input.message.id, step.family, step.scopeKey, step.part.id)
     const legacyStored = metadata?.groups?.[defaultKey]
