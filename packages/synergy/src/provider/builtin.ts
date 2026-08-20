@@ -154,6 +154,10 @@ export function registerBuiltinProviderProfiles() {
       if (!access) return []
       return GrokProvider.fetchModelCatalog(access, input.fetch, input.providerID, input.baseURL)
     },
+    modelCatalogIdentity: ({ auth }) => {
+      if (auth?.type !== "oauth") return undefined
+      return GrokProvider.grokAccountID(auth.access)
+    },
     fetchUsage: (input) => GrokProvider.fetchUsage(input.fetch, input.providerID),
     refreshAuth: (input) =>
       input.auth ? GrokProvider.refreshAuth(input.auth, fetch, input.providerID) : Promise.resolve(undefined),
