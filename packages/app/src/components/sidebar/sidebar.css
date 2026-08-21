@@ -628,8 +628,8 @@
   min-width: 160px;
   padding: 4px;
   border-radius: 10px;
-  background: var(--sb-popover-bg);
-  border: 1px solid var(--sb-border);
+  background: var(--surface-raised-stronger-non-alpha);
+  border: 1px solid var(--border-weaker-base);
   box-shadow: none;
   display: flex;
   flex-direction: column;
@@ -655,7 +655,7 @@
 }
 
 .sb-menu-item:hover:not(:disabled) {
-  background: var(--sb-hover-bg);
+  background: var(--surface-hover-base);
 }
 
 .sb-menu-item:disabled {
