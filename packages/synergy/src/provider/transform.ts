@@ -28,6 +28,7 @@ export namespace ProviderTransform {
     systemCacheBreakpoint?: number
     lookAtAvailable?: boolean
     viewImageAvailable?: boolean
+    profileID?: string
   }
 
   export function sanitizeSurrogates(content: string) {
@@ -202,10 +203,11 @@ export namespace ProviderTransform {
   ): ModelMessage[] {
     let selected: ModelMessage[]
     if (options?.systemCacheBreakpoint === undefined) {
-      selected = [
-        ...msgs.filter((msg) => msg.role === "system").slice(0, 2),
-        ...msgs.filter((msg) => msg.role !== "system").slice(-2),
-      ]
+      // The legacy fallback never receives a resolved layout, so runtime
+      // context messages are filtered positionally here as well: a volatile
+      // <runtime-context> tail must stay outside every cache breakpoint.
+      const nonSystemTail = msgs.filter((msg) => msg.role !== "system" && !isRuntimeContextMessage(msg)).slice(-2)
+      selected = [...msgs.filter((msg) => msg.role === "system").slice(0, 2), ...nonSystemTail]
     } else {
       const stable = [msgs.filter((msg) => msg.role === "system")[options.systemCacheBreakpoint]].filter(
         (msg) => msg !== undefined,
@@ -412,7 +414,7 @@ export namespace ProviderTransform {
     ) {
       msgs = applyCaching(msgs, model.providerID, {
         ...options,
-        layout: PromptCachePolicy.layout(model),
+        layout: PromptCachePolicy.layout(model, options?.profileID),
       })
     }
 

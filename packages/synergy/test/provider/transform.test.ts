@@ -314,6 +314,69 @@ describe("ProviderTransform.message - Anthropic late-user-context cache boundary
   })
 })
 
+describe("ProviderTransform.message - mapped-profile and fallback cache boundary", () => {
+  const baseModel = {
+    api: {
+      id: "claude-3-5-sonnet-20241022",
+      url: "https://api.anthropic.com",
+      npm: "@ai-sdk/anthropic",
+    },
+    name: "Claude 3.5 Sonnet",
+    capabilities: {
+      temperature: true,
+      reasoning: false,
+      attachment: true,
+      toolcall: true,
+      input: { text: true, audio: false, image: true, video: false, pdf: true },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false,
+    },
+    cost: { input: 0.003, output: 0.015, cache: { read: 0.0003, write: 0.00375 } },
+    limit: { context: 200000, output: 8192 },
+    status: "active",
+    options: {},
+    headers: {},
+  } as any
+
+  test("passes the resolved profile through cache-layout selection for mapped accounts", () => {
+    const mappedModel = { ...baseModel, id: "anthropic-secondary/claude-3-5-sonnet", providerID: "anthropic-secondary" }
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "permission context" },
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi" },
+      { role: "user", content: "<runtime-context>advisory</runtime-context>" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, mappedModel, { systemCacheBreakpoint: 1, profileID: "anthropic" })
+
+    expect(result[1].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[4].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+    expect(result[3].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+  })
+
+  test("fallback selection excludes the runtime-context message from breakpoints", () => {
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "custom system" },
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi" },
+      { role: "user", content: "<runtime-context>advisory</runtime-context>" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, {
+      ...baseModel,
+      id: "anthropic/claude-3-5-sonnet",
+      providerID: "anthropic",
+    })
+
+    expect(result[0].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[1].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[3].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[4].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+  })
+})
+
 describe("ProviderTransform.maxOutputTokens", () => {
   test("returns output cap when modelLimit exceeds cap", () => {
     const modelLimit = 500000
