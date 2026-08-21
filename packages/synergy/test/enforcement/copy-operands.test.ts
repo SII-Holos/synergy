@@ -9,7 +9,8 @@ const { EnforcementGate } = await import("../../src/enforcement/gate")
 // operand is a read-only source and must classify as a read so importing
 // external files into the workspace is not treated as an external write.
 // Every destination form (positional, -t, external) and every non-plain
-// spelling (pipelines, dynamic operands, mv) keeps write classification.
+// spelling (pipelines, dynamic operands, mv, hard links, quoted or glob
+// operands, redirections) keeps write classification.
 // ---------------------------------------------------------------------------
 
 const WORKSPACE = "/Users/test/synergy/.synergy/worktrees/feature-x"
@@ -22,6 +23,12 @@ async function autonomousGate() {
     profileId: "autonomous",
     readRoots: ["/Users/test/.synergy"],
   })
+}
+
+function externalWrites(envelope: any): string[] {
+  return envelope.capabilities
+    .filter((cap: any) => cap.class === "file_external_write")
+    .flatMap((cap: any) => cap.paths ?? [])
 }
 
 describe("copy operand classification", () => {
@@ -67,6 +74,17 @@ describe("copy operand classification", () => {
     expect(envelope.capabilities.some((cap: any) => cap.class === "file_external_write")).toBe(false)
   })
 
+  test("install -m value form stays allowed", async () => {
+    const gate = await autonomousGate()
+
+    const envelope = gate.evaluate("bash", {
+      command: "install -m 0755 /Users/test/.synergy/cache/tool ./bin/tool",
+    })
+
+    expect(envelope.decision).toBe("allow")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "file_external_write")).toBe(false)
+  })
+
   test("cp -t into the workspace is allowed", async () => {
     const gate = await autonomousGate()
 
@@ -92,7 +110,7 @@ describe("copy operand classification", () => {
     expect(externalWrite.paths).toContain("/Users/test/.synergy/cache/file.txt")
   })
 
-  test("cp -t to an external destination remains an external write", async () => {
+  test("cp -t to an external target directory remains an external write", async () => {
     const gate = await autonomousGate()
 
     const envelope = gate.evaluate("bash", {
@@ -100,11 +118,19 @@ describe("copy operand classification", () => {
     })
 
     expect(envelope.decision).toBe("deny")
-    expect(
-      envelope.capabilities.some(
-        (cap: any) => cap.class === "file_external_write" && cap.paths?.includes("/Users/test/.synergy/cache/"),
-      ),
-    ).toBe(true)
+    expect(externalWrites(envelope)).toContain("/Users/test/.synergy/cache/")
+  })
+
+  test("cp -t with a relative external target directory remains an external write", async () => {
+    const gate = await autonomousGate()
+
+    const envelope = gate.evaluate("bash", {
+      command: "cp -t ../outside-cache ../outside-source",
+    })
+
+    expect(envelope.decision).toBe("deny")
+    const writes = externalWrites(envelope)
+    expect(writes.some((p: string) => p.endsWith("/outside-cache"))).toBe(true)
   })
 
   test("mv from an external source remains an external write", async () => {
@@ -115,12 +141,7 @@ describe("copy operand classification", () => {
     })
 
     expect(envelope.decision).toBe("deny")
-    expect(
-      envelope.capabilities.some(
-        (cap: any) =>
-          cap.class === "file_external_write" && cap.paths?.includes("/Users/test/.synergy/cache/models.json"),
-      ),
-    ).toBe(true)
+    expect(externalWrites(envelope)).toContain("/Users/test/.synergy/cache/models.json")
   })
 
   test("cp of a credential source still carries secrets on the read side", async () => {
@@ -143,12 +164,7 @@ describe("copy operand classification", () => {
     })
 
     expect(envelope.decision).toBe("deny")
-    expect(
-      envelope.capabilities.some(
-        (cap: any) =>
-          cap.class === "file_external_write" && cap.paths?.includes("/Users/test/.synergy/cache/models.json"),
-      ),
-    ).toBe(true)
+    expect(externalWrites(envelope)).toContain("/Users/test/.synergy/cache/models.json")
   })
 
   test("dynamic cp operand keeps conservative classification", async () => {
@@ -159,11 +175,88 @@ describe("copy operand classification", () => {
     })
 
     expect(envelope.decision).toBe("deny")
+    expect(externalWrites(envelope)).toContain("/Users/test/.synergy/cache/models.json")
+  })
+
+  test("quoted destination operand keeps conservative classification", async () => {
+    const gate = await autonomousGate()
+
+    const envelope = gate.evaluate("bash", {
+      command: 'cp ./src "/tmp/out dir/file"',
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(externalWrites(envelope).some((p: string) => p.startsWith("/tmp/out"))).toBe(true)
+  })
+
+  test("ln hard link to an external source remains an external write", async () => {
+    const gate = await autonomousGate()
+
+    const envelope = gate.evaluate("bash", {
+      command: "ln /Users/test/.synergy/cache/models.json ./models-link",
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(externalWrites(envelope)).toContain("/Users/test/.synergy/cache/models.json")
+  })
+
+  test("cp -l hard link from an external source remains an external write", async () => {
+    const gate = await autonomousGate()
+
+    const envelope = gate.evaluate("bash", {
+      command: "cp -l /Users/test/.synergy/cache/models.json ./models-link",
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(externalWrites(envelope)).toContain("/Users/test/.synergy/cache/models.json")
+  })
+
+  test("ln -s to an external source stays an external read", async () => {
+    const gate = await autonomousGate()
+
+    const envelope = gate.evaluate("bash", {
+      command: "ln -s /Users/test/.synergy/cache/models.json ./models-link",
+    })
+
+    expect(envelope.decision).toBe("allow")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "file_external_write")).toBe(false)
+  })
+
+  test("identical external source and destination keeps the write role", async () => {
+    const gate = await autonomousGate()
+
+    const envelope = gate.evaluate("bash", {
+      command:
+        "cp --force --backup=numbered /Users/test/.synergy/cache/models.json /Users/test/.synergy/cache/models.json",
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(externalWrites(envelope)).toContain("/Users/test/.synergy/cache/models.json")
+  })
+
+  test("globbed copy source keeps conservative classification", async () => {
+    const gate = await autonomousGate()
+
+    const envelope = gate.evaluate("bash", {
+      command: "cp /Users/test/.[s]sh/config ./config",
+    })
+
+    expect(envelope.decision).toBe("deny")
     expect(
       envelope.capabilities.some(
-        (cap: any) =>
-          cap.class === "file_external_write" && cap.paths?.includes("/Users/test/.synergy/cache/models.json"),
+        (cap: any) => cap.class === "file_external_write" && cap.paths?.some((p: string) => p.includes("sh/config")),
       ),
     ).toBe(true)
+  })
+
+  test("copy with trailing redirection keeps conservative classification", async () => {
+    const gate = await autonomousGate()
+
+    const envelope = gate.evaluate("bash", {
+      command: "cp ./src /tmp/external-copy > ./log",
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(externalWrites(envelope).some((p: string) => p.startsWith("/tmp/external-copy"))).toBe(true)
   })
 })

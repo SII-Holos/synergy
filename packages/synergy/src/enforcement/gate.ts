@@ -507,29 +507,41 @@ const COPY_BOOLEAN_SHORT_FLAGS = new Set([
 ])
 
 function copyOperandPath(raw: string, cwd: string): string | undefined {
-  const arg = raw.replace(/^["']/, "").replace(/["']$/, "")
-  if (arg.includes('"') || arg.includes("'") || arg.includes("`")) return undefined
-  if (arg.startsWith("/") || arg.startsWith("~") || /^\$(\{?HOME\}?)/.test(arg)) return arg
-  if (arg.includes("$")) return undefined
-  return `${cwd}/${arg}`
+  // Operands are already unquoted by the segment tokenizer; any residual
+  // quote, backtick, or expansion syntax means the operand cannot be
+  // resolved statically and the caller must keep all-write classification.
+  if (/["'`$]/.test(raw)) return undefined
+  if (/[*?[]/.test(raw)) return undefined
+  if (raw.startsWith("/") || raw.startsWith("~")) return raw
+  return `${cwd}/${raw}`
+}
+
+interface CopyOperands {
+  sources: string[]
+  target: string
 }
 
 /**
- * Resolve the read-only source operands of a plain cp/install/ln segment.
- * Copy commands write only their final positional operand (or the
- * -t/--target-directory value); every other operand is read-only. Returns
- * undefined for any spelling the static parser cannot fully resolve so the
- * caller keeps the conservative all-write classification.
+ * Resolve the operand roles of a plain cp/install/ln segment. Copy commands
+ * write only their final positional operand (or the -t/--target-directory
+ * value); every other operand is read-only. Hard-link creation (plain ln,
+ * cp -l/--link) additionally mutates the source inode's link count and must
+ * keep write classification on the source. Returns undefined for any
+ * spelling the static parser cannot fully resolve so the caller keeps the
+ * conservative all-write classification.
  */
-function copyOperandSources(segment: string, cwd: string): string[] | undefined {
-  const tokens = segment.trim().split(/\s+/)
-  if (!COPY_OPERAND_COMMANDS.has(tokens[0] ?? "")) return undefined
+function resolveCopyOperands(segment: string, cwd: string): CopyOperands | undefined {
+  const tokens = shellTokenize(segment)
+  if (tokens === undefined) return undefined
+  const command = tokens[0]!
+  if (!COPY_OPERAND_COMMANDS.has(command)) return undefined
   const positionals: string[] = []
+  const longFlags: string[] = []
+  const shortFlags = new Set<string>()
   let targetDirectory: string | undefined
   let expectValue: string | undefined
   let endOfFlags = false
   for (const token of tokens.slice(1)) {
-    if (token === "") continue
     if (expectValue) {
       const path = copyOperandPath(token, cwd)
       if (path === undefined) return undefined
@@ -537,7 +549,7 @@ function copyOperandSources(segment: string, cwd: string): string[] | undefined 
       expectValue = undefined
       continue
     }
-    if (!endOfFlags && token === "--") {
+    if (token === "--") {
       endOfFlags = true
       continue
     }
@@ -545,32 +557,50 @@ function copyOperandSources(segment: string, cwd: string): string[] | undefined 
       const body = token.slice(2)
       const eq = body.indexOf("=")
       const flag = eq === -1 ? body : body.slice(0, eq)
-      if (COPY_VALUE_LONG_FLAGS.has(flag)) {
-        if (eq === -1) {
+      const value = eq === -1 ? undefined : body.slice(eq + 1)
+      if (flag === "target-directory") {
+        if (value === undefined) {
           expectValue = flag
-        } else if (flag === "target-directory") {
-          const path = copyOperandPath(body.slice(eq + 1), cwd)
-          if (path === undefined) return undefined
-          targetDirectory = path
+          continue
         }
+        const path = copyOperandPath(value, cwd)
+        if (path === undefined) return undefined
+        targetDirectory = path
         continue
       }
       if (COPY_OPTIONAL_VALUE_LONG_FLAGS.has(flag)) {
-        if (eq === -1) expectValue = flag
+        if (value !== undefined) continue
+        expectValue = flag
         continue
       }
-      if (eq !== -1 || !COPY_BOOLEAN_LONG_FLAGS.has(flag)) return undefined
-      continue
+      if (COPY_BOOLEAN_LONG_FLAGS.has(flag)) {
+        longFlags.push(flag)
+        continue
+      }
+      return undefined
     }
     if (!endOfFlags && token.startsWith("-") && token !== "-") {
       const cluster = token.slice(1)
-      if (cluster.length === 1 && COPY_VALUE_SHORT_FLAGS.has(cluster)) {
-        expectValue = cluster
-        continue
+      const chars = cluster.split("")
+      for (let i = 0; i < chars.length; i++) {
+        const ch = chars[i]!
+        if (COPY_VALUE_SHORT_FLAGS.has(ch)) {
+          if (i !== chars.length - 1) return undefined
+          expectValue = ch
+          break
+        }
+        if (COPY_OPTIONAL_VALUE_SHORT_FLAGS.has(ch)) {
+          if (i === chars.length - 1) {
+            expectValue = ch
+            break
+          }
+          // Attached value for an optional-value flag (e.g. cp -S.bak): the
+          // remaining cluster characters are the value, not more flags.
+          break
+        }
+        if (!COPY_BOOLEAN_SHORT_FLAGS.has(ch)) return undefined
+        shortFlags.add(ch)
       }
-      if (cluster.split("").some((ch) => COPY_VALUE_SHORT_FLAGS.has(ch) || COPY_OPTIONAL_VALUE_SHORT_FLAGS.has(ch)))
-        return undefined
-      if (cluster.split("").some((ch) => !COPY_BOOLEAN_SHORT_FLAGS.has(ch))) return undefined
       continue
     }
     if (token === "-") return undefined
@@ -580,13 +610,56 @@ function copyOperandSources(segment: string, cwd: string): string[] | undefined 
   }
   if (expectValue) return undefined
   if (targetDirectory !== undefined) {
-    if (/[*?[]/.test(targetDirectory)) return undefined
-    return positionals
+    if (positionals.length === 0) return undefined
+    return { sources: positionals, target: targetDirectory }
   }
   if (positionals.length < 2) return undefined
-  const target = positionals[positionals.length - 1]
-  if (/[*?[]/.test(target)) return undefined
-  return positionals.slice(0, -1)
+  const target = positionals[positionals.length - 1]!
+  if (command === "ln" && !(longFlags.includes("symbolic") || shortFlags.has("s"))) return undefined
+  if (command === "cp" && (longFlags.includes("link") || shortFlags.has("l"))) return undefined
+  return { sources: positionals.slice(0, -1), target }
+}
+
+function shellTokenize(segment: string): string[] | undefined {
+  const tokens: string[] = []
+  let current = ""
+  let quote: '"' | "'" | undefined
+  let started = false
+  for (let i = 0; i < segment.length; i++) {
+    const ch = segment[i]!
+    if (quote) {
+      if (ch === quote) {
+        quote = undefined
+        continue
+      }
+      current += ch
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      started = true
+      continue
+    }
+    if (ch === "#" && !started) return undefined
+    if (ch === "\\" && i + 1 < segment.length) {
+      current += segment[i + 1]!
+      i++
+      continue
+    }
+    if (/\s/.test(ch)) {
+      if (current !== "" || started) tokens.push(current)
+      current = ""
+      started = false
+      continue
+    }
+    if (ch === ">" || ch === "<" || ch === "|" || ch === ";") return undefined
+    if (ch === "$" || ch === "`") return undefined
+    current += ch
+    started = true
+  }
+  if (quote) return undefined
+  if (current !== "" || started) tokens.push(current)
+  return tokens
 }
 
 function hasNetworkActivity(command: string): boolean {
@@ -919,8 +992,8 @@ export namespace EnforcementGate {
             }
             continue
           }
-          const copySources = copyOperandSources(segment, cwd)
-          if (copySources === undefined) {
+          const copyOperands = resolveCopyOperands(segment, cwd)
+          if (copyOperands === undefined) {
             for (const candidate of pathCandidates) {
               classifyProtectedPathCapability(caps, candidate, "write", {
                 activeWorkspace,
@@ -932,13 +1005,23 @@ export namespace EnforcementGate {
             continue
           }
           for (const candidate of pathCandidates) {
-            const sourceRead = copySources.includes(candidate)
-            classifyProtectedPathCapability(caps, candidate, sourceRead ? "read" : "write", {
+            const sourceRead = copyOperands.sources.includes(candidate)
+            const isTarget = candidate === copyOperands.target
+            const write = isTarget || !sourceRead
+            classifyProtectedPathCapability(caps, candidate, write ? "write" : "read", {
               activeWorkspace,
               originalCheckout,
               synergyRoot,
             })
-            classifyPathCapability(caps, candidate, { ...pathOptions, write: !sourceRead })
+            classifyPathCapability(caps, candidate, { ...pathOptions, write })
+          }
+          if (!pathCandidates.includes(copyOperands.target)) {
+            classifyProtectedPathCapability(caps, copyOperands.target, "write", {
+              activeWorkspace,
+              originalCheckout,
+              synergyRoot,
+            })
+            classifyPathCapability(caps, copyOperands.target, { ...pathOptions, write: true })
           }
         }
 
