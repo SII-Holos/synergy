@@ -151,10 +151,9 @@ describe("ProviderTransform.options - setCacheKey", () => {
   })
 })
 
-describe("ProviderTransform.message - Anthropic cache boundary", () => {
+describe("ProviderTransform.message - system-layout Anthropic-style cache boundary", () => {
   const mockModel = {
-    id: "anthropic/claude-3-5-sonnet",
-    providerID: "anthropic",
+    providerID: "google-vertex",
     api: {
       id: "claude-3-5-sonnet-20241022",
       url: "https://api.anthropic.com",
@@ -236,6 +235,82 @@ describe("ProviderTransform.message - Anthropic cache boundary", () => {
     expect(result[2].providerOptions?.anthropic?.cacheControl).toBeUndefined()
     expect(result[3].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
     expect(result[4].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+  })
+})
+
+describe("ProviderTransform.message - Anthropic late-user-context cache boundary", () => {
+  const anthropicModel = {
+    id: "anthropic/claude-3-5-sonnet",
+    providerID: "anthropic",
+    api: {
+      id: "claude-3-5-sonnet-20241022",
+      url: "https://api.anthropic.com",
+      npm: "@ai-sdk/anthropic",
+    },
+    name: "Claude 3.5 Sonnet",
+    capabilities: {
+      temperature: true,
+      reasoning: false,
+      attachment: true,
+      toolcall: true,
+      input: { text: true, audio: false, image: true, video: false, pdf: true },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false,
+    },
+    cost: { input: 0.003, output: 0.015, cache: { read: 0.0003, write: 0.00375 } },
+    limit: { context: 200000, output: 8192 },
+    status: "active",
+    options: {},
+    headers: {},
+  } as any
+
+  test("marks the history-tail breakpoint and leaves the runtime-context message uncached", () => {
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "AGENTS.md" },
+      { role: "system", content: "permission context" },
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi" },
+      { role: "user", content: "<runtime-context>advisory context</runtime-context>" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, anthropicModel, { systemCacheBreakpoint: 2 })
+
+    expect(result[2].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[4].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[5].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+  })
+
+  test("marks the final history message when no runtime-context message follows", () => {
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "permission context" },
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, anthropicModel, { systemCacheBreakpoint: 1 })
+
+    expect(result[1].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[3].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+  })
+
+  test("handles array-content runtime-context messages", () => {
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "permission context" },
+      { role: "user", content: "hello" },
+      {
+        role: "user",
+        content: [{ type: "text", text: "<runtime-context>advisory</runtime-context>" }],
+      },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, anthropicModel, { systemCacheBreakpoint: 1 })
+
+    expect(result[1].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[2].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[3].providerOptions?.anthropic?.cacheControl).toBeUndefined()
   })
 })
 

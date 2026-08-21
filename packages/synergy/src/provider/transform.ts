@@ -185,16 +185,47 @@ export namespace ProviderTransform {
     return msgs
   }
 
-  function applyCaching(msgs: ModelMessage[], providerID: string, options?: MessageOptions): ModelMessage[] {
-    const selected: ModelMessage[] =
-      options?.systemCacheBreakpoint === undefined
-        ? [
-            ...msgs.filter((msg) => msg.role === "system").slice(0, 2),
-            ...msgs.filter((msg) => msg.role !== "system").slice(-2),
-          ]
-        : [msgs.filter((msg) => msg.role === "system")[options.systemCacheBreakpoint]].filter(
-            (msg) => msg !== undefined,
-          )
+  function isRuntimeContextMessage(msg: ModelMessage): boolean {
+    if (typeof msg.content === "string") return msg.content.includes("<runtime-context>")
+    if (!Array.isArray(msg.content)) return false
+    return msg.content.some(
+      (part) =>
+        (part as { type: string; text?: string }).type === "text" &&
+        (part as { text?: string }).text?.includes("<runtime-context>"),
+    )
+  }
+
+  function applyCaching(
+    msgs: ModelMessage[],
+    providerID: string,
+    options?: MessageOptions & { layout?: PromptCachePolicy.Layout },
+  ): ModelMessage[] {
+    let selected: ModelMessage[]
+    if (options?.systemCacheBreakpoint === undefined) {
+      selected = [
+        ...msgs.filter((msg) => msg.role === "system").slice(0, 2),
+        ...msgs.filter((msg) => msg.role !== "system").slice(-2),
+      ]
+    } else {
+      const stable = [msgs.filter((msg) => msg.role === "system")[options.systemCacheBreakpoint]].filter(
+        (msg) => msg !== undefined,
+      )
+      // In the late-user-context layout the volatile <runtime-context> user
+      // message sits after history. A second breakpoint on the last history
+      // message caches the append-only prefix; the runtime-context message
+      // itself stays outside every breakpoint because it changes each turn.
+      // The system layout keeps volatile late system blocks between the stable
+      // system and history, so a history breakpoint could never be reused
+      // across turns and only wastes cache-write cost.
+      if (options?.layout === "late-user-context") {
+        const nonSystem = msgs.filter((msg) => msg.role !== "system")
+        const tail = nonSystem.slice(-2)
+        const historyTail = tail.length === 2 && isRuntimeContextMessage(tail[1]) ? [tail[0]] : tail.slice(-1)
+        selected = [...stable, ...historyTail]
+      } else {
+        selected = stable
+      }
+    }
 
     const providerOptions = {
       anthropic: {
@@ -379,7 +410,10 @@ export namespace ProviderTransform {
       model.api.id.includes("claude") ||
       model.api.npm === "@ai-sdk/anthropic"
     ) {
-      msgs = applyCaching(msgs, model.providerID, options)
+      msgs = applyCaching(msgs, model.providerID, {
+        ...options,
+        layout: PromptCachePolicy.layout(model),
+      })
     }
 
     return msgs
