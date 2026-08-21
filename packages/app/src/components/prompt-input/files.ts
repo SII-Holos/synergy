@@ -1,114 +1,91 @@
-export const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
-export const ACCEPTED_DOCUMENT_TYPES = [
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-]
-export const ACCEPTED_TEXT_EXTENSIONS = [
-  ".c",
-  ".cc",
-  ".cpp",
-  ".cs",
-  ".css",
-  ".csv",
-  ".go",
-  ".graphql",
-  ".h",
-  ".hpp",
-  ".html",
-  ".ini",
-  ".java",
-  ".js",
-  ".json",
-  ".jsx",
-  ".kt",
-  ".less",
-  ".log",
-  ".lua",
-  ".m",
-  ".md",
-  ".mjs",
-  ".patch",
-  ".php",
-  ".pl",
-  ".py",
-  ".rb",
-  ".rs",
-  ".scss",
-  ".sh",
-  ".sql",
-  ".svg",
-  ".svelte",
-  ".swift",
-  ".tex",
-  ".toml",
-  ".ts",
-  ".tsx",
-  ".txt",
-  ".vue",
-  ".xml",
-  ".yaml",
-  ".yml",
-]
-export const ACCEPTED_TEXT_MIME_PATTERNS = [
-  "text/*",
-  "application/json",
-  "application/xml",
-  "application/yaml",
-  "application/x-yaml",
-]
-export const ACCEPTED_FILE_TYPES = [...ACCEPTED_IMAGE_TYPES, ...ACCEPTED_DOCUMENT_TYPES]
-export const FILE_INPUT_ACCEPT = [
-  ...ACCEPTED_FILE_TYPES,
-  ...ACCEPTED_TEXT_MIME_PATTERNS,
-  ...ACCEPTED_TEXT_EXTENSIONS,
-].join(",")
+import type { I18n, MessageDescriptor } from "@lingui/core"
 
-export const SUPPORTED_ATTACHMENT_DESCRIPTION = "Supported: images, PDF/Office documents, and text/code files."
+export const MAX_ATTACHMENT_FILES = 20
+export const MAX_ATTACHMENT_FILE_BYTES = 25 * 1024 * 1024
+export const MAX_ATTACHMENT_TOTAL_BYTES = 50 * 1024 * 1024
 
-const ACCEPTED_FILE_TYPE_SET = new Set<string>(ACCEPTED_FILE_TYPES)
-const ACCEPTED_TEXT_EXTENSION_SET = new Set(ACCEPTED_TEXT_EXTENSIONS)
-const ACCEPTED_TEXT_MIME_TYPES = new Set(ACCEPTED_TEXT_MIME_PATTERNS.filter((pattern) => !pattern.endsWith("/*")))
+/**
+ * Any file type can be attached. Format policy is decided server-side
+ * (`Attachment.policy`): readable formats are extracted or sent to the model
+ * directly, everything else is attached as-is with a durable local path the
+ * agent can inspect through tools.
+ */
+export const FILE_INPUT_ACCEPT = "*/*"
 
-function fileExtension(file: File) {
-  const filename = file.name.split(/[\\/]/).pop() ?? file.name
-  const index = filename.lastIndexOf(".")
-  if (index <= 0) return ""
-  return filename.slice(index).toLowerCase()
+/** Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale. */
+export const FILE_LIMIT_MESSAGES = {
+  tooManyFilesTitle: { id: "prompt.files.tooManyFiles.title", message: "Too many files" },
+  tooManyFilesDescription: { id: "prompt.files.tooManyFiles.description", message: "Choose at most {count} files." },
+  tooLargeTotalTitle: { id: "prompt.files.tooLargeTotal.title", message: "Files too large" },
+  tooLargeTotalDescription: {
+    id: "prompt.files.tooLargeTotal.description",
+    message: "Choose files totaling at most {total} MB.",
+  },
+  fileTooLargeTitle: { id: "prompt.files.fileTooLarge.title", message: "File too large" },
+  someFilesNotAttachedTitle: { id: "prompt.files.someFilesNotAttached.title", message: "Some files were not attached" },
+  noFilesAttachedTitle: { id: "prompt.files.noFilesAttached.title", message: "No files attached" },
+  tooLargeNamesDescription: {
+    id: "prompt.files.tooLargeNames.description",
+    message: "Too large: {names}. Files must be {limit} MB or smaller.",
+  },
+} as const satisfies Record<string, MessageDescriptor>
+
+export type AttachmentLimitScope = { count: number; bytes: number }
+
+export function isPromptAttachmentOversized(file: File): boolean {
+  return file.size > MAX_ATTACHMENT_FILE_BYTES
 }
-
-export function isPromptAttachmentTextFile(file: File): boolean {
-  const normalizedMime = file.type.toLowerCase()
-  if (normalizedMime.startsWith("text/")) return true
-  if (ACCEPTED_TEXT_MIME_TYPES.has(normalizedMime)) return true
-  if (
-    normalizedMime.endsWith("+json") ||
-    normalizedMime.endsWith("+xml") ||
-    normalizedMime.endsWith("+yaml") ||
-    normalizedMime.endsWith("+yml")
-  ) {
-    return true
-  }
-  if (normalizedMime && normalizedMime !== "application/octet-stream") return false
-  return ACCEPTED_TEXT_EXTENSION_SET.has(fileExtension(file))
-}
-
-export function isPromptAttachmentFileAccepted(file: File): boolean {
-  return ACCEPTED_FILE_TYPE_SET.has(file.type.toLowerCase()) || isPromptAttachmentTextFile(file)
-}
-
+/** Split newly selected files into accepted/rejected by the per-file size
+ *  limit only. Batch count/total limits (including capacity already consumed
+ *  by composer attachments) are owned by `formatAttachmentBatchToast`. */
 export function partitionPromptAttachmentFiles(files: Iterable<File>) {
   const accepted: File[] = []
   const rejected: File[] = []
   for (const file of files) {
-    if (isPromptAttachmentFileAccepted(file)) {
-      accepted.push(file)
-    } else {
+    if (isPromptAttachmentOversized(file)) {
       rejected.push(file)
+    } else {
+      accepted.push(file)
     }
   }
   return { accepted, rejected }
+}
+
+export function formatAttachmentBatchToast(
+  files: File[],
+  existing: AttachmentLimitScope = { count: 0, bytes: 0 },
+  i18n?: I18n,
+): { type: "warning"; title: string; description: string } | undefined {
+  if (files.length + existing.count > MAX_ATTACHMENT_FILES) {
+    return warningToast(i18n, FILE_LIMIT_MESSAGES.tooManyFilesTitle, FILE_LIMIT_MESSAGES.tooManyFilesDescription, {
+      count: MAX_ATTACHMENT_FILES,
+    })
+  }
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0) + existing.bytes
+  if (totalBytes > MAX_ATTACHMENT_TOTAL_BYTES) {
+    return warningToast(i18n, FILE_LIMIT_MESSAGES.tooLargeTotalTitle, FILE_LIMIT_MESSAGES.tooLargeTotalDescription, {
+      total: MAX_ATTACHMENT_TOTAL_BYTES / (1024 * 1024),
+    })
+  }
+  return undefined
+}
+
+function warningToast(
+  i18n: I18n | undefined,
+  title: MessageDescriptor,
+  description: MessageDescriptor,
+  values: Record<string, unknown>,
+) {
+  return {
+    type: "warning" as const,
+    title: i18n ? i18n._(title) : interpolate(title.message!, values),
+    description: i18n ? i18n._({ ...description, values }) : interpolate(description.message!, values),
+  }
+}
+
+function interpolate(message: string, values: Record<string, unknown>): string {
+  return message.replace(/\{(\w+)\}/g, (_, key: string) => String(values[key] ?? ""))
 }
 
 function formatRejectedFileNames(rejected: File[]) {
@@ -118,17 +95,27 @@ function formatRejectedFileNames(rejected: File[]) {
   return `${shown.join(", ")}${suffix}`
 }
 
-export function formatUnsupportedAttachmentToast(rejected: File[], acceptedCount: number) {
-  if (rejected.length === 0) return
-  const title =
+export function formatOversizedAttachmentToast(
+  rejected: File[],
+  acceptedCount: number,
+  i18n?: I18n,
+): { type: "warning"; title: string; description: string } | undefined {
+  if (rejected.length === 0) return undefined
+  const titleDescriptor =
     rejected.length === 1
-      ? "Unsupported file type"
+      ? FILE_LIMIT_MESSAGES.fileTooLargeTitle
       : acceptedCount > 0
-        ? "Some files were not attached"
-        : "No supported files attached"
+        ? FILE_LIMIT_MESSAGES.someFilesNotAttachedTitle
+        : FILE_LIMIT_MESSAGES.noFilesAttachedTitle
+  const values = {
+    names: formatRejectedFileNames(rejected),
+    limit: MAX_ATTACHMENT_FILE_BYTES / (1024 * 1024),
+  }
   return {
     type: "warning" as const,
-    title,
-    description: `Unsupported: ${formatRejectedFileNames(rejected)}. ${SUPPORTED_ATTACHMENT_DESCRIPTION}`,
+    title: i18n ? i18n._(titleDescriptor) : titleDescriptor.message,
+    description: i18n
+      ? i18n._({ ...FILE_LIMIT_MESSAGES.tooLargeNamesDescription, values })
+      : interpolate(FILE_LIMIT_MESSAGES.tooLargeNamesDescription.message!, values),
   }
 }
