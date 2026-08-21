@@ -344,3 +344,34 @@ test("completed one-shot github watches stop polling — settleAfterFire drops t
     },
   })
 })
+
+test("workflow conclusion null is normalized so baseline keys stay clean", () => {
+  // GitHub returns conclusion: null for in-progress runs. If passed through,
+  // the baseline key becomes "in_progress:null" and previousState leaks the
+  // composite format to the agent on completion.
+  const inProgress = AgendaGithubTrigger.workflowSnapshot({
+    id: 600,
+    name: "CI",
+    status: "in_progress",
+    conclusion: null,
+    html_url: "https://github.com/owner/repo/actions/runs/600",
+  })
+  expect(inProgress.conclusion).toBeUndefined()
+
+  const lastStates = new Map<string, string>()
+  AgendaGithubTrigger.collectChanges({ lastStates, allowInitialMatch: false, states: ["failure"] }, [inProgress])
+  expect(lastStates.get("workflow:600")).toBe("in_progress")
+
+  const done = AgendaGithubTrigger.workflowSnapshot({
+    id: 600,
+    name: "CI",
+    status: "completed",
+    conclusion: "failure",
+    html_url: "https://github.com/owner/repo/actions/runs/600",
+  })
+  const fired = AgendaGithubTrigger.collectChanges({ lastStates, allowInitialMatch: false, states: ["failure"] }, [
+    done,
+  ])
+  expect(fired).toHaveLength(1)
+  expect(fired[0]?.previous).toBe("in_progress")
+})

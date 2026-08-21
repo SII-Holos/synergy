@@ -56,3 +56,8 @@ The GitHub integration in Settings → Integrations had three experience gaps:
 - `agenda_watch`'s `onGithub` accepts and forwards `ref` (branch/tag/commit) instead of silently dropping it to `HEAD`.
 - Both `agenda_watch` and `agenda_schedule` reject GitHub trigger creation while `github.watch.enabled=false`, telling the agent how to get it enabled, instead of persisting a permanently silent item.
 - Watches created before polling was disabled are paused (and their continuation released via `resumeIfReleased`) on their next poll tick, so disabling the switch also drains existing watches instead of leaving them idling forever.
+
+## Fourth review round fixes (self-review)
+
+- GitHub returns `conclusion: null` for in-progress workflow/check runs; the snapshot functions now normalize `null` to `undefined` so baseline keys never become `"in_progress:null"` and `previousState` stays a plain state value on completion.
+- Dead duplicate `checkSnapshot` removed (leftover from a refactor during the review fixes).

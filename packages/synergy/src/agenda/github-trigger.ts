@@ -446,7 +446,9 @@ export namespace AgendaGithubTrigger {
       title: run.name,
       state: run.status,
       url: run.html_url,
-      conclusion: run.conclusion,
+      // GitHub returns null for in-progress runs; normalize to undefined so
+      // baseline keys and payloads treat "no conclusion yet" consistently.
+      conclusion: run.conclusion ?? undefined,
       updatedAt: run.updated_at,
     }
   }
@@ -459,7 +461,7 @@ export namespace AgendaGithubTrigger {
       title: check.name,
       state: check.status,
       url: check.html_url,
-      conclusion: check.conclusion,
+      conclusion: check.conclusion ?? undefined,
       updatedAt: check.started_at,
     }
   }
