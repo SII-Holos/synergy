@@ -69,6 +69,13 @@ async function main() {
   }
 }
 
+export async function stagePackablePackage(options: { sourceDir: string; packageJson: PackageJson; tempDir: string }) {
+  const stagedDir = await mkdtemp(path.join(options.tempDir, "stage-"))
+  await $`cp -R ${options.sourceDir}/. ${stagedDir}/`
+  await Bun.write(path.join(stagedDir, "package.json"), JSON.stringify(options.packageJson, null, 2))
+  return pack(stagedDir, options.tempDir)
+}
+
 async function validateWorkspacePackage(pkg: PublishablePackage, tempDir: string) {
   console.log(`\n=== package check: ${pkg.name} ===\n`)
   const sdkOpenApiPath = path.join(SDK_DIR, "openapi.json")
@@ -87,8 +94,7 @@ async function validateWorkspacePackage(pkg: PublishablePackage, tempDir: string
     }
   }
 
-  const packageJsonPath = path.join(pkg.dir, "package.json")
-  const originalText = await Bun.file(packageJsonPath).text()
+  const originalText = await Bun.file(path.join(pkg.dir, "package.json")).text()
   const sourcePackageJson = JSON.parse(originalText) as PackageJson
   const publishablePackageJson = createPublishablePackageJson({
     packageJson: sourcePackageJson,
@@ -97,15 +103,10 @@ async function validateWorkspacePackage(pkg: PublishablePackage, tempDir: string
     dependencyVersions: pkg.dependencyVersions,
   })
 
-  await Bun.write(packageJsonPath, JSON.stringify(publishablePackageJson, null, 2))
-  try {
-    const tarball = await pack(pkg.dir, tempDir)
-    await runPublint(tarball)
-    if (pkg.attw) {
-      await runAttw(tarball)
-    }
-  } finally {
-    await Bun.write(packageJsonPath, originalText)
+  const tarball = await stagePackablePackage({ sourceDir: pkg.dir, packageJson: publishablePackageJson, tempDir })
+  await runPublint(tarball)
+  if (pkg.attw) {
+    await runAttw(tarball)
   }
 }
 
@@ -165,7 +166,7 @@ async function pack(dir: string, tempDir: string) {
   if (tarballs.length !== 1) {
     throw new Error(`Expected one tarball in ${packDir}, found ${tarballs.length}`)
   }
-  return path.join(packDir, tarballs[0])
+  return path.join(packDir, tarballs[0]!)
 }
 
 async function runPublint(tarball: string) {
@@ -190,4 +191,4 @@ async function exists(filePath: string) {
   }
 }
 
-await main()
+if (import.meta.main) await main()
