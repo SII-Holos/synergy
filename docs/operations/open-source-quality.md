@@ -98,7 +98,7 @@ The `package:check` script validates every publishable npm package in the monore
 
 - **publint** validates package.json best practices (exports, types, module resolution)
 - **attw** (`--profile esm-only`) verifies the published package works with ESM consumers
-- The validation builds each package from source, packs a tarball, runs both tools, then restores the original package.json
+- The validation builds each package from source, packs a tarball from a temp-staged copy carrying the publishable manifest, and runs both tools; tracked package.json files are never rewritten
 
 Run locally:
 

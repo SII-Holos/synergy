@@ -10059,6 +10059,46 @@ msgstr "计划"
 msgid "prompt.externalAgentBlocked"
 msgstr "请创建新会话以使用此外部智能体"
 
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.fileTooLarge.title"
+msgstr "文件过大"
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.noFilesAttached.title"
+msgstr "未附加任何文件"
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.someFilesNotAttached.title"
+msgstr "部分文件未附加"
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooLargeNames.description"
+msgstr "过大：{names}。文件必须不超过 {limit} MB。"
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooLargeTotal.description"
+msgstr "所选文件总大小不得超过 {total} MB。"
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooLargeTotal.title"
+msgstr "文件过大"
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooManyFiles.description"
+msgstr "最多选择 {count} 个文件。"
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooManyFiles.title"
+msgstr "文件过多"
+
 #. prompt-input.tsx — generic error / request failed
 msgid "prompt.generic.requestFailed"
 msgstr "请求失败"
