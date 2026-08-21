@@ -1220,6 +1220,12 @@ export const Provider = ModelsDev.Provider.partial()
         baseURL: z.string().optional(),
         enterpriseUrl: z.string().optional().describe("GitHub Enterprise URL for copilot authentication"),
         setCacheKey: z.boolean().optional().describe("Enable promptCacheKey for this provider (default false)"),
+        mergeSystemMessages: z
+          .boolean()
+          .optional()
+          .describe(
+            "Merge leading system messages into a single system message for strict OpenAI-compatible endpoints that reject multiple or non-leading system messages (e.g. vLLM Qwen chat templates). Default false.",
+          ),
         timeout: z
           .union([
             z

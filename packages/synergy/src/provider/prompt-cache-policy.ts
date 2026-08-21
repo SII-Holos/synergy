@@ -8,8 +8,15 @@ export namespace PromptCachePolicy {
   // expose an OpenAI promptCacheKey equivalent. Do not map Synergy's sessionID to
   // DeepSeek user_id here: DeepSeek documents user_id as privacy/KVCache
   // isolation, not as an affinity key for improving hit rates.
-  const LATE_USER_CONTEXT_PROVIDER_IDS = new Set(["openai", "openai-codex", "deepseek"])
-  const LATE_USER_CONTEXT_SDK_PACKAGES = new Set(["@ai-sdk/openai", "@ai-sdk/azure"])
+  // Every @ai-sdk/openai-compatible transport gets the late-user-context
+  // layout: the mainstream providers behind that SDK (DeepSeek, Zhipu GLM,
+  // Alibaba Qwen, Moonshot, and OpenAI-compatible gateways) all implement
+  // automatic prefix caching without explicit cache-control parameters, so
+  // volatile advisory context must sit after the append-only history prefix.
+  // Providers behind it that lack prefix caching only lose the stricter
+  // system-message ordering, never correctness.
+  const LATE_USER_CONTEXT_PROVIDER_IDS = new Set(["openai", "openai-codex", "deepseek", "anthropic"])
+  const LATE_USER_CONTEXT_SDK_PACKAGES = new Set(["@ai-sdk/openai", "@ai-sdk/azure", "@ai-sdk/openai-compatible"])
   const SESSION_CACHE_KEY_PROVIDER_IDS = new Set(["openai", "openai-codex"])
   const SESSION_CACHE_KEY_SDK_PACKAGES = new Set(["@ai-sdk/azure"])
 
