@@ -22,12 +22,12 @@ mkdir -p "$DEV_HOME/.synergy"
 cp -R ~/.synergy/config "$DEV_HOME/.synergy/config"
 ```
 
-3. Copying configuration preserves provider settings but does not copy the separate credential store. Do not copy sessions, daemon state, locks, logs, cache, or Library data. Seed only the fixture credentials a test requires inside the isolated home; never copy or overwrite the live credential store implicitly.
+3. Copying configuration preserves provider settings but does not copy the separate credential store. Do not copy sessions, daemon state, locks, logs, cache, or Library data — the two model catalog files in step 4 are the sole cache exception. Seed only the fixture credentials a test requires inside the isolated home; never copy or overwrite the live credential store implicitly.
 4. Copy model catalog data from the main home when the isolated environment cannot reach models.dev (offline or restricted-network debugging machines), so the isolated model list does not depend on a live models.dev fetch:
 
 ```bash
 mkdir -p "$DEV_HOME/.synergy/cache"
-cp ~/.synergy/cache/provider-model-catalogs.v1.json ~/.synergy/cache/models.json "$DEV_HOME/.synergy/cache/"
+for f in provider-model-catalogs.v1.json models.json; do cp ~/.synergy/cache/"$f" "$DEV_HOME/.synergy/cache/" 2>/dev/null || true; done
 ```
 
 Treat these two cache files as seed data only: they are refreshed in place by the isolated runtime and never copied back to the main home. If the files are absent from the main home, the isolated instance will fetch models.dev on first use as usual.
