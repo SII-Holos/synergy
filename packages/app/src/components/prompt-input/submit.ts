@@ -1132,7 +1132,16 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           // this item (and materialized its message) before the acceptance
           // response lands, e.g. when the session went idle between enqueue
           // and response. Re-inserting would resurrect a ghost inbox row.
-          if (!isInboxItemMaterialized(syncStore.message[activeSession.id], item, isOptimisticMessagePending)) {
+          // History-mode windows track unseen canonical arrivals in
+          // pendingLatestIds rather than the messages array, so both count.
+          if (
+            !isInboxItemMaterialized(
+              syncStore.message[activeSession.id],
+              item,
+              isOptimisticMessagePending,
+              syncStore.messageWindow[activeSession.id]?.pendingLatestIds,
+            )
+          ) {
             globalSync.applyResourceMutationResponse(
               sessionScopeKey,
               activeSession.id,

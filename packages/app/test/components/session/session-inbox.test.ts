@@ -125,4 +125,11 @@ describe("isInboxItemMaterialized", () => {
     expect(isInboxItemMaterialized(undefined, queued, () => false)).toBe(false)
     expect(isInboxItemMaterialized([{ id: "msg_other" }], queued, () => false)).toBe(false)
   })
+  test("treats a history-mode pending-latest arrival as materialized", () => {
+    const queued = item("inb_queued", "task", "001")
+
+    expect(isInboxItemMaterialized([], queued, () => false, [queued.messageID])).toBe(true)
+    expect(isInboxItemMaterialized(undefined, queued, () => false, [queued.messageID])).toBe(true)
+    expect(isInboxItemMaterialized([], queued, () => false, ["msg_other"])).toBe(false)
+  })
 })

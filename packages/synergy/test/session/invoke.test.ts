@@ -2202,7 +2202,7 @@ describe("SessionInvoke.cancel", () => {
       // not release the runtime. If cancel() calls release() instead,
       // the runtime transitions to idle before time.completed is set.
       expect(signalAbortSpy).toHaveBeenCalledTimes(1)
-      expect(signalAbortSpy).toHaveBeenCalledWith(sessionID)
+      expect(signalAbortSpy).toHaveBeenCalledWith(sessionID, undefined)
 
       // release must NOT be called by cancel: only the defer in loop()
       // should call release after the processor has exited.
@@ -2235,7 +2235,7 @@ describe("SessionInvoke abort with queued inbox work", () => {
           model: { providerID: "test-provider", modelID: "test-model" },
           parts: [{ type: "text", text: "queued while the run is active" }],
         })
-        SessionInvoke.cancel(activeSessionID)
+        SessionInvoke.cancel(activeSessionID, { recoverQueuedTasks: true })
         assistant.error = new MessageV2.AbortedError({
           message: "Session aborted during turn",
         }).toObject()
@@ -2258,6 +2258,55 @@ describe("SessionInvoke abort with queued inbox work", () => {
           // during the run. Without this drive the item strands in the
           // inbox until the next user message wakes the session.
           expect(driveRequests).toContain("release")
+        },
+      })
+    } finally {
+      ;(SessionDrive as any).request = originalRequest
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
+  test("internal cancellation does not schedule the release drive", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    const originalRequest = SessionDrive.request
+    const driveRequests: string[] = []
+    ;(SessionDrive as any).request = mock(async (_sessionID: string, reason: string) => {
+      driveRequests.push(reason)
+      return true
+    })
+    const restore = installBasicLoopMocks({
+      onProcess: async (_input, assistant, callIndex) => {
+        if (callIndex > 1) return
+        await SessionInbox.enqueueUser({
+          sessionID: activeSessionID,
+          agent: "synergy",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          parts: [{ type: "text", text: "queued while the run is cancelled internally" }],
+        })
+        // No recoverQueuedTasks: an internal cancellation (Boss task cancel,
+        // Lattice run cancel, Cortex timeout) removes its own inbox items
+        // after aborting; the release drive would race that cleanup.
+        SessionInvoke.cancel(activeSessionID)
+        assistant.error = new MessageV2.AbortedError({
+          message: "Session cancelled during turn",
+        }).toObject()
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+
+          await expect(SessionInvoke.loop.force(session.id)).rejects.toThrow()
+
+          const items = await SessionInbox.list(session.id)
+          expect(items).toHaveLength(1)
+          expect(driveRequests).not.toContain("release")
         },
       })
     } finally {

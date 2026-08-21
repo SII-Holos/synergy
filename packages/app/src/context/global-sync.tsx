@@ -1349,12 +1349,17 @@ function createGlobalSync() {
           // A canonical user-message update proves its inbox item (pre-allocated
           // messageID) was consumed — the backend is peek-then-commit, so the
           // item is already gone there; prune any ghost a missed or reordered
-          // inbox event left in the store.
+          // inbox event left in the store. Materialization can still precede
+          // the durable commit by a crash window, so follow the prune with one
+          // authoritative inbox refresh: an item still retryable on disk comes
+          // back, while the idle refresh path (which needs a nonempty local
+          // bucket) cannot restore it.
           if (info.role === "user") {
             const inboxItems = store.inbox[sessionID]
             const prunedInbox = removeMaterializedInboxItems(inboxItems, info.id)
             if (prunedInbox !== inboxItems) {
               setStore("inbox", sessionID, reconcile(prunedInbox ?? [], { key: "id" }))
+              refreshInbox(scopeKey, sessionID)
             }
           }
           const latestContextMessage = reduceLatestSessionContextUsageMessage(

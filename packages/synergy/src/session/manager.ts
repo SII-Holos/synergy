@@ -71,6 +71,8 @@ export namespace SessionManager {
     lease: LoopLease
     controller: AbortController
     phase: LoopPhase
+    /** Set when the abort came from an explicit user action; release then schedules the pending-work drive. */
+    recoverQueuedTasks?: boolean
   }
 
   export interface SessionRuntime {
@@ -375,11 +377,15 @@ export namespace SessionManager {
       return result
     } finally {
       if (options?.releaseLease !== false) {
-        // Capture before finish(): release() aborts the lease controller, so
-        // afterwards an explicit user abort is indistinguishable from cleanup.
-        const explicitlyAborted = lease.signal.aborted
+        // Capture before finish(): release() aborts the controller and clears
+        // the owner. signal.aborted alone cannot distinguish a user abort from
+        // internal cancellation (Boss/Lattice/Cortex abort before removing
+        // inbox items), so only an abort that marked recoverQueuedTasks may
+        // drive pending-work recovery — release cannot race that cleanup.
+        const runtime = getRuntime(sessionID)
+        const recoverQueuedTasks = !!runtime?.owner && owns(runtime, lease) && runtime.owner.recoverQueuedTasks === true
         await finish(lease, {
-          requestNextWork: completed || explicitlyAborted || options?.requestNextWorkOnFailure !== false,
+          requestNextWork: completed || recoverQueuedTasks || options?.requestNextWorkOnFailure !== false,
         })
       }
     }
@@ -435,13 +441,18 @@ export namespace SessionManager {
 
   export type AbortOutcome = "not_found" | "idle" | "signaled" | "already_stopping"
 
-  export function signalAbort(sessionID: string): AbortOutcome {
+  export function signalAbort(sessionID: string, options?: { recoverQueuedTasks?: boolean }): AbortOutcome {
     const runtime = getRuntime(sessionID)
     if (!runtime) return "not_found"
     const owner = runtime.owner
     if (!owner) return "idle"
+    // First abort wins. An internal cancellation (Boss/Lattice/Cortex) aborts
+    // before removing its own inbox items; a later abort arriving while that
+    // cleanup is in flight must not re-enable the release drive, or it would
+    // materialize the very items being cancelled.
     if (owner.phase === "stopping") return "already_stopping"
 
+    owner.recoverQueuedTasks = options?.recoverQueuedTasks === true || undefined
     owner.phase = "stopping"
     transitionExecutionPhase(runtime, "stopping")
     owner.controller.abort()
