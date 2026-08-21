@@ -7560,6 +7560,10 @@ msgid "app.sidebar.project.expand"
 msgstr "展开项目"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.project.menu"
+msgstr "项目菜单"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.project.pin"
 msgstr "固定"
 
