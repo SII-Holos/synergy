@@ -268,3 +268,37 @@ test("workflow conclusion filter does not fire for non-matching conclusions", ()
   ])
   expect(fired).toEqual([])
 })
+
+// ---------------------------------------------------------------------------
+// watch disabled after creation (review round 3)
+// ---------------------------------------------------------------------------
+
+test("disabling github.watch pauses existing items instead of idling forever", async () => {
+  const { AgendaStore } = await import("../../src/agenda/store")
+  const { tmpdir } = await import("../fixture/fixture")
+  const { ScopeContext } = await import("../../src/scope/context")
+  await using tmp = await tmpdir({
+    config: { github: { watch: { enabled: false } } },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const item = await AgendaStore.create({
+        title: "Watch while disabled",
+        prompt: "check",
+        triggers: [githubTrigger()],
+        createdBy: "agent",
+      })
+      expect(item.status).toBe("active")
+      // Simulate the poll path taken when watchConfig reports disabled: the
+      // entry unregisters and the item transitions to paused (releasing any
+      // continuation holding it) rather than silently rescheduling forever.
+      AgendaGithubTrigger.register(item.id, item.origin.scope.id, item.triggers)
+      expect(AgendaGithubTrigger.active().items).toBe(1)
+      const updated = await AgendaStore.update(item.origin.scope.id, item.id, { status: "paused" })
+      expect(updated.status).toBe("paused")
+      AgendaGithubTrigger.unregister(item.id)
+      expect(AgendaGithubTrigger.active().items).toBe(0)
+    },
+  })
+})

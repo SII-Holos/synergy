@@ -55,3 +55,4 @@ The GitHub integration in Settings → Integrations had three experience gaps:
 - Repository-wide issue watches fetch three pages before filtering out PRs, so PR-heavy repositories no longer crowd issues out of the poll window.
 - `agenda_watch`'s `onGithub` accepts and forwards `ref` (branch/tag/commit) instead of silently dropping it to `HEAD`.
 - Both `agenda_watch` and `agenda_schedule` reject GitHub trigger creation while `github.watch.enabled=false`, telling the agent how to get it enabled, instead of persisting a permanently silent item.
+- Watches created before polling was disabled are paused (and their continuation released via `resumeIfReleased`) on their next poll tick, so disabling the switch also drains existing watches instead of leaving them idling forever.

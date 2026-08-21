@@ -166,7 +166,13 @@ export namespace AgendaGithubTrigger {
     try {
       const watch = await watchConfig()
       configuredDefaultMs = watch.defaultIntervalMs
-      if (!watch.enabled) return
+      if (!watch.enabled) {
+        // Polling was switched off after this item was created: pause it now
+        // (releasing any continuation holding it) instead of idling forever.
+        abandoned = true
+        await pauseDisabled(entry)
+        return
+      }
       const resolved = await GitHubProvider.resolveToken()
       if (!resolved?.token) {
         // No credential: stay silent, retry at the normal cadence.
@@ -197,6 +203,25 @@ export namespace AgendaGithubTrigger {
         schedule(entry, Math.max(MIN_INTERVAL_MS, intervalMs))
       }
     }
+  }
+
+  /** Pause an item whose polling was disabled in config after creation. */
+  async function pauseDisabled(entry: Entry): Promise<void> {
+    unregister(entry.itemID)
+    try {
+      const before = await AgendaStore.get(entry.scopeID, entry.itemID)
+      const item = await AgendaStore.update(entry.scopeID, entry.itemID, { status: "paused" })
+      await AgendaSessionWakeup.resumeIfReleased({ before, after: item })
+    } catch (err) {
+      log.error("failed to pause github trigger after watch was disabled", {
+        itemID: entry.itemID,
+        error: err instanceof Error ? err : new Error(String(err)),
+      })
+    }
+    log.warn("github trigger paused because github.watch.enabled=false", {
+      itemID: entry.itemID,
+      repository: entry.repository,
+    })
   }
 
   async function pauseAfterFailures(entry: Entry): Promise<void> {
