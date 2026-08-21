@@ -2,7 +2,7 @@
 
 This directory owns the complete read-only file workspace UI:
 
-- `content.tsx` — active file toolbar and renderer selection; renders PDFs through the shared attachment `AttachmentPdfPreview` (pdfjs) with loading, too-large, and error/retry states
+- `content.tsx` — active file toolbar and renderer selection; renders PDFs through the shared attachment `AttachmentPdfPreview` (official pdf.js viewer components: continuous scroll, selectable text) with loading, too-large, and error/retry states
 - `explorer.tsx` — virtualized, searchable file tree
 - `source-view.tsx` — lazy read-only Monaco integration
 - `source-model-cache.ts` — Scope-isolated Monaco model LRU
