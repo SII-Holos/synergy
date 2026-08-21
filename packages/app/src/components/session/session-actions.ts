@@ -5,7 +5,7 @@ export function sessionActionVisibility(input: { sessionID?: string; scopeKey: s
   const project = menu && !isHomeScope(input.scopeKey)
   return {
     menu,
-    rename: project,
+    rename: menu,
     worktree: project,
     export: menu,
     import: menu,

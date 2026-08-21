@@ -9,7 +9,7 @@ describe("session action visibility", () => {
   test("limits project-only actions while keeping Home session actions available", () => {
     expect(sessionActionVisibility({ sessionID: "ses_home", scopeKey: "home" })).toEqual({
       menu: true,
-      rename: false,
+      rename: true,
       worktree: false,
       export: true,
       import: true,
