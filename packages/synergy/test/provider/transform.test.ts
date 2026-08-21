@@ -424,6 +424,33 @@ describe("ProviderTransform.message - mergeSystemMessages option", () => {
     expect(result[1].role).toBe("system")
     expect(result[2].role).toBe("user")
   })
+
+  test("clamps the system cache breakpoint onto the merged system message for anthropic transports", () => {
+    const anthropicMergedModel = {
+      ...strictModel,
+      id: "anthropic/claude-3-5-sonnet",
+      providerID: "anthropic",
+      api: { id: "claude-3-5-sonnet-20241022", url: "https://api.anthropic.com", npm: "@ai-sdk/anthropic" },
+    }
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "AGENTS.md instructions" },
+      { role: "system", content: "permission context" },
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi" },
+      { role: "user", content: "<runtime-context>advisory</runtime-context>" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, anthropicMergedModel, {
+      systemCacheBreakpoint: 2,
+      mergeSystemMessages: true,
+    })
+
+    expect(result[0].role).toBe("system")
+    expect(result[0].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[2].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[3].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+  })
 })
 
 describe("ProviderTransform.maxOutputTokens", () => {

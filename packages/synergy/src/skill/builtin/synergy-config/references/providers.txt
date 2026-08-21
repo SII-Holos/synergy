@@ -260,7 +260,7 @@ Fields:
 - `api` — base API URL (alternative to `options.baseURL`)
 - `env` — array of env var names to check for API key
 - `options` — passed to the SDK constructor. Common: `apiKey`, `baseURL`, `timeout`, `queryParams`, `enterpriseUrl`, `setCacheKey`, `mergeSystemMessages`
-- `options.mergeSystemMessages` — merge leading system messages into one for strict endpoints that reject multiple/non-leading system messages with "System message must be at the beginning." (vLLM + Qwen chat templates; default false). Enabling this coarsens the Anthropic-style per-block cache breakpoint in the stable system region; prefix-cache reuse of the merged block is preserved.
+- `options.mergeSystemMessages` — merge leading system messages into one for strict endpoints that reject multiple/non-leading system messages with "System message must be at the beginning." (vLLM + Qwen chat templates; default false). When merging, the system cache breakpoint is clamped onto the merged block (single breakpoint over the whole merged system region); prefix-cache reuse of the merged block is preserved.
 - `models` — manually specify models. Key is display name, `id` is what's sent to API.
 - `models.<name>.cost` — `input` and `output` per million tokens
 - `models.<name>.limit` — token limits: `context` (window), optional `input` (explicit input cap), optional `output` (per-request output cap). How you fill these drives the soft-compaction strategy — see "Model token limits and soft compaction" below.

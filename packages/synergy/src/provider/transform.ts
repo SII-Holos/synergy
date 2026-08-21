@@ -427,7 +427,15 @@ export namespace ProviderTransform {
     msgs = unsupportedParts(msgs, model, options)
     msgs = normalizeMessages(msgs, model)
     if (options?.mergeSystemMessages === true) {
-      msgs = mergeLeadingSystemMessages(msgs)
+      const merged = mergeLeadingSystemMessages(msgs)
+      if (merged.length !== msgs.length) {
+        // The leading system run collapsed into one message: the per-block
+        // breakpoint index now points past the single merged block, which
+        // would silently drop the system breakpoint entirely. Clamp it to 0
+        // so the whole merged system block becomes the breakpoint unit.
+        if (options.systemCacheBreakpoint !== undefined) options = { ...options, systemCacheBreakpoint: 0 }
+        msgs = merged
+      }
     }
     if (
       model.providerID === "anthropic" ||
