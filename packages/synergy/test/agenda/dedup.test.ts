@@ -174,6 +174,40 @@ describe("trigger conflict: session", () => {
   })
 })
 
+describe("trigger conflict: github", () => {
+  function ghTrigger(overrides: Partial<AgendaTypes.Trigger & { type: "github" }> = {}): AgendaTypes.Trigger {
+    return {
+      type: "github",
+      resource: "workflow",
+      repository: "owner/repo",
+      ref: "main",
+      ...overrides,
+    } as AgendaTypes.Trigger
+  }
+
+  test("same resource + repo + ref + states → conflict", () => {
+    expect(AgendaDedup.triggersConflict(ghTrigger({ number: 1 }), ghTrigger({ number: 1 }))).toBe(true)
+  })
+
+  test("different ref → no conflict (different branch watched)", () => {
+    expect(AgendaDedup.triggersConflict(ghTrigger(), ghTrigger({ ref: "release/v2" }))).toBe(false)
+  })
+
+  test("different states filter → no conflict (different watched condition)", () => {
+    expect(AgendaDedup.triggersConflict(ghTrigger({ states: ["failure"] }), ghTrigger({ states: ["success"] }))).toBe(
+      false,
+    )
+  })
+
+  test("different number → no conflict", () => {
+    expect(AgendaDedup.triggersConflict(ghTrigger({ number: 1 }), ghTrigger({ number: 2 }))).toBe(false)
+  })
+
+  test("github vs cron → no conflict", () => {
+    expect(AgendaDedup.triggersConflict(ghTrigger(), cronTrigger("0 9 * * *"))).toBe(false)
+  })
+})
+
 // ---------------------------------------------------------------------------
 // Conflict message formatting
 // ---------------------------------------------------------------------------

@@ -190,3 +190,49 @@ test("local bash does not override an explicit GH_TOKEN established in the comma
     })
   })
 })
+
+test("local bash adds no output notice when no GitHub credential is connected", async () => {
+  const savedGH = process.env.GH_TOKEN
+  const savedGITHUB = process.env.GITHUB_TOKEN
+  const savedPath = process.env.PATH
+  delete process.env.GH_TOKEN
+  delete process.env.GITHUB_TOKEN
+  await Auth.remove(GitHubProvider.PROVIDER_ID).catch(() => {})
+
+  try {
+    await using tmp = await tmpdir({ git: true })
+    const shell = Shell.acceptable()
+    const usesBash = /(?:^|[\\/])bash(?:\.exe)?$/i.test(shell)
+    if (process.platform === "win32" && !usesBash) {
+      await Bun.write(`${tmp.path}/gh.cmd`, "@echo off\r\n@echo gh-ok\r\n")
+    } else {
+      const ghPath = `${tmp.path}/gh`
+      await Bun.write(ghPath, "#!/usr/bin/env bash\nprintf '%s' 'gh-ok'")
+      await fs.chmod(ghPath, 0o755)
+    }
+    process.env.PATH = `${tmp.path}${path.delimiter}${savedPath ?? ""}`
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const result = await LocalBashBackend.execute(
+          {
+            command: "gh",
+            description: "runs gh without a stored credential",
+            workdir: tmp.path,
+          },
+          testContext(),
+        )
+        expect(result.output).toBe("gh-ok")
+        expect(result.output).not.toContain("GitHub CLI token skipped")
+      },
+    })
+  } finally {
+    if (savedGH === undefined) delete process.env.GH_TOKEN
+    else process.env.GH_TOKEN = savedGH
+    if (savedGITHUB === undefined) delete process.env.GITHUB_TOKEN
+    else process.env.GITHUB_TOKEN = savedGITHUB
+    if (savedPath === undefined) delete process.env.PATH
+    else process.env.PATH = savedPath
+  }
+})

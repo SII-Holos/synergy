@@ -21,6 +21,7 @@ Generated from the config domain definitions in `packages/synergy/src/config/dom
 | `channels` | `90-channels.jsonc` | merge |
 | `holos` | `100-holos.jsonc` | merge |
 | `email` | `110-email.jsonc` | merge |
+| `github` | `115-github.jsonc` | merge |
 | `runtime` | `120-runtime.jsonc` | merge |
 
 ## General
@@ -165,6 +166,14 @@ File: `110-email.jsonc` · Merge: merge
 | Key | Type | Description |
 | --- | --- | --- |
 | `email` | Email.optional (optional) | Outgoing email configuration |
+
+## GitHub
+
+File: `115-github.jsonc` · Merge: merge
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `github` | Github.optional (optional) | GitHub integration settings (git identity sync, agenda watch) |
 
 ## Runtime
 

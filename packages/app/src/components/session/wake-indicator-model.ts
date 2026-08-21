@@ -25,6 +25,7 @@ export const W = {
   triggerCron: { id: "session.agenda.wake.trigger.cron", message: "Scheduled" },
   triggerWatch: { id: "session.agenda.wake.trigger.watch", message: "Conditional" },
   triggerWebhook: { id: "session.agenda.wake.trigger.webhook", message: "Webhook" },
+  triggerGithub: { id: "session.agenda.wake.trigger.github", message: "On GitHub" },
   triggerSession: { id: "session.agenda.wake.trigger.session", message: "On session turn" },
   triggerPending: { id: "session.agenda.wake.trigger.pending", message: "Pending" },
 
@@ -124,6 +125,8 @@ export function triggerLabel(item: SessionAgendaItem, deps: { i18n: I18n }): str
         return deps.i18n._(W.triggerWatch)
       case "webhook":
         return deps.i18n._(W.triggerWebhook)
+      case "github":
+        return deps.i18n._(W.triggerGithub)
       case "session":
         return deps.i18n._(W.triggerSession)
       default:

@@ -24,6 +24,7 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
   buildRuntimePatch(cfg, state, patch)
   buildEmailPatch(cfg, state, patch)
   buildChannelPatch(cfg, state, patch)
+  buildGithubIntegrationPatch(cfg, state, patch)
   buildLibraryPatch(cfg, state, patch)
   buildSkillsPatch(cfg, state, patch)
 
@@ -461,6 +462,32 @@ function buildChannelPatch(cfg: Config, state: SettingsState, patch: Record<stri
     }
   }
   if (JSON.stringify(newChannel) !== JSON.stringify(currentChannel)) patch.channel = newChannel
+}
+
+function buildGithubIntegrationPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
+  const { github } = state
+  const name = github.identitySyncName.trim()
+  const email = github.identitySyncEmail.trim()
+  // name/email are sent as explicit null when cleared: the github config
+  // domain merges deep, so omitting the key would keep the stored override.
+  // The server schema treats null as "remove this override".
+  const next = {
+    identitySync: {
+      enabled: github.identitySyncEnabled,
+      ...(name ? { name } : cfg.github?.identitySync?.name ? { name: null } : {}),
+      ...(email ? { email } : cfg.github?.identitySync?.email ? { email: null } : {}),
+    },
+    watch: { enabled: github.watchEnabled },
+  }
+  const current = {
+    identitySync: {
+      enabled: cfg.github?.identitySync?.enabled === true,
+      ...(cfg.github?.identitySync?.name ? { name: cfg.github.identitySync.name } : {}),
+      ...(cfg.github?.identitySync?.email ? { email: cfg.github.identitySync.email } : {}),
+    },
+    watch: { enabled: cfg.github?.watch?.enabled !== false },
+  }
+  if (JSON.stringify(next) !== JSON.stringify(current)) patch.github = next
 }
 
 function buildLibraryPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {

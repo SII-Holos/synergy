@@ -45,8 +45,28 @@ describe("PromptCachePolicy", () => {
     ).toBe("late-user-context")
   })
 
-  test("keeps unknown and Anthropic-style providers on system-message layout", () => {
-    expect(PromptCachePolicy.layout(model({ providerID: "anthropic", npm: "@ai-sdk/anthropic" }))).toBe("system")
+  test("routes every openai-compatible transport to late user context", () => {
+    expect(PromptCachePolicy.layout(model({ providerID: "custom", npm: "@ai-sdk/openai-compatible" }))).toBe(
+      "late-user-context",
+    )
+    expect(PromptCachePolicy.layout(model({ providerID: "zai", npm: "@ai-sdk/openai-compatible" }))).toBe(
+      "late-user-context",
+    )
+    expect(PromptCachePolicy.layout(model({ providerID: "zai-team", npm: "@ai-sdk/openai-compatible" }), "zai")).toBe(
+      "late-user-context",
+    )
+    expect(PromptCachePolicy.layout(model({ providerID: "qwen-oauth", npm: "@ai-sdk/openai-compatible" }))).toBe(
+      "late-user-context",
+    )
+    expect(PromptCachePolicy.layout(model({ providerID: "xiaomi", npm: "@ai-sdk/openai-compatible" }))).toBe(
+      "late-user-context",
+    )
+  })
+
+  test("keeps unknown and non-qualified providers on system-message layout", () => {
+    expect(PromptCachePolicy.layout(model({ providerID: "google-vertex", npm: "@ai-sdk/google-vertex" }))).toBe(
+      "system",
+    )
     expect(PromptCachePolicy.layout(model({ providerID: "custom", npm: "custom-sdk" }))).toBe("system")
   })
 

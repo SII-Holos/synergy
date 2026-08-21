@@ -466,6 +466,50 @@ export const Email = z
   .meta({ ref: "EmailConfig" })
 export type Email = z.infer<typeof Email>
 
+export const GithubIdentitySync = z
+  .object({
+    enabled: z.boolean().optional().describe("Sync git user.name/user.email from the connected GitHub account"),
+    name: z
+      .string()
+      .nullable()
+      .optional()
+      .describe("Optional git user.name override (defaults to the GitHub account login). null clears the override"),
+    email: z
+      .string()
+      .nullable()
+      .optional()
+      .describe("Optional git user.email override (defaults to the GitHub noreply email). null clears the override"),
+  })
+  .strict()
+  .meta({ ref: "GithubIdentitySyncConfig" })
+export type GithubIdentitySync = z.infer<typeof GithubIdentitySync>
+
+export const GithubWatch = z
+  .object({
+    enabled: z
+      .boolean()
+      .optional()
+      .describe("Allow GitHub agenda triggers (PR/issue/workflow status polling). Default: true"),
+    defaultIntervalMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Default poll interval for GitHub agenda triggers in milliseconds (default 300000)"),
+  })
+  .strict()
+  .meta({ ref: "GithubWatchConfig" })
+export type GithubWatch = z.infer<typeof GithubWatch>
+
+export const Github = z
+  .object({
+    identitySync: GithubIdentitySync.optional().describe("Git identity sync settings"),
+    watch: GithubWatch.optional().describe("GitHub agenda trigger settings"),
+  })
+  .strict()
+  .meta({ ref: "GithubConfig" })
+export type Github = z.infer<typeof Github>
+
 export const PermissionAction = z.enum(["ask", "allow", "deny"]).meta({
   ref: "PermissionActionConfig",
 })
@@ -1220,6 +1264,12 @@ export const Provider = ModelsDev.Provider.partial()
         baseURL: z.string().optional(),
         enterpriseUrl: z.string().optional().describe("GitHub Enterprise URL for copilot authentication"),
         setCacheKey: z.boolean().optional().describe("Enable promptCacheKey for this provider (default false)"),
+        mergeSystemMessages: z
+          .boolean()
+          .optional()
+          .describe(
+            "Merge leading system messages into a single system message for strict OpenAI-compatible endpoints that reject multiple or non-leading system messages (e.g. vLLM Qwen chat templates). Default false.",
+          ),
         timeout: z
           .union([
             z
@@ -1836,6 +1886,7 @@ export const Info = z
     controlProfile: ControlProfileId.optional().describe("Default control profile applied to all agents"),
     holos: Holos.optional().describe("Holos platform configuration"),
     email: Email.optional().describe("Outgoing email configuration"),
+    github: Github.optional().describe("GitHub integration settings (git identity sync, agenda watch)"),
     formatter: z
       .union([
         z.literal(false),

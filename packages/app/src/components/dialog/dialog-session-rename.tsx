@@ -7,9 +7,10 @@ import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
+import type { SessionScopeRequest } from "@/components/session/session-actions"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
 
-export function DialogSessionRename(props: { session: Session; directory: string }) {
+export function DialogSessionRename(props: { session: Session; scopeRequest: SessionScopeRequest }) {
   const dialogContext = useDialogContext()
   const globalSDK = useGlobalSDK()
   const { _ } = useLingui()
@@ -24,7 +25,7 @@ export function DialogSessionRename(props: { session: Session; directory: string
     setSaving(true)
     try {
       await globalSDK.client.session.update({
-        directory: props.directory,
+        ...props.scopeRequest,
         sessionID: props.session.id,
         title: value(),
       })
