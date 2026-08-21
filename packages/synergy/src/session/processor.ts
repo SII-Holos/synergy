@@ -878,6 +878,11 @@ export namespace SessionProcessor {
             providerID: input.model.providerID,
           },
         })
+        await Bus.publish(SessionEvent.TurnStart, {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          agent: input.assistantMessage.agent,
+        })
         const shouldBreak = (await Config.current()).experimental?.continue_loop_on_deny !== true
         try {
           while (true) {
@@ -1771,6 +1776,12 @@ export namespace SessionProcessor {
                 durationMs: Date.now() - turnStartedAt,
                 pendingTools: executions.size,
               },
+            })
+            await Bus.publish(SessionEvent.TurnEnd, {
+              sessionID: input.sessionID,
+              messageID: input.assistantMessage.id,
+              finish: input.assistantMessage.finish,
+              agent: input.assistantMessage.agent,
             })
             SessionMemoryPressure.probe("processor.after_observability_turn_end", {
               sessionID: input.sessionID,

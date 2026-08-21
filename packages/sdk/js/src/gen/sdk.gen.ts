@@ -657,6 +657,8 @@ import type {
   WorkflowSetInput,
   WorkspaceFilesChildrenErrors,
   WorkspaceFilesChildrenResponses,
+  WorkspaceFilesContentErrors,
+  WorkspaceFilesContentResponses,
   WorkspaceFilesReadErrors,
   WorkspaceFilesReadResponses,
   WorkspaceFilesSearchErrors,
@@ -1574,6 +1576,42 @@ export class Files extends HeyApiClient {
   }
 
   /**
+   * Read workspace file bytes
+   *
+   * Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected.
+   */
+  public content<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      path: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "path" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      WorkspaceFilesContentResponses,
+      WorkspaceFilesContentErrors,
+      ThrowOnError
+    >({
+      url: "/workspace/files/content",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Write workspace file
    *
    * Write content to an existing workspace file with optional optimistic concurrency control.
@@ -2354,6 +2392,10 @@ export class Session extends HeyApiClient {
           }
         | {
             type: "before"
+            messageID: string
+          }
+        | {
+            type: "through"
             messageID: string
           }
       workspace?: SessionWorkspaceSelection
@@ -5881,6 +5923,7 @@ export class Domain extends HeyApiClient {
         | "library"
         | "mcp"
         | "plugins"
+        | "skills"
         | "agents"
         | "commands"
         | "permissions"
@@ -5926,6 +5969,7 @@ export class Domain extends HeyApiClient {
         | "library"
         | "mcp"
         | "plugins"
+        | "skills"
         | "agents"
         | "commands"
         | "permissions"
@@ -5978,6 +6022,7 @@ export class Domain extends HeyApiClient {
         | "library"
         | "mcp"
         | "plugins"
+        | "skills"
         | "agents"
         | "commands"
         | "permissions"

@@ -2,6 +2,10 @@ export function isWorkspaceFileNotFoundError(input: unknown): boolean {
   return !!input && typeof input === "object" && "name" in input && input.name === "NotFoundError"
 }
 
+export function isWorkspaceFileTooLargeError(input: unknown): boolean {
+  return !!input && typeof input === "object" && "name" in input && input.name === "WorkspaceFileTooLargeError"
+}
+
 export function isFileWriteConflictError(input: unknown): boolean {
   return !!input && typeof input === "object" && "name" in input && input.name === "WorkspaceFileWriteConflictError"
 }

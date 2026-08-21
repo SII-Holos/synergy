@@ -20,6 +20,7 @@ const APP_FILES = [
   "../app/src/components/header-bar.css",
   "../app/src/components/dialog/dialog-settings.css",
   "../app/src/components/dialog/dialog-settings.tsx",
+  "../app/src/components/kanban/kanban.css",
 ]
 
 const KNOWN_STATIC_TOKENS = new Set([

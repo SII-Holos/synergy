@@ -177,4 +177,47 @@ describe("AgendaPrompt.build", () => {
     expect(result).toContain("<last-run-error>timeout</last-run-error>")
     expect(result).toContain("<consecutive-errors>3</consecutive-errors>")
   })
+
+  test("session trigger renders target session and event", () => {
+    const item = makeItem({
+      id: "agd_session",
+      triggers: [
+        {
+          type: "session",
+          sessionID: "ses_research",
+          event: "turn.end",
+          agent: "research",
+          finish: "stop",
+          once: true,
+        },
+      ],
+      prompt: "总结 research 会话。",
+      state: { consecutiveErrors: 0, runCount: 0 },
+    })
+    const result = AgendaPrompt.build(item, makeSignal({ type: "session", source: "item" }))
+    expect(result).toContain('session "ses_research" on turn.end')
+    expect(result).toContain("agent=research")
+    expect(result).toContain("finish=stop")
+  })
+
+  test("session signal payload renders <session-event> with details", () => {
+    const item = makeItem({
+      id: "agd_session_payload",
+      triggers: [{ type: "session", sessionID: "ses_research", event: "turn.end", once: true }],
+      prompt: "总结。",
+      state: { consecutiveErrors: 0, runCount: 0 },
+    })
+    const signal: AgendaTypes.FiredSignal = {
+      type: "session",
+      source: "item",
+      timestamp: Date.now(),
+      payload: { sessionID: "ses_research", messageID: "msg_1", finish: "stop", agent: "research" },
+    }
+    const result = AgendaPrompt.build(item, signal)
+    expect(result).toContain("<session-event ")
+    expect(result).toContain('sessionID="ses_research"')
+    expect(result).toContain('messageID="msg_1"')
+    expect(result).toContain('finish="stop"')
+    expect(result).toContain('agent="research"')
+  })
 })

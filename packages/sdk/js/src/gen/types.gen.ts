@@ -1266,6 +1266,30 @@ export type AgendaTriggerWebhook = {
   token?: string
 }
 
+export type AgendaTriggerSession = {
+  type: "session"
+  /**
+   * Target session to watch for turn events
+   */
+  sessionID: string
+  /**
+   * Session turn event to react to
+   */
+  event?: "turn.end" | "turn.start"
+  /**
+   * Only fire when the turn's agent matches
+   */
+  agent?: string
+  /**
+   * Only fire when the turn's finish state matches (e.g. 'stop', 'error'). Only applies to turn.end
+   */
+  finish?: string
+  /**
+   * If true, the item auto-completes after the first fire
+   */
+  once?: boolean
+}
+
 export type AgendaTrigger =
   | AgendaTriggerAt
   | AgendaTriggerCron
@@ -1273,6 +1297,7 @@ export type AgendaTrigger =
   | AgendaTriggerDelay
   | AgendaTriggerWatch
   | AgendaTriggerWebhook
+  | AgendaTriggerSession
 
 /**
  * Control profile used by sessions created for this item
@@ -2803,6 +2828,32 @@ export type LibraryConfig = {
 }
 
 /**
+ * Per-source compatibility toggles for discovering Skills from other agent tools
+ */
+export type SkillsCompatibilityConfig = {
+  /**
+   * Load Agent Skills from .agents/skills directories (default: true)
+   */
+  agents?: boolean
+  /**
+   * Load Claude Code Skills from .claude/skills directories (default: true)
+   */
+  claude?: boolean
+  /**
+   * Load Codex Skills from .codex/skills directories (default: true)
+   */
+  codex?: boolean
+  /**
+   * Load OpenClaw Skills from .openclaw/skills and workspace skills directories (default: true)
+   */
+  openclaw?: boolean
+}
+
+export type SkillsConfig = {
+  compatibility?: SkillsCompatibilityConfig
+}
+
+/**
  * Retry policy for connecting to this server
  */
 export type McpRetryConfig = {
@@ -3790,6 +3841,7 @@ export type Config = {
   embedding?: EmbeddingConfig
   rerank?: RerankConfig
   library?: LibraryConfig
+  skills?: SkillsConfig
   /**
    * MCP (Model Context Protocol) server configurations
    */
@@ -4571,6 +4623,7 @@ export type ConfigDomainSummary = {
     | "library"
     | "mcp"
     | "plugins"
+    | "skills"
     | "agents"
     | "commands"
     | "permissions"
@@ -4637,6 +4690,7 @@ export type ConfigDomainImportDomainPlan = {
     | "library"
     | "mcp"
     | "plugins"
+    | "skills"
     | "agents"
     | "commands"
     | "permissions"
@@ -4694,6 +4748,7 @@ export type ConfigDomainImportPlanInput = {
     | "library"
     | "mcp"
     | "plugins"
+    | "skills"
     | "agents"
     | "commands"
     | "permissions"
@@ -4774,6 +4829,7 @@ export type ConfigImportRevisionConflictError = {
       | "library"
       | "mcp"
       | "plugins"
+      | "skills"
       | "agents"
       | "commands"
       | "permissions"
@@ -4802,6 +4858,7 @@ export type ConfigDomainImportApplyInput = {
     | "library"
     | "mcp"
     | "plugins"
+    | "skills"
     | "agents"
     | "commands"
     | "permissions"
@@ -5017,7 +5074,7 @@ export type DagNode = {
 }
 
 export type SessionAgendaTrigger = {
-  type: "cron" | "every" | "at" | "delay" | "watch" | "webhook"
+  type: "cron" | "every" | "at" | "delay" | "watch" | "webhook" | "session"
   /**
    * Interval for every triggers, e.g. '30m'
    */
@@ -5026,6 +5083,10 @@ export type SessionAgendaTrigger = {
    * Delay for delay triggers, e.g. '2h'
    */
   delay?: string
+  /**
+   * Target session for session triggers
+   */
+  sessionID?: string
 }
 
 export type SessionAgendaItem = {
@@ -5045,7 +5106,7 @@ export type SessionAgendaItem = {
   /**
    * Trigger types that can activate this agenda item
    */
-  triggerTypes: Array<"cron" | "every" | "at" | "delay" | "watch" | "webhook">
+  triggerTypes: Array<"cron" | "every" | "at" | "delay" | "watch" | "webhook" | "session">
   /**
    * Display-safe trigger details for client-side formatting
    */
@@ -5082,6 +5143,15 @@ export type SessionWorkspaceSelection =
       baseRef?: "current" | "fresh"
       baseRevision?: string
     }
+
+export type SessionForkPointMissingError = {
+  name: "SessionForkPointMissingError"
+  data: {
+    sessionID: string
+    messageID: string
+    message: string
+  }
+}
 
 export type AttachmentSourceText = {
   value: string
@@ -6135,6 +6205,10 @@ export type SkillList = {
     }
     message: string
   }>
+  sources: Array<{
+    source: "synergy" | "agents" | "claude" | "codex" | "openclaw"
+    count: number
+  }>
 }
 
 export type SkillExportNotStandardError = {
@@ -6366,6 +6440,13 @@ export type WorkspaceFileStatusSummary = {
     added?: number
     removed?: number
   }>
+}
+
+export type WorkspaceFileContentError = {
+  name: "WorkspaceFileAccessDeniedError" | "WorkspaceFileUnsupportedPreviewError" | "WorkspaceFileTooLargeError"
+  data: {
+    message: string
+  }
 }
 
 export type WorkspaceFileWriteResult = {
@@ -8351,6 +8432,25 @@ export type EventSessionIdle = {
   }
 }
 
+export type EventSessionTurnStart = {
+  type: "session.turn.start"
+  properties: {
+    sessionID: string
+    messageID: string
+    agent?: string
+  }
+}
+
+export type EventSessionTurnEnd = {
+  type: "session.turn.end"
+  properties: {
+    sessionID: string
+    messageID: string
+    finish?: string
+    agent?: string
+  }
+}
+
 export type EventSessionInboxUpdated = {
   type: "session.inbox.updated"
   properties: {
@@ -8812,6 +8912,8 @@ export type Event =
   | EventSessionStatus
   | EventSessionCompletion
   | EventSessionIdle
+  | EventSessionTurnStart
+  | EventSessionTurnEnd
   | EventSessionInboxUpdated
   | EventBlueprintLoopCreated
   | EventBlueprintLoopUpdated
@@ -10941,6 +11043,7 @@ export type ConfigDomainGetData = {
       | "library"
       | "mcp"
       | "plugins"
+      | "skills"
       | "agents"
       | "commands"
       | "permissions"
@@ -10988,6 +11091,7 @@ export type ConfigDomainUpdateData = {
       | "library"
       | "mcp"
       | "plugins"
+      | "skills"
       | "agents"
       | "commands"
       | "permissions"
@@ -11035,6 +11139,7 @@ export type ConfigDomainOpenData = {
       | "library"
       | "mcp"
       | "plugins"
+      | "skills"
       | "agents"
       | "commands"
       | "permissions"
@@ -12187,6 +12292,10 @@ export type SessionForkData = {
           type: "before"
           messageID: string
         }
+      | {
+          type: "through"
+          messageID: string
+        }
     workspace?: SessionWorkspaceSelection
     title?: string
     controlProfile?: "guarded" | "autonomous" | "full_access"
@@ -12202,6 +12311,18 @@ export type SessionForkData = {
 }
 
 export type SessionForkErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Fork point message is no longer part of the effective history
+   */
+  409: SessionForkPointMissingError
   /**
    * Runtime shutting down
    */
@@ -14729,6 +14850,45 @@ export type WorkspaceFilesStatusResponses = {
 }
 
 export type WorkspaceFilesStatusResponse = WorkspaceFilesStatusResponses[keyof WorkspaceFilesStatusResponses]
+
+export type WorkspaceFilesContentData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    path: string
+  }
+  url: "/workspace/files/content"
+}
+
+export type WorkspaceFilesContentErrors = {
+  /**
+   * Bad request
+   */
+  400: WorkspaceFileContentError
+  /**
+   * Forbidden
+   */
+  403: WorkspaceFileWriteError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceFilesContentError = WorkspaceFilesContentErrors[keyof WorkspaceFilesContentErrors]
+
+export type WorkspaceFilesContentResponses = {
+  /**
+   * PDF file bytes
+   */
+  200: unknown
+}
 
 export type WorkspaceFilesWriteData = {
   body?: WorkspaceFileWriteFileInput

@@ -176,6 +176,12 @@ export type McpEntry = {
   environment: string
   headers: string
 }
+export type SkillsSettings = {
+  agents: boolean
+  claude: boolean
+  codex: boolean
+  openclaw: boolean
+}
 
 export type EmailSettings = {
   enabled: boolean
@@ -382,6 +388,7 @@ export type SettingsState = {
   plugins: PluginsStore
   mcps: McpsStore
   library: LibrarySettingsStore
+  skills: SkillsSettings
   safety: SafetyStore
   runtime: RuntimeStore
   email: EmailSettings
@@ -438,6 +445,12 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
       embeddingSource: UI_DEFAULTS.embeddingSource,
       embeddingRemoteHost: UI_DEFAULTS.embeddingRemoteHost,
       embeddingCacheDir: UI_DEFAULTS.embeddingCacheDir,
+    },
+    skills: {
+      agents: true,
+      claude: true,
+      codex: true,
+      openclaw: true,
     },
     safety: {
       controlProfile: UI_DEFAULTS.controlProfile,

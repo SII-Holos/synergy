@@ -4057,6 +4057,7 @@
                 "library",
                 "mcp",
                 "plugins",
+                "skills",
                 "agents",
                 "commands",
                 "permissions",
@@ -4139,6 +4140,7 @@
                 "library",
                 "mcp",
                 "plugins",
+                "skills",
                 "agents",
                 "commands",
                 "permissions",
@@ -4232,6 +4234,7 @@
                 "library",
                 "mcp",
                 "plugins",
+                "skills",
                 "agents",
                 "commands",
                 "permissions",
@@ -6750,6 +6753,36 @@
               }
             }
           },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Fork point message is no longer part of the effective history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionForkPointMissingError"
+                }
+              }
+            }
+          },
           "503": {
             "description": "Runtime shutting down",
             "content": {
@@ -6789,6 +6822,20 @@
                           "type": {
                             "type": "string",
                             "const": "before"
+                          },
+                          "messageID": {
+                            "type": "string",
+                            "pattern": "^msg.*"
+                          }
+                        },
+                        "required": ["type", "messageID"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "through"
                           },
                           "messageID": {
                             "type": "string",
@@ -12309,6 +12356,88 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/files/content": {
+      "get": {
+        "operationId": "workspace.files.content",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Read workspace file bytes",
+        "description": "Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected.",
+        "responses": {
+          "200": {
+            "description": "PDF file bytes"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileContentError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileWriteError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.content({\n  ...\n})"
           }
         ]
       }
@@ -28803,6 +28932,39 @@
         },
         "required": ["type"]
       },
+      "AgendaTriggerSession": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session"
+          },
+          "sessionID": {
+            "description": "Target session to watch for turn events",
+            "type": "string"
+          },
+          "event": {
+            "description": "Session turn event to react to",
+            "default": "turn.end",
+            "type": "string",
+            "enum": ["turn.end", "turn.start"]
+          },
+          "agent": {
+            "description": "Only fire when the turn's agent matches",
+            "type": "string"
+          },
+          "finish": {
+            "description": "Only fire when the turn's finish state matches (e.g. 'stop', 'error'). Only applies to turn.end",
+            "type": "string"
+          },
+          "once": {
+            "description": "If true, the item auto-completes after the first fire",
+            "default": true,
+            "type": "boolean"
+          }
+        },
+        "required": ["type", "sessionID"]
+      },
       "AgendaTrigger": {
         "anyOf": [
           {
@@ -28822,6 +28984,9 @@
           },
           {
             "$ref": "#/components/schemas/AgendaTriggerWebhook"
+          },
+          {
+            "$ref": "#/components/schemas/AgendaTriggerSession"
           }
         ]
       },
@@ -31809,6 +31974,38 @@
         },
         "additionalProperties": false
       },
+      "SkillsCompatibilityConfig": {
+        "description": "Per-source compatibility toggles for discovering Skills from other agent tools",
+        "type": "object",
+        "properties": {
+          "agents": {
+            "description": "Load Agent Skills from .agents/skills directories (default: true)",
+            "type": "boolean"
+          },
+          "claude": {
+            "description": "Load Claude Code Skills from .claude/skills directories (default: true)",
+            "type": "boolean"
+          },
+          "codex": {
+            "description": "Load Codex Skills from .codex/skills directories (default: true)",
+            "type": "boolean"
+          },
+          "openclaw": {
+            "description": "Load OpenClaw Skills from .openclaw/skills and workspace skills directories (default: true)",
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SkillsConfig": {
+        "type": "object",
+        "properties": {
+          "compatibility": {
+            "$ref": "#/components/schemas/SkillsCompatibilityConfig"
+          }
+        },
+        "additionalProperties": false
+      },
       "McpRetryConfig": {
         "description": "Retry policy for connecting to this server",
         "type": "object",
@@ -33288,6 +33485,9 @@
           },
           "library": {
             "$ref": "#/components/schemas/LibraryConfig"
+          },
+          "skills": {
+            "$ref": "#/components/schemas/SkillsConfig"
           },
           "mcp": {
             "description": "MCP (Model Context Protocol) server configurations",
@@ -35501,6 +35701,7 @@
               "library",
               "mcp",
               "plugins",
+              "skills",
               "agents",
               "commands",
               "permissions",
@@ -35676,6 +35877,7 @@
               "library",
               "mcp",
               "plugins",
+              "skills",
               "agents",
               "commands",
               "permissions",
@@ -35824,6 +36026,7 @@
                 "library",
                 "mcp",
                 "plugins",
+                "skills",
                 "agents",
                 "commands",
                 "permissions",
@@ -36041,6 +36244,7 @@
                     "library",
                     "mcp",
                     "plugins",
+                    "skills",
                     "agents",
                     "commands",
                     "permissions",
@@ -36096,6 +36300,7 @@
                 "library",
                 "mcp",
                 "plugins",
+                "skills",
                 "agents",
                 "commands",
                 "permissions",
@@ -36634,7 +36839,7 @@
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["cron", "every", "at", "delay", "watch", "webhook"]
+            "enum": ["cron", "every", "at", "delay", "watch", "webhook", "session"]
           },
           "interval": {
             "description": "Interval for every triggers, e.g. '30m'",
@@ -36642,6 +36847,10 @@
           },
           "delay": {
             "description": "Delay for delay triggers, e.g. '2h'",
+            "type": "string"
+          },
+          "sessionID": {
+            "description": "Target session for session triggers",
             "type": "string"
           }
         },
@@ -36678,7 +36887,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "enum": ["cron", "every", "at", "delay", "watch", "webhook"]
+              "enum": ["cron", "every", "at", "delay", "watch", "webhook", "session"]
             }
           },
           "triggers": {
@@ -36787,6 +36996,31 @@
             "required": ["mode"]
           }
         ]
+      },
+      "SessionForkPointMissingError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SessionForkPointMissingError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "messageID", "message"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "AttachmentSourceText": {
         "type": "object",
@@ -39951,9 +40185,27 @@
               },
               "required": ["code", "severity", "name", "source", "reason", "message"]
             }
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": ["synergy", "agents", "claude", "codex", "openclaw"]
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": ["source", "count"]
+            }
           }
         },
-        "required": ["items", "diagnostics"]
+        "required": ["items", "diagnostics", "sources"]
       },
       "SkillExportNotStandardError": {
         "type": "object",
@@ -40699,6 +40951,29 @@
           }
         },
         "required": ["files"]
+      },
+      "WorkspaceFileContentError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "WorkspaceFileAccessDeniedError",
+              "WorkspaceFileUnsupportedPreviewError",
+              "WorkspaceFileTooLargeError"
+            ]
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "WorkspaceFileWriteResult": {
         "type": "object",
@@ -46710,6 +46985,59 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.session.turn.start": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.turn.start"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              },
+              "agent": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "messageID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.session.turn.end": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.turn.end"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              },
+              "finish": {
+                "type": "string"
+              },
+              "agent": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "messageID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.session.inbox.updated": {
         "type": "object",
         "properties": {
@@ -48028,6 +48356,12 @@
           },
           {
             "$ref": "#/components/schemas/Event.session.idle"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.turn.start"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.turn.end"
           },
           {
             "$ref": "#/components/schemas/Event.session.inbox.updated"

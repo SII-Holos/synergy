@@ -11,6 +11,7 @@ import { readFile } from "node:fs/promises"
 import {
   findBlock,
   isFresh,
+  matchClose,
   mdCell,
   parseObjectFields,
   REPO_ROOT,
@@ -66,16 +67,105 @@ export function parseDefCall(call: string): Domain | null {
   return { id: id.value, filename: filename.value, label: label.value, ownedKeys, mergePolicy: merge?.value ?? "merge" }
 }
 
+function splitTopLevelEntries(block: string): string[] {
+  const entries: string[] = []
+  let depth = 0
+  let start = 0
+  let inString: "'" | '"' | null = null
+  let inTemplate = false
+  let inLineComment = false
+  let inBlockComment = false
+  for (let i = 0; i < block.length; i++) {
+    const c = block[i]!
+    const prev = i > 0 ? block[i - 1] : ""
+    if (inLineComment) {
+      if (c === "\n") inLineComment = false
+      continue
+    }
+    if (inBlockComment) {
+      if (c === "*" && block[i + 1] === "/") {
+        inBlockComment = false
+        i++
+      }
+      continue
+    }
+    if (inTemplate) {
+      if (c === "`" && prev !== "\\") inTemplate = false
+      continue
+    }
+    if (inString) {
+      if (c === inString && prev !== "\\") inString = null
+      continue
+    }
+    if (c === "/" && block[i + 1] === "/") {
+      inLineComment = true
+      continue
+    }
+    if (c === "/" && block[i + 1] === "*") {
+      inBlockComment = true
+      continue
+    }
+    if (c === "'" || c === '"') {
+      inString = c
+      continue
+    }
+    if (c === "`") {
+      inTemplate = true
+      continue
+    }
+    if (c === "{" || c === "(" || c === "[") depth++
+    else if (c === "}" || c === ")" || c === "]") depth--
+    else if (c === "," && depth === 0) {
+      entries.push(block.slice(start, i))
+      start = i + 1
+    }
+  }
+  entries.push(block.slice(start))
+  return entries
+}
+
+export function parseDomainObject(body: string): Domain | null {
+  const stringField = (key: string) => {
+    const match = body.match(new RegExp(`\\b${key}\\s*:\\s*("(?:\\.|[^"])*"|'(?:\\.|[^'])*')`))
+    return match ? stringLiteral(match[1]!) : null
+  }
+  const id = stringField("id")
+  const filename = stringField("filename")
+  const label = stringField("label")
+  if (!id || !filename || !label) return null
+  const ownedKeys: string[] = []
+  const keysMatch = body.match(/\bownedKeys\s*:\s*\[/)
+  if (keysMatch) {
+    const keysStart = keysMatch.index! + keysMatch[0]!.length
+    const keysClose = matchClose(body, keysStart - 1, "[", "]")
+    if (keysClose >= 0) {
+      for (const key of body.slice(keysStart, keysClose).matchAll(/("(?:\\.|[^"])*"|'(?:\\.|[^'])*')/g)) {
+        const value = stringLiteral(key[1]!)
+        if (value) ownedKeys.push(value)
+      }
+    }
+  }
+  const mergePolicy = stringField("mergePolicy")
+  return { id, filename, label, ownedKeys, mergePolicy: mergePolicy ?? "merge" }
+}
+
 async function parseDomains(): Promise<Domain[]> {
   const source = await readFile(DOMAIN, "utf8")
   const block = findBlock(source, "export const definitions = ", "[", "]")
   if (!block) return []
   const domains: Domain[] = []
-  for (const match of block.matchAll(/\bdef\s*\(/g)) {
-    const call = findBlock(block.slice(match.index!), "def", "(", ")")
-    if (!call) continue
-    const domain = parseDefCall(call)
-    if (domain) domains.push(domain)
+  for (const entry of splitTopLevelEntries(block)) {
+    const trimmed = entry.trim()
+    if (trimmed.startsWith("def(")) {
+      const call = findBlock(entry, "def", "(", ")")
+      const domain = call ? parseDefCall(call) : null
+      if (domain) domains.push(domain)
+    } else if (trimmed.startsWith("{")) {
+      const open = trimmed.indexOf("{")
+      const close = matchClose(trimmed, open, "{", "}")
+      const domain = close >= 0 ? parseDomainObject(trimmed.slice(open + 1, close)) : null
+      if (domain) domains.push(domain)
+    }
   }
   return domains
 }

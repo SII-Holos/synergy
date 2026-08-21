@@ -145,22 +145,6 @@ export function getDirectory(path: string | undefined) {
   return relativizeProjectPaths(_getDirectory(path), data.directory)
 }
 
-export function getSessionToolParts(store: ReturnType<typeof useData>["store"], sessionId: string): ToolPart[] {
-  const messages = store.message[sessionId]?.filter((m) => m.role === "assistant")
-  if (!messages) return []
-
-  const parts: ToolPart[] = []
-  for (const m of messages) {
-    const msgParts = store.part[m.id]
-    if (msgParts) {
-      for (const p of msgParts) {
-        if (p && p.type === "tool") parts.push(p as ToolPart)
-      }
-    }
-  }
-  return parts
-}
-
 import type { IconName } from "./icon"
 
 export type ToolInfo = {
@@ -1708,11 +1692,12 @@ PART_MAPPING["attachment"] = function AttachmentPartDisplay(props) {
 
 PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const data = useData()
+  const view = data.view
   const part = () => props.part as ToolPart
   if (isToolCardHidden(part()) && part().state.status !== "error") return null
 
   const permission = createMemo(() => {
-    const next = data.store.permission?.[props.message.sessionID]?.[0]
+    const next = view.permissionsFor(props.message.sessionID)[0]
     if (!next || !next.tool) return undefined
     if (next.tool!.callID !== part().callID) return undefined
     return next

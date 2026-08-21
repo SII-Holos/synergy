@@ -225,6 +225,57 @@ export const WorkspaceFilesRoute = new Hono()
       return c.json(await WorkspaceFileStatus.summary())
     },
   )
+  .get(
+    "/content",
+    describeRoute({
+      summary: "Read workspace file bytes",
+      description:
+        "Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, " +
+        "and paths escaping the workspace are rejected.",
+      operationId: "workspace.files.content",
+      responses: {
+        200: {
+          description: "PDF file bytes",
+        },
+        400: {
+          description: "Bad request",
+          content: {
+            "application/json": {
+              schema: resolver(WorkspaceFile.ContentPreviewError),
+            },
+          },
+        },
+        ...AccessDeniedResponse,
+        ...errors(404),
+      },
+    }),
+    validator(
+      "query",
+      z.object({
+        path: z.string(),
+      }),
+    ),
+    async (c) => {
+      const query = c.req.valid("query")
+      try {
+        const result = await WorkspaceFileService.content({ path: query.path })
+        c.header("Content-Type", "application/pdf")
+        c.header("Cache-Control", "no-store")
+        return c.body(result.stream)
+      } catch (err) {
+        if (err instanceof WorkspaceFileService.AccessDeniedError) {
+          return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
+        }
+        if (
+          err instanceof WorkspaceFileService.UnsupportedPreviewError ||
+          err instanceof WorkspaceFileService.TooLargeError
+        ) {
+          return c.json({ name: err.name, data: { message: err.message } }, 400)
+        }
+        throw err
+      }
+    },
+  )
   .post(
     "/write",
     describeRoute({

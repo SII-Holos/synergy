@@ -11,6 +11,7 @@
     "./pierre/*": "./src/pierre/*.ts",
     "./hooks": "./src/hooks/index.ts",
     "./context": "./src/context/index.ts",
+    "./context/session-data-view": "./src/context/session-data-view.ts",
     "./context/*": "./src/context/*.tsx",
     "./styles": "./src/styles/index.css",
     "./styles/tailwind": "./src/styles/tailwind/index.css",
@@ -20,6 +21,7 @@
     "./icons/provider": "./src/components/provider-icons/types.ts",
     "./icons/file-type": "./src/components/file-icons/types.ts",
     "./session-status": "./src/components/session-status.ts",
+    "./user-message-utils": "./src/components/user-message-utils.ts",
     "./fonts/*": "./src/assets/fonts/*",
     "./audio/*": "./src/assets/audio/*"
   },

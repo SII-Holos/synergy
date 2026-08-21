@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import {
+  PDF_PREVIEW_MAX_BYTES,
   classifyFilePreview,
   mergeDirectoryPage,
   normalizeWorkspacePath,
+  pdfPreviewAction,
+  pdfPreviewBytes,
   resolveWorkspaceRelativePath,
   shortestUniqueFileTitle,
 } from "../../../src/components/file-workbench/model"
@@ -35,11 +38,33 @@ describe("file preview classification", () => {
     expect(classifyFilePreview("logo.svg", "text")).toEqual({ kind: "svg", defaultMode: "preview", dual: true })
     expect(classifyFilePreview("src/app.ts", "text")).toEqual({ kind: "source", defaultMode: "source", dual: false })
     expect(classifyFilePreview("photo.png", "image")).toEqual({ kind: "image", defaultMode: "preview", dual: false })
-    expect(classifyFilePreview("report.pdf", "binary")).toEqual({
+    expect(classifyFilePreview("report.pdf", "binary")).toEqual({ kind: "pdf", defaultMode: "preview", dual: false })
+    expect(classifyFilePreview("report", "binary", "application/pdf")).toEqual({
+      kind: "pdf",
+      defaultMode: "preview",
+      dual: false,
+    })
+    expect(classifyFilePreview("deck.pptx", "binary")).toEqual({
       kind: "unsupported",
       defaultMode: "preview",
       dual: false,
     })
+  })
+
+  test("PDF preview action respects the 50 MiB cap and cached bytes", () => {
+    expect(pdfPreviewAction({ nodeSize: PDF_PREVIEW_MAX_BYTES + 1, hasBytes: false })).toBe("too-large")
+    expect(pdfPreviewAction({ nodeSize: 1024, hasBytes: false })).toBe("fetch")
+    expect(pdfPreviewAction({ nodeSize: 1024, hasBytes: true })).toBe("cached")
+    expect(pdfPreviewAction({ nodeSize: 1024, hasBytes: true, force: true })).toBe("fetch")
+    expect(pdfPreviewAction({ nodeSize: undefined, hasBytes: false })).toBe("fetch")
+  })
+
+  test("converts PDF responses to bytes", async () => {
+    expect(await pdfPreviewBytes(new Uint8Array([1, 2]))).toEqual(new Uint8Array([1, 2]))
+    expect(await pdfPreviewBytes(new Uint8Array([1, 2]).buffer)).toEqual(new Uint8Array([1, 2]))
+    const blob = new Blob([new Uint8Array([3, 4])], { type: "application/pdf" })
+    expect(await pdfPreviewBytes(blob)).toEqual(new Uint8Array([3, 4]))
+    expect(await pdfPreviewBytes(null)).toBeUndefined()
   })
 })
 

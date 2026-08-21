@@ -7,6 +7,7 @@ import {
   type ToolProps,
 } from "@ericsanchezok/synergy-ui/tool-registry-lazy"
 import { ErrorBoundary, createComponent } from "solid-js"
+import { SlotRegistry, type SlotEntryBase } from "../slot-registry"
 
 type Loader = () => Promise<{ default: ToolComponent }>
 
@@ -55,21 +56,30 @@ function safeRenderer(renderer: ToolComponent): ToolComponent {
     })
 }
 
-const renderers = new Map<string, ToolComponent>()
-const loaders = new Map<string, Loader>()
+/** Internal slot entry: one renderer per host tool name (single-replace). */
+interface ToolSlotEntry extends SlotEntryBase {
+  slot: "message.renderer"
+  loader?: Loader
+  component?: ToolComponent
+}
+
+const registry = new SlotRegistry<ToolSlotEntry>()
+/** Per-tool disposer so re-registering a tool replaces the previous entry. */
+const disposers = new Map<string, () => void>()
 const loading = new Map<string, Loader>()
 
 export function getPluginToolRenderer(name: string): ToolComponent | undefined {
-  const renderer = renderers.get(name)
-  if (renderer) return renderer
-  const loader = loaders.get(name)
+  const entry = registry.get(name)
+  if (!entry) return undefined
+  if (entry.component) return entry.component
+  const loader = entry.loader
   if (!loader || loading.get(name) === loader) return undefined
   loading.set(name, loader)
   void loader()
     .then(
       (module) => {
-        if (loaders.get(name) !== loader) return
-        renderers.set(name, safeRenderer(module.default))
+        if (registry.get(name) !== entry) return
+        entry.component = safeRenderer(module.default)
         notifyExternalToolLoaded()
       },
       () => undefined,
@@ -81,14 +91,14 @@ export function getPluginToolRenderer(name: string): ToolComponent | undefined {
 }
 
 export function registerPluginToolRenderer(name: string, loader: Loader): () => void {
-  loaders.set(name, loader)
-  renderers.delete(name)
+  disposers.get(name)?.()
+  const dispose = registry.register({ id: name, slot: "message.renderer", loader })
+  disposers.set(name, dispose)
   notifyExternalToolLoaded()
   return () => {
-    if (loaders.get(name) !== loader) return
-    loaders.delete(name)
-    renderers.delete(name)
-    if (loading.get(name) === loader) loading.delete(name)
+    if (disposers.get(name) !== dispose) return
+    disposers.delete(name)
+    dispose()
     notifyExternalToolLoaded()
   }
 }

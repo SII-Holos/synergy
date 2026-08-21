@@ -143,15 +143,18 @@ describe("local embedding asset", () => {
 
     await expect(Embedding.warmup()).resolves.toBeUndefined()
 
-    expect(pipeline).toHaveBeenCalledTimes(2)
-    expect(pipeline.mock.calls[1]?.[2]).toMatchObject({ local_files_only: true })
+    // huggingface.co attempt → hf-mirror fallback → disk cache
+    expect(pipeline).toHaveBeenCalledTimes(3)
+    expect(pipeline.mock.calls[2]?.[2]).toMatchObject({ local_files_only: true })
     expect(await Embedding.status()).toMatchObject({ asset: "cached", runtime: "ready" })
   })
 
   test("allows a failed explicit download to retry in the same process", async () => {
     const ready = extractor()
     const pipeline = mock(async () => {
-      if (pipeline.mock.calls.length <= 2) throw new Error("hub unavailable")
+      // First 3 calls fail: huggingface.co, hf-mirror fallback, disk cache.
+      // Retry succeeds on the 4th call.
+      if (pipeline.mock.calls.length <= 3) throw new Error("hub unavailable")
       return ready
     })
     Embedding.setLocalRuntimeControlsForTest({
@@ -171,7 +174,7 @@ describe("local embedding asset", () => {
     })
 
     await expect(Embedding.warmup()).resolves.toBeUndefined()
-    expect(pipeline).toHaveBeenCalledTimes(3)
+    expect(pipeline).toHaveBeenCalledTimes(4)
     expect(await Embedding.status()).toMatchObject({ asset: "cached", runtime: "ready" })
   })
 

@@ -376,6 +376,31 @@
     }
   }
 
+  [data-slot="assistant-message-fork"] {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--icon-weak-base);
+    background: transparent;
+    cursor: pointer;
+    transition:
+      background-color var(--motion-duration-fast) var(--motion-ease-standard),
+      color var(--motion-duration-fast) var(--motion-ease-standard);
+
+    &:hover {
+      color: var(--icon-base);
+      background: var(--surface-base-hover);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: var(--shadow-xs-border-focus);
+    }
+  }
+
   /* Reveal the footer fully when any part of the turn is hovered */
   [data-slot="session-turn-message-container"]:hover [data-slot="assistant-message-meta"],
   [data-slot="session-turn-content"]:hover [data-slot="assistant-message-meta"],
