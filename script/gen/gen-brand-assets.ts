@@ -93,15 +93,64 @@ async function createUnreadIcon(icon: Awaited<ReturnType<typeof loadImage>>): Pr
   context.imageSmoothingEnabled = true
   context.imageSmoothingQuality = "high"
   context.drawImage(icon, 0, 0, 512, 512)
-  context.fillStyle = "#ffffff"
-  context.beginPath()
-  context.arc(446, 66, 67, 0, Math.PI * 2)
-  context.fill()
-  context.fillStyle = "#ef4444"
-  context.beginPath()
-  context.arc(446, 66, 54, 0, Math.PI * 2)
-  context.fill()
+  const imageData = context.getImageData(0, 0, 512, 512)
+  compositeCircle(imageData.data, 512, 446, 66, 67, [255, 255, 255])
+  compositeCircle(imageData.data, 512, 446, 66, 54, [239, 68, 68])
+  context.putImageData(imageData, 0, 0)
   return encodePng(canvas)
+}
+
+function compositeCircle(
+  pixels: Uint8ClampedArray,
+  width: number,
+  centerX: number,
+  centerY: number,
+  radius: number,
+  color: readonly [number, number, number],
+): void {
+  const startX = Math.max(0, Math.floor(centerX - radius - 1))
+  const endX = Math.min(width - 1, Math.ceil(centerX + radius + 1))
+  const startY = Math.max(0, Math.floor(centerY - radius - 1))
+  const endY = Math.min(width - 1, Math.ceil(centerY + radius + 1))
+
+  for (let y = startY; y <= endY; y += 1) {
+    for (let x = startX; x <= endX; x += 1) {
+      const sourceAlpha = circleAlpha(x, y, centerX, centerY, radius)
+      if (sourceAlpha === 0) continue
+
+      const offset = (y * width + x) * 4
+      const destinationAlpha = pixels[offset + 3]
+      const inverseSourceAlpha = 255 - sourceAlpha
+      const outputAlpha = sourceAlpha + Math.round((destinationAlpha * inverseSourceAlpha) / 255)
+      for (let channel = 0; channel < 3; channel += 1) {
+        const destination = pixels[offset + channel]
+        pixels[offset + channel] = Math.round(
+          (color[channel] * sourceAlpha * 255 + destination * destinationAlpha * inverseSourceAlpha) /
+            (outputAlpha * 255),
+        )
+      }
+      pixels[offset + 3] = outputAlpha
+    }
+  }
+}
+
+function circleAlpha(x: number, y: number, centerX: number, centerY: number, radius: number): number {
+  const samplesPerAxis = 8
+  const scale = samplesPerAxis * 2
+  const scaledCenterX = centerX * scale
+  const scaledCenterY = centerY * scale
+  const scaledRadiusSquared = (radius * scale) ** 2
+  let coveredSamples = 0
+
+  for (let sampleY = 0; sampleY < samplesPerAxis; sampleY += 1) {
+    const deltaY = y * scale + sampleY * 2 + 1 - scaledCenterY
+    for (let sampleX = 0; sampleX < samplesPerAxis; sampleX += 1) {
+      const deltaX = x * scale + sampleX * 2 + 1 - scaledCenterX
+      if (deltaX ** 2 + deltaY ** 2 <= scaledRadiusSquared) coveredSamples += 1
+    }
+  }
+
+  return Math.round((coveredSamples * 255) / samplesPerAxis ** 2)
 }
 
 function faviconSvg(icon: Buffer): Buffer {
