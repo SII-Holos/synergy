@@ -115,7 +115,7 @@ afterAll(async () => {
   if (fixtureDirectory) await rm(fixtureDirectory, { recursive: true, force: true })
 })
 
-describe("sidebar attention notice progress reactivity", () => {
+describe("sidebar attention notice reactivity", () => {
   test("re-renders progress when the notice object updates", async () => {
     // The card mounts once the notice becomes truthy (downloading at 0%).
     await page.evaluate(
@@ -128,7 +128,8 @@ describe("sidebar attention notice progress reactivity", () => {
     expect(await page.locator(".sb-attention-detail").textContent()).toContain("Downloading 0%")
 
     // A later progress event produces a new notice object (same phase); the
-    // keyed Show must re-run the child so the card tracks 87%.
+    // child reads the notice through the reactive accessor so the card
+    // tracks 87% without remounting.
     await page.evaluate(
       (n) => (window as unknown as { __setNotice: (v: unknown) => void }).__setNotice(n),
       notice(87, "87"),
@@ -136,5 +137,37 @@ describe("sidebar attention notice progress reactivity", () => {
     const updatedStyle = await page.locator(".sb-attention-progress span").getAttribute("style")
     expect(updatedStyle).toContain("87%")
     expect(await page.locator(".sb-attention-detail").textContent()).toContain("Downloading 87%")
+  })
+
+  test("preserves button focus when the same logical notice re-emits", async () => {
+    // Background polls (web health refresh, desktop periodic check) re-emit a
+    // fresh object for the same logical actionable notice. The card must not
+    // remount, or keyboard focus on the action button is dropped.
+    const actionable = () => ({
+      id: "product-update",
+      source: "product-update",
+      priority: 400,
+      tone: "ready",
+      title: { id: "t", message: "Update available" },
+      detail: { id: "d", message: "Restart to install" },
+      actionLabel: { id: "a", message: "Restart" },
+      action: { type: "product-update" },
+      progress: null,
+      busy: false,
+      iconToken: "product.update",
+    })
+    await page.evaluate(
+      (n) => (window as unknown as { __setNotice: (v: unknown) => void }).__setNotice(n),
+      actionable(),
+    )
+    await page.focus(".sb-attention-button")
+    await expect(page.evaluate(() => document.activeElement?.className)).resolves.toContain("sb-attention-button")
+
+    // A logically identical notice with a fresh object identity (poll refresh).
+    await page.evaluate(
+      (n) => (window as unknown as { __setNotice: (v: unknown) => void }).__setNotice(n),
+      actionable(),
+    )
+    await expect(page.evaluate(() => document.activeElement?.className)).resolves.toContain("sb-attention-button")
   })
 })

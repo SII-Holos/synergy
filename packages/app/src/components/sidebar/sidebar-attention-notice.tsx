@@ -12,20 +12,19 @@ export function SidebarAttentionNotice(props: {
   onAction: (notice: AppAttentionNotice) => void
 }) {
   const lingui = useLingui()
-  const __ = (d: { id: string; message?: string }) => lingui._(d as { id: string; message: string })
+  const __ = (d: { id: string; message?: string }) => lingui._(d as { id: string; message?: string })
   return (
-    <Show when={props.notice} keyed>
+    <Show when={props.notice}>
       {(notice) => {
-        const n = notice
-        const titleStr = () => __(n.title)
-        const detailStr = () => (n.detail ? __(n.detail) : "")
+        const titleStr = () => __(notice()?.title)
+        const detailStr = () => (notice()?.detail ? __(notice()!.detail) : "")
         return (
           <div
             classList={{
               "sb-attention-notice": true,
               "sb-attention-notice--collapsed": !props.isExpanded,
             }}
-            data-tone={n.tone}
+            data-tone={notice()?.tone}
             aria-live="polite"
           >
             <Tooltip value={`${titleStr()}${detailStr() ? ` — ${detailStr()}` : ""}`} placement="right">
@@ -33,26 +32,31 @@ export function SidebarAttentionNotice(props: {
                 type="button"
                 class="sb-attention-button"
                 aria-label={`${titleStr()}${detailStr() ? `. ${detailStr()}` : ""}`}
-                disabled={n.busy}
-                onClick={() => props.onAction(n)}
+                disabled={notice()?.busy}
+                onClick={() => {
+                  const current = notice()
+                  if (current) props.onAction(current)
+                }}
               >
                 <span class="sb-attention-icon">
-                  <Icon name={getSemanticIcon(n.iconToken)} size="small" />
+                  <Icon name={getSemanticIcon(notice()?.iconToken ?? "product.update")} size="small" />
                 </span>
                 <Show when={props.isExpanded}>
                   <span class="sb-attention-copy">
                     <span class="sb-attention-title">{titleStr()}</span>
                     <span class="sb-attention-detail">{detailStr()}</span>
                   </span>
-                  <Show when={n.actionLabel}>
-                    <span class="sb-attention-action">{n.busy ? __(sidebar.busy) : __(n.actionLabel!)}</span>
+                  <Show when={notice()?.actionLabel}>
+                    <span class="sb-attention-action">
+                      {notice()?.busy ? __(sidebar.busy) : __(notice()!.actionLabel!)}
+                    </span>
                   </Show>
                 </Show>
               </button>
             </Tooltip>
-            <Show when={n.progress != null}>
+            <Show when={notice()?.progress != null}>
               <div class="sb-attention-progress" aria-hidden="true">
-                <span style={{ "--sb-attention-progress": `${n.progress ?? 0}%` }} />
+                <span style={{ "--sb-attention-progress": `${notice()?.progress ?? 0}%` }} />
               </div>
             </Show>
           </div>
