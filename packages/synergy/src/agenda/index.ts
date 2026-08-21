@@ -115,11 +115,20 @@ export namespace Agenda {
     }
     inflight.add(itemID)
     AgendaReactor.execute(signal, scopeID)
-      .then((result) => {
+      .then(async (result) => {
+        if (result.deactivated) {
+          // Reactor auto-paused the item mid-run; drop registrations so
+          // github entries stop polling a paused item.
+          teardownItem(itemID)
+          return
+        }
         // Always rearm — even if nextRunAt is undefined, the clock entry
         // should be cleared. For recurring triggers the reactor already
         // computes a valid nextRunAt.
         AgendaClock.rearm(scopeID, itemID, result.nextRunAt)
+        // A manual run can complete an autoDone watch; settle like the
+        // signal handler does so its poll registration is dropped.
+        await settleAfterFire(signal, scopeID)
       })
       .catch((err) => {
         log.error("manual trigger failed", { itemID, error: err instanceof Error ? err : new Error(String(err)) })
@@ -185,13 +194,13 @@ export namespace Agenda {
   }
 
   /**
-   * After-fire settlement for one-shot trigger sources: session and github
+   * After-fire settlement for one-shot completions: session and github
    * triggers auto-complete in updateRunState, so drop their registration
    * when the stored item is no longer active. Without this, a completed
    * github watch keeps polling on its interval until restart.
    */
   export async function settleAfterFire(signal: AgendaTypes.FiredSignal, scopeID: string): Promise<void> {
-    if (signal.type !== "session" && signal.type !== "github") return
+    if (signal.type !== "session" && signal.type !== "github" && signal.type !== "manual") return
     const stored = await AgendaStore.get(scopeID, signal.source).catch(() => undefined)
     if (stored && stored.status !== "active") teardownItem(signal.source)
   }
