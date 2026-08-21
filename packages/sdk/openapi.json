@@ -29098,17 +29098,22 @@
             "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
           },
           "number": {
-            "description": "PR/issue number, or workflow/check run number. If omitted for pr/issue, watches the repository's most recent items",
+            "description": "PR/issue number, or workflow run id. If omitted for pr/issue/workflow, watches the repository's most recent items",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
-          "interval": {
-            "description": "Poll interval, e.g. '5m'. Default: '5m'",
+          "ref": {
+            "description": "Branch/tag/commit ref for workflow and check targeting (e.g. 'main', full SHA). Defaults to HEAD for checks and the default branch for workflows",
             "type": "string"
           },
+          "interval": {
+            "description": "Poll interval, e.g. '5m'. Default: '5m' (or github.watch.defaultIntervalMs)",
+            "type": "string",
+            "pattern": "^(\\d+)(ms|s|m|h|d|w)$"
+          },
           "states": {
-            "description": "Only fire when the state transitions into one of these values (e.g. ['merged'], ['failure'], ['completed'])",
+            "description": "Only fire when the state transitions into one of these values. PR: open/draft/merged/closed; issue: open/closed; workflow/check: queued/in_progress/completed (filter the conclusion separately via these same values, e.g. 'success'/'failure')",
             "type": "array",
             "items": {
               "type": "string"
@@ -33149,12 +33154,26 @@
             "type": "boolean"
           },
           "name": {
-            "description": "Optional git user.name override (defaults to the GitHub account login)",
-            "type": "string"
+            "description": "Optional git user.name override (defaults to the GitHub account login). null clears the override",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "email": {
-            "description": "Optional git user.email override (defaults to the GitHub noreply email)",
-            "type": "string"
+            "description": "Optional git user.email override (defaults to the GitHub noreply email). null clears the override",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false

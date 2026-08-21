@@ -468,11 +468,14 @@ function buildGithubIntegrationPatch(cfg: Config, state: SettingsState, patch: R
   const { github } = state
   const name = github.identitySyncName.trim()
   const email = github.identitySyncEmail.trim()
+  // name/email are sent as explicit null when cleared: the github config
+  // domain merges deep, so omitting the key would keep the stored override.
+  // The server schema treats null as "remove this override".
   const next = {
     identitySync: {
       enabled: github.identitySyncEnabled,
-      ...(name ? { name } : {}),
-      ...(email ? { email } : {}),
+      ...(name ? { name } : cfg.github?.identitySync?.name ? { name: null } : {}),
+      ...(email ? { email } : cfg.github?.identitySync?.email ? { email: null } : {}),
     },
     watch: { enabled: github.watchEnabled },
   }

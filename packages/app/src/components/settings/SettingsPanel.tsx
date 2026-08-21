@@ -858,6 +858,18 @@ export function SettingsPanel(props: SettingsPanelProps) {
       <GitHubPanel
         github={settings.github}
         onGithubChange={(key, value) => setSettings("github", key, value as never)}
+        onSyncIdentity={async () => {
+          // Sync must run against persisted config: flush any pending github
+          // domain draft first so the server applies what the panel shows.
+          const patch = serverPatch()
+          if (patch.github) {
+            await globalSDK.client.config.domain.update({
+              domain: "github",
+              configDomainUpdateInput: { config: { github: patch.github } as never },
+            })
+            await refreshAfterConfigChange(["github"], snapshotSettingsDraft(settings))
+          }
+        }}
       />
     ),
     "synergy-link": SynergyLinkPanel,

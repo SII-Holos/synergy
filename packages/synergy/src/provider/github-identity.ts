@@ -80,13 +80,23 @@ export namespace GithubIdentity {
     }
   }
 
-  /** Identity the sync would apply right now: overrides first, account-derived fallback. */
+  /**
+   * Identity the sync would apply right now: overrides first, account-derived
+   * fallback. Credentials without stored account metadata (e.g. env tokens)
+   * trigger a one-off account lookup so the derived identity is still
+   * available; lookup failures fall back to override-only.
+   */
   export async function targetIdentity(): Promise<{ name?: string; email?: string; account?: GitHubProvider.Account }> {
     const cfg = (await Config.current().catch(() => undefined))?.github?.identitySync
     const resolved = await GitHubProvider.resolveToken()
-    const account = resolved?.account
-    const name = cfg?.name?.trim() || account?.login
-    const email = cfg?.email?.trim() || (account ? `${account.login}@users.noreply.github.com` : undefined)
+    let account = resolved?.account
+    if (!account && resolved?.token) {
+      account = await GitHubProvider.fetchAccount(resolved.token).catch(() => undefined)
+    }
+    // Stored null clears an override (settings sends null on blank).
+    const name = (cfg?.name ?? undefined)?.trim() || account?.login
+    const email =
+      (cfg?.email ?? undefined)?.trim() || (account ? `${account.login}@users.noreply.github.com` : undefined)
     return { name, email, account }
   }
 
@@ -102,8 +112,8 @@ export namespace GithubIdentity {
     )
     return {
       enabled: cfg?.enabled === true,
-      configuredName: cfg?.name,
-      configuredEmail: cfg?.email,
+      configuredName: cfg?.name ?? undefined,
+      configuredEmail: cfg?.email ?? undefined,
       gitName,
       gitEmail,
       accountLogin: target.account?.login,

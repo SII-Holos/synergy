@@ -14,15 +14,22 @@ import { Config } from "../config/config"
  * shared Agenda handler as a FiredSignal whose payload carries the resource
  * snapshot (number, state, URL, and resource-specific fields).
  *
- * Zero-cost when idle: entries with no resolved GitHub credential do not
- * schedule any poll, and the whole source is disabled when
- * `github.watch.enabled` is false in config (default: enabled).
+ * - Zero-cost when idle: entries with no resolved GitHub credential make no
+ *   API call, and the whole source goes quiet when `github.watch.enabled` is
+ *   false in config (default: enabled).
+ * - Triggers without an explicit `interval` fall back to the configured
+ *   `github.watch.defaultIntervalMs` (default 5 minutes, floor 30 seconds).
+ * - Multiple transitions observed in one poll are dispatched sequentially so
+ *   the Agenda inflight guard cannot drop later transitions.
+ * - Repeated poll failures (unreachable repo, revoked token) auto-pause the
+ *   item instead of retrying forever.
  */
 export namespace AgendaGithubTrigger {
   const log = Log.create({ service: "agenda.github-trigger" })
 
   const DEFAULT_INTERVAL_MS = 5 * 60_000
   const MIN_INTERVAL_MS = 30_000
+  const MAX_CONSECUTIVE_FAILURES = 5
 
   type Handler = (signal: AgendaTypes.FiredSignal, scopeID: string) => Promise<void>
 
@@ -32,13 +39,19 @@ export namespace AgendaGithubTrigger {
     resource: "pr" | "issue" | "workflow" | "check"
     repository: string
     number?: number
-    intervalMs: number
+    ref?: string
+    /** Explicit trigger interval; undefined falls back to the configured default. */
+    intervalMs?: number
     states?: string[]
     timer?: Timer
     /** resource key → last observed state */
     lastStates: Map<string, string>
     /** First poll initializes baseline without firing. */
     primed: boolean
+    consecutiveFailures: number
+    /** Serializes handler dispatch so concurrent transitions run in order
+     *  instead of racing the Agenda inflight guard. */
+    dispatch: Promise<void>
   }
 
   const entries = new Map<string, Entry[]>()
@@ -47,10 +60,12 @@ export namespace AgendaGithubTrigger {
 
   export function start(onFire: Handler, items: AgendaTypes.Item[]): void {
     handler = onFire
+    // Arm before registering: register() only schedules while started, and
+    // items restored from storage at startup must begin polling immediately.
+    started = true
     for (const item of items) {
       register(item.id, item.origin.scope.id, item.triggers)
     }
-    started = true
     log.info("started", { entries: countEntries() })
   }
 
@@ -68,20 +83,19 @@ export namespace AgendaGithubTrigger {
     const created: Entry[] = []
     for (const trigger of triggers) {
       if (trigger.type !== "github") continue
-      const intervalMs = Math.max(
-        MIN_INTERVAL_MS,
-        trigger.interval ? AgendaStore.parseDuration(trigger.interval) : DEFAULT_INTERVAL_MS,
-      )
       created.push({
         itemID,
         scopeID,
         resource: trigger.resource,
         repository: trigger.repository,
         number: trigger.number,
-        intervalMs,
+        ref: trigger.ref,
+        intervalMs: trigger.interval ? AgendaStore.parseDuration(trigger.interval) : undefined,
         states: trigger.states,
         lastStates: new Map(),
         primed: false,
+        consecutiveFailures: 0,
+        dispatch: Promise.resolve(),
       })
     }
     if (created.length > 0) {
@@ -119,48 +133,67 @@ export namespace AgendaGithubTrigger {
     entry.timer = setTimeout(() => void poll(entry), delayMs)
   }
 
-  async function watchEnabled(): Promise<boolean> {
+  async function watchConfig(): Promise<{ enabled: boolean; defaultIntervalMs?: number }> {
     const cfg = (await Config.globalResolved().catch(() => undefined))?.github?.watch
-    return cfg?.enabled !== false
+    return { enabled: cfg?.enabled !== false, defaultIntervalMs: cfg?.defaultIntervalMs }
   }
 
   async function poll(entry: Entry) {
     entry.timer = undefined
+    let configuredDefaultMs: number | undefined
+    let abandoned = false
     try {
-      if (!(await watchEnabled())) {
-        schedule(entry, entry.intervalMs)
-        return
-      }
+      const watch = await watchConfig()
+      configuredDefaultMs = watch.defaultIntervalMs
+      if (!watch.enabled) return
       const resolved = await GitHubProvider.resolveToken()
       if (!resolved?.token) {
         // No credential: stay silent, retry at the normal cadence.
-        schedule(entry, entry.intervalMs)
         return
       }
       const snapshots = await fetchSnapshots(entry, resolved.token)
-      for (const snapshot of snapshots) {
-        const key = snapshotKey(entry, snapshot.number)
-        const previous = entry.lastStates.get(key)
-        entry.lastStates.set(key, snapshot.state)
-        if (!entry.primed) continue
-        if (previous === snapshot.state) continue
-        if (entry.states && !entry.states.includes(snapshot.state)) continue
-        fire(entry, snapshot, previous)
+      for (const change of collectChanges(entry, snapshots)) {
+        entry.dispatch = entry.dispatch.then(() => fire(entry, change.snapshot, change.previous))
       }
-      entry.primed = true
+      entry.consecutiveFailures = 0
     } catch (error) {
+      entry.consecutiveFailures++
       log.warn("github poll failed", {
         itemID: entry.itemID,
         repository: entry.repository,
+        consecutiveFailures: entry.consecutiveFailures,
         error: error instanceof Error ? error.message : String(error),
       })
+      if (entry.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        abandoned = true
+        await pauseAfterFailures(entry)
+      }
     } finally {
-      schedule(entry, entry.intervalMs)
+      // Never reschedule a detached entry: unregister()/stop() may have run
+      // while the poll request was in flight.
+      if (!abandoned && started && entries.get(entry.itemID)?.includes(entry)) {
+        const intervalMs = entry.intervalMs ?? configuredDefaultMs ?? DEFAULT_INTERVAL_MS
+        schedule(entry, Math.max(MIN_INTERVAL_MS, intervalMs))
+      }
     }
   }
 
-  function fire(entry: Entry, snapshot: ResourceSnapshot, previous: string | undefined) {
-    if (!handler) return
+  async function pauseAfterFailures(entry: Entry): Promise<void> {
+    unregister(entry.itemID)
+    await AgendaStore.update(entry.scopeID, entry.itemID, { status: "paused" }).catch((err) => {
+      log.error("failed to pause github trigger after repeated failures", {
+        itemID: entry.itemID,
+        error: err instanceof Error ? err : new Error(String(err)),
+      })
+    })
+    log.warn("github trigger auto-paused after repeated poll failures", {
+      itemID: entry.itemID,
+      repository: entry.repository,
+    })
+  }
+
+  function fire(entry: Entry, snapshot: ResourceSnapshot, previous: string | undefined): Promise<void> {
+    if (!handler) return Promise.resolve()
     const signal: AgendaTypes.FiredSignal = {
       type: "github",
       source: entry.itemID,
@@ -179,7 +212,7 @@ export namespace AgendaGithubTrigger {
       },
       timestamp: Date.now(),
     }
-    handler(signal, entry.scopeID).catch((err) => {
+    return handler(signal, entry.scopeID).catch((err) => {
       log.error("github trigger handler failed", {
         itemID: entry.itemID,
         error: err instanceof Error ? err : new Error(String(err)),
@@ -187,15 +220,34 @@ export namespace AgendaGithubTrigger {
     })
   }
 
-  function snapshotKey(entry: Entry, number: number): string {
-    return `${entry.resource}:${number}`
+  /**
+   * Diff snapshots against the entry baseline and return the transitions that
+   * should fire, in observation order. The baseline always advances (even for
+   * filtered-out transitions) so `previousState` reflects the last seen state.
+   */
+  export function collectChanges(
+    entry: Pick<Entry, "lastStates" | "primed" | "states">,
+    snapshots: ResourceSnapshot[],
+  ): Array<{ snapshot: ResourceSnapshot; previous: string | undefined }> {
+    const pending: Array<{ snapshot: ResourceSnapshot; previous: string | undefined }> = []
+    for (const snapshot of snapshots) {
+      const key = `${snapshot.resource ?? ""}:${snapshot.number}`
+      const previous = entry.lastStates.get(key)
+      entry.lastStates.set(key, snapshot.state)
+      if (!entry.primed) continue
+      if (previous === snapshot.state) continue
+      if (entry.states && !entry.states.includes(snapshot.state)) continue
+      pending.push({ snapshot, previous })
+    }
+    return pending
   }
 
   // ---------------------------------------------------------------------------
   // GitHub REST polling
   // ---------------------------------------------------------------------------
 
-  interface ResourceSnapshot {
+  export interface ResourceSnapshot {
+    resource?: "pr" | "issue" | "workflow" | "check"
     number: number
     title?: string
     state: string
@@ -250,22 +302,25 @@ export namespace AgendaGithubTrigger {
           const payload = run.workflow_run ?? run
           return [workflowSnapshot(payload)]
         }
-        const list = await api(`/repos/${owner}/${repo}/actions/runs?per_page=10`, token)
+        const branch = entry.ref ? `&branch=${encodeURIComponent(entry.ref)}` : ""
+        const list = await api(`/repos/${owner}/${repo}/actions/runs?per_page=10${branch}`, token)
         return (Array.isArray(list.workflow_runs) ? list.workflow_runs : []).map(workflowSnapshot)
       }
       case "check": {
-        const list = await api(
-          `/repos/${owner}/${repo}/commits/${entry.number ?? "HEAD"}/check-runs?per_page=20`,
-          token,
-        )
+        const ref = entry.ref ?? "HEAD"
+        const list = await api(`/repos/${owner}/${repo}/commits/${ref}/check-runs?per_page=20`, token)
         return (Array.isArray(list.check_runs) ? list.check_runs : []).map(checkSnapshot)
       }
     }
   }
 
-  function prSnapshot(pr: any): ResourceSnapshot {
-    const state = pr.merged ? "merged" : pr.draft ? "draft" : pr.state
+  export function prSnapshot(pr: any): ResourceSnapshot {
+    // List responses expose merge completion via merged_at; the single-PR
+    // response additionally carries a merged boolean.
+    const merged = pr.merged === true || typeof pr.merged_at === "string"
+    const state = merged ? "merged" : pr.draft ? "draft" : pr.state
     return {
+      resource: "pr",
       number: pr.number,
       title: pr.title,
       state,
@@ -276,8 +331,9 @@ export namespace AgendaGithubTrigger {
     }
   }
 
-  function issueSnapshot(issue: any): ResourceSnapshot {
+  export function issueSnapshot(issue: any): ResourceSnapshot {
     return {
+      resource: "issue",
       number: issue.number,
       title: issue.title,
       state: issue.state,
@@ -286,23 +342,26 @@ export namespace AgendaGithubTrigger {
     }
   }
 
-  function workflowSnapshot(run: any): ResourceSnapshot {
-    const state = run.status === "completed" ? (run.conclusion ?? "completed") : run.status
+  /** Workflow state is the run status; the conclusion is carried separately. */
+  export function workflowSnapshot(run: any): ResourceSnapshot {
     return {
+      resource: "workflow",
       number: run.id,
       title: run.name,
-      state,
+      state: run.status,
+      url: run.html_url,
       conclusion: run.conclusion,
       updatedAt: run.updated_at,
     }
   }
 
-  function checkSnapshot(check: any): ResourceSnapshot {
-    const state = check.status === "completed" ? (check.conclusion ?? "completed") : check.status
+  /** Check state is the check status; the conclusion is carried separately. */
+  export function checkSnapshot(check: any): ResourceSnapshot {
     return {
+      resource: "check",
       number: check.id,
       title: check.name,
-      state,
+      state: check.status,
       url: check.html_url,
       conclusion: check.conclusion,
       updatedAt: check.started_at,

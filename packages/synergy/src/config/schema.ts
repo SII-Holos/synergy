@@ -469,8 +469,16 @@ export type Email = z.infer<typeof Email>
 export const GithubIdentitySync = z
   .object({
     enabled: z.boolean().optional().describe("Sync git user.name/user.email from the connected GitHub account"),
-    name: z.string().optional().describe("Optional git user.name override (defaults to the GitHub account login)"),
-    email: z.string().optional().describe("Optional git user.email override (defaults to the GitHub noreply email)"),
+    name: z
+      .string()
+      .nullable()
+      .optional()
+      .describe("Optional git user.name override (defaults to the GitHub account login). null clears the override"),
+    email: z
+      .string()
+      .nullable()
+      .optional()
+      .describe("Optional git user.email override (defaults to the GitHub noreply email). null clears the override"),
   })
   .strict()
   .meta({ ref: "GithubIdentitySyncConfig" })

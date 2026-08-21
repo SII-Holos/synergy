@@ -120,14 +120,24 @@ export namespace AgendaTypes {
         .positive()
         .optional()
         .describe(
-          "PR/issue number, or workflow/check run number. If omitted for pr/issue, watches the repository's most recent items",
+          "PR/issue number, or workflow run id. If omitted for pr/issue/workflow, watches the repository's most recent items",
         ),
-      interval: z.string().optional().describe("Poll interval, e.g. '5m'. Default: '5m'"),
+      ref: z
+        .string()
+        .optional()
+        .describe(
+          "Branch/tag/commit ref for workflow and check targeting (e.g. 'main', full SHA). Defaults to HEAD for checks and the default branch for workflows",
+        ),
+      interval: z
+        .string()
+        .regex(/^(\d+)(ms|s|m|h|d|w)$/, "Use a duration like '5m', '30s', '1h'")
+        .optional()
+        .describe("Poll interval, e.g. '5m'. Default: '5m' (or github.watch.defaultIntervalMs)"),
       states: z
         .array(z.string())
         .optional()
         .describe(
-          "Only fire when the state transitions into one of these values (e.g. ['merged'], ['failure'], ['completed'])",
+          "Only fire when the state transitions into one of these values. PR: open/draft/merged/closed; issue: open/closed; workflow/check: queued/in_progress/completed (filter the conclusion separately via these same values, e.g. 'success'/'failure')",
         ),
     })
     .meta({ ref: "AgendaTriggerGithub" })

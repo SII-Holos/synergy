@@ -31,3 +31,18 @@ The GitHub integration in Settings → Integrations had three experience gaps:
 - Polling cost is per-entry and bounded by the configured interval (min 30s); unauthenticated setups never touch the API. State baselines are in-memory only — a restart re-baselines without firing.
 - `agenda_watch` with `onGithub` uses autoDone delivery into the origin session, matching the delay/session watch UX; agents cancel with `agenda_cancel`.
 - First poll of a repository-wide watch (no `number`) covers the 10 most recently updated items; newly created items after registration are picked up because their numbers are not in the baseline map (treated as fresh state transitions into their current state).
+
+## Review follow-ups (PR #1234)
+
+- `AgendaGithubTrigger.start()` arms before registering so items restored from storage poll immediately after a restart.
+- `agenda_watch` `onGithub` one-shot items complete after their first successful fire: the reactor passes `autoDone` into `updateRunState`, which marks the item done (dropping it as a continuation blocker) — matching the delay/session watch UX.
+- `interval` is validated by the trigger schema (`^(\d+)(ms|s|m|h|d|w)$`) before persistence; an invalid value can no longer poison `Agenda.start()`.
+- GitHub-controlled fields (PR/issue titles) are attribute-escaped in the `<github-event>` prompt block.
+- Transitions observed in one poll dispatch sequentially through a per-entry chain so the Agenda inflight guard cannot drop later changes; filtered-out transitions still advance the baseline.
+- Poll failures auto-pause the item after five consecutive errors instead of retrying forever; detached entries (unregistered or stopped mid-request) are never rescheduled.
+- Triggers without `interval` fall back to `github.watch.defaultIntervalMs` (the config key is now honored).
+- Repository-wide PR watches detect merges via `merged_at`; workflow/check state is the run `status` (`completed` matches the documented filter) with the conclusion carried separately and the run URL included.
+- Workflow/check targeting gained a `ref` field (branch/tag/commit) instead of overloading `number`.
+- Identity derivation fetches the account for credentials without stored metadata (env tokens), so the derived identity is still available.
+- Settings: blanking a name/email override sends an explicit `null` (schema nullable) so the merge actually clears it; Sync now flushes the pending github-domain draft first; the Refresh action and connect/logout callbacks also refetch identity state; the no-op sync toast uses the localized descriptor instead of the server reason string.
+- Agent-facing tool descriptions (`agenda-watch.txt`, `agenda-schedule.txt`) and the synergy-config skill's domain table were updated with the new trigger/domain.

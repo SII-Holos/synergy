@@ -109,15 +109,17 @@ export namespace AgendaPrompt {
     }
 
     if (signal.type === "github") {
+      // GitHub titles/state are repository-controlled input; escape anything
+      // that could close the attribute or inject prompt structure.
       const p = signal.payload
       const attrs = [
-        typeof p.resource === "string" ? `resource="${p.resource}"` : "",
-        typeof p.repository === "string" ? `repository="${p.repository}"` : "",
+        typeof p.resource === "string" ? `resource="${escapeAttr(p.resource)}"` : "",
+        typeof p.repository === "string" ? `repository="${escapeAttr(p.repository)}"` : "",
         p.number !== undefined ? `number="${String(p.number)}"` : "",
-        typeof p.title === "string" ? `title="${p.title}"` : "",
-        typeof p.state === "string" ? `state="${p.state}"` : "",
-        typeof p.previousState === "string" ? `previousState="${p.previousState}"` : "",
-        typeof p.url === "string" ? `url="${p.url}"` : "",
+        typeof p.title === "string" ? `title="${escapeAttr(p.title)}"` : "",
+        typeof p.state === "string" ? `state="${escapeAttr(p.state)}"` : "",
+        typeof p.previousState === "string" ? `previousState="${escapeAttr(p.previousState)}"` : "",
+        typeof p.url === "string" ? `url="${escapeAttr(p.url)}"` : "",
       ]
         .filter(Boolean)
         .join(" ")
@@ -159,4 +161,8 @@ export namespace AgendaPrompt {
       "</context-sessions>",
     ].join("\n")
   }
+}
+
+function escapeAttr(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }

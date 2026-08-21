@@ -866,7 +866,7 @@ describe("settings config patch github integration", () => {
     expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} })).not.toHaveProperty("github")
   })
 
-  test("emits identity sync with overrides and omits empty name/email", () => {
+  test("emits identity sync with overrides and clears a stored override on empty", () => {
     const state = defaultSettingsState("enter")
     state.github.identitySyncEnabled = true
     state.github.identitySyncName = "  Codex Bot  "
@@ -879,7 +879,7 @@ describe("settings config patch github integration", () => {
         originalMcps: {},
       }).github,
     ).toEqual({
-      identitySync: { enabled: true, name: "Codex Bot" },
+      identitySync: { enabled: true, name: "Codex Bot", email: null },
       watch: { enabled: true },
     })
   })

@@ -1301,15 +1301,19 @@ export type AgendaTriggerGithub = {
    */
   repository: string
   /**
-   * PR/issue number, or workflow/check run number. If omitted for pr/issue, watches the repository's most recent items
+   * PR/issue number, or workflow run id. If omitted for pr/issue/workflow, watches the repository's most recent items
    */
   number?: number
   /**
-   * Poll interval, e.g. '5m'. Default: '5m'
+   * Branch/tag/commit ref for workflow and check targeting (e.g. 'main', full SHA). Defaults to HEAD for checks and the default branch for workflows
+   */
+  ref?: string
+  /**
+   * Poll interval, e.g. '5m'. Default: '5m' (or github.watch.defaultIntervalMs)
    */
   interval?: string
   /**
-   * Only fire when the state transitions into one of these values (e.g. ['merged'], ['failure'], ['completed'])
+   * Only fire when the state transitions into one of these values. PR: open/draft/merged/closed; issue: open/closed; workflow/check: queued/in_progress/completed (filter the conclusion separately via these same values, e.g. 'success'/'failure')
    */
   states?: Array<string>
 }
@@ -3559,13 +3563,13 @@ export type GithubIdentitySyncConfig = {
    */
   enabled?: boolean
   /**
-   * Optional git user.name override (defaults to the GitHub account login)
+   * Optional git user.name override (defaults to the GitHub account login). null clears the override
    */
-  name?: string
+  name?: string | null
   /**
-   * Optional git user.email override (defaults to the GitHub noreply email)
+   * Optional git user.email override (defaults to the GitHub noreply email). null clears the override
    */
-  email?: string
+  email?: string | null
 }
 
 /**

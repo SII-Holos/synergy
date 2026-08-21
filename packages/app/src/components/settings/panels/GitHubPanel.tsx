@@ -110,6 +110,8 @@ function identityValueText(name: string | undefined, email: string | undefined, 
 export function GitHubPanel(props: {
   github: GithubIntegrationSettings
   onGithubChange: (key: keyof GithubIntegrationSettings, value: string | boolean) => void
+  /** Persist any pending github-domain draft before an identity sync runs. */
+  onSyncIdentity?: () => Promise<void>
 }) {
   const { _, i18n } = useLingui()
   const globalSDK = useGlobalSDK()
@@ -154,12 +156,13 @@ export function GitHubPanel(props: {
   )
 
   async function refreshStatus() {
-    await Promise.all([refetch(), globalSync.refreshProviders()])
+    await Promise.all([refetch(), refetchIdentity(), globalSync.refreshProviders()])
   }
 
   async function syncIdentity() {
     setSyncingIdentity(true)
     try {
+      await props.onSyncIdentity?.()
       const res = await globalSDK.client.auth.githubIdentitySync({}, { throwOnError: true })
       const result = res.data
       await refetchIdentity()
@@ -176,7 +179,7 @@ export function GitHubPanel(props: {
         showToast({
           type: "info",
           title: _(identitySyncAlreadyTitle),
-          description: result?.reason ? result.reason : _(identitySyncAlreadyDescription),
+          description: _(identitySyncAlreadyDescription),
         })
       }
     } catch (error) {

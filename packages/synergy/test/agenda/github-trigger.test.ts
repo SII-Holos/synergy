@@ -102,7 +102,111 @@ describe("trigger schema integration", () => {
     expect(parsed.success).toBe(false)
   })
 
+  test("invalid interval format is rejected before persistence", () => {
+    const parsed = AgendaTypes.Trigger.safeParse(githubTrigger({ interval: "five minutes" }))
+    expect(parsed.success).toBe(false)
+  })
+
+  test("workflow and check triggers accept a ref", () => {
+    const parsed = AgendaTypes.Trigger.safeParse(githubTrigger({ resource: "workflow", ref: "main" }))
+    expect(parsed.success).toBe(true)
+  })
+
   test("inferSessionMode treats github triggers as recurring", () => {
     expect(AgendaTypes.inferSessionMode([githubTrigger()])).toBe("persistent")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// snapshot mapping / change collection
+// ---------------------------------------------------------------------------
+
+describe("snapshot mapping and change collection", () => {
+  test("pr list snapshots detect merged via merged_at", () => {
+    const merged = AgendaGithubTrigger.prSnapshot({ number: 1, state: "closed", merged_at: "2026-01-01T00:00:00Z" })
+    expect(merged.state).toBe("merged")
+    const open = AgendaGithubTrigger.prSnapshot({ number: 2, state: "open", draft: false, merged: false })
+    expect(open.state).toBe("open")
+  })
+
+  test("workflow snapshot keeps status as state with conclusion separate and includes url", () => {
+    const run = AgendaGithubTrigger.workflowSnapshot({
+      id: 99,
+      name: "CI",
+      status: "completed",
+      conclusion: "success",
+      html_url: "https://github.com/owner/repo/actions/runs/99",
+    })
+    expect(run.state).toBe("completed")
+    expect(run.conclusion).toBe("success")
+    expect(run.url).toBe("https://github.com/owner/repo/actions/runs/99")
+  })
+
+  test("collectChanges returns every transition in order and advances the baseline", () => {
+    const lastStates = new Map<string, string>()
+    const snapshots = [
+      { resource: "pr" as const, number: 1, state: "open" },
+      { resource: "pr" as const, number: 2, state: "closed" },
+    ]
+    // First poll primes the baseline without firing.
+    expect(AgendaGithubTrigger.collectChanges({ lastStates, primed: false, states: undefined }, snapshots)).toEqual([])
+    // Second poll observes both transitions.
+    const changes = AgendaGithubTrigger.collectChanges(
+      { lastStates, primed: true, states: undefined },
+      snapshots.map((s) => ({ ...s, state: s.number === 1 ? "merged" : "closed" })),
+    )
+    expect(changes.map((c) => c.snapshot.number)).toEqual([1])
+    expect(changes[0]?.previous).toBe("open")
+    // Unchanged states do not fire again.
+    expect(
+      AgendaGithubTrigger.collectChanges(
+        { lastStates, primed: true, states: undefined },
+        snapshots.map((s) => ({ ...s, state: s.number === 1 ? "merged" : "closed" })),
+      ),
+    ).toEqual([])
+  })
+
+  test("states filter still advances the baseline for non-matching transitions", () => {
+    const lastStates = new Map<string, string>()
+    const snapshot = { resource: "pr" as const, number: 7, state: "open" }
+    AgendaGithubTrigger.collectChanges({ lastStates, primed: true, states: ["merged"] }, [snapshot])
+    const next = AgendaGithubTrigger.collectChanges({ lastStates, primed: true, states: ["merged"] }, [
+      { ...snapshot, state: "draft" },
+    ])
+    expect(next).toEqual([])
+    expect(lastStates.get("pr:7")).toBe("draft")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// one-shot autoDone completion (review regression)
+// ---------------------------------------------------------------------------
+
+describe("autoDone completion", () => {
+  test("updateRunState marks autoDone github items done after a successful fire", async () => {
+    const { AgendaStore } = await import("../../src/agenda/store")
+    const { tmpdir } = await import("../fixture/fixture")
+    await using tmp = await tmpdir({ git: true })
+    const { ScopeContext } = await import("../../src/scope/context")
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const item = await AgendaStore.create({
+          title: "Watch PR merge",
+          prompt: "check",
+          triggers: [githubTrigger()],
+          autoDone: true,
+          createdBy: "agent",
+        })
+        const { item: updated } = await AgendaStore.updateRunState(
+          item.origin.scope.id,
+          item.id,
+          { status: "ok", startTime: Date.now(), duration: 10, autoDone: true },
+          item.triggers,
+          "github",
+        )
+        expect(updated.status).toBe("done")
+      },
+    })
   })
 })
