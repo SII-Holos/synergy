@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { cliCommand, compilePluginManifest, definePlugin, event } from "@ericsanchezok/synergy-plugin"
+import { cliCommand, compilePluginManifest, definePlugin, event, slot } from "@ericsanchezok/synergy-plugin"
 import z from "zod"
 import { ContributionAdapterRegistry, pluginContributionAdapters } from "../../src/plugin/contribution-registry"
 
@@ -53,4 +53,31 @@ describe("ContributionAdapterRegistry", () => {
       pluginContributionAdapters.unregisterPlugin(definition.id)
     }
   })
+})
+
+test("registers ui.slot contributions from a generated manifest", () => {
+  const definition = definePlugin({
+    id: "slot-registry-test",
+    version: "1.0.0",
+    description: "Slot registry test",
+    contributions: [
+      slot({
+        id: "footer",
+        slot: "app.footer",
+        label: "Footer",
+        component: { source: "./src/ui.tsx", exportName: "Footer" },
+      }),
+    ],
+  })
+  const manifest = compilePluginManifest(definition, {
+    generation: "slot-registry-generation",
+    ui: { entry: "ui/index.js", sha256: "a".repeat(64) },
+  })
+
+  try {
+    expect(() => pluginContributionAdapters.registerPlugin(definition.id, manifest)).not.toThrow()
+    expect(pluginContributionAdapters.list(definition.id, "ui.slot")).toHaveLength(1)
+  } finally {
+    pluginContributionAdapters.unregisterPlugin(definition.id)
+  }
 })

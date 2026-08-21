@@ -14,6 +14,7 @@ Generated from the config domain definitions in `packages/synergy/src/config/dom
 | `library` | `30-library.jsonc` | merge |
 | `mcp` | `40-mcp.jsonc` | merge |
 | `plugins` | `50-plugins.jsonc` | merge |
+| `skills` | `55-skills.jsonc` | merge |
 | `agents` | `60-agents.jsonc` | merge |
 | `commands` | `70-commands.jsonc` | merge |
 | `permissions` | `80-permissions.jsonc` | merge |
@@ -97,6 +98,14 @@ File: `50-plugins.jsonc` · Merge: merge
 | `pluginConfig` | string (optional) | Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config. |
 | `pluginRuntimePolicy` | PluginRuntimePolicy.optional (optional) | Plugin runtime isolation policy configuration |
 | `pluginMarketplace` | PluginMarketplace.optional (optional) | Public plugin marketplace registry configuration |
+
+## Skills
+
+File: `55-skills.jsonc` · Merge: merge
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `skills` | SkillsConfig |  |
 
 ## Agents
 

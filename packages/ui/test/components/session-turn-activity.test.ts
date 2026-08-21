@@ -1117,3 +1117,69 @@ describe("minimal activity projection", () => {
     expect(activityItemStableKey(projected)).toBe(timelineItemStableKey(item as SessionTurnTimelineItem))
   })
 })
+
+describe("terminal step projection freezing", () => {
+  test("reuses the frozen step object for a completed part across re-projections", () => {
+    const message = assistant()
+    const part = tool({ id: "read-a" })
+    const parts = [part]
+
+    const first = project({ message, parts })
+    const second = project({ message, parts })
+
+    const firstStep = activities(first)[0]?.steps[0]
+    const secondStep = activities(second)[0]?.steps[0]
+    expect(firstStep).toBeDefined()
+    expect(secondStep).toBe(firstStep)
+  })
+
+  test("does not freeze a running part", () => {
+    const message = assistant()
+    const part = tool({ id: "run-a", status: "running" })
+    const parts = [part]
+
+    const first = project({ message, parts })
+    const second = project({ message, parts })
+
+    const firstStep = activities(first)[0]?.steps[0]
+    const secondStep = activities(second)[0]?.steps[0]
+    expect(firstStep).toBeDefined()
+    expect(secondStep).not.toBe(firstStep)
+  })
+
+  test("does not freeze a completed part while an approval is pending", () => {
+    const message = assistant()
+    const part = tool({ id: "approve-a" })
+    const parts = [part]
+    const permission = {
+      tool: { messageID: message.id, callID: part.callID },
+    } as PermissionRequest
+
+    const first = project({ message, parts, permissions: [permission] })
+    const second = project({ message, parts, permissions: [permission] })
+
+    const firstStep = activities(first)[0]?.steps[0]
+    const secondStep = activities(second)[0]?.steps[0]
+    expect(firstStep).toBeDefined()
+    expect(firstStep?.state).toBe("waiting-approval")
+    expect(secondStep).not.toBe(firstStep)
+  })
+
+  test("recovers the terminal projection once a pending approval is removed", () => {
+    const message = assistant()
+    const part = tool({ id: "approve-b" })
+    const parts = [part]
+    const permission = {
+      tool: { messageID: message.id, callID: part.callID },
+    } as PermissionRequest
+
+    const waiting = project({ message, parts, permissions: [permission] })
+    expect(activities(waiting)[0]?.steps[0]?.state).toBe("waiting-approval")
+
+    // The approval is replied and disappears from the permission list: the
+    // projection must re-derive the terminal state instead of serving a
+    // cached waiting-approval step.
+    const settled = project({ message, parts, permissions: [] })
+    expect(activities(settled)[0]?.steps[0]?.state).toBe("done")
+  })
+})

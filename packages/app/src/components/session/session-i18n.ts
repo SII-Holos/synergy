@@ -198,6 +198,32 @@ export const S = {
   },
   rewindRequestFailed: { id: "session.rewind.requestFailed", message: "Request failed" },
 
+  // dialog-fork-confirm.tsx
+  forkConfirmTitle: { id: "session.fork.confirm.title", message: "Fork session from this message" },
+  forkConfirmDescription: {
+    id: "session.fork.confirm.description",
+    message: "Copy the conversation through this reply into a new session.",
+  },
+  forkConfirmDescriptionPreview: {
+    id: "session.fork.confirm.description.preview",
+    message: 'Copy the conversation through "{preview}" into a new session.',
+  },
+  forkConfirmCopiedSummary: {
+    id: "session.fork.confirm.copiedSummary",
+    message:
+      "{kind, select, both {Copy {messages, plural, one {# message} other {# messages}} and {replies, plural, one {# reply} other {# replies}} into a new session.} messages {Copy {messages, plural, one {# message} other {# messages}} into a new session.} replies {Copy {replies, plural, one {# reply} other {# replies}} into a new session.} other {Copy the conversation into a new session.}}",
+  },
+  forkConfirmCopiedNote: {
+    id: "session.fork.confirm.copiedNote",
+    message: "Will fork from this reply at {time}.",
+  },
+  forkConfirmAction: { id: "session.fork.confirm.action", message: "Fork session" },
+  forkConfirmForking: { id: "session.fork.confirm.forking", message: "Forking…" },
+  forkConfirmCancel: { id: "session.fork.confirm.cancel", message: "Cancel" },
+  forkConfirmClose: { id: "session.fork.confirm.close", message: "Close dialog" },
+  forkConfirmFailed: { id: "session.fork.confirm.failed", message: "Fork failed" },
+  forkConfirmRequestFailed: { id: "session.fork.confirm.requestFailed", message: "Request failed" },
+
   // session-progress summary labels
   progressDone: { id: "session.progress.done", message: "Done · {count, plural, one {# task} other {# tasks}}" },
   progressNeedsAttention: {

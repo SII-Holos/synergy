@@ -34,6 +34,7 @@ import {
   skillImportScopeOptions,
   skillInvocationLabel,
   skillPathLabel,
+  partitionSkillDiagnostics,
   type SkillImportScope,
 } from "./skill-view-model"
 
@@ -125,7 +126,7 @@ export function SkillView(props: {
 
   const [skills, { refetch }] = createResource<SkillListData>(async () => {
     const result = await scopedClient().skill.list()
-    return (result.data as SkillListData | undefined) ?? { items: [], diagnostics: [] }
+    return (result.data as SkillListData | undefined) ?? { items: [], diagnostics: [], sources: [] }
   })
 
   async function reloadSkills() {
@@ -160,7 +161,58 @@ export function SkillView(props: {
     return list
   })
 
-  const diagnostics = createMemo(() => skills()?.diagnostics ?? [])
+  const diagnostics = createMemo(() => partitionSkillDiagnostics(skills()?.diagnostics ?? []))
+
+  const diagnosticsSummary = createMemo(() => {
+    const { failed, shadowed, compat } = diagnostics()
+    const segments: string[] = []
+    if (failed.length > 0) {
+      segments.push(
+        _({
+          id: "app.library.skills.diagnostics.failed",
+          message: "{count, plural, one {# skill failed to load} other {# skills failed to load}}",
+          values: { count: failed.length },
+        }),
+      )
+    }
+    if (shadowed.length > 0) {
+      segments.push(
+        _({
+          id: "app.library.skills.diagnostics.shadowed",
+          message: "{count, plural, one {# skill shadowed} other {# skills shadowed}}",
+          values: { count: shadowed.length },
+        }),
+      )
+    }
+    if (compat.length > 0) {
+      segments.push(
+        _({
+          id: "app.library.skills.diagnostics.compat",
+          message: "{count, plural, one {# compatibility notice} other {# compatibility notices}}",
+          values: { count: compat.length },
+        }),
+      )
+    }
+    return segments.join(" · ")
+  })
+
+  const diagnosticGroups = createMemo(() => {
+    const { failed, shadowed, compat } = diagnostics()
+    return [
+      {
+        title: _({ id: "app.library.skills.diagnostics.failedGroup", message: "Failed to load" }),
+        items: failed,
+      },
+      {
+        title: _({ id: "app.library.skills.diagnostics.shadowedGroup", message: "Shadowed" }),
+        items: shadowed,
+      },
+      {
+        title: _({ id: "app.library.skills.diagnostics.compatGroup", message: "Compatibility notices" }),
+        items: compat,
+      },
+    ].filter((group) => group.items.length > 0)
+  })
 
   const scopeCounts = createMemo(() => {
     const counts = { project: 0, global: 0, builtin: 0 }
@@ -559,7 +611,7 @@ export function SkillView(props: {
       </Show>
 
       <Show when={!skills.loading}>
-        <Show when={diagnostics().length > 0}>
+        <Show when={diagnosticGroups().length > 0}>
           <div class="mb-3 rounded-[1.15rem] border border-border-warning-base/35 bg-surface-warning-weak px-4 py-3 ring-1 ring-inset ring-border-weaker-base">
             <button
               type="button"
@@ -567,16 +619,7 @@ export function SkillView(props: {
               onClick={() => setDiagnosticsExpanded((prev) => !prev)}
             >
               <Icon name={getSemanticIcon("state.warning")} size="small" class="text-icon-warning-base shrink-0" />
-              <span class="flex-1 text-left">
-                {_({
-                  id: "app.library.skills.diagnostics.count",
-                  message: "{count} skill{plural} skipped during load",
-                  values: {
-                    count: String(diagnostics().length),
-                    plural: diagnostics().length === 1 ? "" : "s",
-                  },
-                })}
-              </span>
+              <span class="flex-1 text-left">{diagnosticsSummary()}</span>
               <Icon
                 name={getSemanticIcon("navigation.expand")}
                 size="small"
@@ -586,12 +629,21 @@ export function SkillView(props: {
             </button>
             <Show when={diagnosticsExpanded()}>
               <div class="mt-2 flex flex-col gap-2">
-                <For each={diagnostics()}>
-                  {(item) => (
-                    <div class={`rounded-[0.95rem] px-3 py-2 ${libraryInsetClass}`}>
-                      <div class="text-11-medium text-text-strong">{item.name}</div>
-                      <div class="mt-0.5 text-11-regular text-text-diff-delete-base break-words">{item.message}</div>
-                      <div class="mt-1 text-10-regular text-text-weaker break-all">{item.path}</div>
+                <For each={diagnosticGroups()}>
+                  {(group) => (
+                    <div class="flex flex-col gap-2">
+                      <div class="mt-1 text-11-medium text-text-weaker">{group.title}</div>
+                      <For each={group.items}>
+                        {(item) => (
+                          <div class={`rounded-[0.95rem] px-3 py-2 ${libraryInsetClass}`}>
+                            <div class="text-11-medium text-text-strong">{item.name}</div>
+                            <div class="mt-0.5 text-11-regular text-text-diff-delete-base break-words">
+                              {item.message}
+                            </div>
+                            <div class="mt-1 text-10-regular text-text-weaker break-all">{item.path}</div>
+                          </div>
+                        )}
+                      </For>
                     </div>
                   )}
                 </For>

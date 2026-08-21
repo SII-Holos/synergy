@@ -112,9 +112,13 @@ export namespace Asset {
     return MIME_TO_EXT[mime]
   }
 
+  /** Filename-derived extension normalized to the asset-ID alphabet; anything
+   *  outside [a-z0-9] (e.g. "x86_64") falls back to undefined so the caller's
+   *  `.bin` default keeps generated IDs valid for `isValidId()`. */
   export function extFromName(name: string): string | undefined {
     const dot = name.lastIndexOf(".")
-    return dot >= 0 ? name.slice(dot + 1).toLowerCase() : undefined
+    const ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : undefined
+    return ext && /^[a-z0-9]+$/.test(ext) ? ext : undefined
   }
 
   export function extFromId(id: string): string {

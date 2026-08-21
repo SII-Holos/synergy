@@ -137,6 +137,10 @@ The local model downloads from Hugging Face Hub by default. The source is config
 
 The model ID and quantization dtype are not exposed as configuration; the cache directory is configurable via `embedding.local.cacheDir`.
 
+**Auto-fallback**: when `source` is `"huggingface"` (the default) and the download fails, Synergy retries once from hf-mirror.com automatically, then falls back to the on-disk cache (`local_files_only`) as a last resort — the model loads offline if it was cached by an earlier download. Explicit `"hf-mirror"` or `"custom"` sources never auto-switch host; they go straight to the disk cache on failure. After a successful mirror fallback, the embedding status reports `source: "hf-mirror"` (the source that actually served the model); after a failed load it reports the configured source.
+
+**Download timeout**: remote model downloads abort if no response bytes arrive within 30 seconds (time-to-first-byte), producing an error that suggests checking the network/proxy (`HTTPS_PROXY`) or switching the download source. The timeout covers only the connection/header phase — once a download starts streaming, it runs at its own pace. In a fully unreachable network, a default-source load fails within about a minute (one timeout each for huggingface.co and hf-mirror.com) instead of hanging at 0%.
+
 ## Notes
 
 Notes are TipTap documents stored in either the home Scope or a project Scope. A Note includes title, document content, tags, pinning, archive state, version, timestamps, and whether it is global.

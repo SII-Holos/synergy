@@ -20,6 +20,7 @@ test("config domain filenames are stable and ordered", () => {
     "30-library.jsonc",
     "40-mcp.jsonc",
     "50-plugins.jsonc",
+    "55-skills.jsonc",
     "60-agents.jsonc",
     "70-commands.jsonc",
     "80-permissions.jsonc",
@@ -28,6 +29,22 @@ test("config domain filenames are stable and ordered", () => {
     "110-email.jsonc",
     "120-runtime.jsonc",
   ])
+})
+
+test("skills compatibility toggles belong to the skills domain", () => {
+  expect(ConfigDomain.domainForKey("skills")?.id).toBe("skills")
+  expect(ConfigDomain.domainForKey("skills")?.reloadTargets).toEqual(["config"])
+  expect(ConfigDomain.filepath("skills")).toMatch(/55-skills\.jsonc$/)
+  expect(ConfigDomain.extract({ skills: { compatibility: { claude: false } } }, "skills")).toEqual({
+    skills: { compatibility: { claude: false } },
+  })
+  expect(Config.Info.safeParse({ skills: { compatibility: { claude: false, codex: true } } }).success).toBe(true)
+  expect(Config.Info.safeParse({ skills: { compatibility: { unknown: false } } }).success).toBe(false)
+})
+
+test("skills compatibility toggles default to enabled when unset", () => {
+  expect(Config.Info.parse({}).skills).toBeUndefined()
+  expect(Config.Info.parse({ skills: {} }).skills?.compatibility).toBeUndefined()
 })
 
 test("plugins domain merges by default so imported plugin arrays replace stale specs", () => {

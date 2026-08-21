@@ -7,7 +7,7 @@
   height: var(--desktop-native-titlebar-height);
   min-height: var(--desktop-native-titlebar-height);
   color: var(--text-base);
-  background: transparent;
+  background: var(--background-base, var(--synergy-boot-bg));
   user-select: none;
   -webkit-app-region: drag;
 }

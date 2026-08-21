@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { setSessionDragData } from "../../src/utils/session-drag"
+import { parseSessionDragPayload, setSessionDragData } from "../../src/utils/session-drag"
 
 class FakeDataTransfer {
   data = new Map<string, string>()
@@ -73,5 +73,29 @@ describe("setSessionDragData", () => {
   test("no-ops when dataTransfer is absent", () => {
     setSessionDragData({} as DragEvent, { id: "ses_abc", directory: "/repo", title: "T" })
     expect(true).toBe(true)
+  })
+})
+
+describe("parseSessionDragPayload", () => {
+  test("parses the canonical sidebar payload into scope/session parts", () => {
+    const payload = JSON.stringify({ id: "ses_1", directory: "/repo", title: "T" })
+    expect(parseSessionDragPayload(payload)).toEqual({ scopeKey: "/repo", sessionID: "ses_1" })
+  })
+
+  test("accepts the legacy { scopeKey, sessionID } shape", () => {
+    const payload = JSON.stringify({ scopeKey: "/repo", sessionID: "ses_1" })
+    expect(parseSessionDragPayload(payload)).toEqual({ scopeKey: "/repo", sessionID: "ses_1" })
+  })
+
+  test("prefers scopeKey/sessionID when both shapes are present", () => {
+    const payload = JSON.stringify({ scopeKey: "/a", sessionID: "s1", directory: "/b", id: "s2" })
+    expect(parseSessionDragPayload(payload)).toEqual({ scopeKey: "/a", sessionID: "s1" })
+  })
+
+  test("returns undefined for malformed or foreign payloads", () => {
+    expect(parseSessionDragPayload("not json")).toBeUndefined()
+    expect(parseSessionDragPayload("")).toBeUndefined()
+    expect(parseSessionDragPayload(JSON.stringify({ id: "", directory: "/repo" }))).toBeUndefined()
+    expect(parseSessionDragPayload(JSON.stringify({ id: "ses_1" }))).toBeUndefined()
   })
 })

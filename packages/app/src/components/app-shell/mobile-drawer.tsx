@@ -156,7 +156,7 @@ export function MobileDrawer() {
   )
 }
 
-type DrawerToolID = "agenda" | "library" | "performance" | "plugins" | "notes" | "browser"
+type DrawerToolID = "agenda" | "library" | "performance" | "plugins" | "kanban" | "notes" | "browser"
 
 interface DrawerTool {
   id: DrawerToolID
@@ -170,6 +170,7 @@ const DRAWER_TOOLS: DrawerTool[] = [
   { id: "library", icon: "library.main", href: "/library" },
   { id: "performance", icon: "performance.main", href: "/performance" },
   { id: "plugins", icon: "plugins.main", href: "/plugins/marketplace" },
+  { id: "kanban", icon: "kanban.main", href: "/kanban" },
   { id: "notes", icon: "notes.main", panelId: "notes" },
   { id: "browser", icon: "browser.main", panelId: "browser" },
 ]
@@ -194,6 +195,7 @@ function ScopeListView(props: {
     if (id === "library") return _(appShell.library)
     if (id === "performance") return _(appShell.performance)
     if (id === "plugins") return _(appShell.plugins)
+    if (id === "kanban") return _(appShell.kanban)
     if (id === "notes") return _(appShell.notes)
     return _(appShell.browser)
   }

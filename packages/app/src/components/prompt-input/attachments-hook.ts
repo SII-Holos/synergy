@@ -9,8 +9,9 @@ import type { ContentPart, NoteAttachmentPart, SessionAttachmentPart } from "@/c
 import { PromptAttachmentError, uploadPromptAttachment } from "@/utils/prompt-attachment"
 import { useLocale } from "@/context/locale"
 import {
-  formatUnsupportedAttachmentToast,
-  isPromptAttachmentFileAccepted,
+  formatAttachmentBatchToast,
+  formatOversizedAttachmentToast,
+  isPromptAttachmentOversized,
   partitionPromptAttachmentFiles,
 } from "./files"
 import { createPromptPartID } from "./content"
@@ -49,8 +50,8 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
   const { i18n } = useLocale()
 
   const addAttachment = async (file: File) => {
-    if (!isPromptAttachmentFileAccepted(file)) {
-      const toast = formatUnsupportedAttachmentToast([file], 0)
+    if (isPromptAttachmentOversized(file)) {
+      const toast = formatOversizedAttachmentToast([file], 0, i18n)
       if (toast) showToast(toast)
       return
     }
@@ -91,11 +92,29 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
   }
 
   const addAttachments = async (files: Iterable<File>) => {
-    const { accepted, rejected } = partitionPromptAttachmentFiles(files)
-    const toast = formatUnsupportedAttachmentToast(rejected, accepted.length)
+    const all = Array.from(files)
+    const existing = composerAttachmentScope()
+    const batchToast = formatAttachmentBatchToast(all, existing, i18n)
+    if (batchToast) {
+      showToast(batchToast)
+      return
+    }
+    const { accepted, rejected } = partitionPromptAttachmentFiles(all)
+    const toast = formatOversizedAttachmentToast(rejected, accepted.length, i18n)
     if (toast) showToast(toast)
     for (const file of accepted) {
       await addAttachment(file)
+    }
+  }
+
+  const composerAttachmentScope = () => {
+    const parts = prompt.current()
+    const attachments = parts.filter(
+      (part): part is Extract<ContentPart, { type: "attachment" }> => part.type === "attachment",
+    )
+    return {
+      count: attachments.length,
+      bytes: attachments.reduce((total, part) => total + (typeof part.size === "number" ? part.size : 0), 0),
     }
   }
 

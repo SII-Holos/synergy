@@ -1,5 +1,5 @@
 import { createMemo, createEffect, createSignal, Show, on, onCleanup } from "solid-js"
-import { useSync } from "@/context/sync"
+import { useSessionDataView } from "@/context/session-data-view"
 import { useLocale } from "@/context/locale"
 import { DagGraph } from "@ericsanchezok/synergy-ui/dag-graph"
 import { useNavigate, useParams } from "@solidjs/router"
@@ -15,11 +15,11 @@ interface SessionProgressDagProps {
 }
 
 export function SessionProgressDag(props: SessionProgressDagProps) {
-  const sync = useSync()
+  const view = useSessionDataView()
   const navigate = useNavigate()
   const params = useParams()
   const { i18n } = useLocale()
-  const nodes = createMemo<DagNode[]>(() => sync.data.dag[props.sessionID] ?? [])
+  const nodes = createMemo<DagNode[]>(() => view().dagNodesFor(props.sessionID))
   const [userInteracted, setUserInteracted] = createSignal(false)
   let previousNodes = new Map<string, string>()
 

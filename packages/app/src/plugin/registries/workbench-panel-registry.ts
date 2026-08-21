@@ -1,6 +1,5 @@
 import type { Component, JSX } from "solid-js"
-import { SurfaceRegistry } from "@/surface/registry"
-import type { SurfaceEntry } from "@/surface/types"
+import { SlotRegistry, type SlotEntryBase, type SurfaceEntry } from "../slot-registry"
 
 export type WorkbenchPanelSurface = "side" | "bottom"
 export type WorkbenchPanelCardinality = "exclusive" | "singleton" | "multi"
@@ -45,19 +44,32 @@ export interface WorkbenchPanelEntry extends SurfaceEntry {
   tabIcon?: (tab: WorkbenchPanelTab) => JSX.Element
 }
 
-const registry = new SurfaceRegistry<WorkbenchPanelEntry>()
+/** Internal slot-backed entry: workbench panels live in one slot. */
+type WorkbenchSlotEntry = SlotEntryBase &
+  WorkbenchPanelEntry & {
+    slot: "workbench.panel"
+  }
+
+const registry = new SlotRegistry<WorkbenchSlotEntry>()
+
+/** Strip the internal slot key so callers see the exact public entry shape. */
+function toEntry(entry: WorkbenchSlotEntry): WorkbenchPanelEntry {
+  const { slot: _slot, ...rest } = entry
+  return rest
+}
 
 export function registerWorkbenchPanel(entry: WorkbenchPanelEntry): () => void {
-  return registry.register(entry)
+  return registry.register({ ...entry, slot: "workbench.panel" })
 }
 
 export function listWorkbenchPanels(surface?: WorkbenchPanelSurface): WorkbenchPanelEntry[] {
-  if (surface) return registry.list((e) => e.surface === surface)
-  return registry.list()
+  if (surface) return registry.listAll((e) => e.surface === surface).map(toEntry)
+  return registry.listAll().map(toEntry)
 }
 
 export function getWorkbenchPanel(id: string): WorkbenchPanelEntry | undefined {
-  return registry.get(id)
+  const entry = registry.get(id)
+  return entry ? toEntry(entry) : undefined
 }
 
 export function clearWorkbenchPanels(pluginId?: string): void {

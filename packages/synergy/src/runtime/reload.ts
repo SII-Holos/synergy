@@ -54,6 +54,7 @@ export namespace RuntimeReload {
     "external_agent",
     "email",
     "observability",
+    "skills",
   ])
   export const CONFIG_CLIENT_SIDE = new Set(["theme", "keybinds", "layout", "toast", "locale"])
 
@@ -666,6 +667,11 @@ export namespace RuntimeReload {
     if (changed.has("timeout")) {
       // Timeout values are resolved dynamically at call time via
       // TimeoutConfig.resolve(); no subsystem state embeds them.
+    }
+    if (changed.has("skills")) {
+      // Skill compatibility toggles change which source directories are
+      // scanned; the skill state rebuilds against the fresh config.
+      cascaded.push("skill")
     }
 
     return unique(cascaded)

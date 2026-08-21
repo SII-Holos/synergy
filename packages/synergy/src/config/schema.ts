@@ -1157,6 +1157,31 @@ export const LibraryConfig = z
   .meta({ ref: "LibraryConfig" })
 export type LibraryConfig = z.infer<typeof LibraryConfig>
 
+export const SkillsCompatibility = z
+  .object({
+    agents: z.boolean().optional().describe("Load Agent Skills from .agents/skills directories (default: true)"),
+    claude: z.boolean().optional().describe("Load Claude Code Skills from .claude/skills directories (default: true)"),
+    codex: z.boolean().optional().describe("Load Codex Skills from .codex/skills directories (default: true)"),
+    openclaw: z
+      .boolean()
+      .optional()
+      .describe("Load OpenClaw Skills from .openclaw/skills and workspace skills directories (default: true)"),
+  })
+  .strict()
+  .meta({ ref: "SkillsCompatibilityConfig" })
+export type SkillsCompatibility = z.infer<typeof SkillsCompatibility>
+
+export const SkillsConfig = z
+  .object({
+    compatibility: SkillsCompatibility.optional().describe(
+      "Per-source compatibility toggles for discovering Skills from other agent tools",
+    ),
+  })
+  .strict()
+  .optional()
+  .meta({ ref: "SkillsConfig" })
+export type SkillsConfig = z.infer<typeof SkillsConfig>
+
 export const Provider = ModelsDev.Provider.partial()
   .extend({
     profile: z
@@ -1790,6 +1815,7 @@ export const Info = z
     embedding: EmbeddingConfig,
     rerank: RerankConfig,
     library: LibraryConfig,
+    skills: SkillsConfig,
     mcp: z
       .record(
         z.string(),
