@@ -18,7 +18,6 @@
     "@babel/preset-typescript",
     "@ericsanchezok/synergy-plugin",
     "@ericsanchezok/synergy-sdk",
-    "@napi-rs/canvas",
     "@scope/plugin",
     "playwright",
     "@sii-holos/holos-cli",
