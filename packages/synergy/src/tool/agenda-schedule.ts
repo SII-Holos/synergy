@@ -52,6 +52,23 @@ export const AgendaScheduleTool = Tool.define("agenda_schedule", {
     const session = await SessionManager.getSession(ctx.sessionID).catch(() => undefined)
     const triggers = [params.trigger as AgendaTypes.Trigger]
 
+    if (params.trigger.type === "github") {
+      // A GitHub trigger can never fire while polling is disabled; reject up
+      // front instead of persisting a permanently silent item.
+      const { Config } = await import("../config/config")
+      const watch = (await Config.globalResolved().catch(() => undefined))?.github?.watch
+      if (watch?.enabled === false) {
+        return {
+          title: "agenda_schedule rejected",
+          output: [
+            `GitHub triggers are disabled (github.watch.enabled=false in config).`,
+            ``,
+            `Ask the user to enable them in Settings → GitHub → "Allow GitHub agenda triggers", or set github.watch.enabled=true in 115-github.jsonc.`,
+          ].join("\n"),
+          metadata: { blocked: true, reason: "github_watch_disabled" } as Record<string, any>,
+        }
+      }
+    }
     const conflicts = await AgendaDedup.findConflicts(
       ScopeContext.current.scope.id,
       params.title,

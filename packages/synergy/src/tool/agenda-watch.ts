@@ -37,6 +37,12 @@ const parameters = z
           .describe(
             "PR/issue number or workflow run id. Omit for repository-wide pr/issue watch. For checks this is the commit's latest run set",
           ),
+        ref: z
+          .string()
+          .optional()
+          .describe(
+            "Branch/tag/commit ref for workflow and check targeting (e.g. 'main', full SHA). Defaults to HEAD for checks and the default branch for workflows",
+          ),
         states: z
           .array(z.string())
           .optional()
@@ -88,6 +94,23 @@ export const AgendaWatchTool = Tool.define("agenda_watch", {
     }
 
     const session = await SessionManager.getSession(ctx.sessionID).catch(() => undefined)
+    if (params.onGithub) {
+      // A GitHub watch can never fire while polling is disabled; reject up
+      // front instead of leaving a silent, indefinite continuation blocker.
+      const { Config } = await import("../config/config")
+      const watch = (await Config.globalResolved().catch(() => undefined))?.github?.watch
+      if (watch?.enabled === false) {
+        return {
+          title: "agenda_watch rejected",
+          output: [
+            `GitHub watch is disabled (github.watch.enabled=false in config).`,
+            ``,
+            `Ask the user to enable it in Settings → GitHub → "Allow GitHub agenda triggers", or set github.watch.enabled=true in 115-github.jsonc.`,
+          ].join("\n"),
+          metadata: { blocked: true, reason: "github_watch_disabled" } as Record<string, any>,
+        }
+      }
+    }
     const trigger: AgendaTypes.Trigger = params.onSessionEnd
       ? {
           type: "session",
@@ -103,6 +126,7 @@ export const AgendaWatchTool = Tool.define("agenda_watch", {
             resource: params.onGithub.resource,
             repository: params.onGithub.repository,
             number: params.onGithub.number,
+            ref: params.onGithub.ref,
             states: params.onGithub.states,
           }
         : { type: "delay" as const, delay: params.delay! }

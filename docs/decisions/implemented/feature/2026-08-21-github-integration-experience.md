@@ -46,3 +46,12 @@ The GitHub integration in Settings → Integrations had three experience gaps:
 - Identity derivation fetches the account for credentials without stored metadata (env tokens), so the derived identity is still available.
 - Settings: blanking a name/email override sends an explicit `null` (schema nullable) so the merge actually clears it; Sync now flushes the pending github-domain draft first; the Refresh action and connect/logout callbacks also refetch identity state; the no-op sync toast uses the localized descriptor instead of the server reason string.
 - Agent-facing tool descriptions (`agenda-watch.txt`, `agenda-schedule.txt`) and the synergy-config skill's domain table were updated with the new trigger/domain.
+
+## Second review round fixes
+
+- `register()` copies `trigger.states` into polling entries (a regression in the previous round dropped it, so states-filtered watches never filtered).
+- Workflow/check watches match the `states` filter against both the run status and the conclusion, and the baseline key is `status:conclusion`, so a run finishing (`completed` → `completed:failure`) counts as a transition and documented filters like `["failure"]`/`["success"]` fire.
+- Auto-pause after five poll failures releases session continuation via `AgendaSessionWakeup.resumeIfReleased` (same hook as `Agenda.pause`), so a paused watch no longer stalls a Light Loop / BlueprintLoop forever.
+- Repository-wide issue watches fetch three pages before filtering out PRs, so PR-heavy repositories no longer crowd issues out of the poll window.
+- `agenda_watch`'s `onGithub` accepts and forwards `ref` (branch/tag/commit) instead of silently dropping it to `HEAD`.
+- Both `agenda_watch` and `agenda_schedule` reject GitHub trigger creation while `github.watch.enabled=false`, telling the agent how to get it enabled, instead of persisting a permanently silent item.

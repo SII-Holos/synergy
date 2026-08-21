@@ -244,3 +244,27 @@ describe("autoDone completion", () => {
     })
   })
 })
+
+test("workflow conclusion matches the states filter when a run completes", () => {
+  const lastStates = new Map<string, string>()
+  const run = { resource: "workflow" as const, number: 500, state: "completed", conclusion: "failure" }
+  // Baseline: in-progress run without conclusion.
+  AgendaGithubTrigger.collectChanges({ lastStates, allowInitialMatch: false, states: ["failure"] }, [
+    { resource: "workflow" as const, number: 500, state: "in_progress" },
+  ])
+  // Run completes with failure — the conclusion matches the filter.
+  const fired = AgendaGithubTrigger.collectChanges({ lastStates, allowInitialMatch: false, states: ["failure"] }, [run])
+  expect(fired).toHaveLength(1)
+  expect(fired[0]?.snapshot.conclusion).toBe("failure")
+})
+
+test("workflow conclusion filter does not fire for non-matching conclusions", () => {
+  const lastStates = new Map<string, string>()
+  AgendaGithubTrigger.collectChanges({ lastStates, allowInitialMatch: false, states: ["failure"] }, [
+    { resource: "workflow" as const, number: 501, state: "in_progress" },
+  ])
+  const fired = AgendaGithubTrigger.collectChanges({ lastStates, allowInitialMatch: false, states: ["failure"] }, [
+    { resource: "workflow" as const, number: 501, state: "completed", conclusion: "success" },
+  ])
+  expect(fired).toEqual([])
+})

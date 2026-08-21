@@ -1,3 +1,4 @@
+import { AgendaSessionWakeup } from "./session-wakeup"
 import { AgendaStore } from "./store"
 import { AgendaTypes } from "./types"
 import { Log } from "../util/log"
@@ -101,6 +102,7 @@ export namespace AgendaGithubTrigger {
         number: trigger.number,
         ref: trigger.ref,
         intervalMs: trigger.interval ? AgendaStore.parseDuration(trigger.interval) : undefined,
+        states: trigger.states,
         lastStates: new Map(),
         // Only items that have never run may report an already-satisfied
         // target state on first observation; restored items re-baseline
@@ -199,12 +201,19 @@ export namespace AgendaGithubTrigger {
 
   async function pauseAfterFailures(entry: Entry): Promise<void> {
     unregister(entry.itemID)
-    await AgendaStore.update(entry.scopeID, entry.itemID, { status: "paused" }).catch((err) => {
+    try {
+      const before = await AgendaStore.get(entry.scopeID, entry.itemID)
+      const item = await AgendaStore.update(entry.scopeID, entry.itemID, { status: "paused" })
+      // Pausing a continuation-holding watch must release the waiting
+      // session (Light Loop / BlueprintLoop) — the same release hook Agenda
+      // pause/cancel use — or the session stays stopped forever.
+      await AgendaSessionWakeup.resumeIfReleased({ before, after: item })
+    } catch (err) {
       log.error("failed to pause github trigger after repeated failures", {
         itemID: entry.itemID,
         error: err instanceof Error ? err : new Error(String(err)),
       })
-    })
+    }
     log.warn("github trigger auto-paused after repeated poll failures", {
       itemID: entry.itemID,
       repository: entry.repository,
@@ -244,14 +253,20 @@ export namespace AgendaGithubTrigger {
    * should fire, in observation order. The baseline always advances (even for
    * filtered-out transitions) so `previousState` reflects the last seen state.
    *
-   * First observation of a key (`previous === undefined`): a state-targeted
-   * watch reports immediately when the resource already sits in a targeted
-   * state — covering watches created for an already-satisfied condition and
-   * races where the state changed between item creation and the first poll.
-   * Watches without a states filter stay silent on first observation so
-   * repository-wide watchers do not fire on creation. `allowInitialMatch`
-   * gates this to items that have never run, so a restart re-baselines
-   * silently instead of re-notifying.
+   * The baseline key is `state` for PR/issue watches and `state:conclusion`
+   * for workflow/check watches, so a run finishing (`completed` →
+   * `completed:failure`) counts as a transition and the states filter can
+   * match both the run status ("completed") and the conclusion ("success",
+   * "failure") as documented.
+   *
+   * First observation of a resource (`previous === undefined`): a
+   * state-targeted watch reports immediately when the resource already sits
+   * in a targeted state — covering watches created for an already-satisfied
+   * condition and races where the state changed between item creation and the
+   * first poll. Watches without a states filter stay silent on first
+   * observation so repository-wide watchers do not fire on creation.
+   * `allowInitialMatch` gates this to items that have never run, so a
+   * restart re-baselines silently instead of re-notifying.
    */
   export function collectChanges(
     entry: Pick<Entry, "lastStates" | "allowInitialMatch" | "states">,
@@ -260,19 +275,35 @@ export namespace AgendaGithubTrigger {
     const pending: Array<{ snapshot: ResourceSnapshot; previous: string | undefined }> = []
     for (const snapshot of snapshots) {
       const key = `${snapshot.resource ?? ""}:${snapshot.number}`
+      const filterKey = snapshotKey(snapshot)
       const previous = entry.lastStates.get(key)
-      entry.lastStates.set(key, snapshot.state)
+      entry.lastStates.set(key, filterKey)
       if (previous === undefined) {
-        if (entry.allowInitialMatch && entry.states?.includes(snapshot.state)) {
+        // First observation: only a state-targeted watch may report an
+        // already-satisfied condition; unfiltered watches baseline silently.
+        if (entry.allowInitialMatch && entry.states !== undefined && matchesStates(entry.states, snapshot)) {
           pending.push({ snapshot, previous: undefined })
         }
         continue
       }
-      if (previous === snapshot.state) continue
-      if (entry.states && !entry.states.includes(snapshot.state)) continue
+      if (previous === filterKey) continue
+      if (!matchesStates(entry.states, snapshot)) continue
       pending.push({ snapshot, previous })
     }
     return pending
+  }
+
+  /** Baseline key combining run status and conclusion for workflow/check runs. */
+  function snapshotKey(snapshot: ResourceSnapshot): string {
+    return snapshot.conclusion !== undefined ? `${snapshot.state}:${snapshot.conclusion}` : snapshot.state
+  }
+
+  /** Whether a transition matches the configured states filter (status or conclusion). */
+  function matchesStates(states: string[] | undefined, snapshot: ResourceSnapshot): boolean {
+    if (!states) return true
+    return (
+      states.includes(snapshot.state) || (snapshot.conclusion !== undefined && states.includes(snapshot.conclusion))
+    )
   }
   // ---------------------------------------------------------------------------
   // GitHub REST polling
@@ -322,11 +353,19 @@ export namespace AgendaGithubTrigger {
           const issue = await api(`/repos/${owner}/${repo}/issues/${entry.number}`, token)
           return [issueSnapshot(issue)]
         }
-        const list = await api(
-          `/repos/${owner}/${repo}/issues?state=all&per_page=10&sort=updated&direction=desc`,
-          token,
+        // The issues list mixes PRs into the newest page; fetch several pages
+        // so filtering PRs out still leaves the intended issue window even in
+        // PR-heavy repositories.
+        const pages = await Promise.all(
+          [1, 2, 3].map((page) =>
+            api(`/repos/${owner}/${repo}/issues?state=all&per_page=30&sort=updated&direction=desc&page=${page}`, token),
+          ),
         )
-        return (Array.isArray(list) ? list : []).filter((i: any) => i.pull_request === undefined).map(issueSnapshot)
+        return pages
+          .flatMap((page) => (Array.isArray(page) ? page : []))
+          .filter((i: any) => i.pull_request === undefined)
+          .slice(0, 10)
+          .map(issueSnapshot)
       }
       case "workflow": {
         if (entry.number !== undefined) {
