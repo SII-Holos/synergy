@@ -171,6 +171,9 @@ Create a recurring task that runs in its own separate session, isolated from thi
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `title` | - | yes |  |
+| `output` | - | yes |  |
+| `metadata` | - | yes |  |
+| `title` | - | yes |  |
 | `output` | AgendaDedup.formatConflictMessage | yes |  |
 | `metadata` | - | yes |  |
 | `title` | params.title | yes |  |
@@ -239,6 +242,9 @@ Set a one-time wake-up in THIS session. The primary use case is **recursive adap
 | `reason` | - | yes |  |
 | `runningSubagentCount` | runningSubagents.length | yes |  |
 | `runningSubagentIds` | runningSubagents.map | yes |  |
+| `title` | - | yes |  |
+| `output` | - | yes |  |
+| `metadata` | - | yes |  |
 | `type` | - | yes |  |
 | `sessionID` | params.onSessionEnd.sessionID | yes |  |
 | `event` | - | yes |  |
@@ -249,6 +255,7 @@ Set a one-time wake-up in THIS session. The primary use case is **recursive adap
 | `resource` | params.onGithub.resource | yes |  |
 | `repository` | params.onGithub.repository | yes |  |
 | `number` | params.onGithub.number | yes |  |
+| `ref` | params.onGithub.ref | yes |  |
 | `states` | params.onGithub.states | yes |  |
 | `title` | - | yes |  |
 | `output` | AgendaDedup.formatConflictMessage | yes |  |
