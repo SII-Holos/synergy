@@ -102,7 +102,15 @@ export function MobileDrawer() {
           class="relative w-[85vw] max-w-80 h-full bg-background-stronger flex flex-col shadow-2xl safe-left"
           style={{ animation: "mobileDrawerSlideIn 250ms cubic-bezier(0.16, 1, 0.3, 1) both" }}
         >
-          <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60 safe-top">
+          <div
+            class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60 safe-top"
+            // The window titlebar band is -webkit-app-region: drag on frameless
+            // Electron windows. This drawer is a full-viewport fixed overlay that
+            // paints over that drag region, so Electron swallows hover+click on
+            // everything under it, including this header row with the close X.
+            // Exempt the row from the drag region so logo link and close X click.
+            style={{ WebkitAppRegion: "no-drag" } as any}
+          >
             <A href="/" class="flex items-center gap-2" onClick={close}>
               <img
                 src={holosLogoPath(theme.mode())}
