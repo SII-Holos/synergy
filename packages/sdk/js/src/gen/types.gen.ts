@@ -1290,6 +1290,34 @@ export type AgendaTriggerSession = {
   once?: boolean
 }
 
+export type AgendaTriggerGithub = {
+  type: "github"
+  /**
+   * GitHub resource kind to watch
+   */
+  resource: "pr" | "issue" | "workflow" | "check"
+  /**
+   * Repository in owner/repo form
+   */
+  repository: string
+  /**
+   * PR/issue number, or workflow run id. If omitted for pr/issue/workflow, watches the repository's most recent items
+   */
+  number?: number
+  /**
+   * Branch/tag/commit ref for workflow and check targeting (e.g. 'main', full SHA). Defaults to HEAD for checks and the default branch for workflows
+   */
+  ref?: string
+  /**
+   * Poll interval, e.g. '5m'. Default: '5m' (or github.watch.defaultIntervalMs)
+   */
+  interval?: string
+  /**
+   * Only fire when the state transitions into one of these values. PR: open/draft/merged/closed; issue: open/closed; workflow/check: queued/in_progress/completed (filter the conclusion separately via these same values, e.g. 'success'/'failure')
+   */
+  states?: Array<string>
+}
+
 export type AgendaTrigger =
   | AgendaTriggerAt
   | AgendaTriggerCron
@@ -1298,6 +1326,7 @@ export type AgendaTrigger =
   | AgendaTriggerWatch
   | AgendaTriggerWebhook
   | AgendaTriggerSession
+  | AgendaTriggerGithub
 
 /**
  * Control profile used by sessions created for this item
@@ -3526,6 +3555,46 @@ export type EmailConfig = {
 }
 
 /**
+ * Git identity sync settings
+ */
+export type GithubIdentitySyncConfig = {
+  /**
+   * Sync git user.name/user.email from the connected GitHub account
+   */
+  enabled?: boolean
+  /**
+   * Optional git user.name override (defaults to the GitHub account login). null clears the override
+   */
+  name?: string | null
+  /**
+   * Optional git user.email override (defaults to the GitHub noreply email). null clears the override
+   */
+  email?: string | null
+}
+
+/**
+ * GitHub agenda trigger settings
+ */
+export type GithubWatchConfig = {
+  /**
+   * Allow GitHub agenda triggers (PR/issue/workflow status polling). Default: true
+   */
+  enabled?: boolean
+  /**
+   * Default poll interval for GitHub agenda triggers in milliseconds (default 300000)
+   */
+  defaultIntervalMs?: number
+}
+
+/**
+ * GitHub integration settings (git identity sync, agenda watch)
+ */
+export type GithubConfig = {
+  identitySync?: GithubIdentitySyncConfig
+  watch?: GithubWatchConfig
+}
+
+/**
  * @deprecated Always uses stretch layout.
  */
 export type LayoutConfig = "auto" | "stretch"
@@ -3865,6 +3934,7 @@ export type Config = {
   controlProfile?: ControlProfileId
   holos?: HolosConfig
   email?: EmailConfig
+  github?: GithubConfig
   formatter?:
     | false
     | {
@@ -4630,6 +4700,7 @@ export type ConfigDomainSummary = {
     | "channels"
     | "holos"
     | "email"
+    | "github"
     | "runtime"
   filename: string
   label: string
@@ -4697,6 +4768,7 @@ export type ConfigDomainImportDomainPlan = {
     | "channels"
     | "holos"
     | "email"
+    | "github"
     | "runtime"
   filename: string
   path: string
@@ -4755,6 +4827,7 @@ export type ConfigDomainImportPlanInput = {
     | "channels"
     | "holos"
     | "email"
+    | "github"
     | "runtime"
   >
   mode?: "merge" | "replace-domain" | "append"
@@ -4836,6 +4909,7 @@ export type ConfigImportRevisionConflictError = {
       | "channels"
       | "holos"
       | "email"
+      | "github"
       | "runtime"
     >
   }
@@ -4865,6 +4939,7 @@ export type ConfigDomainImportApplyInput = {
     | "channels"
     | "holos"
     | "email"
+    | "github"
     | "runtime"
   >
   mode?: "merge" | "replace-domain" | "append"
@@ -5074,7 +5149,7 @@ export type DagNode = {
 }
 
 export type SessionAgendaTrigger = {
-  type: "cron" | "every" | "at" | "delay" | "watch" | "webhook" | "session"
+  type: "cron" | "every" | "at" | "delay" | "watch" | "webhook" | "session" | "github"
   /**
    * Interval for every triggers, e.g. '30m'
    */
@@ -5106,7 +5181,7 @@ export type SessionAgendaItem = {
   /**
    * Trigger types that can activate this agenda item
    */
-  triggerTypes: Array<"cron" | "every" | "at" | "delay" | "watch" | "webhook" | "session">
+  triggerTypes: Array<"cron" | "every" | "at" | "delay" | "watch" | "webhook" | "session" | "github">
   /**
    * Display-safe trigger details for client-side formatting
    */
@@ -6148,6 +6223,27 @@ export type GitHubAuthStatus = {
   account?: GitHubAccount
   failureCode?: string
   updatedAt?: number
+}
+
+export type GithubIdentityState = {
+  enabled: boolean
+  configuredName?: string
+  configuredEmail?: string
+  gitName?: string
+  gitEmail?: string
+  accountLogin?: string
+  accountName?: string
+  accountEmail?: string
+  accountUrl?: string
+  pendingChanges?: boolean
+}
+
+export type GithubIdentitySyncResult = {
+  applied: boolean
+  name?: string
+  email?: string
+  changed: Array<string>
+  reason?: string
 }
 
 export type ProviderAuthAuthorization = {
@@ -11050,6 +11146,7 @@ export type ConfigDomainGetData = {
       | "channels"
       | "holos"
       | "email"
+      | "github"
       | "runtime"
   }
   query?: {
@@ -11098,6 +11195,7 @@ export type ConfigDomainUpdateData = {
       | "channels"
       | "holos"
       | "email"
+      | "github"
       | "runtime"
   }
   query?: {
@@ -11146,6 +11244,7 @@ export type ConfigDomainOpenData = {
       | "channels"
       | "holos"
       | "email"
+      | "github"
       | "runtime"
   }
   query?: {
@@ -14321,6 +14420,69 @@ export type ProviderAuthGithubLogoutResponses = {
 
 export type ProviderAuthGithubLogoutResponse =
   ProviderAuthGithubLogoutResponses[keyof ProviderAuthGithubLogoutResponses]
+
+export type ProviderAuthGithubIdentityData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/auth/github/identity"
+}
+
+export type ProviderAuthGithubIdentityErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProviderAuthGithubIdentityError = ProviderAuthGithubIdentityErrors[keyof ProviderAuthGithubIdentityErrors]
+
+export type ProviderAuthGithubIdentityResponses = {
+  /**
+   * Git identity sync state
+   */
+  200: GithubIdentityState
+}
+
+export type ProviderAuthGithubIdentityResponse =
+  ProviderAuthGithubIdentityResponses[keyof ProviderAuthGithubIdentityResponses]
+
+export type ProviderAuthGithubIdentitySyncData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/auth/github/identity/sync"
+}
+
+export type ProviderAuthGithubIdentitySyncErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProviderAuthGithubIdentitySyncError =
+  ProviderAuthGithubIdentitySyncErrors[keyof ProviderAuthGithubIdentitySyncErrors]
+
+export type ProviderAuthGithubIdentitySyncResponses = {
+  /**
+   * Sync result
+   */
+  200: GithubIdentitySyncResult
+}
+
+export type ProviderAuthGithubIdentitySyncResponse =
+  ProviderAuthGithubIdentitySyncResponses[keyof ProviderAuthGithubIdentitySyncResponses]
 
 export type ProviderOauthAuthorizeData = {
   body?: {

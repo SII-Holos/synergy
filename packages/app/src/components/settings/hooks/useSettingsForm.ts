@@ -199,6 +199,13 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       : [],
   })
 
+  params.setSettings("github", {
+    identitySyncEnabled: cfg.github?.identitySync?.enabled ?? false,
+    identitySyncName: cfg.github?.identitySync?.name ?? "",
+    identitySyncEmail: cfg.github?.identitySync?.email ?? "",
+    watchEnabled: cfg.github?.watch?.enabled ?? true,
+  })
+
   const library = cfg.library
   const memory = library?.memory
   const experience = library?.experience

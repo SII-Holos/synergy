@@ -1,15 +1,20 @@
 import { useLingui } from "@lingui/solid"
-import type { GitHubAuthStatus, ProviderAuthHealth } from "@ericsanchezok/synergy-sdk/client"
+import type { GitHubAuthStatus, GithubIdentityState, ProviderAuthHealth } from "@ericsanchezok/synergy-sdk/client"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import { createMemo, createResource, Show } from "solid-js"
+import { Switch } from "@ericsanchezok/synergy-ui/switch"
+import { TextField } from "@ericsanchezok/synergy-ui/text-field"
+import { createMemo, createResource, createSignal, Show } from "solid-js"
 import { ProviderConnectionFlow } from "@/components/provider/ProviderConnectionFlow"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { translateDescriptor } from "@/locales/translate"
-import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import { requestErrorMessage } from "@/utils/error"
+import { SettingsPage, SettingsSection, SettingsSubsection } from "../components/SettingsPrimitives"
+import { SettingRow } from "../components/SettingRow"
+import type { GithubIntegrationSettings } from "../types"
 import {
   providerNeedsAction,
   providerRecoveryCopy,
@@ -55,8 +60,59 @@ const envConnectedDescription = {
   id: "settings.github.envConnectedDesc",
   message: "GitHub is connected through GH_TOKEN or GITHUB_TOKEN in the Synergy server environment.",
 }
+const identitySectionTitle = { id: "settings.github.identity.title", message: "Git identity" }
+const identitySyncRowTitle = { id: "settings.github.identity.sync.title", message: "Sync git identity from GitHub" }
+const identitySyncRowDescription = {
+  id: "settings.github.identity.sync.description",
+  message: "Keep the machine-level git user.name and user.email aligned with the connected GitHub account.",
+}
+const identityNameLabel = { id: "settings.github.identity.name", message: "Git user.name override" }
+const identityNameDescription = {
+  id: "settings.github.identity.nameDescription",
+  message: "Leave empty to use the GitHub account login.",
+}
+const identityEmailLabel = { id: "settings.github.identity.email", message: "Git user.email override" }
+const identityEmailDescription = {
+  id: "settings.github.identity.emailDescription",
+  message: "Leave empty to use the GitHub noreply email.",
+}
+const identitySummaryCurrent = { id: "settings.github.identity.current", message: "Current: {value}" }
+const identitySummaryTarget = { id: "settings.github.identity.target", message: "After sync: {value}" }
+const identitySummaryUnset = { id: "settings.github.identity.unset", message: "unset" }
+const identitySyncNowLabel = { id: "settings.github.identity.syncNow", message: "Sync now" }
+const identitySyncNowBusyLabel = { id: "settings.github.identity.syncing", message: "Syncing…" }
+const identitySyncAppliedTitle = { id: "settings.github.identity.applied", message: "Git identity synced" }
+const identitySyncAppliedDescription = {
+  id: "settings.github.identity.appliedDescription",
+  message: "Applied {identity}.",
+}
+const identitySyncAlreadyTitle = { id: "settings.github.identity.alreadyInSync", message: "Git identity" }
+const identitySyncAlreadyDescription = {
+  id: "settings.github.identity.alreadyInSyncDescription",
+  message: "Already in sync.",
+}
+const identitySyncFailedTitle = { id: "settings.github.identity.syncFailed", message: "Git identity sync failed" }
+const watchSectionTitle = { id: "settings.github.watch.title", message: "Agenda GitHub watch" }
+const watchRowTitle = { id: "settings.github.watch.enabled", message: "Allow GitHub agenda triggers" }
+const watchRowDescription = {
+  id: "settings.github.watch.enabledDescription",
+  message:
+    "Controls whether GitHub pull request, issue, and workflow status polling triggers can be created via agenda tools. Default on.",
+}
 
-export function GitHubPanel() {
+function identityValueText(name: string | undefined, email: string | undefined, unsetLabel: string): string {
+  if (name && email) return `${name} <${email}>`
+  if (name) return name
+  if (email) return email
+  return unsetLabel
+}
+
+export function GitHubPanel(props: {
+  github: GithubIntegrationSettings
+  onGithubChange: (key: keyof GithubIntegrationSettings, value: string | boolean) => void
+  /** Persist any pending github-domain draft before an identity sync runs. */
+  onSyncIdentity?: () => Promise<void>
+}) {
   const { _, i18n } = useLingui()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
@@ -64,6 +120,11 @@ export function GitHubPanel() {
     const res = await globalSDK.client.auth.githubStatus()
     return res.data as GitHubAuthStatus | undefined
   })
+  const [identity, { refetch: refetchIdentity }] = createResource(async () => {
+    const res = await globalSDK.client.auth.githubIdentity()
+    return res.data as GithubIdentityState | undefined
+  })
+  const [syncingIdentity, setSyncingIdentity] = createSignal(false)
 
   const connected = createMemo(() => status()?.status === "connected")
   const effectiveHealth = createMemo<ProviderAuthHealth | undefined>(() => {
@@ -84,9 +145,52 @@ export function GitHubPanel() {
       ? translateDescriptor(providerStatusLabel(effectiveHealth()), i18n())
       : githubStatusLabel(status(), _),
   )
+  const identityTarget = createMemo(() => {
+    const state = identity()
+    const name = state?.configuredName?.trim() || state?.accountLogin
+    const email = state?.configuredEmail?.trim() || state?.accountEmail
+    return identityValueText(name, email, _(identitySummaryUnset))
+  })
+  const identityCurrent = createMemo(() =>
+    identityValueText(identity()?.gitName, identity()?.gitEmail, _(identitySummaryUnset)),
+  )
 
   async function refreshStatus() {
-    await Promise.all([refetch(), globalSync.refreshProviders()])
+    await Promise.all([refetch(), refetchIdentity(), globalSync.refreshProviders()])
+  }
+
+  async function syncIdentity() {
+    setSyncingIdentity(true)
+    try {
+      await props.onSyncIdentity?.()
+      const res = await globalSDK.client.auth.githubIdentitySync({}, { throwOnError: true })
+      const result = res.data
+      await refetchIdentity()
+      if (result?.applied) {
+        showToast({
+          type: "success",
+          title: _(identitySyncAppliedTitle),
+          description: _({
+            ...identitySyncAppliedDescription,
+            values: { identity: identityValueText(result.name, result.email, "") || _(identitySummaryUnset) },
+          }),
+        })
+      } else {
+        showToast({
+          type: "info",
+          title: _(identitySyncAlreadyTitle),
+          description: _(identitySyncAlreadyDescription),
+        })
+      }
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: _(identitySyncFailedTitle),
+        description: requestErrorMessage(error),
+      })
+    } finally {
+      setSyncingIdentity(false)
+    }
   }
 
   async function logout() {
@@ -168,6 +272,82 @@ export function GitHubPanel() {
           </SettingsSection>
         )}
       </Show>
+
+      <SettingsSection title={_(identitySectionTitle)}>
+        <SettingsSubsection>
+          <SettingRow
+            title={_(identitySyncRowTitle)}
+            description={_(identitySyncRowDescription)}
+            trailing={
+              <Switch
+                checked={props.github.identitySyncEnabled}
+                hideLabel
+                onChange={(value) => props.onGithubChange("identitySyncEnabled", value)}
+              >
+                {_(identitySyncRowTitle)}
+              </Switch>
+            }
+          />
+          <Show when={props.github.identitySyncEnabled}>
+            <SettingRow
+              title={_(identityNameLabel)}
+              description={_(identityNameDescription)}
+              trailing={
+                <TextField
+                  type="text"
+                  placeholder=""
+                  value={props.github.identitySyncName}
+                  onChange={(value) => props.onGithubChange("identitySyncName", value)}
+                />
+              }
+            />
+            <SettingRow
+              title={_(identityEmailLabel)}
+              description={_(identityEmailDescription)}
+              trailing={
+                <TextField
+                  type="text"
+                  placeholder=""
+                  value={props.github.identitySyncEmail}
+                  onChange={(value) => props.onGithubChange("identitySyncEmail", value)}
+                />
+              }
+            />
+          </Show>
+          <SettingRow
+            title={_({ ...identitySummaryCurrent, values: { value: identityCurrent() } })}
+            description={_({ ...identitySummaryTarget, values: { value: identityTarget() } })}
+            trailing={
+              <Button
+                type="button"
+                variant="secondary"
+                size="small"
+                icon={getSemanticIcon("action.refresh")}
+                disabled={syncingIdentity() || identity.loading}
+                onClick={syncIdentity}
+              >
+                {syncingIdentity() ? _(identitySyncNowBusyLabel) : _(identitySyncNowLabel)}
+              </Button>
+            }
+          />
+        </SettingsSubsection>
+      </SettingsSection>
+
+      <SettingsSection title={_(watchSectionTitle)}>
+        <SettingRow
+          title={_(watchRowTitle)}
+          description={_(watchRowDescription)}
+          trailing={
+            <Switch
+              checked={props.github.watchEnabled}
+              hideLabel
+              onChange={(value) => props.onGithubChange("watchEnabled", value)}
+            >
+              {_(watchRowTitle)}
+            </Switch>
+          }
+        />
+      </SettingsSection>
 
       <Show
         when={status()?.source !== "env"}

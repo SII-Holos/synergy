@@ -11975,6 +11975,12 @@ msgstr "Every {duration}"
 #. Runtime translation descriptors for all wake-indicator UI strings.
  *  Each is a base MessageDescriptor with `id` + English `message`.
  *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.wake.trigger.github"
+msgstr "On GitHub"
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
 msgid "session.agenda.wake.trigger.pending"
 msgstr "Pending"
 
@@ -14318,7 +14324,7 @@ msgstr "GitHub"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.github.searchTerms"
-msgstr "github | gh | issue | pull request | release | token"
+msgstr "github | gh | issue | pull request | release | token | git identity | watch"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.group.core"
@@ -15521,6 +15527,74 @@ msgid "settings.github.envRecoveryDesc"
 msgstr "Update GH_TOKEN or GITHUB_TOKEN in the Synergy server environment, then restart the server and refresh this page."
 
 #. js-lingui-explicit-id
+msgid "settings.github.identity.alreadyInSync"
+msgstr "Git identity"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.alreadyInSyncDescription"
+msgstr "Already in sync."
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.applied"
+msgstr "Git identity synced"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.appliedDescription"
+msgstr "Applied {identity}."
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.current"
+msgstr "Current: {value}"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.email"
+msgstr "Git user.email override"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.emailDescription"
+msgstr "Leave empty to use the GitHub noreply email."
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.name"
+msgstr "Git user.name override"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.nameDescription"
+msgstr "Leave empty to use the GitHub account login."
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.sync.description"
+msgstr "Keep the machine-level git user.name and user.email aligned with the connected GitHub account."
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.sync.title"
+msgstr "Sync git identity from GitHub"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.syncFailed"
+msgstr "Git identity sync failed"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.syncing"
+msgstr "Syncing…"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.syncNow"
+msgstr "Sync now"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.target"
+msgstr "After sync: {value}"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.title"
+msgstr "Git identity"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.unset"
+msgstr "unset"
+
+#. js-lingui-explicit-id
 msgid "settings.github.invalid"
 msgstr "Invalid"
 
@@ -15555,6 +15629,18 @@ msgstr "Refresh"
 #. js-lingui-explicit-id
 msgid "settings.github.unverified"
 msgstr "Unverified"
+
+#. js-lingui-explicit-id
+msgid "settings.github.watch.enabled"
+msgstr "Allow GitHub agenda triggers"
+
+#. js-lingui-explicit-id
+msgid "settings.github.watch.enabledDescription"
+msgstr "Controls whether GitHub pull request, issue, and workflow status polling triggers can be created via agenda tools. Default on."
+
+#. js-lingui-explicit-id
+msgid "settings.github.watch.title"
+msgstr "Agenda GitHub watch"
 
 #. js-lingui-explicit-id
 msgid "settings.import.apply"

@@ -29,8 +29,9 @@ Run history records the firing trigger, execution session, status, error, durati
 - `watch` — file add/change/unlink events matched by glob, with optional debounce
 - `webhook` — an authenticated inbound HTTP trigger
 - `session` — a session turn event (`turn.start` / `turn.end`) on a specific session, with optional `agent` / `finish` filters and a `once` flag
+- `github` — a GitHub resource state change (`pr` / `issue` / `workflow` / `check`) on an `owner/repo`, polled on an interval (default 5m, min 30s) with optional `number` targeting and `states` filtering
 
-The `agenda_schedule` agent tool exposes the time-based trigger types plus the `session` trigger. File watches have their own workflow. Webhooks are managed by the Agenda API and product surfaces. Polling commands and arbitrary tool-result watches are not active trigger types.
+The `agenda_schedule` agent tool exposes the time-based trigger types plus the `session` and `github` triggers; `agenda_watch` accepts `onGithub` for one-shot wake-on-change delivery. File watches have their own workflow. Webhooks are managed by the Agenda API and product surfaces. Polling commands and arbitrary tool-result watches are not active trigger types. GitHub triggers use the managed GitHub credential (the same token injected into `gh` CLI commands); when no credential is connected or the `github.watch.enabled` config switch is off, the polls stay idle without firing or logging noise.
 
 Multiple triggers can belong to one item. Deduplication compares their structural meaning so an equivalent automation is not accidentally registered twice.
 
@@ -41,7 +42,7 @@ Agenda work is unattended. Unless explicitly overridden, its session uses the `a
 Session mode is inferred from the trigger:
 
 - `at` and `delay` default to `ephemeral`
-- `cron`, `every`, file `watch`, and recurring (`once:false`) `session` triggers default to `persistent`
+- `cron`, `every`, file `watch`, `github`, and recurring (`once:false`) `session` triggers default to `persistent`
 
 One-shot `session` triggers default to `ephemeral`.
 

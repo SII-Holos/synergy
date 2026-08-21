@@ -46,6 +46,7 @@ Web Settings shows each canonical domain path with a Copy Path action. Managed-l
 | `90-channels.jsonc` | `channel` |
 | `100-holos.jsonc` | `holos`, `enterprise` |
 | `110-email.jsonc` | `email` |
+| `115-github.jsonc` | `github` |
 | `120-runtime.jsonc` | `server`, `timeout`, `watcher`, `formatter`, `lsp`, `question`, `compaction`, `experimental`, `observability` |
 
 ### Key data paths

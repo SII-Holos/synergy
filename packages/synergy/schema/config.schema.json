@@ -1430,6 +1430,37 @@
       },
       "additionalProperties": false
     },
+    "skills": {
+      "ref": "SkillsConfig",
+      "type": "object",
+      "properties": {
+        "compatibility": {
+          "description": "Per-source compatibility toggles for discovering Skills from other agent tools",
+          "ref": "SkillsCompatibilityConfig",
+          "type": "object",
+          "properties": {
+            "agents": {
+              "description": "Load Agent Skills from .agents/skills directories (default: true)",
+              "type": "boolean"
+            },
+            "claude": {
+              "description": "Load Claude Code Skills from .claude/skills directories (default: true)",
+              "type": "boolean"
+            },
+            "codex": {
+              "description": "Load Codex Skills from .codex/skills directories (default: true)",
+              "type": "boolean"
+            },
+            "openclaw": {
+              "description": "Load OpenClaw Skills from .openclaw/skills and workspace skills directories (default: true)",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "mcp": {
       "description": "MCP (Model Context Protocol) server configurations",
       "type": "object",
@@ -2612,6 +2643,66 @@
             "password": {
               "description": "IMAP password or app token",
               "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "github": {
+      "description": "GitHub integration settings (git identity sync, agenda watch)",
+      "ref": "GithubConfig",
+      "type": "object",
+      "properties": {
+        "identitySync": {
+          "description": "Git identity sync settings",
+          "ref": "GithubIdentitySyncConfig",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "Sync git user.name/user.email from the connected GitHub account",
+              "type": "boolean"
+            },
+            "name": {
+              "description": "Optional git user.name override (defaults to the GitHub account login). null clears the override",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "email": {
+              "description": "Optional git user.email override (defaults to the GitHub noreply email). null clears the override",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "watch": {
+          "description": "GitHub agenda trigger settings",
+          "ref": "GithubWatchConfig",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "Allow GitHub agenda triggers (PR/issue/workflow status polling). Default: true",
+              "type": "boolean"
+            },
+            "defaultIntervalMs": {
+              "description": "Default poll interval for GitHub agenda triggers in milliseconds (default 300000)",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
             }
           },
           "additionalProperties": false

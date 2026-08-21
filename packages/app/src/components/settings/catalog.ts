@@ -179,7 +179,7 @@ const BUILTIN_SETTINGS_COPY = {
     },
     searchTerms: {
       id: "settings.catalog.github.searchTerms",
-      message: "github | gh | issue | pull request | release | token",
+      message: "github | gh | issue | pull request | release | token | git identity | watch",
       comment: SEARCH_TERMS_COMMENT,
     },
   },
@@ -504,7 +504,7 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
   section("models", "core", 20, "settings.models", ["models"]),
   section("providers", "core", 50, "providers.main", ["providers"]),
   section("usage", "core", 60, "settings.usage", ["providers"]),
-  section("github", "integrations", 5, "github.main", ["providers"]),
+  section("github", "integrations", 5, "github.main", ["providers", "github"]),
   section("synergy-link", "integrations", 8, "synergyLink.main"),
   section("learning", "library", 10, "settings.learning", ["library"]),
   section("memory", "library", 20, "memory.main", ["library", "general"]),

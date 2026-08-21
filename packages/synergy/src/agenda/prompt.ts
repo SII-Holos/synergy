@@ -67,6 +67,12 @@ export namespace AgendaPrompt {
           parts.push(`session "${trigger.sessionID}" on ${trigger.event}${filter}`)
           break
         }
+        case "github": {
+          const target = trigger.number !== undefined ? ` #${trigger.number}` : ""
+          const states = trigger.states?.length ? ` on states [${trigger.states.join("|")}]` : ""
+          parts.push(`github ${trigger.resource} ${trigger.repository}${target}${states}`)
+          break
+        }
       }
     }
     const triggerDesc = parts.length > 0 ? parts.join(", ") : "manual"
@@ -100,6 +106,28 @@ export namespace AgendaPrompt {
       const agent = typeof p.agent === "string" ? ` agent="${p.agent}"` : ""
       const messageID = typeof p.messageID === "string" ? ` messageID="${p.messageID}"` : ""
       return `<session-event sessionID="${String(p.sessionID)}"${messageID}${finish}${agent} />`
+    }
+
+    if (signal.type === "github") {
+      // GitHub titles/state are repository-controlled input; escape anything
+      // that could close the attribute or inject prompt structure.
+      const p = signal.payload
+      const attrs = [
+        typeof p.resource === "string" ? `resource="${escapeAttr(p.resource)}"` : "",
+        typeof p.repository === "string" ? `repository="${escapeAttr(p.repository)}"` : "",
+        p.number !== undefined ? `number="${String(p.number)}"` : "",
+        typeof p.title === "string" ? `title="${escapeAttr(p.title)}"` : "",
+        typeof p.state === "string" ? `state="${escapeAttr(p.state)}"` : "",
+        typeof p.previousState === "string" ? `previousState="${escapeAttr(p.previousState)}"` : "",
+        typeof p.conclusion === "string" ? `conclusion="${escapeAttr(p.conclusion)}"` : "",
+        p.draft !== undefined ? `draft="${String(p.draft)}"` : "",
+        p.mergeable !== undefined ? `mergeable="${String(p.mergeable)}"` : "",
+        typeof p.updatedAt === "string" ? `updatedAt="${escapeAttr(p.updatedAt)}"` : "",
+        typeof p.url === "string" ? `url="${escapeAttr(p.url)}"` : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+      return `<github-event ${attrs} />`
     }
 
     const json = JSON.stringify(signal.payload)
@@ -137,4 +165,8 @@ export namespace AgendaPrompt {
       "</context-sessions>",
     ].join("\n")
   }
+}
+
+function escapeAttr(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }

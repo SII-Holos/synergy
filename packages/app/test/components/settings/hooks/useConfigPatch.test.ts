@@ -859,3 +859,58 @@ describe("settings config patch skills compatibility", () => {
     ).not.toHaveProperty("skills")
   })
 })
+
+describe("settings config patch github integration", () => {
+  test("does not emit a github patch when the form matches defaults", () => {
+    const state = defaultSettingsState("enter")
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} })).not.toHaveProperty("github")
+  })
+
+  test("emits identity sync with overrides and clears a stored override on empty", () => {
+    const state = defaultSettingsState("enter")
+    state.github.identitySyncEnabled = true
+    state.github.identitySyncName = "  Codex Bot  "
+    state.github.identitySyncEmail = ""
+
+    expect(
+      buildPatch({
+        cfg: { github: { identitySync: { enabled: false, email: "old@example.com" } } } as Config,
+        state,
+        originalMcps: {},
+      }).github,
+    ).toEqual({
+      identitySync: { enabled: true, name: "Codex Bot", email: null },
+      watch: { enabled: true },
+    })
+  })
+
+  test("disabling the agenda watch emits the github patch", () => {
+    const state = defaultSettingsState("enter")
+    state.github.watchEnabled = false
+
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).github).toEqual({
+      identitySync: { enabled: false },
+      watch: { enabled: false },
+    })
+  })
+
+  test("does not emit a github patch when the form matches stored values", () => {
+    const state = defaultSettingsState("enter")
+    state.github.identitySyncEnabled = true
+    state.github.identitySyncName = "Codex Bot"
+    state.github.watchEnabled = false
+
+    expect(
+      buildPatch({
+        cfg: {
+          github: {
+            identitySync: { enabled: true, name: "Codex Bot" },
+            watch: { enabled: false },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("github")
+  })
+})

@@ -16,7 +16,7 @@ const parameters = z.object({
       "Instruction for the agent to execute when triggered. Write as a complete brief — the executing agent has no access to this conversation.",
     ),
   trigger: AgendaTypes.ScheduleTrigger.describe(
-    "Schedule trigger. One of: {type:'cron', expr:'0 9 * * *', tz?:'Asia/Shanghai'}, {type:'every', interval:'30m'}, {type:'at', at:1742569200000}, {type:'delay', delay:'2h'}, {type:'session', sessionID:'ses_xxx', event:'turn.end', agent?:'research', finish?:'stop', once?:true}",
+    "Schedule trigger. One of: {type:'cron', expr:'0 9 * * *', tz?:'Asia/Shanghai'}, {type:'every', interval:'30m'}, {type:'at', at:1742569200000}, {type:'delay', delay:'2h'}, {type:'session', sessionID:'ses_xxx', event:'turn.end', agent?:'research', finish?:'stop', once?:true}, {type:'github', resource:'pr'|'issue'|'workflow'|'check', repository:'owner/repo', number?:123, interval?:'5m', states?:['merged','failure']}",
   ),
   tags: z.array(z.string()).optional().describe("Tags for organization and filtering"),
   global: z.boolean().optional().describe("If true, visible from all scopes. Default: false (current project only)"),
@@ -52,6 +52,23 @@ export const AgendaScheduleTool = Tool.define("agenda_schedule", {
     const session = await SessionManager.getSession(ctx.sessionID).catch(() => undefined)
     const triggers = [params.trigger as AgendaTypes.Trigger]
 
+    if (params.trigger.type === "github") {
+      // A GitHub trigger can never fire while polling is disabled; reject up
+      // front instead of persisting a permanently silent item.
+      const { Config } = await import("../config/config")
+      const watch = (await Config.globalResolved().catch(() => undefined))?.github?.watch
+      if (watch?.enabled === false) {
+        return {
+          title: "agenda_schedule rejected",
+          output: [
+            `GitHub triggers are disabled (github.watch.enabled=false in config).`,
+            ``,
+            `Ask the user to enable them in Settings → GitHub → "Allow GitHub agenda triggers", or set github.watch.enabled=true in 115-github.jsonc.`,
+          ].join("\n"),
+          metadata: { blocked: true, reason: "github_watch_disabled" } as Record<string, any>,
+        }
+      }
+    }
     const conflicts = await AgendaDedup.findConflicts(
       ScopeContext.current.scope.id,
       params.title,
@@ -138,6 +155,11 @@ function formatTrigger(t: AgendaTypes.ScheduleTrigger): string {
       const event = t.event === "turn.start" ? "turn start" : "turn end"
       const filters = [t.agent && ` agent=${t.agent}`, t.finish && ` finish=${t.finish}`].filter(Boolean).join("")
       return `session "${t.sessionID}" on ${event}${filters}${t.once === false ? " (recurring)" : ""}`
+    }
+    case "github": {
+      const target = t.number !== undefined ? ` #${t.number}` : ""
+      const states = t.states?.length ? ` states=${t.states.join("|")}` : ""
+      return `github ${t.resource} ${t.repository}${target}${t.interval ? ` every ${t.interval}` : ""}${states}`
     }
   }
 }
