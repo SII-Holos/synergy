@@ -713,6 +713,10 @@
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
         {
+          "glob": "src/components/session/dialog-fork-confirm.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
           "glob": "src/components/session/dialog-rewind-confirm.tsx",
           "reason": "session views require a live session runtime; covered by E2E/browser suites"
         },
