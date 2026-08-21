@@ -23,7 +23,7 @@ describe("desktop window chrome", () => {
     ).toEqual({
       autoHideMenuBar: true,
       frame: false,
-      icon: "C:\\app\\build\\icon.ico",
+      icon: "C:\\app\\build\\icon.png",
     })
 
     expect(
@@ -51,7 +51,7 @@ describe("desktop window chrome", () => {
     ).toEqual({
       autoHideMenuBar: true,
       frame: false,
-      icon: "C:\\app\\resources\\icons\\icon.ico",
+      icon: "C:\\app\\resources\\icons\\icon.png",
     })
 
     expect(

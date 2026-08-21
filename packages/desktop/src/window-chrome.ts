@@ -42,14 +42,14 @@ export function desktopWindowChromeOptions(
 }
 
 export function desktopDevIconPath(platform: NodeJS.Platform, dirname: string): string | undefined {
-  if (platform === "win32") return path.win32.resolve(dirname, "..", "build", "icon.ico")
+  if (platform === "win32") return path.win32.resolve(dirname, "..", "build", "icon.png")
   if (platform === "linux") return path.posix.resolve(dirname, "..", "build", "icon.png")
   return undefined
 }
 
 export function desktopIconPath(options: DesktopWindowChromeOptions): string | undefined {
   if (!options.isPackaged) return desktopDevIconPath(options.platform, options.dirname)
-  if (options.platform === "win32") return path.win32.resolve(options.resourcesPath, "icons", "icon.ico")
+  if (options.platform === "win32") return path.win32.resolve(options.resourcesPath, "icons", "icon.png")
   if (options.platform === "linux") return path.posix.resolve(options.resourcesPath, "icons", "icon.png")
   return undefined
 }
