@@ -191,4 +191,4 @@ async function exists(filePath: string) {
   }
 }
 
-await main()
+if (import.meta.main) await main()

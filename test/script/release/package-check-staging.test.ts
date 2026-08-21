@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "bun:test"
+import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
@@ -8,8 +8,11 @@ import {
   readCatalog,
   type PackageJson,
 } from "../../../script/release/shared/package-manifest"
-
 let tempRoot: string
+
+beforeAll(async () => {
+  tempRoot = await mkdtemp(path.join(os.tmpdir(), "package-check-staging-"))
+})
 
 afterAll(async () => {
   await rm(tempRoot, { recursive: true, force: true })
@@ -27,7 +30,6 @@ async function makeFixturePackage(files: Record<string, string>): Promise<string
 
 describe("stagePackablePackage", () => {
   test("packs a publishable manifest from a staged copy without touching the source tree", async () => {
-    tempRoot = await mkdtemp(path.join(os.tmpdir(), "package-check-staging-"))
     const sourceJson: PackageJson = {
       name: "@example/fixture",
       version: "1.0.0",
@@ -69,7 +71,6 @@ describe("stagePackablePackage", () => {
   })
 
   test("stages packages without a files field with their sources intact", async () => {
-    tempRoot = (await mkdtemp(path.join(os.tmpdir(), "package-check-staging-"))) ?? tempRoot
     const sourceJson: PackageJson = {
       name: "@example/bare",
       version: "0.1.0",
