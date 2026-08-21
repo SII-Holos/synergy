@@ -5,6 +5,7 @@ import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/syne
 import { useLayout } from "@/context/layout"
 import { useLingui } from "@lingui/solid"
 import { appShell } from "@/locales/messages"
+import "./mobile-drawer.css"
 
 type DrawerToolID = "agenda" | "library" | "performance" | "plugins"
 
@@ -52,7 +53,7 @@ export function MobileToolsDrawer() {
           class="relative w-[85vw] max-w-80 h-full bg-background-stronger flex flex-col shadow-2xl safe-right"
           style={{ animation: "mobileDrawerSlideInRight 250ms cubic-bezier(0.16, 1, 0.3, 1) both" }}
         >
-          <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60 safe-top">
+          <div class="mobile-drawer-header flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60 safe-top">
             <span class="text-14-medium text-text-strong">{_({ id: "nav.tools.title", message: "Tools" })}</span>
             <button
               type="button"
