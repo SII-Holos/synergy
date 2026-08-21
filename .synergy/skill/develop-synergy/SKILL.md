@@ -23,7 +23,16 @@ cp -R ~/.synergy/config "$DEV_HOME/.synergy/config"
 ```
 
 3. Copying configuration preserves provider settings but does not copy the separate credential store. Do not copy sessions, daemon state, locks, logs, cache, or Library data. Seed only the fixture credentials a test requires inside the isolated home; never copy or overwrite the live credential store implicitly.
-4. Run `bun dev prepare` once when dependencies, generated SDK, Web dist, plugin SDK, or sandbox helper are missing.
+4. Copy model catalog data from the main home when the isolated environment cannot reach models.dev (offline or restricted-network debugging machines), so the isolated model list does not depend on a live models.dev fetch:
+
+```bash
+mkdir -p "$DEV_HOME/.synergy/cache"
+cp ~/.synergy/cache/provider-model-catalogs.v1.json ~/.synergy/cache/models.json "$DEV_HOME/.synergy/cache/"
+```
+
+Treat these two cache files as seed data only: they are refreshed in place by the isolated runtime and never copied back to the main home. If the files are absent from the main home, the isolated instance will fetch models.dev on first use as usual.
+
+5. Run `bun dev prepare` once when dependencies, generated SDK, Web dist, plugin SDK, or sandbox helper are missing.
 
 ## Choose the Smallest Mode
 
