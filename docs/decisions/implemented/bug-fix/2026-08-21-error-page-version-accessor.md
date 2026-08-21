@@ -8,7 +8,7 @@ The fatal-error and initialization-error footers print the app's build identity 
 
 ## Decision
 
-Both error footers call the accessor (`version()`) before passing it to the i18n version label. The rendering path is locked by a Playwright DOM fixture (`packages/app/test/pages/fatal-error.dom.test.tsx`, registered in the serial Playwright batch) that asserts the literal version text, the buildLabel-over-version preference, and the same path on the initialization-error page; against the unfixed code the fixture fails by rendering the accessor source. The Solid rule — callback children of `<Show>` and `<Index>` receive accessors that must be called before interpolation, formatting, or attribute binding — is recorded in the `develop-frontend` skill so the mistake class cannot silently recur.
+Both error footers call the accessor (`version()`) before passing it to the i18n version label. The rendering path is locked by a Playwright DOM fixture (`packages/app/test/pages/fatal-error.dom.test.tsx`, registered in the serial Playwright batch) that asserts the literal version text, the buildLabel-over-version preference, and the same path on the initialization-error page; against the unfixed code the fixture fails by rendering the accessor source. The Solid rule — callback children of non-keyed `<Show>` and `<Index>` receive accessors that must be called before interpolation, formatting, or attribute binding, while `<Show keyed>` and `<For>` pass the raw value — is recorded in the `develop-frontend` skill so the mistake class cannot silently recur.
 
 ## Alternatives considered
 
