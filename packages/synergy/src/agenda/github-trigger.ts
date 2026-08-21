@@ -46,8 +46,13 @@ export namespace AgendaGithubTrigger {
     timer?: Timer
     /** resource key → last observed state */
     lastStates: Map<string, string>
-    /** First poll initializes baseline without firing. */
-    primed: boolean
+    /**
+     * True only while the owning item has never run: lets the first poll
+     * report a resource that already sits in a targeted state. Items that
+     * already fired (e.g. restored after a restart) re-baseline silently so
+     * restarts do not re-notify.
+     */
+    allowInitialMatch: boolean
     consecutiveFailures: number
     /** Serializes handler dispatch so concurrent transitions run in order
      *  instead of racing the Agenda inflight guard. */
@@ -64,7 +69,7 @@ export namespace AgendaGithubTrigger {
     // items restored from storage at startup must begin polling immediately.
     started = true
     for (const item of items) {
-      register(item.id, item.origin.scope.id, item.triggers)
+      register(item.id, item.origin.scope.id, item.triggers, { hasRun: item.state.runCount > 0 })
     }
     log.info("started", { entries: countEntries() })
   }
@@ -78,7 +83,12 @@ export namespace AgendaGithubTrigger {
     handler = null
   }
 
-  export function register(itemID: string, scopeID: string, triggers: AgendaTypes.Trigger[]): void {
+  export function register(
+    itemID: string,
+    scopeID: string,
+    triggers: AgendaTypes.Trigger[],
+    opts: { hasRun?: boolean } = {},
+  ): void {
     unregister(itemID)
     const created: Entry[] = []
     for (const trigger of triggers) {
@@ -91,15 +101,24 @@ export namespace AgendaGithubTrigger {
         number: trigger.number,
         ref: trigger.ref,
         intervalMs: trigger.interval ? AgendaStore.parseDuration(trigger.interval) : undefined,
-        states: trigger.states,
         lastStates: new Map(),
-        primed: false,
+        // Only items that have never run may report an already-satisfied
+        // target state on first observation; restored items re-baseline
+        // silently so restarts do not re-notify.
+        allowInitialMatch: opts.hasRun !== true,
         consecutiveFailures: 0,
         dispatch: Promise.resolve(),
       })
     }
     if (created.length > 0) {
       entries.set(itemID, created)
+      log.info("github trigger registered", {
+        itemID,
+        entries: created.length,
+        resource: created[0]?.resource,
+        repository: created[0]?.repository,
+        started,
+      })
       if (started) for (const entry of created) schedule(entry, 0)
     }
   }
@@ -224,9 +243,18 @@ export namespace AgendaGithubTrigger {
    * Diff snapshots against the entry baseline and return the transitions that
    * should fire, in observation order. The baseline always advances (even for
    * filtered-out transitions) so `previousState` reflects the last seen state.
+   *
+   * First observation of a key (`previous === undefined`): a state-targeted
+   * watch reports immediately when the resource already sits in a targeted
+   * state — covering watches created for an already-satisfied condition and
+   * races where the state changed between item creation and the first poll.
+   * Watches without a states filter stay silent on first observation so
+   * repository-wide watchers do not fire on creation. `allowInitialMatch`
+   * gates this to items that have never run, so a restart re-baselines
+   * silently instead of re-notifying.
    */
   export function collectChanges(
-    entry: Pick<Entry, "lastStates" | "primed" | "states">,
+    entry: Pick<Entry, "lastStates" | "allowInitialMatch" | "states">,
     snapshots: ResourceSnapshot[],
   ): Array<{ snapshot: ResourceSnapshot; previous: string | undefined }> {
     const pending: Array<{ snapshot: ResourceSnapshot; previous: string | undefined }> = []
@@ -234,14 +262,18 @@ export namespace AgendaGithubTrigger {
       const key = `${snapshot.resource ?? ""}:${snapshot.number}`
       const previous = entry.lastStates.get(key)
       entry.lastStates.set(key, snapshot.state)
-      if (!entry.primed) continue
+      if (previous === undefined) {
+        if (entry.allowInitialMatch && entry.states?.includes(snapshot.state)) {
+          pending.push({ snapshot, previous: undefined })
+        }
+        continue
+      }
       if (previous === snapshot.state) continue
       if (entry.states && !entry.states.includes(snapshot.state)) continue
       pending.push({ snapshot, previous })
     }
     return pending
   }
-
   // ---------------------------------------------------------------------------
   // GitHub REST polling
   // ---------------------------------------------------------------------------

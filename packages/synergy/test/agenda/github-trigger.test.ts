@@ -148,11 +148,13 @@ describe("snapshot mapping and change collection", () => {
       { resource: "pr" as const, number: 1, state: "open" },
       { resource: "pr" as const, number: 2, state: "closed" },
     ]
-    // First poll primes the baseline without firing.
-    expect(AgendaGithubTrigger.collectChanges({ lastStates, primed: false, states: undefined }, snapshots)).toEqual([])
+    // First poll primes the baseline without firing (no states filter).
+    expect(
+      AgendaGithubTrigger.collectChanges({ lastStates, allowInitialMatch: true, states: undefined }, snapshots),
+    ).toEqual([])
     // Second poll observes both transitions.
     const changes = AgendaGithubTrigger.collectChanges(
-      { lastStates, primed: true, states: undefined },
+      { lastStates, allowInitialMatch: true, states: undefined },
       snapshots.map((s) => ({ ...s, state: s.number === 1 ? "merged" : "closed" })),
     )
     expect(changes.map((c) => c.snapshot.number)).toEqual([1])
@@ -160,17 +162,49 @@ describe("snapshot mapping and change collection", () => {
     // Unchanged states do not fire again.
     expect(
       AgendaGithubTrigger.collectChanges(
-        { lastStates, primed: true, states: undefined },
+        { lastStates, allowInitialMatch: true, states: undefined },
         snapshots.map((s) => ({ ...s, state: s.number === 1 ? "merged" : "closed" })),
       ),
+    ).toEqual([])
+  })
+
+  test("first observation of an already-targeted state fires immediately", () => {
+    // Watch created for an already-satisfied condition (or the state changed
+    // between item creation and the first poll) must report, not stay silent.
+    const lastStates = new Map<string, string>()
+    const fired = AgendaGithubTrigger.collectChanges({ lastStates, allowInitialMatch: true, states: ["closed"] }, [
+      { resource: "issue" as const, number: 1217, state: "closed" },
+    ])
+    expect(fired).toHaveLength(1)
+    expect(fired[0]?.previous).toBeUndefined()
+    expect(fired[0]?.snapshot.state).toBe("closed")
+  })
+
+  test("first observation without a states filter stays silent", () => {
+    const lastStates = new Map<string, string>()
+    expect(
+      AgendaGithubTrigger.collectChanges({ lastStates, allowInitialMatch: true, states: undefined }, [
+        { resource: "issue" as const, number: 1217, state: "closed" },
+      ]),
+    ).toEqual([])
+  })
+
+  test("restored items re-baseline silently instead of re-notifying", () => {
+    // A restarted item (runCount > 0) must not re-fire for a state that was
+    // already reported before the restart.
+    const lastStates = new Map<string, string>()
+    expect(
+      AgendaGithubTrigger.collectChanges({ lastStates, allowInitialMatch: false, states: ["closed"] }, [
+        { resource: "issue" as const, number: 1217, state: "closed" },
+      ]),
     ).toEqual([])
   })
 
   test("states filter still advances the baseline for non-matching transitions", () => {
     const lastStates = new Map<string, string>()
     const snapshot = { resource: "pr" as const, number: 7, state: "open" }
-    AgendaGithubTrigger.collectChanges({ lastStates, primed: true, states: ["merged"] }, [snapshot])
-    const next = AgendaGithubTrigger.collectChanges({ lastStates, primed: true, states: ["merged"] }, [
+    AgendaGithubTrigger.collectChanges({ lastStates, allowInitialMatch: false, states: ["merged"] }, [snapshot])
+    const next = AgendaGithubTrigger.collectChanges({ lastStates, allowInitialMatch: false, states: ["merged"] }, [
       { ...snapshot, state: "draft" },
     ])
     expect(next).toEqual([])

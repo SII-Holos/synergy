@@ -179,9 +179,8 @@ export namespace Agenda {
     AgendaSessionTrigger.unregister(item.id)
     AgendaSessionTrigger.register(item.id, scopeID, item.triggers)
     AgendaGithubTrigger.unregister(item.id)
-    AgendaGithubTrigger.register(item.id, scopeID, item.triggers)
+    AgendaGithubTrigger.register(item.id, scopeID, item.triggers, { hasRun: item.state.runCount > 0 })
   }
-
   function teardownItem(itemID: string): void {
     AgendaClock.unload(itemID)
     AgendaWatcher.unregister(itemID)
