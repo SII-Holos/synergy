@@ -29,6 +29,7 @@ export namespace ProviderTransform {
     lookAtAvailable?: boolean
     viewImageAvailable?: boolean
     profileID?: string
+    mergeSystemMessages?: boolean
   }
 
   export function sanitizeSurrogates(content: string) {
@@ -403,9 +404,31 @@ export namespace ProviderTransform {
     }
   }
 
+  function mergeLeadingSystemMessages(msgs: ModelMessage[]): ModelMessage[] {
+    const splitIndex = msgs.findIndex((msg) => msg.role !== "system")
+    if (splitIndex <= 1) return msgs
+    const contents = msgs
+      .slice(0, splitIndex)
+      .map((msg) => (typeof msg.content === "string" ? msg.content : messageTextContent(msg)))
+    if (contents.some((content) => content === undefined)) return msgs
+    return [{ role: "system", content: contents.join("\n\n") }, ...msgs.slice(splitIndex)]
+  }
+
+  function messageTextContent(msg: ModelMessage): string | undefined {
+    if (!Array.isArray(msg.content)) return undefined
+    const text = msg.content
+      .map((part) => (part.type === "text" ? part.text : undefined))
+      .filter((text): text is string => typeof text === "string")
+      .join("\n\n")
+    return text.length > 0 ? text : undefined
+  }
+
   export function message(msgs: ModelMessage[], model: Provider.Model, options?: MessageOptions) {
     msgs = unsupportedParts(msgs, model, options)
     msgs = normalizeMessages(msgs, model)
+    if (options?.mergeSystemMessages === true) {
+      msgs = mergeLeadingSystemMessages(msgs)
+    }
     if (
       model.providerID === "anthropic" ||
       model.api.id.includes("anthropic") ||

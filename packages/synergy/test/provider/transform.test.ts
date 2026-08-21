@@ -377,6 +377,55 @@ describe("ProviderTransform.message - mapped-profile and fallback cache boundary
   })
 })
 
+describe("ProviderTransform.message - mergeSystemMessages option", () => {
+  const strictModel = {
+    id: "sii-qwen/Qwen3.8-27B",
+    providerID: "sii-qwen",
+    api: {
+      id: "Qwen3.8-27B",
+      url: "https://sii.example/v1",
+      npm: "@ai-sdk/openai-compatible",
+    },
+    name: "Qwen3.8 27B",
+    capabilities: { toolcall: true },
+    options: {},
+    headers: {},
+  } as any
+
+  test("merges leading system messages into one when mergeSystemMessages is enabled", () => {
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "AGENTS.md instructions" },
+      { role: "system", content: "permission context" },
+      { role: "user", content: "hello" },
+      { role: "user", content: "<runtime-context>advisory</runtime-context>" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, strictModel, { mergeSystemMessages: true })
+
+    expect(result.length).toBe(3)
+    expect(result[0].role).toBe("system")
+    expect(result[0].content).toBe("agent prompt\n\nAGENTS.md instructions\n\npermission context")
+    expect(result[1].content).toBe("hello")
+    expect(result[2].content).toContain("<runtime-context>")
+  })
+
+  test("keeps multiple leading system messages by default", () => {
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "AGENTS.md instructions" },
+      { role: "user", content: "hello" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, strictModel)
+
+    expect(result.length).toBe(3)
+    expect(result[0].role).toBe("system")
+    expect(result[1].role).toBe("system")
+    expect(result[2].role).toBe("user")
+  })
+})
+
 describe("ProviderTransform.maxOutputTokens", () => {
   test("returns output cap when modelLimit exceeds cap", () => {
     const modelLimit = 500000
