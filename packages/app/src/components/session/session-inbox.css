@@ -359,7 +359,7 @@
   align-items: center;
   border-radius: var(--radius-md);
   padding: 0.5rem 0.625rem;
-  color: var(--text-critical-base, var(--text-base));
+  color: var(--text-on-critical-base);
   font-size: var(--font-size-small);
   font-weight: var(--font-weight-medium);
   text-align: left;

@@ -59,13 +59,13 @@
 
 .session-transition-card-icon[data-state="success"] {
   color: var(--icon-success-base);
-  background: var(--surface-success-soft);
+  background: var(--surface-success-weak);
   border-color: color-mix(in oklch, var(--icon-success-base) 26%, transparent);
 }
 
 .session-transition-card-icon[data-state="error"] {
   color: var(--icon-critical-base);
-  background: var(--surface-critical-soft);
+  background: var(--surface-critical-weak);
   border-color: color-mix(in oklch, var(--icon-critical-base) 26%, transparent);
 }
 
@@ -174,7 +174,7 @@
 
 .session-transition-step-icon[data-state="complete"] {
   color: var(--icon-success-base);
-  background: var(--surface-success-soft);
+  background: var(--surface-success-weak);
   border-color: color-mix(in oklch, var(--icon-success-base) 26%, transparent);
 }
 
