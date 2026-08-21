@@ -375,3 +375,31 @@ test("workflow conclusion null is normalized so baseline keys stay clean", () =>
   expect(fired).toHaveLength(1)
   expect(fired[0]?.previous).toBe("in_progress")
 })
+
+test("closed draft PR reports closed (terminal state wins over draft)", () => {
+  const snap = AgendaGithubTrigger.prSnapshot({
+    number: 42,
+    state: "closed",
+    draft: true,
+    merged: false,
+  })
+  expect(snap.state).toBe("closed")
+  expect(snap.draft).toBe(true)
+})
+
+test("open draft PR reports draft", () => {
+  const snap = AgendaGithubTrigger.prSnapshot({ number: 43, state: "open", draft: true, merged: false })
+  expect(snap.state).toBe("draft")
+})
+
+test("baseline map is bounded to MAX_BASELINE_ENTRIES", () => {
+  const lastStates = new Map<string, string>()
+  // Push 300 distinct resource keys through collectChanges; the map must not
+  // exceed the cap.
+  for (let i = 0; i < 300; i++) {
+    AgendaGithubTrigger.collectChanges({ lastStates, allowInitialMatch: false, states: undefined }, [
+      { resource: "pr" as const, number: 1000 + i, state: "open" },
+    ])
+  }
+  expect(lastStates.size).toBeLessThanOrEqual(256)
+})

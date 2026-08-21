@@ -31,6 +31,9 @@ export namespace AgendaGithubTrigger {
   const DEFAULT_INTERVAL_MS = 5 * 60_000
   const MIN_INTERVAL_MS = 30_000
   const MAX_CONSECUTIVE_FAILURES = 5
+  /** Bounded recent baseline: repository-wide watches must not accumulate
+   *  every observed resource ID for the lifetime of the trigger. */
+  const MAX_BASELINE_ENTRIES = 256
 
   type Handler = (signal: AgendaTypes.FiredSignal, scopeID: string) => Promise<void>
 
@@ -48,10 +51,10 @@ export namespace AgendaGithubTrigger {
     /** resource key → last observed state */
     lastStates: Map<string, string>
     /**
-     * True only while the owning item has never run: lets the first poll
-     * report a resource that already sits in a targeted state. Items that
-     * already fired (e.g. restored after a restart) re-baseline silently so
-     * restarts do not re-notify.
+     * Whether first observations of a targeted state may fire. True for
+     * newly created items; false during the first restore poll of a
+     * previously-run item (so a restart re-baselines silently), then flipped
+     * true after that baseline so genuinely new resources are reported again.
      */
     allowInitialMatch: boolean
     consecutiveFailures: number
@@ -179,7 +182,12 @@ export namespace AgendaGithubTrigger {
         return
       }
       const snapshots = await fetchSnapshots(entry, resolved.token)
-      for (const change of collectChanges(entry, snapshots)) {
+      const changes = collectChanges(entry, snapshots)
+      // The first poll after a restart is the restore baseline: it must not
+      // fire for already-satisfied states, but after it completes, first
+      // observations of genuinely new resources may fire again.
+      entry.allowInitialMatch = true
+      for (const change of changes) {
         entry.dispatch = entry.dispatch.then(() => fire(entry, change.snapshot, change.previous))
       }
       entry.consecutiveFailures = 0
@@ -303,6 +311,13 @@ export namespace AgendaGithubTrigger {
       const filterKey = snapshotKey(snapshot)
       const previous = entry.lastStates.get(key)
       entry.lastStates.set(key, filterKey)
+      // Bound the baseline: repository-wide watches observe new resource IDs
+      // every poll; drop the oldest entry once the cap is exceeded so long
+      // running servers do not accumulate unbounded memory.
+      if (entry.lastStates.size > MAX_BASELINE_ENTRIES) {
+        const oldest = entry.lastStates.keys().next().value
+        if (oldest !== undefined) entry.lastStates.delete(oldest)
+      }
       if (previous === undefined) {
         // First observation: only a state-targeted watch may report an
         // already-satisfied condition; unfiltered watches baseline silently.
@@ -403,7 +418,7 @@ export namespace AgendaGithubTrigger {
         return (Array.isArray(list.workflow_runs) ? list.workflow_runs : []).map(workflowSnapshot)
       }
       case "check": {
-        const ref = entry.ref ?? "HEAD"
+        const ref = encodeURIComponent(entry.ref ?? "HEAD")
         const list = await api(`/repos/${owner}/${repo}/commits/${ref}/check-runs?per_page=20`, token)
         return (Array.isArray(list.check_runs) ? list.check_runs : []).map(checkSnapshot)
       }
@@ -412,9 +427,11 @@ export namespace AgendaGithubTrigger {
 
   export function prSnapshot(pr: any): ResourceSnapshot {
     // List responses expose merge completion via merged_at; the single-PR
-    // response additionally carries a merged boolean.
+    // response additionally carries a merged boolean. A draft PR closed
+    // without being marked ready still reports draft:true alongside
+    // state:"closed" — the terminal closed state must win over draft.
     const merged = pr.merged === true || typeof pr.merged_at === "string"
-    const state = merged ? "merged" : pr.draft ? "draft" : pr.state
+    const state = merged ? "merged" : pr.state === "closed" ? "closed" : pr.draft ? "draft" : pr.state
     return {
       resource: "pr",
       number: pr.number,

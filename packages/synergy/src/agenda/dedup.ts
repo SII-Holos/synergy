@@ -57,7 +57,13 @@ export namespace AgendaDedup {
       }
       case "github": {
         const bg = b as Extract<typeof b, { type: "github" }>
-        return a.resource === bg.resource && a.repository === bg.repository && a.number === bg.number
+        if (a.resource !== bg.resource || a.repository !== bg.repository || a.number !== bg.number) return false
+        // The ref targets different branches/commits; the states filter
+        // changes the watched condition — both must match for a conflict.
+        if ((a.ref ?? "") !== (bg.ref ?? "")) return false
+        const statesA = a.states?.join(",") ?? ""
+        const statesB = bg.states?.join(",") ?? ""
+        return statesA === statesB
       }
     }
 

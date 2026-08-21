@@ -28,36 +28,9 @@ The GitHub integration in Settings → Integrations had three experience gaps:
 
 - Settings → GitHub gains "Git identity" (toggle + optional overrides + current/target summary + Sync now) and "Agenda GitHub watch" (global enable toggle) sections backed by the `github` config domain; the panel participates in the standard settings save flow.
 - `SessionAgendaTriggerType` and the generated SDK/OpenAPI gained the `"github"` trigger variant; wake-indicator shows "On GitHub".
-- Polling cost is per-entry and bounded by the configured interval (min 30s); unauthenticated setups never touch the API. State baselines are in-memory only — a restart re-baselines without firing.
-- `agenda_watch` with `onGithub` uses autoDone delivery into the origin session, matching the delay/session watch UX; agents cancel with `agenda_cancel`.
-- First poll of a repository-wide watch (no `number`) covers the 10 most recently updated items. For **states-filtered** watches, items first observed in a targeted state (including brand-new items and already-satisfied conditions) fire immediately; **unfiltered** repository-wide watches baseline first observations silently, so a PR/issue created and merged entirely between two polls is first observed in its terminal state and does not fire — the tradeoff for not spamming all 10 recent items on registration. Point watches (`number`) always see transitions.
-
-## Review follow-ups (PR #1234)
-
-- `AgendaGithubTrigger.start()` arms before registering so items restored from storage poll immediately after a restart.
-- `agenda_watch` `onGithub` one-shot items complete after their first successful fire: the reactor passes `autoDone` into `updateRunState`, which marks the item done (dropping it as a continuation blocker) — matching the delay/session watch UX.
-- `interval` is validated by the trigger schema (`^(\d+)(ms|s|m|h|d|w)$`) before persistence; an invalid value can no longer poison `Agenda.start()`.
-- GitHub-controlled fields (PR/issue titles) are attribute-escaped in the `<github-event>` prompt block.
-- Transitions observed in one poll dispatch sequentially through a per-entry chain so the Agenda inflight guard cannot drop later changes; filtered-out transitions still advance the baseline.
-- Poll failures auto-pause the item after five consecutive errors instead of retrying forever; detached entries (unregistered or stopped mid-request) are never rescheduled.
-- Triggers without `interval` fall back to `github.watch.defaultIntervalMs` (the config key is now honored).
-- Repository-wide PR watches detect merges via `merged_at`; workflow/check state is the run `status` (`completed` matches the documented filter) with the conclusion carried separately and the run URL included.
-- Workflow/check targeting gained a `ref` field (branch/tag/commit) instead of overloading `number`.
-- Identity derivation fetches the account for credentials without stored metadata (env tokens), so the derived identity is still available.
-- Settings: blanking a name/email override sends an explicit `null` (schema nullable) so the merge actually clears it; Sync now flushes the pending github-domain draft first; the Refresh action and connect/logout callbacks also refetch identity state; the no-op sync toast uses the localized descriptor instead of the server reason string.
-- Agent-facing tool descriptions (`agenda-watch.txt`, `agenda-schedule.txt`) and the synergy-config skill's domain table were updated with the new trigger/domain.
-
-## Second review round fixes
-
-- `register()` copies `trigger.states` into polling entries (a regression in the previous round dropped it, so states-filtered watches never filtered).
-- Workflow/check watches match the `states` filter against both the run status and the conclusion, and the baseline key is `status:conclusion`, so a run finishing (`completed` → `completed:failure`) counts as a transition and documented filters like `["failure"]`/`["success"]` fire.
-- Auto-pause after five poll failures releases session continuation via `AgendaSessionWakeup.resumeIfReleased` (same hook as `Agenda.pause`), so a paused watch no longer stalls a Light Loop / BlueprintLoop forever.
-- Repository-wide issue watches fetch three pages before filtering out PRs, so PR-heavy repositories no longer crowd issues out of the poll window.
-- `agenda_watch`'s `onGithub` accepts and forwards `ref` (branch/tag/commit) instead of silently dropping it to `HEAD`.
-- Both `agenda_watch` and `agenda_schedule` reject GitHub trigger creation while `github.watch.enabled=false`, telling the agent how to get it enabled, instead of persisting a permanently silent item.
-- Watches created before polling was disabled are paused (and their continuation released via `resumeIfReleased`) on their next poll tick, so disabling the switch also drains existing watches instead of leaving them idling forever.
-
-## Fourth review round fixes (self-review)
-
-- GitHub returns `conclusion: null` for in-progress workflow/check runs; the snapshot functions now normalize `null` to `undefined` so baseline keys never become `"in_progress:null"` and `previousState` stays a plain state value on completion.
-- Dead duplicate `checkSnapshot` removed (leftover from a refactor during the review fixes).
+  - Polling cost is per-entry and bounded by the configured interval (min 30s); unauthenticated setups never touch the API. State baselines are in-memory only — a restart re-baselines without firing, and the first post-restart poll of a previously-run item is a silent restore baseline.
+  - `agenda_watch` with `onGithub` uses autoDone delivery into the origin session, matching the delay/session watch UX; after a successful fire the item is marked done and its poll registration is torn down. Agents cancel with `agenda_cancel`.
+  - First poll of a repository-wide watch (no `number`) covers the 10 most recently updated items (issues fetch three pages then filter PRs). For **states-filtered** watches, items first observed in a targeted state (including brand-new items and already-satisfied conditions) fire immediately; **unfiltered** repository-wide watches baseline first observations silently, so a PR/issue created and merged entirely between two polls is first observed in its terminal state and does not fire — the tradeoff for not spamming all 10 recent items on registration. Point watches (`number`) always see transitions.
+  - Per-entry polling baselines are bounded (256 entries) so repository-wide watches cannot accumulate memory for the lifetime of a trigger.
+  - PR state is derived as `merged` (via `merged`/`merged_at`) > `closed` (terminal state wins over `draft`) > `draft` > `open`; workflow/check state is the run `status` (`queued`/`in_progress`/`completed`) with the `conclusion` carried separately (null normalized away), and the `states` filter matches either. `ref` targets a branch/tag/commit for workflow/check watches and is URL-encoded in the API path.
+  - Repeated poll failures (5 consecutive) or `github.watch.enabled=false` after creation pause the item and release any continuation holding it (same hook as `Agenda.pause`); creation is rejected up front while the switch is off. Triggers without `interval` fall back to `github.watch.defaultIntervalMs`.

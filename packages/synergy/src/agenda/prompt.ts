@@ -119,6 +119,10 @@ export namespace AgendaPrompt {
         typeof p.title === "string" ? `title="${escapeAttr(p.title)}"` : "",
         typeof p.state === "string" ? `state="${escapeAttr(p.state)}"` : "",
         typeof p.previousState === "string" ? `previousState="${escapeAttr(p.previousState)}"` : "",
+        typeof p.conclusion === "string" ? `conclusion="${escapeAttr(p.conclusion)}"` : "",
+        p.draft !== undefined ? `draft="${String(p.draft)}"` : "",
+        p.mergeable !== undefined ? `mergeable="${String(p.mergeable)}"` : "",
+        typeof p.updatedAt === "string" ? `updatedAt="${escapeAttr(p.updatedAt)}"` : "",
         typeof p.url === "string" ? `url="${escapeAttr(p.url)}"` : "",
       ]
         .filter(Boolean)
