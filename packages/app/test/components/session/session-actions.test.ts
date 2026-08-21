@@ -3,10 +3,12 @@ import {
   sessionActionVisibility,
   sessionModelControlVisibility,
   sessionScopeRequest,
+  sessionScopeRequestFor,
+  type SessionScopeRequest,
 } from "../../../src/components/session/session-actions"
 
 describe("session action visibility", () => {
-  test("limits project-only actions while keeping Home session actions available", () => {
+  test("keeps worktree project-only while Home sessions expose every menu action", () => {
     expect(sessionActionVisibility({ sessionID: "ses_home", scopeKey: "home" })).toEqual({
       menu: true,
       rename: true,
@@ -50,6 +52,22 @@ describe("session transfer scope request", () => {
 
   test("addresses non-Home scopes through their directory key", () => {
     expect(sessionScopeRequest("/repo")).toEqual({ directory: "/repo" })
+  })
+})
+
+describe("session scope request for session payloads", () => {
+  const homeSession = {
+    scope: { id: "home", type: "home", directory: "/Users/example" },
+  } satisfies Parameters<typeof sessionScopeRequestFor>[0]
+
+  test("addresses Home sessions through the home scope ID, not the home directory", () => {
+    expect(sessionScopeRequestFor(homeSession)).toEqual({ scopeID: "home" })
+  })
+
+  test("addresses project sessions through their directory", () => {
+    expect(sessionScopeRequestFor({ scope: { id: "d_abc", type: "project", directory: "/repo" } })).toEqual({
+      directory: "/repo",
+    } satisfies SessionScopeRequest)
   })
 })
 

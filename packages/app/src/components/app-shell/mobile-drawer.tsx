@@ -12,6 +12,7 @@ import { holosLogoPath } from "@/utils/brand-assets"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { getScopeLabel, isHomeScope } from "@/utils/scope"
 import { ActiveZone } from "@/components/scopes/active-zone"
+import { sessionScopeRequestFor } from "@/components/session/session-actions"
 import { SessionRow } from "@/components/scopes/session-row"
 import { PaginationBar } from "@/components/scopes/pagination-bar"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
@@ -517,7 +518,11 @@ function SessionListDrawerView(props: {
                 onTogglePin={() => layout.nav.pinSession(session, !(session.pinned && session.pinned > 0))}
                 onArchive={() => archiveSession(session)}
                 onRename={(title) =>
-                  globalSDK.client.session.update({ directory: session.scope.directory, sessionID: session.id, title })
+                  globalSDK.client.session.update({
+                    ...sessionScopeRequestFor(session),
+                    sessionID: session.id,
+                    title,
+                  })
                 }
               />
             )
