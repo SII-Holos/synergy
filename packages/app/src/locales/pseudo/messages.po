@@ -10059,6 +10059,46 @@ msgstr ""
 msgid "prompt.externalAgentBlocked"
 msgstr ""
 
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.fileTooLarge.title"
+msgstr ""
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.noFilesAttached.title"
+msgstr ""
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.someFilesNotAttached.title"
+msgstr ""
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooLargeNames.description"
+msgstr ""
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooLargeTotal.description"
+msgstr ""
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooLargeTotal.title"
+msgstr ""
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooManyFiles.description"
+msgstr ""
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooManyFiles.title"
+msgstr ""
+
 #. prompt-input.tsx — generic error / request failed
 msgid "prompt.generic.requestFailed"
 msgstr ""

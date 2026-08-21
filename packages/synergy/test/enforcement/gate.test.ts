@@ -2980,16 +2980,19 @@ describe("EnforcementGate extended path extraction", () => {
     expect(external.paths).toContain("/tmp/output.log")
   })
 
-  test("ln -s target link extracts both paths", async () => {
+  test("ln -s target link classifies the link operand as the write", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/my-project",
       workspaceType: "main",
     })
     const result = gate.classify("bash", { command: "ln -s /etc/hosts symlink", workdir: "/Users/test/my-project" })
-    const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
-    // /etc/hosts is external
-    expect(external).toBeDefined()
-    expect(external.paths).toContain("/etc/hosts")
+    // /etc/hosts is the read-only link target; the symlink operand is the write
+    const externalRead = result.capabilities.find((c: any) => c.class === "file_external_read")!
+    expect(externalRead).toBeDefined()
+    expect(externalRead.paths).toContain("/etc/hosts")
+    expect(result.capabilities.some((c: any) => c.class === "file_external_write")).toBe(false)
+    const write = result.capabilities.find((c: any) => c.class === "file_write")!
+    expect(write.paths).toContain("/Users/test/my-project/symlink")
   })
 
   test("install /src/file /dst/path extracts both paths", async () => {

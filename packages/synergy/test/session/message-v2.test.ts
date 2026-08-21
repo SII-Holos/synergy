@@ -996,14 +996,16 @@ describe("session.message-v2.toModelMessage", () => {
     const projection = MessageV2.projectModelMessages(input)
     const serialized = JSON.stringify(projection.messages)
 
-    expect(serialized).toContain(`[Attachment: trace.bin (application/octet-stream). Local path: ${assetPath}]`)
+    expect(serialized).toContain(
+      `[Attachment: trace.bin (application/octet-stream). Local path: ${assetPath}. Attached as-is; use file tools to inspect]`,
+    )
     expect(serialized).toContain(
       `[The user attached a file: reference.pdf (application/pdf). Local path: ${providerPath}]`,
     )
     expect(serialized).toContain("data:application/pdf;base64,JVBERi0xLjQ=")
     expect(serialized).not.toContain(staleSourcePath)
     expect(projection.provenance.categories.filesReferences).toContainEqual({
-      text: `[Attachment: trace.bin (application/octet-stream). Local path: ${assetPath}]`,
+      text: `[Attachment: trace.bin (application/octet-stream). Local path: ${assetPath}. Attached as-is; use file tools to inspect]`,
     })
   })
 
@@ -1028,7 +1030,7 @@ describe("session.message-v2.toModelMessage", () => {
     ]
 
     expect(JSON.stringify(MessageV2.projectModelMessages(input).messages)).toContain(
-      `[Attachment: trace.bin (application/octet-stream). Local path: ${assetPath}]`,
+      `[Attachment: trace.bin (application/octet-stream). Local path: ${assetPath}. Attached as-is; use file tools to inspect]`,
     )
   })
 

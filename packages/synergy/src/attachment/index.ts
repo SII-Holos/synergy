@@ -95,6 +95,10 @@ export namespace Attachment {
       }
     }
 
+    // Arbitrary files are attached as-is. data: URL inputs are externalized
+    // once into the Asset store by MessageV2.externalizeAttachment(); asset://
+    // uploads already carry their durable path, so a second media copy would
+    // be redundant durable storage.
     return {
       kind: "other",
       extractText: false,
