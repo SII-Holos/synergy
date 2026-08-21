@@ -64,6 +64,7 @@ let browser: Browser
 let page: Page
 let server: ViteDevServer
 let fixtureDirectory: string
+let url: string
 
 beforeAll(async () => {
   fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".pdf-preview-fixture-"))
@@ -73,6 +74,7 @@ beforeAll(async () => {
 
   await Promise.all([
     Bun.write(path.join(fixtureDirectory, "fixture.pdf"), buildTwoPagePdf()),
+    Bun.write(path.join(fixtureDirectory, "fixture-bad.pdf"), buildTwoPagePdf().slice(0, 60)),
     Bun.write(
       path.join(fixtureDirectory, "index.html"),
       `<div id="root"></div><script type="module" src="/main.ts"></script>`,
@@ -93,7 +95,8 @@ beforeAll(async () => {
 
         const i18n = setupI18n({ locale: "en" })
         async function main() {
-          const response = await fetch("/fixture.pdf")
+          const isBad = new URLSearchParams(location.search).get("case") === "bad"
+          const response = await fetch(isBad ? "/fixture-bad.pdf" : "/fixture.pdf")
           const bytes = new Uint8Array(await response.arrayBuffer())
           render(
             () =>
@@ -130,8 +133,9 @@ beforeAll(async () => {
   })
   await server.listen()
 
-  const url = server.resolvedUrls?.local[0]
-  if (!url) throw new Error("Expected Vite test server URL")
+  const resolved = server.resolvedUrls?.local[0]
+  if (!resolved) throw new Error("Expected Vite test server URL")
+  url = resolved
 
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 800, height: 600 }, colorScheme: "light" })
@@ -209,5 +213,83 @@ describe("AttachmentPdfPreview viewer integration", () => {
     //    the document root.
     const colorScheme = await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)
     expect(colorScheme).toBe("light")
+  }, 90000)
+
+  test("keeps the dark-theme color-scheme and text selection in dark mode", async () => {
+    const darkPage = await browser.newPage({ viewport: { width: 800, height: 600 }, colorScheme: "dark" })
+    try {
+      await darkPage.goto(url)
+      await darkPage.waitForFunction(
+        () => document.querySelector(".attachment-pdf-toolbar")?.textContent?.includes("2"),
+        undefined,
+        { timeout: 30000 },
+      )
+      // The shim re-asserts the app theme's color-scheme at html:root
+      // specificity, so the vendor's `:root { color-scheme: light dark }`
+      // must not win in dark mode either.
+      const colorScheme = await darkPage.evaluate(() => getComputedStyle(document.documentElement).colorScheme)
+      expect(colorScheme).toBe("dark")
+      // Text-layer selection still works under the dark scheme.
+      const textSpan = darkPage.locator(".pdfViewer .textLayer span").first()
+      await textSpan.waitFor({ state: "attached", timeout: 30000 })
+      await textSpan.click({ clickCount: 3 })
+      await darkPage.waitForFunction(() => (window.getSelection()?.toString() ?? "").includes("Hello"))
+    } finally {
+      await darkPage.close()
+    }
+  }, 90000)
+
+  test("re-applies page-width when the container width changes", async () => {
+    const resizePage = await browser.newPage({ viewport: { width: 800, height: 600 }, colorScheme: "light" })
+    try {
+      await resizePage.goto(url)
+      await resizePage.waitForFunction(
+        () => document.querySelector(".attachment-pdf-toolbar")?.textContent?.includes("2"),
+        undefined,
+        { timeout: 30000 },
+      )
+      // Fit-width is the initial state.
+      await expect(fitWidthPressed(resizePage)).resolves.toBe("true")
+      const canvas = resizePage.locator(".pdfViewer .page canvas").first()
+      await canvas.waitFor({ state: "attached", timeout: 30000 })
+      const widthBefore = await canvas.evaluate((element) => element.getBoundingClientRect().width)
+
+      // The host ResizeObserver re-applies the page-width preset after its
+      // 100ms debounce; the rendered page width must follow the container.
+      await resizePage.setViewportSize({ width: 500, height: 600 })
+      await resizePage.waitForFunction(
+        (previous) => {
+          const firstCanvas = document.querySelector<HTMLCanvasElement>(".pdfViewer .page canvas")
+          if (!firstCanvas) return false
+          return Math.abs(firstCanvas.getBoundingClientRect().width - previous) > 1
+        },
+        widthBefore,
+        { timeout: 30000 },
+      )
+      // Still in page-width mode after the resize, with a narrower page.
+      await expect(fitWidthPressed(resizePage)).resolves.toBe("true")
+      const widthAfter = await canvas.evaluate((element) => element.getBoundingClientRect().width)
+      expect(widthAfter).toBeLessThan(widthBefore)
+    } finally {
+      await resizePage.close()
+    }
+  }, 90000)
+
+  test("shows the error state for a corrupted PDF", async () => {
+    const badPage = await browser.newPage({ viewport: { width: 800, height: 600 }, colorScheme: "light" })
+    try {
+      await badPage.goto(`${url}?case=bad`)
+      const errorBox = badPage.locator(".attachment-workbench-error")
+      await errorBox.waitFor({ state: "visible", timeout: 30000 })
+      const hidden = await badPage.evaluate(() => {
+        const container = document.querySelector(".attachment-pdf-viewer-container")
+        return container?.getAttribute("data-hidden") ?? null
+      })
+      expect(hidden).toBe("true")
+      const pageLabel = badPage.locator(".attachment-pdf-toolbar > span:not(.attachment-pdf-toolbar-spacer)")
+      await expect(pageLabel.textContent()).resolves.toBe("1 / 0")
+    } finally {
+      await badPage.close()
+    }
   }, 90000)
 })
