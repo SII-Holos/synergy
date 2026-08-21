@@ -310,10 +310,17 @@ export namespace AgendaGithubTrigger {
       const key = `${snapshot.resource ?? ""}:${snapshot.number}`
       const filterKey = snapshotKey(snapshot)
       const previous = entry.lastStates.get(key)
+      // Refresh insertion order on every observation (Map.set keeps the
+      // original position for existing keys) so eviction approximates LRU:
+      // resources still inside the observation window are never evicted,
+      // only ones that left it long ago. Without the refresh, a busy
+      // repository could evict an actively observed resource and re-fire it
+      // as a duplicate first observation.
+      entry.lastStates.delete(key)
       entry.lastStates.set(key, filterKey)
       // Bound the baseline: repository-wide watches observe new resource IDs
-      // every poll; drop the oldest entry once the cap is exceeded so long
-      // running servers do not accumulate unbounded memory.
+      // every poll; drop the least recently observed entry once the cap is
+      // exceeded so long-running servers do not accumulate unbounded memory.
       if (entry.lastStates.size > MAX_BASELINE_ENTRIES) {
         const oldest = entry.lastStates.keys().next().value
         if (oldest !== undefined) entry.lastStates.delete(oldest)

@@ -403,3 +403,35 @@ test("baseline map is bounded to MAX_BASELINE_ENTRIES", () => {
   }
   expect(lastStates.size).toBeLessThanOrEqual(256)
 })
+
+test("baseline eviction is LRU — actively observed resources are not evicted and re-fired", () => {
+  const lastStates = new Map<string, string>()
+  const states = ["closed"]
+  const entry = () => ({ lastStates, allowInitialMatch: true, states })
+
+  // PR 1 is observed closed from the start: first observation fires once.
+  const initial = AgendaGithubTrigger.collectChanges(entry(), [{ resource: "pr" as const, number: 1, state: "closed" }])
+  expect(initial).toHaveLength(1)
+
+  // Fill the map to the cap with other PRs (open — filtered out, silent).
+  for (let i = 2; i <= 256; i++) {
+    AgendaGithubTrigger.collectChanges(entry(), [{ resource: "pr" as const, number: i, state: "open" }])
+  }
+  expect(lastStates.size).toBe(256)
+
+  // Re-observe PR 1 (refreshes its LRU position; same state → no fire).
+  expect(
+    AgendaGithubTrigger.collectChanges(entry(), [{ resource: "pr" as const, number: 1, state: "closed" }]),
+  ).toEqual([])
+
+  // Overflow evicts the least recently observed (PR 2), not PR 1.
+  AgendaGithubTrigger.collectChanges(entry(), [{ resource: "pr" as const, number: 257, state: "open" }])
+  expect(lastStates.has("pr:1")).toBe(true)
+  expect(lastStates.has("pr:2")).toBe(false)
+
+  // PR 1 is still baselined: re-observing it must NOT fire as a duplicate
+  // first observation.
+  expect(
+    AgendaGithubTrigger.collectChanges(entry(), [{ resource: "pr" as const, number: 1, state: "closed" }]),
+  ).toEqual([])
+})
