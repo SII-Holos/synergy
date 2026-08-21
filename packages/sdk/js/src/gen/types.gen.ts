@@ -5144,6 +5144,15 @@ export type SessionWorkspaceSelection =
       baseRevision?: string
     }
 
+export type SessionForkPointMissingError = {
+  name: "SessionForkPointMissingError"
+  data: {
+    sessionID: string
+    messageID: string
+    message: string
+  }
+}
+
 export type AttachmentSourceText = {
   value: string
   start: number
@@ -6431,6 +6440,13 @@ export type WorkspaceFileStatusSummary = {
     added?: number
     removed?: number
   }>
+}
+
+export type WorkspaceFileContentError = {
+  name: "WorkspaceFileAccessDeniedError" | "WorkspaceFileUnsupportedPreviewError" | "WorkspaceFileTooLargeError"
+  data: {
+    message: string
+  }
 }
 
 export type WorkspaceFileWriteResult = {
@@ -12296,6 +12312,18 @@ export type SessionForkData = {
 
 export type SessionForkErrors = {
   /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Fork point message is no longer part of the effective history
+   */
+  409: SessionForkPointMissingError
+  /**
    * Runtime shutting down
    */
   503: RuntimeShuttingDownError
@@ -14822,6 +14850,45 @@ export type WorkspaceFilesStatusResponses = {
 }
 
 export type WorkspaceFilesStatusResponse = WorkspaceFilesStatusResponses[keyof WorkspaceFilesStatusResponses]
+
+export type WorkspaceFilesContentData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    path: string
+  }
+  url: "/workspace/files/content"
+}
+
+export type WorkspaceFilesContentErrors = {
+  /**
+   * Bad request
+   */
+  400: WorkspaceFileContentError
+  /**
+   * Forbidden
+   */
+  403: WorkspaceFileWriteError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceFilesContentError = WorkspaceFilesContentErrors[keyof WorkspaceFilesContentErrors]
+
+export type WorkspaceFilesContentResponses = {
+  /**
+   * PDF file bytes
+   */
+  200: unknown
+}
 
 export type WorkspaceFilesWriteData = {
   body?: WorkspaceFileWriteFileInput

@@ -2548,6 +2548,14 @@ msgid "app.file.mode.source"
 msgstr ""
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.pdf.previewFailed"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.pdf.tooLarge"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toast.saveConflict"
 msgstr ""
 
@@ -12414,6 +12422,60 @@ msgstr ""
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.dock.parentSession"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.action"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.cancel"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.close"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.copiedNote"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.copiedSummary"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.description"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.description.preview"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.failed"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.forking"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.requestFailed"
+msgstr ""
+
+#. dialog-fork-confirm.tsx
+msgid "session.fork.confirm.title"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.

@@ -402,3 +402,127 @@ describe("POST /workspace/files/write", () => {
     expect(body.name).toBe("ScopeRequired")
   })
 })
+describe("GET /workspace/files/content", () => {
+  test("requires a Scope instead of silently using home", async () => {
+    const response = await Server.App().request("/workspace/files/content?path=guide.pdf")
+    expect(response.status).toBe(400)
+    const body = await response.json()
+    expect(body.name).toBe("ScopeRequired")
+  })
+
+  test("streams a PDF inside the workspace as application/pdf", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "guide.pdf"), "%PDF-1.1\n% fake body")
+      },
+    })
+    const response = await Server.App().request(workspaceUrl("content", tmp.path, { path: "guide.pdf" }))
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toBe("application/pdf")
+    expect(response.headers.get("cache-control")).toBe("no-store")
+    const body = await response.text()
+    expect(body.startsWith("%PDF")).toBe(true)
+  })
+
+  test("accepts a PDF with an uppercase extension", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "GUIDE.PDF"), "%PDF-1.1\n")
+      },
+    })
+    const response = await Server.App().request(workspaceUrl("content", tmp.path, { path: "GUIDE.PDF" }))
+    expect(response.status).toBe(200)
+  })
+
+  test("rejects content larger than the PDF preview cap with 400", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "huge.pdf"), "%PDF-1.1\n")
+        await fs.truncate(path.join(dir, "huge.pdf"), 50 * 1024 * 1024 + 1)
+      },
+    })
+    const response = await Server.App().request(workspaceUrl("content", tmp.path, { path: "huge.pdf" }))
+    expect(response.status).toBe(400)
+    const body = await response.json()
+    expect(body.name).toBe("WorkspaceFileTooLargeError")
+  })
+
+  test("rejects non-PDF files with 400", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "deck.pptx"), "fake pptx")
+        await Bun.write(path.join(dir, "photo.png"), "fake png")
+        await Bun.write(path.join(dir, "main.ts"), "export {}")
+      },
+    })
+    const app = Server.App()
+    for (const name of ["deck.pptx", "photo.png", "main.ts"]) {
+      const response = await app.request(workspaceUrl("content", tmp.path, { path: name }))
+      expect(response.status).toBe(400)
+      const body = await response.json()
+      expect(body.name).toBe("WorkspaceFileUnsupportedPreviewError")
+    }
+  })
+
+  test("rejects a path escaping the workspace with 403", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const response = await Server.App().request(workspaceUrl("content", tmp.path, { path: "../outside.pdf" }))
+    expect(response.status).toBe(403)
+    const body = await response.json()
+    expect(body.name).toBe("WorkspaceFileAccessDeniedError")
+  })
+
+  test("rejects a symlink escaping the workspace with 403", async () => {
+    const sibling = path.join(os.tmpdir(), `synergy-test-content-sibling-${Date.now()}`)
+    await fs.mkdir(sibling, { recursive: true })
+    await Bun.write(path.join(sibling, "secret.pdf"), "%PDF-1.1\n")
+    let linkCreated = false
+    try {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          try {
+            await fs.symlink(sibling, path.join(dir, "docs"), "dir")
+            linkCreated = true
+          } catch (error) {
+            const code = (error as { code?: unknown })?.code
+            if (process.platform !== "win32" || (code !== "EPERM" && code !== "EACCES")) throw error
+          }
+        },
+      })
+      if (!linkCreated) return
+      const response = await Server.App().request(workspaceUrl("content", tmp.path, { path: "docs/secret.pdf" }))
+      expect(response.status).toBe(403)
+      const body = await response.json()
+      expect(body.name).toBe("WorkspaceFileAccessDeniedError")
+    } finally {
+      await fs.rm(sibling, { recursive: true, force: true }).catch(() => {})
+    }
+  })
+
+  test("returns 404 for a missing file", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const response = await Server.App().request(workspaceUrl("content", tmp.path, { path: "missing.pdf" }))
+    expect(response.status).toBe(404)
+    const body = await response.json()
+    expect(body.name).toBe("NotFoundError")
+  })
+
+  test("keeps the JSON read result for a PDF as binary metadata", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "guide.pdf"), "%PDF-1.1\n")
+      },
+    })
+    const response = await Server.App().request(workspaceUrl("read", tmp.path, { path: "guide.pdf", mode: "document" }))
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.kind).toBe("binary")
+    expect(body.content).toBeUndefined()
+  })
+})
