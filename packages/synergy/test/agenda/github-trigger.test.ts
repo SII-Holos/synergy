@@ -302,3 +302,45 @@ test("disabling github.watch pauses existing items instead of idling forever", a
     },
   })
 })
+
+// ---------------------------------------------------------------------------
+// teardown after completion (review round 3, blocking)
+// ---------------------------------------------------------------------------
+
+test("completed one-shot github watches stop polling — settleAfterFire drops the entry", async () => {
+  const { AgendaStore } = await import("../../src/agenda/store")
+  const { Agenda } = await import("../../src/agenda")
+  const { tmpdir } = await import("../fixture/fixture")
+  const { ScopeContext } = await import("../../src/scope/context")
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const item = await Agenda.create({
+        title: "One-shot watch",
+        prompt: "check",
+        triggers: [githubTrigger()],
+        autoDone: true,
+        createdBy: "agent",
+      })
+      AgendaGithubTrigger.register(item.id, item.origin.scope.id, item.triggers)
+      expect(AgendaGithubTrigger.active()).toEqual({ items: 1, entries: 1 })
+      // The reactor marks the autoDone item done in updateRunState; the
+      // handler's settleAfterFire must then drop the registration so the
+      // poll loop stops rescheduling.
+      await AgendaStore.updateRunState(
+        item.origin.scope.id,
+        item.id,
+        { status: "ok", startTime: Date.now(), duration: 5, autoDone: true },
+        item.triggers,
+        "github",
+      )
+      await Agenda.settleAfterFire(
+        { type: "github", source: item.id, payload: {}, timestamp: Date.now() },
+        item.origin.scope.id,
+      )
+      expect((await AgendaStore.get(item.origin.scope.id, item.id)).status).toBe("done")
+      expect(AgendaGithubTrigger.active()).toEqual({ items: 0, entries: 0 })
+    },
+  })
+})

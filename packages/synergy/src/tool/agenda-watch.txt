@@ -14,3 +14,5 @@ You can also wake on a GitHub state change: pass `onGithub: {resource, repositor
 
 Use agenda_list to see active watches. Use agenda_cancel(id) to cancel before it fires.
 If you need a RECURRING task with a strictly periodic schedule (cron, fixed interval), use `agenda_schedule`. If timing needs to adapt based on observed state, recursive `agenda_watch` is the right tool.
+
+Repo-wide watches (no `number`) fire for transitions of the 10 most recently updated items. A states-filtered watch reports new items first observed already in a targeted state; an unfiltered watch baselines first observations silently, so an item created and merged entirely between two polls is not reported. Point watches (`number`) always see transitions.

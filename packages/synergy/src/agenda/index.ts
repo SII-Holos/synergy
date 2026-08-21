@@ -40,12 +40,7 @@ export namespace Agenda {
           teardownItem(itemID)
         } else {
           AgendaClock.rearm(scopeID, itemID, result.nextRunAt)
-          // One-shot session triggers auto-complete in updateRunState; drop
-          // their registration so later turns don't keep re-reading a done item.
-          if (signal.type === "session") {
-            const stored = await AgendaStore.get(scopeID, itemID).catch(() => undefined)
-            if (stored && stored.status !== "active") teardownItem(itemID)
-          }
+          await settleAfterFire(signal, scopeID)
         }
       } finally {
         inflight.delete(itemID)
@@ -187,5 +182,17 @@ export namespace Agenda {
     AgendaWebhook.unregister(itemID)
     AgendaSessionTrigger.unregister(itemID)
     AgendaGithubTrigger.unregister(itemID)
+  }
+
+  /**
+   * After-fire settlement for one-shot trigger sources: session and github
+   * triggers auto-complete in updateRunState, so drop their registration
+   * when the stored item is no longer active. Without this, a completed
+   * github watch keeps polling on its interval until restart.
+   */
+  export async function settleAfterFire(signal: AgendaTypes.FiredSignal, scopeID: string): Promise<void> {
+    if (signal.type !== "session" && signal.type !== "github") return
+    const stored = await AgendaStore.get(scopeID, signal.source).catch(() => undefined)
+    if (stored && stored.status !== "active") teardownItem(signal.source)
   }
 }

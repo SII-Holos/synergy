@@ -30,7 +30,7 @@ The GitHub integration in Settings → Integrations had three experience gaps:
 - `SessionAgendaTriggerType` and the generated SDK/OpenAPI gained the `"github"` trigger variant; wake-indicator shows "On GitHub".
 - Polling cost is per-entry and bounded by the configured interval (min 30s); unauthenticated setups never touch the API. State baselines are in-memory only — a restart re-baselines without firing.
 - `agenda_watch` with `onGithub` uses autoDone delivery into the origin session, matching the delay/session watch UX; agents cancel with `agenda_cancel`.
-- First poll of a repository-wide watch (no `number`) covers the 10 most recently updated items; newly created items after registration are picked up because their numbers are not in the baseline map (treated as fresh state transitions into their current state).
+- First poll of a repository-wide watch (no `number`) covers the 10 most recently updated items. For **states-filtered** watches, items first observed in a targeted state (including brand-new items and already-satisfied conditions) fire immediately; **unfiltered** repository-wide watches baseline first observations silently, so a PR/issue created and merged entirely between two polls is first observed in its terminal state and does not fire — the tradeoff for not spamming all 10 recent items on registration. Point watches (`number`) always see transitions.
 
 ## Review follow-ups (PR #1234)
 
