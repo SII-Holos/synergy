@@ -58,7 +58,7 @@ import {
   type SessionTransitionProgress,
 } from "@/components/session/session-transition-progress"
 import type { SessionTransitionHandoff } from "@/components/session/session-transition-handoff"
-import { upsertSessionInboxItem } from "@/components/session/session-inbox-utils"
+import { isInboxItemMaterialized, upsertSessionInboxItem } from "@/components/session/session-inbox-utils"
 import { createNewSessionRecoveryActions, type NewSessionRecovery } from "@/components/session/new-session-recovery"
 import { useLocale } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
@@ -68,7 +68,7 @@ import { nextMessageWindowTotal, nextMessageWindowTotalAfterRemoval } from "@/co
 import { promptSubmitFailure } from "./submit-failure"
 import { runComposerPreflight } from "./composer-preflight"
 import { createOptimisticUserMessage } from "./optimistic-user-message"
-import { handoffOptimisticMessage } from "@/context/session-optimistic-message"
+import { handoffOptimisticMessage, isOptimisticMessagePending } from "@/context/session-optimistic-message"
 
 type PromptSubmitInput = {
   props: Pick<
@@ -1128,20 +1128,26 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         if (!accepted) throw new Error("Session input returned no acceptance result")
         if (accepted.status === "queued") {
           const item = accepted.item
-          globalSync.applyResourceMutationResponse(
-            sessionScopeKey,
-            activeSession.id,
-            "inbox",
-            inboxRequest,
-            result.response?.headers,
-            () => {
-              setSyncStore(
-                "inbox",
-                activeSession.id,
-                reconcile(upsertSessionInboxItem(syncStore.inbox[activeSession.id], item), { key: "id" }),
-              )
-            },
-          )
+          // Guard the mutation upsert: the backend may have already consumed
+          // this item (and materialized its message) before the acceptance
+          // response lands, e.g. when the session went idle between enqueue
+          // and response. Re-inserting would resurrect a ghost inbox row.
+          if (!isInboxItemMaterialized(syncStore.message[activeSession.id], item, isOptimisticMessagePending)) {
+            globalSync.applyResourceMutationResponse(
+              sessionScopeKey,
+              activeSession.id,
+              "inbox",
+              inboxRequest,
+              result.response?.headers,
+              () => {
+                setSyncStore(
+                  "inbox",
+                  activeSession.id,
+                  reconcile(upsertSessionInboxItem(syncStore.inbox[activeSession.id], item), { key: "id" }),
+                )
+              },
+            )
+          }
         }
         if (armedLightLoop) input.clearPendingLightLoop()
         if (accepted.status === "queued" && optimisticAdded) {

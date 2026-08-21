@@ -29,6 +29,7 @@ import { shouldRefreshGlobalConfig, type ConfigUpdatedProperties } from "./globa
 import { LocaleConfigReconciler } from "./locale-config-reconciler"
 import { observeWatermark, type Watermark } from "./sync-watermark"
 import { planSessionVolatileResync } from "./session-volatile-resync"
+import { removeMaterializedInboxItems } from "../components/session/session-inbox-utils"
 import {
   parseSyncVersion,
   readSyncVersion,
@@ -1345,6 +1346,17 @@ function createGlobalSync() {
         const sessionID = info.sessionID
         applyResourceEvent(scopeKey, sessionID, "message", event, () => {
           contextProjectionRevision.invalidate(scopeKey, sessionID)
+          // A canonical user-message update proves its inbox item (pre-allocated
+          // messageID) was consumed — the backend is peek-then-commit, so the
+          // item is already gone there; prune any ghost a missed or reordered
+          // inbox event left in the store.
+          if (info.role === "user") {
+            const inboxItems = store.inbox[sessionID]
+            const prunedInbox = removeMaterializedInboxItems(inboxItems, info.id)
+            if (prunedInbox !== inboxItems) {
+              setStore("inbox", sessionID, reconcile(prunedInbox ?? [], { key: "id" }))
+            }
+          }
           const latestContextMessage = reduceLatestSessionContextUsageMessage(
             store.latestContextMessage[sessionID],
             info,

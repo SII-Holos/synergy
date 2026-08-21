@@ -23,6 +23,36 @@ export function upsertSessionInboxItem(
   return sortInboxItems([...(items ?? []).filter((item) => item.id !== accepted.id), accepted])
 }
 
+/**
+ * Drop inbox items whose pre-allocated messageID is now materialized as a
+ * canonical (non-optimistic) transcript message. Inbox consumption is
+ * peek-then-commit on the backend, so a dropped `session.inbox.updated` event
+ * can leave a consumed item in the frontend store; the matching
+ * `message.updated` event proves consumption and prunes the ghost.
+ */
+export function removeMaterializedInboxItems(
+  items: SessionInboxItem[] | undefined,
+  messageID: string,
+): SessionInboxItem[] | undefined {
+  if (!items?.length) return items
+  const next = items.filter((item) => item.messageID !== messageID)
+  return next.length === items.length ? items : next
+}
+
+/**
+ * Whether a queued acceptance response may still upsert its item: once the
+ * item's message is materialized in the loaded window (and is not the local
+ * optimistic placeholder), re-inserting the item would resurrect a ghost.
+ */
+export function isInboxItemMaterialized(
+  messages: ReadonlyArray<{ id: string }> | undefined,
+  item: Pick<SessionInboxItem, "messageID">,
+  isPendingPlaceholder: (message: { id: string }) => boolean,
+): boolean {
+  if (!messages) return false
+  return messages.some((message) => message.id === item.messageID && !isPendingPlaceholder(message))
+}
+
 export type SessionInboxView =
   | { status: "loading"; items: SessionInboxItem[]; count: 0 }
   | { status: "empty"; items: SessionInboxItem[]; count: 0 }

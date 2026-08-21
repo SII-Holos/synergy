@@ -26,6 +26,7 @@ import { SessionMessageCache } from "../../src/session/message-cache"
 import { Bus } from "../../src/bus"
 import { SessionEvent } from "../../src/session/event"
 import { Command } from "../../src/command/command"
+import { SessionDrive } from "../../src/session/drive"
 
 const sessionID = "ses_test"
 
@@ -2211,6 +2212,58 @@ describe("SessionInvoke.cancel", () => {
       ;(SessionManager as any).signalAbort = originalSignalAbort
       ;(PermissionNext as any).clearForSession = originalClearForSession
       SessionManager.unregisterRuntime(sessionID)
+    }
+  })
+})
+
+describe("SessionInvoke abort with queued inbox work", () => {
+  test("schedules pending task work once after an explicit abort", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    const originalRequest = SessionDrive.request
+    const driveRequests: string[] = []
+    ;(SessionDrive as any).request = mock(async (_sessionID: string, reason: string) => {
+      driveRequests.push(reason)
+      return true
+    })
+    const restore = installBasicLoopMocks({
+      onProcess: async (_input, assistant, callIndex) => {
+        if (callIndex > 1) return
+        await SessionInbox.enqueueUser({
+          sessionID: activeSessionID,
+          agent: "synergy",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          parts: [{ type: "text", text: "queued while the run is active" }],
+        })
+        SessionInvoke.cancel(activeSessionID)
+        assistant.error = new MessageV2.AbortedError({
+          message: "Session aborted during turn",
+        }).toObject()
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+
+          await expect(SessionInvoke.loop.force(session.id)).rejects.toThrow()
+
+          const items = await SessionInbox.list(session.id)
+          expect(items).toHaveLength(1)
+          expect(items[0].mode).toBe("task")
+          // An explicit abort must still schedule the durable task queued
+          // during the run. Without this drive the item strands in the
+          // inbox until the next user message wakes the session.
+          expect(driveRequests).toContain("release")
+        },
+      })
+    } finally {
+      ;(SessionDrive as any).request = originalRequest
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
     }
   })
 })

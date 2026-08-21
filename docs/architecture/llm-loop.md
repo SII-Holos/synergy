@@ -320,7 +320,7 @@ Provider, auth, output-length, timeout, abort, and unknown failures are persiste
 
 Startup reconciliation, Abort, and the pre-wake guard share one root-anchored, idempotent terminal repair. It canonicalizes a failed assistant that has an error or completion time but lacks a terminal finish without replacing its structured error, terminalizes a genuinely incomplete assistant with an aborted error, or creates one terminal aborted assistant when the latest reply-required root has none. Repair clears stale `pendingReply` and never invokes the model or tools.
 
-Abort never publishes lifecycle idle by itself. The owner remains in `stopping` until its loop exits and releases the lease, after terminal persistence and waiter settlement. A repeated abort reports that stopping is already in progress, while the client may project immediate local stopping feedback during the request.
+Abort never publishes lifecycle idle by itself. The owner remains in `stopping` until its loop exits and releases the lease, after terminal persistence and waiter settlement. A repeated abort reports that stopping is already in progress, while the client may project immediate local stopping feedback during the request. Release after an explicit abort still schedules the pending-work drive: the loop's failed exit suppresses hammering wakeups, but an abort is a user action, so task-mode inbox items queued during the run are recovered by the release-driven arbitration instead of stranding until the next user message.
 
 ## Invariants
 

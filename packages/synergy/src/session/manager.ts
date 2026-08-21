@@ -375,7 +375,12 @@ export namespace SessionManager {
       return result
     } finally {
       if (options?.releaseLease !== false) {
-        await finish(lease, { requestNextWork: completed || options?.requestNextWorkOnFailure !== false })
+        // Capture before finish(): release() aborts the lease controller, so
+        // afterwards an explicit user abort is indistinguishable from cleanup.
+        const explicitlyAborted = lease.signal.aborted
+        await finish(lease, {
+          requestNextWork: completed || explicitlyAborted || options?.requestNextWorkOnFailure !== false,
+        })
       }
     }
   }
