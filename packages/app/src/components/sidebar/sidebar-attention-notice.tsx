@@ -14,9 +14,9 @@ export function SidebarAttentionNotice(props: {
   const lingui = useLingui()
   const __ = (d: { id: string; message?: string }) => lingui._(d as { id: string; message: string })
   return (
-    <Show when={props.notice}>
+    <Show when={props.notice} keyed>
       {(notice) => {
-        const n = notice()
+        const n = notice
         const titleStr = () => __(n.title)
         const detailStr = () => (n.detail ? __(n.detail) : "")
         return (

@@ -26,6 +26,7 @@ const playwrightIsolated = [
   "test/components/session/conversation-row-retention.test.ts",
   "test/components/session/dialog-fork-confirm.dom.test.tsx",
   "test/components/sidebar/channel-sidebar-layout.test.ts",
+  "test/components/sidebar/sidebar-attention-notice.dom.test.tsx",
 ]
 
 await runBatchedTests({
