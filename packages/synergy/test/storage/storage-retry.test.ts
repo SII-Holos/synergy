@@ -82,4 +82,27 @@ describe("Storage atomic write transient-failure retry", () => {
     expect(calls).toBe(1)
     expect(await tempFiles(root)).toEqual([])
   })
+
+  test("retries transient EPERM on terminal cleanup and still removes the temp file", async () => {
+    const root = keyRoot()
+    const realUnlink: typeof fs.unlink = fs.unlink.bind(fs)
+    let renameCalls = 0
+    let unlinkCalls = 0
+    const renameImpl = (async () => {
+      renameCalls += 1
+      throw errnoError("EPERM")
+    }) as unknown as typeof fs.rename
+    using _rename = spyOn(fs, "rename").mockImplementation(renameImpl)
+    const unlinkImpl = (async (p: unknown) => {
+      unlinkCalls += 1
+      if (unlinkCalls === 1) throw errnoError("EPERM")
+      return realUnlink(p as Parameters<typeof realUnlink>[0])
+    }) as unknown as typeof fs.unlink
+    using _unlink = spyOn(fs, "unlink").mockImplementation(unlinkImpl)
+
+    await expect(Storage.write([...root, "item"], { value: 5 })).rejects.toMatchObject({ code: "EPERM" })
+    expect(renameCalls).toBe(4)
+    expect(unlinkCalls).toBe(2)
+    expect(await tempFiles(root)).toEqual([])
+  })
 })

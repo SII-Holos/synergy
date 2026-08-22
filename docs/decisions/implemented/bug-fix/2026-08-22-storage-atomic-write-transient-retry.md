@@ -16,7 +16,7 @@ The repository already classified these codes as transient in `packages/synergy/
 
 - Up to 4 attempts with exponential backoff (50 ms base, 200 ms cap), reusing the same temp-file name so a retry overwrites the previous partial temp write.
 - Retry classification reuses `isRetryableIOError` from `@/util/io-retry` — only `EPERM`/`EACCES`/`EBUSY` retry; permanent errors (`ENOENT`, `ENOSPC`, genuine permission failures) propagate on the first occurrence.
-- On exhaustion or non-retryable failure the original error propagates unchanged after the temp file is unlinked, so no `.tmp-*` residue is left behind on the failure path.
+- On exhaustion or non-retryable failure the original error propagates unchanged after the temp file is removed; the cleanup itself retries transient unlink errors with the same backoff (the same handle that failed the rename can block the unlink), so no `.tmp-*` residue is left behind on the failure path.
 
 The diagnostics pending-session scan (`packages/synergy/src/observability/diagnostics.ts`), a cross-process reader of the same `info.json` files, now reads through `readFileWithRetry` so its own reads survive a concurrent atomic rename on Windows instead of silently dropping sessions from the dashboard.
 

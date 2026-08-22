@@ -273,13 +273,31 @@ export namespace Storage {
         return
       } catch (error) {
         if (!isRetryableIOError(error) || attempt >= ATOMIC_WRITE_ATTEMPTS) {
-          await fs.unlink(tmp).catch(() => {})
+          await removeTempFile(tmp)
           throw error
         }
-        const delay = Math.min(ATOMIC_WRITE_RETRY_MAX_MS, ATOMIC_WRITE_RETRY_BASE_MS * 2 ** (attempt - 1))
-        await new Promise((resolve) => setTimeout(resolve, delay))
+        await new Promise((resolve) => setTimeout(resolve, atomicRetryDelayMs(attempt)))
       }
     }
+  }
+
+  // The terminal-failure cleanup can hit the same Windows sharing violation
+  // that failed the rename (antivirus holding the temp handle), so transient
+  // unlink errors retry with the same backoff before being suppressed (#1247).
+  async function removeTempFile(tmp: string) {
+    for (let attempt = 1; attempt <= ATOMIC_WRITE_ATTEMPTS; attempt++) {
+      try {
+        await fs.unlink(tmp)
+        return
+      } catch (error) {
+        if (!isRetryableIOError(error) || attempt >= ATOMIC_WRITE_ATTEMPTS) return
+        await new Promise((resolve) => setTimeout(resolve, atomicRetryDelayMs(attempt)))
+      }
+    }
+  }
+
+  function atomicRetryDelayMs(attempt: number) {
+    return Math.min(ATOMIC_WRITE_RETRY_MAX_MS, ATOMIC_WRITE_RETRY_BASE_MS * 2 ** (attempt - 1))
   }
 
   function isTempFile(name: string) {
