@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/solid"
-import { SESSION_TURN_DESC, MAILBOX_DESC } from "./tool-title-descriptors"
+import { SESSION_TURN_DESC, MAILBOX_DESC, TOOL_LABEL_DESC } from "./tool-title-descriptors"
 
 import type {
   AssistantMessage,
@@ -39,7 +39,9 @@ import {
 import { Message, Part, getToolInfo } from "./message-part"
 import { MessageSlotOutlet, type MessageSlotName } from "./message-slots"
 import { AttachmentGallery } from "./attachment-card"
-import { resolveAttachmentPresentation } from "./attachment-card-utils"
+import { attachmentSize, formatAttachmentSize, resolveAttachmentPresentation } from "./attachment-card-utils"
+import { BasicTool } from "./basic-tool"
+import { classifyTool } from "./tool/classifier"
 import { MediaGenerationCard } from "./media-generation-card"
 import { isActiveMediaGenerationToolPart, isToolCardHidden } from "./tool-result-presentation"
 import "./session-turn.css"
@@ -527,7 +529,43 @@ function TimelineItemDisplay(props: {
     return <Part part={props.item.part} message={props.item.message} />
   }
   if (props.item.kind === "media-pending") return <MediaGenerationCard part={props.item.part} />
-  return <AttachmentGallery files={props.item.files} serverUrl={props.serverUrl} />
+  return <DeliveredAttachmentsCard item={props.item} serverUrl={props.serverUrl} />
+}
+
+function DeliveredAttachmentsCard(props: {
+  item: Extract<SessionTurnTimelineItem, { kind: "tool-attachments" }>
+  serverUrl: string
+}) {
+  const { _ } = useLingui()
+  const part = () => props.item.part
+  const files = () => props.item.files
+  const input = () => (part().state.input ?? {}) as Record<string, unknown>
+  const metadata = () => (part().state.metadata ?? {}) as Record<string, unknown>
+  const trigger = () => {
+    const info = getToolInfo(part().tool, input(), metadata())
+    if (typeof info.title === "string" && info.title === part().tool) {
+      const classified = classifyTool(part().tool, input(), metadata())
+      return { icon: classified.spec.icon, title: classified.title }
+    }
+    return { icon: info.icon, title: info.title }
+  }
+  const subtitle = () => {
+    const current = files()
+    return current.length === 1
+      ? current[0].filename
+      : _({ ...TOOL_LABEL_DESC.files, values: { count: current.length } })
+  }
+  const totalBytes = () => files().reduce((sum, file) => sum + (attachmentSize(file) ?? 0), 0)
+  const tags = () => {
+    const bytes = totalBytes()
+    const label = bytes > 0 ? formatAttachmentSize(bytes) : undefined
+    return label ? [{ label }] : undefined
+  }
+  return (
+    <BasicTool defaultOpen trigger={{ ...trigger(), subtitle: subtitle(), tags: tags() }}>
+      <AttachmentGallery files={files()} serverUrl={props.serverUrl} />
+    </BasicTool>
+  )
 }
 
 function isToolTimelineItem(item: SessionTurnTimelineItem): boolean {
