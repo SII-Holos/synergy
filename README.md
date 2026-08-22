@@ -23,7 +23,7 @@
 
   <p align="center">
     <a href=".github/assets/readme/synergy-workspace.png">
-      <img src=".github/assets/readme/synergy-workspace.png" alt="Synergy workspace" width="100%" />
+      <img src=".github/assets/readme/synergy-workspace.png" alt="Synergy workspace: an agent session beside a live in-app Browser preview of the artifact it built" width="100%" />
     </a>
   </p>
 
@@ -45,6 +45,42 @@ Synergy runs as a standalone local workspace. Connecting a Holos agent adds acco
 - **Local-first and extensible** — Add providers, tools, Skills, commands, MCP servers, plugins, Channels, and remote Synergy Link targets while keeping local ownership of projects and data.
 
 Read the [product overview](docs/product/overview.md) for the complete product model, including Lattice Pathways, Agenda, Channels, Library, Holos, and extension boundaries.
+
+## Inside the workspace
+
+|              <img src=".github/assets/readme/synergy-agenda.png" alt="Agenda" width="100%" />              |               <img src=".github/assets/readme/synergy-library.png" alt="Library" width="100%" />               |
+| :--------------------------------------------------------------------------------------------------------: | :------------------------------------------------------------------------------------------------------------: |
+| **Agenda** — schedule recurring and one-off agent runs on Day/Week/Month calendar views, with run history. | **Library** — durable memory and evaluated experiences, with reward-signal analytics per behavioral dimension. |
+|               <img src=".github/assets/readme/synergy-notes.png" alt="Notes" width="100%" />               |               <img src=".github/assets/readme/synergy-plugins.png" alt="Plugins" width="100%" />               |
+|   **Notes** — agents write durable notes and Blueprints as they work, searchable and scoped per project.   |        **Plugins** — extend Synergy with skills, tools, and UI from the official and local registries.         |
+
+## Benchmarks
+
+On the [DeepSWE v1.1](https://deepswe.datacurve.ai) benchmark — 113 real repository engineering tasks — the same model completes far more work under Synergy than under its stock harness. Running deepseek-v4-flash with the **synergy-max** agent lifts Pass@1 from **53% to 67.3%** (+14.3pp, 1.27×) at **$0.54/task**, landing on the cost-performance Pareto front.
+
+<p align="center">
+  <img src=".github/assets/readme/benchmark-deepswe-pass1.png" alt="DeepSWE v1.1 Pass@1 across 19 leaderboard configurations" width="48.5%" />
+  &nbsp;
+  <img src=".github/assets/readme/benchmark-deepswe-cost-frontier.png" alt="Cost-performance frontier: synergy-max vs official leaderboard" width="48.5%" />
+</p>
+
+<p align="center"><sub>Pass@1 across 19 leaderboard configurations (left) and the cost-performance frontier (right): synergy-max (orange) vs the official mini-swe-agent run of the same model (yellow).</sub></p>
+
+<p align="center">
+  <img src=".github/assets/readme/benchmark-deepswe-failure-anatomy.png" alt="DeepSWE v1.1 failure anatomy" width="100%" />
+</p>
+
+<p align="center"><sub>Failure anatomy: 76/113 tasks fully passed; 24 of the 37 unsolved tasks miss by only 1–2 tests.</sub></p>
+
+<p align="center">
+  <img src=".github/assets/readme/benchmark-deepswe-cost-duration.png" alt="Per-task cost vs duration profile" width="48.5%" />
+  &nbsp;
+  <img src=".github/assets/readme/benchmark-deepswe-efficiency.png" alt="Efficiency vs top-5 official models" width="48.5%" />
+</p>
+
+<p align="center"><sub>Resource profile (left): passed tasks average $0.60 over ~2.3h. Efficiency vs the top-5 official models and the cheapest baseline (right): $0.54/task — 7–40× cheaper, with token/step counts aggregated across subagents.</sub></p>
+
+Methodology: official leaderboard numbers from deepswe.datacurve.ai (v1.1, fetched 2026-08-22); Synergy numbers from local full-benchmark runs. All costs are computed at the API prices in effect **before** 2026-08-17 00:00 (Beijing time) — **prior to** DeepSeek's across-the-board price increase and peak/off-peak pricing.
 
 ## Quick Start
 
