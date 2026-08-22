@@ -382,13 +382,13 @@ describe("CSS Token Integrity", () => {
 
     const offenders: string[] = []
     for (const root of ["src", "../app/src"]) {
-      for (const ext of ["css", "tsx"]) {
+      for (const ext of ["css", "ts", "tsx"]) {
         const glob = new Bun.Glob(`**/*.${ext}`)
         for await (const rel of glob.scan(root)) {
           if (rel.includes("theme.generated")) continue
           const content = await readFileSafe(`${root}/${rel}`)
           if (!content) continue
-          const refs = new Set([...extractVarRefs(content), ...(ext === "tsx" ? extractTailwindVarRefs(content) : [])])
+          const refs = new Set([...extractVarRefs(content), ...(ext !== "css" ? extractTailwindVarRefs(content) : [])])
           for (const ref of refs) {
             if (deadStatusTokens.has(ref)) offenders.push(`  ${root}/${rel}: --${ref}`)
           }
