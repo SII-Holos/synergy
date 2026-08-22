@@ -365,13 +365,13 @@
 }
 
 .plugin-marketplace-state-installed {
-  background: var(--surface-success-soft);
-  color: var(--text-success);
+  background: var(--surface-success-weak);
+  color: var(--text-on-success-base);
 }
 
 .plugin-marketplace-state-disabled {
-  background: var(--surface-warning-soft);
-  color: var(--text-warning);
+  background: var(--surface-warning-weak);
+  color: var(--text-on-warning-base);
 }
 
 .plugin-marketplace-install-dot {
@@ -667,8 +667,8 @@
 }
 
 .plugin-detail-secondary-action:hover:not(:disabled) {
-  background: var(--surface-critical-soft);
-  color: var(--text-critical);
+  background: var(--surface-critical-weak);
+  color: var(--text-on-critical-base);
 }
 
 .plugin-detail-icon-link {
@@ -707,9 +707,9 @@
   gap: 0.5rem;
   margin-top: 1rem;
   border-radius: 0.75rem;
-  background: var(--surface-warning-soft);
+  background: var(--surface-warning-weak);
   padding: 0.625rem 0.75rem;
-  color: var(--text-warning);
+  color: var(--text-on-warning-base);
   font-size: 0.75rem;
   line-height: 1rem;
 }
@@ -725,9 +725,9 @@
   gap: 0.5rem;
   margin-top: 1rem;
   border-radius: 0.75rem;
-  background: var(--surface-critical-soft);
+  background: var(--surface-critical-weak);
   padding: 0.625rem 0.75rem;
-  color: var(--text-critical);
+  color: var(--text-on-critical-base);
   font-size: 0.75rem;
   line-height: 1rem;
 }

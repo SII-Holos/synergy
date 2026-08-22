@@ -155,8 +155,8 @@
   gap: 10px;
   border-bottom: 1px solid var(--border-weak-base);
   padding: 4px 10px;
-  background: var(--surface-warning-soft);
-  color: var(--text-warning);
+  background: var(--surface-warning-weak);
+  color: var(--text-on-warning-base);
   font-size: 11px;
 }
 

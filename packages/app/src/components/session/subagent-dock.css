@@ -84,10 +84,10 @@
 
 .subagent-avatar-retrying {
   box-shadow:
-    0 0 0 2px var(--text-critical),
-    0 0 0 4px color-mix(in srgb, var(--text-critical) 28%, transparent) !important;
+    0 0 0 2px var(--icon-critical-base),
+    0 0 0 4px color-mix(in srgb, var(--icon-critical-base) 28%, transparent) !important;
 }
 
 .subagent-avatar-retry-border {
-  border-color: color-mix(in srgb, var(--text-critical) 72%, transparent);
+  border-color: color-mix(in srgb, var(--icon-critical-base) 72%, transparent);
 }

@@ -640,7 +640,7 @@
 }
 
 .personalize-editor [data-slot="input-error"] {
-  color: var(--text-critical);
+  color: var(--text-error);
   font-size: var(--settings-type-caption-size);
   line-height: var(--settings-type-caption-line-height);
 }
@@ -661,7 +661,7 @@
 
 .personalize-byte-count-error,
 .personalize-error {
-  color: var(--text-critical);
+  color: var(--text-error);
 }
 
 .personalize-actions {
@@ -2516,7 +2516,7 @@
 }
 
 .account-profile-logout {
-  color: var(--text-critical);
+  color: var(--text-error);
 }
 
 .account-profile-logout:hover:not(:disabled),
@@ -2586,7 +2586,7 @@
 }
 
 .account-profile-form [data-slot="input-error"] {
-  color: var(--text-critical);
+  color: var(--text-error);
   font-size: var(--settings-type-caption-size);
   line-height: var(--settings-type-caption-line-height);
 }
