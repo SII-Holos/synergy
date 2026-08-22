@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import { ObservabilityEvents } from "../../src/observability/events"
@@ -74,6 +74,31 @@ describe("Diagnostics", () => {
     const output = path.join(home, "fresh-diagnostics.tar.gz")
     const result = await Diagnostics.createPackage({ output })
     expect(result.summary.sessions.pendingReply.some((item) => item.sessionID === "ses_cached")).toBe(false)
+  })
+
+  test("pending-session scan survives a transient EPERM on info.json reads", async () => {
+    const home = process.env.SYNERGY_TEST_HOME!
+    const sessionsDir = path.join(home, ".synergy", "data", "sessions", "scope:home", "ses_transient")
+    await fs.mkdir(sessionsDir, { recursive: true })
+    await fs.writeFile(
+      path.join(sessionsDir, "info.json"),
+      JSON.stringify({ id: "ses_transient", pendingReply: true, time: { updated: 1 } }),
+    )
+
+    const realReadFile: typeof fs.readFile = fs.readFile.bind(fs)
+    let calls = 0
+    const impl = (async (target: unknown, ...rest: unknown[]) => {
+      if (typeof target === "string" && target.endsWith("info.json")) {
+        calls += 1
+        if (calls === 1) throw Object.assign(new Error("injected EPERM"), { code: "EPERM" })
+      }
+      return realReadFile(target as Parameters<typeof realReadFile>[0], ...(rest as []))
+    }) as unknown as typeof fs.readFile
+    using _read = spyOn(fs, "readFile").mockImplementation(impl)
+
+    const summary = await Diagnostics.summary({ freshPendingSessions: true })
+    expect(summary.sessions.pendingReply.some((item) => item.sessionID === "ses_transient")).toBe(true)
+    expect(calls).toBeGreaterThanOrEqual(2)
   })
 
   test("package contains redacted indexed telemetry without JSONL-only events", async () => {

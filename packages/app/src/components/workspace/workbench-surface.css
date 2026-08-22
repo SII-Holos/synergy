@@ -321,7 +321,7 @@
 }
 
 .workbench-surface-error {
-  color: var(--text-critical-base, var(--text-weak));
+  color: var(--text-error);
 }
 
 .workbench-surface-load-error {
