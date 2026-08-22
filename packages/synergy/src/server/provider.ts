@@ -9,6 +9,7 @@ import { RuntimeReload } from "@/runtime/reload"
 import { ProviderUsage } from "@/provider/usage-service"
 import { AccountUsage } from "@/provider/usage"
 import { GitHubProvider } from "@/provider/github"
+import { GithubIdentity } from "@/provider/github-identity"
 import { listProvidersForClient, ProviderListResponse } from "./provider-view"
 import { ProviderCatalog } from "@/provider/catalog"
 import { ProviderConnection } from "@/provider/connection"
@@ -357,6 +358,54 @@ export const ProviderRoute = new Hono()
       await GitHubProvider.remove()
       await RuntimeReload.reload({ targets: ["provider"], reason: "GitHub credentials removed" })
       return c.json(true)
+    },
+  )
+  .get(
+    "/auth/github/identity",
+    describeRoute({
+      summary: "Get GitHub git identity sync state",
+      description: "Inspect the git global identity and the GitHub-account-derived identity the sync would apply.",
+      operationId: "provider.auth.githubIdentity",
+      responses: {
+        200: {
+          description: "Git identity sync state",
+          content: {
+            "application/json": {
+              schema: resolver(GithubIdentity.State),
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      return c.json(await GithubIdentity.state())
+    },
+  )
+  .post(
+    "/auth/github/identity/sync",
+    describeRoute({
+      summary: "Sync git identity from GitHub",
+      description: "Apply the GitHub-account-derived (or explicitly configured) identity to git config --global.",
+      operationId: "provider.auth.githubIdentitySync",
+      responses: {
+        200: {
+          description: "Sync result",
+          content: {
+            "application/json": {
+              schema: resolver(GithubIdentity.SyncResult),
+            },
+          },
+        },
+        ...errors(400),
+      },
+    }),
+    async (c) => {
+      try {
+        return c.json(await GithubIdentity.sync())
+      } catch (error) {
+        if (error instanceof GithubIdentity.SyncError) return c.json(error.toObject(), 400)
+        throw error
+      }
     },
   )
   .post(

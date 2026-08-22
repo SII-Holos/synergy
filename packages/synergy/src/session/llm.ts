@@ -514,6 +514,8 @@ export namespace LLM {
                         : baseSystemLength + input.systemCacheBreakpoint,
                     lookAtAvailable: input.activeToolIDs?.includes("look_at") === true,
                     viewImageAvailable: input.activeToolIDs?.includes("view_image") === true,
+                    profileID: prepared.provider.profileID,
+                    mergeSystemMessages: prepared.provider.options?.mergeSystemMessages === true,
                   })
                 }
                 return args.params

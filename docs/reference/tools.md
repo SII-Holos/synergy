@@ -166,10 +166,13 @@ View execution history for an agenda item. Shows recent runs with status, durati
 
 Kind: `orchestration.agenda`
 
-Create a recurring task that runs in its own separate session, isolated from this conversation. Only use for strictly periodic schedules — cron or fixed intervals. Each execution gets a fresh session with no access to this conversation; the prompt must be a complete, self-contained brief. Triggers: - `{type:"cron", expr:"0 9 * * *", tz:"Asia/Shanghai"}` — recurring cron - `{type:"every", interval:"30m"}` — recurring at a fixed interval - `{type:"session", sessionID:"ses_xxx", event:"turn.end"}` — fires once when the target session ends a turn. Optional filters: `agent`, `finish`. Set `once:false` to keep firing on every matching turn. By default, results are delivered back to this session and wake you (wake=true). Set silent=true to suppress delivery. Set controlProfile to "full_access", "autonomous", or "guarded" when the scheduled session needs an explicit permission profile. **If you need adaptive timing** — shorter checks when things look uncertain, longer intervals when stable — use recursive `agenda_watch` instead. `agenda_schedule` is for rigid, predictable schedules only. **Never use `agenda_schedule` or `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion. Use agenda_list to see scheduled tasks. Use agenda_cancel(id) to stop a recurring task.
+Create a recurring task that runs in its own separate session, isolated from this conversation. Only use for strictly periodic schedules — cron or fixed intervals. Each execution gets a fresh session with no access to this conversation; the prompt must be a complete, self-contained brief. Triggers: - `{type:"cron", expr:"0 9 * * *", tz:"Asia/Shanghai"}` — recurring cron - `{type:"every", interval:"30m"}` — recurring at a fixed interval - `{type:"session", sessionID:"ses_xxx", event:"turn.end"}` — fires once when the target session ends a turn. Optional filters: `agent`, `finish`. Set `once:false` to keep firing on every matching turn. - `{type:"github", resource:"pr"|"issue"|"workflow"|"check", repository:"owner/repo", number?, ref?, interval?, states?}` — fires when the watched GitHub resource changes state, polled on an interval (default 5m). `number` targets one PR/issue or workflow run id; `ref` targets a branch/tag/commit for workflow/check watches; `states` filters transitions (e.g. ["merged"], ["failure"]). Requires a connected GitHub credential. By default, results are delivered back to this session and wake you (wake=true). Set silent=true to suppress delivery. Set controlProfile to "full_access", "autonomous", or "guarded" when the scheduled session needs an explicit permission profile. **If you need adaptive timing** — shorter checks when things look uncertain, longer intervals when stable — use recursive `agenda_watch` instead. `agenda_schedule` is for rigid, predictable schedules only. **Never use `agenda_schedule` or `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion. Use agenda_list to see scheduled tasks. Use agenda_cancel(id) to stop a recurring task.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `title` | - | yes |  |
+| `output` | - | yes |  |
+| `metadata` | - | yes |  |
 | `title` | - | yes |  |
 | `output` | AgendaDedup.formatConflictMessage | yes |  |
 | `metadata` | - | yes |  |
@@ -228,7 +231,7 @@ Update an existing agenda item. Only provided fields are changed — omitted fie
 
 Kind: `orchestration.agenda`
 
-Set a one-time wake-up in THIS session. The primary use case is **recursive adaptive monitoring**: - Start with a short delay (3–5min) to check an external process, experiment, or pipeline. - Assess health when woken — if more monitoring is needed, set another `agenda_watch` with an adjusted delay. Stretch as stability is confirmed (e.g. 3min → 10min → 30min). Always include in the prompt whether another watch should follow and under what conditions. Also use for deliberate pauses: wait for a deploy, batch job, or user review before continuing. When the watch fires, you continue in this session with full conversation history. The watch auto-completes after firing. You can also wake on another session's turn instead of a delay: pass `onSessionEnd: {sessionID, agent?, finish?}` (mutually exclusive with `delay`). When the watched session ends a turn — optionally filtered by agent or finish state — you are woken in THIS session with your prompt and full conversation history. The watch auto-completes after firing. Example: `onSessionEnd: {sessionID:"ses_research", finish:"stop"}` to react when the research session finishes its turn. **Never use `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion — no watch or polling is needed. Use agenda_list to see active watches. Use agenda_cancel(id) to cancel before it fires. If you need a RECURRING task with a strictly periodic schedule (cron, fixed interval), use `agenda_schedule`. If timing needs to adapt based on observed state, recursive `agenda_watch` is the right tool.
+Set a one-time wake-up in THIS session. The primary use case is **recursive adaptive monitoring**: - Start with a short delay (3–5min) to check an external process, experiment, or pipeline. - Assess health when woken — if more monitoring is needed, set another `agenda_watch` with an adjusted delay. Stretch as stability is confirmed (e.g. 3min → 10min → 30min). Always include in the prompt whether another watch should follow and under what conditions. Also use for deliberate pauses: wait for a deploy, batch job, or user review before continuing. When the watch fires, you continue in this session with full conversation history. The watch auto-completes after firing. You can also wake on another session's turn instead of a delay: pass `onSessionEnd: {sessionID, agent?, finish?}` (mutually exclusive with `delay` and `onGithub`). When the watched session ends a turn — optionally filtered by agent or finish state — you are woken in THIS session with your prompt and full conversation history. The watch auto-completes after firing. Example: `onSessionEnd: {sessionID:"ses_research", finish:"stop"}` to react when the research session finishes its turn. You can also wake on a GitHub state change: pass `onGithub: {resource, repository, number?, ref?, states?}` (mutually exclusive with `delay` and `onSessionEnd`). `resource` is "pr" | "issue" | "workflow" | "check"; `repository` is owner/repo; `number` targets one PR/issue or workflow run id (omit for the repository's recent items); `ref` targets a branch/tag/commit for workflow/check watches; `states` filters which new state should wake you (e.g. ["merged"], ["failure"]). When the watched resource transitions into a matching state, you are woken in THIS session with the transition details (number, title, state, previousState, url). The watch auto-completes after firing. Requires a connected GitHub credential; watches stay idle and silent without one. **Never use `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion — no watch or polling is needed. Use agenda_list to see active watches. Use agenda_cancel(id) to cancel before it fires. If you need a RECURRING task with a strictly periodic schedule (cron, fixed interval), use `agenda_schedule`. If timing needs to adapt based on observed state, recursive `agenda_watch` is the right tool. Repo-wide watches (no `number`) fire for transitions of the 10 most recently updated items. A states-filtered watch reports new items first observed already in a targeted state; an unfiltered watch baselines first observations silently, so an item created and merged entirely between two polls is not reported. Point watches (`number`) always see transitions.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -239,12 +242,21 @@ Set a one-time wake-up in THIS session. The primary use case is **recursive adap
 | `reason` | - | yes |  |
 | `runningSubagentCount` | runningSubagents.length | yes |  |
 | `runningSubagentIds` | runningSubagents.map | yes |  |
+| `title` | - | yes |  |
+| `output` | - | yes |  |
+| `metadata` | - | yes |  |
 | `type` | - | yes |  |
 | `sessionID` | params.onSessionEnd.sessionID | yes |  |
 | `event` | - | yes |  |
 | `agent` | params.onSessionEnd.agent | yes |  |
 | `finish` | params.onSessionEnd.finish | yes |  |
 | `once` | true | yes |  |
+| `type` | - | yes |  |
+| `resource` | params.onGithub.resource | yes |  |
+| `repository` | params.onGithub.repository | yes |  |
+| `number` | params.onGithub.number | yes |  |
+| `ref` | params.onGithub.ref | yes |  |
+| `states` | params.onGithub.states | yes |  |
 | `title` | - | yes |  |
 | `output` | AgendaDedup.formatConflictMessage | yes |  |
 | `metadata` | - | yes |  |

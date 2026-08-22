@@ -5,7 +5,7 @@ export function sessionActionVisibility(input: { sessionID?: string; scopeKey: s
   const project = menu && !isHomeScope(input.scopeKey)
   return {
     menu,
-    rename: project,
+    rename: menu,
     worktree: project,
     export: menu,
     import: menu,
@@ -21,7 +21,17 @@ export function sessionModelControlVisibility(input: { canSelectModel: boolean; 
   }
 }
 
-export function sessionScopeRequest(scopeKey: string): { scopeID: string } | { directory: string } {
+export type SessionScopeRequest = { scopeID: string } | { directory: string }
+
+export function sessionScopeRequest(scopeKey: string): SessionScopeRequest {
   if (isHomeScope(scopeKey)) return { scopeID: HOME_SCOPE_KEY }
   return { directory: scopeKey }
+}
+
+export function sessionScopeRequestFor(session: {
+  scope: { id: string; type?: string; directory?: string }
+}): SessionScopeRequest {
+  if (session.scope.type === "home" || session.scope.id === HOME_SCOPE_KEY) return { scopeID: HOME_SCOPE_KEY }
+  const directory = session.scope.directory ?? session.scope.id
+  return { directory }
 }

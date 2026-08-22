@@ -454,6 +454,10 @@ import type {
   PostPluginDevReloadErrors,
   PostPluginDevReloadResponses,
   ProviderAuthErrors,
+  ProviderAuthGithubIdentityErrors,
+  ProviderAuthGithubIdentityResponses,
+  ProviderAuthGithubIdentitySyncErrors,
+  ProviderAuthGithubIdentitySyncResponses,
   ProviderAuthGithubLogoutErrors,
   ProviderAuthGithubLogoutResponses,
   ProviderAuthGithubStatusErrors,
@@ -5930,6 +5934,7 @@ export class Domain extends HeyApiClient {
         | "channels"
         | "holos"
         | "email"
+        | "github"
         | "runtime"
       directory?: string
       scopeID?: string
@@ -5976,6 +5981,7 @@ export class Domain extends HeyApiClient {
         | "channels"
         | "holos"
         | "email"
+        | "github"
         | "runtime"
       directory?: string
       scopeID?: string
@@ -6029,6 +6035,7 @@ export class Domain extends HeyApiClient {
         | "channels"
         | "holos"
         | "email"
+        | "github"
         | "runtime"
       directory?: string
       scopeID?: string
@@ -7509,6 +7516,74 @@ export class Auth extends HeyApiClient {
       ThrowOnError
     >({
       url: "/provider/auth/github",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get GitHub git identity sync state
+   *
+   * Inspect the git global identity and the GitHub-account-derived identity the sync would apply.
+   */
+  public githubIdentity<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ProviderAuthGithubIdentityResponses,
+      ProviderAuthGithubIdentityErrors,
+      ThrowOnError
+    >({
+      url: "/provider/auth/github/identity",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Sync git identity from GitHub
+   *
+   * Apply the GitHub-account-derived (or explicitly configured) identity to git config --global.
+   */
+  public githubIdentitySync<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ProviderAuthGithubIdentitySyncResponses,
+      ProviderAuthGithubIdentitySyncErrors,
+      ThrowOnError
+    >({
+      url: "/provider/auth/github/identity/sync",
       ...options,
       ...params,
     })

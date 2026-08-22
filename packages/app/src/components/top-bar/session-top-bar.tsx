@@ -25,7 +25,11 @@ import {
   isSessionRunningForWorkspaceChange,
   type SessionWorkspaceTransitionRequest,
 } from "@/components/session/worktree-session"
-import { sessionActionVisibility, sessionModelControlVisibility } from "@/components/session/session-actions"
+import {
+  sessionActionVisibility,
+  sessionModelControlVisibility,
+  sessionScopeRequestFor,
+} from "@/components/session/session-actions"
 import { copySessionID } from "@/utils/session-copy"
 import "./session-top-bar.css"
 import { SlotOutlet } from "@/plugin/slot-outlet"
@@ -196,9 +200,8 @@ export function SessionTopBar(props: {
 
   const showRenameDialog = () => {
     const session = sessionInfo()
-    const dir = sessionDirectory()
-    if (!session || !dir) return
-    dialog.show(() => <DialogSessionRename session={session} directory={dir} />)
+    if (!session) return
+    dialog.show(() => <DialogSessionRename session={session} scopeRequest={sessionScopeRequestFor(session)} />)
   }
 
   const showEnterWorktreeDialog = (sessionID: string, dir: string) => {
