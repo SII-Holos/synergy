@@ -13,6 +13,7 @@ Load `change-browser-runtime` for native Browser or Browser-host/WebRTC work and
 - Native Browser uses `WebContentsView` and the shared Browser command/page contract. Remote Browser-host mode uses the shared WebRTC/data-channel path; neither creates alternate tabs or screenshot-stream presentation.
 - Browser content sessions may grant Chromium local-network and loopback-network permissions, but unrelated media, device, location, and filesystem permissions remain denied. Do not duplicate Chromium network policy in Electron or the server gateway.
 - Keep update channel, checksum, release asset, bundled runtime, and server shutdown behavior aligned. Test packaging inputs rather than assuming source files are included.
+- The desktop pet (`pet-window.ts`, `pet-state.ts`, `pet-settings.ts`, `pet-sprite.ts`, `pet-page.ts`, `pet-preload.ts`) is a shell-owned transparent topmost window. It subscribes to the Synergy global event stream in the main process and pushes typed state to a sandboxed renderer; keep the renderer free of server URLs, SDK clients, and Node access. `desktop:build` bundles `pet-preload.ts`; settings persist in `desktop-pet.json` under `userData`.
 
 ## Verify
 
