@@ -28,6 +28,8 @@ export namespace ProviderTransform {
     systemCacheBreakpoint?: number
     lookAtAvailable?: boolean
     viewImageAvailable?: boolean
+    profileID?: string
+    mergeSystemMessages?: boolean
   }
 
   export function sanitizeSurrogates(content: string) {
@@ -185,16 +187,48 @@ export namespace ProviderTransform {
     return msgs
   }
 
-  function applyCaching(msgs: ModelMessage[], providerID: string, options?: MessageOptions): ModelMessage[] {
-    const selected: ModelMessage[] =
-      options?.systemCacheBreakpoint === undefined
-        ? [
-            ...msgs.filter((msg) => msg.role === "system").slice(0, 2),
-            ...msgs.filter((msg) => msg.role !== "system").slice(-2),
-          ]
-        : [msgs.filter((msg) => msg.role === "system")[options.systemCacheBreakpoint]].filter(
-            (msg) => msg !== undefined,
-          )
+  function isRuntimeContextMessage(msg: ModelMessage): boolean {
+    if (typeof msg.content === "string") return msg.content.includes("<runtime-context>")
+    if (!Array.isArray(msg.content)) return false
+    return msg.content.some(
+      (part) =>
+        (part as { type: string; text?: string }).type === "text" &&
+        (part as { text?: string }).text?.includes("<runtime-context>"),
+    )
+  }
+
+  function applyCaching(
+    msgs: ModelMessage[],
+    providerID: string,
+    options?: MessageOptions & { layout?: PromptCachePolicy.Layout },
+  ): ModelMessage[] {
+    let selected: ModelMessage[]
+    if (options?.systemCacheBreakpoint === undefined) {
+      // The legacy fallback never receives a resolved layout, so runtime
+      // context messages are filtered positionally here as well: a volatile
+      // <runtime-context> tail must stay outside every cache breakpoint.
+      const nonSystemTail = msgs.filter((msg) => msg.role !== "system" && !isRuntimeContextMessage(msg)).slice(-2)
+      selected = [...msgs.filter((msg) => msg.role === "system").slice(0, 2), ...nonSystemTail]
+    } else {
+      const stable = [msgs.filter((msg) => msg.role === "system")[options.systemCacheBreakpoint]].filter(
+        (msg) => msg !== undefined,
+      )
+      // In the late-user-context layout the volatile <runtime-context> user
+      // message sits after history. A second breakpoint on the last history
+      // message caches the append-only prefix; the runtime-context message
+      // itself stays outside every breakpoint because it changes each turn.
+      // The system layout keeps volatile late system blocks between the stable
+      // system and history, so a history breakpoint could never be reused
+      // across turns and only wastes cache-write cost.
+      if (options?.layout === "late-user-context") {
+        const nonSystem = msgs.filter((msg) => msg.role !== "system")
+        const tail = nonSystem.slice(-2)
+        const historyTail = tail.length === 2 && isRuntimeContextMessage(tail[1]) ? [tail[0]] : tail.slice(-1)
+        selected = [...stable, ...historyTail]
+      } else {
+        selected = stable
+      }
+    }
 
     const providerOptions = {
       anthropic: {
@@ -370,16 +404,49 @@ export namespace ProviderTransform {
     }
   }
 
+  function mergeLeadingSystemMessages(msgs: ModelMessage[]): ModelMessage[] {
+    const splitIndex = msgs.findIndex((msg) => msg.role !== "system")
+    if (splitIndex <= 1) return msgs
+    const contents = msgs
+      .slice(0, splitIndex)
+      .map((msg) => (typeof msg.content === "string" ? msg.content : messageTextContent(msg)))
+    if (contents.some((content) => content === undefined)) return msgs
+    return [{ role: "system", content: contents.join("\n\n") }, ...msgs.slice(splitIndex)]
+  }
+
+  function messageTextContent(msg: ModelMessage): string | undefined {
+    if (!Array.isArray(msg.content)) return undefined
+    const text = msg.content
+      .map((part) => (part.type === "text" ? part.text : undefined))
+      .filter((text): text is string => typeof text === "string")
+      .join("\n\n")
+    return text.length > 0 ? text : undefined
+  }
+
   export function message(msgs: ModelMessage[], model: Provider.Model, options?: MessageOptions) {
     msgs = unsupportedParts(msgs, model, options)
     msgs = normalizeMessages(msgs, model)
+    if (options?.mergeSystemMessages === true) {
+      const merged = mergeLeadingSystemMessages(msgs)
+      if (merged.length !== msgs.length) {
+        // The leading system run collapsed into one message: the per-block
+        // breakpoint index now points past the single merged block, which
+        // would silently drop the system breakpoint entirely. Clamp it to 0
+        // so the whole merged system block becomes the breakpoint unit.
+        if (options.systemCacheBreakpoint !== undefined) options = { ...options, systemCacheBreakpoint: 0 }
+        msgs = merged
+      }
+    }
     if (
       model.providerID === "anthropic" ||
       model.api.id.includes("anthropic") ||
       model.api.id.includes("claude") ||
       model.api.npm === "@ai-sdk/anthropic"
     ) {
-      msgs = applyCaching(msgs, model.providerID, options)
+      msgs = applyCaching(msgs, model.providerID, {
+        ...options,
+        layout: PromptCachePolicy.layout(model, options?.profileID),
+      })
     }
 
     return msgs

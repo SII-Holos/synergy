@@ -168,7 +168,7 @@ describe("KV-cache measurement prompt-shape harness", () => {
     expect(String(messages.at(-1)?.content)).toContain("<runtime-context>")
   })
 
-  test("Anthropic layout keeps the stable breakpoint before volatile advisory system blocks", () => {
+  test("Anthropic layout moves volatile advisory context after reusable history", () => {
     const messages = LLM.promptMessages({
       model: createModel("anthropic"),
       system: stableSystem,
@@ -176,17 +176,10 @@ describe("KV-cache measurement prompt-shape harness", () => {
       messages: history,
     })
 
-    expect(messages.map((message) => message.role)).toEqual([
-      "system",
-      "system",
-      "system",
-      "system",
-      "system",
-      "user",
-      "assistant",
-    ])
-    expect(messages[2]).toEqual({ role: "system", content: "PERMISSION: guarded tool policy" })
-    expect(messages[3]).toEqual({ role: "system", content: "MEMORY: recalled item a" })
-    expect(messages[4]).toEqual({ role: "system", content: "ENV: time a" })
+    expect(messages.map((message) => message.role)).toEqual(["system", "system", "system", "user", "assistant", "user"])
+    expect(messages[3]).toEqual(history[0])
+    expect(messages[4]).toEqual(history[1])
+    expect(String(messages.at(-1)?.content)).toContain("<runtime-context>")
+    expect(String(messages.at(-1)?.content)).toContain("MEMORY: recalled item a")
   })
 })

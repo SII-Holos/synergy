@@ -76,6 +76,12 @@ export namespace Config {
   export type EmailFrom = Schema.EmailFrom
   export const Email = Schema.Email
   export type Email = Schema.Email
+  export const Github = Schema.Github
+  export type Github = Schema.Github
+  export const GithubIdentitySync = Schema.GithubIdentitySync
+  export type GithubIdentitySync = Schema.GithubIdentitySync
+  export const GithubWatch = Schema.GithubWatch
+  export type GithubWatch = Schema.GithubWatch
   export const PermissionAction = Schema.PermissionAction
   export type PermissionAction = Schema.PermissionAction
   export const PermissionObject = Schema.PermissionObject

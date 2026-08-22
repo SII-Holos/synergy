@@ -19,6 +19,7 @@ export namespace ConfigDomain {
     "channels",
     "holos",
     "email",
+    "github",
     "runtime",
   ])
   export type Id = z.infer<typeof Id>
@@ -111,6 +112,7 @@ export namespace ConfigDomain {
     def("channels", "90-channels.jsonc", "Channels", ["channel"]),
     def("holos", "100-holos.jsonc", "Holos", ["holos", "enterprise"]),
     def("email", "110-email.jsonc", "Email", ["email"]),
+    def("github", "115-github.jsonc", "GitHub", ["github"]),
     def("runtime", "120-runtime.jsonc", "Runtime", [
       "server",
       "timeout",

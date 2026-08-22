@@ -230,6 +230,13 @@ export type ChannelSettings = {
   githubAccounts: GithubAccountToggle[]
 }
 
+export type GithubIntegrationSettings = {
+  identitySyncEnabled: boolean
+  identitySyncName: string
+  identitySyncEmail: string
+  watchEnabled: boolean
+}
+
 export const TOAST_TYPES = ["info", "success", "warning", "error"] as const
 export const DEFAULT_TOAST_DURATION_MS = 4000
 export const TOAST_DURATION_STOPS = [1000, 2000, DEFAULT_TOAST_DURATION_MS, 8000] as const
@@ -393,6 +400,7 @@ export type SettingsState = {
   runtime: RuntimeStore
   email: EmailSettings
   channels: ChannelSettings
+  github: GithubIntegrationSettings
   roleVariant: Record<string, string>
 }
 
@@ -503,6 +511,12 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
       feishuAccounts: [],
       clarusAccounts: [],
       githubAccounts: [],
+    },
+    github: {
+      identitySyncEnabled: false,
+      identitySyncName: "",
+      identitySyncEmail: "",
+      watchEnabled: true,
     },
     roleVariant: {},
   }

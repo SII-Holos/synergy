@@ -137,13 +137,13 @@ export namespace SessionInvoke {
   export function assertIdle(sessionID: string) {
     return SessionManager.assertIdle(sessionID)
   }
-  export function cancel(sessionID: string) {
+  export function cancel(sessionID: string, options?: { recoverQueuedTasks?: boolean }) {
     log.info("cancel", { sessionID })
     evictRecallCache(sessionID)
     PermissionNext.clearForSession(sessionID).catch((err) => {
       log.error("permission cleanup failed", { sessionID, error: err })
     })
-    SessionManager.signalAbort(sessionID)
+    SessionManager.signalAbort(sessionID, options)
   }
 
   /**

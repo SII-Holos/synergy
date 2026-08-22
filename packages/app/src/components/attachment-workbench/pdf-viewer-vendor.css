@@ -1,0 +1,16 @@
+@import "pdfjs-dist/web/pdf_viewer.css";
+
+/* The vendor stylesheet declares `:root { color-scheme: light dark; ... }`,
+   which would otherwise override the app theme's color-scheme on the document
+   root once this chunk loads (unlayered vendor rules beat the layered theme).
+   Re-assert the theme contract with higher specificity; the boot script also
+   pins an inline color-scheme on <html> at runtime. */
+html:root:not([data-color-scheme]) {
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:root:not([data-color-scheme]) {
+    color-scheme: dark;
+  }
+}

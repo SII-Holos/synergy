@@ -7560,6 +7560,10 @@ msgid "app.sidebar.project.expand"
 msgstr "展开项目"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.project.menu"
+msgstr "项目菜单"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.project.pin"
 msgstr "固定"
 
@@ -11975,6 +11979,12 @@ msgstr "每 {duration}"
 #. Runtime translation descriptors for all wake-indicator UI strings.
  *  Each is a base MessageDescriptor with `id` + English `message`.
  *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.wake.trigger.github"
+msgstr "GitHub 触发"
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
 msgid "session.agenda.wake.trigger.pending"
 msgstr "等待中"
 
@@ -14318,7 +14328,7 @@ msgstr "GitHub"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.github.searchTerms"
-msgstr "github | gh | 议题 | 拉取请求 | 发布 | 令牌"
+msgstr "github | gh | 议题 | 拉取请求 | 发布 | 令牌 | git 身份 | 监听"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.group.core"
@@ -15521,6 +15531,74 @@ msgid "settings.github.envRecoveryDesc"
 msgstr "更新 Synergy 服务器环境中的 GH_TOKEN 或 GITHUB_TOKEN，然后重启服务器并刷新此页面。"
 
 #. js-lingui-explicit-id
+msgid "settings.github.identity.alreadyInSync"
+msgstr "Git 身份"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.alreadyInSyncDescription"
+msgstr "已同步。"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.applied"
+msgstr "Git 身份已同步"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.appliedDescription"
+msgstr "已应用 {identity}。"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.current"
+msgstr "当前：{value}"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.email"
+msgstr "Git user.email 覆盖"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.emailDescription"
+msgstr "留空则使用 GitHub noreply 邮箱。"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.name"
+msgstr "Git user.name 覆盖"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.nameDescription"
+msgstr "留空则使用 GitHub 账号登录名。"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.sync.description"
+msgstr "让机器级 git user.name 和 user.email 与已连接的 GitHub 账号保持一致。"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.sync.title"
+msgstr "从 GitHub 同步 git 身份"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.syncFailed"
+msgstr "Git 身份同步失败"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.syncing"
+msgstr "同步中…"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.syncNow"
+msgstr "立即同步"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.target"
+msgstr "同步后：{value}"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.title"
+msgstr "Git 身份"
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.unset"
+msgstr "未设置"
+
+#. js-lingui-explicit-id
 msgid "settings.github.invalid"
 msgstr "无效"
 
@@ -15555,6 +15633,18 @@ msgstr "刷新"
 #. js-lingui-explicit-id
 msgid "settings.github.unverified"
 msgstr "未验证"
+
+#. js-lingui-explicit-id
+msgid "settings.github.watch.enabled"
+msgstr "允许 GitHub 议程触发器"
+
+#. js-lingui-explicit-id
+msgid "settings.github.watch.enabledDescription"
+msgstr "控制是否可以通过议程工具创建 GitHub 拉取请求、议题和工作流状态轮询触发器。默认开启。"
+
+#. js-lingui-explicit-id
+msgid "settings.github.watch.title"
+msgstr "议程 GitHub 监听"
 
 #. js-lingui-explicit-id
 msgid "settings.import.apply"
