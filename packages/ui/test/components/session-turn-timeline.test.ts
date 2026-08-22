@@ -1222,7 +1222,6 @@ describe("session turn timeline", () => {
     expect(items[0]).toMatchObject({ kind: "tool-attachments", files: [image] })
   })
 
-
   test("hides completed media tools without attachments when their tool card is hidden", () => {
     const message = assistant("assistant-a")
     const parts: PartType[] = [
