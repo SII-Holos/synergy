@@ -2,6 +2,7 @@ import path from "path"
 import fs from "fs/promises"
 import { Global } from "../global"
 import { Lock } from "../util/lock"
+import { isRetryableIOError } from "@/util/io-retry"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import z from "zod"
 import { ObservabilityIssues } from "@/observability/issues"
@@ -249,14 +250,54 @@ export namespace Storage {
     })
   }
 
+  // Windows maps rename onto MoveFileEx: when another process (antivirus,
+  // OneDrive, a cross-process reader of these JSON files) briefly holds a
+  // handle on the source or target without FILE_SHARE_DELETE, the rename
+  // fails with EPERM/EACCES. Sharing violations clear within milliseconds,
+  // so retry the whole write+rename sequence with short backoff instead of
+  // failing session persistence and terminating the owning session (#1247).
+  const ATOMIC_WRITE_ATTEMPTS = 4
+  const ATOMIC_WRITE_RETRY_BASE_MS = 50
+  const ATOMIC_WRITE_RETRY_MAX_MS = 200
+
   async function writeJsonAtomic(target: string, serialized: string) {
     await fs.mkdir(path.dirname(target), { recursive: true })
     const tmp = path.join(
       path.dirname(target),
       `.tmp-${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
     )
-    await Bun.write(tmp, serialized)
-    await fs.rename(tmp, target)
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await Bun.write(tmp, serialized)
+        await fs.rename(tmp, target)
+        return
+      } catch (error) {
+        if (!isRetryableIOError(error) || attempt >= ATOMIC_WRITE_ATTEMPTS) {
+          await removeTempFile(tmp)
+          throw error
+        }
+        await new Promise((resolve) => setTimeout(resolve, atomicRetryDelayMs(attempt)))
+      }
+    }
+  }
+
+  // The terminal-failure cleanup can hit the same Windows sharing violation
+  // that failed the rename (antivirus holding the temp handle), so transient
+  // unlink errors retry with the same backoff before being suppressed (#1247).
+  async function removeTempFile(tmp: string) {
+    for (let attempt = 1; attempt <= ATOMIC_WRITE_ATTEMPTS; attempt++) {
+      try {
+        await fs.unlink(tmp)
+        return
+      } catch (error) {
+        if (!isRetryableIOError(error) || attempt >= ATOMIC_WRITE_ATTEMPTS) return
+        await new Promise((resolve) => setTimeout(resolve, atomicRetryDelayMs(attempt)))
+      }
+    }
+  }
+
+  function atomicRetryDelayMs(attempt: number) {
+    return Math.min(ATOMIC_WRITE_RETRY_MAX_MS, ATOMIC_WRITE_RETRY_BASE_MS * 2 ** (attempt - 1))
   }
 
   function isTempFile(name: string) {
