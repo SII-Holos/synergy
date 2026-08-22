@@ -78,7 +78,9 @@ export const FatalErrorPage: Component<FatalErrorPageProps> = (props) => {
             {i18n._(AP.errorReport.id)}
           </a>
           <Show when={platform.buildLabel ?? platform.version}>
-            {(version) => <p class="text-xs text-text-weak">{i18n._(AP.errorVersionLabel.id, { version })}</p>}
+            {(version) => (
+              <p class="text-xs text-text-weak">{i18n._(AP.errorVersionLabel.id, { version: version() })}</p>
+            )}
           </Show>
         </div>
       </div>
