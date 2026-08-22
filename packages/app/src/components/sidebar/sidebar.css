@@ -673,7 +673,7 @@
 }
 
 .sb-menu-item-danger {
-  color: var(--text-critical);
+  color: var(--text-error);
 }
 
 .sb-menu-item-danger:hover:not(:disabled) {
