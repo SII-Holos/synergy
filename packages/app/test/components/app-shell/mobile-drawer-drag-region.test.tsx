@@ -54,6 +54,21 @@ const stubModules: Record<string, string> = {
       }
     }
   `,
+  "stub-platform.ts": `
+    export function usePlatform() {
+      return {
+        platform: "desktop",
+        desktopWindow: {
+          chrome: "custom",
+          minimize: async () => {},
+          toggleMaximize: async () => null,
+          close: async () => {},
+          state: async () => null,
+          onEvent: () => () => {},
+        },
+      }
+    }
+  `,
   "stub-notification.ts": `
     export function useNotification() {
       return { session: { unseen: () => [] } }
@@ -125,6 +140,7 @@ beforeAll(async () => {
   const appSrc = path.resolve(import.meta.dir, "../../../src")
   const navDrawerPath = path.join(appSrc, "components/app-shell/mobile-drawer.tsx")
   const toolsDrawerPath = path.join(appSrc, "components/app-shell/mobile-tools-drawer.tsx")
+  const chromePath = path.join(appSrc, "components/app-shell/desktop-window-chrome.tsx")
 
   await Promise.all([
     Bun.write(
@@ -145,6 +161,7 @@ beforeAll(async () => {
         import { I18nProvider } from "@lingui/solid"
         import { MobileDrawer } from ${JSON.stringify(`/@fs/${navDrawerPath}`)}
         import { MobileToolsDrawer } from ${JSON.stringify(`/@fs/${toolsDrawerPath}`)}
+        import { DesktopWindowChrome } from ${JSON.stringify(`/@fs/${chromePath}`)}
 
         i18n.load("en", {})
         i18n.activate("en")
@@ -157,6 +174,7 @@ beforeAll(async () => {
                   <>
                     <MobileDrawer />
                     <MobileToolsDrawer />
+                    <DesktopWindowChrome />
                   </>
                 )} />
               </Router>
@@ -175,6 +193,7 @@ beforeAll(async () => {
     resolve: {
       alias: [
         { find: "@/context/layout", replacement: path.join(fixtureDirectory, "stub-layout.ts") },
+        { find: "@/context/platform", replacement: path.join(fixtureDirectory, "stub-platform.ts") },
         { find: "@/context/notification", replacement: path.join(fixtureDirectory, "stub-notification.ts") },
         { find: "@/context/global-sync", replacement: path.join(fixtureDirectory, "stub-global-sync.ts") },
         { find: "@/context/global-sdk", replacement: path.join(fixtureDirectory, "stub-global-sdk.ts") },
@@ -223,7 +242,8 @@ beforeAll(async () => {
   warmup.on("pageerror", (error) => warmupErrors.push(String(error)))
   try {
     await warmup.goto(fixtureUrl)
-    await warmup.waitForSelector(".mobile-drawer-header", { timeout: 60_000 })
+    await warmup.waitForSelector(".mobile-drawer-overlay", { timeout: 60_000 })
+    await warmup.waitForSelector(".desktop-window-chrome", { timeout: 60_000 })
     expect(warmupErrors, `fixture page errors: ${warmupErrors.join(" | ")}`).toEqual([])
   } finally {
     await warmup.close()
@@ -242,7 +262,8 @@ async function withFixture(run: (page: Page) => Promise<void>) {
   page.on("pageerror", (error) => pageErrors.push(String(error)))
   try {
     await page.goto(fixtureUrl)
-    await page.waitForSelector(".mobile-drawer-header", { timeout: 20_000 })
+    await page.waitForSelector(".mobile-drawer-overlay", { timeout: 20_000 })
+    await page.waitForSelector(".desktop-window-chrome", { timeout: 20_000 })
     expect(pageErrors, `fixture page errors: ${pageErrors.join(" | ")}`).toEqual([])
     await run(page)
     expect(pageErrors, `fixture page errors: ${pageErrors.join(" | ")}`).toEqual([])
@@ -251,28 +272,48 @@ async function withFixture(run: (page: Page) => Promise<void>) {
   }
 }
 
-describe("mobile drawer drag-region exemption", () => {
-  test("exempts both drawer header rows from the window drag region", async () => {
-    await withFixture(async (page) => {
-      await page.evaluate(() => (window as any).__drawerControl.openRight())
-      await page.waitForFunction(() => document.querySelectorAll(".mobile-drawer-header").length === 2)
+async function chromeRegion(page: Page): Promise<string> {
+  return page
+    .locator(".desktop-window-chrome")
+    .evaluate((el) => getComputedStyle(el).getPropertyValue("-webkit-app-region"))
+}
 
-      const regions = await page
-        .locator(".mobile-drawer-header")
-        .evaluateAll((rows) => rows.map((row) => getComputedStyle(row).getPropertyValue("-webkit-app-region")))
-      expect(regions).toEqual(["no-drag", "no-drag"])
+async function waitForChromeRegion(page: Page, expected: string): Promise<void> {
+  await page.waitForFunction(
+    (region) => {
+      const el = document.querySelector(".desktop-window-chrome")
+      return el !== null && getComputedStyle(el).getPropertyValue("-webkit-app-region") === region
+    },
+    expected,
+    { timeout: 10_000 },
+  )
+}
+
+describe("mobile drawer titlebar drag suspension", () => {
+  test("suspends the desktop titlebar drag region while a drawer overlay is open", async () => {
+    await withFixture(async (page) => {
+      await waitForChromeRegion(page, "no-drag")
+      expect(await chromeRegion(page)).toBe("no-drag")
+
+      await page.getByRole("button", { name: "Close navigation" }).click()
+      await page.waitForFunction(() => document.querySelectorAll(".mobile-drawer-overlay").length === 0)
+      await waitForChromeRegion(page, "drag")
+
+      await page.evaluate(() => (window as any).__drawerControl.openRight())
+      await page.waitForFunction(() => document.querySelectorAll(".mobile-drawer-overlay").length === 1)
+      await waitForChromeRegion(page, "no-drag")
     })
-  }, 30_000)
+  })
 
   test("close buttons still dismiss the drawers", async () => {
     await withFixture(async (page) => {
       await page.getByRole("button", { name: "Close navigation" }).click()
-      await page.waitForFunction(() => document.querySelectorAll(".mobile-drawer-header").length === 0)
+      await page.waitForFunction(() => document.querySelectorAll(".mobile-drawer-overlay").length === 0)
 
       await page.evaluate(() => (window as any).__drawerControl.openRight())
-      await page.waitForFunction(() => document.querySelectorAll(".mobile-drawer-header").length === 1)
-      await page.locator(".mobile-drawer-header button").click()
-      await page.waitForFunction(() => document.querySelectorAll(".mobile-drawer-header").length === 0)
+      await page.waitForFunction(() => document.querySelectorAll(".mobile-drawer-overlay").length === 1)
+      await page.locator('[data-action="close"]').click()
+      await page.waitForFunction(() => document.querySelectorAll(".mobile-drawer-overlay").length === 0)
     })
-  }, 30_000)
+  })
 })

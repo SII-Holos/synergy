@@ -1,10 +1,16 @@
 /*
- * Frameless Electron windows hit-test the 36px custom titlebar band
- * (-webkit-app-region: drag) geometrically and swallow pointer events on
- * overlapping elements. These full-viewport drawers paint over that band, so
- * their header rows must opt out to keep the logo link and close button
- * clickable. The property is inert outside Electron.
+ * Electron's drag-region hit test only honors no-drag carve-outs inside the
+ * drag element's own subtree: a full-viewport drawer overlay cannot restore
+ * pointer events over the titlebar band, so its close button over the drag
+ * area stays swallowed. While a drawer overlay is mounted it covers the
+ * titlebars entirely, so suspend their drag region instead. The max-width
+ * query matches the drawers' md:hidden breakpoint and also releases the
+ * suspension when the window widens past it, because :has() matches hidden
+ * overlays too. The property is inert outside Electron.
  */
-.mobile-drawer-header {
-  -webkit-app-region: no-drag;
+@media (max-width: 767px) {
+  body:has(.mobile-drawer-overlay) .desktop-window-chrome,
+  body:has(.mobile-drawer-overlay) .desktop-native-titlebar {
+    -webkit-app-region: no-drag;
+  }
 }

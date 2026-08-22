@@ -43,7 +43,7 @@ export function MobileToolsDrawer() {
 
   return (
     <Show when={layout.rightSidebar.opened()}>
-      <div class="fixed inset-0 z-[100] flex md:hidden justify-end">
+      <div class="mobile-drawer-overlay fixed inset-0 z-[100] flex md:hidden justify-end">
         <div
           class="absolute inset-0 bg-surface-overlay"
           style={{ animation: "mobileDrawerFadeIn 200ms ease-out both" }}
@@ -53,10 +53,11 @@ export function MobileToolsDrawer() {
           class="relative w-[85vw] max-w-80 h-full bg-background-stronger flex flex-col shadow-2xl safe-right"
           style={{ animation: "mobileDrawerSlideInRight 250ms cubic-bezier(0.16, 1, 0.3, 1) both" }}
         >
-          <div class="mobile-drawer-header flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60 safe-top">
+          <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60 safe-top">
             <span class="text-14-medium text-text-strong">{_({ id: "nav.tools.title", message: "Tools" })}</span>
             <button
               type="button"
+              data-action="close"
               class="flex items-center justify-center size-8 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
               onClick={close}
             >

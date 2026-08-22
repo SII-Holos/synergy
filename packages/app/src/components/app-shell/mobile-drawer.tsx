@@ -90,7 +90,7 @@ export function MobileDrawer() {
 
   return (
     <Show when={layout.mobileSidebar.opened()}>
-      <div class="fixed inset-0 z-[100] flex md:hidden">
+      <div class="mobile-drawer-overlay fixed inset-0 z-[100] flex md:hidden">
         <div
           class="absolute inset-0 bg-surface-overlay"
           style={{ animation: "mobileDrawerFadeIn 200ms ease-out both" }}
@@ -104,7 +104,7 @@ export function MobileDrawer() {
           class="relative w-[85vw] max-w-80 h-full bg-background-stronger flex flex-col shadow-2xl safe-left"
           style={{ animation: "mobileDrawerSlideIn 250ms cubic-bezier(0.16, 1, 0.3, 1) both" }}
         >
-          <div class="mobile-drawer-header flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60 safe-top">
+          <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60 safe-top">
             <A href="/" class="flex items-center gap-2" onClick={close}>
               <img
                 src={holosLogoPath(theme.mode())}
@@ -115,6 +115,7 @@ export function MobileDrawer() {
             </A>
             <button
               ref={closeButtonRef}
+              data-action="close"
               type="button"
               aria-label={_(appShell.closeNav)}
               class="flex items-center justify-center size-8 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
