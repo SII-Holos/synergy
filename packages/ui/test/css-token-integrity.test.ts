@@ -368,4 +368,36 @@ describe("CSS Token Integrity", () => {
       throw new Error(`Formerly broken P2 refs still present:\n` + remaining.map((t) => `  --${t}`).join("\n"))
     }
   })
+  test("no dead status-color token references remain anywhere in app/ui source", async () => {
+    const deadStatusTokens = new Set([
+      "text-critical",
+      "text-warning",
+      "text-success",
+      "text-critical-base",
+      "text-warning-base",
+      "surface-critical-soft",
+      "surface-warning-soft",
+      "surface-success-soft",
+    ])
+
+    const offenders: string[] = []
+    for (const root of ["src", "../app/src"]) {
+      for (const ext of ["css", "ts", "tsx"]) {
+        const glob = new Bun.Glob(`**/*.${ext}`)
+        for await (const rel of glob.scan(root)) {
+          if (rel.includes("theme.generated")) continue
+          const content = await readFileSafe(`${root}/${rel}`)
+          if (!content) continue
+          const refs = new Set([...extractVarRefs(content), ...(ext !== "css" ? extractTailwindVarRefs(content) : [])])
+          for (const ref of refs) {
+            if (deadStatusTokens.has(ref)) offenders.push(`  ${root}/${rel}: --${ref}`)
+          }
+        }
+      }
+    }
+
+    if (offenders.length > 0) {
+      throw new Error(`Dead status-color token references:\n` + offenders.join("\n"))
+    }
+  })
 })

@@ -7560,6 +7560,10 @@ msgid "app.sidebar.project.expand"
 msgstr "Expand project"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.project.menu"
+msgstr "Project menu"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.project.pin"
 msgstr "Pin"
 

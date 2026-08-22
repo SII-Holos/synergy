@@ -1,42 +1,109 @@
-import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js"
+import { createSignal, onCleanup, onMount, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { attachmentWorkbench as A } from "@/locales/messages"
-import { createPdfRenderCoordinator } from "./pdf-render"
+import "./pdf-viewer-vendor.css"
 
 const PDF_MIN_SCALE = 0.5
 const PDF_MAX_SCALE = 3
 const PDF_SCALE_STEP = 0.25
+const PDF_FIT_WIDTH_RESIZE_DEBOUNCE_MS = 100
+
+type PdfViewerModule = typeof import("pdfjs-dist/web/pdf_viewer.mjs")
+type PdfViewerInstance = InstanceType<PdfViewerModule["PDFViewer"]>
 
 export function AttachmentPdfPreview(props: { bytes: Uint8Array }) {
   const lingui = useLingui()
-  const [document, setDocument] = createSignal<import("pdfjs-dist").PDFDocumentProxy>()
-  const [page, setPage] = createSignal(1)
+  const [pageNumber, setPageNumber] = createSignal(1)
+  const [pageCount, setPageCount] = createSignal(0)
   const [scale, setScale] = createSignal(1)
   const [fitWidth, setFitWidth] = createSignal(true)
-  const [hostWidth, setHostWidth] = createSignal(0)
   const [error, setError] = createSignal<string>()
-  let host!: HTMLDivElement
-  let canvas!: HTMLCanvasElement
-  let loadingTask: import("pdfjs-dist").PDFDocumentLoadingTask | undefined
-  let observer: ResizeObserver | undefined
+  let stage!: HTMLDivElement
+  let container!: HTMLDivElement
+  let viewerElement!: HTMLDivElement
   let disposed = false
-  const renderer = createPdfRenderCoordinator<import("pdfjs-dist").PDFPageProxy>()
+  let loadingTask: import("pdfjs-dist").PDFDocumentLoadingTask | undefined
+  let viewer: PdfViewerInstance | undefined
+  let abortController: AbortController | undefined
+  let resizeObserver: ResizeObserver | undefined
+  let resizeTimer: ReturnType<typeof setTimeout> | undefined
 
   onMount(() => {
-    observer = new ResizeObserver(([entry]) => setHostWidth(entry?.contentRect.width ?? 0))
-    observer.observe(host)
+    abortController = new AbortController()
+    const signal = abortController.signal
 
     void (async () => {
       try {
         const pdfjs = await import("pdfjs-dist")
         if (disposed) return
         pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString()
-        loadingTask = pdfjs.getDocument({ data: props.bytes.slice() })
-        const loaded = await loadingTask.promise
+        // pdf_viewer.mjs reads its core API from this global, so the viewer
+        // module must be imported only after the main entry has been assigned.
+        const global = globalThis as { pdfjsLib?: typeof pdfjs }
+        global.pdfjsLib ??= pdfjs
+        const { EventBus, PDFLinkService, PDFViewer } = await import("pdfjs-dist/web/pdf_viewer.mjs")
         if (disposed) return
-        setDocument(loaded)
+
+        const eventBus = new EventBus()
+        const linkService = new PDFLinkService({ eventBus })
+        viewer = new PDFViewer({
+          container,
+          viewer: viewerElement,
+          eventBus,
+          linkService,
+          abortSignal: signal,
+        } as ConstructorParameters<typeof PDFViewer>[0] & { abortSignal: AbortSignal })
+        linkService.setViewer(viewer)
+
+        eventBus.on(
+          "pagesinit",
+          () => {
+            if (disposed || !viewer) return
+            setPageCount(viewer.pagesCount)
+            viewer.currentScaleValue = "page-width"
+          },
+          { signal },
+        )
+        eventBus.on(
+          "pagechanging",
+          (event: { pageNumber: number }) => {
+            if (disposed) return
+            setPageNumber(event.pageNumber)
+          },
+          { signal },
+        )
+        eventBus.on(
+          "scalechanging",
+          (event: { scale: number; presetValue?: string }) => {
+            if (disposed) return
+            setScale(event.scale)
+            setFitWidth(event.presetValue === "page-width")
+          },
+          { signal },
+        )
+
+        // The viewer's own ResizeObserver only tracks container height; the
+        // host must re-apply the page-width preset when the container width
+        // changes (sidebar collapse, window resize, DPR change).
+        resizeObserver = new ResizeObserver(() => {
+          if (container.clientWidth <= 0) return
+          clearTimeout(resizeTimer)
+          resizeTimer = setTimeout(() => {
+            if (disposed || !viewer) return
+            if (viewer.currentScaleValue === "page-width") {
+              viewer.currentScaleValue = "page-width"
+            }
+          }, PDF_FIT_WIDTH_RESIZE_DEBOUNCE_MS)
+        })
+        resizeObserver.observe(container)
+
+        loadingTask = pdfjs.getDocument({ data: props.bytes.slice() })
+        const documentProxy = await loadingTask.promise
+        if (disposed) return
+        viewer.setDocument(documentProxy)
+        linkService.setDocument(documentProxy)
       } catch (cause) {
         if (disposed) return
         setError(cause instanceof Error ? cause.message : String(cause))
@@ -44,60 +111,31 @@ export function AttachmentPdfPreview(props: { bytes: Uint8Array }) {
     })()
   })
 
-  createEffect(() => {
-    const pdf = document()
-    const pageNumber = page()
-    const requestedScale = scale()
-    const width = hostWidth()
-    const shouldFit = fitWidth()
-    if (!pdf || !canvas || (shouldFit && width <= 0)) {
-      renderer.cancel()
-      return
-    }
-
-    setError(undefined)
-    void renderer.render({
-      loadPage: () => pdf.getPage(pageNumber),
-      drawPage: (pdfPage) => {
-        const base = pdfPage.getViewport({ scale: 1 })
-        const effectiveScale = shouldFit
-          ? Math.max(PDF_MIN_SCALE, Math.min(PDF_MAX_SCALE, (width - 32) / base.width))
-          : requestedScale
-        const viewport = pdfPage.getViewport({ scale: effectiveScale })
-        const ratio = window.devicePixelRatio || 1
-        const context = canvas.getContext("2d")
-        if (!context) {
-          return {
-            promise: Promise.resolve(),
-            cancel() {},
-          }
-        }
-        canvas.width = Math.floor(viewport.width * ratio)
-        canvas.height = Math.floor(viewport.height * ratio)
-        canvas.style.width = `${viewport.width}px`
-        canvas.style.height = `${viewport.height}px`
-        context.setTransform(ratio, 0, 0, ratio, 0, 0)
-        return pdfPage.render({ canvas, canvasContext: context, viewport })
-      },
-      onError: (cause) => {
-        setError(cause instanceof Error ? cause.message : String(cause))
-      },
-    })
-  })
-
   onCleanup(() => {
     disposed = true
-    observer?.disconnect()
-    renderer.cancel()
+    clearTimeout(resizeTimer)
+    resizeObserver?.disconnect()
+    abortController?.abort()
     void loadingTask?.destroy()
   })
 
-  const pageCount = () => document()?.numPages ?? 0
   const zoom = (direction: "in" | "out") => {
-    setFitWidth(false)
-    setScale((value) =>
-      Math.max(PDF_MIN_SCALE, Math.min(PDF_MAX_SCALE, value + (direction === "in" ? PDF_SCALE_STEP : -PDF_SCALE_STEP))),
+    if (!viewer) return
+    const next = Math.max(
+      PDF_MIN_SCALE,
+      Math.min(PDF_MAX_SCALE, viewer.currentScale + (direction === "in" ? PDF_SCALE_STEP : -PDF_SCALE_STEP)),
     )
+    viewer.currentScaleValue = String(next)
+  }
+
+  const toggleFitWidth = () => {
+    if (!viewer) return
+    viewer.currentScaleValue = viewer.currentScaleValue === "page-width" ? "1" : "page-width"
+  }
+
+  const goToPage = (delta: number) => {
+    if (!viewer) return
+    viewer.currentPageNumber = Math.max(1, Math.min(pageCount(), viewer.currentPageNumber + delta))
   }
 
   return (
@@ -107,18 +145,18 @@ export function AttachmentPdfPreview(props: { bytes: Uint8Array }) {
           type="button"
           aria-label={lingui._(A.previousPage)}
           title={lingui._(A.previousPage)}
-          disabled={page() <= 1}
-          onClick={() => setPage((value) => Math.max(1, value - 1))}
+          disabled={pageNumber() <= 1}
+          onClick={() => goToPage(-1)}
         >
           <Icon name={getSemanticIcon("navigation.back")} size="small" />
         </button>
-        <span>{lingui._({ ...A.pagePosition, values: { page: page(), count: pageCount() } })}</span>
+        <span>{lingui._({ ...A.pagePosition, values: { page: pageNumber(), count: pageCount() } })}</span>
         <button
           type="button"
           aria-label={lingui._(A.nextPage)}
           title={lingui._(A.nextPage)}
-          disabled={page() >= pageCount()}
-          onClick={() => setPage((value) => Math.min(pageCount(), value + 1))}
+          disabled={pageNumber() >= pageCount()}
+          onClick={() => goToPage(1)}
         >
           <Icon name={getSemanticIcon("navigation.forward")} size="small" />
         </button>
@@ -132,7 +170,7 @@ export function AttachmentPdfPreview(props: { bytes: Uint8Array }) {
         >
           <Icon name={getSemanticIcon("action.zoomOut")} size="small" />
         </button>
-        <button type="button" aria-pressed={fitWidth()} onClick={() => setFitWidth(true)}>
+        <button type="button" aria-pressed={fitWidth()} onClick={toggleFitWidth}>
           {lingui._(A.fitWidth)}
         </button>
         <button
@@ -145,9 +183,13 @@ export function AttachmentPdfPreview(props: { bytes: Uint8Array }) {
           <Icon name={getSemanticIcon("action.zoomIn")} size="small" />
         </button>
       </div>
-      <div ref={host} class="attachment-pdf-stage">
-        <canvas ref={canvas} data-hidden={error() ? "true" : undefined} />
-        <Show when={error()}>{(message) => <div class="attachment-workbench-error">{message()}</div>}</Show>
+      <div ref={stage} class="attachment-pdf-stage">
+        <div ref={container} class="attachment-pdf-viewer-container" data-hidden={error() ? "true" : undefined}>
+          <div ref={viewerElement} class="pdfViewer" />
+        </div>
+        <Show when={error()}>
+          {(message) => <div class="attachment-workbench-error attachment-pdf-error">{message()}</div>}
+        </Show>
       </div>
     </div>
   )

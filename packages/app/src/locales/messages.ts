@@ -718,6 +718,7 @@ export const sidebar = {
   unpin: { id: "app.sidebar.project.unpin", message: "Unpin" },
   edit: { id: "app.sidebar.project.edit", message: "Edit" },
   archive: { id: "app.sidebar.project.archive", message: "Archive" },
+  projectMenu: { id: "app.sidebar.project.menu", message: "Project menu" },
   // Flyout
   projectsFlyout: { id: "app.sidebar.flyout.projects", message: "Projects" },
   // Agent hub

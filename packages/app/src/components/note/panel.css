@@ -248,7 +248,7 @@
 
 .note-card-status--waiting {
   background: color-mix(in srgb, var(--surface-warning-base) 14%, var(--surface-raised-base));
-  color: var(--text-warning-base);
+  color: var(--text-on-warning-base);
 }
 
 .note-card-status--failed {
@@ -404,7 +404,7 @@
 }
 
 .note-blueprint-state--waiting {
-  color: var(--text-warning-base);
+  color: var(--text-on-warning-base);
 }
 
 .note-blueprint-state--failed {

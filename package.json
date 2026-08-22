@@ -37,6 +37,8 @@
     "package:check": "bun script/package-check.ts",
     "doc:gen": "bun script/gen/gen-cli-reference.ts && bun script/gen/gen-config-reference.ts && bun script/gen/gen-tool-catalog.ts",
     "doc:gen:check": "bun script/gen/gen-cli-reference.ts --check && bun script/gen/gen-config-reference.ts --check && bun script/gen/gen-tool-catalog.ts --check",
+    "brand:gen": "bun script/gen/gen-brand-assets.ts",
+    "brand:gen:check": "bun script/gen/gen-brand-assets.ts --check",
     "doc:check": "bun script/doc-check.ts",
     "decision:check": "bun script/decision-check.ts",
     "coverage:check": "bun script/coverage-check.ts",

@@ -3,6 +3,8 @@ import type { SessionInboxItem } from "@ericsanchezok/synergy-sdk/client"
 import {
   deriveSessionInboxView,
   isInboxItemInteractive,
+  isInboxItemMaterialized,
+  removeMaterializedInboxItems,
   sortInboxItems,
   upsertSessionInboxItem,
 } from "../../../src/components/session/session-inbox-utils"
@@ -80,5 +82,54 @@ describe("isInboxItemInteractive", () => {
     expect(isInboxItemInteractive(item("inb_queued", "task", "001"))).toBe(true)
     expect(isInboxItemInteractive(item("inb_guiding", "steer", "002"))).toBe(true)
     expect(isInboxItemInteractive(item("inb_agent", "context", "003"))).toBe(false)
+  })
+})
+
+describe("removeMaterializedInboxItems", () => {
+  test("drops only the item whose message was materialized", () => {
+    const consumed = item("inb_consumed", "task", "001")
+    const waiting = item("inb_waiting", "task", "002")
+
+    expect(removeMaterializedInboxItems([consumed, waiting], consumed.messageID)?.map((entry) => entry.id)).toEqual([
+      waiting.id,
+    ])
+  })
+
+  test("keeps reference identity when nothing matches", () => {
+    const items = [item("inb_a", "task", "001")]
+
+    expect(removeMaterializedInboxItems(items, "msg_unrelated")).toBe(items)
+    expect(removeMaterializedInboxItems(undefined, "msg_any")).toBeUndefined()
+    expect(removeMaterializedInboxItems([], "msg_any")).toEqual([])
+  })
+})
+
+describe("isInboxItemMaterialized", () => {
+  test("treats a canonical transcript message as materialized", () => {
+    const queued = item("inb_queued", "task", "001")
+    const canonical = { id: queued.messageID }
+
+    expect(isInboxItemMaterialized([canonical], queued, () => false)).toBe(true)
+  })
+
+  test("ignores the local optimistic placeholder", () => {
+    const queued = item("inb_queued", "task", "001")
+    const placeholder = { id: queued.messageID }
+
+    expect(isInboxItemMaterialized([placeholder], queued, () => true)).toBe(false)
+  })
+
+  test("returns false when the window is not loaded", () => {
+    const queued = item("inb_queued", "task", "001")
+
+    expect(isInboxItemMaterialized(undefined, queued, () => false)).toBe(false)
+    expect(isInboxItemMaterialized([{ id: "msg_other" }], queued, () => false)).toBe(false)
+  })
+  test("treats a history-mode pending-latest arrival as materialized", () => {
+    const queued = item("inb_queued", "task", "001")
+
+    expect(isInboxItemMaterialized([], queued, () => false, [queued.messageID])).toBe(true)
+    expect(isInboxItemMaterialized(undefined, queued, () => false, [queued.messageID])).toBe(true)
+    expect(isInboxItemMaterialized([], queued, () => false, ["msg_other"])).toBe(false)
   })
 })

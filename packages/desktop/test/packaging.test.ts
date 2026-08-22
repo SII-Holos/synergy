@@ -7,6 +7,7 @@ import path from "node:path"
 
 interface ElectronBuilderConfig {
   mac?: {
+    icon?: string
     target?: Array<{ target?: string; arch?: string[] }>
   }
   pkg?: {
@@ -14,6 +15,7 @@ interface ElectronBuilderConfig {
     installLocation?: string
   }
   win?: {
+    icon?: string
     executableName?: string
     verifyUpdateCodeSignature?: boolean
   }
@@ -22,6 +24,7 @@ interface ElectronBuilderConfig {
     shortcutName?: string
   }
   linux?: {
+    icon?: string
     executableName?: string
     desktop?: { entry?: { Name?: string; StartupWMClass?: string } }
   }
@@ -124,15 +127,11 @@ async function writeRuntimeManifest(runtimeDir: string) {
 }
 
 describe("desktop packaging", () => {
-  test("copies runtime and unread indicator icon resources", async () => {
+  test("uses one product icon source and copies runtime indicator resources", async () => {
     const config = (await Bun.file(
       new URL("../electron-builder.json", import.meta.url),
     ).json()) as ElectronBuilderConfig
 
-    expect(config.extraResources).toContainEqual({
-      from: "build/icon.ico",
-      to: "icons/icon.ico",
-    })
     expect(config.extraResources).toContainEqual({
       from: "build/icon.png",
       to: "icons/icon.png",
@@ -145,6 +144,9 @@ describe("desktop packaging", () => {
       from: "build/icon-unread.png",
       to: "icons/icon-unread.png",
     })
+    expect(config.mac?.icon).toBe("build/icon.png")
+    expect(config.win?.icon).toBe("build/icon.png")
+    expect(config.linux?.icon).toBe("build/icon.png")
     for (const resource of config.extraResources ?? []) {
       expect(await Bun.file(new URL(`../${resource.from}`, import.meta.url)).exists()).toBe(true)
     }

@@ -626,7 +626,7 @@ export const SessionRoute = new Hono()
       }),
     ),
     async (c) => {
-      await SessionAbort.abort(c.req.valid("param").sessionID)
+      await SessionAbort.abort(c.req.valid("param").sessionID, { recoverQueuedTasks: true })
       return c.json(true)
     },
   )
