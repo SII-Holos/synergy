@@ -200,7 +200,7 @@ function isHtml(file: AttachmentFile): boolean {
   return isHtmlAttachment(file)
 }
 
-function attachmentSize(file: AttachmentFile): number | undefined {
+export function attachmentSize(file: AttachmentFile): number | undefined {
   if (file.size !== undefined) return file.size
   const attachment = file.metadata?.attachment as Record<string, unknown> | undefined
   return typeof attachment?.size === "number" ? attachment.size : undefined
