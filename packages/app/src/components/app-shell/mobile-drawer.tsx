@@ -27,6 +27,7 @@ import { SettingsDialog } from "@/components/settings"
 import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
 import { MobileDrawerAddProjectButton, MobileDrawerRecent, MobileDrawerSettingsButton } from "./mobile-drawer-root"
 import { resolveSessionVisualState } from "@/components/sidebar/session-visual-state"
+import "./mobile-drawer.css"
 
 export function MobileDrawer() {
   const layout = useLayout()
@@ -89,7 +90,7 @@ export function MobileDrawer() {
 
   return (
     <Show when={layout.mobileSidebar.opened()}>
-      <div class="fixed inset-0 z-[100] flex md:hidden">
+      <div class="mobile-drawer-overlay fixed inset-0 z-[100] flex md:hidden">
         <div
           class="absolute inset-0 bg-surface-overlay"
           style={{ animation: "mobileDrawerFadeIn 200ms ease-out both" }}
@@ -114,6 +115,7 @@ export function MobileDrawer() {
             </A>
             <button
               ref={closeButtonRef}
+              data-action="close"
               type="button"
               aria-label={_(appShell.closeNav)}
               class="flex items-center justify-center size-8 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"

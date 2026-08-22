@@ -5,6 +5,7 @@ import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/syne
 import { useLayout } from "@/context/layout"
 import { useLingui } from "@lingui/solid"
 import { appShell } from "@/locales/messages"
+import "./mobile-drawer.css"
 
 type DrawerToolID = "agenda" | "library" | "performance" | "plugins"
 
@@ -42,7 +43,7 @@ export function MobileToolsDrawer() {
 
   return (
     <Show when={layout.rightSidebar.opened()}>
-      <div class="fixed inset-0 z-[100] flex md:hidden justify-end">
+      <div class="mobile-drawer-overlay fixed inset-0 z-[100] flex md:hidden justify-end">
         <div
           class="absolute inset-0 bg-surface-overlay"
           style={{ animation: "mobileDrawerFadeIn 200ms ease-out both" }}
@@ -56,6 +57,7 @@ export function MobileToolsDrawer() {
             <span class="text-14-medium text-text-strong">{_({ id: "nav.tools.title", message: "Tools" })}</span>
             <button
               type="button"
+              data-action="close"
               class="flex items-center justify-center size-8 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
               onClick={close}
             >

@@ -9,6 +9,7 @@ const root = path.resolve(import.meta.dir, "..")
 // sibling suite's freshly launched browser. Run every Chromium suite serially
 // after the main batch to keep their processes alive.
 const playwrightIsolated = [
+  "test/components/app-shell/mobile-drawer-drag-region.test.tsx",
   "test/components/app-shell/mobile-drawer-root.test.tsx",
   "test/components/dialog/model-selector-layout.test.ts",
   "test/components/file-workbench/selection.test.ts",

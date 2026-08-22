@@ -18,6 +18,7 @@ description: Add or modify Synergy durable state, JSON storage keys, SQLite tabl
 1. Build logical keys through `StoragePath`; use `Storage` for locks, atomic writes, reads, scans, and removal.
 2. Keep independently updated or streamed records independently addressable. Do not rewrite a whole session or collection for one leaf update.
 3. Update derived indexes and events in the same owner transaction/lifecycle as the canonical write.
+4. Preserve the atomic-write transient-retry contract: `Storage` write+rename retries `EPERM`/`EACCES`/`EBUSY` (classified by `isRetryableIOError`) so Windows sharing violations do not fail persistence, permanent errors fail fast, and temp files are removed (with the same transient retry) on the failure path. Do not bypass `Storage` with a bare rename; extend `test/storage/storage-retry.test.ts` when changing write-path failure behavior.
 
 ### SQLite and other domain stores
 
