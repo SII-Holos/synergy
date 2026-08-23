@@ -1863,13 +1863,63 @@ describe("ProviderTransform.variants", () => {
           budgetTokens: 4095,
         },
       })
+      // At output 8192 the `max` budget is capped to ⌊8192/2 − 1⌋ = 4095 (same as
+      // `high`); the previous `model.limit.output - 1` = 8191 collapsed
+      // max_tokens to 1 and tripped Anthropic's budget_tokens < max_tokens rule.
       expect(result.max).toEqual({
         thinking: {
           type: "enabled",
-          budgetTokens: 8191,
+          budgetTokens: 4095,
         },
       })
     })
+  })
+
+  describe("Anthropic thinking variants - budget_tokens < max_tokens invariant", () => {
+    // Regression guard for BUG-002: for every model whose output limit fits in
+    // the common 8k–64k band, both the `high` and `max` Anthropic thinking
+    // variants must satisfy the Anthropic API constraint
+    //   0 < budget_tokens < max_tokens
+    // where max_tokens is derived by maxOutputTokens() from the same budget.
+    // The old `max` variant used `model.limit.output - 1`, which for these
+    // limits produced budget_tokens >= max_tokens and yielded an HTTP 400.
+    test.each([8192, 16384, 32000, 64000])(
+      "keeps max_tokens > budget_tokens > 0 for high and max at output %i",
+      (output) => {
+        const model = createMockModel({
+          id: "anthropic/claude-4",
+          providerID: "anthropic",
+          api: {
+            id: "claude-4",
+            url: "https://api.anthropic.com",
+            npm: "@ai-sdk/anthropic",
+          },
+          limit: { context: 200000, output },
+        })
+
+        const variants = ProviderTransform.variants(model) as Record<
+          "high" | "max",
+          { thinking?: { type?: string; budgetTokens?: number } }
+        >
+        expect(Object.keys(variants)).toEqual(["high", "max"])
+
+        for (const key of ["high", "max"] as const) {
+          const budgetTokens = variants[key].thinking?.budgetTokens
+          expect(budgetTokens, `${key} budgetTokens must be set`).toBeGreaterThan(0)
+
+          const maxTokens = ProviderTransform.maxOutputTokens(
+            "@ai-sdk/anthropic",
+            variants[key],
+            output,
+            OUTPUT_TOKEN_MAX,
+          )
+          expect(
+            maxTokens,
+            `${key}: max_tokens (${maxTokens}) must strictly exceed budget_tokens (${budgetTokens})`,
+          ).toBeGreaterThan(budgetTokens!)
+        }
+      },
+    )
   })
 
   describe("@ai-sdk/amazon-bedrock", () => {

@@ -616,7 +616,15 @@ export namespace ProviderTransform {
           max: {
             thinking: {
               type: "enabled",
-              budgetTokens: Math.min(31_999, model.limit.output - 1),
+              // Cap the thinking budget to half the output limit (minus one) so the
+              // resulting max_tokens (= modelCap - budgetTokens) always strictly
+              // exceeds budgetTokens. The previous `model.limit.output - 1` collapsed
+              // max_tokens to 1 for any model whose output limit <= 31_999 (e.g. the
+              // common 8 192 / 16 384 default-output Claude models), violating the
+              // Anthropic constraint budget_tokens < max_tokens and yielding a 400.
+              // Mirrors the `high` variant's half-output discipline; on large-output
+              // models (> ~64k) the 31_999 floor still keeps `max` above `high`.
+              budgetTokens: Math.min(31_999, Math.floor(model.limit.output / 2 - 1)),
             },
           },
         }
