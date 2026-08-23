@@ -6,7 +6,9 @@ import { WorkspacePolicy } from "../../src/workspace/policy"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { Filesystem } from "../../src/util/filesystem"
+import { isPathContained } from "../../src/util/path-contain"
 import path from "path"
+import os from "os"
 import fs from "fs/promises"
 
 function isSymlinkPrivilegeError(error: unknown) {
@@ -253,6 +255,65 @@ describe("ScopeContext.contains workspace awareness", () => {
           })
         })(),
     })
+  })
+})
+
+// ===========================================================================
+// BUG-001: isPathContained must canonicalize symlinks (realpath) so an
+// in-project symlink whose target lies outside the workspace cannot escape.
+// ===========================================================================
+
+describe("isPathContained symlink escape (BUG-001)", () => {
+  test("an in-workspace symlink to an outside target is NOT contained", async () => {
+    await using tmp = await tmpdir()
+    const scope = await tmp.scope()
+    const workspace = scope.directory
+
+    // An outside target guaranteed to exist and to be disjoint from the workspace.
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "bug001-outside-"))
+    const outsideFile = path.join(outside, "secret.txt")
+    await fs.writeFile(outsideFile, "sensitive")
+
+    // A symlink that *exists inside* the workspace but points outside.
+    const linkPath = path.join(workspace, "escape-link")
+    const linked = await trySymlink(outside, linkPath, process.platform === "win32" ? "junction" : "dir")
+    if (!linked) {
+      await fs.rm(outside, { recursive: true, force: true }).catch(() => {})
+      return
+    }
+
+    try {
+      // The link itself, and a path through it, must both be rejected.
+      expect(isPathContained(workspace, linkPath)).toBe(false)
+      expect(isPathContained(workspace, path.join(linkPath, "secret.txt"))).toBe(false)
+    } finally {
+      await fs.unlink(linkPath).catch(() => {})
+      await fs.rm(outside, { recursive: true, force: true }).catch(() => {})
+    }
+  })
+
+  test("a real file inside the workspace is still contained (positive control)", async () => {
+    await using tmp = await tmpdir()
+    const scope = await tmp.scope()
+    const workspace = scope.directory
+
+    const inside = path.join(workspace, "src", "app.ts")
+    await fs.mkdir(path.dirname(inside), { recursive: true })
+    await fs.writeFile(inside, "content")
+
+    expect(isPathContained(workspace, inside)).toBe(true)
+  })
+
+  test("a not-yet-created path inside the workspace is still contained (creation not broken)", async () => {
+    await using tmp = await tmpdir()
+    const scope = await tmp.scope()
+    const workspace = scope.directory
+
+    // A path that does not exist yet (e.g. a file about to be written). The
+    // fallback to the lexical check must keep it inside — fail-open on ENOENT
+    // is safe because a non-existent path has no symlink to follow.
+    const future = path.join(workspace, "src", "new-file.ts")
+    expect(isPathContained(workspace, future)).toBe(true)
   })
 })
 /**
