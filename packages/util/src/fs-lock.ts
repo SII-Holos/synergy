@@ -66,16 +66,9 @@ async function acquireFileLock(options: FileLockOptions): Promise<{ release(): P
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
       const owner = await readLockOwner(filename)
-      if (owner?.pid && !processExists(owner.pid)) {
+      if (await isLockReclaimable(filename, owner, staleMetadataMs)) {
         await fs.unlink(filename).catch(() => {})
         continue
-      }
-      if (!owner?.pid) {
-        const stat = await fs.stat(filename).catch(() => undefined)
-        if (stat && Date.now() - stat.mtimeMs > staleMetadataMs) {
-          await fs.unlink(filename).catch(() => {})
-          continue
-        }
       }
       if (Date.now() - startedAt >= timeoutMs) {
         throw new Error(options.timeoutMessage ?? `Timed out acquiring file lock for ${options.key}`)
@@ -85,15 +78,60 @@ async function acquireFileLock(options: FileLockOptions): Promise<{ release(): P
   }
 }
 
-async function readLockOwner(filename: string): Promise<{ pid?: number } | undefined> {
+async function readLockOwner(filename: string): Promise<{ pid?: number; acquiredAt?: number } | undefined> {
   try {
     const owner = JSON.parse(await fs.readFile(filename, "utf8")) as unknown
     if (!owner || typeof owner !== "object") return undefined
     const pid = (owner as { pid?: unknown }).pid
-    return typeof pid === "number" ? { pid } : undefined
+    const acquiredAt = (owner as { acquiredAt?: unknown }).acquiredAt
+    return {
+      pid: typeof pid === "number" ? pid : undefined,
+      acquiredAt: typeof acquiredAt === "number" ? acquiredAt : undefined,
+    }
   } catch {
     return undefined
   }
+}
+
+/**
+ * Decide whether an existing lock can be reclaimed (unlinked and retried).
+ *
+ * Reclaim when the owner is provably gone, or when the lock metadata has aged
+ * past `staleMetadataMs`. On Windows, PIDs recycle aggressively and
+ * `process.kill(pid, 0)` returns true for a recycled PID that now belongs to
+ * an unrelated live process — so a dead owner's lock would otherwise never be
+ * reclaimed and every later acquirer would spin to the timeout. There, the
+ * wall-clock age (acquiredAt, with an mtime fallback) is the tiebreaker: a
+ * lock older than the grace period is treated as stale even if its PID looks
+ * live. On posix the PID check is reliable, so a genuinely-live owner is never
+ * displaced by age alone.
+ */
+async function isLockReclaimable(
+  filename: string,
+  owner: { pid?: number; acquiredAt?: number } | undefined,
+  staleMetadataMs: number,
+): Promise<boolean> {
+  // No owner PID at all: fall back to the lock file's mtime, as the metadata
+  // is either missing or unreadable.
+  if (!owner?.pid) {
+    const stat = await fs.stat(filename).catch(() => undefined)
+    return !!stat && Date.now() - stat.mtimeMs > staleMetadataMs
+  }
+  // Owner PID recorded and provably dead → safe to reclaim on every platform.
+  if (!processExists(owner.pid)) return true
+  // On Windows the live-PID signal is unreliable (recycling). Reclaim if the
+  // lock is older than the grace period, using acquiredAt when the owner wrote
+  // it (preferred over mtime, which AV/indexers can touch) with mtime fallback.
+  if (process.platform === "win32") {
+    const ageMs = owner.acquiredAt != null ? Date.now() - owner.acquiredAt : await lockFileAgeMs(filename)
+    if (ageMs > staleMetadataMs) return true
+  }
+  return false
+}
+
+async function lockFileAgeMs(filename: string): Promise<number> {
+  const stat = await fs.stat(filename).catch(() => undefined)
+  return stat ? Date.now() - stat.mtimeMs : 0
 }
 
 function processExists(pid: number): boolean {
