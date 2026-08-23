@@ -233,7 +233,7 @@ Model names use `provider/model`. Provider definitions and model defaults live i
 
 - `openai` is the OpenAI Platform API-key provider.
 - `openai-codex` uses ChatGPT/Codex OAuth device-code credentials and the Codex backend.
-- `grok` uses xAI subscription OAuth device-code credentials (SuperGrok / X Premium+) and the OpenAI-compatible `https://api.x.ai/v1` API.
+- `grok` uses xAI subscription OAuth device-code credentials (SuperGrok / X Premium+) and the OpenAI-compatible `https://api.x.ai/v1` API. The Grok model list is discovered live from the xAI `/v1/language-models` API with the stored subscription OAuth credential and refreshes automatically (≤1h TTL, or via `synergy models --refresh`); offline or failed discovery falls back to the bundled list.
 
 Do not copy credentials or billing assumptions between them. Use `synergy auth` or the Settings UI to manage auth.
 
@@ -404,6 +404,8 @@ When `embedding.apiKey` is absent, Synergy uses the bundled `Xenova/all-MiniLM-L
 | `embedding.local.cacheDir`   | no                          | ~/.synergy/data/embedding/models | Directory where the bundled local embedding model is cached; supports {env:VAR} references                                                                                      |
 
 The model ID and quantization dtype are not configurable. The cache directory defaults to `~/.synergy/data/embedding/models` and can be redirected with `embedding.local.cacheDir`.
+
+When `source` is `"huggingface"` (the default) and the download fails, the runtime retries once from hf-mirror.com before falling back to the on-disk cache (`local_files_only: true`). Explicit `"hf-mirror"` and `"custom"` sources skip the auto-fallback and go straight to the disk cache on failure. Remote downloads abort with an error if no response bytes arrive within 30 seconds (time-to-first-byte); the timeout covers only the connection/header phase, so an in-flight download body streams at its own pace. After a successful mirror fallback the status reports `source: "hf-mirror"`; a failed load reports the configured source.
 
 ### Remote
 

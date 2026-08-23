@@ -92,14 +92,73 @@ export namespace AgendaTypes {
     })
     .meta({ ref: "AgendaTriggerWebhook" })
 
+  export const TriggerSession = z
+    .object({
+      type: z.literal("session"),
+      sessionID: z.string().describe("Target session to watch for turn events"),
+      event: z.enum(["turn.end", "turn.start"]).default("turn.end").describe("Session turn event to react to"),
+      agent: z.string().optional().describe("Only fire when the turn's agent matches"),
+      finish: z
+        .string()
+        .optional()
+        .describe("Only fire when the turn's finish state matches (e.g. 'stop', 'error'). Only applies to turn.end"),
+      once: z.boolean().default(true).describe("If true, the item auto-completes after the first fire"),
+    })
+    .meta({ ref: "AgendaTriggerSession" })
+
+  export const TriggerGithub = z
+    .object({
+      type: z.literal("github"),
+      resource: z.enum(["pr", "issue", "workflow", "check"]).describe("GitHub resource kind to watch"),
+      repository: z
+        .string()
+        .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, "Use owner/repo form")
+        .describe("Repository in owner/repo form"),
+      number: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe(
+          "PR/issue number, or workflow run id. If omitted for pr/issue/workflow, watches the repository's most recent items",
+        ),
+      ref: z
+        .string()
+        .optional()
+        .describe(
+          "Branch/tag/commit ref for workflow and check targeting (e.g. 'main', full SHA). Defaults to HEAD for checks and the default branch for workflows",
+        ),
+      interval: z
+        .string()
+        .regex(/^(\d+)(ms|s|m|h|d|w)$/, "Use a duration like '5m', '30s', '1h'")
+        .optional()
+        .describe("Poll interval, e.g. '5m'. Default: '5m' (or github.watch.defaultIntervalMs)"),
+      states: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Only fire when the state transitions into one of these values. PR: open/draft/merged/closed; issue: open/closed; workflow/check: queued/in_progress/completed (filter the conclusion separately via these same values, e.g. 'success'/'failure')",
+        ),
+    })
+    .meta({ ref: "AgendaTriggerGithub" })
+
   export const Trigger = z
-    .discriminatedUnion("type", [TriggerAt, TriggerCron, TriggerEvery, TriggerDelay, TriggerWatch, TriggerWebhook])
+    .discriminatedUnion("type", [
+      TriggerAt,
+      TriggerCron,
+      TriggerEvery,
+      TriggerDelay,
+      TriggerWatch,
+      TriggerWebhook,
+      TriggerSession,
+      TriggerGithub,
+    ])
     .meta({ ref: "AgendaTrigger" })
   export type Trigger = z.infer<typeof Trigger>
 
   /** Trigger types exposed via the agenda_schedule tool. No watch or webhook. */
   export const ScheduleTrigger = z
-    .discriminatedUnion("type", [TriggerCron, TriggerEvery, TriggerAt, TriggerDelay])
+    .discriminatedUnion("type", [TriggerCron, TriggerEvery, TriggerAt, TriggerDelay, TriggerSession, TriggerGithub])
     .meta({ ref: "AgendaScheduleTrigger" })
   export type ScheduleTrigger = z.infer<typeof ScheduleTrigger>
 
@@ -124,7 +183,14 @@ export namespace AgendaTypes {
    */
   export function inferSessionMode(triggers: Trigger[], override?: SessionMode): SessionMode {
     if (override) return override
-    const hasRecurring = triggers.some((t) => t.type === "cron" || t.type === "every" || t.type === "watch")
+    const hasRecurring = triggers.some(
+      (t) =>
+        t.type === "cron" ||
+        t.type === "every" ||
+        t.type === "watch" ||
+        t.type === "github" ||
+        (t.type === "session" && t.once === false),
+    )
     return hasRecurring ? "persistent" : "ephemeral"
   }
 
@@ -323,7 +389,16 @@ export namespace AgendaTypes {
     .meta({ ref: "AgendaActivityPage" })
   export type ActivityPage = z.infer<typeof ActivityPage>
 
-  export const SessionAgendaTriggerType = z.enum(["cron", "every", "at", "delay", "watch", "webhook"])
+  export const SessionAgendaTriggerType = z.enum([
+    "cron",
+    "every",
+    "at",
+    "delay",
+    "watch",
+    "webhook",
+    "session",
+    "github",
+  ])
   export type SessionAgendaTriggerType = z.infer<typeof SessionAgendaTriggerType>
 
   export const SessionAgendaTrigger = z
@@ -331,6 +406,7 @@ export namespace AgendaTypes {
       type: SessionAgendaTriggerType,
       interval: z.string().optional().describe("Interval for every triggers, e.g. '30m'"),
       delay: z.string().optional().describe("Delay for delay triggers, e.g. '2h'"),
+      sessionID: z.string().optional().describe("Target session for session triggers"),
     })
     .meta({ ref: "SessionAgendaTrigger" })
   export type SessionAgendaTrigger = z.infer<typeof SessionAgendaTrigger>

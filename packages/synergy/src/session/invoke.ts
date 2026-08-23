@@ -137,13 +137,13 @@ export namespace SessionInvoke {
   export function assertIdle(sessionID: string) {
     return SessionManager.assertIdle(sessionID)
   }
-  export function cancel(sessionID: string) {
+  export function cancel(sessionID: string, options?: { recoverQueuedTasks?: boolean }) {
     log.info("cancel", { sessionID })
     evictRecallCache(sessionID)
     PermissionNext.clearForSession(sessionID).catch((err) => {
       log.error("permission cleanup failed", { sessionID, error: err })
     })
-    SessionManager.signalAbort(sessionID)
+    SessionManager.signalAbort(sessionID, options)
   }
 
   /**
@@ -1189,6 +1189,12 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             processor.message.time.completed = Date.now()
             await Session.updateMessage(processor.message)
             Bus.publish(SessionEvent.Error, { sessionID, error: processor.message.error })
+            Bus.publish(SessionEvent.TurnEnd, {
+              sessionID,
+              messageID: processor.message.id,
+              finish: "error",
+              agent: processor.message.agent,
+            })
             result = "stop"
             ObservabilitySpans.end(turnSpan, { status: "timeout", error: deadlineError })
             turnSpanEnded = true
@@ -1526,6 +1532,12 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     ).catch((error) => {
       log.warn("session.turn.after hook failed after turn error", { sessionID: input.sessionID, error })
     })
+    await Bus.publish(SessionEvent.TurnEnd, {
+      sessionID: input.sessionID,
+      messageID: message.id,
+      finish: message.finish,
+      agent: message.agent,
+    })
   }
 
   async function writeErrorAssistantIfMissing(sessionID: string, user: MessageV2.User, error: unknown): Promise<void> {
@@ -1585,6 +1597,12 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     ).catch((err) => {
       log.warn("session.turn.after hook failed after invoke error", { sessionID, error: err })
     })
+    await Bus.publish(SessionEvent.TurnEnd, {
+      sessionID,
+      messageID: assistant.id,
+      finish: assistant.finish,
+      agent: assistant.agent,
+    })
   }
 
   async function writeAbortedAssistantMessage(sessionID: string, scopeID: string): Promise<MessageV2.WithParts> {
@@ -1631,6 +1649,12 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       },
       {},
     )
+    await Bus.publish(SessionEvent.TurnEnd, {
+      sessionID,
+      messageID: assistantMessage.id,
+      finish: assistantMessage.finish,
+      agent: assistantMessage.agent,
+    })
     return {
       info: assistantMessage,
       parts: await MessageV2.parts({ scopeID, sessionID, messageID: assistantMessage.id }),

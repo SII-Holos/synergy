@@ -58,13 +58,13 @@
 }
 
 .consent-warning {
-  background: var(--surface-warning-soft);
-  color: var(--text-warning);
+  background: var(--surface-warning-weak);
+  color: var(--text-on-warning-base);
 }
 
 .consent-error {
-  background: var(--surface-critical-soft);
-  color: var(--text-critical);
+  background: var(--surface-critical-weak);
+  color: var(--text-on-critical-base);
 }
 
 .consent-manifest-note {

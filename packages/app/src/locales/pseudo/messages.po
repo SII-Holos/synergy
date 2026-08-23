@@ -527,6 +527,11 @@ msgstr ""
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.agenda.form.unsupportedTriggers"
+msgstr ""
+
+#. Runtime Lingui descriptors for agenda host labels and wrappers.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.interval.days"
 msgstr ""
 
@@ -2543,6 +2548,14 @@ msgid "app.file.mode.source"
 msgstr ""
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.pdf.previewFailed"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.pdf.tooLarge"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toast.saveConflict"
 msgstr ""
 
@@ -2841,6 +2854,154 @@ msgstr ""
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.home.start"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.addPane"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.addPaneHint"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.aria.layout"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.agent"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.defaultAgent"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.permission"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.composer.workflow"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.dragReorder"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.empty"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.emptyHint"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.focus.resizeRail"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.follow"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.columns"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.layoutLabel"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.grid.rows"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.layout.focus"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.layout.grid"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.loadError"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.loading"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.openSession"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pinPane"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.pinToReorderHint"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.retry"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.sendFailed"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.sendPlaceholder"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.busy"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.idle"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.recovering"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.status.retry"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.title"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unavailable"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unfollow"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.unpinPane"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.boss"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.lattice"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.none"
+msgstr ""
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.workflow.plan"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -3945,7 +4106,27 @@ msgid "app.library.skills.detail.skillPath"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.library.skills.diagnostics.count"
+msgid "app.library.skills.diagnostics.compat"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.compatGroup"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.failedGroup"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.shadowed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.shadowedGroup"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -5865,6 +6046,10 @@ msgid "app.plugin.builtin.agenda"
 msgstr ""
 
 #. ── Plugin builtin navigation ─────────────────────────────────────────────────
+msgid "app.plugin.builtin.kanban"
+msgstr ""
+
+#. ── Plugin builtin navigation ─────────────────────────────────────────────────
 msgid "app.plugin.builtin.library"
 msgstr ""
 
@@ -6932,6 +7117,21 @@ msgstr ""
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.fork.failed"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.forked"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.forked.desc"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.session.history.loadEarlierFailed"
 msgstr ""
 
@@ -7055,6 +7255,10 @@ msgstr ""
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.tool.browser"
+msgstr ""
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.tool.kanban"
 msgstr ""
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
@@ -7353,6 +7557,10 @@ msgstr ""
 
 #. Project actions
 msgid "app.sidebar.project.expand"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.project.menu"
 msgstr ""
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
@@ -9855,6 +10063,46 @@ msgstr ""
 msgid "prompt.externalAgentBlocked"
 msgstr ""
 
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.fileTooLarge.title"
+msgstr ""
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.noFilesAttached.title"
+msgstr ""
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.someFilesNotAttached.title"
+msgstr ""
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooLargeNames.description"
+msgstr ""
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooLargeTotal.description"
+msgstr ""
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooLargeTotal.title"
+msgstr ""
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooManyFiles.description"
+msgstr ""
+
+#. Lingui runtime descriptors for prompt-attachment limit feedback. Translate
+ *  at the call site via `i18n._(descriptor)` so toasts follow the locale.
+msgid "prompt.files.tooManyFiles.title"
+msgstr ""
+
 #. prompt-input.tsx — generic error / request failed
 msgid "prompt.generic.requestFailed"
 msgstr ""
@@ -11581,6 +11829,10 @@ msgid "session-turn.copy-markdown"
 msgstr ""
 
 #. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.fork-message"
+msgstr ""
+
+#. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.model-unavailable"
 msgstr ""
 
@@ -11727,7 +11979,19 @@ msgstr ""
 #. Runtime translation descriptors for all wake-indicator UI strings.
  *  Each is a base MessageDescriptor with `id` + English `message`.
  *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.wake.trigger.github"
+msgstr ""
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
 msgid "session.agenda.wake.trigger.pending"
+msgstr ""
+
+#. Runtime translation descriptors for all wake-indicator UI strings.
+ *  Each is a base MessageDescriptor with `id` + English `message`.
+ *  Call sites spread in `values` when the message contains ICU placeholders.
+msgid "session.agenda.wake.trigger.session"
 msgstr ""
 
 #. Runtime translation descriptors for all wake-indicator UI strings.
@@ -12168,6 +12432,60 @@ msgstr ""
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.dock.parentSession"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.action"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.cancel"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.close"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.copiedNote"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.copiedSummary"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.description"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.description.preview"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.failed"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.forking"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.fork.confirm.requestFailed"
+msgstr ""
+
+#. dialog-fork-confirm.tsx
+msgid "session.fork.confirm.title"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
@@ -14245,6 +14563,34 @@ msgid "settings.catalog.sandbox.searchTerms"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.skills.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.agents"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.claude"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.codex"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.row.openclaw"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.skills.searchTerms"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.synergyLink.description"
 msgstr ""
 
@@ -15185,6 +15531,74 @@ msgid "settings.github.envRecoveryDesc"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.github.identity.alreadyInSync"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.alreadyInSyncDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.applied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.appliedDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.current"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.email"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.emailDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.nameDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.sync.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.sync.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.syncFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.syncing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.syncNow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.target"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.identity.unset"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.github.invalid"
 msgstr ""
 
@@ -15218,6 +15632,18 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.github.unverified"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.watch.enabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.watch.enabledDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.github.watch.title"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -16629,6 +17055,14 @@ msgid "settings.panel.section.unavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.panel.theme.saveFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.panel.zoom.saveFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.pathRow.copied"
 msgstr ""
 
@@ -17598,6 +18032,54 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.save.unsaved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.agents.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.agents.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.claude.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.claude.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.codex.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.codex.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.openclaw.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.openclaw.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.page.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.page.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.row.count"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.skills.section.title"
 msgstr ""
 
 #. js-lingui-explicit-id

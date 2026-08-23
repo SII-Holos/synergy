@@ -18,7 +18,11 @@ export namespace ConfigMarkdown {
     const template = await Bun.file(filePath).text()
 
     try {
-      const md = matter(template)
+      // Pass explicit options so gray-matter skips its content cache: a file
+      // whose frontmatter fails to parse must keep throwing on every read.
+      // Otherwise the failed parse is cached as data:{} and the same broken
+      // file silently loads as an empty manifest on the next parse.
+      const md = matter(template, {})
       return md
     } catch (err) {
       throw new FrontmatterError(

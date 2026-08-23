@@ -234,3 +234,36 @@ describe("file — glob matching", () => {
     AgendaWatcher.stop()
   })
 })
+
+// ---------------------------------------------------------------------------
+// autoDone — one-shot file watches complete after their first fire
+// (pins the updateRunState behavior change that also covers agenda_watch
+// file watches; review round 3)
+// ---------------------------------------------------------------------------
+
+test("autoDone file-watch items are marked done after a successful run", async () => {
+  const { AgendaStore } = await import("../../src/agenda/store")
+  const { tmpdir } = await import("../fixture/fixture")
+  const { ScopeContext } = await import("../../src/scope/context")
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const item = await AgendaStore.create({
+        title: "One-shot file watch",
+        prompt: "check",
+        triggers: [makeFileTrigger({ glob: "src/**/*.ts" })],
+        autoDone: true,
+        createdBy: "agent",
+      })
+      const { item: updated } = await AgendaStore.updateRunState(
+        item.origin.scope.id,
+        item.id,
+        { status: "ok", startTime: Date.now(), duration: 5, autoDone: true },
+        item.triggers,
+        "watch",
+      )
+      expect(updated.status).toBe("done")
+    },
+  })
+})

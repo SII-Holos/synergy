@@ -77,6 +77,15 @@ export namespace Session {
     z.object({ sessionID: z.string() }),
   )
 
+  export const ForkPointMissingError = NamedError.create(
+    "SessionForkPointMissingError",
+    z.object({
+      sessionID: z.string(),
+      messageID: z.string(),
+      message: z.string(),
+    }),
+  )
+
   const log = Log.create({ service: "session" })
   const { asScopeID, asSessionID, asMessageID, asPartID } = Identifier
 
@@ -507,6 +516,10 @@ export namespace Session {
             type: z.literal("before"),
             messageID: Identifier.schema("message"),
           }),
+          z.object({
+            type: z.literal("through"),
+            messageID: Identifier.schema("message"),
+          }),
         ])
         .optional(),
       workspace: WorkspaceSelection.optional(),
@@ -515,7 +528,21 @@ export namespace Session {
     }),
     async (input) => {
       const source = await SessionManager.requireSession(input.sessionID)
-      const forkPoint = input.position?.type === "before" ? input.position.messageID : input.messageID
+      const position = input.position
+      const forkPoint =
+        position?.type === "before" || position?.type === "through" ? position.messageID : input.messageID
+      const includeForkPoint = position?.type === "through"
+      // Validate the fork point against the effective (rollback-projected)
+      // history before creating the fork, so a stale point from a bounded
+      // client window cannot silently fork at the head or create an orphan.
+      const msgs = await messages({ sessionID: input.sessionID })
+      if (forkPoint && !msgs.some((msg) => msg.info.id === forkPoint)) {
+        throw new ForkPointMissingError({
+          sessionID: input.sessionID,
+          messageID: forkPoint,
+          message: "The fork point message is no longer part of the effective session history.",
+        })
+      }
       let session = await create({
         scope: source.scope as Scope,
         workspace: source.workspace,
@@ -527,10 +554,11 @@ export namespace Session {
           title: source.title,
         },
       })
-      const msgs = await messages({ sessionID: input.sessionID })
       const messageMap = new Map<string, string>()
       for (const msg of msgs) {
-        if (forkPoint && msg.info.id === forkPoint) break
+        // "before" stops at the target message (exclusive); "through" copies
+        // the target message and stops after it (inclusive).
+        if (forkPoint && msg.info.id === forkPoint && !includeForkPoint) break
         const id = Identifier.ascending("message")
         messageMap.set(msg.info.id, id)
         const cloned = await updateMessage({
@@ -550,6 +578,8 @@ export namespace Session {
             sessionID: session.id,
           })
         }
+
+        if (includeForkPoint && forkPoint && msg.info.id === forkPoint) break
       }
 
       try {

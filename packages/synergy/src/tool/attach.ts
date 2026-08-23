@@ -83,6 +83,13 @@ export const AttachTool = Tool.define("attach", {
       metadata: {
         truncated: false,
         files,
+        // Hide the tool card so attachments render as an auto-expanded
+        // AttachmentGallery in the session timeline (see isToolCardHidden /
+        // the "tool-attachments" presentation path) instead of a collapsed
+        // one-line "add attachment" card requiring a click to expand.
+        display: {
+          toolCard: "hidden",
+        },
       },
       attachments,
     }

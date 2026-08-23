@@ -20,7 +20,7 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { useTheme } from "@ericsanchezok/synergy-ui/theme"
+import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
 import type {
   ChannelStatus,
   ConfigDomainSummary,
@@ -28,6 +28,7 @@ import type {
   CortexConcurrencyStatus,
   ModelRoleSummary,
   SandboxStatus,
+  SkillList,
 } from "@ericsanchezok/synergy-sdk/client"
 import type { PluginSettingsComponentProps, PluginSettingsSurfaceContext } from "@ericsanchezok/synergy-plugin"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -61,7 +62,7 @@ import {
   retainDraftAfterSave,
   saveExplicitSettingsChanges,
   snapshotSettingsDraft,
-  themeIdToApplyAfterSave,
+  themeIdToSettingsValue,
 } from "./settings-explicit-save"
 import { prepareLocaleSettingsSave, rejectLocaleSettingsSave } from "./settings-locale-save"
 import { pluginSettingsResourceKey } from "./plugin-settings-resource"
@@ -96,10 +97,12 @@ import { ControlProfilePanel, PermissionsPanel, SandboxPanel } from "./panels/Sa
 import { CompactionPanel, QuestionsPanel, TimeoutsPanel, ObservabilityPanel } from "./panels/RuntimePanels"
 import { BossModePanel } from "./panels/BossModePanel"
 import { CodeChecksPanel } from "./panels/CodeChecksPanel"
+import { SkillsPanel } from "./panels/SkillsPanel"
 import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
 import { filterSettingsSections, SETTINGS_DEVELOPER_MODE_STORAGE_KEY } from "./settings-visibility"
 import { SaveIndicator } from "./components/SaveIndicator"
 import { canUseConfigFileOpen, configFileOpenFailure } from "./config-file-open-model"
+import { createDesktopZoomController } from "./desktop-zoom-model"
 import { localizeSettingsSection, settingsSectionGroupKey } from "./settings-section-copy"
 import {
   canRefreshChannelAccount,
@@ -108,6 +111,7 @@ import {
   clarusDiagnosticsFilename,
   shouldRefreshChannelStatuses,
 } from "./channel-account-model"
+import { SlotOutlet } from "@/plugin/slot-outlet"
 
 function settingsValues(value: unknown, fallback: Record<string, unknown> = {}): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : fallback
@@ -209,6 +213,8 @@ const copy = {
     message: "Moved to {path}",
   },
   interfaceZoomRow: { id: "settings.catalog.general.row.zoom", message: "Interface Zoom" },
+  themeSaveFailed: { id: "settings.panel.theme.saveFailed", message: "Theme change could not be saved" },
+  zoomSaveFailed: { id: "settings.panel.zoom.saveFailed", message: "Interface zoom could not be saved" },
 }
 
 export type SettingsPanelProps = DialogSettingsProps & {
@@ -274,7 +280,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [aggregateSaveStatus, setAggregateSaveStatus] = createSignal<"idle" | "saving" | "saved" | "error">("idle")
   const [saveResultFingerprint, setSaveResultFingerprint] = createSignal<string>()
   const [desktopUpdateDraft, setDesktopUpdateDraft] = createSignal<DesktopUpdateMode>()
-  const [desktopZoomDraft, setDesktopZoomDraft] = createSignal<number>()
   const [pluginDraftVersion, setPluginDraftVersion] = createSignal(0)
   const pluginDrafts = createPluginSettingsDrafts(() => setPluginDraftVersion((version) => version + 1))
   const [refreshing, setRefreshing] = createSignal(false)
@@ -340,6 +345,17 @@ export function SettingsPanel(props: SettingsPanelProps) {
     if (!platform.desktopZoom) return undefined
     return platform.desktopZoom.get().catch(() => undefined)
   })
+  const desktopZoomController = createDesktopZoomController({
+    bridge: platform.desktopZoom,
+    onApplied: (factor) => setDesktopZoomSaved(factor),
+    onFailure: (error) => {
+      showToast({
+        type: "error",
+        title: _(copy.zoomSaveFailed),
+        description: requestErrorMessage(error),
+      })
+    },
+  })
 
   const canOpenConfigFiles = createMemo(() => canUseConfigFileOpen(platform, desktopServerStatus()))
 
@@ -351,6 +367,14 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [agents, { refetch: refetchAgents }] = createResource(async () => {
     const res = await globalSDK.client.app.agents()
     return res.data ?? []
+  })
+  const [skillSources, { refetch: refetchSkillSources }] = createResource(async () => {
+    try {
+      const res = await globalSDK.client.skill.list()
+      return (res.data?.sources ?? []) as SkillList["sources"]
+    } catch {
+      return [] as SkillList["sources"]
+    }
   })
 
   const providerModels = createMemo(() => {
@@ -478,6 +502,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       ...(agentFields.some((field) => changed.has(field)) ? [refetchAgents()] : []),
       ...(changed.has("cortex") ? [refetchCortexConcurrencyStatus()] : []),
       ...(changed.has("channel") ? [refetchChannelStatuses()] : []),
+      ...(changed.has("skills") ? [refetchSkillSources()] : []),
     ])
     const currentDraft = submittedDraft ? snapshotSettingsDraft(settings) : undefined
     setRefreshing(false)
@@ -485,6 +510,25 @@ export function SettingsPanel(props: SettingsPanelProps) {
     if (submittedDraft && currentDraft) {
       setSettings(reconcile(rebaseDraftAfterSave(snapshotSettingsDraft(settings), submittedDraft, currentDraft)))
     }
+    if (submittedDraft) {
+      restoreInstantTheme()
+      void restoreInstantZoom()
+    }
+  }
+
+  // Theme is applied instantly and persisted by a background update, so the
+  // server config resource may still hold the previous value when the panel
+  // re-initializes. Restore the live provider value on discard and after an
+  // explicit save so the picker stays in sync with the applied appearance.
+  // Config imports skip this: there the server value is the intended one.
+  function restoreInstantTheme() {
+    setSettings("general", "theme", themeIdToSettingsValue(theme.themeId()))
+  }
+  // Zoom is applied instantly and persisted by the desktop bridge, so
+  // re-read the live value on discard and after an explicit save to keep
+  // the slider in sync with the actually applied zoom factor.
+  function restoreInstantZoom() {
+    void desktopZoomController.restore()
   }
 
   const serverPatch = createMemo<Record<string, unknown>>(() => {
@@ -501,28 +545,14 @@ export function SettingsPanel(props: SettingsPanelProps) {
     pluginDraftVersion()
     return pluginDrafts.dirty()
   }
-  const colorSchemeDirty = () => settings.general.colorScheme !== theme.colorScheme()
   const desktopUpdateDirty = () => {
     const draft = desktopUpdateDraft()
     return draft !== undefined && draft !== (productUpdate.desktopStatus()?.mode ?? "auto")
   }
-  const desktopZoomDirty = () => {
-    const draft = desktopZoomDraft()
-    if (draft === undefined) return false
-    // The slider steps in whole percent points; treat values within half a
-    // step of the saved factor as unchanged to avoid rounding-induced dirt.
-    return Math.abs(draft - (desktopZoomSaved() ?? 1)) > 0.005
-  }
   const editingLabel = createMemo(() => _(copy.globalConfig))
   const hasAnyChanges = createMemo(
     () =>
-      hasServerChanges() ||
-      hasPluginChanges() ||
-      personalizeController.dirty() ||
-      font.dirty() ||
-      colorSchemeDirty() ||
-      desktopUpdateDirty() ||
-      desktopZoomDirty(),
+      hasServerChanges() || hasPluginChanges() || personalizeController.dirty() || font.dirty() || desktopUpdateDirty(),
   )
   const draftFingerprint = createMemo(() =>
     JSON.stringify({
@@ -530,9 +560,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       plugin: pluginDraftVersion(),
       personalize: [personalizeController.content(), personalizeController.resetPending()],
       font: [font.selected("sans"), font.selected("mono")],
-      colorScheme: settings.general.colorScheme,
       desktopUpdate: desktopUpdateDraft(),
-      desktopZoom: desktopZoomDraft(),
     }),
   )
 
@@ -545,9 +573,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
     personalizeController.discard()
     font.discard()
     setDesktopUpdateDraft(undefined)
-    setDesktopZoomDraft(undefined)
     resetEditor()
     doEnsureInit()
+    restoreInstantTheme()
+    void restoreInstantZoom()
   }
 
   const save = useSettingsSave({
@@ -560,10 +589,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
     preparePatchSave: (patch) => prepareLocaleSettingsSave(patch, locale.controller),
     rejectPatchSave: async (patch) => {
       await rejectLocaleSettingsSave(patch, locale.controller, globalSync.data.config.locale)
-    },
-    onPatchSaved: (patch) => {
-      const themeId = themeIdToApplyAfterSave(patch)
-      if (themeId !== undefined) theme.setThemeId(themeId)
     },
     discardChanges,
     closeDialog: () => props.onClose?.() ?? dialog.close(),
@@ -613,11 +638,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return font.save()
   }
 
-  async function saveColorSchemeChanges() {
-    theme.setColorScheme(settings.general.colorScheme)
-    return true
-  }
-
   async function saveDesktopUpdateChanges() {
     const mode = desktopUpdateDraft()
     if (mode === undefined) return true
@@ -627,25 +647,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return true
   }
 
-  async function saveDesktopZoomChanges() {
-    const draft = desktopZoomDraft()
-    const bridge = platform.desktopZoom
-    if (draft === undefined || !bridge) return true
-    const applied = await bridge.set(draft)
-    if (Math.abs(applied - draft) > 1e-6) return false
-    setDesktopZoomSaved(applied)
-    setDesktopZoomDraft((current) => retainDraftAfterSave(current, draft))
-    return true
-  }
-
   const explicitSaveSources = () => [
     { dirty: save.explicitDirty, save: save.saveServerChanges },
     { dirty: hasPluginChanges, save: savePluginChanges },
     { dirty: personalizeController.dirty, save: savePersonalizeChanges },
     { dirty: font.dirty, save: saveFontChanges },
-    { dirty: colorSchemeDirty, save: saveColorSchemeChanges },
     { dirty: desktopUpdateDirty, save: saveDesktopUpdateChanges },
-    { dirty: desktopZoomDirty, save: saveDesktopZoomChanges },
   ]
   const hasExplicitChanges = createMemo(() => hasExplicitSettingsChanges(explicitSaveSources()))
   const explicitSaveBlocked = createMemo(
@@ -721,9 +728,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
     const saved = productUpdate.desktopStatus()?.mode ?? "auto"
     setDesktopUpdateDraft(mode === saved ? undefined : mode)
   }
-  function stageDesktopZoomFactor(factor: number) {
-    const saved = desktopZoomSaved() ?? 1
-    setDesktopZoomDraft(Math.abs(factor - saved) < 0.005 ? undefined : factor)
+  function applyDesktopZoomFactor(factor: number) {
+    desktopZoomController.apply(factor)
   }
 
   const saveFooterStatus = createMemo(() =>
@@ -793,11 +799,35 @@ export function SettingsPanel(props: SettingsPanelProps) {
     general: () => (
       <GeneralPanel
         general={settings.general}
-        onGeneralChange={(key, value) => setSettings("general", key, value)}
+        onGeneralChange={(key, value) => {
+          if (key === "colorScheme") {
+            const scheme = value as ColorScheme
+            theme.setColorScheme(scheme)
+            setSettings("general", "colorScheme", scheme)
+            return
+          }
+          if (key === "theme") {
+            const themeValue = value as string
+            theme.setThemeId(themeValue || "synergy")
+            setSettings("general", "theme", themeValue)
+            // Persist to server independently — fire-and-forget with error toast on failure.
+            void globalSDK.client.config.domain
+              .update({ domain: "general", configDomainUpdateInput: { config: { theme: themeValue } } })
+              .catch((error) => {
+                showToast({
+                  type: "error",
+                  title: _(copy.themeSaveFailed),
+                  description: requestErrorMessage(error),
+                })
+              })
+            return
+          }
+          setSettings("general", key, value)
+        }}
         desktopUpdateMode={desktopUpdateDraft() ?? productUpdate.desktopStatus()?.mode}
         onDesktopUpdateModeChange={stageDesktopUpdateMode}
-        desktopZoom={desktopZoomDraft() ?? desktopZoomSaved() ?? 1}
-        onDesktopZoomChange={stageDesktopZoomFactor}
+        desktopZoom={desktopZoomSaved() ?? 1}
+        onDesktopZoomChange={applyDesktopZoomFactor}
         popoverLayer={settingsPopoverLayer()}
       />
     ),
@@ -824,7 +854,24 @@ export function SettingsPanel(props: SettingsPanelProps) {
         providerFocusID={providerFocusID()}
       />
     ),
-    github: GitHubPanel,
+    github: () => (
+      <GitHubPanel
+        github={settings.github}
+        onGithubChange={(key, value) => setSettings("github", key, value as never)}
+        onSyncIdentity={async () => {
+          // Sync must run against persisted config: flush any pending github
+          // domain draft first so the server applies what the panel shows.
+          const patch = serverPatch()
+          if (patch.github) {
+            await globalSDK.client.config.domain.update({
+              domain: "github",
+              configDomainUpdateInput: { config: { github: patch.github } as never },
+            })
+            await refreshAfterConfigChange(["github"], snapshotSettingsDraft(settings))
+          }
+        }}
+      />
+    ),
     "synergy-link": SynergyLinkPanel,
     usage: () => (
       <UsagePanel
@@ -848,6 +895,13 @@ export function SettingsPanel(props: SettingsPanelProps) {
       <ExperiencePanel
         library={settings.library}
         onLibraryChange={(key, value) => setSettings("library", key, value)}
+      />
+    ),
+    skills: () => (
+      <SkillsPanel
+        skills={settings.skills}
+        sources={skillSources() ?? []}
+        onSkillsChange={(source, value) => setSettings("skills", source, value)}
       />
     ),
     mcp: () => (
@@ -1153,7 +1207,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 </ul>
               </div>
             </Show>
-            <AppPanel.Body padding={false}>{renderActiveContent()}</AppPanel.Body>
+            <AppPanel.Body padding={false}>
+              {renderActiveContent()}
+              <SlotOutlet slot="settings.section" />
+            </AppPanel.Body>
 
             <AppPanel.Footer class="settings-panel-footer">
               <div class="settings-panel-footer-status flex flex-1 items-center gap-3">

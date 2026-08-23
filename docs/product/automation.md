@@ -2,11 +2,11 @@
 
 Agenda turns an instruction into durable triggered work. An Agenda item owns its activation rules, execution prompt, Scope, agent and model choices, control profile, session policy, delivery behavior, state, and run history.
 
-Agenda is the right abstraction for work that starts because time passed, a schedule recurred, a file changed, a webhook arrived, or the user explicitly ran an existing item. Cortex delegation and workflow continuation are not Agenda triggers: they belong to work already in progress inside a session hierarchy.
+Agenda is the right abstraction for work that starts because time passed, a schedule recurred, a file changed, a webhook arrived, a session ended a turn, or the user explicitly ran an existing item. Cortex delegation and workflow continuation are not Agenda triggers: they belong to work already in progress inside a session hierarchy.
 
 ## Item Lifecycle
 
-An item moves through `pending`, `active`, `paused`, `done`, or `cancelled`. Active items are registered with the clock, file watcher, or webhook runtime according to their triggers. Paused, completed, and cancelled items do not fire.
+An item moves through `pending`, `active`, `paused`, `done`, or `cancelled`. Active items are registered with the clock, file watcher, webhook, or session-event runtime according to their triggers. Paused, completed, and cancelled items do not fire.
 
 Every item records:
 
@@ -22,16 +22,16 @@ Run history records the firing trigger, execution session, status, error, durati
 
 ## Triggers
 
-The current trigger model supports:
-
 - `at` — one Unix timestamp
 - `delay` — one relative delay
 - `cron` — a cron expression with optional IANA timezone
 - `every` — a recurring duration with optional anchor
 - `watch` — file add/change/unlink events matched by glob, with optional debounce
 - `webhook` — an authenticated inbound HTTP trigger
+- `session` — a session turn event (`turn.start` / `turn.end`) on a specific session, with optional `agent` / `finish` filters and a `once` flag
+- `github` — a GitHub resource state change (`pr` / `issue` / `workflow` / `check`) on an `owner/repo`, polled on an interval (default 5m, min 30s) with optional `number` targeting and `states` filtering
 
-The `agenda_schedule` agent tool exposes the four time-based trigger types. File watches have their own workflow. Webhooks are managed by the Agenda API and product surfaces. Polling commands and arbitrary tool-result watches are not active trigger types.
+The `agenda_schedule` agent tool exposes the time-based trigger types plus the `session` and `github` triggers; `agenda_watch` accepts `onGithub` for one-shot wake-on-change delivery. File watches have their own workflow. Webhooks are managed by the Agenda API and product surfaces. Polling commands and arbitrary tool-result watches are not active trigger types. GitHub triggers use the managed GitHub credential (the same token injected into `gh` CLI commands); when no credential is connected or the `github.watch.enabled` config switch is off, the polls stay idle without firing or logging noise.
 
 Multiple triggers can belong to one item. Deduplication compares their structural meaning so an equivalent automation is not accidentally registered twice.
 
@@ -42,7 +42,9 @@ Agenda work is unattended. Unless explicitly overridden, its session uses the `a
 Session mode is inferred from the trigger:
 
 - `at` and `delay` default to `ephemeral`
-- `cron`, `every`, and file `watch` default to `persistent`
+- `cron`, `every`, file `watch`, `github`, and recurring (`once:false`) `session` triggers default to `persistent`
+
+One-shot `session` triggers default to `ephemeral`.
 
 An item can override that choice. A persistent item reuses its recorded Agenda session so context can accumulate across fires. An ephemeral item creates a dated session for one run and archives it after extracting the result.
 

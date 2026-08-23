@@ -39,25 +39,11 @@ describe("settings config patch", () => {
       variant: "high",
     })
   })
-  test("clears a stored theme when the Synergy default is selected", () => {
+  test("does not include theme in the general patch", () => {
+    // Theme is applied instantly via a fire-and-forget server call, not through
+    // the explicit-save patch. The patch must never carry a theme field.
     const state = defaultSettingsState("enter")
     state.general.theme = ""
-
-    const patch = buildPatch({
-      cfg: { theme: "ayu" } as Config,
-      state,
-      originalMcps: {},
-    })
-
-    // The cleared value must survive JSON serialization: an undefined value
-    // is dropped by the SDK request serializer, so the server would keep the
-    // previous theme and the picker would jump back after refresh.
-    expect(JSON.parse(JSON.stringify(patch))).toHaveProperty("theme", "")
-  })
-
-  test("does not re-send the theme when it matches the server config", () => {
-    const state = defaultSettingsState("enter")
-    state.general.theme = "ayu"
 
     const patch = buildPatch({
       cfg: { theme: "ayu" } as Config,
@@ -796,5 +782,135 @@ describe("settings config patch performance monitoring", () => {
       originalMcps: {},
     })
     expect((patch.observability as { performance?: { enabled?: boolean } })?.performance?.enabled).toBe(false)
+  })
+})
+describe("settings config patch skills compatibility", () => {
+  test("does not emit a skills patch when the form matches compatibility defaults", () => {
+    const state = defaultSettingsState("enter")
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} })).not.toHaveProperty("skills")
+  })
+
+  test("emits only the diverging compatibility field", () => {
+    const state = defaultSettingsState("enter")
+    state.skills.claude = false
+
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).skills).toEqual({
+      compatibility: { claude: false },
+    })
+  })
+
+  test("re-enables a source stored as explicit false", () => {
+    const state = defaultSettingsState("enter")
+    state.skills.codex = true
+
+    expect(
+      buildPatch({
+        cfg: {
+          skills: {
+            compatibility: { agents: true, claude: true, codex: false, openclaw: true },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).skills,
+    ).toEqual({
+      compatibility: { codex: true },
+    })
+  })
+
+  test("leaves untouched sources (including project-level overrides) out of the patch", () => {
+    // agents:false is a project-level override the home-scope form hydrated
+    // from the merged config. Changing only claude must not re-write agents
+    // into the global domain, otherwise the project override gets baked in.
+    const state = defaultSettingsState("enter")
+    state.skills.agents = false
+    state.skills.claude = false
+
+    expect(
+      buildPatch({
+        cfg: {
+          skills: {
+            compatibility: { agents: false, claude: true, codex: true, openclaw: true },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).skills,
+    ).toEqual({
+      compatibility: { claude: false },
+    })
+  })
+
+  test("does not emit a skills patch when the form matches explicit server values", () => {
+    const state = defaultSettingsState("enter")
+    state.skills.agents = false
+    state.skills.openclaw = false
+
+    expect(
+      buildPatch({
+        cfg: {
+          skills: {
+            compatibility: { agents: false, claude: true, codex: true, openclaw: false },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("skills")
+  })
+})
+
+describe("settings config patch github integration", () => {
+  test("does not emit a github patch when the form matches defaults", () => {
+    const state = defaultSettingsState("enter")
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} })).not.toHaveProperty("github")
+  })
+
+  test("emits identity sync with overrides and clears a stored override on empty", () => {
+    const state = defaultSettingsState("enter")
+    state.github.identitySyncEnabled = true
+    state.github.identitySyncName = "  Codex Bot  "
+    state.github.identitySyncEmail = ""
+
+    expect(
+      buildPatch({
+        cfg: { github: { identitySync: { enabled: false, email: "old@example.com" } } } as Config,
+        state,
+        originalMcps: {},
+      }).github,
+    ).toEqual({
+      identitySync: { enabled: true, name: "Codex Bot", email: null },
+      watch: { enabled: true },
+    })
+  })
+
+  test("disabling the agenda watch emits the github patch", () => {
+    const state = defaultSettingsState("enter")
+    state.github.watchEnabled = false
+
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).github).toEqual({
+      identitySync: { enabled: false },
+      watch: { enabled: false },
+    })
+  })
+
+  test("does not emit a github patch when the form matches stored values", () => {
+    const state = defaultSettingsState("enter")
+    state.github.identitySyncEnabled = true
+    state.github.identitySyncName = "Codex Bot"
+    state.github.watchEnabled = false
+
+    expect(
+      buildPatch({
+        cfg: {
+          github: {
+            identitySync: { enabled: true, name: "Codex Bot" },
+            watch: { enabled: false },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("github")
   })
 })

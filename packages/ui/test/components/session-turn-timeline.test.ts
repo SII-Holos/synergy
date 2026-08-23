@@ -1193,6 +1193,34 @@ describe("session turn timeline", () => {
     expect(items).toHaveLength(1)
     expect(items[0]).toMatchObject({ kind: "part", part: { type: "tool", tool: "read" } })
   })
+  test("routes completed hidden-card tools with attachments (e.g. attach) to the gallery", () => {
+    const message = assistant("assistant-a")
+    const attachTool = {
+      id: "attach-a",
+      sessionID: "session",
+      messageID: message.id,
+      type: "tool",
+      callID: "call-attach",
+      tool: "attach",
+      state: {
+        status: "completed",
+        input: { file_path: "report.pdf" },
+        output: "File delivered: report.pdf (2.0 KB)",
+        title: "report.pdf",
+        // attach hides the tool card (toolCard: "hidden") but is NOT a
+        // media-generation tool — completed attachments must still surface
+        // through the auto-expanded attachment gallery.
+        metadata: { display: { toolCard: "hidden" } },
+        attachments: [image],
+        time: { start: 1, end: 2 },
+      },
+    } as PartType
+
+    const items = collectSessionTurnTimelineItems([message], { [message.id]: [attachTool] }, false)
+
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ kind: "tool-attachments", files: [image] })
+  })
 
   test("hides completed media tools without attachments when their tool card is hidden", () => {
     const message = assistant("assistant-a")

@@ -9,8 +9,8 @@ export namespace SessionAbort {
     return () => hooks.delete(hook)
   }
 
-  export async function abort(sessionID: string): Promise<void> {
-    SessionInvoke.cancel(sessionID)
+  export async function abort(sessionID: string, options?: { recoverQueuedTasks?: boolean }): Promise<void> {
+    SessionInvoke.cancel(sessionID, options)
     const { Cortex } = await import("../cortex")
     await Cortex.cancelAll(sessionID)
     await SessionInvoke.repairAfterAbort(sessionID)

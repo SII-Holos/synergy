@@ -104,6 +104,8 @@ Cortex delegation creates a child session under the parent. The child keeps its 
 
 Forking creates a new session from an earlier point in history. `forkedFrom` records that provenance independently of `parentID`; a fork is not automatically delegated work, and a delegated child is not a history fork.
 
+Two fork entry points exist: the `session.fork` command (`mod+shift+f` / command palette) forks the full effective history at the current head, and the per-message fork icon on each settled assistant output forks history through that message inclusive. Clicking the per-message fork icon opens a confirmation dialog showing what will be copied (message counts through the reply, a text preview, and the reply time) before the new session is created. The backend `position` contract supports `current` (whole history), `before` (history up to, but excluding, a message), and `through` (history including a message).
+
 See [Cortex delegation](../architecture/cortex.md) for task lifecycle and output contracts.
 
 ## History, Rewind, and Recovery

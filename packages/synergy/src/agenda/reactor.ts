@@ -193,6 +193,7 @@ export namespace AgendaReactor {
           sessionID,
           startTime,
           duration,
+          autoDone: item.autoDone === true,
         },
         item.triggers,
         signal.type,

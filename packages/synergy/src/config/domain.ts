@@ -12,12 +12,14 @@ export namespace ConfigDomain {
     "library",
     "mcp",
     "plugins",
+    "skills",
     "agents",
     "commands",
     "permissions",
     "channels",
     "holos",
     "email",
+    "github",
     "runtime",
   ])
   export type Id = z.infer<typeof Id>
@@ -80,6 +82,16 @@ export namespace ConfigDomain {
       "pluginRuntimePolicy",
       "pluginMarketplace",
     ]),
+    {
+      id: "skills",
+      filename: "55-skills.jsonc",
+      label: "Skills",
+      ownedKeys: ["skills"],
+      mergePolicy: "merge",
+      reloadTargets: ["config"],
+      uiSection: "skills",
+      importable: true,
+    },
     def("agents", "60-agents.jsonc", "Agents", [
       "default_agent",
       "agent",
@@ -100,6 +112,7 @@ export namespace ConfigDomain {
     def("channels", "90-channels.jsonc", "Channels", ["channel"]),
     def("holos", "100-holos.jsonc", "Holos", ["holos", "enterprise"]),
     def("email", "110-email.jsonc", "Email", ["email"]),
+    def("github", "115-github.jsonc", "GitHub", ["github"]),
     def("runtime", "120-runtime.jsonc", "Runtime", [
       "server",
       "timeout",

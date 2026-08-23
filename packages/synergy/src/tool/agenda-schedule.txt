@@ -3,6 +3,8 @@ Create a recurring task that runs in its own separate session, isolated from thi
 Triggers:
 - `{type:"cron", expr:"0 9 * * *", tz:"Asia/Shanghai"}` — recurring cron
 - `{type:"every", interval:"30m"}` — recurring at a fixed interval
+- `{type:"session", sessionID:"ses_xxx", event:"turn.end"}` — fires once when the target session ends a turn. Optional filters: `agent`, `finish`. Set `once:false` to keep firing on every matching turn.
+- `{type:"github", resource:"pr"|"issue"|"workflow"|"check", repository:"owner/repo", number?, ref?, interval?, states?}` — fires when the watched GitHub resource changes state, polled on an interval (default 5m). `number` targets one PR/issue or workflow run id; `ref` targets a branch/tag/commit for workflow/check watches; `states` filters transitions (e.g. ["merged"], ["failure"]). Requires a connected GitHub credential.
 
 By default, results are delivered back to this session and wake you (wake=true). Set silent=true to suppress delivery.
 Set controlProfile to "full_access", "autonomous", or "guarded" when the scheduled session needs an explicit permission profile.

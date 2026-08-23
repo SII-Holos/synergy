@@ -14,6 +14,7 @@ import { ObservabilityRedaction } from "./redaction"
 import { ObservabilitySchema } from "./schema"
 import { ObservabilityStore } from "./store"
 import { parseJson } from "@/util/json-parse"
+import { readFileWithRetry } from "@/util/io-retry"
 
 export namespace Diagnostics {
   export type Summary = ObservabilitySchema.DiagnosticsSummary
@@ -403,7 +404,9 @@ export namespace Diagnostics {
     // scan into an O(sessions) scan for the dashboard's 5s polling.
     await walk(root, async (file) => {
       if (!file.endsWith("info.json")) return
-      const data = await fs.readFile(file, "utf8").catch(() => "")
+      // Cross-process read: on Windows a concurrent atomic rename can fail
+      // this read transiently; retry keeps the dashboard scan accurate (#1247).
+      const data = await readFileWithRetry(file).catch(() => "")
       if (!data.includes('"pendingReply"')) return
       const json = JSON.parse(data) as { id?: string; pendingReply?: boolean; time?: { updated?: number } }
       if (!json.pendingReply || !json.id) return

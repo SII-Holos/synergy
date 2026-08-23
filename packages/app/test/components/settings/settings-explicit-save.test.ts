@@ -4,7 +4,7 @@ import {
   rebaseDraftAfterSave,
   retainDraftAfterSave,
   saveExplicitSettingsChanges,
-  themeIdToApplyAfterSave,
+  themeIdToSettingsValue,
   type ExplicitSettingsSaveSource,
 } from "../../../src/components/settings/settings-explicit-save"
 
@@ -59,13 +59,17 @@ describe("settings explicit save coordination", () => {
     expect(retainDraftAfterSave("auto", "auto")).toBeUndefined()
     expect(retainDraftAfterSave("manual", "auto")).toBe("manual")
   })
-
-  test("applies a saved theme change including a reset to the default theme", () => {
-    expect(themeIdToApplyAfterSave({ theme: "plugin-theme" })).toBe("plugin-theme")
-    expect(themeIdToApplyAfterSave({ theme: undefined })).toBe("")
-    expect(themeIdToApplyAfterSave({ locale: "en" })).toBeUndefined()
+  test("maps the live theme id to the stored settings value", () => {
+    expect(themeIdToSettingsValue("ayu")).toBe("ayu")
+    expect(themeIdToSettingsValue("catppuccin")).toBe("catppuccin")
   })
 
+  test("stores the default theme as an empty string", () => {
+    expect(themeIdToSettingsValue("synergy")).toBe("")
+    expect(themeIdToSettingsValue("synergy", "synergy")).toBe("")
+    expect(themeIdToSettingsValue("catppuccin", "catppuccin")).toBe("")
+    expect(themeIdToSettingsValue("ayu", "catppuccin")).toBe("ayu")
+  })
   test("rebases only edits made while the submitted settings were saving", () => {
     const refreshed = {
       general: { username: "alice", locale: "en" },

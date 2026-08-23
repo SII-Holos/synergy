@@ -213,6 +213,8 @@ export namespace AgendaStore {
       sessionID?: string
       startTime: number
       duration: number
+      /** One-shot watch items (agenda_watch) complete after a successful fire. */
+      autoDone?: boolean
     },
     triggers: AgendaTypes.Trigger[],
     signalType: string,
@@ -235,9 +237,21 @@ export namespace AgendaStore {
 
       draft.state.nextRunAt = newNextRunAt
 
-      const hasNonTimeTriggers = triggers.some((t) => t.type === "watch" || t.type === "webhook")
-      if (newNextRunAt === undefined && signalType !== "manual" && !hasNonTimeTriggers) {
+      if (result.autoDone && result.status !== "error") {
         draft.status = "done"
+      } else {
+        const hasNonTimeTriggers = triggers.some(
+          (t) => t.type === "watch" || t.type === "webhook" || t.type === "github",
+        )
+        const hasRecurringSessionTrigger = triggers.some((t) => t.type === "session" && t.once === false)
+        if (
+          newNextRunAt === undefined &&
+          signalType !== "manual" &&
+          !hasNonTimeTriggers &&
+          !hasRecurringSessionTrigger
+        ) {
+          draft.status = "done"
+        }
       }
 
       draft.time.updated = Date.now()
@@ -559,6 +573,10 @@ export namespace AgendaStore {
         return { type: trigger.type, interval: trigger.interval }
       case "delay":
         return { type: trigger.type, delay: trigger.delay }
+      case "session":
+        return { type: trigger.type, sessionID: trigger.sessionID }
+      case "github":
+        return { type: trigger.type, interval: trigger.interval }
       default:
         return { type: trigger.type }
     }

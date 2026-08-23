@@ -14,12 +14,14 @@ Generated from the config domain definitions in `packages/synergy/src/config/dom
 | `library` | `30-library.jsonc` | merge |
 | `mcp` | `40-mcp.jsonc` | merge |
 | `plugins` | `50-plugins.jsonc` | merge |
+| `skills` | `55-skills.jsonc` | merge |
 | `agents` | `60-agents.jsonc` | merge |
 | `commands` | `70-commands.jsonc` | merge |
 | `permissions` | `80-permissions.jsonc` | merge |
 | `channels` | `90-channels.jsonc` | merge |
 | `holos` | `100-holos.jsonc` | merge |
 | `email` | `110-email.jsonc` | merge |
+| `github` | `115-github.jsonc` | merge |
 | `runtime` | `120-runtime.jsonc` | merge |
 
 ## General
@@ -98,6 +100,14 @@ File: `50-plugins.jsonc` · Merge: merge
 | `pluginRuntimePolicy` | PluginRuntimePolicy.optional (optional) | Plugin runtime isolation policy configuration |
 | `pluginMarketplace` | PluginMarketplace.optional (optional) | Public plugin marketplace registry configuration |
 
+## Skills
+
+File: `55-skills.jsonc` · Merge: merge
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `skills` | SkillsConfig |  |
+
 ## Agents
 
 File: `60-agents.jsonc` · Merge: merge
@@ -156,6 +166,14 @@ File: `110-email.jsonc` · Merge: merge
 | Key | Type | Description |
 | --- | --- | --- |
 | `email` | Email.optional (optional) | Outgoing email configuration |
+
+## GitHub
+
+File: `115-github.jsonc` · Merge: merge
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `github` | Github.optional (optional) | GitHub integration settings (git identity sync, agenda watch) |
 
 ## Runtime
 

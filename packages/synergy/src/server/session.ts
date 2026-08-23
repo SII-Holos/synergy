@@ -576,6 +576,15 @@ export const SessionRoute = new Hono()
             },
           },
         },
+        ...errors(400, 404),
+        409: {
+          description: "Fork point message is no longer part of the effective history",
+          content: {
+            "application/json": {
+              schema: resolver(Session.ForkPointMissingError.Schema),
+            },
+          },
+        },
       },
     }),
     validator(
@@ -617,7 +626,7 @@ export const SessionRoute = new Hono()
       }),
     ),
     async (c) => {
-      await SessionAbort.abort(c.req.valid("param").sessionID)
+      await SessionAbort.abort(c.req.valid("param").sessionID, { recoverQueuedTasks: true })
       return c.json(true)
     },
   )

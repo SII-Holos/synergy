@@ -54,19 +54,28 @@ describe("GeneralPanel interface zoom markup", () => {
 
   test("renders a continuous zoom slider spanning the desktop shell range", () => {
     const source = readFileSync(
-      join(import.meta.dir, "../../../../src/components/settings/panels/GeneralPanel.tsx"),
+      join(import.meta.dir, "../../../../src/components/settings/panels/interface-zoom.tsx"),
       "utf8",
     )
     expect(source).toMatch(/type="range"/)
     expect(source).toMatch(/min="50"/)
     expect(source).toMatch(/max="200"/)
     expect(source).toMatch(/step="1"/)
-    expect(source).toMatch(/onZoomChange\(Number\(event\.currentTarget\.value\) \/ 100\)/)
+    expect(source).toMatch(/onChange=\{\(event\) => model\.commit\(Number\(event\.currentTarget\.value\) \/ 100\)\}/)
+  })
+
+  test("previews on input and commits on pointer release", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../../../../src/components/settings/panels/interface-zoom.tsx"),
+      "utf8",
+    )
+    expect(source).toMatch(/onInput=\{\(event\) => model\.setPreview\(Number\(event\.currentTarget\.value\) \/ 100\)\}/)
+    expect(source).toMatch(/onChange=\{\(event\) => model\.commit\(Number\(event\.currentTarget\.value\) \/ 100\)\}/)
   })
 
   test("uses statically extractable Lingui descriptors for zoom copy", () => {
     const source = readFileSync(
-      join(import.meta.dir, "../../../../src/components/settings/panels/GeneralPanel.tsx"),
+      join(import.meta.dir, "../../../../src/components/settings/panels/interface-zoom.tsx"),
       "utf8",
     )
     expect(source).toContain('zoomTitle: { id: "settings.general.zoom.title"')

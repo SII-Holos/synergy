@@ -12,6 +12,7 @@ import { holosLogoPath } from "@/utils/brand-assets"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { getScopeLabel, isHomeScope } from "@/utils/scope"
 import { ActiveZone } from "@/components/scopes/active-zone"
+import { sessionScopeRequestFor } from "@/components/session/session-actions"
 import { SessionRow } from "@/components/scopes/session-row"
 import { PaginationBar } from "@/components/scopes/pagination-bar"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
@@ -26,6 +27,7 @@ import { SettingsDialog } from "@/components/settings"
 import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
 import { MobileDrawerAddProjectButton, MobileDrawerRecent, MobileDrawerSettingsButton } from "./mobile-drawer-root"
 import { resolveSessionVisualState } from "@/components/sidebar/session-visual-state"
+import "./mobile-drawer.css"
 
 export function MobileDrawer() {
   const layout = useLayout()
@@ -88,7 +90,7 @@ export function MobileDrawer() {
 
   return (
     <Show when={layout.mobileSidebar.opened()}>
-      <div class="fixed inset-0 z-[100] flex md:hidden">
+      <div class="mobile-drawer-overlay fixed inset-0 z-[100] flex md:hidden">
         <div
           class="absolute inset-0 bg-surface-overlay"
           style={{ animation: "mobileDrawerFadeIn 200ms ease-out both" }}
@@ -113,6 +115,7 @@ export function MobileDrawer() {
             </A>
             <button
               ref={closeButtonRef}
+              data-action="close"
               type="button"
               aria-label={_(appShell.closeNav)}
               class="flex items-center justify-center size-8 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
@@ -156,7 +159,7 @@ export function MobileDrawer() {
   )
 }
 
-type DrawerToolID = "agenda" | "library" | "performance" | "plugins" | "notes" | "browser"
+type DrawerToolID = "agenda" | "library" | "performance" | "plugins" | "kanban" | "notes" | "browser"
 
 interface DrawerTool {
   id: DrawerToolID
@@ -170,6 +173,7 @@ const DRAWER_TOOLS: DrawerTool[] = [
   { id: "library", icon: "library.main", href: "/library" },
   { id: "performance", icon: "performance.main", href: "/performance" },
   { id: "plugins", icon: "plugins.main", href: "/plugins/marketplace" },
+  { id: "kanban", icon: "kanban.main", href: "/kanban" },
   { id: "notes", icon: "notes.main", panelId: "notes" },
   { id: "browser", icon: "browser.main", panelId: "browser" },
 ]
@@ -194,6 +198,7 @@ function ScopeListView(props: {
     if (id === "library") return _(appShell.library)
     if (id === "performance") return _(appShell.performance)
     if (id === "plugins") return _(appShell.plugins)
+    if (id === "kanban") return _(appShell.kanban)
     if (id === "notes") return _(appShell.notes)
     return _(appShell.browser)
   }
@@ -515,7 +520,11 @@ function SessionListDrawerView(props: {
                 onTogglePin={() => layout.nav.pinSession(session, !(session.pinned && session.pinned > 0))}
                 onArchive={() => archiveSession(session)}
                 onRename={(title) =>
-                  globalSDK.client.session.update({ directory: session.scope.directory, sessionID: session.id, title })
+                  globalSDK.client.session.update({
+                    ...sessionScopeRequestFor(session),
+                    sessionID: session.id,
+                    title,
+                  })
                 }
               />
             )

@@ -151,10 +151,9 @@ describe("ProviderTransform.options - setCacheKey", () => {
   })
 })
 
-describe("ProviderTransform.message - Anthropic cache boundary", () => {
+describe("ProviderTransform.message - system-layout Anthropic-style cache boundary", () => {
   const mockModel = {
-    id: "anthropic/claude-3-5-sonnet",
-    providerID: "anthropic",
+    providerID: "google-vertex",
     api: {
       id: "claude-3-5-sonnet-20241022",
       url: "https://api.anthropic.com",
@@ -236,6 +235,221 @@ describe("ProviderTransform.message - Anthropic cache boundary", () => {
     expect(result[2].providerOptions?.anthropic?.cacheControl).toBeUndefined()
     expect(result[3].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
     expect(result[4].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+  })
+})
+
+describe("ProviderTransform.message - Anthropic late-user-context cache boundary", () => {
+  const anthropicModel = {
+    id: "anthropic/claude-3-5-sonnet",
+    providerID: "anthropic",
+    api: {
+      id: "claude-3-5-sonnet-20241022",
+      url: "https://api.anthropic.com",
+      npm: "@ai-sdk/anthropic",
+    },
+    name: "Claude 3.5 Sonnet",
+    capabilities: {
+      temperature: true,
+      reasoning: false,
+      attachment: true,
+      toolcall: true,
+      input: { text: true, audio: false, image: true, video: false, pdf: true },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false,
+    },
+    cost: { input: 0.003, output: 0.015, cache: { read: 0.0003, write: 0.00375 } },
+    limit: { context: 200000, output: 8192 },
+    status: "active",
+    options: {},
+    headers: {},
+  } as any
+
+  test("marks the history-tail breakpoint and leaves the runtime-context message uncached", () => {
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "AGENTS.md" },
+      { role: "system", content: "permission context" },
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi" },
+      { role: "user", content: "<runtime-context>advisory context</runtime-context>" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, anthropicModel, { systemCacheBreakpoint: 2 })
+
+    expect(result[2].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[4].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[5].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+  })
+
+  test("marks the final history message when no runtime-context message follows", () => {
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "permission context" },
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, anthropicModel, { systemCacheBreakpoint: 1 })
+
+    expect(result[1].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[3].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+  })
+
+  test("handles array-content runtime-context messages", () => {
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "permission context" },
+      { role: "user", content: "hello" },
+      {
+        role: "user",
+        content: [{ type: "text", text: "<runtime-context>advisory</runtime-context>" }],
+      },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, anthropicModel, { systemCacheBreakpoint: 1 })
+
+    expect(result[1].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[2].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[3].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+  })
+})
+
+describe("ProviderTransform.message - mapped-profile and fallback cache boundary", () => {
+  const baseModel = {
+    api: {
+      id: "claude-3-5-sonnet-20241022",
+      url: "https://api.anthropic.com",
+      npm: "@ai-sdk/anthropic",
+    },
+    name: "Claude 3.5 Sonnet",
+    capabilities: {
+      temperature: true,
+      reasoning: false,
+      attachment: true,
+      toolcall: true,
+      input: { text: true, audio: false, image: true, video: false, pdf: true },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false,
+    },
+    cost: { input: 0.003, output: 0.015, cache: { read: 0.0003, write: 0.00375 } },
+    limit: { context: 200000, output: 8192 },
+    status: "active",
+    options: {},
+    headers: {},
+  } as any
+
+  test("passes the resolved profile through cache-layout selection for mapped accounts", () => {
+    const mappedModel = { ...baseModel, id: "anthropic-secondary/claude-3-5-sonnet", providerID: "anthropic-secondary" }
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "permission context" },
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi" },
+      { role: "user", content: "<runtime-context>advisory</runtime-context>" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, mappedModel, { systemCacheBreakpoint: 1, profileID: "anthropic" })
+
+    expect(result[1].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[4].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+    expect(result[3].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+  })
+
+  test("fallback selection excludes the runtime-context message from breakpoints", () => {
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "custom system" },
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi" },
+      { role: "user", content: "<runtime-context>advisory</runtime-context>" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, {
+      ...baseModel,
+      id: "anthropic/claude-3-5-sonnet",
+      providerID: "anthropic",
+    })
+
+    expect(result[0].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[1].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[3].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[4].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+  })
+})
+
+describe("ProviderTransform.message - mergeSystemMessages option", () => {
+  const strictModel = {
+    id: "sii-qwen/Qwen3.8-27B",
+    providerID: "sii-qwen",
+    api: {
+      id: "Qwen3.8-27B",
+      url: "https://sii.example/v1",
+      npm: "@ai-sdk/openai-compatible",
+    },
+    name: "Qwen3.8 27B",
+    capabilities: { toolcall: true },
+    options: {},
+    headers: {},
+  } as any
+
+  test("merges leading system messages into one when mergeSystemMessages is enabled", () => {
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "AGENTS.md instructions" },
+      { role: "system", content: "permission context" },
+      { role: "user", content: "hello" },
+      { role: "user", content: "<runtime-context>advisory</runtime-context>" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, strictModel, { mergeSystemMessages: true })
+
+    expect(result.length).toBe(3)
+    expect(result[0].role).toBe("system")
+    expect(result[0].content).toBe("agent prompt\n\nAGENTS.md instructions\n\npermission context")
+    expect(result[1].content).toBe("hello")
+    expect(result[2].content).toContain("<runtime-context>")
+  })
+
+  test("keeps multiple leading system messages by default", () => {
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "AGENTS.md instructions" },
+      { role: "user", content: "hello" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, strictModel)
+
+    expect(result.length).toBe(3)
+    expect(result[0].role).toBe("system")
+    expect(result[1].role).toBe("system")
+    expect(result[2].role).toBe("user")
+  })
+
+  test("clamps the system cache breakpoint onto the merged system message for anthropic transports", () => {
+    const anthropicMergedModel = {
+      ...strictModel,
+      id: "anthropic/claude-3-5-sonnet",
+      providerID: "anthropic",
+      api: { id: "claude-3-5-sonnet-20241022", url: "https://api.anthropic.com", npm: "@ai-sdk/anthropic" },
+    }
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "AGENTS.md instructions" },
+      { role: "system", content: "permission context" },
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi" },
+      { role: "user", content: "<runtime-context>advisory</runtime-context>" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, anthropicMergedModel, {
+      systemCacheBreakpoint: 2,
+      mergeSystemMessages: true,
+    })
+
+    expect(result[0].role).toBe("system")
+    expect(result[0].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[2].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[3].providerOptions?.anthropic?.cacheControl).toBeUndefined()
   })
 })
 

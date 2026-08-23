@@ -37,8 +37,9 @@ import {
 } from "@/components/sidebar/session-visual-state"
 import { setSessionDragData } from "@/utils/session-drag"
 import { SidebarAttentionNotice } from "./sidebar-attention-notice"
-import { projectMenuPlacement, type ProjectMenuPlacement } from "./project-menu-placement"
+import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import "./sidebar.css"
+import { SlotOutlet } from "@/plugin/slot-outlet"
 import {
   channelProviderGroups,
   filterGenericScopeWorktrees,
@@ -744,6 +745,8 @@ export function Sidebar(props: SidebarProps) {
 
       {/* Bottom: Agent Hub */}
       <SidebarAgentHub isExpanded={isExpanded()} globalSDK={globalSDK} />
+      {/* Plugin footer slot */}
+      <SlotOutlet slot="sidebar.footer" />
 
       {/* Projects flyout (collapsed mode only) */}
       <Show when={!isExpanded() && projectsFlyoutOpen()}>
@@ -804,34 +807,6 @@ function SidebarProjectGroup(props: {
   _: ReturnType<typeof useLingui>["_"]
 }) {
   const [menuOpen, setMenuOpen] = createSignal(false)
-  const [menuPlacement, setMenuPlacement] = createSignal<ProjectMenuPlacement>("down")
-  let menuTrigger: HTMLButtonElement | undefined
-  let menu: HTMLDivElement | undefined
-
-  const updateMenuPlacement = () => {
-    if (!menuTrigger || !menu) return
-    const boundary = menuTrigger.closest(".sb-scroll")
-    if (!boundary) return
-
-    const triggerRect = menuTrigger.getBoundingClientRect()
-    const boundaryRect = boundary.getBoundingClientRect()
-    const menuRect = menu.getBoundingClientRect()
-    setMenuPlacement(
-      projectMenuPlacement({
-        triggerBottom: triggerRect.bottom,
-        boundaryBottom: boundaryRect.bottom,
-        menuHeight: menuRect.height,
-      }),
-    )
-  }
-
-  createEffect(() => {
-    if (!menuOpen()) {
-      setMenuPlacement("down")
-      return
-    }
-    queueMicrotask(updateMenuPlacement)
-  })
   const isSupplemental = createMemo(() => {
     const scope = props.scope()
     return scope ? props.isSupplemental(scope) : false
@@ -904,40 +879,30 @@ function SidebarProjectGroup(props: {
             <span class="sb-project-name">{props.scope() ? getScopeLabel(props.scope()!) : ""}</span>
           </button>
           <div class="sb-project-actions">
-            <button
-              ref={menuTrigger}
-              type="button"
-              classList={{
-                "sb-project-menu-btn": true,
-                "sb-project-menu-active": menuOpen(),
-              }}
-              onClick={(event) => {
-                event.stopPropagation()
-                setMenuOpen((value) => !value)
-              }}
-            >
-              <Icon name={getSemanticIcon("action.more")} size="small" />
-            </button>
-            <button
-              type="button"
-              class="sb-project-plus-btn"
-              onClick={(event) => {
-                const scope = props.scope()
-                if (scope) props.onProjectPlus(event, scope)
-              }}
-            >
-              <Icon name={getSemanticIcon("notes.create")} size="small" />
-            </button>
-            <Show when={menuOpen()}>
-              <>
-                <div class="sb-project-menu-backdrop" onClick={() => setMenuOpen(false)} />
-                <div
-                  ref={menu}
-                  classList={{
-                    "sb-project-menu": true,
-                    "sb-project-menu-up": menuPlacement() === "up",
-                  }}
-                >
+            <KobaltePopover open={menuOpen()} onOpenChange={setMenuOpen} placement="bottom-end" gutter={6}>
+              <KobaltePopover.Trigger
+                type="button"
+                classList={{
+                  "sb-project-menu-btn": true,
+                  "sb-project-menu-active": menuOpen(),
+                }}
+                aria-label={props._(sidebar.projectMenu)}
+              >
+                <Icon name={getSemanticIcon("action.more")} size="small" />
+              </KobaltePopover.Trigger>
+              <button
+                type="button"
+                class="sb-project-plus-btn"
+                onClick={(event) => {
+                  const scope = props.scope()
+                  if (scope) props.onProjectPlus(event, scope)
+                }}
+              >
+                <Icon name={getSemanticIcon("notes.create")} size="small" />
+              </button>
+              <KobaltePopover.Portal>
+                <KobaltePopover.Content class="sb-project-menu" onClick={(event) => event.stopPropagation()}>
+                  <KobaltePopover.Title class="sr-only">{props._(sidebar.projectMenu)}</KobaltePopover.Title>
                   <button
                     type="button"
                     class="sb-menu-item"
@@ -974,9 +939,9 @@ function SidebarProjectGroup(props: {
                     <Icon name={getSemanticIcon("action.remove")} size="small" />
                     <span>{props._(sidebar.archive)}</span>
                   </button>
-                </div>
-              </>
-            </Show>
+                </KobaltePopover.Content>
+              </KobaltePopover.Portal>
+            </KobaltePopover>
           </div>
         </div>
 
@@ -1252,7 +1217,7 @@ function SidebarSessionRow(props: {
         "sb-session-active": props.active,
       }}
       data-session-id={props.entry.id}
-      draggable={true}
+      draggable={props.flyout ? "false" : "true"}
       onDragStart={handleDragStart}
       onClick={props.onClick}
     >

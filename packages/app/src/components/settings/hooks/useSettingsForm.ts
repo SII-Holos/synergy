@@ -199,6 +199,13 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       : [],
   })
 
+  params.setSettings("github", {
+    identitySyncEnabled: cfg.github?.identitySync?.enabled ?? false,
+    identitySyncName: cfg.github?.identitySync?.name ?? "",
+    identitySyncEmail: cfg.github?.identitySync?.email ?? "",
+    watchEnabled: cfg.github?.watch?.enabled ?? true,
+  })
+
   const library = cfg.library
   const memory = library?.memory
   const experience = library?.experience
@@ -222,6 +229,12 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     embeddingSource: cfg.embedding?.local?.source ?? UI_DEFAULTS.embeddingSource,
     embeddingRemoteHost: cfg.embedding?.local?.remoteHost ?? UI_DEFAULTS.embeddingRemoteHost,
     embeddingCacheDir: cfg.embedding?.local?.cacheDir ?? UI_DEFAULTS.embeddingCacheDir,
+  })
+  params.setSettings("skills", {
+    agents: cfg.skills?.compatibility?.agents !== false,
+    claude: cfg.skills?.compatibility?.claude !== false,
+    codex: cfg.skills?.compatibility?.codex !== false,
+    openclaw: cfg.skills?.compatibility?.openclaw !== false,
   })
 
   params.setInitialized(true)

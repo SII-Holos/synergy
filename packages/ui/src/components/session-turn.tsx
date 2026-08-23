@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/solid"
-import { SESSION_TURN_DESC, MAILBOX_DESC } from "./tool-title-descriptors"
+import { SESSION_TURN_DESC, MAILBOX_DESC, TOOL_LABEL_DESC } from "./tool-title-descriptors"
 
 import type {
   AssistantMessage,
@@ -39,7 +39,9 @@ import {
 import { Message, Part, getToolInfo } from "./message-part"
 import { MessageSlotOutlet, type MessageSlotName } from "./message-slots"
 import { AttachmentGallery } from "./attachment-card"
-import { resolveAttachmentPresentation } from "./attachment-card-utils"
+import { attachmentSize, formatAttachmentSize, resolveAttachmentPresentation } from "./attachment-card-utils"
+import { BasicTool } from "./basic-tool"
+import { classifyTool } from "./tool/classifier"
 import { MediaGenerationCard } from "./media-generation-card"
 import { isActiveMediaGenerationToolPart, isToolCardHidden } from "./tool-result-presentation"
 import "./session-turn.css"
@@ -103,13 +105,24 @@ export function formatTurnTokenCount(value: number): string {
   return value.toLocaleString()
 }
 
-export function formatTurnCost(value: number): string | undefined {
-  if (value <= 0) return undefined
-  if (value < 0.01) return `$${value.toFixed(4)}`
-  return new Intl.NumberFormat(undefined, {
+const turnCostByLocale = new Map<string, Intl.NumberFormat>()
+
+function turnCostFormatter(locale: string | undefined): Intl.NumberFormat {
+  const key = locale ?? ""
+  const cached = turnCostByLocale.get(key)
+  if (cached) return cached
+  const created = new Intl.NumberFormat(locale ? [locale] : undefined, {
     style: "currency",
     currency: "USD",
-  }).format(value)
+  })
+  turnCostByLocale.set(key, created)
+  return created
+}
+
+export function formatTurnCost(value: number, locale?: string): string | undefined {
+  if (value <= 0) return undefined
+  if (value < 0.01) return `$${value.toFixed(4)}`
+  return turnCostFormatter(locale).format(value)
 }
 export function resolveSessionTurnError(value: NonNullable<AssistantMessage["error"]>) {
   if (value.name === "ProviderModelUnavailableError") {
@@ -138,7 +151,10 @@ export function resolveSessionTurnError(value: NonNullable<AssistantMessage["err
   }
 }
 
-export function turnCompletionStats(messages: readonly AssistantMessage[]): TurnCompletionStats | undefined {
+export function turnCompletionStats(
+  messages: readonly AssistantMessage[],
+  locale?: string,
+): TurnCompletionStats | undefined {
   const completed = messages.filter((message) => message.time.completed != null)
   if (completed.length === 0 || completed.length !== messages.length) return undefined
 
@@ -177,7 +193,7 @@ export function turnCompletionStats(messages: readonly AssistantMessage[]): Turn
   if (totals.cacheWrite > 0) segments.push(`${formatTurnTokenCount(totals.cacheWrite)} cache write`)
   if (totals.output > 0) segments.push(`${formatTurnTokenCount(totals.output)} output`)
   if (totals.reasoning > 0) segments.push(`${formatTurnTokenCount(totals.reasoning)} reasoning`)
-  const cost = formatTurnCost(totals.cost)
+  const cost = formatTurnCost(totals.cost, locale)
   if (cost) segments.push(cost)
 
   return { duration, segments }
@@ -513,7 +529,43 @@ function TimelineItemDisplay(props: {
     return <Part part={props.item.part} message={props.item.message} />
   }
   if (props.item.kind === "media-pending") return <MediaGenerationCard part={props.item.part} />
-  return <AttachmentGallery files={props.item.files} serverUrl={props.serverUrl} />
+  return <DeliveredAttachmentsCard item={props.item} serverUrl={props.serverUrl} />
+}
+
+function DeliveredAttachmentsCard(props: {
+  item: Extract<SessionTurnTimelineItem, { kind: "tool-attachments" }>
+  serverUrl: string
+}) {
+  const { _ } = useLingui()
+  const part = () => props.item.part
+  const files = () => props.item.files
+  const input = () => (part().state.input ?? {}) as Record<string, unknown>
+  const metadata = () => (part().state.metadata ?? {}) as Record<string, unknown>
+  const trigger = () => {
+    const info = getToolInfo(part().tool, input(), metadata())
+    if (typeof info.title === "string" && info.title === part().tool) {
+      const classified = classifyTool(part().tool, input(), metadata())
+      return { icon: classified.spec.icon, title: classified.title }
+    }
+    return { icon: info.icon, title: info.title }
+  }
+  const subtitle = () => {
+    const current = files()
+    return current.length === 1
+      ? current[0].filename
+      : _({ ...TOOL_LABEL_DESC.files, values: { count: current.length } })
+  }
+  const totalBytes = () => files().reduce((sum, file) => sum + (attachmentSize(file) ?? 0), 0)
+  const tags = () => {
+    const bytes = totalBytes()
+    const label = bytes > 0 ? formatAttachmentSize(bytes) : undefined
+    return label ? [{ label }] : undefined
+  }
+  return (
+    <BasicTool defaultOpen trigger={{ ...trigger(), subtitle: subtitle(), tags: tags() }}>
+      <AttachmentGallery files={files()} serverUrl={props.serverUrl} />
+    </BasicTool>
+  )
 }
 
 function isToolTimelineItem(item: SessionTurnTimelineItem): boolean {
@@ -912,6 +964,7 @@ export function SessionTurn(
     onRewind?: () => void
     rollbackActive?: boolean
     onReviewChanges?: (input: { messageID: string; file?: string }) => void
+    onForkMessage?: (messageID: string) => void
     activityDisplay?: ActivityDisplayMode
     compactReasoning?: boolean
     classes?: {
@@ -922,7 +975,8 @@ export function SessionTurn(
   }>,
 ) {
   const data = useData()
-  const { _ } = useLingui()
+  const view = data.view
+  const { _, i18n } = useLingui()
   const activityDisplay = createMemo(() => resolveActivityDisplay(props.activityDisplay))
 
   const emptyParts: PartType[] = []
@@ -946,7 +1000,7 @@ export function SessionTurn(
   const parts = createMemo(() => {
     const msg = message()
     if (!msg) return emptyParts
-    return data.store.part[msg.id] ?? emptyParts
+    return view.partsFor(msg.id)
   })
 
   const turnMessages = createMemo(() => props.messages, emptyDisplayMessages, { equals: same })
@@ -979,7 +1033,7 @@ export function SessionTurn(
     return _(SESSION_TURN_DESC.modelVariantUnavailable.id, presentation.values)
   })
 
-  const permissions = createMemo(() => data.store.permission?.[props.sessionID] ?? emptyPermissions)
+  const permissions = createMemo(() => view.permissionsFor(props.sessionID))
   const permissionCount = createMemo(() => permissions().length)
 
   const shellModePart = createMemo(() => {
@@ -989,7 +1043,7 @@ export function SessionTurn(
     const msgs = assistantMessages()
     if (msgs.length !== 1) return
 
-    const msgParts = data.store.part[msgs[0].id] ?? emptyParts
+    const msgParts = view.partsFor(msgs[0].id)
     if (msgParts.length !== 1) return
 
     const assistantPart = msgParts[0]
@@ -1000,7 +1054,7 @@ export function SessionTurn(
     resolveTurnWorking({
       isLastUserMessage: isLastUserMessage(),
       messages: turnMessages(),
-      sessionStatus: data.store.session_status[props.sessionID],
+      sessionStatus: view.statusFor(props.sessionID),
     }),
   )
 
@@ -1013,10 +1067,10 @@ export function SessionTurn(
   }
 
   const projectAssistantMessage = (item: AssistantMessage): SessionTurnAssistantDisplayItem[] => {
-    const visibleItems = collectSessionTurnTimelineItems([item], data.store.part, working())
+    const visibleItems = collectSessionTurnTimelineItems([item], view.partTable(), working())
     if (activityDisplay() === "full") return visibleItems
 
-    const sourceItems = collectSessionTurnTimelineItems([item], data.store.part, true)
+    const sourceItems = collectSessionTurnTimelineItems([item], view.partTable(), true)
     return projectAssistantActivityItems({
       message: item,
       sourceItems,
@@ -1039,7 +1093,7 @@ export function SessionTurn(
         if (item.role === "user") {
           const userMsg = item as UserMessage
           if (userMsg.isRoot !== false) return emptyDisplayItems
-          const itemParts = data.store.part[item.id] ?? emptyParts
+          const itemParts = view.partsFor(item.id)
           // A user's own mid-run message (steer / follow-up) renders as their
           // message bubble; system-injected non-root messages (cortex, agenda,
           // …) render as a compact origin chip.
@@ -1099,9 +1153,9 @@ export function SessionTurn(
         if (props.compactReasoning && isWorking) {
           liveReasoningParts = new Map()
           for (const assistant of assistants) {
-            const reasoningPart = (data.store.part[assistant.id] ?? emptyParts).findLast(
-              (part): part is ReasoningPart => part.type === "reasoning" && Boolean(part.text.trim()),
-            )
+            const reasoningPart = view
+              .partsFor(assistant.id)
+              .findLast((part): part is ReasoningPart => part.type === "reasoning" && Boolean(part.text.trim()))
             if (reasoningPart) liveReasoningParts.set(assistant.id, reasoningPart)
           }
         }
@@ -1109,12 +1163,12 @@ export function SessionTurn(
           compactReasoningParts: liveReasoningParts,
         }) as SessionTurnDisplayItem[]
         return props.compactReasoning && !isWorking
-          ? injectPersistedReasoningItems(projected, assistants, data.store.part)
+          ? injectPersistedReasoningItems(projected, assistants, view.partTable())
           : projected
       }
       if (props.compactReasoning) {
         if (isWorking) return compactReasoningTimelineItems(result)
-        return injectPersistedReasoningItems(result, assistants, data.store.part)
+        return injectPersistedReasoningItems(result, assistants, view.partTable())
       }
       return result
     },
@@ -1165,10 +1219,13 @@ export function SessionTurn(
     if (!latest) return []
     const display = displayMessages()
     const index = display.findIndex((item) => item.id === latest.id)
-    // latest comes from the same displayMessages() memo, so it is always
-    // present here — there is no fallback projection path.
-    const selected = displayItemProjections()[index]() as SessionTurnAssistantDisplayItem[]
-    if (activityDisplay() !== "minimal") return selected
+    // `display` and `displayItemProjections` are both derived from
+    // displayMessages(), but the two memos lazily recompute on their own
+    // schedule during a window replacement, so the index can transiently be
+    // -1 (or the projection array shorter than display). Guard the access —
+    // an empty projection is the graceful degradation path.
+    const selected = (displayItemProjections()[index]?.() ?? []) as SessionTurnAssistantDisplayItem[]
+    if (activityDisplay() !== "minimal") return selected as SessionTurnAssistantDisplayItem[]
     return projectMinimalActivityItems(selected, message()?.id ?? props.messageID, !working())
   })
   const emptyTimelineItemSnapshot = {
@@ -1201,8 +1258,7 @@ export function SessionTurn(
     if (working()) return ""
     const last = lastAssistantMessage()
     if (!last) return ""
-    const parts = data.store.part[last.id]
-    if (!parts) return ""
+    const parts = view.partsFor(last.id)
     const texts: string[] = []
     let hasTextPart = false
     for (const part of parts) {
@@ -1247,7 +1303,7 @@ export function SessionTurn(
     <MessageSlotOutlet slot={slot} sessionId={props.sessionID} messageId={messageId} role={role} />
   )
   const hasTimelineItems = createMemo(() => timelineItems().length > 0)
-  const sessionStatus = createMemo(() => data.store.session_status[props.sessionID])
+  const sessionStatus = createMemo(() => view.statusFor(props.sessionID))
   const [providerPreludeNow, setProviderPreludeNow] = createSignal(Date.now())
   const providerPreludeStarted = createMemo(() => message()?.time.created)
   const providerPreludeElapsed = createMemo(() =>
@@ -1265,7 +1321,7 @@ export function SessionTurn(
   )
   const completedTurnStats = createMemo(() => {
     if (working() || hasCompactionEvent() || error()) return undefined
-    return turnCompletionStats(assistantMessages())
+    return turnCompletionStats(assistantMessages(), i18n?.()?.locale)
   })
 
   createEffect(() => {
@@ -1480,6 +1536,16 @@ export function SessionTurn(
                                   size="small"
                                 />
                               </button>
+                              <Show when={!!props.onForkMessage && !!lastAssistantMessage()}>
+                                <button
+                                  type="button"
+                                  data-slot="assistant-message-fork"
+                                  aria-label={_(SESSION_TURN_DESC.forkMessage)}
+                                  onClick={() => props.onForkMessage?.(lastAssistantMessage()!.id)}
+                                >
+                                  <Icon name={getSemanticIcon("action.fork")} size="small" />
+                                </button>
+                              </Show>
                             </div>
                           </div>
                         </Show>

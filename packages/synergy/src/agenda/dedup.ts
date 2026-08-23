@@ -51,6 +51,20 @@ export namespace AgendaDedup {
         const be = b as Extract<typeof b, { type: "every" }>
         return a.interval === be.interval
       }
+      case "session": {
+        const bs = b as Extract<typeof b, { type: "session" }>
+        return a.sessionID === bs.sessionID && a.event === bs.event && a.agent === bs.agent && a.finish === bs.finish
+      }
+      case "github": {
+        const bg = b as Extract<typeof b, { type: "github" }>
+        if (a.resource !== bg.resource || a.repository !== bg.repository || a.number !== bg.number) return false
+        // The ref targets different branches/commits; the states filter
+        // changes the watched condition — both must match for a conflict.
+        if ((a.ref ?? "") !== (bg.ref ?? "")) return false
+        const statesA = a.states?.join(",") ?? ""
+        const statesB = bg.states?.join(",") ?? ""
+        return statesA === statesB
+      }
     }
 
     return false
@@ -127,6 +141,17 @@ export namespace AgendaDedup {
     if (trigger.type === "cron") return `cron: ${trigger.expr}`
     if (trigger.type === "every") return `every: ${trigger.interval}`
     if (trigger.type === "delay") return `delay: ${trigger.delay}`
+    if (trigger.type === "github") {
+      const target = trigger.number !== undefined ? ` #${trigger.number}` : ""
+      return `github: ${trigger.resource} ${trigger.repository}${target}`
+    }
+    if (trigger.type === "session") {
+      const event = trigger.event === "turn.end" ? "" : ` (${trigger.event})`
+      const filters = [trigger.agent && ` agent=${trigger.agent}`, trigger.finish && ` finish=${trigger.finish}`]
+        .filter(Boolean)
+        .join("")
+      return `session: ${trigger.sessionID}${event}${filters}`
+    }
     return trigger.type
   }
 

@@ -6,6 +6,8 @@ import { AgendaWebhook } from "./webhook"
 import { AgendaTypes } from "./types"
 import { Log } from "../util/log"
 import { AgendaSessionWakeup } from "./session-wakeup"
+import { AgendaSessionTrigger } from "./session-trigger"
+import { AgendaGithubTrigger } from "./github-trigger"
 
 export { AgendaTypes } from "./types"
 export { AgendaEvent } from "./event"
@@ -16,6 +18,8 @@ export { AgendaDelivery } from "./delivery"
 export { AgendaWatcher } from "./watcher"
 export { AgendaWebhook } from "./webhook"
 export { AgendaBootstrap } from "./bootstrap"
+export { AgendaSessionTrigger } from "./session-trigger"
+export { AgendaGithubTrigger } from "./github-trigger"
 
 const log = Log.create({ service: "agenda" })
 
@@ -36,6 +40,7 @@ export namespace Agenda {
           teardownItem(itemID)
         } else {
           AgendaClock.rearm(scopeID, itemID, result.nextRunAt)
+          await settleAfterFire(signal, scopeID)
         }
       } finally {
         inflight.delete(itemID)
@@ -45,10 +50,14 @@ export namespace Agenda {
     AgendaClock.start(handler, items)
     AgendaWatcher.start(handler, items)
     AgendaWebhook.start(handler, items)
+    AgendaSessionTrigger.start(handler, items)
+    AgendaGithubTrigger.start(handler, items)
     log.info("agenda started", {
       clock: AgendaClock.active(),
       watcher: AgendaWatcher.active(),
       webhooks: AgendaWebhook.active(),
+      sessionTriggers: AgendaSessionTrigger.active(),
+      githubTriggers: AgendaGithubTrigger.active(),
     })
   }
 
@@ -56,6 +65,8 @@ export namespace Agenda {
     AgendaClock.stop()
     AgendaWatcher.stop()
     AgendaWebhook.stop()
+    AgendaSessionTrigger.stop()
+    AgendaGithubTrigger.stop()
     inflight.clear()
     log.info("agenda stopped")
   }
@@ -104,11 +115,20 @@ export namespace Agenda {
     }
     inflight.add(itemID)
     AgendaReactor.execute(signal, scopeID)
-      .then((result) => {
+      .then(async (result) => {
+        if (result.deactivated) {
+          // Reactor auto-paused the item mid-run; drop registrations so
+          // github entries stop polling a paused item.
+          teardownItem(itemID)
+          return
+        }
         // Always rearm — even if nextRunAt is undefined, the clock entry
         // should be cleared. For recurring triggers the reactor already
         // computes a valid nextRunAt.
         AgendaClock.rearm(scopeID, itemID, result.nextRunAt)
+        // A manual run can complete an autoDone watch; settle like the
+        // signal handler does so its poll registration is dropped.
+        await settleAfterFire(signal, scopeID)
       })
       .catch((err) => {
         log.error("manual trigger failed", { itemID, error: err instanceof Error ? err : new Error(String(err)) })
@@ -160,11 +180,28 @@ export namespace Agenda {
     AgendaWatcher.register(item.id, scopeID, item.triggers, { autoDone: item.autoDone })
     AgendaWebhook.unregister(item.id)
     AgendaWebhook.register(item.id, scopeID, item.triggers)
+    AgendaSessionTrigger.unregister(item.id)
+    AgendaSessionTrigger.register(item.id, scopeID, item.triggers)
+    AgendaGithubTrigger.unregister(item.id)
+    AgendaGithubTrigger.register(item.id, scopeID, item.triggers, { hasRun: item.state.runCount > 0 })
   }
-
   function teardownItem(itemID: string): void {
     AgendaClock.unload(itemID)
     AgendaWatcher.unregister(itemID)
     AgendaWebhook.unregister(itemID)
+    AgendaSessionTrigger.unregister(itemID)
+    AgendaGithubTrigger.unregister(itemID)
+  }
+
+  /**
+   * After-fire settlement for one-shot completions: session and github
+   * triggers auto-complete in updateRunState, so drop their registration
+   * when the stored item is no longer active. Without this, a completed
+   * github watch keeps polling on its interval until restart.
+   */
+  export async function settleAfterFire(signal: AgendaTypes.FiredSignal, scopeID: string): Promise<void> {
+    if (signal.type !== "session" && signal.type !== "github" && signal.type !== "manual") return
+    const stored = await AgendaStore.get(scopeID, signal.source).catch(() => undefined)
+    if (stored && stored.status !== "active") teardownItem(signal.source)
   }
 }

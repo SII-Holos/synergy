@@ -44,6 +44,13 @@ describe("Asset", () => {
       expect(Asset.generateId(Buffer.from("x"), "application/unknown", "data.rs")).toEndWith(".rs")
       expect(Asset.generateId(Buffer.from("x"), "application/unknown", "config.toml")).toEndWith(".toml")
     })
+    test("normalizes filename extensions outside the asset-id alphabet to .bin", () => {
+      const id = Asset.generateId(Buffer.from("x"), "application/octet-stream", "firmware.x86_64")
+      expect(id).toEndWith(".bin")
+      expect(Asset.isValidId(id)).toBe(true)
+      expect(Asset.generateId(Buffer.from("x"), "application/unknown", "archive.tar.gz")).toEndWith(".gz")
+      expect(Asset.generateId(Buffer.from("x"), "application/unknown", "weird.name.é")).toEndWith(".bin")
+    })
 
     test("falls back to .bin when both mime and filename are unresolvable", () => {
       expect(Asset.generateId(Buffer.from("x"), "application/unknown")).toEndWith(".bin")

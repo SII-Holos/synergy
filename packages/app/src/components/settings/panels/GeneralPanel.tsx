@@ -14,6 +14,7 @@ import { SegmentPill } from "../components/SegmentPill"
 import { ThemePicker } from "../components/ThemePicker"
 import { MenuField } from "../../menu-field/MenuField"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import { InterfaceZoom } from "./interface-zoom"
 import {
   desktopUpdateStatusCopy,
   downloadLabel,
@@ -82,14 +83,6 @@ const copy = {
     message: "Font access was denied; using default",
   },
   fontDefault: { id: "settings.general.font.default", message: "Using default" },
-  zoomTitle: { id: "settings.general.zoom.title", message: "Interface zoom" },
-  zoomDescription: {
-    id: "settings.general.zoom.description",
-    message: "Adjust the interface size of the desktop app",
-  },
-  zoomLow: { id: "settings.general.zoom.low", message: "Smaller" },
-  zoomHigh: { id: "settings.general.zoom.high", message: "Larger" },
-  zoomAria: { id: "settings.general.zoom.aria", message: "Interface zoom" },
   monoFontTitle: { id: "settings.general.monoFont.title", message: "Monospace font" },
   monoFontDescription: {
     id: "settings.general.monoFont.description",
@@ -355,40 +348,6 @@ export function GeneralPanel(props: {
         </div>
       </SettingsSection>
     </SettingsPage>
-  )
-}
-
-function InterfaceZoom(props: { zoom: number; onZoomChange: (factor: number) => void }) {
-  const { _ } = useLingui()
-  const percent = () => Math.round(props.zoom * 100)
-
-  return (
-    <SettingRow
-      title={_(copy.zoomTitle)}
-      description={_(copy.zoomDescription)}
-      trailing={
-        <div class="settings-step-scale">
-          <div class="settings-step-scale-header">
-            <span>{percent()}%</span>
-          </div>
-          <input
-            class="settings-step-scale-slider"
-            type="range"
-            min="50"
-            max="200"
-            step="1"
-            value={percent()}
-            aria-label={_(copy.zoomAria)}
-            onInput={(event) => props.onZoomChange(Number(event.currentTarget.value) / 100)}
-          />
-          <div class="settings-step-scale-meta">
-            <span>{_(copy.zoomLow)}</span>
-            <span />
-            <span>{_(copy.zoomHigh)}</span>
-          </div>
-        </div>
-      }
-    />
   )
 }
 

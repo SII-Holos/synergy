@@ -51,6 +51,7 @@ export const SemanticIconToken = {
   "providers.main": "server",
   "providers.reconnect": "shield-alert",
   "agenda.main": "calendar-clock",
+  "kanban.main": "kanban",
   "terminal.main": "code",
 
   // Session runtime
@@ -75,7 +76,7 @@ export const SemanticIconToken = {
   "notes.create": "pen-line",
   "notes.search": "scan-search",
   "notes.folder": "folder-open",
-  "notes.pin": "pin-off",
+  "notes.pin": "bookmark",
   "notes.archive": "archive",
   "notes.tag": "tag",
   "notes.select": "square-check",
@@ -180,11 +181,14 @@ export const SemanticIconToken = {
 
   // Generic actions and state
   "action.pin": "pin",
+  "action.unpin": "pin-off",
   "action.download": "download-cloud",
   "action.add": "plus",
+  "action.grip": "grip",
   "action.clear": "circle-x",
   "action.close": "x",
   "action.copy": "copy",
+  "action.fork": "split",
   "action.open": "arrow-up-right",
   "action.more": "ellipsis",
   "action.rename": "pencil",

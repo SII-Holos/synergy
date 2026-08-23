@@ -176,6 +176,12 @@ export type McpEntry = {
   environment: string
   headers: string
 }
+export type SkillsSettings = {
+  agents: boolean
+  claude: boolean
+  codex: boolean
+  openclaw: boolean
+}
 
 export type EmailSettings = {
   enabled: boolean
@@ -222,6 +228,13 @@ export type ChannelSettings = {
   feishuAccounts: AccountToggle[]
   clarusAccounts: BasicAccountToggle[]
   githubAccounts: GithubAccountToggle[]
+}
+
+export type GithubIntegrationSettings = {
+  identitySyncEnabled: boolean
+  identitySyncName: string
+  identitySyncEmail: string
+  watchEnabled: boolean
 }
 
 export const TOAST_TYPES = ["info", "success", "warning", "error"] as const
@@ -382,10 +395,12 @@ export type SettingsState = {
   plugins: PluginsStore
   mcps: McpsStore
   library: LibrarySettingsStore
+  skills: SkillsSettings
   safety: SafetyStore
   runtime: RuntimeStore
   email: EmailSettings
   channels: ChannelSettings
+  github: GithubIntegrationSettings
   roleVariant: Record<string, string>
 }
 
@@ -439,6 +454,12 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
       embeddingRemoteHost: UI_DEFAULTS.embeddingRemoteHost,
       embeddingCacheDir: UI_DEFAULTS.embeddingCacheDir,
     },
+    skills: {
+      agents: true,
+      claude: true,
+      codex: true,
+      openclaw: true,
+    },
     safety: {
       controlProfile: UI_DEFAULTS.controlProfile,
       permission: UI_DEFAULTS.permission,
@@ -490,6 +511,12 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
       feishuAccounts: [],
       clarusAccounts: [],
       githubAccounts: [],
+    },
+    github: {
+      identitySyncEnabled: false,
+      identitySyncName: "",
+      identitySyncEmail: "",
+      watchEnabled: true,
     },
     roleVariant: {},
   }

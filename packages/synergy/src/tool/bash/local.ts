@@ -291,11 +291,9 @@ export const LocalBashBackend = {
 
     const sandboxFallback = (ctx.extra as any)?.sandboxFallback as "deny" | "warn" | "allow" | undefined
     let sandboxWarning: string | undefined
-    let githubNotice: string | undefined
     const warnOutput = (base: string) => {
       const notices: string[] = []
       if (sandboxWarning) notices.push(`[Sandbox unavailable: ${sandboxWarning}]`)
-      if (githubNotice) notices.push(githubNotice)
       return notices.length > 0 ? `${notices.join("\n\n")}\n\n${base}` : base
     }
     const withAttachments = async (result: BashResult): Promise<BashResult> => {
@@ -364,7 +362,6 @@ export const LocalBashBackend = {
           authKind: github.authKind,
         })
       } else {
-        githubNotice = "[GitHub CLI token skipped: no Synergy GitHub credential is connected]"
         await trace(
           "bash.github.token.skipped",
           {

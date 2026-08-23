@@ -210,6 +210,12 @@ const SettingsContribution = UIBase.extend({
   formSchema: JsonSchema.optional(),
   visibility: z.enum(["standard", "developer"]).optional(),
 }).strict()
+const SlotContribution = UIBase.extend({
+  kind: z.literal("ui.slot"),
+  slot: z.string().min(1),
+  when: z.object({ session: z.boolean().optional() }).strict().optional(),
+  component: Component,
+}).strict()
 
 const ThemeContribution = ContributionBase.extend({
   kind: z.literal("ui.theme"),
@@ -248,6 +254,7 @@ export const PluginManifestContribution = z.discriminatedUnion("kind", [
   TextActionContribution,
   MessageSlotContribution,
   SettingsContribution,
+  SlotContribution,
   ThemeContribution,
   IconContribution,
   LifecycleInstallContribution,

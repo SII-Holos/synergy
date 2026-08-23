@@ -13,6 +13,7 @@ import { sessionSideWorkspaceMounts, WORKSPACE_SESSION_MIN_WIDTH } from "@/conte
 import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 
 import { useSync } from "@/context/sync"
+import { useSessionDataView } from "@/context/session-data-view"
 import { useTerminal } from "@/context/terminal"
 import { useLayout } from "@/context/layout"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
@@ -80,6 +81,7 @@ import { rollbackDialogAction } from "@/components/session/rollback-dialog-model
 import { resolveRollbackDialogSeenKey } from "@/context/rollback-dialog"
 import { DialogRewindConfirm } from "@/components/session/dialog-rewind-confirm"
 import { createRewindRetryInput } from "@/components/session/rewind-retry"
+import { DialogForkConfirm, forkReplyPreview } from "@/components/session/dialog-fork-confirm"
 import { hasSessionRenderableContent, sessionLoadView } from "@/components/session/session-load-state"
 import { TerminalProvider } from "@/context/terminal"
 import { PromptProvider } from "@/context/prompt"
@@ -87,6 +89,7 @@ import { ResourceOpenProvider } from "@/context/resource-open"
 import { BuiltinWorkbenchPanelsProvider } from "@/components/workspace/builtin-workbench-panels"
 import { useSessionTransition } from "@/context/session-transition"
 import {
+  isActionCommandMessage,
   messagesFrom,
   messagesHiddenByRollback,
   previousMessage,
@@ -131,6 +134,7 @@ function SessionPageContent() {
   const local = useLocal()
   const file = useFile()
   const sync = useSync()
+  const dataView = useSessionDataView()
   const terminal = useTerminal()
   const dialog = useDialog()
   const command = useCommand()
@@ -183,7 +187,7 @@ function SessionPageContent() {
   createEffect(() => {
     const id = params.id
     if (!id) return
-    if (!hasMessageWindowSnapshot(sync.data.message[id], sync.data.messageWindow[id])) return
+    if (!hasMessageWindowSnapshot(dataView().messagesFor(id), sync.data.messageWindow[id])) return
     navMark({ dir: params.dir, to: id, name: "session:data-ready" })
   })
 
@@ -207,6 +211,7 @@ function SessionPageContent() {
   const rollbackActive = createMemo(() => rollback()?.canUnrollback === true)
   let activeRollbackKey: string | undefined
   let rollbackDialogID: string | undefined
+  let forkDialogID: string | undefined
   createEffect(
     on(
       () => params.id,
@@ -400,7 +405,7 @@ function SessionPageContent() {
   const messageSnapshot = createMemo(() => {
     const id = params.id
     if (!id) return [] as Message[]
-    const messages = sync.data.message[id]
+    const messages = dataView().messagesFor(id)
     return hasMessageWindowSnapshot(messages, sync.data.messageWindow[id]) ? messages : undefined
   })
   const messages = createMemo(() => {
@@ -419,13 +424,13 @@ function SessionPageContent() {
     const targetID = targetMsg.id
     const sessionID = params.id
     if (!sessionID) return
-    const cutParts = sync.data.part[targetID] ?? []
+    const cutParts = dataView().partsFor(targetID)
     const retryInput = createRewindRetryInput({ message: targetMsg, parts: cutParts })
     dialog.push(() => (
       <DialogRewindConfirm
         cutMessage={targetMsg}
         allMessages={messages().filter((m) => m.role === "user" || m.role === "assistant")}
-        partsByMessage={sync.data.part}
+        partsByMessage={dataView().partTable()}
         canRetry={retryInput !== undefined}
         onConfirm={async (action, cutMessageID, restoreFiles) => {
           if (!sessionID || !cutMessageID) return
@@ -467,6 +472,55 @@ function SessionPageContent() {
       />
     ))
   }
+  const openForkConfirm = (messageID: string) => {
+    const sessionID = params.id
+    if (!sessionID) return
+    const target = messages().find((message) => message.id === messageID)
+    if (!target) return
+    const timeline = messages().filter((message) => message.role === "user" || message.role === "assistant")
+    dialog.push(
+      () => (
+        <DialogForkConfirm
+          message={{ id: messageID, time: target.time }}
+          allMessages={timeline}
+          hasCompleteHistory={!historyMore()}
+          preview={forkReplyPreview(dataView().partsFor(messageID))}
+          onConfirm={async () => {
+            try {
+              const forked = await sdk.client.session.fork({
+                sessionID,
+                position: { type: "through", messageID },
+                workspace: { mode: "current" },
+                controlProfile: info()?.controlProfile ?? sync.data.config.controlProfile,
+              })
+              if (!forked.data) return false
+              showToast({
+                type: "success",
+                title: i18n._(AP.sessionForked.id),
+                description: i18n._(AP.sessionForkedDesc.id),
+              })
+              navigateToSession(forked.data.id)
+              return true
+            } catch (error) {
+              showToast({
+                type: "error",
+                title: i18n._(AP.sessionForkFailed.id),
+                description: requestErrorMessage(error),
+              })
+              return false
+            }
+          }}
+        />
+      ),
+      () => {
+        forkDialogID = undefined
+      },
+    )
+    forkDialogID = dialog.active?.id
+  }
+  onCleanup(() => {
+    if (forkDialogID && dialog.active?.id === forkDialogID) dialog.close()
+  })
   const messagesReady = createMemo(() => messageSnapshot() !== undefined)
   const messageLoad = createMemo(() => {
     const id = params.id
@@ -593,6 +647,9 @@ function SessionPageContent() {
           decideSessionTransitionHandoff({
             messageID: handoff.messageID,
             messages: messages(),
+            // Explicit exemption: decideSessionTransitionHandoff branches on
+            // inbox === undefined to trigger refresh; the view layer's shared
+            // empty array would change that loading semantics.
             inbox: sync.data.inbox[sessionID],
             elapsedMs: 0,
             refreshAttempted: true,
@@ -610,6 +667,9 @@ function SessionPageContent() {
     const sessionID = params.id
     if (!sessionID || visibleSessionTransitionEntry()) return
     const recovered = recoverSessionTransitionHandoff({
+      // Explicit exemption: recoverSessionTransitionHandoff distinguishes
+      // "not loaded" (undefined) from "loaded empty" via these buckets; the
+      // view layer's empty arrays would break the gate.
       messages: sync.data.message[sessionID],
       inbox: sync.data.inbox[sessionID],
     })
@@ -668,6 +728,7 @@ function SessionPageContent() {
     const decision = decideSessionTransitionHandoff({
       messageID: entry.handoff.messageID,
       messages: messages(),
+      // Explicit exemption: same undefined-loading semantics as above.
       inbox: sync.data.inbox[sessionID],
       elapsedMs: Math.max(0, Date.now() - acceptedAt),
       refreshAttempted: entry.handoff.refreshAttempted ?? false,
@@ -711,23 +772,13 @@ function SessionPageContent() {
 
   /** @deprecated Use inline empty arrays or nullish coalescing. */
   const emptyTimeline: Message[] = []
-  const isActionCommandMessage = (message: Message) => {
-    const metadata = message.metadata as
-      | { command?: { kind?: string; promptVisible?: boolean }; promptVisible?: boolean }
-      | undefined
-    if (metadata?.command?.kind !== "action") return false
-    // Prefer the canonical includeInContext; fall back to command.promptVisible
-    // for messages written before it was set.
-    if (message.includeInContext !== undefined) return message.includeInContext === false
-    return metadata.promptVisible === false
-  }
 
   const mergeTimelineMessages = (items: Message[]) => selectMessagesInCanonicalOrder(messages(), items)
 
   const pendingTimeline = createMemo(() => {
     const sessionID = params.id
     if (!sessionID) return [] as SessionInboxItem[]
-    return selectPendingTimelineItems(sync.data.inbox[sessionID], messages())
+    return selectPendingTimelineItems(dataView().inboxFor(sessionID), messages())
   })
   const isNewSession = createMemo(() => {
     if (!params.id) return true
@@ -881,9 +932,9 @@ function SessionPageContent() {
     ),
   )
 
-  const currentSession = createMemo(() => sync.data.session.find((s) => s.id === params.id))
+  const currentSession = createMemo(() => dataView().sessionFor(params.id ?? ""))
   const status = createMemo<SessionStatus>(() => {
-    const runtimeStatus = sync.data.session_status[params.id ?? ""]
+    const runtimeStatus = dataView().statusFor(params.id ?? "")
     if (runtimeStatus && runtimeStatus.type !== "idle") return runtimeStatus
     const working = currentSession()?.working
     if (working?.status === "busy") return { type: "busy", description: working.description }
@@ -938,12 +989,12 @@ function SessionPageContent() {
   const parentSession = createMemo(() => {
     const current = currentSession()
     if (!current?.parentID) return undefined
-    return sync.data.session.find((s) => s.id === current.parentID)
+    return dataView().sessionFor(current.parentID)
   })
   const forkedFromSession = createMemo(() => {
     const source = currentSession()?.forkedFrom
     if (!source) return undefined
-    return sync.data.session.find((s) => s.id === source.sessionID)
+    return dataView().sessionFor(source.sessionID)
   })
   const backPath = createMemo(() => {
     if (parentSession()) return undefined
@@ -1486,6 +1537,7 @@ function SessionPageContent() {
                           }}
                           onPendingGuide={(item) => void guidePending(item)}
                           onPendingRemove={(item) => void removePending(item)}
+                          onForkMessage={(messageID) => openForkConfirm(messageID)}
                           rollbackActive={rollbackActive()}
                         />
                       </Match>
@@ -1627,6 +1679,9 @@ function SessionPageContent() {
             </div>
             <div class="flex-1 min-h-0 overflow-auto">
               <Show
+                // Explicit exemption: undefined session_diff shows the
+                // "loading changes" fallback; the view layer's shared empty
+                // array (truthy) would flip that loading semantics.
                 when={params.id && sync.data.session_diff[params.id]}
                 fallback={
                   <div class="px-4 py-4 text-13-regular text-text-weak">{i18n._(AP.sessionLoadingChanges.id)}</div>

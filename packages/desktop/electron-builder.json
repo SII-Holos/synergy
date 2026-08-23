@@ -12,10 +12,6 @@
   },
   "extraResources": [
     {
-      "from": "build/icon.ico",
-      "to": "icons/icon.ico"
-    },
-    {
       "from": "build/icon.png",
       "to": "icons/icon.png"
     },
@@ -50,7 +46,7 @@
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.plist",
     "hardenedRuntime": true,
-    "icon": "build/icon.icns",
+    "icon": "build/icon.png",
     "target": [
       {
         "target": "pkg",
@@ -102,7 +98,7 @@
   "win": {
     "artifactName": "Synergy-win32-${arch}-${version}.${ext}",
     "executableName": "synergy-desktop",
-    "icon": "build/icon.ico",
+    "icon": "build/icon.png",
     "target": [
       {
         "target": "nsis",
@@ -136,7 +132,7 @@
       }
     },
     "executableName": "synergy-desktop",
-    "icon": "build/icons",
+    "icon": "build/icon.png",
     "target": [
       {
         "target": "AppImage",

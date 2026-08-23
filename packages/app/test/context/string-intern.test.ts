@@ -1,0 +1,112 @@
+import { describe, expect, test } from "bun:test"
+import type { ProviderListResponse, TextPart, UserMessage } from "@ericsanchezok/synergy-sdk/client"
+import {
+  internCacheSize,
+  internMessage,
+  internPart,
+  internProviderList,
+  internString,
+} from "../../src/context/string-intern"
+
+function providerData(overrides?: Partial<ProviderListResponse>): ProviderListResponse {
+  return {
+    all: [
+      {
+        id: "openai",
+        name: "OpenAI",
+        source: "config",
+        env: [],
+        options: {},
+        models: {
+          "gpt-5": {
+            id: "gpt-5",
+            providerID: "openai",
+            name: "GPT-5",
+            api: { id: "chat", url: "https://api.openai.com/v1", npm: "@ai-sdk/openai-compatible" },
+            capabilities: { temperature: true, reasoning: true },
+            variants: {
+              low: { reasoningEffort: "low", include: ["reasoning.encrypted_content"] },
+            },
+          },
+        },
+      },
+    ],
+    default: {},
+    connected: [],
+    configProviders: [],
+    catalogProviders: [],
+    profiles: {},
+    connections: {},
+    authHealth: {},
+    runtimeAvailability: {},
+    modelCatalog: {},
+    ...overrides,
+  } as ProviderListResponse
+}
+
+describe("string interning", () => {
+  test("merges equal strings into a shared reference", () => {
+    const first = internString("@ai-sdk/openai-compatible")
+    const second = internString("@ai-sdk/openai-compatible")
+    expect(second).toBe(first)
+  })
+
+  test("interns provider model api and variant include strings in place", () => {
+    const first = providerData()
+    internProviderList(first)
+    const second = providerData()
+    internProviderList(second)
+
+    const firstModel = first.all[0]!.models["gpt-5"]!
+    const secondModel = second.all[0]!.models["gpt-5"]!
+    const firstInclude = firstModel.variants!.low!.include as string[]
+    const secondInclude = secondModel.variants!.low!.include as string[]
+    expect(secondModel.api.npm).toBe(firstModel.api.npm)
+    expect(secondInclude[0]).toBe(firstInclude[0])
+  })
+
+  test("tolerates missing api fields in real provider payloads", () => {
+    // The generated types claim api.id/npm/url are always strings, but real
+    // payloads carry undefined for models without an api block. Interning
+    // must not crash (this crash broke scope bootstrap on a real instance).
+    const data = providerData()
+    ;(data.all[0]!.models["gpt-5"]!.api as { id?: unknown; npm?: unknown; url?: unknown }).npm = undefined
+    ;(data.all[0]!.models["gpt-5"]!.api as { id?: unknown; npm?: unknown; url?: unknown }).url = undefined
+    expect(() => internProviderList(data)).not.toThrow()
+  })
+
+  test("interns system text parts and user system prompts", () => {
+    const prompt = "You are synergy, a general-purpose AI agent."
+
+    const partA = internPart({ type: "text", origin: "system", text: prompt } as TextPart)
+    const partB = internPart({ type: "text", origin: "system", text: prompt } as TextPart)
+    expect((partB as TextPart).text).toBe((partA as TextPart).text)
+
+    const msgA = internMessage({ role: "user", system: prompt } as UserMessage)
+    const msgB = internMessage({ role: "user", system: prompt } as UserMessage)
+    expect((msgB as UserMessage).system).toBe((msgA as UserMessage).system)
+  })
+
+  test("leaves user text parts untouched and only promotes repeated system content", () => {
+    // Reference-identity assertions on equal strings cannot work here:
+    // Bun runs on JavaScriptCore, which atomizes strings produced by
+    // JSON.parse and literals alike. Assert the retention contract instead:
+    // user-origin text never enters the intern table; system content enters
+    // the long-term table only once it repeats (a single sighting must not
+    // pin one-off session content beyond the bucket LRU).
+    const baseline = internCacheSize()
+    const userText = `user-text-${Math.random()}`
+    internPart({ type: "text", origin: "user", text: userText } as TextPart)
+    expect(internCacheSize()).toBe(baseline)
+
+    const oneOff = `system-text-${Math.random()}`
+    internPart({ type: "text", origin: "system", text: oneOff } as TextPart)
+    expect(internCacheSize()).toBe(baseline)
+
+    const repeated = `system-text-${Math.random()}`
+    internPart({ type: "text", origin: "system", text: repeated } as TextPart)
+    expect(internCacheSize()).toBe(baseline)
+    internPart({ type: "text", origin: "system", text: repeated } as TextPart)
+    expect(internCacheSize()).toBe(baseline + 1)
+  })
+})

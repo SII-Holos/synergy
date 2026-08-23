@@ -169,6 +169,60 @@ describe("settings form channel accounts", () => {
   })
 })
 
+describe("settings form github integration", () => {
+  test("defaults identity sync off and agenda watch on when github config is absent", () => {
+    expect(initializedGithub({})).toEqual({
+      identitySyncEnabled: false,
+      identitySyncName: "",
+      identitySyncEmail: "",
+      watchEnabled: true,
+    })
+  })
+
+  test("hydrates identity sync overrides and explicit watch disablement", () => {
+    expect(
+      initializedGithub({
+        github: {
+          identitySync: { enabled: true, name: "Codex Bot", email: "bot@example.com" },
+          watch: { enabled: false },
+        },
+      }),
+    ).toEqual({
+      identitySyncEnabled: true,
+      identitySyncName: "Codex Bot",
+      identitySyncEmail: "bot@example.com",
+      watchEnabled: false,
+    })
+  })
+
+  test("treats explicit watch enabled false and identitySync enabled false as configured", () => {
+    expect(
+      initializedGithub({
+        github: { identitySync: { enabled: false }, watch: { enabled: false } },
+      }),
+    ).toMatchObject({ identitySyncEnabled: false, watchEnabled: false })
+  })
+})
+
+function initializedGithub(config: Record<string, unknown>) {
+  const [settings, setSettings] = createStore(defaultSettingsState("enter"))
+
+  ensureInit({
+    cfg: config as Config,
+    setName: "global",
+    refreshing: () => false,
+    initialized: () => false,
+    initializedForSet: undefined,
+    sendShortcut: () => "enter",
+    colorScheme: () => "system",
+    setSettings,
+    setInitialized: () => undefined,
+    originalMcpsRef: { current: {} },
+  })
+
+  return settings.github
+}
+
 function initializedRuntime(config: Record<string, unknown>) {
   const [settings, setSettings] = createStore(defaultSettingsState("enter"))
 
@@ -262,6 +316,50 @@ describe("settings form activity display hydration", () => {
     expect(initializedActivityDisplay({ activityDisplay: "minimal" })).toBe("minimal")
   })
 })
+describe("settings form skills compatibility hydration", () => {
+  test("defaults all skill sources on when compatibility config is absent", () => {
+    expect(initializedSkills({})).toEqual({
+      agents: true,
+      claude: true,
+      codex: true,
+      openclaw: true,
+    })
+  })
+
+  test("hydrates explicit per-source compatibility toggles", () => {
+    expect(
+      initializedSkills({
+        skills: {
+          compatibility: { agents: false, claude: true, codex: false, openclaw: true },
+        },
+      }),
+    ).toEqual({
+      agents: false,
+      claude: true,
+      codex: false,
+      openclaw: true,
+    })
+  })
+})
+
+function initializedSkills(config: Record<string, unknown>) {
+  const [settings, setSettings] = createStore(defaultSettingsState("enter"))
+
+  ensureInit({
+    cfg: config as Config,
+    setName: "global",
+    refreshing: () => false,
+    initialized: () => false,
+    initializedForSet: undefined,
+    sendShortcut: () => "enter",
+    colorScheme: () => "system",
+    setSettings,
+    setInitialized: () => undefined,
+    originalMcpsRef: { current: {} },
+  })
+
+  return settings.skills
+}
 
 function initializedActivityDisplay(config: Record<string, unknown>) {
   const [settings, setSettings] = createStore(defaultSettingsState("enter"))

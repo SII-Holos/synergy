@@ -202,23 +202,34 @@
 }
 
 .attachment-pdf-stage {
-  display: flex;
+  position: relative;
   min-height: 0;
   flex: 1;
-  justify-content: center;
-  overflow: auto;
-  padding: 16px;
+  overflow: hidden;
   background: var(--surface-inset-base);
 }
 
-.attachment-pdf-stage canvas {
-  align-self: flex-start;
-  background: var(--surface-base);
-  box-shadow: 0 1px 8px color-mix(in srgb, var(--border-strong-base) 40%, transparent);
+.attachment-pdf-viewer-container {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 16px;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
-.attachment-pdf-stage canvas[data-hidden="true"] {
+.attachment-pdf-viewer-container[data-hidden="true"] {
   display: none;
+}
+
+.attachment-pdf-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  text-align: center;
 }
 
 @container (max-width: 520px) {

@@ -121,6 +121,15 @@ describe("workbench surface polarity", () => {
     expect(nativeTitlebarCss).toContain("position: relative;")
     expect(nativeTitlebarCss).toContain("flex: 0 0 var(--desktop-native-titlebar-height);")
     expect(nativeTitlebarCss).toContain("-webkit-app-region: drag;")
+    // The native titlebar strip must paint the page background itself instead
+    // of relying on the Electron window layer, or a mismatched strip appears
+    // at the top when the desktop theme is changed. Both surfaces below the
+    // strip (sidebar header and session top bar) use --background-base, so
+    // the strip matches them with a single uniform color.
+    expect(nativeTitlebarCss).toContain("background: var(--background-base, var(--synergy-boot-bg));")
+    expect(nativeTitlebarCss).not.toContain("background: transparent;")
+    expect(nativeTitlebarCss).not.toContain(".desktop-native-titlebar::before")
+    expect(css).not.toContain("--desktop-native-titlebar-sidebar-width")
     expect(css).toContain("--desktop-native-titlebar-height: 18px;")
     expect(css).toContain("--desktop-native-titlebar-traffic-width: 90px;")
     expect(nativeTitlebarCss).toContain(".desktop-native-titlebar__traffic-space")
@@ -132,6 +141,34 @@ describe("workbench surface polarity", () => {
     expect(sidebarCss).not.toContain(".app-shell--desktop-native-chrome .sb-header")
     expect(sidebarCss).not.toContain(".app-shell--desktop-native-chrome .sb-actions")
     expect(sidebarCss).not.toContain("--sb-native-titlebar-height")
+  })
+
+  test("desktop session top bar pairs the project name with the folder icon", () => {
+    expect(sessionTopBar).toContain('class="stb-project-name"')
+    expect(sessionTopBar).toContain('getSemanticIcon("workspace.main")')
+    expect(sessionTopBar).toContain("resolveProjectScope(directory()")
+    expect(sessionTopBar).toContain("getScopeLabel(projectScope()")
+    expect(sessionTopBar).toContain("value={projectPath()}")
+    expect(sessionTopBarCss).toContain(".stb-project-name")
+    expect(sessionTopBarCss).toContain(".stb-folder")
+    expect(sessionTopBarCss).toContain("text-overflow: ellipsis;")
+  })
+
+  test("desktop session top bar shares one type scale and baseline across the left cluster", () => {
+    expect(sessionTopBar).toContain('class="stb-project"')
+    expect(sessionTopBarCss).toContain(".stb-project {")
+    expect(sessionTopBarCss).toContain("font-size: var(--font-size-base);")
+    expect(sessionTopBarCss).toContain("font-size: var(--font-size-small);")
+    expect(sessionTopBarCss).toContain("line-height: 20px;")
+    expect(sessionTopBarCss).toContain("font-weight: var(--font-weight-semibold);")
+    expect(sessionTopBarCss).toContain("font-weight: var(--font-weight-medium);")
+    expect(sessionTopBarCss).not.toContain("font-family: var(--font-family-mono);")
+    expect(sessionTopBarCss).not.toContain("font-size: 18px;")
+    expect(sessionTopBarCss).not.toContain("font-size: 21px;")
+    expect(sessionTopBarCss).not.toContain("font-size: 15px;")
+    expect(sessionTopBarCss).not.toContain("font-weight: 650;")
+    expect(sessionTopBarCss).not.toContain("font-weight: 520;")
+    expect(sessionTopBarCss).not.toContain("margin-left: -4px;")
   })
 
   test("workbench panel tabs keep close and add controls compact", () => {

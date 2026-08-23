@@ -14,10 +14,13 @@ import { fileWriteErrorMessage, isFileWriteConflictError, isFileWriteDeniedError
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { FileExplorer } from "./explorer"
 import { classifyFilePreview, resolveWorkspaceRelativePath } from "./model"
+import { AttachmentPdfPreview } from "@/components/attachment-workbench/pdf-preview"
 import { FileSourceView, type FileSourceViewApi } from "./source-view"
 import "./styles.css"
 import { fileWorkbench as F } from "@/locales/messages"
 import { useLocale } from "@/context/locale"
+import "@/components/attachment-workbench/styles.css"
+import type { PdfDocumentState } from "@/context/file"
 
 function selectionLabel(range: { start: number; end: number }) {
   const start = Math.min(range.start, range.end)
@@ -208,6 +211,72 @@ function ImagePreview(props: {
   )
 }
 
+function FilePdfPreview(props: {
+  state: PdfDocumentState | undefined
+  path: string
+  totalBytes: number | undefined
+  lingui: ReturnType<typeof useLingui>
+  onRetry: () => void
+}) {
+  return (
+    <Show
+      when={props.state?.bytes}
+      fallback={
+        <Show
+          when={props.state?.tooLarge}
+          fallback={
+            <Show
+              when={props.state?.error}
+              fallback={
+                <div class="file-workbench-loading">
+                  <Spinner class="size-5" />
+                  <span>
+                    {props.lingui._({
+                      id: F.loading.id,
+                      message: F.loading.message,
+                      values: { path: props.path },
+                    })}
+                  </span>
+                </div>
+              }
+            >
+              {(message) => (
+                <div class="file-workbench-state">
+                  <FileIcon node={{ path: props.path, type: "file" }} class="size-10" />
+                  <strong>{props.lingui._({ id: F.pdfPreviewFailed.id, message: F.pdfPreviewFailed.message })}</strong>
+                  <Show when={message() !== "not-found"}>
+                    <span>{message()}</span>
+                  </Show>
+                  <button type="button" onClick={props.onRetry}>
+                    {props.lingui._({ id: F.retry.id, message: F.retry.message })}
+                  </button>
+                </div>
+              )}
+            </Show>
+          }
+        >
+          <div class="file-workbench-state">
+            <FileIcon node={{ path: props.path, type: "file" }} class="size-10" />
+            <strong>{props.lingui._({ id: F.pdfTooLarge.id, message: F.pdfTooLarge.message })}</strong>
+            <span>
+              {props.lingui._({
+                id: F.binaryInfo.id,
+                message: F.binaryInfo.message,
+                values: {
+                  mimeType: "application/pdf",
+                  bytes: props.totalBytes ?? props.state?.version?.size ?? 0,
+                },
+              })}
+            </span>
+          </div>
+        </Show>
+      }
+    >
+      {(bytes) => <AttachmentPdfPreview bytes={bytes()} />}
+    </Show>
+  )
+}
+
 export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
   const file = useFile()
   const prompt = usePrompt()
@@ -228,9 +297,10 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
     const value = content()
     return value?.kind === "binary" ? value : undefined
   })
+  const pdfContent = createMemo(() => file.pdf.get(path()))
   const capability = createMemo(() => {
     const value = content()
-    return classifyFilePreview(path(), value?.kind ?? "binary")
+    return classifyFilePreview(path(), value?.kind ?? "binary", value?.mimeType)
   })
   const mode = createMemo(() => {
     const saved = file.view.mode(path())
@@ -305,6 +375,7 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
   createEffect(() => {
     if (!path()) return
     void file.load(path())
+    if (capability().kind === "pdf") void file.pdf.load(path())
   })
 
   onMount(() => {
@@ -523,6 +594,15 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
               {(value) => (
                 <ImagePreview path={path()} mimeType={value().mimeType} content={value().content} lingui={lingui} />
               )}
+            </Match>
+            <Match when={capability().kind === "pdf"}>
+              <FilePdfPreview
+                state={pdfContent()}
+                path={path()}
+                totalBytes={documentState()?.node?.size ?? documentState()?.version?.size}
+                lingui={lingui}
+                onRetry={() => void file.pdf.load(path(), { force: true })}
+              />
             </Match>
             <Match when={binaryContent()}>
               {(value) => (

@@ -1266,6 +1266,58 @@ export type AgendaTriggerWebhook = {
   token?: string
 }
 
+export type AgendaTriggerSession = {
+  type: "session"
+  /**
+   * Target session to watch for turn events
+   */
+  sessionID: string
+  /**
+   * Session turn event to react to
+   */
+  event?: "turn.end" | "turn.start"
+  /**
+   * Only fire when the turn's agent matches
+   */
+  agent?: string
+  /**
+   * Only fire when the turn's finish state matches (e.g. 'stop', 'error'). Only applies to turn.end
+   */
+  finish?: string
+  /**
+   * If true, the item auto-completes after the first fire
+   */
+  once?: boolean
+}
+
+export type AgendaTriggerGithub = {
+  type: "github"
+  /**
+   * GitHub resource kind to watch
+   */
+  resource: "pr" | "issue" | "workflow" | "check"
+  /**
+   * Repository in owner/repo form
+   */
+  repository: string
+  /**
+   * PR/issue number, or workflow run id. If omitted for pr/issue/workflow, watches the repository's most recent items
+   */
+  number?: number
+  /**
+   * Branch/tag/commit ref for workflow and check targeting (e.g. 'main', full SHA). Defaults to HEAD for checks and the default branch for workflows
+   */
+  ref?: string
+  /**
+   * Poll interval, e.g. '5m'. Default: '5m' (or github.watch.defaultIntervalMs)
+   */
+  interval?: string
+  /**
+   * Only fire when the state transitions into one of these values. PR: open/draft/merged/closed; issue: open/closed; workflow/check: queued/in_progress/completed (filter the conclusion separately via these same values, e.g. 'success'/'failure')
+   */
+  states?: Array<string>
+}
+
 export type AgendaTrigger =
   | AgendaTriggerAt
   | AgendaTriggerCron
@@ -1273,6 +1325,8 @@ export type AgendaTrigger =
   | AgendaTriggerDelay
   | AgendaTriggerWatch
   | AgendaTriggerWebhook
+  | AgendaTriggerSession
+  | AgendaTriggerGithub
 
 /**
  * Control profile used by sessions created for this item
@@ -2803,6 +2857,32 @@ export type LibraryConfig = {
 }
 
 /**
+ * Per-source compatibility toggles for discovering Skills from other agent tools
+ */
+export type SkillsCompatibilityConfig = {
+  /**
+   * Load Agent Skills from .agents/skills directories (default: true)
+   */
+  agents?: boolean
+  /**
+   * Load Claude Code Skills from .claude/skills directories (default: true)
+   */
+  claude?: boolean
+  /**
+   * Load Codex Skills from .codex/skills directories (default: true)
+   */
+  codex?: boolean
+  /**
+   * Load OpenClaw Skills from .openclaw/skills and workspace skills directories (default: true)
+   */
+  openclaw?: boolean
+}
+
+export type SkillsConfig = {
+  compatibility?: SkillsCompatibilityConfig
+}
+
+/**
  * Retry policy for connecting to this server
  */
 export type McpRetryConfig = {
@@ -3475,6 +3555,46 @@ export type EmailConfig = {
 }
 
 /**
+ * Git identity sync settings
+ */
+export type GithubIdentitySyncConfig = {
+  /**
+   * Sync git user.name/user.email from the connected GitHub account
+   */
+  enabled?: boolean
+  /**
+   * Optional git user.name override (defaults to the GitHub account login). null clears the override
+   */
+  name?: string | null
+  /**
+   * Optional git user.email override (defaults to the GitHub noreply email). null clears the override
+   */
+  email?: string | null
+}
+
+/**
+ * GitHub agenda trigger settings
+ */
+export type GithubWatchConfig = {
+  /**
+   * Allow GitHub agenda triggers (PR/issue/workflow status polling). Default: true
+   */
+  enabled?: boolean
+  /**
+   * Default poll interval for GitHub agenda triggers in milliseconds (default 300000)
+   */
+  defaultIntervalMs?: number
+}
+
+/**
+ * GitHub integration settings (git identity sync, agenda watch)
+ */
+export type GithubConfig = {
+  identitySync?: GithubIdentitySyncConfig
+  watch?: GithubWatchConfig
+}
+
+/**
  * @deprecated Always uses stretch layout.
  */
 export type LayoutConfig = "auto" | "stretch"
@@ -3790,6 +3910,7 @@ export type Config = {
   embedding?: EmbeddingConfig
   rerank?: RerankConfig
   library?: LibraryConfig
+  skills?: SkillsConfig
   /**
    * MCP (Model Context Protocol) server configurations
    */
@@ -3813,6 +3934,7 @@ export type Config = {
   controlProfile?: ControlProfileId
   holos?: HolosConfig
   email?: EmailConfig
+  github?: GithubConfig
   formatter?:
     | false
     | {
@@ -4571,12 +4693,14 @@ export type ConfigDomainSummary = {
     | "library"
     | "mcp"
     | "plugins"
+    | "skills"
     | "agents"
     | "commands"
     | "permissions"
     | "channels"
     | "holos"
     | "email"
+    | "github"
     | "runtime"
   filename: string
   label: string
@@ -4637,12 +4761,14 @@ export type ConfigDomainImportDomainPlan = {
     | "library"
     | "mcp"
     | "plugins"
+    | "skills"
     | "agents"
     | "commands"
     | "permissions"
     | "channels"
     | "holos"
     | "email"
+    | "github"
     | "runtime"
   filename: string
   path: string
@@ -4694,12 +4820,14 @@ export type ConfigDomainImportPlanInput = {
     | "library"
     | "mcp"
     | "plugins"
+    | "skills"
     | "agents"
     | "commands"
     | "permissions"
     | "channels"
     | "holos"
     | "email"
+    | "github"
     | "runtime"
   >
   mode?: "merge" | "replace-domain" | "append"
@@ -4774,12 +4902,14 @@ export type ConfigImportRevisionConflictError = {
       | "library"
       | "mcp"
       | "plugins"
+      | "skills"
       | "agents"
       | "commands"
       | "permissions"
       | "channels"
       | "holos"
       | "email"
+      | "github"
       | "runtime"
     >
   }
@@ -4802,12 +4932,14 @@ export type ConfigDomainImportApplyInput = {
     | "library"
     | "mcp"
     | "plugins"
+    | "skills"
     | "agents"
     | "commands"
     | "permissions"
     | "channels"
     | "holos"
     | "email"
+    | "github"
     | "runtime"
   >
   mode?: "merge" | "replace-domain" | "append"
@@ -5017,7 +5149,7 @@ export type DagNode = {
 }
 
 export type SessionAgendaTrigger = {
-  type: "cron" | "every" | "at" | "delay" | "watch" | "webhook"
+  type: "cron" | "every" | "at" | "delay" | "watch" | "webhook" | "session" | "github"
   /**
    * Interval for every triggers, e.g. '30m'
    */
@@ -5026,6 +5158,10 @@ export type SessionAgendaTrigger = {
    * Delay for delay triggers, e.g. '2h'
    */
   delay?: string
+  /**
+   * Target session for session triggers
+   */
+  sessionID?: string
 }
 
 export type SessionAgendaItem = {
@@ -5045,7 +5181,7 @@ export type SessionAgendaItem = {
   /**
    * Trigger types that can activate this agenda item
    */
-  triggerTypes: Array<"cron" | "every" | "at" | "delay" | "watch" | "webhook">
+  triggerTypes: Array<"cron" | "every" | "at" | "delay" | "watch" | "webhook" | "session" | "github">
   /**
    * Display-safe trigger details for client-side formatting
    */
@@ -5082,6 +5218,15 @@ export type SessionWorkspaceSelection =
       baseRef?: "current" | "fresh"
       baseRevision?: string
     }
+
+export type SessionForkPointMissingError = {
+  name: "SessionForkPointMissingError"
+  data: {
+    sessionID: string
+    messageID: string
+    message: string
+  }
+}
 
 export type AttachmentSourceText = {
   value: string
@@ -6080,6 +6225,27 @@ export type GitHubAuthStatus = {
   updatedAt?: number
 }
 
+export type GithubIdentityState = {
+  enabled: boolean
+  configuredName?: string
+  configuredEmail?: string
+  gitName?: string
+  gitEmail?: string
+  accountLogin?: string
+  accountName?: string
+  accountEmail?: string
+  accountUrl?: string
+  pendingChanges?: boolean
+}
+
+export type GithubIdentitySyncResult = {
+  applied: boolean
+  name?: string
+  email?: string
+  changed: Array<string>
+  reason?: string
+}
+
 export type ProviderAuthAuthorization = {
   url: string
   method: "auto" | "code"
@@ -6134,6 +6300,10 @@ export type SkillList = {
       [key: string]: unknown
     }
     message: string
+  }>
+  sources: Array<{
+    source: "synergy" | "agents" | "claude" | "codex" | "openclaw"
+    count: number
   }>
 }
 
@@ -6366,6 +6536,13 @@ export type WorkspaceFileStatusSummary = {
     added?: number
     removed?: number
   }>
+}
+
+export type WorkspaceFileContentError = {
+  name: "WorkspaceFileAccessDeniedError" | "WorkspaceFileUnsupportedPreviewError" | "WorkspaceFileTooLargeError"
+  data: {
+    message: string
+  }
 }
 
 export type WorkspaceFileWriteResult = {
@@ -8351,6 +8528,25 @@ export type EventSessionIdle = {
   }
 }
 
+export type EventSessionTurnStart = {
+  type: "session.turn.start"
+  properties: {
+    sessionID: string
+    messageID: string
+    agent?: string
+  }
+}
+
+export type EventSessionTurnEnd = {
+  type: "session.turn.end"
+  properties: {
+    sessionID: string
+    messageID: string
+    finish?: string
+    agent?: string
+  }
+}
+
 export type EventSessionInboxUpdated = {
   type: "session.inbox.updated"
   properties: {
@@ -8812,6 +9008,8 @@ export type Event =
   | EventSessionStatus
   | EventSessionCompletion
   | EventSessionIdle
+  | EventSessionTurnStart
+  | EventSessionTurnEnd
   | EventSessionInboxUpdated
   | EventBlueprintLoopCreated
   | EventBlueprintLoopUpdated
@@ -10941,12 +11139,14 @@ export type ConfigDomainGetData = {
       | "library"
       | "mcp"
       | "plugins"
+      | "skills"
       | "agents"
       | "commands"
       | "permissions"
       | "channels"
       | "holos"
       | "email"
+      | "github"
       | "runtime"
   }
   query?: {
@@ -10988,12 +11188,14 @@ export type ConfigDomainUpdateData = {
       | "library"
       | "mcp"
       | "plugins"
+      | "skills"
       | "agents"
       | "commands"
       | "permissions"
       | "channels"
       | "holos"
       | "email"
+      | "github"
       | "runtime"
   }
   query?: {
@@ -11035,12 +11237,14 @@ export type ConfigDomainOpenData = {
       | "library"
       | "mcp"
       | "plugins"
+      | "skills"
       | "agents"
       | "commands"
       | "permissions"
       | "channels"
       | "holos"
       | "email"
+      | "github"
       | "runtime"
   }
   query?: {
@@ -12187,6 +12391,10 @@ export type SessionForkData = {
           type: "before"
           messageID: string
         }
+      | {
+          type: "through"
+          messageID: string
+        }
     workspace?: SessionWorkspaceSelection
     title?: string
     controlProfile?: "guarded" | "autonomous" | "full_access"
@@ -12202,6 +12410,18 @@ export type SessionForkData = {
 }
 
 export type SessionForkErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Fork point message is no longer part of the effective history
+   */
+  409: SessionForkPointMissingError
   /**
    * Runtime shutting down
    */
@@ -14201,6 +14421,69 @@ export type ProviderAuthGithubLogoutResponses = {
 export type ProviderAuthGithubLogoutResponse =
   ProviderAuthGithubLogoutResponses[keyof ProviderAuthGithubLogoutResponses]
 
+export type ProviderAuthGithubIdentityData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/auth/github/identity"
+}
+
+export type ProviderAuthGithubIdentityErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProviderAuthGithubIdentityError = ProviderAuthGithubIdentityErrors[keyof ProviderAuthGithubIdentityErrors]
+
+export type ProviderAuthGithubIdentityResponses = {
+  /**
+   * Git identity sync state
+   */
+  200: GithubIdentityState
+}
+
+export type ProviderAuthGithubIdentityResponse =
+  ProviderAuthGithubIdentityResponses[keyof ProviderAuthGithubIdentityResponses]
+
+export type ProviderAuthGithubIdentitySyncData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/auth/github/identity/sync"
+}
+
+export type ProviderAuthGithubIdentitySyncErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProviderAuthGithubIdentitySyncError =
+  ProviderAuthGithubIdentitySyncErrors[keyof ProviderAuthGithubIdentitySyncErrors]
+
+export type ProviderAuthGithubIdentitySyncResponses = {
+  /**
+   * Sync result
+   */
+  200: GithubIdentitySyncResult
+}
+
+export type ProviderAuthGithubIdentitySyncResponse =
+  ProviderAuthGithubIdentitySyncResponses[keyof ProviderAuthGithubIdentitySyncResponses]
+
 export type ProviderOauthAuthorizeData = {
   body?: {
     /**
@@ -14729,6 +15012,45 @@ export type WorkspaceFilesStatusResponses = {
 }
 
 export type WorkspaceFilesStatusResponse = WorkspaceFilesStatusResponses[keyof WorkspaceFilesStatusResponses]
+
+export type WorkspaceFilesContentData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    path: string
+  }
+  url: "/workspace/files/content"
+}
+
+export type WorkspaceFilesContentErrors = {
+  /**
+   * Bad request
+   */
+  400: WorkspaceFileContentError
+  /**
+   * Forbidden
+   */
+  403: WorkspaceFileWriteError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceFilesContentError = WorkspaceFilesContentErrors[keyof WorkspaceFilesContentErrors]
+
+export type WorkspaceFilesContentResponses = {
+  /**
+   * PDF file bytes
+   */
+  200: unknown
+}
 
 export type WorkspaceFilesWriteData = {
   body?: WorkspaceFileWriteFileInput
