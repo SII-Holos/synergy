@@ -371,6 +371,21 @@ describe.serial("LibraryDB", () => {
       expect(row!.turns_remaining).toBe(5)
     })
 
+    test("incrementRetrievalCount counts pulls separately from q_visits", () => {
+      makeExperience("exp-retrieval")
+      const before = LibraryDB.Experience.get("exp-retrieval")!
+      expect(before.retrieval_count).toBe(0)
+      expect(before.q_visits).toBe(0)
+
+      LibraryDB.Experience.incrementRetrievalCount("exp-retrieval")
+      LibraryDB.Experience.incrementRetrievalCount("exp-retrieval")
+
+      const after = LibraryDB.Experience.get("exp-retrieval")!
+      expect(after.retrieval_count).toBe(2)
+      // Pulls must not touch the reward-path counter.
+      expect(after.q_visits).toBe(0)
+    })
+
     describe("applyReward", () => {
       const defaultWeights = {
         outcome: 0.35,

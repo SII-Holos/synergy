@@ -179,7 +179,7 @@ describe("data shared helpers", () => {
       `CREATE TABLE memory (id TEXT PRIMARY KEY, title TEXT, content TEXT, category TEXT, recall_mode TEXT, embedding_model TEXT, created_at INTEGER, updated_at INTEGER)`,
     )
     conn.exec(
-      `CREATE TABLE experience (id TEXT PRIMARY KEY, session_id TEXT, scope_id TEXT, intent TEXT, intent_embedding_model TEXT, script_embedding_model TEXT, source_provider_id TEXT, source_model_id TEXT, reward REAL, rewards TEXT, q_values TEXT, q_visits INTEGER, q_updated_at INTEGER, q_history TEXT, retrieved_experience_ids TEXT, reward_status TEXT, turns_remaining INTEGER, created_at INTEGER, updated_at INTEGER)`,
+      `CREATE TABLE experience (id TEXT PRIMARY KEY, session_id TEXT, scope_id TEXT, intent TEXT, intent_embedding_model TEXT, script_embedding_model TEXT, source_provider_id TEXT, source_model_id TEXT, reward REAL, rewards TEXT, q_values TEXT, q_visits INTEGER, retrieval_count INTEGER, q_updated_at INTEGER, q_history TEXT, retrieved_experience_ids TEXT, reward_status TEXT, turns_remaining INTEGER, created_at INTEGER, updated_at INTEGER)`,
     )
     conn.exec(`INSERT INTO schema_version (embedding_dimensions) VALUES (384)`)
     conn.exec(
@@ -203,7 +203,7 @@ describe("data shared helpers", () => {
     const schema = `
       CREATE TABLE schema_version (embedding_dimensions INTEGER);
       CREATE TABLE memory (id TEXT PRIMARY KEY, title TEXT, content TEXT, category TEXT, recall_mode TEXT, embedding_model TEXT, created_at INTEGER, updated_at INTEGER);
-      CREATE TABLE experience (id TEXT PRIMARY KEY, session_id TEXT, scope_id TEXT, intent TEXT, intent_embedding_model TEXT, script_embedding_model TEXT, source_provider_id TEXT, source_model_id TEXT, reward REAL, rewards TEXT, q_values TEXT, q_visits INTEGER, q_updated_at INTEGER, q_history TEXT, retrieved_experience_ids TEXT, reward_status TEXT, turns_remaining INTEGER, created_at INTEGER, updated_at INTEGER);
+      CREATE TABLE experience (id TEXT PRIMARY KEY, session_id TEXT, scope_id TEXT, intent TEXT, intent_embedding_model TEXT, script_embedding_model TEXT, source_provider_id TEXT, source_model_id TEXT, reward REAL, rewards TEXT, q_values TEXT, q_visits INTEGER, retrieval_count INTEGER, q_updated_at INTEGER, q_history TEXT, retrieved_experience_ids TEXT, reward_status TEXT, turns_remaining INTEGER, created_at INTEGER, updated_at INTEGER);
       CREATE TABLE experience_content (id TEXT PRIMARY KEY, session_id TEXT, scope_id TEXT, user_input TEXT, script TEXT, raw TEXT, metadata TEXT, created_at INTEGER, updated_at INTEGER);
     `
     const sourcePath = path.join(tmp.path, "source.db")
@@ -247,7 +247,7 @@ describe("data shared helpers", () => {
     const schema = `
       CREATE TABLE schema_version (embedding_dimensions INTEGER);
       CREATE TABLE memory (id TEXT PRIMARY KEY, title TEXT, content TEXT, category TEXT, recall_mode TEXT, embedding_model TEXT, created_at INTEGER, updated_at INTEGER);
-      CREATE TABLE experience (id TEXT PRIMARY KEY, session_id TEXT, scope_id TEXT, intent TEXT, intent_embedding_model TEXT, script_embedding_model TEXT, source_provider_id TEXT, source_model_id TEXT, reward REAL, rewards TEXT, q_values TEXT, q_visits INTEGER, q_updated_at INTEGER, q_history TEXT, retrieved_experience_ids TEXT, reward_status TEXT, turns_remaining INTEGER, created_at INTEGER, updated_at INTEGER);
+      CREATE TABLE experience (id TEXT PRIMARY KEY, session_id TEXT, scope_id TEXT, intent TEXT, intent_embedding_model TEXT, script_embedding_model TEXT, source_provider_id TEXT, source_model_id TEXT, reward REAL, rewards TEXT, q_values TEXT, q_visits INTEGER, retrieval_count INTEGER, q_updated_at INTEGER, q_history TEXT, retrieved_experience_ids TEXT, reward_status TEXT, turns_remaining INTEGER, created_at INTEGER, updated_at INTEGER);
       CREATE TABLE experience_content (id TEXT PRIMARY KEY, session_id TEXT, scope_id TEXT, user_input TEXT, script TEXT, raw TEXT, metadata TEXT, created_at INTEGER, updated_at INTEGER);
     `
     const sourcePath = path.join(tmp.path, "source.db")

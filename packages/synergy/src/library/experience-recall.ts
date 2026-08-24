@@ -31,6 +31,7 @@ export namespace ExperienceRecall {
     qValue: number
     qValues: Record<string, number>
     qVisits: number
+    retrievalCount: number
     turnsRemaining: number | null
     score: number
     script: string | null
@@ -44,6 +45,9 @@ export namespace ExperienceRecall {
 
   export function trackRetrieval(sessionID: string, experienceIDs: string[]) {
     pendingRetrievals.set(sessionID, experienceIDs)
+    for (const id of experienceIDs) {
+      LibraryDB.Experience.incrementRetrievalCount(id)
+    }
     setTimeout(
       () => {
         pendingRetrievals.delete(sessionID)
@@ -125,12 +129,16 @@ export namespace ExperienceRecall {
     const zSim = zScoreNormalize(similarities)
     const zQ = zScoreNormalize(qScalars)
 
-    const totalVisits = candidates.reduce((sum, c) => sum + c.row.q_visits, 0)
-    const lnN = totalVisits > 0 ? Math.log(totalVisits) : 1
+    const totalRetrievals = candidates.reduce((sum, c) => sum + c.row.retrieval_count, 0)
+    // UCB1 explores arms that have been selected rarely. A fully cold set
+    // (nothing ever pulled) gets no exploration bonus rather than the old
+    // ln(1) fallback, which handed every never-rewarded experience a
+    // perpetual maximal bonus.
+    const lnN = totalRetrievals > 0 ? Math.log(totalRetrievals) : 0
 
     const scored = candidates.map((c, i) => {
       const base = zSim[i] * wSim + zQ[i] * wQ
-      const n = Math.max(c.row.q_visits, 1)
+      const n = Math.max(c.row.retrieval_count, 1)
       const ucbBonus = explorationConstant * Math.sqrt(lnN / n)
       return { ...c, score: base + ucbBonus, qScalar: qScalars[i] }
     })
@@ -154,6 +162,7 @@ export namespace ExperienceRecall {
         qValue: item.qScalar,
         qValues: qv,
         qVisits: item.row.q_visits,
+        retrievalCount: item.row.retrieval_count,
         turnsRemaining: item.row.turns_remaining,
         score: item.score,
         script: contentRow?.script ?? null,

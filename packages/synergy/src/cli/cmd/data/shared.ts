@@ -459,6 +459,7 @@ export async function mergeLibraryDB(
     rewards: string
     q_values: string
     q_visits: number
+    retrieval_count?: number
     q_updated_at: number | null
     q_history: string
     retrieved_experience_ids: string
@@ -509,7 +510,7 @@ export async function mergeLibraryDB(
   // Merge experiences
   const experiences = source.prepare("SELECT * FROM experience").all() as ExperienceRow[]
   const insertExperience = target.prepare(
-    "INSERT OR IGNORE INTO experience (id, session_id, scope_id, intent, intent_embedding_model, script_embedding_model, source_provider_id, source_model_id, reward, rewards, q_values, q_visits, q_updated_at, q_history, retrieved_experience_ids, reward_status, turns_remaining, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+    "INSERT OR IGNORE INTO experience (id, session_id, scope_id, intent, intent_embedding_model, script_embedding_model, source_provider_id, source_model_id, reward, rewards, q_values, q_visits, retrieval_count, q_updated_at, q_history, retrieved_experience_ids, reward_status, turns_remaining, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
   )
 
   for (const exp of experiences) {
@@ -527,6 +528,7 @@ export async function mergeLibraryDB(
       exp.rewards,
       exp.q_values,
       exp.q_visits,
+      exp.retrieval_count ?? 0,
       exp.q_updated_at,
       exp.q_history,
       exp.retrieved_experience_ids,
