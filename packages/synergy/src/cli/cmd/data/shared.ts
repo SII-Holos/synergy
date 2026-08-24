@@ -433,6 +433,14 @@ export async function mergeLibraryDB(
   target.exec("PRAGMA journal_mode=WAL")
   target.exec("PRAGMA busy_timeout=5000")
 
+  // Targets created before the retrieval_count migration lack the column the
+  // experience INSERT below references; add it idempotently so merging into
+  // an older library.db keeps working.
+  const experienceColumns = target.prepare("PRAGMA table_info(experience)").all() as { name: string }[]
+  if (!experienceColumns.some((column) => column.name === "retrieval_count")) {
+    target.exec("ALTER TABLE experience ADD COLUMN retrieval_count INTEGER NOT NULL DEFAULT 0")
+  }
+
   const source = new Database(sourceDbPath, { readonly: true })
 
   type MemoryRow = {
