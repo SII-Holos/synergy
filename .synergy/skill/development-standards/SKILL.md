@@ -46,6 +46,17 @@ A durable development convention is part of the implementation deliverable, not 
 
 Do not add a rule only to a PR comment, prompt, or one package guide if future agents need it to implement the same change correctly.
 
+## Preserve External Provenance
+
+When implementation materially adopts an algorithm or constraint from a paper or standard, upstream code, an issue/PR/discussion workaround, or a benchmark, experiment, or research result:
+
+1. Add `Provenance:` with a stable locator beside the nearest authoritative implementation. Prefer a DOI, versioned arXiv record, RFC section, commit-pinned source link, issue/PR URL, or repository-relative research document.
+2. Add `Local adaptation:` stating what Synergy adopts or changes. For multi-file or generated output, mark the single owning source, generator, template, or manifest rather than every derivative.
+3. Preserve applicable license obligations when code, data, themes, or assets are copied or adapted.
+4. Carry cross-cutting sources into the decision record and pull request so reviewers can evaluate the source-to-implementation relationship.
+
+Routine language usage, direct official API calls, and general patterns without a specific material source do not require citations. A bare URL or a source recorded only in Git history is not durable provenance. Review enforces this semantic obligation; do not add a network or keyword CI gate that claims to detect missing sources.
+
 ## Handoff
 
 Report the owning workflows loaded, invariant changed, focused checks run, and any Skill or canonical document updated because a new development convention emerged.
