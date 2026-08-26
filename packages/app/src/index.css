@@ -709,10 +709,6 @@ a {
     box-shadow 150ms ease;
 }
 
-.synergy-workbench-canvas .prompt-input-shell:hover {
-  background-color: var(--workbench-input-bg-hover);
-}
-
 .synergy-workbench-canvas .prompt-input-shell:focus-within {
   border-color: color-mix(in srgb, var(--text-strong) 22%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-strong) 10%, transparent);

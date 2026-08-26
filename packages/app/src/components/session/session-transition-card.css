@@ -6,8 +6,8 @@
   width: min(100%, 44rem);
   padding: 16px 18px;
   border: 1px solid var(--session-transition-border);
-  border-radius: 8px;
-  background: var(--surface-raised-stronger-non-alpha);
+  border-radius: 14px;
+  background: var(--workbench-card-bg, var(--surface-raised-base));
   box-shadow: 0 1px 0 color-mix(in oklch, var(--border-base) 28%, transparent);
   font-family: var(--font-family-sans);
   font-feature-settings: var(--font-family-sans--font-feature-settings);
@@ -40,15 +40,15 @@
 
 .session-transition-card-header {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
   gap: 12px;
   align-items: start;
 }
 
 .session-transition-card-icon {
   display: inline-flex;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   align-items: center;
   justify-content: center;
   border-radius: 8px;
@@ -130,10 +130,10 @@
 
 .session-transition-step-row {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  min-height: 58px;
+  min-height: 44px;
   padding: 10px 0;
   color: var(--text-weak);
   letter-spacing: 0;
@@ -156,9 +156,9 @@
 }
 
 .session-transition-step-icon {
+  width: 22px;
   display: inline-flex;
-  width: 28px;
-  height: 28px;
+  height: 22px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -237,7 +237,7 @@
 
 @media (max-width: 620px) {
   .session-transition-step-row {
-    grid-template-columns: 28px minmax(0, 1fr);
+    grid-template-columns: 22px minmax(0, 1fr);
   }
 
   .session-transition-step-status {
