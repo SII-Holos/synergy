@@ -1,0 +1,28 @@
+# Synergy Agent Tooling
+
+## Goal
+
+Design, evaluate, or improve the tooling an agent works with: agent-facing tool contracts, MCP servers, and agent-friendly CLIs.
+
+**Start from a concrete deliverable.** The unit of work is a tool, an MCP server, or a CLI the agent will call — not a general discussion of tooling. If the request is about connecting an existing MCP server into Synergy (adding servers, converting config), route to the builtin skill `synergy-config` reference `mcp.txt` instead.
+
+**Draft in the same turn.** Ask one clarifying question only when, after reading the request, you still cannot name the tool's purpose and its inputs. Missing schemas, server details, or edge cases are handled with labeled assumptions inside the draft.
+
+## Tool contract
+
+A tool is a contract with a non-deterministic agent. The agent reads only the tool's name, description, and parameter schema — it cannot read the implementation. Write every tool surface for that reader.
+
+Every tool description must answer four questions:
+
+1. **What does the tool do?** One concrete action, stated in the imperative ("Create a draft", not "This tool is responsible for drafting").
+2. **When should the agent use it?** Name the direct triggers and the indirect signals that should route to this tool, plus when the agent should NOT use it.
+3. **What inputs does it accept?** Types, constraints, defaults, and one format example for non-obvious fields.
+4. **What does it return?** The success shape and the error conditions the agent can act on.
+
+Apply the consolidation principle: if a human cannot definitively say which tool to use for a given situation, the agent cannot either. Merge narrow overlapping tools unless independent invocation is required. Do not over-consolidate past roughly 8-10 parameters.
+
+## Reference files
+
+- `references/tool-design.txt` — tool-contract design: naming, consolidation, parameter discipline, response formats, error recovery, and an audit checklist. Load for any tool design or review.
+- `references/mcp-builder.txt` — end-to-end MCP server workflow: research, implementation, testing, and evaluation. Load when building an MCP server.
+- `references/cli-creator.txt` — agent-friendly CLI command contract: runtime choice, command kinds, structured output, auth, and smoke testing. Load when building a CLI for agents.
