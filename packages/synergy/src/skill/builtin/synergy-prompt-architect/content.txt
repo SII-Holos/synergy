@@ -62,6 +62,7 @@ The agent only sees the words in the prompt. Restate every backend constraint as
 | Don't decide `PushPolicy` | "Only decide the reminder copy. Whether and when to send is not your decision." | name the boundary as an agent decision, not a class name |
 | Upstream / downstream / policy module | "what you receive" / "the next system" / drop entirely | the agent has no view of the pipeline; reframe as what it sees |
 | Structured validation fails when a key input is missing | "If a required input is missing, say which one, and do not produce a draft." | turn backend behavior into an explicit agent action |
+| 上游模块已给出用户意图与动作结果 | "你将收到已确认的背景与本次回复所需的结果。" | 去掉管道叙述——即使原文用自然语言写成，也要改成 agent 可读的输入描述 |
 
 For each user-supplied code artifact (schema, class, field, pipeline label): write the agent-facing label or behavior first, then drop the original code string from the final prompt by default. Keep the original string only when the user has explicitly stated that the agent's runtime output must contain that exact verbatim string.
 
