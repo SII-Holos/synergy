@@ -33,6 +33,16 @@ export async function createIsolatedTestEnv(): Promise<{
   // identity parsing in suites that shell out (coverage-check.ts forces
   // LC_ALL=C for the same reason).
   env.LC_ALL = "C"
+  // Bun 1.3.x fetch reads HTTP(S)_PROXY per request with no built-in loopback
+  // bypass (oven-sh/bun#39352), so a proxied CI runner routes local
+  // Bun.serve test-server requests through the proxy and fails them with
+  // HTTP 404. Drop proxy variables for spawned children and pin NO_PROXY so
+  // loopback fetches stay direct regardless of the host environment.
+  for (const key of ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"]) {
+    delete env[key]
+  }
+  env.NO_PROXY = "localhost,127.0.0.1,[::1],0.0.0.0"
+  env.no_proxy = env.NO_PROXY
 
   return {
     env,
