@@ -233,7 +233,7 @@ export function SessionRow(props: SessionRowProps) {
         <SessionDraftBadge
           sessionID={props.session.id}
           label={i18n._(sidebar.draftBadge.id)}
-          class="shrink-0 text-10-medium text-text-error"
+          class="shrink-0 translate-y-px text-10-medium text-text-error"
         />
 
         {/* Text block */}

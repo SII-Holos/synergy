@@ -76,7 +76,7 @@ export function MobileDrawerRecent(props: {
                   <SessionDraftBadge
                     sessionID={entry.id}
                     label={props.draftLabel}
-                    class="shrink-0 text-10-medium text-text-error"
+                    class="shrink-0 translate-y-px text-10-medium text-text-error"
                   />
                   <span class="min-w-0 flex-1 truncate text-13-medium">{entry.title || props.untitledLabel}</span>
                   <Show when={props.unreadLabel(entry)}>{(label) => <span class="sr-only">{label()}</span>}</Show>

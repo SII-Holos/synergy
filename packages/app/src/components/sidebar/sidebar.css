@@ -629,6 +629,7 @@
   font-weight: 500;
   color: var(--text-error);
   white-space: nowrap;
+  translate: 0 1px;
 }
 
 /* Dropdown menu */
