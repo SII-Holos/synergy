@@ -236,7 +236,11 @@ function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }
               {title()}
             </span>
             <Show when={props.step.subtitle}>
-              {(subtitle) => <span data-slot="activity-step-subtitle">{subtitle()}</span>}
+              {(subtitle) => (
+                <span data-slot="activity-step-subtitle" title={subtitle()}>
+                  {subtitle()}
+                </span>
+              )}
             </Show>
           </div>
           <ActivityState state={props.step.state} label={stateLabel()} />
@@ -340,7 +344,11 @@ function ActivityReceiptRow(props: {
         {props.title}
       </span>
       <Show when={props.step?.subtitle}>
-        {(subtitle) => <span data-slot="activity-receipt-scope">{subtitle()}</span>}
+        {(subtitle) => (
+          <span data-slot="activity-receipt-scope" title={subtitle()}>
+            {subtitle()}
+          </span>
+        )}
       </Show>
       <ActivityState state={props.group.state} label={props.stateLabel} />
       <Show when={props.expandable}>

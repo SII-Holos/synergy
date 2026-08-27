@@ -236,6 +236,7 @@ beforeAll(async () => {
               scopeKey: "",
               icon: "list-checks",
               title: "Read DAG",
+              subtitle: "DAG snapshot",
               state: "done",
             },
           ],
@@ -595,6 +596,12 @@ describe("ActivityTrace DOM behavior", () => {
     expect(title?.getAttribute("title")).toBe("Edit activity-trace")
   })
 
+  test("exposes the full step subtitle to hover when narrow layouts truncate it", () => {
+    const subtitle = document.querySelector('#error-host [data-slot="activity-step-subtitle"]')
+    expect(subtitle?.textContent).toBe("build.sh")
+    expect(subtitle?.getAttribute("title")).toBe("build.sh")
+  })
+
   test("each child activity is a keyboard-accessible result toggle", async () => {
     const triggers = stepTriggers()
     expect(triggers).toHaveLength(6)
@@ -729,5 +736,11 @@ describe("ActivityReceipt DOM behavior", () => {
     const title = document.querySelector('[data-component="activity-receipt"] [data-slot="activity-receipt-title"]')
     expect(title?.textContent).toBe("Read DAG")
     expect(title?.getAttribute("title")).toBe("Read DAG")
+  })
+
+  test("exposes the full receipt scope to hover when narrow layouts truncate it", () => {
+    const scope = document.querySelector('[data-component="activity-receipt"] [data-slot="activity-receipt-scope"]')
+    expect(scope?.textContent).toBe("DAG snapshot")
+    expect(scope?.getAttribute("title")).toBe("DAG snapshot")
   })
 })
