@@ -18707,16 +18707,16 @@ msgid "tool.misc.warnings"
 msgstr "警告"
 
 #. ── Task subagent detail ────────────────────────────────────────────
-msgid "tool.task.background-running"
-msgstr "正在后台运行"
-
-#. ── Task subagent detail ────────────────────────────────────────────
 msgid "tool.task.no-steps"
 msgstr "暂无已记录的步骤"
 
 #. ── Task subagent detail ────────────────────────────────────────────
 msgid "tool.task.open-session"
 msgstr "打开子代理会话"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.running"
+msgstr "运行中"
 
 #. ── Task subagent detail ────────────────────────────────────────────
 msgid "tool.task.starting"

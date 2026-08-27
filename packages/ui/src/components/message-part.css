@@ -844,7 +844,7 @@
 [data-component="task-subagent-detail"] {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
   min-width: 0;
 
@@ -852,37 +852,52 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
   }
 
   [data-slot="task-subagent-agent"] {
-    padding: 1px 8px;
-    border-radius: var(--radius-full);
-    border: 1px solid var(--border-weaker-base);
-    color: var(--text-weak);
-    font-size: var(--font-size-x-small);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-small);
     font-weight: var(--font-weight-medium);
+    color: var(--text-interactive-base);
   }
 
-  [data-slot="task-subagent-background"] {
-    padding: 1px 8px;
-    border-radius: var(--radius-full);
-    border: 1px solid var(--border-weaker-base);
+  [data-slot="task-subagent-sep"] {
     color: var(--text-subtle);
-    font-size: var(--font-size-x-small);
+  }
+
+  [data-slot="task-subagent-mode"] {
+    font-size: var(--font-size-small);
+    color: var(--text-weak);
+  }
+
+  [data-slot="task-subagent-state"] {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--font-size-small);
+    color: var(--text-weak);
+    white-space: nowrap;
+  }
+
+  [data-slot="task-subagent-state-dot"] {
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-full);
+    background: var(--border-interactive-base);
+    animation: task-subagent-dot-pulse 1.7s ease-in-out infinite;
   }
 
   [data-slot="task-subagent-description"] {
     margin: 0;
-    color: var(--text-weak);
-    font-size: var(--font-size-small);
+    color: var(--text-base);
+    font-size: var(--font-size-base);
     line-height: var(--line-height-large);
+    overflow-wrap: anywhere;
   }
 
   [data-slot="task-subagent-empty"] {
-    display: flex;
-    align-items: center;
-    gap: 6px;
     color: var(--text-subtle);
     font-size: var(--font-size-small);
   }
@@ -895,31 +910,22 @@
     overflow-wrap: anywhere;
   }
 
-  [data-slot="task-subagent-status"] {
-    display: inline-flex;
-    align-items: center;
-    color: var(--icon-weak-base);
-
-    [data-component="spinner"] {
-      width: 12px;
-      height: 12px;
-    }
-  }
-
   [data-slot="task-subagent-open"] {
     all: unset;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
+    gap: 6px;
+    padding: 4px 12px;
+    border: 1px solid var(--border-weaker-base);
     border-radius: var(--radius-sm);
-    color: var(--text-interactive-base);
-    font-size: var(--font-size-x-small);
+    color: var(--text-weak);
+    font-size: var(--font-size-small);
     white-space: nowrap;
 
     &:hover {
-      background: var(--surface-base-hover);
+      border-color: var(--border-strong-base);
+      color: var(--text-base);
     }
 
     &:focus-visible {
@@ -935,6 +941,22 @@
 
   [data-component="task-tools"] {
     padding: 0;
+  }
+}
+
+@keyframes task-subagent-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-component="task-subagent-detail"] [data-slot="task-subagent-state-dot"] {
+    animation: none;
   }
 }
 

@@ -68,15 +68,14 @@ export function TaskSubagentDetail(props: { info: TaskSubagentDetailInfo }) {
     if (props.info.sessionId) data.navigateToSession?.(props.info.sessionId)
   }
 
-  const emptyLabel = createMemo(() =>
-    _(
-      props.info.waitingApproval
-        ? TOOL_TASK_DESC.waitingApproval
-        : props.info.background
-          ? TOOL_TASK_DESC.backgroundRunning
-          : TOOL_TASK_DESC.starting,
-    ),
-  )
+  const statusText = createMemo(() => {
+    if (props.info.error) return undefined
+    if (props.info.waitingApproval) return _(TOOL_TASK_DESC.waitingApproval)
+    if (props.info.running) return _(props.info.background ? TOOL_TASK_DESC.running : TOOL_TASK_DESC.starting)
+    return undefined
+  })
+
+  const idleWithoutSteps = () => steps().length === 0 && !props.info.running && !props.info.error
 
   return (
     <div data-component="tool-output" data-scrollable>
@@ -86,30 +85,34 @@ export function TaskSubagentDetail(props: { info: TaskSubagentDetailInfo }) {
             {(agentType) => <span data-slot="task-subagent-agent">{agentType()}</span>}
           </Show>
           <Show when={props.info.background}>
-            <span data-slot="task-subagent-background">{_(TOOL_MISC_DESC.backgroundTask)}</span>
+            <Show when={props.info.agentType}>
+              <span data-slot="task-subagent-sep" aria-hidden="true">
+                ·
+              </span>
+            </Show>
+            <span data-slot="task-subagent-mode">{_(TOOL_MISC_DESC.backgroundTask)}</span>
+          </Show>
+          <Show when={statusText()}>
+            {(text) => (
+              <span data-slot="task-subagent-state">
+                <Show when={props.info.running}>
+                  <span data-slot="task-subagent-state-dot" aria-hidden="true" />
+                </Show>
+                <span>{text()}</span>
+              </span>
+            )}
           </Show>
         </div>
         <Show when={props.info.description}>
           {(description) => <p data-slot="task-subagent-description">{description()}</p>}
         </Show>
-        <Show
-          when={steps().length > 0}
-          fallback={
-            <Show when={!props.info.error}>
-              <div data-slot="task-subagent-empty">
-                <Show when={props.info.running} fallback={<span>{_(TOOL_TASK_DESC.noSteps)}</span>}>
-                  <span data-slot="task-subagent-status">
-                    <Spinner />
-                  </span>
-                  <span>{emptyLabel()}</span>
-                </Show>
-              </div>
-            </Show>
-          }
-        >
+        <Show when={steps().length > 0}>
           <TaskSubagentSteps summary={props.info.summary} />
         </Show>
         <Show when={props.info.error}>{(error) => <p data-slot="task-subagent-error">{error()}</p>}</Show>
+        <Show when={idleWithoutSteps()}>
+          <span data-slot="task-subagent-empty">{_(TOOL_TASK_DESC.noSteps)}</span>
+        </Show>
         <Show when={canOpenSession()}>
           <button data-slot="task-subagent-open" type="button" onClick={openSession}>
             <Icon name={getSemanticIcon("action.open")} size="small" />

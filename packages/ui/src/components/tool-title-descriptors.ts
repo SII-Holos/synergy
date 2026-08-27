@@ -383,7 +383,7 @@ export const TOOL_MISC_DESC = {
 // ── Task subagent detail ────────────────────────────────────────────
 export const TOOL_TASK_DESC = {
   openSession: d("tool.task.open-session", "Open subagent session"),
-  backgroundRunning: d("tool.task.background-running", "Running in background"),
+  running: d("tool.task.running", "Running"),
   starting: d("tool.task.starting", "Starting…"),
   noSteps: d("tool.task.no-steps", "No steps recorded"),
   waitingApproval: d("tool.task.waiting-approval", "Waiting for approval"),

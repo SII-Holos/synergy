@@ -18707,15 +18707,15 @@ msgid "tool.misc.warnings"
 msgstr ""
 
 #. ── Task subagent detail ────────────────────────────────────────────
-msgid "tool.task.background-running"
-msgstr ""
-
-#. ── Task subagent detail ────────────────────────────────────────────
 msgid "tool.task.no-steps"
 msgstr ""
 
 #. ── Task subagent detail ────────────────────────────────────────────
 msgid "tool.task.open-session"
+msgstr ""
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.running"
 msgstr ""
 
 #. ── Task subagent detail ────────────────────────────────────────────

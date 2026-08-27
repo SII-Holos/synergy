@@ -844,17 +844,21 @@ describe("Delegated subagent activity DOM behavior", () => {
     await wait(0)
   })
 
-  test("shows an honest background empty state instead of a blank expansion", async () => {
+  test("shows the background delegation state in the header instead of a blank expansion", async () => {
     const host = document.querySelector("#delegate-bg-host") as HTMLElement
     const trigger = host.querySelector('[data-slot="activity-step-trigger"]') as HTMLButtonElement
     trigger.click()
     await wait(0)
 
-    expect(host.querySelector('[data-component="task-subagent-detail"]')).not.toBeNull()
-    expect(host.querySelector('[data-slot="task-subagent-background"]')?.textContent).toBe("background")
-    const empty = host.querySelector('[data-slot="task-subagent-empty"]') as HTMLElement
-    expect(empty?.textContent).toContain("Running in background")
-    expect(empty?.querySelector('[data-component="spinner"]')).not.toBeNull()
+    expect(
+      host.querySelector('[data-component="tool-output"] > [data-component="task-subagent-detail"]'),
+    ).not.toBeNull()
+    expect(host.querySelector('[data-slot="task-subagent-agent"]')?.textContent).toBe("explore")
+    expect(host.querySelector('[data-slot="task-subagent-mode"]')?.textContent).toBe("background")
+    const state = host.querySelector('[data-slot="task-subagent-state"]') as HTMLElement
+    expect(state?.textContent).toContain("Running")
+    expect(host.querySelector('[data-slot="task-subagent-state-dot"]')).not.toBeNull()
+    expect(host.querySelector('[data-slot="task-subagent-empty"]')).toBeNull()
     expect(host.querySelector('[data-slot="task-subagent-open"]')).not.toBeNull()
     expect(host.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(0)
   })
