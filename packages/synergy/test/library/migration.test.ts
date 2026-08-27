@@ -333,6 +333,61 @@ describe.serial("library migrations", () => {
     })
   })
 
+  describe("experience retrieval count migration", () => {
+    test("adds the column and seeds previously-rewarded experiences from q_visits idempotently", async () => {
+      const conn = LibraryDB.connection()
+
+      // Drop the column to simulate a pre-migration database.
+      conn.exec("ALTER TABLE experience RENAME TO experience_current")
+      conn.exec(`
+        CREATE TABLE experience (
+          id                       TEXT PRIMARY KEY,
+          session_id               TEXT NOT NULL,
+          scope_id                 TEXT NOT NULL,
+          intent                   TEXT NOT NULL,
+          intent_embedding_model   TEXT,
+          script_embedding_model   TEXT,
+          source_provider_id       TEXT,
+          source_model_id          TEXT,
+          reward                   REAL,
+          rewards                  TEXT NOT NULL DEFAULT '{}',
+          q_values                 TEXT NOT NULL DEFAULT '{}',
+          q_visits                 INTEGER NOT NULL DEFAULT 0,
+          q_updated_at             INTEGER,
+          q_history                TEXT NOT NULL DEFAULT '[]',
+          retrieved_experience_ids TEXT NOT NULL DEFAULT '[]',
+          reward_status            TEXT NOT NULL DEFAULT 'evaluated',
+          turns_remaining          INTEGER,
+          created_at               INTEGER NOT NULL,
+          updated_at               INTEGER NOT NULL
+        )
+      `)
+      conn.exec(
+        `INSERT INTO experience (id, session_id, scope_id, intent, q_values, q_visits, created_at, updated_at)
+         VALUES ('exp-rewarded', 's', 'sc', 'Handle the rewarded flow', '{}', 7, 1, 2),
+                ('exp-unrewarded', 's', 'sc', 'Handle the unrewarded flow', '{}', 0, 1, 2)`,
+      )
+      conn.exec("DROP TABLE experience_current")
+
+      const migration = migrations.find((item) => item.id === "20260824-library-experience-retrieval-count")
+      expect(migration).toBeDefined()
+      expect(hasColumn(conn, "experience", "retrieval_count")).toBe(false)
+
+      await migration!.up(() => {})
+      await migration!.up(() => {})
+
+      expect(hasColumn(conn, "experience", "retrieval_count")).toBe(true)
+      const rows = conn.prepare("SELECT id, retrieval_count FROM experience ORDER BY id").all() as {
+        id: string
+        retrieval_count: number
+      }[]
+      expect(rows).toEqual([
+        { id: "exp-rewarded", retrieval_count: 7 },
+        { id: "exp-unrewarded", retrieval_count: 0 },
+      ])
+    })
+  })
+
   describe("legacy library upgrade without recall_mode column (issue 1081)", () => {
     test("opening a legacy database does not fail before the recall_mode migration runs", async () => {
       // CI shards run test files concurrently against the same library.db, so
