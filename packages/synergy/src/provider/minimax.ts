@@ -34,6 +34,9 @@ export namespace MiniMaxProvider {
     return Buffer.from(crypto.getRandomValues(new Uint8Array(bytes))).toString("base64url")
   }
 
+  // Provenance: RFC 7636 (PKCE) §4.2 code_challenge derivation ( https://www.rfc-editor.org/rfc/rfc7636#section-4.2 ).
+  // Local adaptation: S256 challenge over a 96-char base64url verifier; MiniMax's
+  // device-style flow takes the challenge at /oauth/code and the verifier at /oauth/token.
   async function sha256(input: string) {
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input))
     return Buffer.from(new Uint8Array(digest)).toString("base64url")
