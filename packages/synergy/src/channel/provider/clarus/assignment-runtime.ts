@@ -35,6 +35,7 @@ export namespace ClarusAssignmentRuntime {
     event: RuntimeTaskAssignedEvent
     agentOverride?: string
     cliRunner?: ClarusCliRunner
+    acceptTask?: (assignment: ClarusAssignment) => void
   }): Promise<{ assignment: ClarusAssignment; created: boolean }> {
     const deadlineAt = input.event.deadlineAt
     if (deadlineAt) {
@@ -48,6 +49,12 @@ export namespace ClarusAssignmentRuntime {
       projectID: input.event.projectID,
       taskID: input.event.taskID,
     })
+    const exactReplay =
+      existing !== undefined &&
+      existing.assignment.runID === input.event.runID &&
+      existing.assignment.subtaskID === input.event.subtaskID &&
+      existing.assignment.attempt === input.event.attempt &&
+      existing.assignment.assignmentMessageID === (input.event.requestID ?? undefined)
     const title = ClarusAssignmentPrompt.title(input.event)
     const basePrompt = ClarusAssignmentPrompt.userPrompt(input.accountId, input.event)
     const deliveryIdentity = hash(
@@ -73,11 +80,19 @@ export namespace ClarusAssignmentRuntime {
           deliveryKey: `clarus-participation:${deliveryIdentity}`,
           text: ClarusAssignmentPrompt.participationGuidance(input.event),
         },
-        prepare: async ({ scope }) => {
-          const preflight = await preflightClarusAssignment({ event: input.event, scope, runner: input.cliRunner })
-          return { text: preflight.promptSection ? `${basePrompt}\n\n${preflight.promptSection}` : basePrompt }
-        },
-        beforeWake: async ({ sessionID }) => {
+        wakeOnDuplicate: false,
+        prepare: exactReplay
+          ? undefined
+          : async ({ scope }) => {
+              const preflight = await preflightClarusAssignment({ event: input.event, scope, runner: input.cliRunner })
+              return { text: preflight.promptSection ? `${basePrompt}\n\n${preflight.promptSection}` : basePrompt }
+            },
+        beforeWake: async ({ sessionID, deliveryCreated }) => {
+          if (!deliveryCreated && exactReplay && existing) {
+            assignment = existing.assignment
+            input.acceptTask?.(assignment)
+            return
+          }
           assignment = (
             await ClarusAssignmentStore.upsert({
               accountId: input.accountId,
@@ -94,6 +109,7 @@ export namespace ClarusAssignmentRuntime {
             deadlineAt: input.event.deadlineAt,
             active: assignment.status === "running" && assignment.resultState !== "acknowledged",
           })
+          input.acceptTask?.(assignment)
         },
       })
       .catch((error) => {

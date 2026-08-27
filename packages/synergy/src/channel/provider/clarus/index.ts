@@ -1,10 +1,15 @@
 import type * as ChannelTypes from "@/channel/types"
-import type { ChannelHost } from "@/channel/host"
+import { ChannelHost } from "@/channel/host"
 import type { Config } from "@/config/config"
 import { HolosAuth } from "@/holos/auth"
 import { HolosRuntime } from "@/holos/runtime"
 import { Log } from "@/util/log"
-import type { ClarusAgentTunnelPort, ClarusObservedEvent, RuntimeTaskAssignedEvent } from "./agent-tunnel-port"
+import {
+  parseClarusRequestFailure,
+  type ClarusAgentTunnelPort,
+  type ClarusObservedEvent,
+  type RuntimeTaskAssignedEvent,
+} from "./agent-tunnel-port"
 import {
   ClarusAssignmentExpiredError,
   ClarusAssignmentRuntime,
@@ -21,6 +26,7 @@ const RESULT_TIMEOUT_MS = 60_000
 const EXTENSION_TIMEOUT_MS = 30_000
 const PROJECT_REFRESH_TIMEOUT_MS = 60_000
 const PROJECT_SUBSCRIBE_TIMEOUT_MS = 15_000
+const TASK_ACCEPT_TIMEOUT_MS = 15_000
 const INVALID_EVENT_MAX_ISSUES = 20
 const INVALID_EVENT_MAX_TEXT_LENGTH = 500
 
@@ -77,6 +83,7 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
   readonly lifecycle = "borrowed_transport" as const
   private readonly log = Log.create({ service: "channel.clarus" })
   private readonly connections = new Map<string, AccountConnection>()
+  private readonly acknowledgedTaskAccepts = new WeakMap<AccountConnection, Set<string>>()
 
   constructor(private readonly holos: ClarusHolosDependencies = defaultHolosDependencies) {}
 
@@ -161,10 +168,23 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
     }
     removers.add(
       tunnel.registerEventHandler((event) =>
-        this.handleEvent(connection, event).catch(() => {
+        this.handleEvent(connection, event).catch((error) => {
+          const projectID = event.kind === "known" && "projectID" in event ? event.projectID : undefined
+          const taskID =
+            event.kind === "known" && (event.type === "runtimeTaskAssigned" || event.type === "runtimeTaskAccepted")
+              ? event.taskID
+              : event.kind === "known" &&
+                  (event.type === "runtimeTaskExtended" || event.type === "runtimeTaskResultRecorded")
+                ? event.task.taskID
+                : undefined
           this.log.error("failed to handle Clarus event", {
             accountHash: hash(input.accountId),
             eventType: event.kind === "known" ? event.type : event.kind,
+            ...(event.requestID ? { requestID: event.requestID } : {}),
+            ...(projectID ? { projectHash: hash(projectID) } : {}),
+            ...(taskID ? { taskHash: hash(taskID) } : {}),
+            errorName: error instanceof Error ? error.name : "UnknownError",
+            error,
           })
         }),
       ),
@@ -400,8 +420,16 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
         await connection.host.projects.markArchived({ externalProjectId: event.projectID })
         connection.projects.delete(event.projectID)
         return
+      case "projectMembershipAccepted":
+        await this.syncProjects(
+          connection,
+          AbortSignal.any([connection.signal, AbortSignal.timeout(PROJECT_REFRESH_TIMEOUT_MS)]),
+        )
+        return
       case "runtimeTaskAssigned":
         await this.handleAssignment(connection, event)
+        return
+      case "runtimeTaskAccepted":
         return
       case "runtimeTaskExtended":
         await this.handleTaskExtended(connection, event)
@@ -474,6 +502,93 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
     })
   }
 
+  private dispatchTaskAccept(connection: AccountConnection, assignment: ClarusAssignment): void {
+    const acceptRequestID =
+      assignment.assignmentMessageID ??
+      hash(
+        "clarus-task-accept",
+        assignment.accountId,
+        assignment.projectID,
+        assignment.taskID,
+        assignment.runID,
+        assignment.subtaskID,
+        String(assignment.attempt),
+      )
+    const acknowledged = this.acknowledgedTaskAccepts.get(connection)
+    if (acknowledged?.has(acceptRequestID) || connection.outboundRequests.has(acceptRequestID)) return
+
+    connection.outboundRequests.add(acceptRequestID)
+    try {
+      const result = connection.tunnel.acceptTask({
+        requestID: acceptRequestID,
+        timeoutMs: TASK_ACCEPT_TIMEOUT_MS,
+        runID: assignment.runID,
+        projectID: assignment.projectID,
+        taskID: assignment.taskID,
+        subtaskID: assignment.subtaskID,
+        attempt: assignment.attempt,
+        signal: connection.signal,
+      })
+      void result.response
+        .then(() => {
+          let requests = this.acknowledgedTaskAccepts.get(connection)
+          if (!requests) {
+            requests = new Set()
+            this.acknowledgedTaskAccepts.set(connection, requests)
+          }
+          requests.add(acceptRequestID)
+        })
+        .catch((error) => this.recordTaskAcceptFailure(connection, assignment, acceptRequestID, error))
+        .finally(() => connection.outboundRequests.delete(acceptRequestID))
+    } catch (error) {
+      connection.outboundRequests.delete(acceptRequestID)
+      void this.recordTaskAcceptFailure(connection, assignment, acceptRequestID, error)
+    }
+  }
+
+  private async recordTaskAcceptFailure(
+    connection: AccountConnection,
+    assignment: ClarusAssignment,
+    acceptRequestID: string,
+    error: unknown,
+  ): Promise<void> {
+    const failure = parseClarusRequestFailure(error)
+    const data: Record<string, unknown> = {
+      disposition: "ambiguous",
+      accountHash: hash(connection.accountId),
+      attempt: assignment.attempt,
+      acceptRequestID,
+      projectHash: hash(assignment.projectID),
+      taskHash: hash(assignment.taskID),
+      ...(assignment.assignmentMessageID ? { assignmentRequestID: assignment.assignmentMessageID } : {}),
+      ...(failure
+        ? {
+            transportDisposition: failure.disposition,
+            ...(failure.disposition === "ambiguous" ? { reason: failure.reason } : { code: failure.code }),
+            message: boundDiagnosticText(failure.message),
+          }
+        : {
+            errorName: error instanceof Error ? error.name : "UnknownError",
+            message: boundDiagnosticText(error instanceof Error ? error.message : String(error)),
+          }),
+    }
+    try {
+      await connection.host.diagnostics.record({
+        level: "warn",
+        message: "Clarus task accept was not acknowledged",
+        data,
+      })
+    } catch (diagnosticError) {
+      this.log.warn("failed to record Clarus task accept diagnostic", {
+        accountHash: hash(connection.accountId),
+        projectHash: hash(assignment.projectID),
+        taskHash: hash(assignment.taskID),
+        acceptRequestID,
+        error: diagnosticError,
+      })
+    }
+  }
+
   private async handleAssignment(connection: AccountConnection, event: RuntimeTaskAssignedEvent): Promise<void> {
     const credential = await this.holos.auth.getStoredCredential()
     if (!credential || credential.agentId !== connection.accountId) {
@@ -483,40 +598,68 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
       connection.config.apiUrl ??
       (await import("@/config/config").then(({ Config }) => Config.current())).holos?.apiUrl ??
       "https://api.holosai.io"
-    try {
-      await ClarusAssignmentRuntime.dispatch({
-        host: connection.host,
-        accountId: connection.accountId,
-        event,
-        agentOverride: connection.config.agent || undefined,
-        cliRunner: createClarusCliRunner({ apiUrl, credential }),
-      })
-    } catch (error) {
-      if (ClarusAssignmentExpiredError.isInstance(error)) {
-        await connection.host.diagnostics.record({
-          level: "info",
-          message: "Skipped expired Clarus assignment",
-          data: {
-            projectHash: hash(event.projectID),
-            taskHash: hash(event.taskID),
-            deadlineAt: error.data.deadlineAt,
-          },
+    let refreshedOwnership = false
+    while (true) {
+      try {
+        await ClarusAssignmentRuntime.dispatch({
+          host: connection.host,
+          accountId: connection.accountId,
+          event,
+          agentOverride: connection.config.agent || undefined,
+          cliRunner: createClarusCliRunner({ apiUrl, credential }),
+          acceptTask: (assignment) => this.dispatchTaskAccept(connection, assignment),
         })
         return
+      } catch (error) {
+        if (ChannelHost.ChannelHostProjectNotOwnedError.isInstance(error)) {
+          if (!refreshedOwnership) {
+            refreshedOwnership = true
+            await this.syncProjects(
+              connection,
+              AbortSignal.any([connection.signal, AbortSignal.timeout(PROJECT_REFRESH_TIMEOUT_MS)]),
+            )
+            continue
+          }
+          await connection.host.diagnostics.record({
+            level: "error",
+            message: "Clarus assignment Project ownership unavailable after refresh",
+            data: {
+              refreshAttempt: 1,
+              accountHash: hash(connection.accountId),
+              ...(event.requestID ? { requestID: event.requestID } : {}),
+              errorName: error.name,
+              projectHash: hash(event.projectID),
+              taskHash: hash(event.taskID),
+            },
+          })
+          throw error
+        }
+        if (ClarusAssignmentExpiredError.isInstance(error)) {
+          await connection.host.diagnostics.record({
+            level: "info",
+            message: "Skipped expired Clarus assignment",
+            data: {
+              projectHash: hash(event.projectID),
+              taskHash: hash(event.taskID),
+              deadlineAt: error.data.deadlineAt,
+            },
+          })
+          return
+        }
+        if (ClarusAssignmentSessionArchivedError.isInstance(error)) {
+          await connection.host.diagnostics.record({
+            level: "warn",
+            message: "Clarus assignment blocked by archived Session",
+            data: {
+              projectHash: hash(event.projectID),
+              taskHash: hash(event.taskID),
+              sessionID: error.data.sessionID,
+            },
+          })
+          return
+        }
+        throw error
       }
-      if (ClarusAssignmentSessionArchivedError.isInstance(error)) {
-        await connection.host.diagnostics.record({
-          level: "warn",
-          message: "Clarus assignment blocked by archived Session",
-          data: {
-            projectHash: hash(event.projectID),
-            taskHash: hash(event.taskID),
-            sessionID: error.data.sessionID,
-          },
-        })
-        return
-      }
-      throw error
     }
   }
 }
