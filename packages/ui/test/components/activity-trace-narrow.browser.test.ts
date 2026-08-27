@@ -57,7 +57,6 @@ describe("activity trace narrow layout", () => {
       const trace = document.querySelector<HTMLElement>("#trace")!
       const title = document.querySelector<HTMLElement>('[data-slot="activity-step-title"]')!
       return {
-        traceLeft: trace.getBoundingClientRect().left,
         traceRight: trace.getBoundingClientRect().right,
         titleRight: title.getBoundingClientRect().right,
         titleScrollWidth: title.scrollWidth,
@@ -74,7 +73,6 @@ describe("activity trace narrow layout", () => {
       const trace = document.querySelector<HTMLElement>("#trace")!
       const title = document.querySelector<HTMLElement>('[data-slot="activity-receipt-title"]')!
       return {
-        traceLeft: trace.getBoundingClientRect().left,
         traceRight: trace.getBoundingClientRect().right,
         titleRight: title.getBoundingClientRect().right,
         titleScrollWidth: title.scrollWidth,

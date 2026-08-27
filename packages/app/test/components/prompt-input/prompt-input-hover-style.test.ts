@@ -2,6 +2,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { chromium, type Browser, type Page } from "playwright"
 
 const css = await Bun.file(new URL("../../../src/index.css", import.meta.url)).text()
+// index.css leads with an `@import` that sits after the `:root` block above,
+// so the import is ignored per CSS spec inside this harness; the assertions
+// below only rely on the rules that follow it.
 
 let browser: Browser
 let page: Page
