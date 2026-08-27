@@ -845,6 +845,11 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--workbench-border, var(--border-weaker-base));
+  border-radius: var(--radius-sm);
+  background: var(--workbench-control-bg, var(--surface-inset-base));
 
   [data-slot="task-subagent-header"] {
     display: flex;
