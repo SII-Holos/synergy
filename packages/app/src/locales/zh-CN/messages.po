@@ -7595,6 +7595,10 @@ msgstr "首页"
 msgid "app.sidebar.section.recent"
 msgstr "最近"
 
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.session.draftBadge"
+msgstr "草稿"
+
 #. Session fallback
 msgid "app.sidebar.session.untitled"
 msgstr "未命名"
