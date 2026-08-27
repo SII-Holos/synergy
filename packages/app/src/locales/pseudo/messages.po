@@ -7595,6 +7595,10 @@ msgstr ""
 msgid "app.sidebar.section.recent"
 msgstr ""
 
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.session.draftBadge"
+msgstr ""
+
 #. Session fallback
 msgid "app.sidebar.session.untitled"
 msgstr ""

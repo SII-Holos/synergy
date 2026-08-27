@@ -1,9 +1,11 @@
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
-import { batch, createMemo, createRoot, onCleanup } from "solid-js"
+import { batch, createEffect, createMemo, createRoot, onCleanup } from "solid-js"
 import { useParams } from "@solidjs/router"
 import type { FileSelection } from "@/context/file"
 import { Persist, persisted } from "@/utils/persist"
+import { markDraftSession } from "./draft-index"
+import { DEFAULT_PROMPT, isPromptEqual } from "./equality"
 import {
   sanitizeContextItemsValue,
   sanitizePromptContextValue,
@@ -76,43 +78,7 @@ export type FileContextItem = {
 
 export type ContextItem = FileContextItem
 
-export const DEFAULT_PROMPT: Prompt = [{ type: "text", content: "", start: 0, end: 0 }]
-
-function isSelectionEqual(a?: FileSelection, b?: FileSelection) {
-  if (!a && !b) return true
-  if (!a || !b) return false
-  return (
-    a.startLine === b.startLine && a.startChar === b.startChar && a.endLine === b.endLine && a.endChar === b.endChar
-  )
-}
-
-export function isPromptEqual(promptA: Prompt, promptB: Prompt): boolean {
-  if (promptA.length !== promptB.length) return false
-  for (let i = 0; i < promptA.length; i++) {
-    const partA = promptA[i]
-    const partB = promptB[i]
-    if (partA.type !== partB.type) return false
-    if (partA.type === "text" && partA.content !== (partB as TextPart).content) {
-      return false
-    }
-    if (partA.type === "file") {
-      const fileA = partA as FileAttachmentPart
-      const fileB = partB as FileAttachmentPart
-      if (fileA.path !== fileB.path) return false
-      if (!isSelectionEqual(fileA.selection, fileB.selection)) return false
-    }
-    if (partA.type === "attachment" && partA.id !== (partB as UploadedAttachmentPart).id) {
-      return false
-    }
-    if (partA.type === "note" && partA.id !== (partB as NoteAttachmentPart).id) {
-      return false
-    }
-    if (partA.type === "session" && partA.id !== (partB as SessionAttachmentPart).id) {
-      return false
-    }
-  }
-  return true
-}
+export { DEFAULT_PROMPT, isPromptEqual } from "./equality"
 
 function cloneSelection(selection?: FileSelection) {
   if (!selection) return undefined
@@ -202,12 +168,15 @@ function createPromptSession(dir: string, id: string | undefined) {
   )
 
   const current = createMemo(() => sanitizePrompt(store.prompt))
+  const dirty = createMemo(() => !isPromptEqual(current(), DEFAULT_PROMPT))
+
+  createEffect(() => markDraftSession(id, dirty()))
 
   return {
     ready,
     current,
     cursor: createMemo(() => store.cursor),
-    dirty: createMemo(() => !isPromptEqual(current(), DEFAULT_PROMPT)),
+    dirty,
     context: {
       items: createMemo(() => store.context.items),
       add(item: ContextItem) {
