@@ -1866,7 +1866,7 @@ describe("ProviderTransform.variants", () => {
       expect(result.max).toEqual({
         thinking: {
           type: "enabled",
-          budgetTokens: 8191,
+          budgetTokens: 7168,
         },
       })
     })
@@ -2031,6 +2031,129 @@ describe("ProviderTransform.variants", () => {
       })
       const result = ProviderTransform.variants(model)
       expect(result).toEqual({})
+    })
+  })
+
+  describe("Anthropic generation gating and budget envelopes", () => {
+    const anthropicModel = (apiID: string, overrides: ModelOverrides = {}): Provider.Model =>
+      createMockModel({
+        id: `anthropic/${apiID}`,
+        providerID: "anthropic",
+        api: {
+          id: apiID,
+          url: "https://api.anthropic.com",
+          npm: "@ai-sdk/anthropic",
+        },
+        ...overrides,
+      })
+
+    test.each([
+      ["claude-opus-4-7-20260205", "adaptive"],
+      ["claude-opus-4-8", "adaptive"],
+      ["claude-sonnet-5", "adaptive"],
+      ["claude-opus-4-6-20260205", "dual"],
+      ["claude-sonnet-4-6", "dual"],
+      ["claude-opus-4-1-20250805", "budget"],
+      ["claude-3-7-sonnet-20250219", "budget"],
+      ["claude-haiku-4-5-20251001", "budget"],
+      ["claude-custom-relay-model", "budget"],
+    ])("%s routes to the %s thinking generation", (apiID, generation) => {
+      const model = anthropicModel(apiID)
+      const variants = ProviderTransform.variants(model)
+      const keys = Object.keys(variants)
+      if (generation === "adaptive") {
+        for (const options of Object.values(variants)) {
+          expect(options.thinking?.type).toBe("adaptive")
+          expect(options.thinking?.display).toBe("summarized")
+          expect(options.thinking?.budgetTokens).toBeUndefined()
+          expect(options.effort).toBeDefined()
+        }
+        expect(keys).toEqual(["low", "medium", "high", "xhigh", "max"])
+      } else if (generation === "dual") {
+        for (const options of Object.values(variants)) {
+          expect(options.thinking?.type).toBe("adaptive")
+          expect(options.effort).toBeDefined()
+        }
+        expect(keys).toEqual(["low", "medium", "high", "max"])
+      } else {
+        for (const options of Object.values(variants)) {
+          expect(options.thinking?.type).toBe("enabled")
+          expect(options.thinking?.budgetTokens).toBeGreaterThanOrEqual(1024)
+          expect(options.effort).toBeUndefined()
+        }
+        expect(keys.sort()).toEqual(["high", "max"])
+      }
+    })
+
+    test.each([2047, 2048, 2049, 8192, 16384, 32000, 64000, 128000])(
+      "envelope %i keeps every budget legal and below the effective cap",
+      (output) => {
+        const model = anthropicModel("claude-3-7-sonnet-20250219", { limit: { context: 200000, output } })
+        const variants = ProviderTransform.variants(model)
+        if (output < 2048) {
+          expect(variants).toEqual({})
+          return
+        }
+        expect(variants.high).toBeDefined()
+        for (const [name, options] of Object.entries(variants)) {
+          const budget = options.thinking.budgetTokens
+          expect(budget, `${name} budget >= API floor 1024`).toBeGreaterThanOrEqual(1024)
+          expect(budget, `${name} budget < max_tokens`).toBeLessThan(output)
+          // text = output - budget must keep a visible-answer floor
+          expect(output - budget, `${name} leaves text room`).toBeGreaterThanOrEqual(1024)
+        }
+      },
+    )
+
+    test("shared-context corner never emits a budget >= effective cap", () => {
+      const model = anthropicModel("claude-custom-shared", {
+        limit: { context: 40000, output: 64000 },
+      })
+      const variants = ProviderTransform.variants(model)
+      const envelope = 40000 - ModelLimit.OUTPUT_TOKEN_HEADROOM
+      for (const options of Object.values(variants)) {
+        const budget = options.thinking.budgetTokens
+        expect(budget).toBeLessThan(envelope)
+      }
+    })
+
+    test("max variant is distinct from high when the envelope allows it", () => {
+      const model = anthropicModel("claude-3-7-sonnet-20250219", { limit: { context: 200000, output: 32000 } })
+      const variants = ProviderTransform.variants(model)
+      expect(variants.max.thinking.budgetTokens).toBeGreaterThan(variants.high.thinking.budgetTokens)
+      expect(variants.max.thinking.budgetTokens).toBe(32000 - 1024)
+    })
+
+    test("adaptive variants pass the locked Anthropic SDK validator", async () => {
+      const model = anthropicModel("claude-opus-4-7", { limit: { context: 200000, output: 128000 } })
+      const variants = ProviderTransform.variants(model)
+      for (const [variant, options] of Object.entries(variants)) {
+        let requestBody: Record<string, unknown> | undefined
+        const fetchFn = (async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+          requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+          return new Response(JSON.stringify({ type: "error", error: { type: "invalid_request_error" } }), {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          })
+        }) as unknown as typeof fetch
+        const anthropic = createAnthropic({
+          apiKey: "test",
+          baseURL: "https://example.invalid",
+          fetch: fetchFn,
+        })
+
+        try {
+          await anthropic("claude-opus-4-7").doGenerate({
+            prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+            maxOutputTokens: 16,
+            providerOptions: ProviderTransform.providerOptions(model, options),
+          })
+        } catch {}
+
+        expect(requestBody, `${variant} should pass Anthropic provider-option validation`).toBeDefined()
+        expect(requestBody?.thinking).toEqual({ type: "adaptive", display: "summarized" })
+        expect(requestBody?.output_config).toEqual({ effort: variant })
+      }
     })
   })
 })
