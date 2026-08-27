@@ -1,6 +1,6 @@
-import { BlueprintLoopStore, type Info as BlueprintLoopInfo } from "../blueprint"
-import { Session } from "."
-import type { Info } from "./types"
+import { BlueprintLoopStore, type Info as BlueprintLoopInfo } from "."
+import { Session } from "../session"
+import type { Info } from "../session/types"
 
 export namespace BlueprintLoopReviewAccess {
   export interface Input {

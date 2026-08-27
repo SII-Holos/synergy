@@ -1,6 +1,6 @@
 {
   "totalModules": 65,
-  "totalFiles": 971,
+  "totalFiles": 973,
   "cyclicSCCs": [
     [
       "acp",
@@ -183,10 +183,6 @@
     [
       "tool",
       "agenda"
-    ],
-    [
-      "tool",
-      "blueprint"
     ],
     [
       "tool",
@@ -423,10 +419,6 @@
     [
       "performance",
       "plugin"
-    ],
-    [
-      "plugin",
-      "blueprint"
     ],
     [
       "plugin",

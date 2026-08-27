@@ -19,7 +19,6 @@ import { getPluginConfig, matchesPluginSettingCondition, replacePluginConfig } f
 import { replaceForPlugins } from "./mcp"
 import Ajv2020 from "ajv/dist/2020"
 import { WorkflowPromptRegistry } from "../session/workflow-prompt-registry"
-import { BlueprintLoopRuntime } from "../blueprint/loop-runtime"
 
 const log = Log.create({ service: "plugin.lifecycle" })
 
@@ -290,8 +289,8 @@ export function disposeScope(scopeId: string) {
   return pluginAgentCallRuntime.disableScope(scopeId)
 }
 
-/** Reattach workflow-domain timers (lightloop via the prompt registry;
- * BlueprintLoop until its S4 slice). Called after plugin init and reload. */
+/** Reattach workflow-domain timers (lightloop and BlueprintLoop) through the
+ * prompt registry after plugin init and reload. */
 async function reattachWorkflowTimers(): Promise<void> {
   await Promise.all(
     WorkflowPromptRegistry.kinds().map((kind) =>
@@ -300,7 +299,6 @@ async function reattachWorkflowTimers(): Promise<void> {
         .catch(() => undefined),
     ),
   )
-  await BlueprintLoopRuntime.reattachPluginTimers()
 }
 
 export async function init() {

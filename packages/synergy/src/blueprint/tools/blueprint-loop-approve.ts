@@ -1,14 +1,14 @@
 import z from "zod"
-import { BlueprintLoopStore, LoopError } from "../blueprint"
-import { LoopEvent } from "../blueprint/event"
-import { Bus } from "../bus"
-import { Identifier } from "../id/id"
-import { ScopeContext } from "../scope/context"
-import { Session } from "../session"
-import { BlueprintLoopReviewAccess } from "../session/blueprint-loop-review-access"
-import { SessionManager } from "../session/manager"
+import { BlueprintLoopStore, LoopError } from ".."
+import { LoopEvent } from "../event"
+import { Bus } from "../../bus"
+import { Identifier } from "../../id/id"
+import { ScopeContext } from "../../scope/context"
+import { Session } from "../../session"
+import { BlueprintLoopReviewAccess } from "../review-access"
+import { SessionManager } from "../../session/manager"
 import DESCRIPTION from "./blueprint-loop-approve.txt"
-import { Tool } from "./tool"
+import { Tool } from "../../tool/tool"
 
 const parameters = z.object({
   sessionID: z.string().describe("The execution session ID provided in your launch context"),

@@ -1,10 +1,27 @@
 import z from "zod"
-import { AgendaSessionWakeup } from "../agenda/session-wakeup"
-import { BlueprintLoopStore, LoopError } from "../blueprint"
-import { ScopeContext } from "../scope/context"
-import { Session } from "../session"
+import { BlueprintLoopStore, LoopError } from ".."
+import { ScopeContext } from "../../scope/context"
+import { Session } from "../../session"
 import DESCRIPTION from "./blueprint-loop-stop.txt"
-import { Tool } from "./tool"
+import { Tool } from "../../tool/tool"
+
+/**
+ * Agenda wakeup guard, injected from the L4 product manifest. The tool must
+ * not import agenda statically: agenda dynamically imports this domain for
+ * its loop-wakeup instructions, and a static reverse edge would close a
+ * product-layer cycle.
+ */
+export type BlueprintAgendaAssertClear = (input: {
+  sessionID: string
+  scopeID: string
+  operation: "BlueprintLoop audit"
+}) => Promise<void>
+
+let agendaAssertClear: BlueprintAgendaAssertClear | undefined
+
+export function setBlueprintAgendaAssertClear(fn: BlueprintAgendaAssertClear): void {
+  agendaAssertClear = fn
+}
 
 const parameters = z.object({
   summary: z.string().describe("Summary of what was completed."),
@@ -110,7 +127,10 @@ export const BlueprintLoopStopTool = Tool.define("blueprint_loop_stop", {
 
     const summary = params.summary.trim()
     if (!summary) throw new Error("summary is required")
-    await AgendaSessionWakeup.assertClear({
+    if (!agendaAssertClear) {
+      throw new Error("BlueprintLoop stop guard is not wired (load src/product-registration)")
+    }
+    await agendaAssertClear({
       sessionID: ctx.sessionID,
       scopeID,
       operation: "BlueprintLoop audit",

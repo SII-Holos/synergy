@@ -27,7 +27,6 @@ import { PluginToolId } from "./ids"
 import { baseCapabilities, toolCapabilities } from "./capability"
 import { DEFAULT_LIMITS } from "../plugin-runtime/health"
 import { pluginTaskSnapshotFromSession, pluginTaskSnapshotFromTask } from "../cortex/plugin-task"
-import { startBlueprint, getBlueprint, cancelBlueprint } from "../blueprint/plugin-adapter"
 import { SessionWorkflowService } from "../session/workflow"
 import { LightLoopRuntime } from "../light-loop/runtime"
 import { LightLoopTerminalStore } from "../light-loop/terminal-hook"
@@ -247,6 +246,53 @@ function normalizePluginToolId(toolId: string | undefined): string | undefined {
   return PluginToolId.parse(toolId)?.toolId ?? toolId
 }
 /**
+ * Protocol 5 Blueprint adapter slot. The blueprint domain contributes its
+ * start/get/cancel implementation through src/product-registration.ts so the
+ * plugin host surface holds no static product-domain import (the plugin↔
+ * blueprint cycle keeps only the allowed blueprint→plugin direction).
+ */
+export interface PluginBlueprintAdapter {
+  start(input: {
+    context: {
+      pluginId: string
+      pluginGeneration: string
+      scopeId: string
+      pluginDir?: string
+      parentSessionID: string
+      parentMessageID: string
+    }
+    request: BlueprintStartInput
+  }): Promise<BlueprintLoopInfo>
+  get(input: {
+    scopeId: string
+    loopID: string
+    pluginId: string
+    pluginGeneration: string
+  }): Promise<BlueprintLoopInfo>
+  cancel(input: {
+    pluginId: string
+    pluginGeneration: string
+    scopeId: string
+    loopID: string
+  }): Promise<BlueprintLoopInfo>
+}
+
+let blueprintAdapter: PluginBlueprintAdapter | undefined
+
+export function registerPluginBlueprintAdapter(adapter: PluginBlueprintAdapter): void {
+  blueprintAdapter = adapter
+}
+
+function blueprintAdapterOrThrow(): PluginBlueprintAdapter {
+  if (!blueprintAdapter) {
+    throw new Error(
+      "Blueprint host service invoked before the blueprint domain registered its adapter (load src/product-registration)",
+    )
+  }
+  return blueprintAdapter
+}
+
+/**
  * Protocol 5 Blueprint atomic start — full validation, note/session/loop creation, rollback on failure.
  */
 export async function startPluginBlueprint(input: {
@@ -263,7 +309,7 @@ export async function startPluginBlueprint(input: {
     patterns: [input.request.executionAgent, input.request.auditAgent],
     metadata: { capability: "blueprint.delegate", source: "plugin" },
   })
-  return startBlueprint({
+  return blueprintAdapterOrThrow().start({
     context: {
       pluginId: input.pluginId,
       pluginGeneration: input.pluginGeneration,
@@ -282,7 +328,7 @@ export async function getPluginBlueprint(input: {
   pluginId: string
   pluginGeneration: string
 }): Promise<BlueprintLoopInfo> {
-  return getBlueprint(input)
+  return blueprintAdapterOrThrow().get(input)
 }
 
 export async function cancelPluginBlueprint(input: {
@@ -298,7 +344,12 @@ export async function cancelPluginBlueprint(input: {
     patterns: [input.loopID],
     metadata: { capability: "blueprint.delegate", source: "plugin", loopID: input.loopID },
   })
-  return cancelBlueprint(input)
+  return blueprintAdapterOrThrow().cancel({
+    pluginId: input.pluginId,
+    pluginGeneration: input.pluginGeneration,
+    scopeId: input.scopeId,
+    loopID: input.loopID,
+  })
 }
 
 async function assertLightLoopDelegation(

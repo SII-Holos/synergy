@@ -28,9 +28,6 @@ import { NoteWriteTool } from "./note-write"
 import { NoteEditTool } from "./note-edit"
 import { NoteArchiveTool } from "./note-archive"
 import { NoteDeleteTool } from "./note-delete"
-import { BlueprintLoopStopTool } from "./blueprint-loop-stop"
-import { BlueprintLoopApproveTool } from "./blueprint-loop-approve"
-import { BlueprintLoopRejectTool } from "./blueprint-loop-reject"
 import { PathwayReadTool } from "./pathway-read"
 import { PathwayWriteTool } from "./pathway-write"
 import { LatticeSubmitTool } from "./lattice-submit"
@@ -380,9 +377,6 @@ export namespace ToolRegistry {
       NoteWriteTool,
       NoteEditTool,
       NoteDeleteTool,
-      BlueprintLoopStopTool,
-      BlueprintLoopApproveTool,
-      BlueprintLoopRejectTool,
       PathwayReadTool,
       PathwayWriteTool,
       LatticeSubmitTool,
