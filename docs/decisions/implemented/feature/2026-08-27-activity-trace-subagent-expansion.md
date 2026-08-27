@@ -14,6 +14,7 @@ Delegated subagent expansion now reuses the Full-mode information architecture t
 - The Full-mode `task` renderer keeps its trigger card but delegates its body rows to the same `TaskSubagentSteps` list, so Full and Balanced render identical step rows from one implementation.
 - `basic-tool.tsx` exposes `useToolResultPresentation()` so a registered tool renderer can detect that it sits inside a result-only surface; the `task` renderer returns the shared detail directly in that case.
 - `specializedActivityDetail()` gained a `subagent` kind for `family === "delegate"` on the `task` tool, so Activity Trace steps and Activity Receipts both expand into the same detail through the existing specialized-detail slot.
+- The detail renders on the standard `tool-output` surface (the same inset background, border, and scroll treatment every other expanded tool result uses) instead of a bespoke container, so Balanced expansions are visually indistinguishable from sibling tools.
 
 Background delegations keep their empty `summary` snapshot (the backend dispatch path has no live subscription after return); the detail states this plainly with a running-in-background label plus the open-session action rather than pretending to show progress.
 

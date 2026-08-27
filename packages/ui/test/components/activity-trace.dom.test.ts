@@ -824,7 +824,9 @@ describe("Delegated subagent activity DOM behavior", () => {
     await wait(0)
 
     expect(trigger.getAttribute("aria-expanded")).toBe("true")
-    expect(host.querySelector('[data-component="task-subagent-detail"]')).not.toBeNull()
+    expect(
+      host.querySelector('[data-component="tool-output"] > [data-component="task-subagent-detail"]'),
+    ).not.toBeNull()
     expect(host.querySelector('[data-slot="task-subagent-agent"]')?.textContent).toBe("explore")
     expect(host.querySelector('[data-slot="task-subagent-description"]')?.textContent).toBe("Inspect the registry")
     expect(host.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(3)
