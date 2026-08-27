@@ -131,7 +131,9 @@ export namespace BunProc {
       "add",
       "--force",
       "--exact",
-      // TODO: get rid of this case (see: https://github.com/oven-sh/bun/issues/19936)
+      // Provenance: https://github.com/oven-sh/bun/issues/19936 .
+      // Local adaptation: proxied installs pass --no-cache because Bun's HTTP cache serves
+      // stale responses through proxies; drop once upstream fixes it.
       ...(proxied ? ["--no-cache"] : []),
       // For non-registry (git) packages, always bypass bun's global cache.
       // Bun caches git clones internally and --force alone does not clear
@@ -216,13 +218,11 @@ export namespace BunProc {
     }
 
     // Purge bun's entire package manager cache for non-registry packages.
-    // Bun has a known bug (oven-sh/bun#18947) where `--no-cache` and `--force`
-    // do NOT cause it to re-fetch git dependencies. The only reliable way to
-    // force a fresh clone is to clear the global cache entirely via
-    // `bun pm cache rm`. This is safe because the cache is purely a download
-    // cache — it will be repopulated on next install. We only do this for
-    // non-registry (git) packages during explicit updates, so the blast radius
-    // is limited.
+    // Provenance: https://github.com/oven-sh/bun/issues/18947 .
+    // Local adaptation: `--no-cache` and `--force` do not make Bun re-fetch git dependencies,
+    // so a fresh clone requires clearing the global cache via `bun pm cache rm` (with a manual
+    // per-entry fallback). Safe because the cache is a pure download cache, repopulated on the
+    // next install; scoped to non-registry packages during explicit updates to bound the blast radius.
     if (pkg && isNonRegistry) {
       try {
         await BunProc.run(["pm", "cache", "rm"], { cwd: Global.Path.cache })

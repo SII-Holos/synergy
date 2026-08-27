@@ -1,42 +1,17 @@
 import { describe, expect, test } from "bun:test"
-import { ScopeContext } from "../../src/scope/context"
-import { Skill } from "../../src/skill"
 import { BUILTIN_SKILLS } from "../../src/skill/builtin"
-import { tmpdir } from "../fixture/fixture"
+import { describeBuiltinContract } from "./builtin-contract"
 
-const SKILL_NAME = "qizhi-synergy-link"
+describeBuiltinContract({
+  skillName: "qizhi-synergy-link",
+  descriptionKeywords: ["qizhi", "synergy link", "shared-filesystem"],
+  bodyPhrases: ["One physical/device instance", "One Holos Agent ID", "SYNERGY_LINK_HOME", "## Rollback"],
+  references: {},
+})
 
-describe.serial("qizhi-synergy-link builtin skill", () => {
-  test("is registered as a canonical builtin with a triggering description", async () => {
-    const names = BUILTIN_SKILLS.map((skill) => skill.name)
-    expect(names).toContain(SKILL_NAME)
-
-    const builtin = BUILTIN_SKILLS.find((skill) => skill.name === SKILL_NAME)!
-    expect(Skill.Manifest.safeParse({ name: builtin.name, description: builtin.description }).success).toBe(true)
-    expect(builtin.builtin).toBe(true)
-    expect(builtin.references ?? {}).toEqual({})
-    expect(builtin.description.toLowerCase()).toContain("qizhi")
-    expect(builtin.description.toLowerCase()).toContain("synergy link")
-    expect(builtin.description.toLowerCase()).toContain("shared-filesystem")
-  })
-
-  test("loads through the runtime catalog as a memory-backed builtin", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const skill = await Skill.get(SKILL_NAME)
-        expect(skill).toBeDefined()
-        expect(skill!.origin).toEqual({ kind: "builtin" })
-        expect(skill!.backing.kind).toBe("memory")
-        expect(skill!.diagnostics).toEqual([])
-      },
-    })
-  })
-
-  test("keeps the no-shared-state rules and unsupported duplicate topology in content", async () => {
-    const builtin = BUILTIN_SKILLS.find((skill) => skill.name === SKILL_NAME)!
-    const content = builtin.content.toLowerCase()
+describe.serial("qizhi-synergy-link operational content", () => {
+  test("keeps the no-shared-state rules and unsupported duplicate topology in content", () => {
+    const builtin = BUILTIN_SKILLS.find((skill) => skill.name === "qizhi-synergy-link")!
 
     // The supported one-device/one-agent boundary must stay explicit.
     expect(builtin.content).toContain("One physical/device instance")
