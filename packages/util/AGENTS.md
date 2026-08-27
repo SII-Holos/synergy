@@ -7,4 +7,4 @@ This published package owns dependency-light primitives shared across runtime, S
 - Shared capability metadata is a cross-package security contract. Changes require `change-execution-boundaries` and synchronization with enforcement, plugin permissions/consent, and tests.
 - Infer types from Zod schemas, preserve structured errors, and test edge cases at the utility boundary. Avoid environment or filesystem assumptions in portable helpers.
 
-Run `bun run typecheck` and `bun run build`, affected consumer tests, and root `bun run package:check` plus `bun run quality:quick`.
+Run `bun run typecheck`, `bun test`, and `bun run build`, affected consumer tests, and root `bun run package:check` plus `bun run quality:quick`.
