@@ -420,6 +420,7 @@ function initialize(conn: Database) {
       rewards                  TEXT NOT NULL DEFAULT '{}',
       q_values                 TEXT NOT NULL DEFAULT '{}',
       q_visits                 INTEGER NOT NULL DEFAULT 0,
+      retrieval_count          INTEGER NOT NULL DEFAULT 0,
       q_updated_at             INTEGER,
       q_history                TEXT NOT NULL DEFAULT '[]',
       retrieved_experience_ids TEXT NOT NULL DEFAULT '[]',
@@ -894,6 +895,7 @@ export namespace LibraryDB {
       rewards: string
       q_values: string
       q_visits: number
+      retrieval_count: number
       q_updated_at: number | null
       q_history: string
       retrieved_experience_ids: string
@@ -924,6 +926,13 @@ export namespace LibraryDB {
     export function getContent(id: string): ContentRow | null {
       const conn = open()
       return conn.prepare("SELECT * FROM experience_content WHERE id = ?1").get(id) as ContentRow | null
+    }
+
+    export function getContentMany(ids: string[]): ContentRow[] {
+      if (ids.length === 0) return []
+      const conn = open()
+      const placeholders = ids.map(() => "?").join(",")
+      return conn.prepare(`SELECT * FROM experience_content WHERE id IN (${placeholders})`).all(...ids) as ContentRow[]
     }
 
     function buildPageWhere(input: PageInput) {
@@ -1331,6 +1340,22 @@ export namespace LibraryDB {
         .run(turnsRemaining, Date.now(), id)
     }
 
+    /**
+     * Counts actual selections of experiences for injection ("pulls") in one
+     * batched statement. Deliberately separate from q_visits (reward-path
+     * credit updates) and deliberately not touching updated_at: a pull is
+     * neither a content nor an evaluation change, and the Library UI sorts
+     * and labels rows by updated_at.
+     */
+    export function incrementRetrievalCounts(ids: string[]): void {
+      if (ids.length === 0) return
+      const conn = open()
+      const placeholders = ids.map(() => "?").join(",")
+      conn
+        .prepare(`UPDATE experience SET retrieval_count = retrieval_count + 1 WHERE id IN (${placeholders})`)
+        .run(...ids)
+    }
+
     export function insertFailed(input: {
       id: string
       sessionID: string
@@ -1345,8 +1370,8 @@ export namespace LibraryDB {
         .prepare(
           `INSERT INTO experience (id, session_id, scope_id, intent, intent_embedding_model,
            script_embedding_model, source_provider_id, source_model_id, reward, rewards, q_values, q_visits,
-           q_updated_at, q_history, retrieved_experience_ids, reward_status, created_at, updated_at)
-         VALUES (?1, ?2, ?3, '', NULL, NULL, ?4, ?5, NULL, '{}', '{}', 0, NULL, '[]', '[]', 'encoding_failed', ?6, ?7)
+           retrieval_count, q_updated_at, q_history, retrieved_experience_ids, reward_status, created_at, updated_at)
+         VALUES (?1, ?2, ?3, '', NULL, NULL, ?4, ?5, NULL, '{}', '{}', 0, 0, NULL, '[]', '[]', 'encoding_failed', ?6, ?7)
          ON CONFLICT(id) DO UPDATE SET
            source_provider_id = excluded.source_provider_id,
            source_model_id = excluded.source_model_id,
@@ -1390,8 +1415,8 @@ export namespace LibraryDB {
         .prepare(
           `INSERT INTO experience (id, session_id, scope_id, intent, intent_embedding_model,
            script_embedding_model, source_provider_id, source_model_id, reward, rewards, q_values, q_visits,
-           q_updated_at, q_history, retrieved_experience_ids, reward_status, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, '{}', ?9, 0, NULL, '[]', ?10, 'pending', ?11, ?12)
+           retrieval_count, q_updated_at, q_history, retrieved_experience_ids, reward_status, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, '{}', ?9, 0, 0, NULL, '[]', ?10, 'pending', ?11, ?12)
          ON CONFLICT(id) DO UPDATE SET
            intent = excluded.intent,
            intent_embedding_model = excluded.intent_embedding_model,

@@ -117,3 +117,14 @@ test("activity display schema accepts only full, balanced, and minimal", () => {
   }
   expect(Config.Info.safeParse({ activityDisplay: "verbose" }).success).toBe(false)
 })
+
+test("default session workspace preference belongs to the general domain", () => {
+  expect(ConfigDomain.domainForKey("defaultSessionWorkspace")?.id).toBe("general")
+})
+
+test("default session workspace schema accepts only main and worktree", () => {
+  for (const value of ["main", "worktree"]) {
+    expect(Config.Info.safeParse({ defaultSessionWorkspace: value }).success).toBe(true)
+  }
+  expect(Config.Info.safeParse({ defaultSessionWorkspace: "checkout" }).success).toBe(false)
+})
