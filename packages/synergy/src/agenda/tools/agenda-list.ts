@@ -1,8 +1,8 @@
 import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
-import { Tool } from "./tool"
-import { AgendaStore, AgendaTypes } from "../agenda"
-import { ScopeContext } from "../scope/context"
+import { Tool } from "../../tool/tool"
+import { AgendaStore, AgendaTypes } from ".."
+import { ScopeContext } from "../../scope/context"
 import DESCRIPTION from "./agenda-list.txt"
 
 const parameters = z.object({

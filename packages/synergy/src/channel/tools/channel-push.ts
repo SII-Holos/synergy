@@ -1,7 +1,7 @@
 import z from "zod"
 import { Channel } from "@/channel"
-import { Session } from "../session"
-import { Tool } from "./tool"
+import { Session } from "../../session"
+import { Tool } from "../../tool/tool"
 import DESCRIPTION from "./channel-push.txt"
 
 const parameters = z.object({

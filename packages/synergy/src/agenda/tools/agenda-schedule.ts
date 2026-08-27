@@ -1,12 +1,12 @@
 import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
-import { Tool } from "./tool"
-import { Agenda, AgendaTypes } from "../agenda"
-import { AgendaDedup } from "../agenda/dedup"
-import { SessionManager } from "../session/manager"
-import { ScopeContext } from "../scope/context"
+import { Tool } from "../../tool/tool"
+import { Agenda, AgendaTypes } from ".."
+import { AgendaDedup } from "../dedup"
+import { SessionManager } from "../../session/manager"
+import { ScopeContext } from "../../scope/context"
 import DESCRIPTION from "./agenda-schedule.txt"
-import { ToolTimeout } from "./timeout"
+import { ToolTimeout } from "../../tool/timeout"
 
 const parameters = z.object({
   title: z.string().describe("Task title"),
@@ -55,7 +55,7 @@ export const AgendaScheduleTool = Tool.define("agenda_schedule", {
     if (params.trigger.type === "github") {
       // A GitHub trigger can never fire while polling is disabled; reject up
       // front instead of persisting a permanently silent item.
-      const { Config } = await import("../config/config")
+      const { Config } = await import("../../config/config")
       const watch = (await Config.globalResolved().catch(() => undefined))?.github?.watch
       if (watch?.enabled === false) {
         return {

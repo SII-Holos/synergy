@@ -1,11 +1,11 @@
 import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
-import { Tool } from "./tool"
-import { Agenda, AgendaTypes } from "../agenda"
-import { AgendaDedup } from "../agenda/dedup"
-import { AgendaStore } from "../agenda/store"
-import { SessionManager } from "../session/manager"
-import { ScopeContext } from "../scope/context"
+import { Tool } from "../../tool/tool"
+import { Agenda, AgendaTypes } from ".."
+import { AgendaDedup } from "../dedup"
+import { AgendaStore } from "../store"
+import { SessionManager } from "../../session/manager"
+import { ScopeContext } from "../../scope/context"
 import DESCRIPTION from "./agenda-watch.txt"
 
 const parameters = z
@@ -63,7 +63,7 @@ export const AgendaWatchTool = Tool.define("agenda_watch", {
   async execute(params: z.infer<typeof parameters>, ctx) {
     // Reject if there are running subagent tasks for this session.
     // Subagents auto-notify on completion — an agenda_watch is never needed for them.
-    const { Cortex } = await import("../cortex")
+    const { Cortex } = await import("../../cortex")
     const runningSubagents = Cortex.getVisibleTasks(ctx.sessionID).filter((t) => t.status === "running")
 
     if (runningSubagents.length > 0) {
@@ -97,7 +97,7 @@ export const AgendaWatchTool = Tool.define("agenda_watch", {
     if (params.onGithub) {
       // A GitHub watch can never fire while polling is disabled; reject up
       // front instead of leaving a silent, indefinite continuation blocker.
-      const { Config } = await import("../config/config")
+      const { Config } = await import("../../config/config")
       const watch = (await Config.globalResolved().catch(() => undefined))?.github?.watch
       if (watch?.enabled === false) {
         return {

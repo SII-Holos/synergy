@@ -1,6 +1,6 @@
 {
   "totalModules": 66,
-  "totalFiles": 983,
+  "totalFiles": 992,
   "cyclicSCCs": [
     [
       "acp",
@@ -20,7 +20,6 @@
       "control-profile",
       "cortex",
       "daemon",
-      "email",
       "enforcement",
       "external-agent",
       "file",
@@ -175,23 +174,11 @@
     ],
     [
       "tool",
-      "agenda"
-    ],
-    [
-      "tool",
       "browser"
     ],
     [
       "tool",
-      "channel"
-    ],
-    [
-      "tool",
       "cortex"
-    ],
-    [
-      "tool",
-      "email"
     ],
     [
       "tool",
@@ -272,6 +259,10 @@
     [
       "agenda",
       "blueprint"
+    ],
+    [
+      "agenda",
+      "cortex"
     ],
     [
       "agenda",

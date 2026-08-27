@@ -21,30 +21,14 @@ import { DagWriteTool, DagReadTool, DagPatchTool } from "./dag"
 import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { MemoryWriteTool, MemoryEditTool, MemorySearchTool, MemoryGetTool } from "./memory"
-import { NoteListTool } from "./note-list"
-import { NoteReadTool } from "./note-read"
-import { NoteSearchTool } from "./note-search"
-import { NoteWriteTool } from "./note-write"
-import { NoteEditTool } from "./note-edit"
-import { NoteArchiveTool } from "./note-archive"
-import { NoteDeleteTool } from "./note-delete"
 import { SessionListTool } from "./session-list"
 import { SessionReadTool } from "./session-read"
 import { SessionSearchTool } from "./session-search"
 import { SessionSendTool } from "./session-send"
 import { SessionControlTool } from "./session-control"
 
-import { ChannelPushTool } from "./channel-push"
 import { ScopeListTool } from "./scope-list"
-import { AgendaScheduleTool } from "./agenda-schedule"
-import { AgendaWatchTool } from "./agenda-watch"
-import { AgendaListTool } from "./agenda-list"
-import { AgendaUpdateTool } from "./agenda-update"
-import { AgendaCancelTool } from "./agenda-cancel"
-import { AgendaTriggerTool } from "./agenda-trigger"
-import { AgendaLogsTool } from "./agenda-logs"
 import { AttachTool } from "./attach"
-import { ResponseCardTool } from "./response-card"
 import { OpenAIImageGenTool } from "./openai-image-gen"
 import { OpenAIImageEditTool } from "./openai-image-edit"
 
@@ -76,11 +60,6 @@ import { ProcessTool } from "./process"
 import { ConnectTool } from "./connect"
 import { Truncate } from "./truncation"
 import { RenderTool } from "./render"
-import { EmailSendTool } from "./email"
-import { EmailReadTool } from "./email-read"
-import { ClarusSubmitTaskResultTool } from "./clarus-submit-task-result"
-import { ClarusExtendTaskTool } from "./clarus-extend-task"
-import { GithubDeliverFixTool } from "./github-deliver-fix"
 import { RuntimeReloadTool } from "./runtime-reload"
 import { CodexProvider } from "@/provider/codex"
 import { SearchToolsTool } from "./search-tools"
@@ -367,35 +346,14 @@ export namespace ToolRegistry {
       MemoryEditTool,
       MemorySearchTool,
       MemoryGetTool,
-      NoteArchiveTool,
-      NoteListTool,
-      NoteReadTool,
-      NoteSearchTool,
-      NoteWriteTool,
-      NoteEditTool,
-      NoteDeleteTool,
-      ChannelPushTool,
       SessionListTool,
       SessionReadTool,
       SessionSearchTool,
       SessionSendTool,
       SessionControlTool,
       ScopeListTool,
-      AgendaScheduleTool,
-      AgendaWatchTool,
-      AgendaListTool,
-      AgendaUpdateTool,
-      AgendaCancelTool,
-      AgendaTriggerTool,
-      AgendaLogsTool,
       AttachTool,
-      ResponseCardTool,
       RenderTool,
-      EmailSendTool,
-      EmailReadTool,
-      ClarusSubmitTaskResultTool,
-      ClarusExtendTaskTool,
-      GithubDeliverFixTool,
       RuntimeReloadTool,
       WorktreeEnterTool,
       WorktreeLeaveTool,

@@ -1,7 +1,7 @@
 import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
-import { Tool } from "./tool"
-import { AgendaStore } from "../agenda"
+import { Tool } from "../../tool/tool"
+import { AgendaStore } from ".."
 import DESCRIPTION from "./agenda-logs.txt"
 
 const parameters = z.object({

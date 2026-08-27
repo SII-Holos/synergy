@@ -4,7 +4,7 @@ import { NoteMarkdown, NoteStore } from "../../src/note"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
-import { NoteWriteTool } from "../../src/tool/note-write"
+import { NoteWriteTool } from "../../src/note/tools/note-write"
 import type { Tool } from "../../src/tool/tool"
 import { tmpdir } from "../fixture/fixture"
 

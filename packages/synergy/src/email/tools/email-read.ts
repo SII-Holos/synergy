@@ -1,7 +1,7 @@
 import { formatLocalDate, formatLocalDateTime } from "@/util/time-format"
 import type { SearchObject } from "imapflow"
 import z from "zod"
-import { Tool } from "./tool"
+import { Tool } from "../../tool/tool"
 import { EmailImap } from "@/email/imap"
 import {
   SCAN_WINDOW,

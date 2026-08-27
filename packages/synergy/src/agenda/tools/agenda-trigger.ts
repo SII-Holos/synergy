@@ -1,6 +1,6 @@
 import z from "zod"
-import { Tool } from "./tool"
-import { Agenda } from "../agenda"
+import { Tool } from "../../tool/tool"
+import { Agenda } from ".."
 import DESCRIPTION from "./agenda-trigger.txt"
 
 const parameters = z.object({

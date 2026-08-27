@@ -1,10 +1,10 @@
 import z from "zod"
-import { Tool } from "./tool"
-import { NoteBlueprintPolicy, NoteDocument, NoteError, NoteStore } from "../note"
-import { ScopeContext } from "../scope/context"
-import { Storage } from "../storage/storage"
+import { Tool } from "../../tool/tool"
+import { NoteBlueprintPolicy, NoteDocument, NoteError, NoteStore } from ".."
+import { ScopeContext } from "../../scope/context"
+import { Storage } from "../../storage/storage"
 import DESCRIPTION from "./note-edit.txt"
-import { Session } from "../session"
+import { Session } from "../../session"
 
 const contentInput = z.discriminatedUnion("format", [
   z.object({ format: z.literal("text"), text: z.string() }),

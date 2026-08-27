@@ -1,10 +1,10 @@
 import z from "zod"
-import { Tool } from "./tool"
-import { NoteStore } from "../note"
-import { NoteMarkdown } from "../note"
-import { ScopeContext } from "../scope/context"
+import { Tool } from "../../tool/tool"
+import { NoteStore } from ".."
+import { NoteMarkdown } from ".."
+import { ScopeContext } from "../../scope/context"
 import DESCRIPTION from "./note-search.txt"
-import { Plugin } from "../plugin"
+import { Plugin } from "../../plugin"
 
 const parameters = z.object({
   pattern: z.string().describe("Regex pattern to search for in note titles and content."),

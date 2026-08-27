@@ -1,10 +1,10 @@
 import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
-import { Tool } from "./tool"
-import { Agenda, AgendaTypes } from "../agenda"
-import { ScopeContext } from "../scope/context"
+import { Tool } from "../../tool/tool"
+import { Agenda, AgendaTypes } from ".."
+import { ScopeContext } from "../../scope/context"
 import DESCRIPTION from "./agenda-update.txt"
-import { ToolTimeout } from "./timeout"
+import { ToolTimeout } from "../../tool/timeout"
 
 const parameters = z.object({
   id: z.string().describe("Agenda item ID to update"),

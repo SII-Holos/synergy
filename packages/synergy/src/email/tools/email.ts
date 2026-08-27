@@ -1,5 +1,5 @@
 import z from "zod"
-import { Tool } from "./tool"
+import { Tool } from "../../tool/tool"
 import { Email } from "@/email/service"
 import DESCRIPTION from "./email.txt"
 

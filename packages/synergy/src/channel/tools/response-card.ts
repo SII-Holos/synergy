@@ -1,5 +1,5 @@
 import { ResponseCard } from "@/channel/types"
-import { Tool } from "./tool"
+import { Tool } from "../../tool/tool"
 
 const MAX_RESPONSE_CARD_BYTES = 28 * 1024
 

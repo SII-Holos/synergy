@@ -7,7 +7,8 @@
  *
  * Current scope: product-domain migrations (S1), boss domain (S2), light-loop
  * domain (S3), blueprint domain (S4), lattice domain (S5), instruction
- * domains (S7: skill, command, mcp).
+ * domains (S7: skill, command, mcp), tool partition (S8: agenda, note,
+ * email, channel).
  */
 import "./agenda/migration"
 import "./blueprint/migration"
@@ -24,6 +25,10 @@ import { registerBlueprintDomain } from "./blueprint/register"
 import { registerLatticeDomain } from "./lattice/register"
 import { registerSkillDomain } from "./skill/register"
 import { registerCommandDomain } from "./command/register"
+import { registerAgendaTools } from "./agenda/tools"
+import { registerNoteTools } from "./note/tools"
+import { registerEmailTools } from "./email/tools"
+import { registerChannelTools } from "./channel/tools"
 import { registerPluginSkillSource } from "./plugin/skill-source"
 import { registerMcpCommandSource } from "./mcp/instruction-source"
 import { setTerminalHookDeliverer } from "./light-loop/runtime"
@@ -37,6 +42,10 @@ registerBlueprintDomain()
 registerLatticeDomain()
 registerSkillDomain()
 registerCommandDomain()
+registerAgendaTools()
+registerNoteTools()
+registerEmailTools()
+registerChannelTools()
 registerPluginSkillSource()
 registerMcpCommandSource()
 

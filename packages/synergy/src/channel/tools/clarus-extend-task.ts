@@ -7,7 +7,7 @@ import {
   safeRejectionCode,
   safeRejectionMessage,
 } from "@/channel/provider/clarus/extension-outbox"
-import { Tool } from "./tool"
+import { Tool } from "../../tool/tool"
 
 function toolError(code: string, message: string, metadata?: Record<string, unknown>): Error {
   return Object.assign(new Error(message), { code }, metadata)

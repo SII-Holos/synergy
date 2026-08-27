@@ -6,11 +6,14 @@ import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionEndpoint } from "../../src/session/endpoint"
-import { ChannelPushTool } from "../../src/tool/channel-push"
+import { ChannelPushTool } from "../../src/channel/tools/channel-push"
 import { ToolRegistry } from "../../src/tool/registry"
 import { SessionWorkflowService } from "../../src/session/workflow"
 import type { Tool } from "../../src/tool/tool"
 import { tmpdir } from "../fixture/fixture"
+
+// Product domains register tools via the L4 manifest
+import "../../src/product-registration"
 
 const CHANNEL_TYPE = "test-channel-push"
 

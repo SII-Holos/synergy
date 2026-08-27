@@ -1,10 +1,10 @@
 import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
-import { Tool } from "./tool"
-import { NoteStore } from "../note"
-import { NoteMarkdown } from "../note"
-import { NoteDocument } from "../note"
-import { ScopeContext } from "../scope/context"
+import { Tool } from "../../tool/tool"
+import { NoteStore } from ".."
+import { NoteMarkdown } from ".."
+import { NoteDocument } from ".."
+import { ScopeContext } from "../../scope/context"
 import DESCRIPTION from "./note-read.txt"
 
 const MAX_IDS = 10

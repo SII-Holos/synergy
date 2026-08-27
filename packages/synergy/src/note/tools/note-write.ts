@@ -1,9 +1,9 @@
 import z from "zod"
-import { Tool } from "./tool"
-import { NoteError, NoteStore, NoteMarkdown, NoteBlueprintPolicy } from "../note"
-import { ScopeContext } from "../scope/context"
+import { Tool } from "../../tool/tool"
+import { NoteError, NoteStore, NoteMarkdown, NoteBlueprintPolicy } from ".."
+import { ScopeContext } from "../../scope/context"
 import DESCRIPTION from "./note-write.txt"
-import { Session } from "../session"
+import { Session } from "../../session"
 
 const parameters = z.object({
   id: z.string().optional().describe("Note ID to update. If omitted, creates a new note."),

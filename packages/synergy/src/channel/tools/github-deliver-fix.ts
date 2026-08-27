@@ -1,7 +1,7 @@
 import z from "zod"
 import { Channel } from "@/channel"
 import { GithubProvider } from "@/channel/provider/github"
-import { Tool } from "./tool"
+import { Tool } from "../../tool/tool"
 
 const Parameters = z.object({
   branch: z

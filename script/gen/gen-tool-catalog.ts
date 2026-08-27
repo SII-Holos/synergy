@@ -86,9 +86,11 @@ async function domainRegistries(): Promise<Array<{ source: string; dir: string }
   const out: Array<{ source: string; dir: string }> = []
   for (const entry of await readdir(srcRoot, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue
-    const registerPath = path.join(srcRoot, entry.name, "register.ts")
-    const source = await readFile(registerPath, "utf8").catch(() => "")
-    if (source) out.push({ source, dir: path.dirname(registerPath) })
+    for (const name of ["register.ts", "tools.ts"]) {
+      const registerPath = path.join(srcRoot, entry.name, name)
+      const source = await readFile(registerPath, "utf8").catch(() => "")
+      if (source) out.push({ source, dir: path.dirname(registerPath) })
+    }
   }
   return out
 }

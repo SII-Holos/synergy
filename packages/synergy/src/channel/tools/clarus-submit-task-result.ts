@@ -4,7 +4,7 @@ import { ClarusProvider } from "@/channel/provider/clarus"
 import { parseClarusRequestFailure } from "@/channel/provider/clarus/agent-tunnel-port"
 import { ClarusAssignmentStore } from "@/channel/provider/clarus/assignment-store"
 import { safeRejectionCode } from "@/channel/provider/clarus/extension-outbox"
-import { Tool } from "./tool"
+import { Tool } from "../../tool/tool"
 
 const ArtifactPart = z.object({
   type: z.literal("text"),

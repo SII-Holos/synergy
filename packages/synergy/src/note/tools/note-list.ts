@@ -1,8 +1,8 @@
 import { formatLocalDateTime } from "@/util/time-format"
 import z from "zod"
-import { Tool } from "./tool"
-import { NoteStore } from "../note"
-import { ScopeContext } from "../scope/context"
+import { Tool } from "../../tool/tool"
+import { NoteStore } from ".."
+import { ScopeContext } from "../../scope/context"
 import DESCRIPTION from "./note-list.txt"
 
 const parameters = z.object({
