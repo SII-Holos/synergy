@@ -14299,6 +14299,10 @@ msgid "settings.catalog.general.row.interfaceLanguage"
 msgstr "Interface Language"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.general.row.newSessionWorkspace"
+msgstr "New Session Workspace"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.general.row.notifications"
 msgstr "Notifications"
 
@@ -14320,7 +14324,7 @@ msgstr "Interface Zoom"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.searchTerms"
-msgstr "appearance | color | light | dark | auto | language | snapshot | activity | activity display | product update | toast | notification"
+msgstr "appearance | color | light | dark | auto | language | snapshot | activity | activity display | workspace | worktree | checkout | product update | toast | notification"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.github.description"
@@ -15469,6 +15473,22 @@ msgstr "Update Synergy Service"
 #. js-lingui-explicit-id
 msgid "settings.general.updates.web.description"
 msgstr "Refresh this browser when the server has newer Web assets."
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.description"
+msgstr "Start new sessions in the main checkout or an isolated git worktree"
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.main"
+msgstr "Main checkout"
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.title"
+msgstr "New session workspace"
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.worktree"
+msgstr "Worktree"
 
 #. js-lingui-explicit-id
 msgid "settings.general.zoom.aria"

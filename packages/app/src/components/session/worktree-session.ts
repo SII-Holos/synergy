@@ -22,15 +22,19 @@ function isWorktreeDirectory(currentDirectory?: string, canonicalDirectory?: str
   return normalizePathForCompare(currentDirectory) !== normalizePathForCompare(canonicalDirectory)
 }
 
+export type NewSessionWorkspacePreference = "main" | "worktree"
+
 export function defaultNewSessionWorkspaceSelection(input: {
   selected?: NewSessionWorkspaceSelection
   currentDirectory?: string
   canonicalDirectory?: string
+  preference?: NewSessionWorkspacePreference
 }): NewSessionWorkspaceSelection {
   if (input.selected) return input.selected
   if (isWorktreeDirectory(input.currentDirectory, input.canonicalDirectory) && input.currentDirectory) {
     return { mode: "existing", target: input.currentDirectory }
   }
+  if (input.preference === "worktree") return { mode: "create" }
   return { mode: "current" }
 }
 
