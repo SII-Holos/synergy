@@ -1,3 +1,5 @@
+// L4 assembly: load built-in product registrations before any core registry use
+import "../product-registration"
 import { ensureMigrations } from "../migration"
 import { Server } from "./server"
 import { Installation } from "../global/installation"

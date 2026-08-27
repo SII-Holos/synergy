@@ -1,6 +1,6 @@
 {
-  "totalModules": 61,
-  "totalFiles": 967,
+  "totalModules": 63,
+  "totalFiles": 968,
   "cyclicSCCs": [
     [
       "acp",
@@ -80,38 +80,6 @@
     ],
     [
       "enforcement",
-      "plugin"
-    ],
-    [
-      "migration",
-      "agenda"
-    ],
-    [
-      "migration",
-      "blueprint"
-    ],
-    [
-      "migration",
-      "browser"
-    ],
-    [
-      "migration",
-      "holos"
-    ],
-    [
-      "migration",
-      "lattice"
-    ],
-    [
-      "migration",
-      "library"
-    ],
-    [
-      "migration",
-      "note"
-    ],
-    [
-      "migration",
       "plugin"
     ],
     [

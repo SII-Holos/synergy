@@ -1,3 +1,5 @@
+// L4 assembly: load built-in product registrations before any command runs
+import "./product-registration"
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import { SendCommand } from "./cli/cmd/run"
