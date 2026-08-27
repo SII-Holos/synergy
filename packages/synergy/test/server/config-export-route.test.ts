@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { Hono } from "hono"
 import { Config } from "../../src/config/config"
+import { ConfigDomain } from "../../src/config/domain"
 import { ConfigRoute } from "../../src/server/config-route"
 
 let originalProvidersConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
 let originalModelsConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
+let originalGeneralConfig: Awaited<ReturnType<typeof Config.domainGet>> | undefined
 
 function app() {
   return new Hono().route("/config", ConfigRoute)
@@ -23,10 +25,14 @@ afterEach(async () => {
     await Config.domainUpdate("models", originalModelsConfig, { mode: "replace-domain" })
     originalModelsConfig = undefined
   }
+  if (originalGeneralConfig) {
+    await Config.domainUpdate("general", originalGeneralConfig, { mode: "replace-domain" })
+    originalGeneralConfig = undefined
+  }
 })
 
 describe("config export route", () => {
-  test("redacts provider api keys by default and includes them with includeSecrets=true", async () => {
+  test("redacts provider api keys and mcp secrets over HTTP", async () => {
     originalProvidersConfig = await Config.domainGet("providers")
     await Config.domainUpdate(
       "providers",
@@ -40,16 +46,19 @@ describe("config export route", () => {
     expect(redactedBody.secretsIncluded).toBe(false)
     expect(redactedBody.domains).toContain("providers")
     expect(redactedBody.config.provider.custom.options.apiKey).toBe(Config.REDACTED_SENTINEL)
-
-    const plaintext = await exportConfig("includeSecrets=true")
-    expect(plaintext.status).toBe(200)
-    const plaintextBody = await plaintext.json()
-    expect(plaintextBody.secretsIncluded).toBe(true)
-    expect(plaintextBody.config.provider.custom.options.apiKey).toBe("route-secret")
+    expect(Array.isArray(redactedBody.warnings)).toBe(true)
 
     const explicitFalse = await exportConfig("includeSecrets=false")
     expect(explicitFalse.status).toBe(200)
     expect((await explicitFalse.json()).config.provider.custom.options.apiKey).toBe(Config.REDACTED_SENTINEL)
+  })
+
+  test("rejects includeSecrets=true over HTTP instead of returning plaintext", async () => {
+    const rejected = await exportConfig("includeSecrets=true")
+    expect(rejected.status).toBe(400)
+    const body = await rejected.json()
+    expect(body.name).toBe("ConfigExportSecretsRejectedError")
+    expect(body.data.message).toContain("synergy config export --include-secrets")
   })
 
   test("rejects unknown includeSecrets values instead of coercing them to true", async () => {
@@ -83,5 +92,24 @@ describe("config export route", () => {
   test("rejects an unknown only domain", async () => {
     const invalid = await exportConfig("only=bogus")
     expect(invalid.status).toBe(400)
+  })
+
+  test("reports a broken domain file as a warning instead of quarantining it", async () => {
+    originalGeneralConfig = await Config.domainGet("general")
+    const filepath = ConfigDomain.filepath("general")
+    await Bun.write(filepath, "{ this is not valid json")
+
+    try {
+      const response = await exportConfig("only=general")
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body.warnings.length).toBe(1)
+      expect(body.warnings[0]).toContain("general")
+      expect(body.domains).toEqual([])
+      // Export must not move the broken file aside.
+      expect(await Bun.file(filepath).text()).toContain("not valid json")
+    } finally {
+      await Bun.write(filepath, JSON.stringify(originalGeneralConfig ?? {}, null, 2))
+    }
   })
 })

@@ -4762,6 +4762,7 @@ export type ConfigExportResult = {
     | "github"
     | "runtime"
   >
+  warnings: Array<string>
   config: Config
 }
 
@@ -4772,7 +4773,17 @@ export type ConfigImportProjectScopeRequiredError = {
   }
 }
 
-export type ConfigExportBadRequestError = BadRequestError | ConfigImportProjectScopeRequiredError
+export type ConfigExportSecretsRejectedError = {
+  name: "ConfigExportSecretsRejectedError"
+  data: {
+    message: string
+  }
+}
+
+export type ConfigExportBadRequestError =
+  | BadRequestError
+  | ConfigImportProjectScopeRequiredError
+  | ConfigExportSecretsRejectedError
 
 export type ConfigImportDiagnostic = {
   severity: "warning" | "info"
@@ -11357,7 +11368,7 @@ export type ConfigExportData = {
 
 export type ConfigExportErrors = {
   /**
-   * Invalid export query or missing project scope
+   * Invalid export query, missing project scope, or includeSecrets requested over HTTP
    */
   400: ConfigExportBadRequestError
   /**

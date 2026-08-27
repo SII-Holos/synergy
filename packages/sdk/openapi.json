@@ -4387,7 +4387,7 @@
           }
         ],
         "summary": "Export config",
-        "description": "Export selected config domains as one merged config object. Secrets are redacted by default; pass includeSecrets=true to keep plaintext values.",
+        "description": "Export selected config domains as one merged config object. Secrets are always redacted over HTTP; use `synergy config export --include-secrets` for a plaintext export.",
         "responses": {
           "200": {
             "description": "Exported config",
@@ -4400,7 +4400,7 @@
             }
           },
           "400": {
-            "description": "Invalid export query or missing project scope",
+            "description": "Invalid export query, missing project scope, or includeSecrets requested over HTTP",
             "content": {
               "application/json": {
                 "schema": {
@@ -36214,11 +36214,17 @@
               ]
             }
           },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "config": {
             "$ref": "#/components/schemas/Config"
           }
         },
-        "required": ["scope", "scopeID", "secretsIncluded", "domains", "config"]
+        "required": ["scope", "scopeID", "secretsIncluded", "domains", "warnings", "config"]
       },
       "ConfigImportProjectScopeRequiredError": {
         "type": "object",
@@ -36239,6 +36245,25 @@
         },
         "required": ["name", "data"]
       },
+      "ConfigExportSecretsRejectedError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigExportSecretsRejectedError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
       "ConfigExportBadRequestError": {
         "anyOf": [
           {
@@ -36246,6 +36271,9 @@
           },
           {
             "$ref": "#/components/schemas/ConfigImportProjectScopeRequiredError"
+          },
+          {
+            "$ref": "#/components/schemas/ConfigExportSecretsRejectedError"
           }
         ]
       },

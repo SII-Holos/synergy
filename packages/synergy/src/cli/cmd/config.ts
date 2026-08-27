@@ -64,13 +64,20 @@ export const ConfigExportCommand = cmd({
           includeSecrets: Boolean(args["include-secrets"]),
         })
         const text = ConfigExport.render(result)
+        if (result.secretsIncluded) {
+          process.stderr.write(
+            `Warning: export contains plaintext secrets; keep the output private and restrict file permissions${EOL}`,
+          )
+        }
+        for (const warning of result.warnings) process.stderr.write(`Warning: ${warning}${EOL}`)
         if (args.output) {
           await Bun.write(args.output, text)
-          if (result.secretsIncluded) await fs.chmod(args.output, 0o600).catch(() => {})
-          process.stderr.write(`Exported ${result.domains.length} domain(s) to ${args.output}${EOL}`)
           if (result.secretsIncluded) {
-            process.stderr.write(`Warning: export contains plaintext secrets; keep the file private${EOL}`)
+            await fs.chmod(args.output, 0o600).catch(() => {
+              process.stderr.write(`Warning: could not restrict permissions on ${args.output}${EOL}`)
+            })
           }
+          process.stderr.write(`Exported ${result.domains.length} domain(s) to ${args.output}${EOL}`)
         } else {
           process.stdout.write(text)
         }

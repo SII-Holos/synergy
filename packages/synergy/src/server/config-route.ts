@@ -79,8 +79,20 @@ const ConfigExportQuery = z.object({
   includeSecrets: z.stringbool({ truthy: ["true"], falsy: ["false"] }).optional(),
 })
 
+// Plaintext secrets are CLI-only (`synergy config export --include-secrets`):
+// the HTTP surface has no authentication that could gate a plaintext
+// response, and loopback-wide CORS would let any localhost page read it.
+const ConfigExportSecretsRejectedError = z
+  .object({
+    name: z.literal("ConfigExportSecretsRejectedError"),
+    data: z.object({
+      message: z.string(),
+    }),
+  })
+  .meta({ ref: "ConfigExportSecretsRejectedError" })
+
 const ConfigExportBadRequestError = z
-  .union([BadRequestError, ConfigImport.ProjectScopeRequiredError.Schema])
+  .union([BadRequestError, ConfigImport.ProjectScopeRequiredError.Schema, ConfigExportSecretsRejectedError])
   .meta({ ref: "ConfigExportBadRequestError" })
 
 function limitConfigImportBody(maxBytes: number) {
@@ -341,7 +353,8 @@ export const ConfigRoute = new Hono()
     describeRoute({
       summary: "Export config",
       description:
-        "Export selected config domains as one merged config object. Secrets are redacted by default; pass includeSecrets=true to keep plaintext values.",
+        "Export selected config domains as one merged config object. Secrets are always redacted over HTTP; " +
+        "use `synergy config export --include-secrets` for a plaintext export.",
       operationId: "config.export",
       responses: {
         200: {
@@ -349,13 +362,28 @@ export const ConfigRoute = new Hono()
           content: { "application/json": { schema: resolver(ConfigExport.Result) } },
         },
         400: {
-          description: "Invalid export query or missing project scope",
+          description: "Invalid export query, missing project scope, or includeSecrets requested over HTTP",
           content: { "application/json": { schema: resolver(ConfigExportBadRequestError) } },
         },
       },
     }),
     validator("query", ConfigExportQuery),
-    async (c) => c.json(await ConfigExport.build(c.req.valid("query"))),
+    async (c) => {
+      const query = c.req.valid("query")
+      if (query.includeSecrets) {
+        return c.json(
+          {
+            name: "ConfigExportSecretsRejectedError",
+            data: {
+              message:
+                "CONFIG_EXPORT_SECRETS_HTTP_REJECTED: includeSecrets is not available over HTTP. Use `synergy config export --include-secrets`.",
+            },
+          },
+          400,
+        )
+      }
+      return c.json(await ConfigExport.build(query))
+    },
   )
   .post(
     "/import/plan",

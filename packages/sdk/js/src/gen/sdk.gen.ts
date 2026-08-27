@@ -6272,7 +6272,7 @@ export class Config extends HeyApiClient {
   /**
    * Export config
    *
-   * Export selected config domains as one merged config object. Secrets are redacted by default; pass includeSecrets=true to keep plaintext values.
+   * Export selected config domains as one merged config object. Secrets are always redacted over HTTP; use `synergy config export --include-secrets` for a plaintext export.
    */
   public export<ThrowOnError extends boolean = false>(
     parameters?: {
