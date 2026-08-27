@@ -17,6 +17,7 @@ export namespace ExperienceRecall {
     explorationConstant?: number
     simThreshold?: number
     vector?: number[]
+    requireScript?: boolean
   }
 
   export interface Result {
@@ -45,8 +46,10 @@ export namespace ExperienceRecall {
 
   export function trackRetrieval(sessionID: string, experienceIDs: string[]) {
     pendingRetrievals.set(sessionID, experienceIDs)
-    for (const id of experienceIDs) {
-      LibraryDB.Experience.incrementRetrievalCount(id)
+    try {
+      LibraryDB.Experience.incrementRetrievalCounts(experienceIDs)
+    } catch (err: any) {
+      log.warn("retrieval count increment failed", { error: err })
     }
     setTimeout(
       () => {
@@ -76,6 +79,7 @@ export namespace ExperienceRecall {
     const wQ = options.wQ ?? retConfig.wQ
     const explorationConstant = options.explorationConstant ?? retConfig.explorationConstant
     const simThreshold = options.simThreshold ?? retConfig.simThreshold
+    const requireScript = options.requireScript ?? false
 
     using _ = log.time("retrieve", { scopeID })
 
@@ -102,12 +106,21 @@ export namespace ExperienceRecall {
     }
 
     const knnRows = new Map(LibraryDB.Experience.getMany(knnResults.map((k) => k.id)).map((r) => [r.id, r]))
+    // The candidate set must contain only arms the policy can actually
+    // inject: an arm that wins a topK slot but is then discarded (invalid
+    // intent, missing script) would never be counted as pulled and would
+    // hold a perpetual maximal UCB1 exploration bonus.
+    const contentRows = new Map(
+      (requireScript ? LibraryDB.Experience.getContentMany(knnResults.map((k) => k.id)) : []).map((r) => [r.id, r]),
+    )
     const candidates: Array<{ row: LibraryDB.Experience.Row; similarity: number }> = []
     for (const knn of knnResults) {
       const row = knnRows.get(knn.id)
       if (!row) continue
       const similarity = 1 - knn.distance
       if (similarity < simThreshold) continue
+      if (!Intent.isValid(row.intent)) continue
+      if (requireScript && !contentRows.get(knn.id)?.script) continue
       candidates.push({ row, similarity })
     }
 
@@ -144,11 +157,13 @@ export namespace ExperienceRecall {
     })
 
     const selected = epsilonGreedy(scored, topK, epsilon)
-    const valid = selected.filter((item) => Intent.isValid(item.row.intent))
+    const selectedContents = new Map(
+      LibraryDB.Experience.getContentMany(selected.map((item) => item.row.id)).map((r) => [r.id, r]),
+    )
 
     const results: Result[] = []
-    for (const item of valid) {
-      const contentRow = LibraryDB.Experience.getContent(item.row.id)
+    for (const item of selected) {
+      const contentRow = selectedContents.get(item.row.id)
       const qv: Record<string, number> = JSON.parse(item.row.q_values)
       results.push({
         id: item.row.id,
@@ -173,7 +188,7 @@ export namespace ExperienceRecall {
       })
     }
 
-    log.info("phase B", { selected: valid.length, topK, epsilon })
+    log.info("phase B", { selected: selected.length, topK, epsilon })
     return results
   }
 

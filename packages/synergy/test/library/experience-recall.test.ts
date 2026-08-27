@@ -105,4 +105,66 @@ describe.serial("ExperienceRecall UCB1 exploration", () => {
     const bAfter = after.find((r) => r.id === "exp-b")!
     expect(bAfter.score).toBeCloseTo(0.5 * Math.sqrt(ln5), 10)
   })
+
+  test("pulls do not mutate updated_at and counting is best-effort", () => {
+    seedEvaluated("exp-ts")
+    const before = LibraryDB.Experience.get("exp-ts")!
+    ExperienceRecall.trackRetrieval("sess-ts", ["exp-ts"])
+    const after = LibraryDB.Experience.get("exp-ts")!
+    expect(after.retrieval_count).toBe(1)
+    expect(after.q_visits).toBe(0)
+    expect(after.updated_at).toBe(before.updated_at)
+    // Unknown ids are no-ops and must never throw into the injection path.
+    expect(() => ExperienceRecall.trackRetrieval("sess-x", ["no-such-id"])).not.toThrow()
+  })
+
+  test("uninjectable arms never enter the candidate set", async () => {
+    seedEvaluated("exp-good")
+    LibraryDB.Experience.insert({
+      id: "exp-bad-intent",
+      sessionID: "sess-bad-intent",
+      scopeID: SCOPE,
+      intent: "x".repeat(200),
+      intentEmbedding: fakeEmbedding(),
+      scriptEmbedding: undefined,
+      content: { script: 'print("bad")', raw: "bad" },
+      metadata: {},
+      retrievedExperienceIDs: [],
+      createdAt: Date.now(),
+    })
+    LibraryDB.Experience.applyReward("exp-bad-intent", {
+      rewards: { outcome: 1 },
+      rewardWeights: REWARD_WEIGHTS,
+      alpha: 0.3,
+    })
+    LibraryDB.Experience.insert({
+      id: "exp-noscript",
+      sessionID: "sess-noscript",
+      scopeID: SCOPE,
+      intent: "Handle the no-script request flow",
+      intentEmbedding: fakeEmbedding(),
+      scriptEmbedding: undefined,
+      content: { userInput: "q", raw: "no script here" },
+      metadata: {},
+      retrievedExperienceIDs: [],
+      createdAt: Date.now(),
+    })
+    LibraryDB.Experience.applyReward("exp-noscript", {
+      rewards: { outcome: 1 },
+      rewardWeights: REWARD_WEIGHTS,
+      alpha: 0.3,
+    })
+
+    // Injection path: only injectable arms are candidates, so an arm that
+    // would be selected then discarded cannot occupy a topK slot or hold a
+    // perpetual exploration bonus.
+    const strict = await ExperienceRecall.retrieve(SCOPE, "query", { vector: fakeVector(), requireScript: true })
+    expect(strict.map((r) => r.id)).toEqual(["exp-good"])
+
+    // Read paths (server search, boss briefing) keep script-less arms visible
+    // but still exclude invalid intents, matching the old post-selection
+    // filter's visible output without wasting topK slots on discarded arms.
+    const loose = await ExperienceRecall.retrieve(SCOPE, "query", { vector: fakeVector() })
+    expect(loose.map((r) => r.id).sort()).toEqual(["exp-good", "exp-noscript"])
+  })
 })

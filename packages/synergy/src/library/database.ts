@@ -928,6 +928,13 @@ export namespace LibraryDB {
       return conn.prepare("SELECT * FROM experience_content WHERE id = ?1").get(id) as ContentRow | null
     }
 
+    export function getContentMany(ids: string[]): ContentRow[] {
+      if (ids.length === 0) return []
+      const conn = open()
+      const placeholders = ids.map(() => "?").join(",")
+      return conn.prepare(`SELECT * FROM experience_content WHERE id IN (${placeholders})`).all(...ids) as ContentRow[]
+    }
+
     function buildPageWhere(input: PageInput) {
       const conditions: string[] = []
       const params: SQLQueryBindings[] = []
@@ -1334,16 +1341,19 @@ export namespace LibraryDB {
     }
 
     /**
-     * Counts an actual selection of this experience for injection (a "pull").
-     * Deliberately separate from q_visits, which only counts reward-path
-     * credit updates in updateQValues.
+     * Counts actual selections of experiences for injection ("pulls") in one
+     * batched statement. Deliberately separate from q_visits (reward-path
+     * credit updates) and deliberately not touching updated_at: a pull is
+     * neither a content nor an evaluation change, and the Library UI sorts
+     * and labels rows by updated_at.
      */
-    export function incrementRetrievalCount(id: string): Row | null {
+    export function incrementRetrievalCounts(ids: string[]): void {
+      if (ids.length === 0) return
       const conn = open()
+      const placeholders = ids.map(() => "?").join(",")
       conn
-        .prepare("UPDATE experience SET retrieval_count = retrieval_count + 1, updated_at = ?1 WHERE id = ?2")
-        .run(Date.now(), id)
-      return conn.prepare("SELECT * FROM experience WHERE id = ?1").get(id) as Row | null
+        .prepare(`UPDATE experience SET retrieval_count = retrieval_count + 1 WHERE id IN (${placeholders})`)
+        .run(...ids)
     }
 
     export function insertFailed(input: {
