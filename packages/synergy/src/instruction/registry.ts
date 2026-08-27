@@ -7,8 +7,35 @@ const log = Log.create({ service: "instruction.registry" })
  * register their template rendering pipeline instead of the session loop
  * forking on the source kind. The engine owns shared text semantics; the
  * source owns policy stages (command: trim + shell expansion) and listing.
+ * Sources may also expose an instruction catalog so generic L1 surfaces
+ * (the skill tool) can list, load, and reference instructions without
+ * importing the owning domain.
  */
 export namespace InstructionRegistry {
+  export interface Diagnostic {
+    name: string
+    code: string
+    severity: "error" | "warning" | "info"
+    path?: string
+    message: string
+  }
+
+  export interface Entry {
+    name: string
+    description: string
+    source: string
+    scope: string
+    compatibility: string
+    directory: string
+    /** Invocable by the model through the generic skill tool. */
+    model: boolean
+    warnings: string[]
+    unsupported: string[]
+    content(): Promise<string>
+    references(): Promise<string[]>
+    reference(name: string): Promise<string | undefined>
+  }
+
   export interface Source {
     kind: string
     /** Render a template with arguments into ordered text parts. */
@@ -17,6 +44,10 @@ export namespace InstructionRegistry {
     hints(): string[]
     /** List instruction identifiers for discovery surfaces. */
     list?(): Promise<string[]>
+    /** Catalog entries for generic instruction consumers. */
+    entries?(): Promise<Entry[]>
+    entry?(name: string): Promise<Entry | undefined>
+    diagnostics?(): Promise<Diagnostic[]>
   }
 
   const sources = new Map<string, Source>()

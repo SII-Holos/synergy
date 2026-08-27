@@ -2,11 +2,14 @@ import { describe, expect, mock, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import { Plugin } from "../../src/plugin"
+import { registerPluginSkillSource } from "../../src/plugin/skill-source"
 import { ScopeContext } from "../../src/scope/context"
 import { Skill } from "../../src/skill"
 import { BUILTIN_SKILLS } from "../../src/skill/builtin"
-import { SkillSourceProfile } from "../../src/skill/source-profile"
+import { SkillSourceProfile } from "../../src/instruction/source-profile"
 import { tmpdir } from "../fixture/fixture"
+
+registerPluginSkillSource()
 
 const BUILTIN_SKILL_COUNT = BUILTIN_SKILLS.length
 

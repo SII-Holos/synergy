@@ -28,6 +28,12 @@ import { SessionEvent } from "../../src/session/event"
 import { Command } from "../../src/command/command"
 import { SessionDrive } from "../../src/session/drive"
 
+import { registerSkillDomain } from "../../src/skill/register"
+import { registerCommandDomain } from "../../src/command/register"
+
+registerSkillDomain()
+registerCommandDomain()
+
 const sessionID = "ses_test"
 
 function userMessage(id: string, noReply?: boolean): MessageV2.WithParts {

@@ -23,8 +23,7 @@ import PLAN_SYNERGY_MAX from "./prompt/plan-synergy-max.txt"
 import COAUTHOR_REMINDER from "./prompt/coauthor-reminder.txt"
 import { defer } from "../util/defer"
 import type { Command } from "../command/command"
-import { CommandRenderer } from "../command/renderer"
-import { SkillRenderer } from "../skill/renderer"
+import { InstructionRegistry } from "../instruction/registry"
 import "./summary"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { fn } from "@/util/fn"
@@ -83,7 +82,7 @@ import { WorkflowKindRegistry } from "./workflow-kind-registry"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { ObservabilitySpans } from "@/observability/spans"
 import { ObservabilityContext } from "@/observability/context"
-import { SkillSourceProfile } from "@/skill/source-profile"
+import { SkillSourceProfile } from "../instruction/source-profile"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -2015,10 +2014,10 @@ export namespace SessionInvoke {
     const agentName = command.agent ?? input.agent ?? (await Agent.defaultAgent())
 
     const template = await command.template
-    const renderedTexts =
-      command.source === "skill"
-        ? SkillRenderer.render({ template, arguments: input.arguments })
-        : [await CommandRenderer.render({ template, arguments: input.arguments })]
+    const renderedTexts = await InstructionRegistry.render(command.source ?? "command", {
+      template,
+      arguments: input.arguments,
+    })
 
     const model = await (async () => {
       if (command.model) {

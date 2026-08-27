@@ -2,7 +2,7 @@ import path from "path"
 import { ConfigDomain } from "../config/domain"
 import { Global } from "../global"
 import { ScopeContext } from "../scope/context"
-import { SkillSourceProfile } from "../skill/source-profile"
+import { SkillSourceProfile } from "../instruction/source-profile"
 import { isPathContained } from "../util/path-contain"
 import { RuntimeSchema } from "./schema"
 

@@ -6,7 +6,8 @@
  * consumed.
  *
  * Current scope: product-domain migrations (S1), boss domain (S2), light-loop
- * domain (S3), blueprint domain (S4), lattice domain (S5).
+ * domain (S3), blueprint domain (S4), lattice domain (S5), instruction
+ * domains (S7: skill, command, mcp).
  */
 import "./agenda/migration"
 import "./blueprint/migration"
@@ -21,6 +22,10 @@ import { registerBossDomain } from "./boss/register"
 import { registerLightLoopDomain } from "./light-loop/register"
 import { registerBlueprintDomain } from "./blueprint/register"
 import { registerLatticeDomain } from "./lattice/register"
+import { registerSkillDomain } from "./skill/register"
+import { registerCommandDomain } from "./command/register"
+import { registerPluginSkillSource } from "./plugin/skill-source"
+import { registerMcpCommandSource } from "./mcp/instruction-source"
 import { setTerminalHookDeliverer } from "./light-loop/runtime"
 import { setBlueprintAgendaAssertClear } from "./blueprint/tools/blueprint-loop-stop"
 import { AgendaSessionWakeup } from "./agenda/session-wakeup"
@@ -30,6 +35,10 @@ registerBossDomain()
 registerLightLoopDomain()
 registerBlueprintDomain()
 registerLatticeDomain()
+registerSkillDomain()
+registerCommandDomain()
+registerPluginSkillSource()
+registerMcpCommandSource()
 
 // L4 assembly: the light-loop domain consumes plugin hook delivery through an
 // injected function so product domains stay acyclic (no light-loop→plugin

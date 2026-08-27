@@ -1,6 +1,6 @@
 {
-  "totalModules": 65,
-  "totalFiles": 975,
+  "totalModules": 66,
+  "totalFiles": 983,
   "cyclicSCCs": [
     [
       "acp",
@@ -27,6 +27,7 @@
       "global",
       "hashline",
       "holos",
+      "instruction",
       "lattice",
       "library",
       "light-loop",
@@ -173,10 +174,6 @@
       "question"
     ],
     [
-      "session",
-      "skill"
-    ],
-    [
       "tool",
       "agenda"
     ],
@@ -227,10 +224,6 @@
     [
       "tool",
       "remote"
-    ],
-    [
-      "tool",
-      "skill"
     ],
     [
       "tool",
@@ -334,10 +327,6 @@
     ],
     [
       "command",
-      "mcp"
-    ],
-    [
-      "command",
       "project"
     ],
     [
@@ -425,10 +414,6 @@
       "plugin-runtime"
     ],
     [
-      "plugin",
-      "skill"
-    ],
-    [
       "plugin-runtime",
       "plugin"
     ],
@@ -439,10 +424,6 @@
     [
       "remote",
       "holos"
-    ],
-    [
-      "skill",
-      "plugin"
     ]
   ],
   "r3Violations": []
