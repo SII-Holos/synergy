@@ -1,0 +1,64 @@
+# Agent CLI Creator
+
+## Goal
+
+Build a CLI that an agent can use reliably without a human on the other end. The agent cannot see your terminal, cannot answer interactive prompts, and cannot recover from opaque errors.
+
+## Runtime choice
+
+Prefer, in order:
+
+1. A well-known runtime the agent's environment already provides (Python, Node, or the platform's standard tooling).
+2. A single-file script with no build step, so the agent can read it and predict its behavior.
+3. A compiled binary only when performance or distribution requires it.
+
+Avoid interactive prompts entirely. An agent calling the CLI cannot respond to "Press Enter to continue" or a TUI. Every behavior must be expressible as arguments.
+
+## Command contract
+
+Separate the command kinds so the agent can compose them:
+
+- **Discovery** — list what exists: accounts, projects, queues, configs. Stable, bounded output.
+- **Resolve** — map a human name or URL to the stable identifier the write commands need.
+- **Read** — fetch one exact object by identifier, plus a bounded list/search with `--limit` or a cursor. Never dump unbounded collections.
+- **Write** — one named action per command, with a `--dry-run` or draft mode when the service allows it.
+
+Keep a raw escape hatch only where the family needs one. Never expose only a generic raw request command without the high-level verbs.
+
+## Structured output
+
+When the neighboring command family already supports structured output, support stable `--json` on the new command:
+
+- Document the success shape: the exact keys and types the agent can rely on.
+- Machine-readable errors: a stable error schema with a code, a message, and (when applicable) the failing field.
+- Never include credentials, tokens, or internal paths in output or errors.
+
+## Authentication
+
+Resolve credentials in this order, and never prompt:
+
+1. Environment variables (the agent's standard injection point).
+2. Config file or credential store.
+3. Explicit flags.
+
+Never log or echo credentials. A missing credential is an error naming the variable and how to provide it.
+
+## Help and self-diagnostics
+
+- Write self-explanatory help: every command, positional, and option describes its purpose, and `--help` surfaces every major capability.
+- Add a `doctor` (or equivalent) command that checks connectivity, authentication, and required configuration, and reports each check with a clear pass/fail and a fix hint.
+- Version and exit codes: document them; the agent relies on exit codes to branch.
+
+## Smoke test
+
+Before handing the CLI to an agent:
+
+1. Run `--help` and confirm every command and option is discoverable.
+2. Run discovery, resolve, and one read against a sandbox or fixture.
+3. Run one write with `--dry-run` and confirm the plan output.
+4. Run one failure path and confirm the error names the problem and the correction.
+5. Confirm no command reads stdin or waits for input.
+
+## Companion skill
+
+When the CLI deserves durable agent guidance (when to call which command, output semantics, recovery), wrap it in a Skill using the builtin `synergy-skill-creator` guidance: keep the skill body under 500 lines, put details in references, and make the description name the triggers.

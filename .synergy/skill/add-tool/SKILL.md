@@ -46,6 +46,13 @@ A renderer may either be registered by the render-group loop or self-register wi
 
 The tool icon registry is separate from the product semantic-token registry. Load `develop-frontend` and use semantic product icons for non-tool UI added around the feature. Preserve accessible pending, success, error, and attachment presentation.
 
+## Tool Description Quality
+
+1. Write the description as a contract for a non-deterministic agent. It must answer four questions: what the tool does, when to use it (direct triggers and indirect signals), what inputs it accepts (types, constraints, defaults, and format examples), and what it returns (success shape and error conditions).
+2. Keep parameter names consistent across tools: use the same term for the same concept everywhere (for example, always `customer_id`, never `id` in one tool and `identifier` in another).
+3. Make error outputs actionable for agent recovery: state what went wrong, which input was invalid, and how to correct it (expected format plus an example). A generic "failed" message is not acceptable.
+4. Check the new tool against the consolidation principle: if a human cannot definitively say which tool to use for a given situation, the agent cannot either. Merge narrow overlapping tools unless independent invocation is required, and do not over-consolidate past roughly 8-10 parameters.
+
 ## Verify
 
 From `packages/synergy`, run the narrow tool test first. Add taxonomy, permission, migration, and server/UI tests when those contracts changed. Then run from the root:
