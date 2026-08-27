@@ -14295,6 +14295,10 @@ msgid "settings.catalog.general.row.interfaceLanguage"
 msgstr "界面语言"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.general.row.newSessionWorkspace"
+msgstr "新会话工作区"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.general.row.notifications"
 msgstr "通知"
 
@@ -14316,7 +14320,7 @@ msgstr "界面缩放"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.searchTerms"
-msgstr "外观 | 颜色 | 浅色 | 深色 | 自动 | 语言 | 快照 | 活动 | 活动显示 | 产品更新 | 提示 | 通知 | 缩放 | 界面缩放"
+msgstr "外观 | 颜色 | 浅色 | 深色 | 自动 | 语言 | 快照 | 活动 | 活动显示 | 工作区 | worktree | checkout | 主检出 | 产品更新 | 提示 | 通知 | 缩放 | 界面缩放"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.github.description"
@@ -15465,6 +15469,22 @@ msgstr "更新 Synergy 服务"
 #. js-lingui-explicit-id
 msgid "settings.general.updates.web.description"
 msgstr "服务器有更新的 Web 资源时，刷新此浏览器。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.description"
+msgstr "新会话默认在主检出目录还是隔离的 git worktree 中启动"
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.main"
+msgstr "主检出目录"
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.title"
+msgstr "新会话工作区"
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.worktree"
+msgstr "Worktree"
 
 #. js-lingui-explicit-id
 msgid "settings.general.zoom.aria"

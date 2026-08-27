@@ -2603,6 +2603,10 @@ export type ProviderConfig = {
      */
     setCacheKey?: boolean
     /**
+     * Merge leading system messages into a single system message for strict OpenAI-compatible endpoints that reject multiple or non-leading system messages (e.g. vLLM Qwen chat templates). Default false.
+     */
+    mergeSystemMessages?: boolean
+    /**
      * Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.
      */
     timeout?: number | false
@@ -3635,6 +3639,10 @@ export type Config = {
    * How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)
    */
   activityDisplay?: "full" | "balanced" | "minimal"
+  /**
+   * Default workspace for new sessions started from the Web composer: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main). Programmatic session creation (API, channels, Cortex) always uses the main checkout.
+   */
+  defaultSessionWorkspace?: "main" | "worktree"
   keybinds?: KeybindsConfig
   logLevel?: LogLevel
   server?: ServerConfig
