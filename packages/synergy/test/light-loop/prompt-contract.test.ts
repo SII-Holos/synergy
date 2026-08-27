@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { WorkflowUserWrapper } from "../../src/session/workflow-user-wrapper"
+// Product domains register workflow contributions via the L4 manifest
+import "../../src/product-registration"
 
 /**
  * Light Loop prompt contract (S3a golden). Locks the byte-level shape of the

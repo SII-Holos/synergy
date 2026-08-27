@@ -1,8 +1,37 @@
-import { Session } from "."
-import { Plugin } from "../plugin"
+import { Session } from "../session"
 import { Lock } from "../util/lock"
-import { isActiveLightLoopWorkflow, isLightLoopTerminalStatus, type LightLoopTerminalStatus } from "./light-loop-state"
-import { LightLoopTerminalStore, type LightLoopTerminalRecord } from "./light-loop-terminal-hook"
+import {
+  isActiveLightLoopWorkflow,
+  isLightLoopTerminalStatus,
+  type LightLoopTerminalStatus,
+} from "../session/light-loop-state"
+import { LightLoopTerminalStore, type LightLoopTerminalRecord } from "./terminal-hook"
+
+/** Structural shape of the plugin hook-delivery result the terminal path
+ * consumes; the concrete implementation is injected from the L4 product
+ * manifest so the light-loop domain does not import the plugin domain. */
+export interface TerminalHookDeliveryResult {
+  status: "delivered" | "plugin_mismatch" | "no_handler" | "failed"
+  handlerCount: number
+  succeededHandlerCount?: number
+  error?: string
+}
+
+export type TerminalHookDeliverer = (
+  pluginId: string,
+  pluginGeneration: string,
+  pointName: string,
+  input: unknown,
+) => Promise<TerminalHookDeliveryResult>
+
+let terminalHookDeliverer: TerminalHookDeliverer | undefined
+
+/** L4 product registration injects Plugin.deliverHookForPlugin here; without
+ * it, plugin-owned terminal hooks record a durable delivery error instead of
+ * silently vanishing. */
+export function setTerminalHookDeliverer(deliverer: TerminalHookDeliverer): void {
+  terminalHookDeliverer = deliverer
+}
 
 function errorText(error: unknown): string {
   if (!error) return "Light Loop execution failed"
@@ -47,7 +76,14 @@ async function deliverTerminalHook(session: Awaited<ReturnType<typeof Session.ge
     await LightLoopTerminalStore.acknowledge(session)
     return
   }
-  const delivery = await Plugin.deliverHookForPlugin(
+  if (!terminalHookDeliverer) {
+    await LightLoopTerminalStore.recordHookError(
+      session,
+      "Hook lightloop.after delivery unavailable: plugin registration not loaded",
+    )
+    return
+  }
+  const delivery = await terminalHookDeliverer(
     record.pluginOwner.pluginId,
     record.pluginOwner.pluginGeneration,
     "lightloop.after",
@@ -59,7 +95,7 @@ async function deliverTerminalHook(session: Awaited<ReturnType<typeof Session.ge
         ...(record.error ? { error: record.error } : {}),
       },
     },
-  ).catch((hookError) => ({
+  ).catch((hookError: unknown) => ({
     status: "failed" as const,
     handlerCount: 0,
     succeededHandlerCount: 0,
@@ -71,7 +107,9 @@ async function deliverTerminalHook(session: Awaited<ReturnType<typeof Session.ge
     return
   }
   const hookError =
-    delivery.status === "delivered" ? "Hook lightloop.after reported delivery without a handler" : delivery.error
+    delivery.status === "delivered"
+      ? "Hook lightloop.after reported delivery without a handler"
+      : (delivery.error ?? "Hook lightloop.after delivery failed")
   await LightLoopTerminalStore.recordHookError(session, hookError)
 }
 

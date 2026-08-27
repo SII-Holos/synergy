@@ -4,7 +4,7 @@ import { Identifier } from "../../src/id/id"
 import { Cortex } from "../../src/cortex"
 import { Session } from "../../src/session"
 import { ScopeContext } from "../../src/scope/context"
-import { LoopStopTool } from "../../src/tool/loop-stop"
+import { LoopStopTool } from "../../src/light-loop/tools/loop-stop"
 import type { Tool } from "../../src/tool/tool"
 import { tmpdir } from "../fixture/fixture"
 

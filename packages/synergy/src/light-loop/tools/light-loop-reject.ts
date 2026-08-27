@@ -1,11 +1,11 @@
 import z from "zod"
-import { Tool } from "./tool"
-import { Session } from "../session"
-import { SessionManager } from "../session/manager"
-import { Identifier } from "../id/id"
+import { Tool } from "../../tool/tool"
+import { Session } from "../../session"
+import { SessionManager } from "../../session/manager"
+import { Identifier } from "../../id/id"
 import DESCRIPTION from "./light-loop-reject.txt"
 import { LightLoopReviewAccess } from "@/session/light-loop-review-access"
-import { LightLoopRuntime } from "@/session/light-loop-runtime"
+import { LightLoopRuntime } from "../runtime"
 import { isIterationBudgetExhausted } from "@/session/iteration-budget"
 
 const parameters = z.object({

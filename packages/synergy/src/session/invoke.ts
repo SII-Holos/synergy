@@ -311,10 +311,11 @@ export namespace SessionInvoke {
       // to the durable failed status unless the loop was aborted (abort takes
       // the explicit cancellation path).
       if (!lease.signal.aborted) {
-        const { LightLoopRuntime } = await import("./light-loop-runtime")
-        await LightLoopRuntime.failActiveLoop(sessionID, error).catch((err) => {
-          log.error("failed to mark Light Loop failed after loop error", { sessionID, error: err })
-        })
+        await WorkflowPromptRegistry.get("lightloop")
+          ?.onLoopError?.(sessionID, error)
+          .catch((err) => {
+            log.error("failed to mark Light Loop failed after loop error", { sessionID, error: err })
+          })
       }
       throw error
     }
@@ -737,23 +738,14 @@ export namespace SessionInvoke {
             }
             break
           }
-          case "lightloop":
-            systemParts.push(`<light-loop-context>
-You are running in the Light Loop workflow. The user has set a task that you must complete fully before stopping.
-
-Task: ${session.workflow.instructions}
-
-Autonomously advance the task until it is complete. Before calling loop_stop(), carefully assess whether every aspect of the task has been addressed:
-- Have you produced all requested deliverables, artifacts, or changes?
-- Have you verified correctness with appropriate evidence (tests, manual checks, tool output)?
-- Are there any remaining gaps, edge cases, or follow-up work implied by the task?
-
-If the task is NOT fully complete, continue working now.
-If the task IS fully complete and verified, call loop_stop() to request a completion review.
-Do not stop early, do not pretend the task is complete, and do not hide missing verification from the user.
-loop_stop() does not end the Light Loop directly — a reviewer will audit your work first.
-</light-loop-context>`)
+          case "lightloop": {
+            const contribution = WorkflowPromptRegistry.get("lightloop")
+            if (contribution?.buildSystem) {
+              const parts = await contribution.buildSystem(session, { deliveryMetadata: undefined })
+              systemParts.push(...parts)
+            }
             break
+          }
           case "boss": {
             const contribution = WorkflowPromptRegistry.get("boss")
             if (contribution?.buildSystem) {

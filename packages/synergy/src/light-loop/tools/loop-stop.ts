@@ -1,8 +1,8 @@
 import z from "zod"
-import { Tool } from "./tool"
-import { Session } from "../session"
-import { AgendaSessionWakeup } from "../agenda/session-wakeup"
-import { ScopeContext } from "../scope/context"
+import { Tool } from "../../tool/tool"
+import { Session } from "../../session"
+import { AgendaSessionWakeup } from "../../agenda/session-wakeup"
+import { ScopeContext } from "../../scope/context"
 import DESCRIPTION from "./loop-stop.txt"
 
 const parameters = z.object({

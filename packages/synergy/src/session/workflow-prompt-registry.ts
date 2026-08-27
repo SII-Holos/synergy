@@ -23,6 +23,14 @@ export namespace WorkflowPromptRegistry {
     projectUserMessage?(query: string, agentName: string): string | undefined
     /** Control-sources that suppress user-message stamping for this kind. */
     controlSources?: string[]
+    /** Called when the session loop exits with an error for a session of
+     * this kind (lightloop: mark the loop failed). */
+    onLoopError?(sessionID: string, error: unknown): Promise<void>
+    /** Cancel the workflow for a session of this kind (lightloop: abort +
+     * terminal status). Returns the updated session. */
+    cancel?(sessionID: string): Promise<SessionInfo>
+    /** Reattach domain-owned timers after a plugin reload. */
+    reattachPluginTimers?(): Promise<void>
   }
 
   const contributions = new Map<string, Contribution>()

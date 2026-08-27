@@ -36,19 +36,16 @@ export namespace WorkflowUserWrapper {
     synergy: {
       plan: synergyPlan,
       lattice: synergyLattice,
-      lightloop: synergyLightloop,
     },
     "synergy-max": {
       plan: synergyMaxPlan,
       lattice: synergyMaxLattice,
-      lightloop: synergyMaxLightloop,
     },
   }
 
   const FALLBACK_BUILDERS: Partial<ModePromptBuilders> = {
     plan: genericPlan,
     lattice: genericLattice,
-    lightloop: genericLightloop,
   }
 
   export function activeMode(session?: Pick<SessionInfo, "workflow">): Mode | undefined {
@@ -138,9 +135,10 @@ export namespace WorkflowUserWrapper {
 
   export function build(agentName: string, mode: Mode, query: string): string {
     const trimmed = query.trim() || "(empty request)"
-    if (mode === "boss") {
-      // Boss wrapper bytes live in the boss domain (H2); without registration
-      // there is no boss workflow to wrap, so the request passes through.
+    if (mode === "boss" || mode === "lightloop") {
+      // Workflow wrapper bytes live in the owning domains (H2); without
+      // registration there is no workflow to wrap, so the request passes
+      // through unchanged.
       return WorkflowPromptRegistry.get(mode)?.projectUserMessage?.(trimmed, agentName) ?? trimmed
     }
     const builders = PROMPT_BUILDERS[agentName] ?? FALLBACK_BUILDERS
@@ -249,42 +247,6 @@ export namespace WorkflowUserWrapper {
       "User request:",
       query,
       "</lattice-user-request>",
-    ].join("\n")
-  }
-
-  function genericLightloop(query: string): string {
-    return [
-      "<lightloop-user-request>",
-      "You are in the Light Loop workflow.",
-      "Complete the work thoroughly. Keep working until the task is fully done, then call loop_stop() to request a completion review.",
-      "",
-      "User request:",
-      query,
-      "</lightloop-user-request>",
-    ].join("\n")
-  }
-
-  function synergyLightloop(query: string): string {
-    return [
-      "<lightloop-user-request>",
-      "You are synergy in the Light Loop workflow.",
-      "Complete the work thoroughly. Keep working and iterating until the task is fully done, then call loop_stop() to request a completion review.",
-      "",
-      "User request:",
-      query,
-      "</lightloop-user-request>",
-    ].join("\n")
-  }
-
-  function synergyMaxLightloop(query: string): string {
-    return [
-      "<lightloop-user-request>",
-      "You are synergy-max in the Light Loop workflow.",
-      "Complete the work thoroughly. Keep working and iterating until the task is fully done, then call loop_stop() to request a completion review.",
-      "",
-      "User request:",
-      query,
-      "</lightloop-user-request>",
     ].join("\n")
   }
 }

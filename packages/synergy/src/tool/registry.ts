@@ -31,9 +31,6 @@ import { NoteDeleteTool } from "./note-delete"
 import { BlueprintLoopStopTool } from "./blueprint-loop-stop"
 import { BlueprintLoopApproveTool } from "./blueprint-loop-approve"
 import { BlueprintLoopRejectTool } from "./blueprint-loop-reject"
-import { LoopStopTool } from "./loop-stop"
-import { LightLoopApproveTool } from "./light-loop-approve"
-import { LightLoopRejectTool } from "./light-loop-reject"
 import { PathwayReadTool } from "./pathway-read"
 import { PathwayWriteTool } from "./pathway-write"
 import { LatticeSubmitTool } from "./lattice-submit"
@@ -386,9 +383,6 @@ export namespace ToolRegistry {
       BlueprintLoopStopTool,
       BlueprintLoopApproveTool,
       BlueprintLoopRejectTool,
-      LoopStopTool,
-      LightLoopApproveTool,
-      LightLoopRejectTool,
       PathwayReadTool,
       PathwayWriteTool,
       LatticeSubmitTool,

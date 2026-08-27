@@ -1,6 +1,6 @@
 {
-  "totalModules": 64,
-  "totalFiles": 970,
+  "totalModules": 65,
+  "totalFiles": 971,
   "cyclicSCCs": [
     [
       "acp",
@@ -29,6 +29,7 @@
       "holos",
       "lattice",
       "library",
+      "light-loop",
       "lsp",
       "mcp",
       "migration",
@@ -392,6 +393,14 @@
       "plugin"
     ],
     [
+      "light-loop",
+      "agenda"
+    ],
+    [
+      "light-loop",
+      "cortex"
+    ],
+    [
       "mcp",
       "plugin"
     ],
@@ -425,6 +434,10 @@
     ],
     [
       "plugin",
+      "light-loop"
+    ],
+    [
+      "plugin",
       "mcp"
     ],
     [
@@ -452,26 +465,5 @@
       "plugin"
     ]
   ],
-  "r3Violations": [
-    [
-      "boss",
-      "agenda"
-    ],
-    [
-      "boss",
-      "channel"
-    ],
-    [
-      "boss",
-      "library"
-    ],
-    [
-      "boss",
-      "project"
-    ],
-    [
-      "channel",
-      "boss"
-    ]
-  ]
+  "r3Violations": []
 }

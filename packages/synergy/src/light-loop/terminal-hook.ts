@@ -2,8 +2,8 @@ import z from "zod"
 import { Identifier } from "@/id/id"
 import { StoragePath } from "@/storage/path"
 import { Storage } from "@/storage/storage"
-import type { Info } from "./types"
-import { LightLoopTerminalStatus } from "./light-loop-state"
+import type { Info } from "../session/types"
+import { LightLoopTerminalStatus } from "../session/light-loop-state"
 
 const PluginOwner = z.object({
   pluginId: z.string(),

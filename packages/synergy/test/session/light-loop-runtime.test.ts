@@ -2,8 +2,8 @@ import { afterEach, describe, expect, mock, test } from "bun:test"
 import { Plugin } from "../../src/plugin"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
-import { LightLoopRuntime } from "../../src/session/light-loop-runtime"
-import { LightLoopTerminalStore } from "../../src/session/light-loop-terminal-hook"
+import { LightLoopRuntime } from "../../src/light-loop/runtime"
+import { LightLoopTerminalStore } from "../../src/light-loop/terminal-hook"
 import { tmpdir } from "../fixture/fixture"
 
 const originalDeliverHookForPlugin = (Plugin as any).deliverHookForPlugin

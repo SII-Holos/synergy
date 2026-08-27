@@ -29,8 +29,8 @@ import { DEFAULT_LIMITS } from "../plugin-runtime/health"
 import { pluginTaskSnapshotFromSession, pluginTaskSnapshotFromTask } from "../cortex/plugin-task"
 import { startBlueprint, getBlueprint, cancelBlueprint } from "../blueprint/plugin-adapter"
 import { SessionWorkflowService } from "../session/workflow"
-import { LightLoopRuntime } from "../session/light-loop-runtime"
-import { LightLoopTerminalStore } from "../session/light-loop-terminal-hook"
+import { LightLoopRuntime } from "../light-loop/runtime"
+import { LightLoopTerminalStore } from "../light-loop/terminal-hook"
 
 type RuntimeContext = {
   pluginId?: string
