@@ -3,6 +3,7 @@ import type { MessageDescriptor } from "@lingui/core"
 import type { LocalePreference } from "@/context/locale/types"
 import type { ColorScheme } from "@ericsanchezok/synergy-ui/theme"
 import type { SendShortcut } from "@/context/input"
+import type { NewSessionWorkspacePreference } from "@/components/session/worktree-session"
 
 export type ProviderModel = {
   providerId: string
@@ -82,6 +83,7 @@ export const UI_DEFAULTS = {
   lspDiagnosticsSeverity: "error" as string,
   lspDiagnosticsScope: "project" as string,
   defaultAgent: "synergy" as string,
+  defaultSessionWorkspace: "main" as NewSessionWorkspacePreference,
 } as const
 
 /** Resolve Config.permission (object or string) into a simple UI string. */
@@ -298,6 +300,7 @@ export type GeneralStore = {
   theme: string
   locale: LocalePreference
   activityDisplay: ActivityDisplay
+  defaultSessionWorkspace: NewSessionWorkspacePreference
   mutedToasts: string[]
   toastDurations: ToastDurationOverrides
   sendShortcut: SendShortcut
@@ -414,6 +417,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
       theme: UI_DEFAULTS.theme,
       locale: UI_DEFAULTS.locale,
       activityDisplay: UI_DEFAULTS.activityDisplay,
+      defaultSessionWorkspace: UI_DEFAULTS.defaultSessionWorkspace,
       mutedToasts: [],
       toastDurations: emptyToastDurationOverrides(),
       sendShortcut,

@@ -6,6 +6,10 @@
 
 <!-- What problem does this solve, or what feature does it add? -->
 
+## External sources and provenance
+
+<!-- List papers, standards, upstream code/issues/discussions, benchmarks, experiments, or research that materially informed the implementation, plus the code locations carrying Provenance markers. Write "None" when there is no material external source. -->
+
 ## How was it tested?
 
 <!-- What tests did you run? How can a reviewer verify the change? -->
@@ -22,4 +26,5 @@
 - [ ] SDK regenerated if server routes or schemas changed (`./script/generate.ts`)
 - [ ] `bun run localization:check` passes if product copy, accessibility text, locale-sensitive formatting, or shared UI copy changed
 - [ ] Documentation, AGENTS, and `.synergy` help updated if developer workflow, quality tooling, commands, or contributor rules changed
+- [ ] Material external sources are marked near the authoritative implementation and listed above, or the section says `None`
 - [ ] No secrets, local auth files, unrelated cleanup, placeholder scripts, or redundant compatibility wrappers included

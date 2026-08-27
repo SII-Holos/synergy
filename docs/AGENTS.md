@@ -21,7 +21,7 @@ Every fact has exactly one home. Everywhere else, link there; never restate. The
 | `.synergy/skill/`                    | Executable workflows: step-by-step procedures with verification checklists                            | `skill:check`               |
 | Package `README.md` / `AGENTS.md`    | Per-package contract and boundary                                                                     | `doc:check` budgets         |
 
-Placement rule: **bugs → postmortems; rationale → decision records; procedures → Skills; type definitions → architecture pages; package contracts → package READMEs; standing orders → root AGENTS.md with a rationale link.**
+Placement rule: **bugs → postmortems; rationale → decision records; procedures → Skills; type definitions → architecture pages; package contracts → package READMEs; standing orders → root AGENTS.md with a rationale link.** External implementation provenance lives beside the single authoritative source, generator, template, or manifest; cross-cutting research and rationale remain in research documents and decision records linked from that marker.
 
 ## Classifying a document
 
@@ -32,6 +32,7 @@ Classify every in-scope document as a tutorial or a reference. Tutorials follow 
 - One physical line per paragraph. Fenced code blocks, tables, lists, and headings are exempt. `doc:check` (md-wrap) enforces this.
 - Relative links only, and md links must resolve including `#fragment` anchors. `doc:check` (md-links) enforces this.
 - Write current state directly. Delete obsolete explanations instead of layering caveats. When code and docs conflict, verify code and tests, update the canonical document, and remove stale wording elsewhere.
+- Comments may preserve durable external provenance when they explain how a source constrains or informs the local implementation; a bare link or code restatement is not sufficient.
 - No metaphors in technical prose. Before writing `contract`, `boundary`, or `shape`, ask whether a more exact term names the subject.
 - Generated reference pages (`docs/reference/cli.md`, `configuration.md`, `tools.md`) must never be hand-edited; run `bun run doc:gen` instead. The `--check` freshness gate fails the build when they drift from source.
 

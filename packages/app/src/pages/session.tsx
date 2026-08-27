@@ -58,6 +58,7 @@ import {
   isWorktreeWorkspaceSelection,
   normalizePathForCompare,
   worktreeSetupFailureMessage,
+  type NewSessionWorkspacePreference,
   type NewSessionWorkspaceSelection,
   type SessionWorkspaceTransitionRequest,
 } from "@/components/session/worktree-session"
@@ -817,11 +818,15 @@ function SessionPageContent() {
   }, emptyTimeline)
 
   const scopeRoot = createMemo(() => sync.scope?.worktree ?? sync.data.path.directory)
+  const newSessionWorkspacePreference = createMemo<NewSessionWorkspacePreference>(() =>
+    sync.scope?.vcs === "git" ? (sync.data.config.defaultSessionWorkspace ?? "main") : "main",
+  )
   const newSessionWorkspaceSelection = createMemo(() =>
     defaultNewSessionWorkspaceSelection({
       selected: store.newSessionWorkspaceSelection,
       currentDirectory: sync.data.path.directory,
       canonicalDirectory: scopeRoot(),
+      preference: newSessionWorkspacePreference(),
     }),
   )
   const scopeName = createMemo(() => getFilename(scopeRoot()))

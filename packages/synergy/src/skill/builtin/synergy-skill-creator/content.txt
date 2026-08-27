@@ -2,6 +2,34 @@
 
 Create, update, migrate, or review Agent Skills for Synergy. Follow the Agent Skills standard and default to a portable standard Skill unless the task explicitly needs Synergy-only invocation control.
 
+## Core Principles
+
+The context window is a public good. A Skill shares the context window with the system prompt, conversation history, other Skills' metadata, and the actual user request. Default to assuming the model is already smart: add only context it does not already have, and challenge every paragraph for its token cost. Prefer concise examples over verbose explanations.
+
+### Degrees of freedom
+
+Match the Skill's level of specificity to the task's fragility and variability:
+
+- **High freedom** — text-based instructions when multiple approaches are valid and decisions depend on context.
+- **Medium freedom** — pseudocode or parameterized scripts when a preferred pattern exists but configuration affects behavior.
+- **Low freedom** — specific scripts with few parameters when operations are fragile, consistency is critical, or a specific sequence must be followed.
+
+Think of the model as exploring a path: a narrow bridge with cliffs needs specific guardrails, while an open field allows many routes.
+
+### Description as trigger
+
+The frontmatter `description` is the primary triggering mechanism: it is what the model and the catalog use to decide when the Skill applies. Put all "when to use" information in the description, not in the body — the body is only loaded after the Skill triggers. Name both what the Skill does and the concrete triggers or contexts that should activate it.
+
+## Progressive disclosure
+
+Skills load in three levels to manage context:
+
+1. **Metadata** — `name` and `description`, always present in the catalog.
+2. **Body** — the `SKILL.md` content, loaded only after the Skill triggers.
+3. **Resources** — `references/`, `scripts/`, and `assets/`, loaded or executed only when needed.
+
+Keep the body under 500 lines. When a Skill supports multiple variations, frameworks, or options, keep the core workflow and selection guidance in the body and move variant-specific details into reference files. Reference files must stay one level deep from the body, be linked directly from it, and state when to read them. Reference files longer than 100 lines should start with a table of contents so the reader can see the full scope when previewing. Avoid deeply nested references and avoid duplicating the same information in both the body and references.
+
 ## Create or Update
 
 1. Clarify the job the Skill should help an agent perform, including representative prompts and the expected durable behavior.
@@ -11,7 +39,7 @@ Create, update, migrate, or review Agent Skills for Synergy. Follow the Agent Sk
    - `references/` for details the agent should load on demand with `skill(name, reference: "references/file.md")`.
    - `scripts/` for deterministic helpers the agent runs through existing tools such as `bash`, not through a Skill executor.
    - `assets/` for templates or output files the body tells the agent to access when needed.
-5. Do not create inventories, generated indexes, README clutter, or placeholder files. If no reference, script, or asset is needed, omit the directory.
+5. Do not create inventories, generated indexes, README clutter, or placeholder files. If no reference, script, or asset is needed, omit the directory. A Skill should contain only the information an agent needs to do the job — not auxiliary context about how it was created.
 
 ## Manifest Contract
 
@@ -58,6 +86,16 @@ For Skill Slash content, `$N` placeholders are one-based while `$ARGUMENTS[N]` s
 - Out-of-range placeholders become an empty string.
 - If the body has supported placeholders, Synergy only substitutes them.
 - If the body has no placeholders and trailing text exists, Synergy uses the no-placeholder fallback: it adds that text as a separate user request part after the Skill content.
+
+## Creation Process
+
+Follow these steps in order, skipping only when a clear reason applies:
+
+1. **Understand the Skill with concrete examples.** Ask the user for representative tasks and the phrases that should trigger the Skill; keep questions minimal and follow up as needed.
+2. **Plan the reusable contents.** For each example, decide which scripts, references, or assets would help execute that workflow repeatedly.
+3. **Create or edit the Skill.** Write the body first, then resources. Name the Skill folder exactly after `name`.
+4. **Verify.** Run the verification steps below; fix reported issues and re-run.
+5. **Iterate.** Use the Skill on real tasks, notice struggles or inefficiencies, update the Skill, and test again.
 
 ## Verification
 
