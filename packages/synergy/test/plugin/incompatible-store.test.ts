@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import fs from "fs/promises"
 import path from "path"
 import { IncompatiblePluginStore } from "../../src/plugin/incompatible-store"
 import { tmpdir } from "../fixture/fixture"
@@ -28,5 +29,21 @@ describe("incompatible plugin records", () => {
     expect(await IncompatiblePluginStore.read(data)).toEqual([])
     await Bun.write(path.join(data, "plugin-incompatible.json"), "not json")
     await expect(IncompatiblePluginStore.read(data)).rejects.toThrow()
+  })
+
+  test("concurrent writes land exactly one complete batch without temp residue", async () => {
+    await using tmp = await tmpdir()
+    const data = path.join(tmp.path, "data")
+    const batches = Array.from({ length: 8 }, (_, index) => [
+      { pluginId: `race-${index}`, reason: "reinstallRequired" as const },
+    ])
+
+    await Promise.all(batches.map((batch) => IncompatiblePluginStore.write(batch, data)))
+
+    const final = await IncompatiblePluginStore.read(data)
+    expect(final).toHaveLength(1)
+    expect(batches.some((batch) => batch[0]!.pluginId === final[0]?.pluginId)).toBe(true)
+    const entries = await fs.readdir(data)
+    expect(entries.filter((name) => name.includes(".tmp"))).toEqual([])
   })
 })

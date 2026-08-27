@@ -371,6 +371,26 @@ describe.serial("LibraryDB", () => {
       expect(row!.turns_remaining).toBe(5)
     })
 
+    test("incrementRetrievalCounts batches pulls without touching q_visits or updated_at", () => {
+      makeExperience("exp-retrieval")
+      makeExperience("exp-retrieval-2")
+      const before = LibraryDB.Experience.get("exp-retrieval")!
+      expect(before.retrieval_count).toBe(0)
+      expect(before.q_visits).toBe(0)
+
+      // Duplicate ids match the row once (IN is a per-row predicate).
+      LibraryDB.Experience.incrementRetrievalCounts(["exp-retrieval", "exp-retrieval", "exp-retrieval-2"])
+      LibraryDB.Experience.incrementRetrievalCounts([])
+
+      const after = LibraryDB.Experience.get("exp-retrieval")!
+      expect(after.retrieval_count).toBe(1)
+      expect(LibraryDB.Experience.get("exp-retrieval-2")!.retrieval_count).toBe(1)
+      // Pulls must not touch the reward-path counter or the UI-facing timestamp
+      // (Library's newest/oldest sort and "updated" label read updated_at).
+      expect(after.q_visits).toBe(0)
+      expect(after.updated_at).toBe(before.updated_at)
+    })
+
     describe("applyReward", () => {
       const defaultWeights = {
         outcome: 0.35,

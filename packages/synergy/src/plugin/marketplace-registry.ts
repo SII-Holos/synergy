@@ -15,6 +15,7 @@ import z from "zod"
 import { Config } from "../config/config"
 import { PLUGIN_MARKETPLACE_DEFAULTS, PluginMarketplace as PluginMarketplaceConfig } from "../config/schema"
 import { Global } from "../global"
+import { Storage } from "../storage/storage"
 import { sha256Content, sha256File } from "../util/crypto"
 import { baseCapabilities } from "./capability"
 import { readSignatureFile, verifySignatureWithPublicKey, type SignatureMetadata } from "./signature"
@@ -448,10 +449,10 @@ export namespace PluginMarketplaceRegistry {
   }
 
   async function writeJsonFile(filepath: string, value: unknown) {
-    await fs.mkdir(path.dirname(filepath), { recursive: true })
-    const tmp = `${filepath}.tmp`
-    await Bun.write(tmp, JSON.stringify(value, null, 2))
-    await fs.rename(tmp, filepath)
+    // Delegate to the shared atomic writer so concurrent writes to the same
+    // registry file use unique temp names (pid+time+random) and retry on
+    // transient IO, instead of clobbering each other on a fixed `.tmp`.
+    await Storage.writeJsonAtomic(filepath, JSON.stringify(value, null, 2))
   }
 
   async function isFresh(filepath: string, ttlMs: number) {
