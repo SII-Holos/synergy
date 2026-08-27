@@ -30,7 +30,10 @@ import { registerNoteTools } from "./note/tools"
 import { registerEmailTools } from "./email/tools"
 import { registerChannelTools } from "./channel/tools"
 import { registerPluginSkillSource } from "./plugin/skill-source"
+import { registerPluginToolContext } from "./plugin/tool-context"
 import { registerMcpCommandSource } from "./mcp/instruction-source"
+import { registerMcpToolSource } from "./mcp/tool-source"
+import { registerBlueprintToolAccess } from "./blueprint/tool-access"
 import { setTerminalHookDeliverer } from "./light-loop/runtime"
 import { setBlueprintAgendaAssertClear } from "./blueprint/tools/blueprint-loop-stop"
 import { AgendaSessionWakeup } from "./agenda/session-wakeup"
@@ -48,6 +51,9 @@ registerEmailTools()
 registerChannelTools()
 registerPluginSkillSource()
 registerMcpCommandSource()
+registerPluginToolContext()
+registerMcpToolSource()
+registerBlueprintToolAccess()
 
 // L4 assembly: the light-loop domain consumes plugin hook delivery through an
 // injected function so product domains stay acyclic (no light-loop→plugin

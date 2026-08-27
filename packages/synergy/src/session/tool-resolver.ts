@@ -5,15 +5,10 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
 import z from "zod"
 import { Agent } from "@/agent/agent"
 import { Identifier } from "@/id/id"
-import { MCP } from "@/mcp"
+import { ToolMcpSource } from "@/tool/mcp-source"
 import { PermissionNext } from "@/permission/next"
 import { PermissionRules } from "@/permission/rules"
 import { SmartAllow } from "@/permission/smart-allow"
-import { Plugin } from "@/plugin"
-import { PluginToolId } from "../plugin/ids.js"
-import { toolCapabilities } from "../plugin/capability"
-import { getApproval, type PluginApprovalRecord } from "../plugin/consent/approval-store"
-import { markContributionDegraded } from "../plugin/loader"
 import { ProviderTransform } from "@/provider/transform"
 import { Provider } from "@/provider/provider"
 import { Tool } from "@/tool/tool"
@@ -32,7 +27,7 @@ import { SessionBounds } from "./bounds"
 import { SessionToolInput } from "./tool-input"
 import { Scope } from "@/scope"
 import { ScopeContext } from "@/scope/context"
-import { EnforcementGate, type Capability } from "@/enforcement/gate"
+import { EnforcementGate, type Capability, type GateOptions } from "@/enforcement/gate"
 import { SandboxBackend } from "@/sandbox/backend"
 import type { BashSandboxPrepare } from "@/tool/bash/shared"
 import type { ResolvedProfile } from "@/control-profile/types"
@@ -50,8 +45,7 @@ import { ObservabilityRedaction } from "@/observability/redaction"
 import { ObservabilitySpans } from "@/observability/spans"
 import { SkillSourceProfile } from "../instruction/source-profile"
 import { LightLoopReviewAccess } from "./light-loop-review-access"
-import { BlueprintLoopReviewAccess } from "../blueprint/review-access"
-import { BlueprintLoopStore } from "@/blueprint"
+import { SessionToolContext } from "./tool-context"
 import type { ToolCatalog } from "./tool-catalog"
 import { ToolExecutor } from "./tool-executor"
 import type { ToolExecutorKind } from "./tool-scheduler"
@@ -237,44 +231,12 @@ export namespace ToolResolver {
     autoExpandable: Set<string>
   }
 
-  interface PluginGateData {
-    toolCapabilities: Record<string, { capabilities: string[] }>
-    approvals: Record<string, PluginApprovalRecord>
-  }
-
-  async function currentPluginToolIds(): Promise<Set<string>> {
-    const ids = new Set<string>()
-    for (const plugin of await Plugin.getLoaded()) {
-      for (const contribution of plugin.manifest.contributions) {
-        if (contribution.kind === "tool") ids.add(PluginToolId.format(plugin.id, contribution.id))
-      }
-    }
-    return ids
-  }
-
-  async function currentPluginGateData(): Promise<PluginGateData> {
-    const caps: Record<string, { capabilities: string[] }> = {}
-    const approvals: Record<string, PluginApprovalRecord> = {}
-    for (const plugin of await Plugin.getLoaded()) {
-      try {
-        const manifest = plugin.manifest
-        for (const contribution of manifest.contributions) {
-          if (contribution.kind !== "tool") continue
-          const capabilities = toolCapabilities(manifest, contribution.id)
-          caps[PluginToolId.format(plugin.id, contribution.id)] = {
-            capabilities,
-          }
-        }
-        const approval = await getApproval(plugin.id, manifest)
-        if (approval) approvals[plugin.id] = approval
-      } catch (err) {
-        log.warn("plugin gate data skipped", {
-          pluginId: plugin.id,
-          error: err instanceof Error ? err.message : String(err),
-        })
-      }
-    }
-    return { toolCapabilities: caps, approvals }
+  /** P9: plugin gate options are filled by the registered plugin source; an
+   * unregistered source leaves them untouched, matching a host with no
+   * loaded plugins. */
+  async function configureGateOptions(options: GateOptions): Promise<GateOptions> {
+    await SessionToolContext.plugin()?.configureGate(options)
+    return options
   }
 
   /**
@@ -671,7 +633,11 @@ export namespace ToolResolver {
     output: Output,
     signal: AbortSignal,
   ) {
-    return settleExecutionOnAbort(() => Plugin.trigger(point, input, output, { signal }), signal)
+    const source = SessionToolContext.plugin()
+    return settleExecutionOnAbort(
+      () => (source ? source.triggerToolHooks(point, input, output, { signal }) : Promise.resolve(output)),
+      signal,
+    )
   }
 
   function disposeToolTimeout(ctx: Tool.Context) {
@@ -1114,19 +1080,15 @@ export namespace ToolResolver {
   async function isRecordedBlueprintLoopReviewSession(input: Omit<Input, "processor">): Promise<boolean> {
     if (!input.session?.id) return false
     return (
-      (await BlueprintLoopReviewAccess.resolve({
-        agent: input.agent.name,
-        reviewSessionID: input.session.id,
-        reviewSession: input.session,
-      })) !== undefined
+      (await SessionToolContext.blueprint()?.canUseReviewTools(input.agent.name, input.session.id, input.session)) ??
+      false
     )
   }
 
   async function canStopBlueprintLoop(input: Omit<Input, "processor">): Promise<boolean> {
     const session = input.session
     if (!session?.id || session.blueprint?.loopRole !== "execution" || !session.blueprint.loopID) return false
-    const loop = await BlueprintLoopStore.get(session.scope.id, session.blueprint.loopID).catch(() => undefined)
-    return loop?.status === "running" && loop.sessionID === session.id
+    return (await SessionToolContext.blueprint()?.canStopLoop(session)) ?? false
   }
 
   async function hasAvailableVisionModel(): Promise<boolean> {
@@ -1471,8 +1433,7 @@ export namespace ToolResolver {
         }) as JSONSchema7
       } catch (error) {
         if (item.source?.type === "plugin") {
-          const plugin = await Plugin.get(item.source.pluginId)
-          if (plugin) markContributionDegraded(plugin, { kind: "tool", id: item.source.toolId }, error)
+          await SessionToolContext.plugin()?.markToolSchemaDegraded(item.source.pluginId, item.source.toolId, error)
         }
         const diagnostic = toolSchemaDiagnostic(item, error)
         log.warn("tool skipped due to schema failure", {
@@ -1554,20 +1515,17 @@ export namespace ToolResolver {
                   workspaceInfo,
                   SkillSourceProfile.allRootPaths(workspace),
                 )
-                const pluginToolIds = await currentPluginToolIds()
-                const pluginGateData = await currentPluginGateData()
-                const gate = await EnforcementGate.create({
-                  activeWorkspace: workspace,
-                  workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-                  originalCheckout: (workspaceInfo as any)?.originalCheckout,
-                  registeredPluginTools: pluginToolIds,
-                  pluginToolCapabilities: pluginGateData.toolCapabilities,
-                  pluginApprovals: pluginGateData.approvals,
-                  profileId,
-                  readRoots: [synergyRoot, ...trustedRoots],
-                  trustedRoots,
-                  synergyRoot,
-                })
+                const gate = await EnforcementGate.create(
+                  await configureGateOptions({
+                    activeWorkspace: workspace,
+                    workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+                    originalCheckout: (workspaceInfo as any)?.originalCheckout,
+                    profileId,
+                    readRoots: [synergyRoot, ...trustedRoots],
+                    trustedRoots,
+                    synergyRoot,
+                  }),
+                )
                 await toolTrace.phase("tool.resolver.ready", "resolver ready", {
                   profileId,
                   workspace,
@@ -1758,7 +1716,8 @@ export namespace ToolResolver {
     }
 
     if (input.includeMCP !== false) {
-      const mcpEntries = await MCP.toolEntries()
+      const mcpSource = ToolMcpSource.get()
+      const mcpEntries = mcpSource ? await mcpSource.toolEntries() : []
       const mcpToolNames = new Set(mcpEntries.map((entry) => entry.id))
       for (const entry of mcpEntries) {
         const key = entry.id
@@ -1815,21 +1774,18 @@ export namespace ToolResolver {
                     workspaceInfo,
                     SkillSourceProfile.allRootPaths(workspace),
                   )
-                  const pluginToolIds = await currentPluginToolIds()
-                  const pluginGateData = await currentPluginGateData()
-                  const gate = await EnforcementGate.create({
-                    activeWorkspace: workspace,
-                    workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-                    originalCheckout: (workspaceInfo as any)?.originalCheckout,
-                    registeredMcpTools: mcpToolNames,
-                    registeredPluginTools: pluginToolIds,
-                    pluginToolCapabilities: pluginGateData.toolCapabilities,
-                    pluginApprovals: pluginGateData.approvals,
-                    profileId,
-                    readRoots: [Global.Path.root, ...trustedRoots],
-                    synergyRoot: Global.Path.root,
-                    trustedRoots,
-                  })
+                  const gate = await EnforcementGate.create(
+                    await configureGateOptions({
+                      activeWorkspace: workspace,
+                      workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+                      originalCheckout: (workspaceInfo as any)?.originalCheckout,
+                      registeredMcpTools: mcpToolNames,
+                      profileId,
+                      readRoots: [Global.Path.root, ...trustedRoots],
+                      synergyRoot: Global.Path.root,
+                      trustedRoots,
+                    }),
+                  )
                   await toolTrace.phase("tool.resolver.ready", "resolver ready", {
                     profileId,
                     workspace,
@@ -1855,7 +1811,7 @@ export namespace ToolResolver {
                     tool: key,
                     args: args as Record<string, any>,
                     toolTimeoutMs,
-                    mcpCallTimeoutMs: MCP.toolCallTimeout(key),
+                    mcpCallTimeoutMs: ToolMcpSource.get()?.toolCallTimeout(key),
                   })
                   const combinedAbort = startToolTimeout(ctx, toolTimeoutMs)
                   ctx.abort = combinedAbort
