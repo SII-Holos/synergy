@@ -574,6 +574,18 @@ All domains are importable and default to `merge` mode. A stale plan (revised co
 
 The Settings Import surface accepts file upload, URL fetch, or pasted JSON/JSONC. It supports explicit Global/Project target selection, a project chooser for project imports, domain-level selection with a re-review gate when the domain set changes, value-level current-versus-imported display, diagnostic warnings, stale-plan detection with a refresh action, and a reload-result summary after apply.
 
+## Config Export
+
+`synergy config export` writes the merged config at the target scope as JSONC to stdout, or to a file with `--output`/`-o`. The `config.export` API (SDK: `client.config.export()`) returns the same payload for the Web Settings surface.
+
+Export secrets handling:
+
+- By default, secrets (provider `apiKey`s, email passwords, Feishu `appSecret`s, embedding/rerank keys, MCP OAuth `clientSecret`s) are replaced with the `__REDACTED__` sentinel — the same redaction the `config.get`/`config.global` APIs apply.
+- `--include-secrets` keeps plaintext values. Files written with this flag are chmod'd to `0600`, and the command prints a warning; treat the output as sensitive.
+- A redacted export is a valid import payload: `synergy config import` merges `__REDACTED__` values back with the stored secrets on the target machine, so a redacted backup restores configuration without carrying secrets in the file.
+
+`--scope global|project` selects the source scope (default `global`; project requires an active project), and `--only <domain>` limits the export to selected domains, repeatable. Only domains with configuration are included. The output does not carry a `$schema` reference: the runtime only knows the install-local `file:` schema URL, which is a broken link on any other machine, and the import side ignores `$schema`.
+
 ## Config Editing
 
 The Web Settings surface, domain APIs, and CLI all use the same domain ownership registry. Manual edits should preserve that ownership so reload targets and conflict previews remain meaningful.

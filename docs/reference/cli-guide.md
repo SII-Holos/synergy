@@ -102,6 +102,7 @@ Piped stdin is appended to the prompt. The command subscribes to session events 
 | `synergy config path`                        | Print config, data, and cache roots                             |
 | `synergy config wizard`                      | Detect providers and write core model configuration             |
 | `synergy config import <file-or-url>`        | Preview or apply domain-aware config import                     |
+| `synergy config export`                      | Export config as JSONC (secrets redacted by default)            |
 | `synergy config embedding`                   | Configure an embedding provider                                 |
 | `synergy config rerank`                      | Configure a rerank provider                                     |
 | `synergy auth login\|logout\|list\|usage`    | Manage provider credentials and inspect supported usage windows |
@@ -133,6 +134,23 @@ synergy config import ./config.jsonc --mode replace-domain --yes
 All domains are importable and default to `merge` mode. `append` recursively merges objects and appends arrays in source order; imported scalar values override existing values. Conflicts and hardcoded secrets are flagged as warnings without blocking. A stale plan (config changed between plan and apply) is rejected unless `--force` is supplied.
 
 JSONC comments in existing domain files are preserved. Committed files trigger a runtime config reload; reload failure does not roll back the committed changes.
+
+### config export
+
+`synergy config export` writes the merged config at the target scope as JSONC to stdout or a file. API keys, passwords, and other secrets are replaced with the `__REDACTED__` sentinel by default; pass `--include-secrets` to keep plaintext values. A redacted export can be re-imported later — the import merges the sentinel with the stored secret (see [Configuration Layout: Config Export](configuration-layout.md#config-export)).
+
+```bash
+synergy config export > backup.jsonc
+synergy config export --scope project --only providers --only models
+synergy config export --include-secrets -o full-backup.jsonc
+```
+
+| Option                    | Meaning                                                                      |
+| ------------------------- | ---------------------------------------------------------------------------- |
+| `--include-secrets`       | Keep plaintext secrets; files written with this flag get `0600` permissions  |
+| `--only <domain>`         | Export only the named domain; repeatable for multiple domains                |
+| `--scope global\|project` | Source scope; defaults to `global`; project scope requires an active project |
+| `--output`, `-o`          | Write to this file instead of stdout                                         |
 
 The `openai-codex` provider uses ChatGPT/Codex OAuth credentials and the Codex backend. The `openai` provider uses OpenAI Platform API-key credentials. The `grok` provider uses xAI subscription OAuth credentials (SuperGrok / X Premium+) against the OpenAI-compatible `https://api.x.ai/v1` API. Their login, storage, usage, and billing semantics are intentionally separate. The Grok model list is discovered live from the xAI `/v1/language-models` API with the stored subscription OAuth credential and refreshes automatically (≤1h TTL, or via `synergy models --refresh`); offline or failed discovery falls back to the bundled list.
 

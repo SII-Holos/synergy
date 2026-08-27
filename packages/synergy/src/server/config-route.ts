@@ -4,6 +4,7 @@ import { mapValues } from "remeda"
 import z from "zod"
 import { Config } from "../config/config"
 import { ConfigDomain } from "../config/domain"
+import { ConfigExport } from "../config/export"
 import { ConfigImport } from "../config/import"
 import { ConfigDomainOpen } from "../config/domain-open"
 import { ConfigInstructions } from "../config/instructions"
@@ -63,6 +64,24 @@ const ConfigImportBadRequestError = z.union([
 ])
 
 const ConfigImportConflictError = z.union([ConfigImport.RevisionConflictError.Schema, ConfigImport.LockedError.Schema])
+
+// No meta ref here: a ref'd query object is registered as a single-parameter
+// component that keeps only its first property (hono-openapi behavior), which
+// would drop `only` and `includeSecrets` from the API surface.
+const ConfigExportQuery = z.object({
+  scope: ConfigImport.Scope.optional(),
+  only: z
+    .union([ConfigDomain.Id, z.array(ConfigDomain.Id)])
+    .optional()
+    .transform((value) => (value === undefined ? undefined : [value].flat())),
+  // stringbool rejects unknown values instead of coercing "false" to true —
+  // a false positive here would leak secrets.
+  includeSecrets: z.stringbool({ truthy: ["true"], falsy: ["false"] }).optional(),
+})
+
+const ConfigExportBadRequestError = z
+  .union([BadRequestError, ConfigImport.ProjectScopeRequiredError.Schema])
+  .meta({ ref: "ConfigExportBadRequestError" })
 
 function limitConfigImportBody(maxBytes: number) {
   return async (c: Context, next: Next) => {
@@ -316,6 +335,27 @@ export const ConfigRoute = new Hono()
         return c.json(result.body, result.status)
       }
     },
+  )
+  .get(
+    "/export",
+    describeRoute({
+      summary: "Export config",
+      description:
+        "Export selected config domains as one merged config object. Secrets are redacted by default; pass includeSecrets=true to keep plaintext values.",
+      operationId: "config.export",
+      responses: {
+        200: {
+          description: "Exported config",
+          content: { "application/json": { schema: resolver(ConfigExport.Result) } },
+        },
+        400: {
+          description: "Invalid export query or missing project scope",
+          content: { "application/json": { schema: resolver(ConfigExportBadRequestError) } },
+        },
+      },
+    }),
+    validator("query", ConfigExportQuery),
+    async (c) => c.json(await ConfigExport.build(c.req.valid("query"))),
   )
   .post(
     "/import/plan",
