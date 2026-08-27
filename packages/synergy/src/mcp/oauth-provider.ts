@@ -36,6 +36,10 @@ export interface McpOAuthCallbacks {
   isCurrent?: () => boolean
 }
 
+// Provenance: MCP Authorization specification ( https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization );
+// dynamic client registration per RFC 7591 ( https://www.rfc-editor.org/rfc/rfc7591 ).
+// Local adaptation: implements the SDK's OAuthClientProvider over Synergy-owned token storage;
+// public client by default (token_endpoint_auth_method "none") unless a client secret is configured.
 export class McpOAuthProvider implements OAuthClientProvider {
   private get mutationOptions(): McpAuth.MutationOptions {
     return { isCurrent: this.callbacks.isCurrent }

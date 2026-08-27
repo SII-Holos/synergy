@@ -113,8 +113,12 @@
   }
 
   [data-slot="activity-step-title"] {
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
     color: var(--text-weak);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   [data-slot="activity-step-subtitle"] {
@@ -223,9 +227,13 @@
   }
 
   [data-slot="activity-receipt-title"] {
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
     color: var(--text-base);
     font-weight: var(--font-weight-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   [data-slot="activity-receipt-scope"] {
