@@ -497,26 +497,61 @@ export namespace ProviderTransform {
   // of `adaptive + effort`; 4.7+ reject `enabled` outright (HTTP 400).
   const ANTHROPIC_ADAPTIVE_EFFORTS = ["low", "medium", "high", "xhigh", "max"]
   const ANTHROPIC_DUAL_EFFORTS = ["low", "medium", "high", "max"]
-  // API hard floor for budget_tokens (docs: "Minimum of 1,024 tokens. The API
-  // rejects smaller values.") and the text room we keep for the visible answer.
+  // API hard floor for budget_tokens and the text room we keep for the visible
+  // answer. Source: extended-thinking docs, "Minimum of 1,024 tokens. The API
+  // rejects smaller values." and "budget must leave room for the final response":
+  // https://platform.claude.com/docs/en/build-with-claude/extended-thinking
   const ANTHROPIC_BUDGET_MIN = 1024
   const ANTHROPIC_TEXT_FLOOR = 1024
-  // Ecosystem-stable anchors (opencode, Claude Code) matching the official
+  // Ecosystem-stable anchors: opencode uses 16_000/31_999 for high/max
+  // (https://github.com/anomalyco/opencode/blob/main/packages/opencode/src/provider/transform.ts)
+  // and Claude Code defaults MAX_THINKING_TOKENS to 31_999
+  // (https://code.claude.com/docs/en/env-vars). They also match the official
   // guidance to start complex tasks at 16k and avoid budgets beyond 32k.
   const ANTHROPIC_BUDGET_HIGH = 16_000
   const ANTHROPIC_BUDGET_MAX = 31_999
 
   type AnthropicThinkingGeneration = "adaptive" | "dual" | "budget"
 
+  type AnthropicVersion = {
+    major: number
+    minor: number | undefined
+  }
+
+  // Parse an Anthropic API model id into a generation version. Handles both
+  // id conventions:
+  // - family-first: claude-opus-4-5, claude-opus-4.5, claude-opus-45 (legacy
+  //   concatenated alias), claude-opus-4-20250514 (no minor + date suffix);
+  // - family-last (3.x era): claude-3-7-sonnet-20250219, claude-3-haiku-20240307.
+  // The major is single-digit so `claude-opus-41` parses as 4.1, never as
+  // major 41; the lookahead stops at the date/@ suffix without consuming it.
+  function anthropicVersion(apiID: string): AnthropicVersion | undefined {
+    const id = apiID.toLowerCase()
+    const familyFirst = /^claude-(opus|sonnet|haiku)-(\d)(?:[-.](\d{1,2})|(\d))?(?![a-z0-9.])/.exec(id)
+    if (familyFirst) {
+      return {
+        major: Number(familyFirst[2]),
+        minor:
+          familyFirst[3] !== undefined
+            ? Number(familyFirst[3])
+            : familyFirst[4] !== undefined
+              ? Number(familyFirst[4])
+              : undefined,
+      }
+    }
+    const familyLast = /^claude-(\d)(?:[-.](\d{1,2}))?-(opus|sonnet|haiku)(?![a-z0-9.])/.exec(id)
+    if (familyLast) {
+      return { major: Number(familyLast[1]), minor: familyLast[2] !== undefined ? Number(familyLast[2]) : undefined }
+    }
+    return undefined
+  }
+
   function anthropicThinkingGeneration(model: Provider.Model): AnthropicThinkingGeneration {
-    const id = model.api.id.toLowerCase()
-    const match = /claude-(?:opus|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?(?:-|\.|$)/.exec(id)
-    if (!match) return "budget"
-    const major = Number(match[1])
-    const minor = match[2] === undefined ? undefined : Number(match[2])
-    if (major >= 5) return "adaptive"
-    if (major === 4 && minor !== undefined && minor >= 7) return "adaptive"
-    if (major === 4 && minor === 6) return "dual"
+    const version = anthropicVersion(model.api.id)
+    if (!version) return "budget"
+    if (version.major >= 5) return "adaptive"
+    if (version.major === 4 && version.minor !== undefined && version.minor >= 7) return "adaptive"
+    if (version.major === 4 && version.minor === 6) return "dual"
     return "budget"
   }
 
@@ -543,13 +578,11 @@ export namespace ProviderTransform {
   }
 
   function anthropicPinnedToBudget(model: Provider.Model): boolean {
-    const id = model.api.id.toLowerCase()
-    const match = /claude-(?:opus|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?(?:-|\.|$)/.exec(id)
-    if (!match) return false
-    const major = Number(match[1])
-    const minor = match[2] === undefined ? undefined : Number(match[2])
-    if (major === 4 && minor !== undefined && minor >= 6) return false
-    if (major === 4 && minor === 5 && id.includes("opus")) return false
+    const version = anthropicVersion(model.api.id)
+    if (!version) return false
+    // Opus 4.5 is the sole extended-only model that also supports effort
+    // (docs: the only model where budget_tokens and output_config.effort combine).
+    if (version.major === 4 && version.minor === 5 && model.api.id.toLowerCase().includes("opus")) return false
     return true
   }
 
