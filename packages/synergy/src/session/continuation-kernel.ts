@@ -3,10 +3,6 @@ import type { Scope } from "../scope"
 import { MessageV2 } from "./message-v2"
 import { SessionProgress } from "./progress"
 import type { Info as SessionInfo } from "./types"
-import { BlueprintContinuationPolicy } from "./blueprint-continuation"
-import { BossContinuationPolicy } from "./boss-continuation"
-import { LightLoopContinuationPolicy } from "./light-loop-continuation"
-import { LatticeContinuationPolicy } from "../lattice/policy"
 import { SessionManager } from "./manager"
 import { SessionInbox } from "./inbox"
 import { ContinuationWait } from "./continuation-wait"
@@ -44,7 +40,10 @@ export namespace ContinuationKernel {
 
   const policies: Policy[] = []
   const dedup = new Map<string, Set<string>>()
-  let builtinsRegistered = false
+  const providers = new Map<string, PolicyProvider>()
+  const drainedSources = new Set<string>()
+
+  export type PolicyProvider = () => Policy[]
 
   export function register(policy: Policy): void {
     if (policies.some((candidate) => candidate.id === policy.id)) return
@@ -52,14 +51,44 @@ export namespace ContinuationKernel {
     policies.sort((a, b) => b.priority - a.priority)
   }
 
+  /** Domains register a policy provider under a stable source id. Providers
+   * are drained lazily on the next init()/propose() — mirroring the builtin
+   * self-heal the kernel has always had — so registration order and entry
+   * point cannot cause a missed continuation. */
+  export function registerProvider(sourceID: string, provider: PolicyProvider): void {
+    providers.set(sourceID, provider)
+  }
+
+  export function providerIDs(): string[] {
+    return [...providers.keys()].sort()
+  }
+
+  /** Canary surface: drain providers and report registered policy ids. */
+  export function registeredPolicyIDs(): string[] {
+    drainProviders()
+    return policies.map((policy) => policy.id).sort()
+  }
+  function drainProviders(): void {
+    for (const [sourceID, provider] of providers) {
+      if (drainedSources.has(sourceID)) continue
+      drainedSources.add(sourceID)
+      for (const policy of provider()) register(policy)
+    }
+  }
+
   export function reset(): void {
     policies.length = 0
     dedup.clear()
-    builtinsRegistered = false
+    drainedSources.clear()
   }
 
   export function init(): () => void {
-    registerBuiltins()
+    drainProviders()
+    if (policies.length === 0) {
+      log.warn("continuation kernel has no policies registered", {
+        providers: providerIDs().length,
+      })
+    }
     return () => undefined
   }
 
@@ -80,7 +109,7 @@ export namespace ContinuationKernel {
   }
 
   export async function propose(sessionID: string): Promise<Proposal | undefined> {
-    registerBuiltins()
+    drainProviders()
     const gate = await passesSharedGate(sessionID)
     if (!gate) return undefined
 
@@ -144,15 +173,6 @@ export namespace ContinuationKernel {
   export async function kick(sessionID: string): Promise<boolean> {
     const { SessionDrive } = await import("./drive")
     return SessionDrive.request(sessionID, "continuation-kick")
-  }
-
-  function registerBuiltins(): void {
-    if (builtinsRegistered) return
-    builtinsRegistered = true
-    register(BossContinuationPolicy)
-    register(BlueprintContinuationPolicy)
-    register(LightLoopContinuationPolicy)
-    register(LatticeContinuationPolicy)
   }
 
   function dedupKey(policyID: string, terminalMessageID: string): string {

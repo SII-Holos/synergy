@@ -6,6 +6,8 @@ import { AgendaStore } from "../../src/agenda/store"
 import { Cortex } from "../../src/cortex/manager"
 import { Identifier } from "../../src/id/id"
 import { ContinuationKernel } from "../../src/session/continuation-kernel"
+// Product domains register continuation policy providers via the L4 manifest
+import "../../src/product-registration"
 import { Session } from "../../src/session"
 import { SessionDrive } from "../../src/session/drive"
 import { SessionInbox } from "../../src/session/inbox"

@@ -1,7 +1,7 @@
-import { MessageV2 } from "./message-v2"
-import { Session } from "./index"
-import { ContinuationKernel } from "./continuation-kernel"
-import { SessionInbox } from "./inbox"
+import { MessageV2 } from "../session/message-v2"
+import { Session } from "../session/index"
+import { ContinuationKernel } from "../session/continuation-kernel"
+import { SessionInbox } from "../session/inbox"
 import { bossAssignmentMetadata } from "./boss-message"
 
 const BOSS_REPORT_TOOL = "boss_report"

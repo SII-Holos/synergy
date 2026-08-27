@@ -403,7 +403,7 @@ export namespace RuntimeReload {
           const newExp = result.config.experimental ?? {}
           if (oldExp.boss_mode !== newExp.boss_mode) {
             try {
-              const { BossRuntime } = await import("../session/boss-runtime")
+              const { BossRuntime } = await import("../boss/boss-runtime")
               await BossRuntime.sync(newExp.boss_mode === true)
             } catch (err) {
               ctx.warnings.push(`Failed to sync runtime boss mode: ${err instanceof Error ? err.message : String(err)}`)
@@ -411,7 +411,7 @@ export namespace RuntimeReload {
           }
           if (newExp.boss_mode === true && oldExp.boss_identity_text !== newExp.boss_identity_text) {
             try {
-              const { BossRuntime } = await import("../session/boss-runtime")
+              const { BossRuntime } = await import("../boss/boss-runtime")
               await BossRuntime.refreshIdentity({ versioned: true })
             } catch (err) {
               ctx.warnings.push(
@@ -421,7 +421,7 @@ export namespace RuntimeReload {
           }
           if (newExp.boss_mode === true && oldExp.boss_briefing_interval_days !== newExp.boss_briefing_interval_days) {
             try {
-              const { BossRuntime } = await import("../session/boss-runtime")
+              const { BossRuntime } = await import("../boss/boss-runtime")
               await BossRuntime.rescheduleBriefing()
             } catch (err) {
               ctx.warnings.push(
@@ -438,7 +438,7 @@ export namespace RuntimeReload {
           const newAccounts = result.config.channel?.feishu?.accounts
           if (JSON.stringify(oldAccounts) !== JSON.stringify(newAccounts)) {
             try {
-              const { BossRuntime } = await import("../session/boss-runtime")
+              const { BossRuntime } = await import("../boss/boss-runtime")
               await BossRuntime.sync(result.config.experimental?.boss_mode === true)
             } catch (err) {
               ctx.warnings.push(

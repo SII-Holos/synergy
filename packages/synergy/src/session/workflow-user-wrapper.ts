@@ -1,6 +1,7 @@
 import type { Info as SessionInfo } from "./types"
 import { MessageV2 } from "./message-v2"
 import { isActiveLightLoopWorkflow } from "./light-loop-state"
+import { WorkflowPromptRegistry } from "./workflow-prompt-registry"
 
 /**
  * WorkflowUserWrapper stamps and projects user messages for Plan, Lattice, and
@@ -31,26 +32,23 @@ export namespace WorkflowUserWrapper {
   type PromptBuilder = (query: string) => string
   type ModePromptBuilders = Record<Mode, PromptBuilder>
 
-  const PROMPT_BUILDERS: Record<string, ModePromptBuilders> = {
+  const PROMPT_BUILDERS: Record<string, Partial<ModePromptBuilders>> = {
     synergy: {
       plan: synergyPlan,
       lattice: synergyLattice,
       lightloop: synergyLightloop,
-      boss: synergyBoss,
     },
     "synergy-max": {
       plan: synergyMaxPlan,
       lattice: synergyMaxLattice,
       lightloop: synergyMaxLightloop,
-      boss: synergyMaxBoss,
     },
   }
 
-  const FALLBACK_BUILDERS: ModePromptBuilders = {
+  const FALLBACK_BUILDERS: Partial<ModePromptBuilders> = {
     plan: genericPlan,
     lattice: genericLattice,
     lightloop: genericLightloop,
-    boss: genericBoss,
   }
 
   export function activeMode(session?: Pick<SessionInfo, "workflow">): Mode | undefined {
@@ -140,8 +138,13 @@ export namespace WorkflowUserWrapper {
 
   export function build(agentName: string, mode: Mode, query: string): string {
     const trimmed = query.trim() || "(empty request)"
+    if (mode === "boss") {
+      // Boss wrapper bytes live in the boss domain (H2); without registration
+      // there is no boss workflow to wrap, so the request passes through.
+      return WorkflowPromptRegistry.get(mode)?.projectUserMessage?.(trimmed, agentName) ?? trimmed
+    }
     const builders = PROMPT_BUILDERS[agentName] ?? FALLBACK_BUILDERS
-    return builders[mode](trimmed)
+    return builders[mode]?.(trimmed) ?? trimmed
   }
 
   function messageMode(msg: MessageV2.WithParts): Mode | undefined {
@@ -282,41 +285,6 @@ export namespace WorkflowUserWrapper {
       "User request:",
       query,
       "</lightloop-user-request>",
-    ].join("\n")
-  }
-  function genericBoss(query: string): string {
-    return [
-      "<boss-user-request>",
-      "You are in the Boss Mode workflow.",
-      "You are the boss: you decide, delegate, monitor, and summarize. Route this request yourself — answer directly or assign it to a worker.",
-      "",
-      "User request:",
-      query,
-      "</boss-user-request>",
-    ].join("\n")
-  }
-
-  function synergyBoss(query: string): string {
-    return [
-      "<boss-user-request>",
-      "You are synergy in the Boss Mode workflow.",
-      "You are the boss of a worker tree. Decide whether to answer directly, delegate to a specialist worker (boss_spawn / boss_assign), monitor progress (boss_status), or cancel work (boss_cancel). Summarize results back to the human.",
-      "",
-      "User request:",
-      query,
-      "</boss-user-request>",
-    ].join("\n")
-  }
-
-  function synergyMaxBoss(query: string): string {
-    return [
-      "<boss-user-request>",
-      "You are synergy-max in the Boss Mode workflow.",
-      "You are the boss of a worker tree. Decide whether to answer directly, delegate to a specialist worker (boss_spawn / boss_assign), monitor progress (boss_status), or cancel work (boss_cancel). Summarize results back to the human.",
-      "",
-      "User request:",
-      query,
-      "</boss-user-request>",
     ].join("\n")
   }
 }

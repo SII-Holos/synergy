@@ -139,7 +139,7 @@ export namespace GlobalRuntime {
           PluginMarketplaceRegistry.prefetchRegistry()
           await Agenda.start()
           await AgendaBootstrap.seed()
-          const { BossRuntime } = await import("@/session/boss-runtime")
+          const { BossRuntime } = await import("@/boss/boss-runtime")
           await BossRuntime.ensure().catch((error) => {
             log.warn("runtime boss provisioning failed", { error })
           })

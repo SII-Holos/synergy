@@ -1,5 +1,5 @@
 import type { BossService } from "./boss"
-import type { Info as SessionInfo } from "./types"
+import type { Info as SessionInfo } from "../session/types"
 
 /**
  * Boss Mode system-prompt builders. Pure functions over session state so the

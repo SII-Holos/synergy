@@ -42,12 +42,7 @@ import { SessionReadTool } from "./session-read"
 import { SessionSearchTool } from "./session-search"
 import { SessionSendTool } from "./session-send"
 import { SessionControlTool } from "./session-control"
-import { BossSpawnTool } from "./boss-spawn"
-import { BossAssignTool } from "./boss-assign"
-import { BossReportTool } from "./boss-report"
-import { BossStatusTool } from "./boss-status"
-import { BossCancelTool } from "./boss-cancel"
-import { BossProjectTool } from "./boss-project"
+
 import { ChannelPushTool } from "./channel-push"
 import { ScopeListTool } from "./scope-list"
 import { AgendaScheduleTool } from "./agenda-schedule"
@@ -313,6 +308,19 @@ export namespace ToolRegistry {
     }
   }
 
+  const toolProviders = new Map<string, ToolProvider>()
+  export type ToolProvider = () => Tool.Info[]
+
+  /** Product domains register tool providers under a stable source id;
+   * `all()` drains them alongside the static builtin list. */
+  export function registerToolProvider(sourceID: string, provider: ToolProvider): void {
+    toolProviders.set(sourceID, provider)
+  }
+
+  export function toolProviderIDs(): string[] {
+    return [...toolProviders.keys()].sort()
+  }
+
   export async function register(tool: Tool.Info) {
     const { custom } = await state()
     const idx = custom.findIndex((t) => t.id === tool.id)
@@ -384,12 +392,6 @@ export namespace ToolRegistry {
       PathwayReadTool,
       PathwayWriteTool,
       LatticeSubmitTool,
-      BossSpawnTool,
-      BossAssignTool,
-      BossReportTool,
-      BossStatusTool,
-      BossCancelTool,
-      BossProjectTool,
       ChannelPushTool,
       SessionListTool,
       SessionReadTool,
@@ -445,7 +447,8 @@ export namespace ToolRegistry {
     }).catch(() => undefined)
     if (codexAccess) builtin.push(OpenAIImageGenTool, OpenAIImageEditTool)
 
-    return [...builtin, ...custom]
+    const provided = [...toolProviders.values()].flatMap((provider) => provider())
+    return [...builtin, ...provided, ...custom]
   }
 
   export async function ids() {

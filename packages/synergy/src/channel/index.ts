@@ -1333,7 +1333,7 @@ export namespace Channel {
   /** Runtime Boss Mode routing helper (see handleMessage). */
   async function resolveBossRoutingSession(ctx: MessageContext): Promise<string | undefined> {
     if (ctx.channelType !== "feishu") return undefined
-    const { BossRuntime } = await import("@/session/boss-runtime")
+    const { BossRuntime } = await import("@/boss/boss-runtime")
     return BossRuntime.bossSessionForAccount(ctx.accountId)
   }
 }

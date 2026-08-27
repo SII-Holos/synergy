@@ -9,12 +9,12 @@ import { Log } from "@/util/log"
 import { withTimeout } from "@/util/timeout"
 import { externalIdentityHash } from "../channel/identity"
 import { DEFAULT_IDENTITY_TEXT as DefaultIdentityText } from "./boss-prompt"
-import { Session } from "."
-import { SessionEndpoint } from "./endpoint"
-import { SessionInbox } from "./inbox"
-import { SessionInteraction } from "./interaction"
-import { SessionManager } from "./manager"
-import { SessionNav } from "./nav"
+import { Session } from "../session"
+import { SessionEndpoint } from "../session/endpoint"
+import { SessionInbox } from "../session/inbox"
+import { SessionInteraction } from "../session/interaction"
+import { SessionManager } from "../session/manager"
+import { SessionNav } from "../session/nav"
 
 /**
  * Runtime Boss Mode provisioning.

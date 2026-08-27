@@ -1,6 +1,6 @@
 import z from "zod"
-import { BossService } from "../session/boss"
-import { Tool } from "./tool"
+import { BossService } from "../boss"
+import { Tool } from "../../tool/tool"
 import DESCRIPTION from "./boss-cancel.txt"
 
 const parameters = z.object({

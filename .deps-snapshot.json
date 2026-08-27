@@ -1,6 +1,6 @@
 {
-  "totalModules": 63,
-  "totalFiles": 968,
+  "totalModules": 64,
+  "totalFiles": 970,
   "cyclicSCCs": [
     [
       "acp",
@@ -9,6 +9,7 @@
       "asset",
       "attachment",
       "blueprint",
+      "boss",
       "browser",
       "bus",
       "channel",
@@ -307,12 +308,32 @@
       "plugin"
     ],
     [
+      "boss",
+      "agenda"
+    ],
+    [
+      "boss",
+      "channel"
+    ],
+    [
+      "boss",
+      "library"
+    ],
+    [
+      "boss",
+      "project"
+    ],
+    [
       "browser",
       "cortex"
     ],
     [
       "channel",
       "agenda"
+    ],
+    [
+      "channel",
+      "boss"
     ],
     [
       "channel",
@@ -431,5 +452,26 @@
       "plugin"
     ]
   ],
-  "r3Violations": []
+  "r3Violations": [
+    [
+      "boss",
+      "agenda"
+    ],
+    [
+      "boss",
+      "channel"
+    ],
+    [
+      "boss",
+      "library"
+    ],
+    [
+      "boss",
+      "project"
+    ],
+    [
+      "channel",
+      "boss"
+    ]
+  ]
 }

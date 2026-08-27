@@ -81,13 +81,7 @@ import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
 import { BlueprintLoopStore } from "../blueprint/loop-store"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
-import {
-  buildBossContext,
-  buildBossDeliveryHint,
-  buildRuntimeBossContext,
-  buildWorkerContext,
-  renderBossTree,
-} from "./boss-prompt"
+import { WorkflowPromptRegistry } from "./workflow-prompt-registry"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { ObservabilitySpans } from "@/observability/spans"
 import { ObservabilityContext } from "@/observability/context"
@@ -761,43 +755,11 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
 </light-loop-context>`)
             break
           case "boss": {
-            const bossWorkflow = session.workflow
-            if (bossWorkflow.role === "boss") {
-              const { BossRuntime } = await import("./boss-runtime")
-              const configuredIdentity = (await Config.current().catch(() => undefined))?.experimental
-                ?.boss_identity_text
-              const identityText = configuredIdentity?.trim() || BossRuntime.DEFAULT_IDENTITY_TEXT
-              systemParts.push(
-                buildRuntimeBossContext(session, {
-                  identityText,
-                  instructions: bossWorkflow.instructions,
-                }),
-              )
-              // Tell the boss whether this turn's reply auto-delivers back to
-              // the originating Feishu message, so it neither duplicates with
-              // channel_push nor misses a receipt.
-              const bossDeliveryMetadata = channelDeliveryMetadata(msgs, lastFinishedIndex)
-              // Treat delivery as automatic only when a single unambiguous
-              // reply anchor exists; conflicting anchors (multiple Feishu
-              // requests in one turn) cannot auto-deliver, so the boss must
-              // use channel_push explicitly per requester.
-              const autoDelivers =
-                bossDeliveryMetadata?.channelPush === true &&
-                typeof bossDeliveryMetadata.channelReplyToMessageId === "string"
-              systemParts.push(
-                buildBossDeliveryHint(
-                  autoDelivers
-                    ? { auto: true, replyToMessageId: bossDeliveryMetadata!.channelReplyToMessageId }
-                    : { auto: false },
-                ),
-              )
-              const { BossService } = await import("./boss")
-              const tree = await BossService.status(sessionID).catch(() => undefined)
-              if (tree) {
-                systemParts.push(`<boss-tree>\n${renderBossTree(tree)}\n</boss-tree>`)
-              }
-            } else {
-              systemParts.push(buildWorkerContext(session))
+            const contribution = WorkflowPromptRegistry.get("boss")
+            if (contribution?.buildSystem) {
+              const deliveryMetadata = channelDeliveryMetadata(msgs, lastFinishedIndex)
+              const parts = await contribution.buildSystem(session, { deliveryMetadata })
+              systemParts.push(...parts)
             }
             break
           }

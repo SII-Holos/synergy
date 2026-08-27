@@ -4,7 +4,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionEndpoint } from "../../src/session/endpoint"
 import { SessionInbox } from "../../src/session/inbox"
-import { BossRuntime } from "../../src/session/boss-runtime"
+import { BossRuntime } from "../../src/boss/boss-runtime"
 import { Config } from "../../src/config/config"
 
 const originalConfigCurrent = Config.current

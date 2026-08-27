@@ -7,7 +7,7 @@ import {
   buildBossDeliveryHint,
   buildRuntimeBossContext,
   buildWorkerContext,
-} from "../../src/session/boss-prompt"
+} from "../../src/boss/boss-prompt"
 
 /**
  * Boss prompt contract (S2a golden). These tests lock the byte-level shape of
