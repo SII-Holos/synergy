@@ -380,6 +380,14 @@ export const TOOL_MISC_DESC = {
   executedViaSynergyLink: d("tool.misc.executed-via-synergy-link", "Executed via Synergy Link"),
 } as const
 
+// ── Task subagent detail ────────────────────────────────────────────
+export const TOOL_TASK_DESC = {
+  openSession: d("tool.task.open-session", "Open subagent session"),
+  backgroundRunning: d("tool.task.background-running", "Running in background"),
+  starting: d("tool.task.starting", "Starting…"),
+  noSteps: d("tool.task.no-steps", "No steps recorded"),
+} as const
+
 // ── Markdown ────────────────────────────────────────────────────────
 export const MARKDOWN_DESC = {
   previewLabel: d("markdown.preview-label", "Preview"),

@@ -18,6 +18,7 @@ interface ActivityDomHarness {
   setSummaryCompleted: (completed: boolean) => void
   setRailState: (state: "running" | "done") => void
   refreshActivityGroup: () => void
+  getNavigateCalls: () => string[]
 }
 
 let fixtureDirectory: string
@@ -203,6 +204,69 @@ beforeAll(async () => {
         ],
         receipt: false,
       }
+      const delegateGroup = {
+        kind: "activity-group",
+        key: "group-delegate",
+        message,
+        family: "delegate",
+        scopeKey: "task:child-1",
+        state: "done",
+        steps: [
+          {
+            part: {
+              id: "p-task",
+              tool: "task",
+              state: {
+                status: "completed",
+                input: { subagent_type: "explore", description: "Inspect the registry" },
+                output: "done",
+                metadata: {
+                  sessionId: "child-1",
+                  background: false,
+                  summary: [
+                    { id: "c1", tool: "bash", state: { status: "completed", title: "Ran tests" } },
+                    { id: "c2", tool: "read", state: { status: "running" } },
+                  ],
+                },
+              },
+            },
+            family: "delegate",
+            scopeKey: "task:child-1",
+            icon: "list-todo",
+            title: "Call subagent",
+            subtitle: "Inspect the registry",
+            state: "done",
+          },
+        ],
+        receipt: false,
+      }
+      const delegateBackgroundGroup = {
+        ...delegateGroup,
+        key: "group-delegate-bg",
+        scopeKey: "task:child-2",
+        steps: [
+          {
+            ...delegateGroup.steps[0],
+            part: {
+              ...delegateGroup.steps[0].part,
+              id: "p-task-bg",
+              state: {
+                ...delegateGroup.steps[0].part.state,
+                status: "running",
+                metadata: { sessionId: "child-2", background: true, summary: [] },
+              },
+            },
+            scopeKey: "task:child-2",
+            state: "running",
+          },
+        ],
+      }
+      const taskReceipt = {
+        kind: "activity-receipt",
+        key: "receipt-task",
+        message,
+        group: { ...delegateGroup, receipt: true },
+      }
       function CodeFixture(props: { file: { contents: string } }) {
         return <pre data-component="code-fixture">{props.file.contents}</pre>
       }
@@ -245,6 +309,7 @@ beforeAll(async () => {
       }
 
       const i18n = setupI18n()
+      const navigateCalls: string[] = []
       const data = {
         session: [],
         session_status: {},
@@ -257,7 +322,8 @@ beforeAll(async () => {
       render(
         () => (
           <I18nProvider i18n={i18n}>
-            <DataProvider data={data} directory="/workspace" serverUrl="http://localhost">
+            <DataProvider data={data} directory="/workspace" serverUrl="http://localhost" onNavigateToSession={(id) => navigateCalls.push(id)}>
+
             <CodeComponentProvider component={CodeFixture}>
               <div id="count-host">
                 <AnimatedActivityCount value={countValue()} identity={countIdentity()} />
@@ -290,7 +356,18 @@ beforeAll(async () => {
               <div id="error-host">
                 <ActivityTrace group={errorGroup} serverUrl="http://localhost" />
               </div>
-              <ActivityReceipt item={dagReceipt} serverUrl="http://localhost" />
+              <div id="delegate-host">
+                <ActivityTrace group={delegateGroup} serverUrl="http://localhost" />
+              </div>
+              <div id="delegate-bg-host">
+                <ActivityTrace group={delegateBackgroundGroup} serverUrl="http://localhost" />
+              </div>
+              <div id="task-receipt-host">
+                <ActivityReceipt item={taskReceipt} serverUrl="http://localhost" />
+              </div>
+              <div id="dag-receipt-host">
+                <ActivityReceipt item={dagReceipt} serverUrl="http://localhost" />
+              </div>
               <div id="reasoning-summary-host">
                 <ActivityReasoningSummary
                   item={{ kind: "activity-reasoning-summary", key: "reasoning-pending", message: group.message, partID: "rp", state: "pending" }}
@@ -317,6 +394,8 @@ beforeAll(async () => {
         setCountValue: (value: number) => setCountValue(value),
         setSummaryCompleted: (completed: boolean) => setSummaryCompleted(completed),
         setRailState: (state: "running" | "done") => setRailState(state),
+        getNavigateCalls: () => navigateCalls.slice(),
+
         refreshActivityGroup: () =>
           setActivityGroup((current) => ({
             ...current,
@@ -604,7 +683,7 @@ describe("ActivityTrace DOM behavior", () => {
 
   test("each child activity is a keyboard-accessible result toggle", async () => {
     const triggers = stepTriggers()
-    expect(triggers).toHaveLength(6)
+    expect(triggers).toHaveLength(8)
     expect(triggers[0]?.tagName).toBe("BUTTON")
     expect(triggers[0]?.getAttribute("type")).toBe("button")
     expect(triggers[0]?.getAttribute("aria-expanded")).toBe("false")
@@ -715,32 +794,89 @@ describe("ActivityTrace DOM behavior", () => {
   })
 })
 
+describe("Delegated subagent activity DOM behavior", () => {
+  test("expands a delegate step into the subagent detail with steps and an open-session action", async () => {
+    const host = document.querySelector("#delegate-host") as HTMLElement
+    const trigger = host.querySelector('[data-slot="activity-step-trigger"]') as HTMLButtonElement
+    trigger.click()
+    await wait(0)
+
+    expect(trigger.getAttribute("aria-expanded")).toBe("true")
+    expect(host.querySelector('[data-component="task-subagent-detail"]')).not.toBeNull()
+    expect(host.querySelector('[data-slot="task-subagent-agent"]')?.textContent).toBe("explore")
+    expect(host.querySelector('[data-slot="task-subagent-description"]')?.textContent).toBe("Inspect the registry")
+    expect(host.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(2)
+    expect(
+      host.querySelector('[data-slot="task-tool-item"][data-state="running"] [data-slot="task-tool-status"]'),
+    ).not.toBeNull()
+
+    const open = host.querySelector('[data-slot="task-subagent-open"]') as HTMLButtonElement
+    expect(open?.tagName).toBe("BUTTON")
+    open?.click()
+    await wait(0)
+    expect(harness.getNavigateCalls()).toEqual(["child-1"])
+
+    trigger.click()
+    await wait(0)
+  })
+
+  test("shows an honest background empty state instead of a blank expansion", async () => {
+    const host = document.querySelector("#delegate-bg-host") as HTMLElement
+    const trigger = host.querySelector('[data-slot="activity-step-trigger"]') as HTMLButtonElement
+    trigger.click()
+    await wait(0)
+
+    expect(host.querySelector('[data-component="task-subagent-detail"]')).not.toBeNull()
+    expect(host.querySelector('[data-slot="task-subagent-background"]')?.textContent).toBe("background")
+    const empty = host.querySelector('[data-slot="task-subagent-empty"]') as HTMLElement
+    expect(empty?.textContent).toContain("Running in background")
+    expect(empty?.querySelector('[data-component="spinner"]')).not.toBeNull()
+    expect(host.querySelector('[data-slot="task-subagent-open"]')).not.toBeNull()
+    expect(host.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(0)
+  })
+})
+
 describe("ActivityReceipt DOM behavior", () => {
   function trigger(): HTMLButtonElement {
-    return document.querySelector('[data-slot="activity-receipt-trigger"]') as HTMLButtonElement
+    return document.querySelector('#dag-receipt-host [data-slot="activity-receipt-trigger"]') as HTMLButtonElement
   }
 
   test("expands a DAG receipt into the DAG graph leaf component", async () => {
     expect(trigger().tagName).toBe("BUTTON")
     expect(trigger().getAttribute("aria-expanded")).toBe("false")
-    expect(document.querySelector('[data-component="activity-receipt"] [data-component="dag-graph"]')).toBeNull()
+    expect(document.querySelector('#dag-receipt-host [data-component="dag-graph"]')).toBeNull()
 
     trigger().click()
     await wait(0)
 
     expect(trigger().getAttribute("aria-expanded")).toBe("true")
-    expect(document.querySelector('[data-component="activity-receipt"] [data-component="dag-graph"]')).not.toBeNull()
+    expect(document.querySelector('#dag-receipt-host [data-component="dag-graph"]')).not.toBeNull()
   })
 
   test("exposes the full receipt title to hover when narrow layouts truncate it", () => {
-    const title = document.querySelector('[data-component="activity-receipt"] [data-slot="activity-receipt-title"]')
+    const title = document.querySelector('#dag-receipt-host [data-slot="activity-receipt-title"]')
     expect(title?.textContent).toBe("Read DAG")
     expect(title?.getAttribute("title")).toBe("Read DAG")
   })
 
   test("exposes the full receipt scope to hover when narrow layouts truncate it", () => {
-    const scope = document.querySelector('[data-component="activity-receipt"] [data-slot="activity-receipt-scope"]')
+    const scope = document.querySelector('#dag-receipt-host [data-slot="activity-receipt-scope"]')
     expect(scope?.textContent).toBe("DAG snapshot")
     expect(scope?.getAttribute("title")).toBe("DAG snapshot")
+  })
+
+  test("expands a task receipt into the subagent detail leaf", async () => {
+    const host = document.querySelector("#task-receipt-host") as HTMLElement
+    const receiptTrigger = host.querySelector('[data-slot="activity-receipt-trigger"]') as HTMLButtonElement
+    expect(receiptTrigger).not.toBeNull()
+    expect(receiptTrigger.getAttribute("aria-expanded")).toBe("false")
+    expect(host.querySelector('[data-component="task-subagent-detail"]')).toBeNull()
+
+    receiptTrigger.click()
+    await wait(0)
+
+    expect(receiptTrigger.getAttribute("aria-expanded")).toBe("true")
+    expect(host.querySelector('[data-component="task-subagent-detail"]')).not.toBeNull()
+    expect(host.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(2)
   })
 })

@@ -790,10 +790,12 @@
 }
 
 [data-component="task-tools"] {
+  margin: 0;
   padding: 8px 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  list-style: none;
 
   [data-slot="task-tool-item"] {
     display: flex;
@@ -824,6 +826,105 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  [data-slot="task-tool-status"] {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    color: var(--icon-weak-base);
+
+    [data-component="spinner"] {
+      width: 12px;
+      height: 12px;
+    }
+  }
+}
+
+[data-component="task-subagent-detail"] {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  [data-slot="task-subagent-header"] {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+
+  [data-slot="task-subagent-agent"] {
+    padding: 1px 8px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border-weaker-base);
+    color: var(--text-weak);
+    font-size: var(--font-size-x-small);
+    font-weight: var(--font-weight-medium);
+  }
+
+  [data-slot="task-subagent-background"] {
+    padding: 1px 8px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border-weaker-base);
+    color: var(--text-subtle);
+    font-size: var(--font-size-x-small);
+  }
+
+  [data-slot="task-subagent-description"] {
+    margin: 0;
+    color: var(--text-weak);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-large);
+  }
+
+  [data-slot="task-subagent-empty"] {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-subtle);
+    font-size: var(--font-size-small);
+  }
+
+  [data-slot="task-subagent-status"] {
+    display: inline-flex;
+    align-items: center;
+    color: var(--icon-weak-base);
+
+    [data-component="spinner"] {
+      width: 12px;
+      height: 12px;
+    }
+  }
+
+  [data-slot="task-subagent-open"] {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    color: var(--text-interactive-base);
+    font-size: var(--font-size-x-small);
+    white-space: nowrap;
+
+    &:hover {
+      background: var(--surface-base-hover);
+    }
+
+    &:focus-visible {
+      outline: 1px solid var(--border-interactive-base);
+      outline-offset: 1px;
+    }
+
+    [data-slot="icon-svg"] {
+      width: 12px;
+      height: 12px;
+    }
+  }
+
+  [data-component="task-tools"] {
+    padding: 0;
   }
 }
 
