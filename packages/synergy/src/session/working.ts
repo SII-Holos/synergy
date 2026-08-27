@@ -8,6 +8,7 @@ import { SessionProgress } from "./progress"
 import { isActiveLoopStatus, BlueprintLoopStore } from "../blueprint/loop-store"
 import { isActiveLightLoopWorkflow } from "./light-loop-state"
 import { WorkflowPromptRegistry } from "./workflow-prompt-registry"
+import { WorkflowKindRegistry } from "./workflow-kind-registry"
 
 const log = Log.create({ service: "session.working" })
 
@@ -54,7 +55,8 @@ async function hasActiveWorkflow(input: { session: Info; scopeID: Identifier.Sco
   const workflow = input.session.workflow
   if (!workflow) return false
   if (workflow.kind === "lightloop") return isActiveLightLoopWorkflow(workflow)
-  return (await WorkflowPromptRegistry.get(workflow.kind)?.isActive?.(input.session)) === true
+  const kind = WorkflowKindRegistry.effectiveKind(workflow) ?? workflow.kind
+  return (await WorkflowPromptRegistry.get(kind)?.isActive?.(input.session)) === true
 }
 
 async function hasActiveBlueprintLoop(input: { session: Info; scopeID: Identifier.ScopeID }): Promise<boolean> {

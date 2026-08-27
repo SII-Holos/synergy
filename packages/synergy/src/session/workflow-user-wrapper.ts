@@ -2,6 +2,7 @@ import type { Info as SessionInfo } from "./types"
 import { MessageV2 } from "./message-v2"
 import { isActiveLightLoopWorkflow } from "./light-loop-state"
 import { WorkflowPromptRegistry } from "./workflow-prompt-registry"
+import { WorkflowKindRegistry } from "./workflow-kind-registry"
 
 /**
  * WorkflowUserWrapper stamps and projects user messages for Plan, Lattice, and
@@ -9,6 +10,7 @@ import { WorkflowPromptRegistry } from "./workflow-prompt-registry"
  * projection wraps only root user-origin text parts.
  */
 export namespace WorkflowUserWrapper {
+  /** Core workflow kinds kept as a closed literal union for narrowing. */
   export type Mode = "plan" | "lattice" | "lightloop" | "boss"
 
   export const METADATA_MODE = "workflow"
@@ -27,7 +29,12 @@ export namespace WorkflowUserWrapper {
     "boss_report",
   ])
 
-  const VALID_MODES = new Set<Mode>(["plan", "lattice", "lightloop", "boss"])
+  const CORE_MODES = new Set<string>(["plan", "lattice", "lightloop", "boss"])
+
+  /** A mode is known when it is core or registered as an extension kind. */
+  function knownMode(value: string): boolean {
+    return CORE_MODES.has(value) || WorkflowKindRegistry.get(value) !== undefined
+  }
 
   type PromptBuilder = (query: string) => string
 
@@ -38,15 +45,18 @@ export namespace WorkflowUserWrapper {
 
   const FALLBACK_BUILDER: PromptBuilder = genericPlan
 
-  export function activeMode(session?: Pick<SessionInfo, "workflow">): Mode | undefined {
+  /** Effective active workflow kind: core kinds are themselves; extension
+   * envelopes resolve to their registered kind. Terminal Light Loop stops
+   * stamping (legacy behavior). */
+  export function activeMode(session?: Pick<SessionInfo, "workflow">): string | undefined {
     const workflow = session?.workflow
     if (workflow?.kind === "lightloop" && !isActiveLightLoopWorkflow(workflow)) return undefined
-    return workflow?.kind
+    return WorkflowKindRegistry.effectiveKind(workflow)
   }
 
   export function isRequestMetadata(metadata: Record<string, any> | undefined): boolean {
     if (!metadata) return false
-    return typeof metadata[METADATA_MODE] === "string" && VALID_MODES.has(metadata[METADATA_MODE] as Mode)
+    return typeof metadata[METADATA_MODE] === "string" && knownMode(metadata[METADATA_MODE])
   }
 
   export function stripReservedMetadata(metadata: Record<string, any> | undefined): Record<string, any> {
@@ -123,21 +133,23 @@ export namespace WorkflowUserWrapper {
     })
   }
 
-  export function build(agentName: string, mode: Mode, query: string): string {
+  /** Build the wrapper for a workflow kind. Core `plan` keeps its in-module
+   * builders; every registered domain kind (lattice/boss/lightloop and H3
+   * extension kinds) resolves through the prompt registry — without
+   * registration there is no workflow to wrap, so the request passes through
+   * unchanged. */
+  export function build(agentName: string, mode: string, query: string): string {
     const trimmed = query.trim() || "(empty request)"
-    if (mode === "lattice" || mode === "boss" || mode === "lightloop") {
-      // Workflow wrapper bytes live in the owning domains (H2); without
-      // registration there is no workflow to wrap, so the request passes
-      // through unchanged.
-      return WorkflowPromptRegistry.get(mode)?.projectUserMessage?.(trimmed, agentName) ?? trimmed
+    if (mode === "plan") {
+      return (PROMPT_BUILDERS[agentName] ?? FALLBACK_BUILDER)(trimmed)
     }
-    return (PROMPT_BUILDERS[agentName] ?? FALLBACK_BUILDER)(trimmed)
+    return WorkflowPromptRegistry.get(mode)?.projectUserMessage?.(trimmed, agentName) ?? trimmed
   }
 
-  function messageMode(msg: MessageV2.WithParts): Mode | undefined {
+  function messageMode(msg: MessageV2.WithParts): string | undefined {
     const md = msg.info.metadata as Record<string, any> | undefined
     const value = md?.[METADATA_MODE]
-    if (typeof value === "string" && VALID_MODES.has(value as Mode)) return value as Mode
+    if (typeof value === "string" && knownMode(value)) return value
     return undefined
   }
 

@@ -79,6 +79,7 @@ import { BlueprintLoopStore } from "../blueprint/loop-store"
 import { buildBlueprintLoopContext } from "../blueprint/prompt"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 import { WorkflowPromptRegistry } from "./workflow-prompt-registry"
+import { WorkflowKindRegistry } from "./workflow-kind-registry"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { ObservabilitySpans } from "@/observability/spans"
 import { ObservabilityContext } from "@/observability/context"
@@ -748,6 +749,17 @@ export namespace SessionInvoke {
             }
             break
           }
+          case "extension": {
+            // H3 extension kinds: resolve the registered kind from the
+            // envelope and let its contribution build the block.
+            const kind = WorkflowKindRegistry.effectiveKind(session?.workflow)
+            const contribution = kind ? WorkflowPromptRegistry.get(kind) : undefined
+            if (contribution?.buildSystem) {
+              const parts = await contribution.buildSystem(session, { deliveryMetadata: undefined })
+              systemParts.push(...parts)
+            }
+            break
+          }
           case "boss": {
             const contribution = WorkflowPromptRegistry.get("boss")
             if (contribution?.buildSystem) {
@@ -1017,8 +1029,9 @@ export namespace SessionInvoke {
         SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
         // Count LLM calls for registered workflow kinds in memory; flushed to
         // the durable domain state at turn boundaries / policy entry.
-        if (session?.workflow?.kind) {
-          WorkflowPromptRegistry.get(session.workflow.kind)?.onModelCall?.(sessionID)
+        const activeKind = WorkflowKindRegistry.effectiveKind(session?.workflow)
+        if (activeKind) {
+          WorkflowPromptRegistry.get(activeKind)?.onModelCall?.(sessionID)
         }
         const processTimer = log.time("processor.process")
         const timeoutCfg = await TimeoutConfig.resolve()

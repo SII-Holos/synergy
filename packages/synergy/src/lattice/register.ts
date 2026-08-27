@@ -6,6 +6,7 @@ import type { Info as SessionInfo } from "../session/types"
 import { SessionWorkflowService } from "../session/workflow"
 import { ContinuationKernel } from "../session/continuation-kernel"
 import { WorkflowPromptRegistry } from "../session/workflow-prompt-registry"
+import { WorkflowKindRegistry } from "../session/workflow-kind-registry"
 import { ToolRegistry } from "../tool/registry"
 import { LatticeContinuationPolicy } from "./policy"
 import { LatticeError } from "./error"
@@ -48,10 +49,11 @@ async function enableLatticeWorkflow(
     using _ = await SessionWorkflowService.lock(sessionID)
     SessionManager.assertIdle(sessionID)
     const session = await Session.get(sessionID)
-    if (session.workflow && session.workflow.kind !== "lattice") {
+    const existing = session.workflow ? WorkflowKindRegistry.effectiveKind(session.workflow) : undefined
+    if (existing && existing !== "lattice") {
       throw new LatticeError.StateConflict({
-        state: session.workflow.kind,
-        reason: `Cannot enable Lattice while the ${session.workflow.kind} workflow is active.`,
+        state: existing,
+        reason: `Cannot enable Lattice while the ${existing} workflow is active.`,
       })
     }
 

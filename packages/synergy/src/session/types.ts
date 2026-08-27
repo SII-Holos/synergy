@@ -135,6 +135,17 @@ export const WorkflowInfo = z
       rootID: z.string().optional(),
       instructions: z.string().optional(),
     }),
+    z
+      .object({
+        kind: z.literal("extension"),
+        extension: z
+          .object({
+            kind: z.string().min(1),
+            payload: z.unknown().optional(),
+          })
+          .meta({ ref: "WorkflowExtension" }),
+      })
+      .meta({ ref: "SessionWorkflowExtension" }),
   ])
   .meta({ ref: "SessionWorkflowInfo" })
 export type WorkflowInfo = z.infer<typeof WorkflowInfo>

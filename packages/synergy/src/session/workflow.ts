@@ -5,6 +5,7 @@ import { Session } from "./index"
 import { SessionManager } from "./manager"
 import { SessionAbort } from "./abort"
 import { WorkflowPromptRegistry } from "./workflow-prompt-registry"
+import { WorkflowKindRegistry } from "./workflow-kind-registry"
 
 type BlueprintLoopSource = "user" | "lattice" | "plugin"
 
@@ -106,6 +107,27 @@ export namespace SessionWorkflowService {
     return enableLattice(sessionID, input)
   }
 
+  /** Enable a registered extension workflow kind (H3). The mutual-exclusion
+   * gate stays here: a session holds one interactive workflow, and the
+   * descriptor's declared conflict set is consulted for the error surface. */
+  export async function setExtension(
+    sessionID: string,
+    kind: string,
+    args: Record<string, unknown>,
+  ): Promise<Session.Info> {
+    const descriptor = WorkflowKindRegistry.get(kind)
+    if (!descriptor) throw new Error(`Workflow kind "${kind}" is not registered`)
+    using _ = await workflowLock(sessionID)
+    SessionManager.assertIdle(sessionID)
+    const session = await Session.get(sessionID)
+    const current = WorkflowKindRegistry.effectiveKind(session.workflow)
+    if (current) {
+      throw new WorkflowConflictError(current, `Cannot enable ${kind} while the ${current} workflow is active.`)
+    }
+    await assertNoActiveBlueprintLoop(session, kind)
+    await descriptor.enable({ sessionID, args })
+    return Session.get(sessionID)
+  }
   /**
    * Enable Boss Mode on a session, making it the root boss of a worker tree.
    * Workers are created by BossService.spawn as children; disabling only clears
@@ -117,18 +139,14 @@ export namespace SessionWorkflowService {
     SessionManager.assertIdle(sessionID)
     const session = await Session.get(sessionID)
     if (session.workflow) {
-      throw new WorkflowConflictError(
-        session.workflow.kind,
-        `Cannot enable Boss Mode while the ${session.workflow.kind} workflow is active.`,
-      )
+      const current = WorkflowKindRegistry.effectiveKind(session.workflow) ?? session.workflow.kind
+      throw new WorkflowConflictError(current, `Cannot enable Boss Mode while the ${current} workflow is active.`)
     }
     await assertNoActiveBlueprintLoop(session, "Boss Mode")
     return Session.update(sessionID, (draft) => {
       if (draft.workflow) {
-        throw new WorkflowConflictError(
-          draft.workflow.kind,
-          `Cannot enable Boss Mode while the ${draft.workflow.kind} workflow is active.`,
-        )
+        const current = WorkflowKindRegistry.effectiveKind(draft.workflow) ?? draft.workflow.kind
+        throw new WorkflowConflictError(current, `Cannot enable Boss Mode while the ${current} workflow is active.`)
       }
       draft.workflow = { kind: "boss", role: "boss" }
     })
@@ -138,9 +156,10 @@ export namespace SessionWorkflowService {
     using _ = await workflowLock(sessionID)
     if (!options?.allowRunning) SessionManager.assertIdle(sessionID)
     const session = await Session.get(sessionID)
-    const kind = session.workflow?.kind
-    if (kind && WorkflowPromptRegistry.get(kind)?.disable) {
-      await WorkflowPromptRegistry.get(kind)!.disable!(sessionID)
+    const kind = WorkflowKindRegistry.effectiveKind(session.workflow)
+    if (kind) {
+      await WorkflowPromptRegistry.get(kind)?.disable?.(sessionID)
+      await WorkflowKindRegistry.get(kind)?.disable?.(sessionID)
     }
     return Session.update(sessionID, (draft) => {
       draft.workflow = undefined
@@ -190,18 +209,14 @@ export namespace SessionWorkflowService {
     SessionManager.assertIdle(sessionID)
     const session = await Session.get(sessionID)
     if (session.workflow) {
-      throw new WorkflowConflictError(
-        session.workflow.kind,
-        `Cannot enable Plan while the ${session.workflow.kind} workflow is active.`,
-      )
+      const current = WorkflowKindRegistry.effectiveKind(session.workflow) ?? session.workflow.kind
+      throw new WorkflowConflictError(current, `Cannot enable Plan while the ${current} workflow is active.`)
     }
     await assertNoActiveBlueprintLoop(session, "Plan")
     return Session.update(sessionID, (draft) => {
       if (draft.workflow) {
-        throw new WorkflowConflictError(
-          draft.workflow.kind,
-          `Cannot enable Plan while the ${draft.workflow.kind} workflow is active.`,
-        )
+        const current = WorkflowKindRegistry.effectiveKind(draft.workflow) ?? draft.workflow.kind
+        throw new WorkflowConflictError(current, `Cannot enable Plan while the ${current} workflow is active.`)
       }
       draft.workflow = { kind: "plan" }
     })
@@ -215,18 +230,14 @@ export namespace SessionWorkflowService {
 
     const session = await Session.get(sessionID)
     if (session.workflow) {
-      throw new WorkflowConflictError(
-        session.workflow.kind,
-        `Cannot enable Light Loop while the ${session.workflow.kind} workflow is active.`,
-      )
+      const current = WorkflowKindRegistry.effectiveKind(session.workflow) ?? session.workflow.kind
+      throw new WorkflowConflictError(current, `Cannot enable Light Loop while the ${current} workflow is active.`)
     }
     await assertNoActiveBlueprintLoop(session, "Light Loop")
     return Session.update(sessionID, (draft) => {
       if (draft.workflow) {
-        throw new WorkflowConflictError(
-          draft.workflow.kind,
-          `Cannot enable Light Loop while the ${draft.workflow.kind} workflow is active.`,
-        )
+        const current = WorkflowKindRegistry.effectiveKind(draft.workflow) ?? draft.workflow.kind
+        throw new WorkflowConflictError(current, `Cannot enable Light Loop while the ${current} workflow is active.`)
       }
       draft.workflow = { kind: "lightloop", instructions: trimmed }
     })
