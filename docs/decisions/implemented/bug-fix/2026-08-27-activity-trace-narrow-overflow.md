@@ -8,11 +8,13 @@ Activity trace rows (`activity-trace.tsx` / `activity-trace.css`) rendered step 
 
 ## Decision
 
-Make the variable-width title slots shrinkable and ellipsized: `[data-slot="activity-step-title"]` and `[data-slot="activity-receipt-title"]` now use `flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap`. Fixed slots (family label, state label, icons) remain `flex: 0 0 auto`; the subtitle slot already had shrink constraints and keeps them. No markup, data, or behavior changes — only the CSS layout rules.
+Make the variable-width title slots shrinkable and ellipsized: `[data-slot="activity-step-title"]` and `[data-slot="activity-receipt-title"]` now use `flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap`. Fixed slots (family label, state label, icons) remain `flex: 0 0 auto`; the subtitle slot keeps its shrink constraints but now shares proportional shrink with the title instead of absorbing all of it (the title used to be `0 0 auto`). Because truncation hides information, both title spans also carry a native `title` attribute holding the full localized text so the complete title stays reachable on hover — the expand path cannot provide this: expanding a step renders `ToolResultBody resultOnly`, which skips the trigger/title entirely, and non-specialized receipts (including `delegate`) have no expandable detail at all.
 
 ## Alternatives considered
 
-**Wrap titles instead of truncating.** Rejected: wrapping makes rows variable-height mid-stream and reflows the whole list when a long title lands; truncation keeps the trace visually stable, and the full title remains reachable through the existing expand/`Collapsible` behavior and the step subtitle.
+**Wrap titles instead of truncating.** Rejected: wrapping makes rows variable-height mid-stream and reflows the whole list when a long title lands; truncation keeps the trace visually stable, and the full title remains reachable through the `title` attribute on each truncated span. The expand/`Collapsible` path cannot stand in for this: expanding a step renders only the tool result body, and most receipts — including delegated calls — have no expandable detail.
+
+**Wrap the truncated spans in the shared `Tooltip` component.** Rejected: `Tooltip` renders a `div` trigger wrapper, which is invalid nesting inside the `<button>` trigger rows, and costs a portal per trace row; the native `title` attribute gives hover reachability with no DOM or nesting cost.
 
 **Truncate in the data layer (`displayIdentifier`-style shortening).** Rejected: shortening text server-side hides information and is already done only for badge identifiers; layout-level truncation keeps the full value in the DOM and in copy/paste.
 
@@ -20,4 +22,4 @@ Make the variable-width title slots shrinkable and ellipsized: `[data-slot="acti
 
 ## Consequences
 
-Narrow windows now keep every activity row inside the trace container (verified by `activity-trace-narrow.browser.test.ts` at 440 px with a long title: `titleRight <= traceRight && scrollWidth > clientWidth`). Rows keep their min-height, hover, and expanded-detail behavior. Content is ellipsized per row rather than wrapped, which is a deliberate visibility trade-off for long delegated-call titles — the expanded detail and audit icons still surface full context.
+Narrow windows now keep every activity row inside the trace container (verified by `activity-trace-narrow.browser.test.ts` at 440 px with a long title: `titleRight <= traceRight && scrollWidth > clientWidth`). Both title spans carry the full title in a native `title` attribute (pinned by `activity-trace.dom.test.ts`), so truncated text stays reachable on hover; the subtitle now shares shrink with the title rather than absorbing it alone. Rows keep their min-height, hover, and expanded-detail behavior. Content is ellipsized per row rather than wrapped, which is a deliberate visibility trade-off for long delegated-call titles — the hover tooltip, expanded detail, and audit icons still surface full context.
