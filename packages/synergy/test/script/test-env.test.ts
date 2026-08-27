@@ -20,35 +20,6 @@ describe("createIsolatedTestEnv", () => {
     }
   })
 
-  test("neutralizes proxy env vars so local Bun.serve fetches bypass CI proxies", async () => {
-    // Bun 1.3.x fetch reads HTTP(S)_PROXY per request with no built-in
-    // loopback bypass (oven-sh/bun#39352); a proxied CI runner routes local
-    // test-server requests through the proxy and fails them with HTTP 404.
-    const proxiedEnv = {
-      ...process.env,
-      HTTP_PROXY: "http://proxy.internal:8080",
-      HTTPS_PROXY: "http://proxy.internal:8080",
-      http_proxy: "http://proxy.internal:8080",
-      https_proxy: "http://proxy.internal:8080",
-    }
-    const original = { ...process.env }
-    process.env = { ...proxiedEnv } as NodeJS.ProcessEnv
-    try {
-      const isolated = await createIsolatedTestEnv()
-      try {
-        for (const key of ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]) {
-          expect(isolated.env[key]).toBeUndefined()
-        }
-        expect(isolated.env["NO_PROXY"]).toContain("127.0.0.1")
-        expect(isolated.env["no_proxy"]).toContain("localhost")
-      } finally {
-        await isolated.dispose()
-      }
-    } finally {
-      process.env = original
-    }
-  })
-
   test("dispose removes the created root", async () => {
     const isolated = await createIsolatedTestEnv()
     const root = isolated.env["SYNERGY_TEST_HOME"]!

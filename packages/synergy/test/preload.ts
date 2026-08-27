@@ -64,21 +64,6 @@ process.env["SYNERGY_DISABLE_LSP_DOWNLOAD"] = "true"
 // Disable file watcher to avoid native module / inotify hangs in CI
 process.env["SYNERGY_DISABLE_FILEWATCHER"] = "true"
 
-// Bun 1.3.x fetch reads HTTP(S)_PROXY per request with no built-in loopback
-// bypass (oven-sh/bun#39352), so a proxied CI runner routes local Bun.serve
-// test-server requests through the proxy and fails them with HTTP 404.
-// Neutralize proxy variables in-process: an assignment reaches the native env
-// loader while a delete leaves the old value in effect, so use empty strings.
-// NO_PROXY is pinned as a second line of defense for loopback fetches.
-process.env["HTTP_PROXY"] = ""
-process.env["HTTPS_PROXY"] = ""
-process.env["http_proxy"] = ""
-process.env["https_proxy"] = ""
-process.env["ALL_PROXY"] = ""
-process.env["all_proxy"] = ""
-process.env["NO_PROXY"] = "localhost,127.0.0.1,[::1],0.0.0.0"
-process.env["no_proxy"] = process.env["NO_PROXY"]
-
 // Clear provider env vars to ensure clean test state
 delete process.env["ANTHROPIC_API_KEY"]
 delete process.env["OPENAI_API_KEY"]
