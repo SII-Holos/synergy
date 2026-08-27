@@ -704,7 +704,6 @@ a {
   border-color: color-mix(in srgb, var(--text-strong) 12%, transparent);
   box-shadow: 0 1px 0 color-mix(in srgb, var(--text-strong) 4%, transparent);
   transition:
-    background-color 150ms ease,
     border-color 150ms ease,
     box-shadow 150ms ease;
 }

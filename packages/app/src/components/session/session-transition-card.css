@@ -156,8 +156,8 @@
 }
 
 .session-transition-step-icon {
-  width: 22px;
   display: inline-flex;
+  width: 22px;
   height: 22px;
   flex: 0 0 auto;
   align-items: center;
