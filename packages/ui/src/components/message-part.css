@@ -917,9 +917,8 @@
     align-items: center;
     gap: 6px;
     padding: 4px 12px;
-    border: 1px solid var(--workbench-border, var(--border-base));
+    border: 1px solid var(--border-base);
     border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-xs-border);
     color: var(--text-weak);
     font-size: var(--font-size-small);
     white-space: nowrap;
