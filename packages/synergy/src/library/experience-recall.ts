@@ -43,20 +43,46 @@ export namespace ExperienceRecall {
   }
 
   const pendingRetrievals = new Map<string, string[]>()
+  const committedRetrievals = new Set<string>()
 
+  /**
+   * Records that experiences were selected for injection. The persisted
+   * counter is deliberately NOT incremented here: the recall context may
+   * still be discarded downstream (e.g. buildMemoryContext exceeding the
+   * recall timeout), and a pull the model never received must not decay
+   * the exploration bonus. commitRetrieval applies the increment once the
+   * completed context is accepted for injection.
+   */
   export function trackRetrieval(sessionID: string, experienceIDs: string[]) {
     pendingRetrievals.set(sessionID, experienceIDs)
-    try {
-      LibraryDB.Experience.incrementRetrievalCounts(experienceIDs)
-    } catch (err: any) {
-      log.warn("retrieval count increment failed", { error: err })
-    }
+    committedRetrievals.delete(sessionID)
     setTimeout(
       () => {
         pendingRetrievals.delete(sessionID)
+        committedRetrievals.delete(sessionID)
       },
       10 * 60 * 1000,
     )
+  }
+
+  /**
+   * Applies the persisted pull counters for a session whose recall context
+   * was accepted for injection. Best-effort and idempotent per session: a
+   * counting failure is logged and must never abort the injection it
+   * records, and repeated commits (e.g. cache replay) count once.
+   * consumeRetrieval still owns removing the pending entry for credit
+   * assignment.
+   */
+  export function commitRetrieval(sessionID: string) {
+    if (committedRetrievals.has(sessionID)) return
+    const ids = pendingRetrievals.get(sessionID)
+    if (!ids || ids.length === 0) return
+    committedRetrievals.add(sessionID)
+    try {
+      LibraryDB.Experience.incrementRetrievalCounts(ids)
+    } catch (err: any) {
+      log.warn("retrieval count increment failed", { error: err })
+    }
   }
 
   export function consumeRetrieval(sessionID: string): string[] {
@@ -145,8 +171,8 @@ export namespace ExperienceRecall {
     const totalRetrievals = candidates.reduce((sum, c) => sum + c.row.retrieval_count, 0)
     // UCB1 explores arms that have been selected rarely. A fully cold set
     // (nothing ever pulled) gets no exploration bonus rather than the old
-    // ln(1) fallback, which handed every never-rewarded experience a
-    // perpetual maximal bonus.
+    // lnN = 1 fallback, which yielded explorationConstant * sqrt(1) — the
+    // maximal bonus — for every never-rewarded experience.
     const lnN = totalRetrievals > 0 ? Math.log(totalRetrievals) : 0
 
     const scored = candidates.map((c, i) => {

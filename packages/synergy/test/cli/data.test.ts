@@ -313,6 +313,46 @@ describe("data shared helpers", () => {
     verify.close()
   })
 
+  test("mergeLibraryDB seeds retrieval_count from q_visits for a legacy source without the column", async () => {
+    await using tmp = await tmpdir()
+    const { Database } = await import("bun:sqlite")
+    const legacySourceSchema = `
+      CREATE TABLE schema_version (embedding_dimensions INTEGER);
+      CREATE TABLE memory (id TEXT PRIMARY KEY, title TEXT, content TEXT, category TEXT, recall_mode TEXT, embedding_model TEXT, created_at INTEGER, updated_at INTEGER);
+      CREATE TABLE experience (id TEXT PRIMARY KEY, session_id TEXT, scope_id TEXT, intent TEXT, intent_embedding_model TEXT, script_embedding_model TEXT, source_provider_id TEXT, source_model_id TEXT, reward REAL, rewards TEXT, q_values TEXT, q_visits INTEGER, q_updated_at INTEGER, q_history TEXT, retrieved_experience_ids TEXT, reward_status TEXT, turns_remaining INTEGER, created_at INTEGER, updated_at INTEGER);
+      CREATE TABLE experience_content (id TEXT PRIMARY KEY, session_id TEXT, scope_id TEXT, user_input TEXT, script TEXT, raw TEXT, metadata TEXT, created_at INTEGER, updated_at INTEGER);
+    `
+    const targetSchema = legacySourceSchema.replace(
+      "q_visits INTEGER, q_updated_at",
+      "q_visits INTEGER, retrieval_count INTEGER, q_updated_at",
+    )
+    const sourcePath = path.join(tmp.path, "source.db")
+    const targetPath = path.join(tmp.path, "target.db")
+    const source = new Database(sourcePath, { create: true })
+    source.exec(legacySourceSchema)
+    source.exec(`INSERT INTO schema_version (embedding_dimensions) VALUES (384)`)
+    source.exec(
+      `INSERT INTO experience (id, session_id, scope_id, intent, q_values, q_visits, q_history, retrieved_experience_ids, reward_status, created_at, updated_at) VALUES ('e1', 's', 'sc', 'Handle the flow', '{}', 7, '[]', '[]', 'pending', 1, 2)`,
+    )
+    source.close()
+    const target = new Database(targetPath, { create: true })
+    target.exec(targetSchema)
+    target.exec(`INSERT INTO schema_version (embedding_dimensions) VALUES (384)`)
+    target.close()
+
+    const result = await mergeLibraryDB(sourcePath, targetPath, "text_only")
+    expect(result.experiencesMerged).toBe(1)
+
+    const verify = new Database(targetPath, { readonly: true })
+    const row = verify.prepare("SELECT retrieval_count FROM experience WHERE id = 'e1'").get() as {
+      retrieval_count: number
+    }
+    // Legacy source has no pull evidence; mirror the migration's q_visits
+    // approximation so imported rows are not ranked as never-pulled.
+    expect(row.retrieval_count).toBe(7)
+    verify.close()
+  })
+
   test("updateShellProfile writes and removeShellProfile removes a fish export line", async () => {
     await using tmp = await tmpdir()
     const fishConfig = path.join(tmp.path, "fish", "config.fish")

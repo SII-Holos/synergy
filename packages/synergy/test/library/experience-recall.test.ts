@@ -80,8 +80,12 @@ describe.serial("ExperienceRecall UCB1 exploration", () => {
     seedEvaluated("exp-b")
 
     // Pull exp-a four times and exp-b once through the injection path.
-    for (let i = 0; i < 4; i++) ExperienceRecall.trackRetrieval(`sess-${i}`, ["exp-a"])
+    for (let i = 0; i < 4; i++) {
+      ExperienceRecall.trackRetrieval(`sess-${i}`, ["exp-a"])
+      ExperienceRecall.commitRetrieval(`sess-${i}`)
+    }
     ExperienceRecall.trackRetrieval("sess-last", ["exp-b"])
+    ExperienceRecall.commitRetrieval("sess-last")
 
     expect(LibraryDB.Experience.get("exp-a")!.retrieval_count).toBe(4)
     expect(LibraryDB.Experience.get("exp-b")!.retrieval_count).toBe(1)
@@ -106,16 +110,33 @@ describe.serial("ExperienceRecall UCB1 exploration", () => {
     expect(bAfter.score).toBeCloseTo(0.5 * Math.sqrt(ln5), 10)
   })
 
+  test("pulls count only when the accepted context is committed", () => {
+    seedEvaluated("exp-c1")
+
+    // A discarded recall (never committed, e.g. recall timeout) must not
+    // decay exploration.
+    ExperienceRecall.trackRetrieval("sess-discard", ["exp-c1"])
+    expect(LibraryDB.Experience.get("exp-c1")!.retrieval_count).toBe(0)
+
+    // Acceptance commits the pull exactly once, even across cache replay.
+    ExperienceRecall.commitRetrieval("sess-discard")
+    expect(LibraryDB.Experience.get("exp-c1")!.retrieval_count).toBe(1)
+    ExperienceRecall.commitRetrieval("sess-discard")
+    expect(LibraryDB.Experience.get("exp-c1")!.retrieval_count).toBe(1)
+  })
+
   test("pulls do not mutate updated_at and counting is best-effort", () => {
     seedEvaluated("exp-ts")
     const before = LibraryDB.Experience.get("exp-ts")!
     ExperienceRecall.trackRetrieval("sess-ts", ["exp-ts"])
+    ExperienceRecall.commitRetrieval("sess-ts")
     const after = LibraryDB.Experience.get("exp-ts")!
     expect(after.retrieval_count).toBe(1)
     expect(after.q_visits).toBe(0)
     expect(after.updated_at).toBe(before.updated_at)
     // Unknown ids are no-ops and must never throw into the injection path.
-    expect(() => ExperienceRecall.trackRetrieval("sess-x", ["no-such-id"])).not.toThrow()
+    ExperienceRecall.trackRetrieval("sess-x", ["no-such-id"])
+    expect(() => ExperienceRecall.commitRetrieval("sess-x")).not.toThrow()
   })
 
   test("uninjectable arms never enter the candidate set", async () => {

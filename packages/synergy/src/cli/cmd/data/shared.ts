@@ -536,7 +536,10 @@ export async function mergeLibraryDB(
       exp.rewards,
       exp.q_values,
       exp.q_visits,
-      exp.retrieval_count ?? 0,
+      // A pre-retrieval_count source has no pull evidence; mirror the
+      // migration's approximation and seed from q_visits so imported rows
+      // are not ranked as never-pulled.
+      exp.retrieval_count ?? exp.q_visits,
       exp.q_updated_at,
       exp.q_history,
       exp.retrieved_experience_ids,
