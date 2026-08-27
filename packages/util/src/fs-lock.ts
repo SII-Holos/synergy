@@ -78,7 +78,12 @@ async function acquireFileLock(options: FileLockOptions): Promise<{ release(): P
         release: () => releaseOwnedLock(filename, ownerToken),
       }
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
+      const code = (error as NodeJS.ErrnoException).code
+      // An exclusive create can surface EPERM instead of EEXIST on Windows
+      // when the previous lock's unlink is still delete-pending: that is
+      // contention, not failure. Persistent EPERM elsewhere stays bounded by
+      // the top-of-loop timeout check.
+      if (code !== "EEXIST" && code !== "EPERM") throw error
       const snapshot = await readOwnerSnapshot(filename)
       if (snapshot && (await isStaleOwner(filename, snapshot, staleMetadataMs, verifiedLiveUntil))) {
         if (await removeStaleLock(filename, snapshot.contents)) continue
