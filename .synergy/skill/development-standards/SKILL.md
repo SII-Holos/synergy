@@ -55,7 +55,7 @@ When implementation materially adopts an algorithm or constraint from a paper or
 3. Preserve applicable license obligations when code, data, themes, or assets are copied or adapted.
 4. Carry cross-cutting sources into the decision record and pull request so reviewers can evaluate the source-to-implementation relationship.
 
-Routine language usage, direct official API calls, and general patterns without a specific material source do not require citations. A bare URL or a source recorded only in Git history is not durable provenance. Review enforces this semantic obligation; do not add a network or keyword CI gate that claims to detect missing sources.
+Routine language usage, direct official API calls, and general patterns without a specific material source do not require citations. A bare URL or a source recorded only in Git history is not durable provenance. A marker is a `Provenance:` locator line paired with a `Local adaptation:` line — unrelated uses of the word "provenance" in identifiers, fields, or metadata are not markers. Review enforces this semantic obligation; do not add a network or keyword CI gate that claims to detect missing sources.
 
 ## Handoff
 

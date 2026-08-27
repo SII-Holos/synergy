@@ -1,6 +1,6 @@
 # Synergy Repository Rules
 
-Rules for the Bun/TypeScript monorepo. Read the nearest package `AGENTS.md` before editing; documentation placement and budgets follow [docs/AGENTS.md](docs/AGENTS.md).
+These rules apply to the Bun/TypeScript monorepo. Read the nearest package `AGENTS.md` before editing package code. Each rule links the document holding its rationale. Placement and budgets follow [docs/AGENTS.md](docs/AGENTS.md).
 
 ## Work from Current Evidence
 
@@ -53,7 +53,7 @@ See [Development reference](docs/reference/development.md) for modes, isolated i
 - Preserve structured error data. Use `NamedError.create()` or local error classes where the owning domain already does.
 - Use Bun file APIs where they improve clarity and match surrounding code.
 - Do not add inline comments, headers, adapters, fallbacks, or abstractions unless they explain a durable non-obvious constraint.
-- Cite materially used papers, standards, upstream or community work, benchmarks, experiments, and research beside the authoritative implementation; `development-standards` defines format.
+- Cite materially used papers, standards, upstream or community work, benchmarks, experiments, and research beside the authoritative implementation; `development-standards` defines format and [the decision record](docs/decisions/implemented/process/2026-08-25-preserve-external-implementation-provenance.md) holds the rationale.
 
 ### Persistence and compatibility
 
@@ -133,7 +133,7 @@ Review at least `README.md`, relevant setup/help text, and the owning Skill when
 
 ### Development standards live in Skills
 
-`.synergy/skill/` is the executable development handbook. Record reusable rules in the focused owning Skill in the same change, creating one only when no workflow owns them. Keep `AGENTS.md` to safety, global invariants, and routing; put procedures and examples in Skills. Load `development-standards` when ownership is unclear.
+`.synergy/skill/` is the executable source-development handbook for this repository. When implementation or review reveals a reusable development rule that no Skill captures, update the focused owning Skill or create one in the same change. Keep `AGENTS.md` focused on safety, global invariants, and routing; keep step-by-step procedures, examples, and verification checklists in Skills. Load `development-standards` when ownership is unclear.
 
 ## Release and Security
 
