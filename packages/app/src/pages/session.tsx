@@ -819,7 +819,7 @@ function SessionPageContent() {
 
   const scopeRoot = createMemo(() => sync.scope?.worktree ?? sync.data.path.directory)
   const newSessionWorkspacePreference = createMemo<NewSessionWorkspacePreference>(() =>
-    !isHomeScope(sdk.scopeKey) && sync.data.vcs ? (sync.data.config.defaultSessionWorkspace ?? "main") : "main",
+    sync.scope?.vcs === "git" ? (sync.data.config.defaultSessionWorkspace ?? "main") : "main",
   )
   const newSessionWorkspaceSelection = createMemo(() =>
     defaultNewSessionWorkspaceSelection({

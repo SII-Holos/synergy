@@ -343,6 +343,7 @@ export function GeneralPanel(props: {
           trailing={
             <SegmentPill
               value={props.general.defaultSessionWorkspace}
+              ariaLabel={_(copy.workspaceTitle)}
               options={[
                 { value: "main", label: _(copy.workspaceMain) },
                 { value: "worktree", label: _(copy.workspaceWorktree) },

@@ -14320,7 +14320,7 @@ msgstr "界面缩放"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.searchTerms"
-msgstr "外观 | 颜色 | 浅色 | 深色 | 自动 | 语言 | 快照 | 活动 | 活动显示 | 产品更新 | 提示 | 通知 | 缩放 | 界面缩放"
+msgstr "外观 | 颜色 | 浅色 | 深色 | 自动 | 语言 | 快照 | 活动 | 活动显示 | 工作区 | worktree | checkout | 主检出 | 产品更新 | 提示 | 通知 | 缩放 | 界面缩放"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.github.description"

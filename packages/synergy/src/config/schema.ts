@@ -1477,7 +1477,9 @@ export const Info = z
       .enum(["main", "worktree"])
       .optional()
       .describe(
-        "Default workspace for new sessions: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main)",
+        "Default workspace for new sessions started from the Web composer: main = run in the main checkout, " +
+          "worktree = start each new session in an isolated git worktree (default: main). " +
+          "Programmatic session creation (API, channels, Cortex) always uses the main checkout.",
       ),
     keybinds: Keybinds.optional().describe("Custom keybind configurations"),
     logLevel: Log.Level.optional().describe("Log level"),
