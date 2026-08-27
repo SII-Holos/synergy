@@ -14,14 +14,16 @@ Status: implemented
 
 `canonicalize()` inside `path-contain.ts` now resolves symlinks **component by component** rather than whole-path-or-lexical. This complements [the workspace realpath-root fix](2026-08-18-workspace-files-realpath-root.md), which already resolved both sides of the `assertRealpathInside` comparison but remained blind to missing paths:
 
+- Components are walked against a physically resolved prefix: `..` components are kept until symlinks are resolved and then applied to the physical target, matching OS semantics (`workspace/link/../victim` follows the link first and reaches outside — collapsing `..` up front would erase the link to inspect).
 - Wherever a prefix exists, `realpathSync.native` resolves it, so links are followed at any depth.
 - When a component is a link whose realpath fails because its target is missing, `readlinkSync` resolves the redirect anyway — a write through a dangling link is still detected as leaving the boundary.
 - Genuinely missing components (which have no link to follow) stay lexical, preserving file creation inside the workspace.
 - Windows device-prefixed forms returned by `realpathSync.native` (`\\?\C:\...`, `\\?\UNC\...`) are stripped so every returned form lives in one coordinate system.
-- Chained links are capped at the kernel's SYMLOOP_MAX (40); beyond that the remainder stays lexical, matching what the OS itself refuses to resolve.
-- Components that cannot be resolved at all (EACCES, ELOOP past the cap) keep their lexical form, which is never wider than the pre-fix behavior.
+- Chained links are capped at the kernel's SYMLOOP_MAX (40); beyond that the resolution fails closed (returns not-contained) instead of widening.
+- Metadata failures other than ENOENT/ENOTDIR (EACCES, EIO, ...) fail closed: an unresolved suffix may hide an escape link, so the path is treated as not contained rather than assumed safe.
+- Pathname-mutating operations (`rm`, `mv`, `ln`, `rmdir`) judge the final directory entry itself: `isPathContained(..., { followFinalSymlink: false })` canonicalizes the parent and re-joins the final component, so an external link pointing into the workspace is still classified as an external write target. Content operations keep following the final link.
 
-`isPathContained` remains the single containment primitive; no caller changed. The stale "pure string analysis — no filesystem I/O" contract on `PathClassifier.classifyPath` was corrected — containment may now touch the filesystem. Tests cover the existing-link escape, the write-through escape, the dangling link, internal links with missing tails, the symlinked-prefix workspace, and the create-inside-workspace positive path.
+`isPathContained` remains the single containment primitive; enforcement passes the entry-semantics flag for shell commands that mutate the pathname. The stale "pure string analysis — no filesystem I/O" contract on `PathClassifier.classifyPath` was corrected — containment may now touch the filesystem. Tests cover the existing-link escape, the write-through escape, the dangling link, `..` after a link, entry semantics, a symlink loop, internal links with missing tails, the symlinked-prefix workspace, and the create-inside-workspace positive path.
 
 ## Alternatives considered
 

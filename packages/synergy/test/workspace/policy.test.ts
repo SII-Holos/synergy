@@ -409,6 +409,81 @@ describe("isPathContained symlink escape (BUG-001)", () => {
     const future = path.join(workspace, "src", "new-file.ts")
     expect(isPathContained(workspace, future)).toBe(true)
   })
+
+  test("link/../victim resolves the link first, then applies .. physically", async () => {
+    await using tmp = await tmpdir()
+    const scope = await tmp.scope()
+    const workspace = scope.directory
+
+    // outside/victim is the target the OS would reach via link/../victim:
+    // the link is followed first, then `..` steps back from the physical
+    // target, landing in outside/ — NOT in the workspace.
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "bug001-dotdot-"))
+    await fs.writeFile(path.join(outside, "victim.txt"), "content")
+
+    const linkPath = path.join(workspace, "link")
+    const linked = await trySymlink(outside, linkPath, process.platform === "win32" ? "junction" : "dir")
+    if (!linked) {
+      await fs.rm(outside, { recursive: true, force: true }).catch(() => {})
+      return
+    }
+    try {
+      // String concatenation (NOT path.join) preserves the raw `..` component:
+      // path.resolve/join would collapse link/../victim to workspace/victim
+      // and report contained, while the OS follows the link first and reaches
+      // outside. The containment check must apply `..` after the link.
+      const victim = `${linkPath}/../victim.txt`
+      expect(isPathContained(workspace, victim)).toBe(false)
+    } finally {
+      await fs.unlink(linkPath).catch(() => {})
+      await fs.rm(outside, { recursive: true, force: true }).catch(() => {})
+    }
+  })
+
+  test("followFinalSymlink: false judges an external link entry itself as outside", async () => {
+    await using tmp = await tmpdir()
+    const scope = await tmp.scope()
+    const workspace = scope.directory
+
+    // An EXTERNAL link pointing INTO the workspace. Content operations follow
+    // it (contained), but pathname-mutating operations (rm/mv/ln) act on the
+    // entry — which lives outside the workspace.
+    const insideFile = path.join(workspace, "target.txt")
+    await fs.writeFile(insideFile, "content")
+    const externalLink = path.join(os.tmpdir(), `bug001-extlink-${Math.random().toString(36).slice(2)}`)
+    const linked = await trySymlink(insideFile, externalLink, process.platform === "win32" ? "junction" : "file")
+    if (!linked) return
+
+    try {
+      expect(isPathContained(workspace, externalLink)).toBe(true)
+      expect(isPathContained(workspace, externalLink, { followFinalSymlink: false })).toBe(false)
+    } finally {
+      await fs.unlink(externalLink).catch(() => {})
+    }
+  })
+
+  test("a symlink loop fails closed (not contained)", async () => {
+    await using tmp = await tmpdir()
+    const scope = await tmp.scope()
+    const workspace = scope.directory
+
+    const a = path.join(workspace, "loop-a")
+    const b = path.join(workspace, "loop-b")
+    const linkedA = await trySymlink(b, a, process.platform === "win32" ? "junction" : "dir")
+    const linkedB = linkedA && (await trySymlink(a, b, process.platform === "win32" ? "junction" : "dir"))
+    if (!linkedB) {
+      await fs.unlink(a).catch(() => {})
+      await fs.unlink(b).catch(() => {})
+      return
+    }
+
+    try {
+      expect(isPathContained(workspace, path.join(a, "x.txt"))).toBe(false)
+    } finally {
+      await fs.unlink(a).catch(() => {})
+      await fs.unlink(b).catch(() => {})
+    }
+  })
 })
 /**
  * Minimal async-dispose helper for sequential async cleanup in tests.
