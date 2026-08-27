@@ -18722,6 +18722,10 @@ msgstr ""
 msgid "tool.task.starting"
 msgstr ""
 
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.waiting-approval"
+msgstr ""
+
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.abort-session"
 msgstr ""

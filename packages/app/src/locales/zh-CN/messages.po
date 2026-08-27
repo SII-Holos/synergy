@@ -18722,6 +18722,10 @@ msgstr "打开子代理会话"
 msgid "tool.task.starting"
 msgstr "正在启动…"
 
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.waiting-approval"
+msgstr "等待批准"
+
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.abort-session"
 msgstr "中止会话"

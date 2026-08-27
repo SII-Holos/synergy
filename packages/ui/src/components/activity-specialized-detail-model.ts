@@ -41,15 +41,18 @@ export function specializedActivityDetail(step: ActivityStepProjection): Special
   }
   if (step.family === "delegate" && step.part.tool === "task") {
     const input = record(state.input)
+    const background = metadata.background === true
     return {
       kind: "subagent",
       info: {
         agentType: typeof input.subagent_type === "string" ? input.subagent_type : undefined,
         description: typeof input.description === "string" ? input.description : undefined,
-        background: metadata.background === true,
+        background,
         sessionId: typeof metadata.sessionId === "string" ? metadata.sessionId : undefined,
         summary: metadata.summary,
-        running: step.state === "running" || step.state === "waiting-approval",
+        running: background || step.state === "running" || step.state === "waiting-approval",
+        waitingApproval: step.state === "waiting-approval",
+        error: state.status === "error" ? state.error : undefined,
       },
     }
   }

@@ -226,6 +226,7 @@ beforeAll(async () => {
                   summary: [
                     { id: "c1", tool: "bash", state: { status: "completed", title: "Ran tests" } },
                     { id: "c2", tool: "read", state: { status: "running" } },
+                    { id: "c3", tool: "grep", state: { status: "generating" } },
                   ],
                 },
               },
@@ -252,12 +253,12 @@ beforeAll(async () => {
               id: "p-task-bg",
               state: {
                 ...delegateGroup.steps[0].part.state,
-                status: "running",
+                status: "completed",
                 metadata: { sessionId: "child-2", background: true, summary: [] },
               },
             },
             scopeKey: "task:child-2",
-            state: "running",
+            state: "done",
           },
         ],
       }
@@ -265,7 +266,28 @@ beforeAll(async () => {
         kind: "activity-receipt",
         key: "receipt-task",
         message,
-        group: { ...delegateGroup, receipt: true },
+        group: {
+          ...delegateGroup,
+          key: "group-delegate-receipt",
+          state: "error",
+          receipt: true,
+          steps: [
+            {
+              ...delegateGroup.steps[0],
+              part: {
+                ...delegateGroup.steps[0].part,
+                id: "p-task-err",
+                state: {
+                  status: "error",
+                  input: { subagent_type: "explore", description: "Inspect the registry" },
+                  error: "Agent type scout is not visible to synergy",
+                  metadata: { sessionId: "child-3", background: false, summary: [] },
+                },
+              },
+              state: "error",
+            },
+          ],
+        },
       }
       function CodeFixture(props: { file: { contents: string } }) {
         return <pre data-component="code-fixture">{props.file.contents}</pre>
@@ -805,7 +827,7 @@ describe("Delegated subagent activity DOM behavior", () => {
     expect(host.querySelector('[data-component="task-subagent-detail"]')).not.toBeNull()
     expect(host.querySelector('[data-slot="task-subagent-agent"]')?.textContent).toBe("explore")
     expect(host.querySelector('[data-slot="task-subagent-description"]')?.textContent).toBe("Inspect the registry")
-    expect(host.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(2)
+    expect(host.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(3)
     expect(
       host.querySelector('[data-slot="task-tool-item"][data-state="running"] [data-slot="task-tool-status"]'),
     ).not.toBeNull()
@@ -865,7 +887,7 @@ describe("ActivityReceipt DOM behavior", () => {
     expect(scope?.getAttribute("title")).toBe("DAG snapshot")
   })
 
-  test("expands a task receipt into the subagent detail leaf", async () => {
+  test("expands a failed task receipt into the subagent detail with its error", async () => {
     const host = document.querySelector("#task-receipt-host") as HTMLElement
     const receiptTrigger = host.querySelector('[data-slot="activity-receipt-trigger"]') as HTMLButtonElement
     expect(receiptTrigger).not.toBeNull()
@@ -877,6 +899,10 @@ describe("ActivityReceipt DOM behavior", () => {
 
     expect(receiptTrigger.getAttribute("aria-expanded")).toBe("true")
     expect(host.querySelector('[data-component="task-subagent-detail"]')).not.toBeNull()
-    expect(host.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(2)
+    expect(host.querySelector('[data-slot="task-subagent-error"]')?.textContent).toBe(
+      "Agent type scout is not visible to synergy",
+    )
+    expect(host.querySelector('[data-slot="task-subagent-empty"]')).toBeNull()
+    expect(host.querySelectorAll('[data-slot="task-tool-item"]')).toHaveLength(0)
   })
 })

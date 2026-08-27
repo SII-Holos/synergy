@@ -885,6 +885,14 @@
     font-size: var(--font-size-small);
   }
 
+  [data-slot="task-subagent-error"] {
+    margin: 0;
+    color: var(--text-on-critical-base);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-large);
+    overflow-wrap: anywhere;
+  }
+
   [data-slot="task-subagent-status"] {
     display: inline-flex;
     align-items: center;

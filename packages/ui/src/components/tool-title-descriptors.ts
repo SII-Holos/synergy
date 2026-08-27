@@ -386,6 +386,7 @@ export const TOOL_TASK_DESC = {
   backgroundRunning: d("tool.task.background-running", "Running in background"),
   starting: d("tool.task.starting", "Starting…"),
   noSteps: d("tool.task.no-steps", "No steps recorded"),
+  waitingApproval: d("tool.task.waiting-approval", "Waiting for approval"),
 } as const
 
 // ── Markdown ────────────────────────────────────────────────────────

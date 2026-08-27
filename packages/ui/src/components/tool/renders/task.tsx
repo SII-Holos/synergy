@@ -1,5 +1,5 @@
 import { TOOL_MISC_DESC } from "../../tool-title-descriptors"
-import { getTaskToolTrigger } from "../task-info"
+import { getTaskToolTrigger, parseTaskSubagentSummary } from "../task-info"
 import { TaskSubagentDetail, TaskSubagentSteps } from "../task-subagent-detail"
 import { createMemo } from "solid-js"
 import { useLingui } from "@lingui/solid"
@@ -16,6 +16,7 @@ ToolRegistry.register({
     const resultOnly = useToolResultPresentation()
     const { _ } = useLingui()
     const summary = () => props.metadata.summary
+    const steps = createMemo(() => parseTaskSubagentSummary(summary()))
     const isBackground = () => props.metadata.background === true
     const trigger = createMemo(() =>
       getTaskToolTrigger(props.input, {
@@ -51,7 +52,11 @@ ToolRegistry.register({
             background: isBackground(),
             sessionId: childSessionId(),
             summary: summary(),
-            running: props.status === "pending" || props.status === "running" || props.status === "generating",
+            running:
+              isBackground() ||
+              props.status === "pending" ||
+              props.status === "running" ||
+              props.status === "generating",
           }}
         />
       )
@@ -64,7 +69,7 @@ ToolRegistry.register({
           metadata={props.metadata}
           time={props.time}
           defaultOpen={true}
-          hideDetails={Array.isArray(summary()) && (summary() as unknown[]).length === 0}
+          hideDetails={steps().length === 0}
           trigger={trigger()}
           onSubtitleClick={handleSubtitleClick}
         >
