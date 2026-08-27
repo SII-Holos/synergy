@@ -1,4 +1,5 @@
-import { describe, expect, test, mock } from "bun:test"
+import { describe, expect, test } from "bun:test"
+import fs from "fs"
 import path from "path"
 import os from "os"
 
@@ -9,15 +10,16 @@ import os from "os"
 // patterns, search paths, and file references as inside or potentially
 // outside the active workspace boundary.
 //
-// CRITICAL DESIGN INVARIANT: PathClassifier must use STRING/BASE-PATH
-// analysis only. It must NOT call stat(), realpath(), readdir(), or any
-// other filesystem API. It operates entirely on path strings. This is
-// essential for search-tool hot paths (glob, grep) where per-file I/O
-// would destroy performance.
+// DESIGN CONTRACT: PathClassifier operates on path strings — it never reads
+// file contents and never iterates or expands directories. Since the
+// path-containment symlink fix (src/util/path-contain.ts), the containment
+// comparison resolves symlinks and may issue bounded metadata syscalls
+// (lstat/realpath/readlink) per path, so in-workspace links pointing
+// outside are classified outside.
 // ---------------------------------------------------------------------------
 
 describe("PathClassifier workspace boundary — inside workspace", () => {
-  test("src/**/*.ts is classified as inside workspace with no filesystem I/O", () => {
+  test("src/**/*.ts is classified as inside workspace", () => {
     const { PathClassifier } = require("../../src/enforcement/classify")
     const workspace = "/home/user/my-project"
     const result = PathClassifier.classify("src/**/*.ts", { workspace })
@@ -126,8 +128,8 @@ describe("PathClassifier workspace boundary — potentially outside", () => {
   })
 })
 
-describe("PathClassifier — no filesystem I/O", () => {
-  test("classify does not call any fs APIs", () => {
+describe("PathClassifier — string analysis with symlink-aware containment", () => {
+  test("classify handles nonexistent paths without throwing", () => {
     const { PathClassifier } = require("../../src/enforcement/classify")
     const workspace = "/nonexistent-workspace-" + Math.random().toString(36).slice(2)
     const patterns = [
@@ -143,7 +145,7 @@ describe("PathClassifier — no filesystem I/O", () => {
     }
   })
 
-  test("classify is pure — same input produces same output", () => {
+  test("classify is deterministic while the filesystem is unchanged", () => {
     const { PathClassifier } = require("../../src/enforcement/classify")
     const workspace = "/home/user/my-project"
     const r1 = PathClassifier.classify("../outside/**/*", { workspace })
@@ -153,11 +155,31 @@ describe("PathClassifier — no filesystem I/O", () => {
     expect(r1.reason).toBe(r2.reason)
   })
 
-  test("classify never resolves symlinks — no realpath", () => {
+  test("classify resolves a symlink alias of the workspace root to inside", () => {
     const { PathClassifier } = require("../../src/enforcement/classify")
-    const workspace = "/private/tmp/my-project"
-    const result = PathClassifier.classify("/tmp/my-project/src", { workspace })
-    expect(result.boundary).toBe("outside")
+    const holder = fs.mkdtempSync(path.join(os.tmpdir(), "classify-alias-"))
+    const realRoot = path.join(holder, "workspace")
+    fs.mkdirSync(realRoot, { recursive: true })
+    const alias = path.join(holder, "alias")
+    try {
+      fs.symlinkSync(realRoot, alias, process.platform === "win32" ? "junction" : "dir")
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (process.platform === "win32" && (code === "EPERM" || code === "EACCES")) {
+        fs.rmSync(holder, { recursive: true, force: true })
+        return
+      }
+      throw error
+    }
+    try {
+      // The alias path physically lands inside the workspace root, so the
+      // symlink-aware containment must classify it as inside rather than
+      // reporting a lexical escape.
+      expect(PathClassifier.classify(path.join(alias, "src"), { workspace: realRoot }).boundary).toBe("inside")
+    } finally {
+      fs.unlinkSync(alias)
+      fs.rmSync(holder, { recursive: true, force: true })
+    }
   })
 })
 
@@ -184,7 +206,7 @@ describe("PathClassifier — glob pattern classification for search tools", () =
     expect(result.boundary).toBe("outside")
   })
 
-  test("classifyGlobPattern does not expand or iterate — pure analysis", () => {
+  test("classifyGlobPattern does not expand or iterate directories", () => {
     const { PathClassifier } = require("../../src/enforcement/classify")
     const workspace = "/no/such/dir/ever-" + Math.random().toString(36).slice(2)
     const result = PathClassifier.classifyGlobPattern("src/**/*.ts", { workspace })
