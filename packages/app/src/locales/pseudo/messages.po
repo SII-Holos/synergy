@@ -14295,6 +14295,10 @@ msgid "settings.catalog.general.row.interfaceLanguage"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.general.row.newSessionWorkspace"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.general.row.notifications"
 msgstr ""
 
@@ -15464,6 +15468,22 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.general.updates.web.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.main"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.worktree"
 msgstr ""
 
 #. js-lingui-explicit-id

@@ -52,6 +52,7 @@ export namespace ConfigDomain {
       "username",
       "locale",
       "activityDisplay",
+      "defaultSessionWorkspace",
       "layout",
       "embedding",
       "rerank",

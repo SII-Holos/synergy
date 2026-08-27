@@ -1473,6 +1473,12 @@ export const Info = z
       .describe(
         "How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)",
       ),
+    defaultSessionWorkspace: z
+      .enum(["main", "worktree"])
+      .optional()
+      .describe(
+        "Default workspace for new sessions: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main)",
+      ),
     keybinds: Keybinds.optional().describe("Custom keybind configurations"),
     logLevel: Log.Level.optional().describe("Log level"),
     server: Server.optional().describe("Server configuration for synergy serve and web commands"),

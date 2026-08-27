@@ -31,6 +31,7 @@ import {
   type GeneralStore,
   type ToastType,
 } from "../types"
+import type { NewSessionWorkspacePreference } from "@/components/session/worktree-session"
 import { nextMutedToasts } from "../toast-preferences"
 import { LANGUAGE_SELF_NAMES } from "./language-self-names"
 import { useFontPreference, type FontKind } from "@/context/font-preference"
@@ -98,6 +99,13 @@ const copy = {
   activityFull: { id: "settings.general.activityDisplay.full", message: "Full" },
   activityBalanced: { id: "settings.general.activityDisplay.balanced", message: "Balanced" },
   activityMinimal: { id: "settings.general.activityDisplay.minimal", message: "Minimal" },
+  workspaceTitle: { id: "settings.general.workspace.title", message: "New session workspace" },
+  workspaceDescription: {
+    id: "settings.general.workspace.description",
+    message: "Start new sessions in the main checkout or an isolated git worktree",
+  },
+  workspaceMain: { id: "settings.general.workspace.main", message: "Main checkout" },
+  workspaceWorktree: { id: "settings.general.workspace.worktree", message: "Worktree" },
   snapshotsDescription: {
     id: "settings.general.snapshots.description",
     message: "Keep restore points when Synergy edits files",
@@ -326,6 +334,22 @@ export function GeneralPanel(props: {
             <Switch
               checked={props.general.compactReasoning}
               onChange={(value) => props.onGeneralChange("compactReasoning", value)}
+            />
+          }
+        />
+        <SettingRow
+          title={_(copy.workspaceTitle)}
+          description={_(copy.workspaceDescription)}
+          trailing={
+            <SegmentPill
+              value={props.general.defaultSessionWorkspace}
+              options={[
+                { value: "main", label: _(copy.workspaceMain) },
+                { value: "worktree", label: _(copy.workspaceWorktree) },
+              ]}
+              onChange={(value) =>
+                props.onGeneralChange("defaultSessionWorkspace", value as NewSessionWorkspacePreference)
+              }
             />
           }
         />
