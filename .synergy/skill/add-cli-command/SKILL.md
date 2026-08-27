@@ -21,6 +21,13 @@ description: Add or modify a Synergy CLI command, command group, positional, opt
 6. Use generated SDK/server helpers for attached commands where the family already does. Preserve auth, directory/Scope, timeout, and error semantics.
 7. Regenerate the SDK with `./script/generate.ts` only if an API route or OpenAPI-visible schema changed.
 
+## Command Contract
+
+1. Separate the command kinds: discovery commands (list accounts, projects, or queues), resolve commands (name or URL to a stable ID), read commands (exact object fetch plus a bounded list/search with `--limit` or a cursor), and narrow write commands (one named action each; prefer `--dry-run` or draft mode when the service allows).
+2. When the neighboring command family already supports structured output, support stable `--json` output with a documented success shape and machine-readable errors. Never include credentials in error output.
+3. Write self-explanatory help text: every command, positional, and option describes its purpose, and `--help` surfaces every major capability.
+4. Keep a raw escape hatch only where the family needs one. Never expose only a generic raw request command without high-level verbs.
+
 ## Verify
 
 ```bash
