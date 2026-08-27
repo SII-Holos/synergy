@@ -293,7 +293,8 @@ export namespace Ripgrep {
     }
 
     // Bun.spawn should throw this, but it incorrectly reports that the executable does not exist.
-    // See https://github.com/oven-sh/bun/issues/24012
+    // Provenance: https://github.com/oven-sh/bun/issues/24012 .
+    // Local adaptation: stat the cwd and raise ENOENT ourselves before spawning until Bun fixes the misreport.
     if (!(await fs.stat(input.cwd).catch(() => undefined))?.isDirectory()) {
       throw Object.assign(new Error(`No such file or directory: '${input.cwd}'`), {
         code: "ENOENT",
