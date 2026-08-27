@@ -5,6 +5,8 @@ import type { LatticeTypes } from "../../src/lattice/types"
 import BASE from "../../src/lattice/prompt/base.txt"
 import MODE_AUTO from "../../src/lattice/prompt/mode-auto.txt"
 import MODE_COLLABORATIVE from "../../src/lattice/prompt/mode-collaborative.txt"
+// Product domains (including the lattice wrapper contribution) register via the L4 manifest
+import "../../src/product-registration"
 import STATE_PLANNING from "../../src/lattice/prompt/state-planning.txt"
 import STATE_CLARIFYING from "../../src/lattice/prompt/state-clarifying.txt"
 import { WorkflowUserWrapper } from "../../src/session/workflow-user-wrapper"

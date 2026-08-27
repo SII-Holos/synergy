@@ -31,6 +31,29 @@ export namespace WorkflowPromptRegistry {
     cancel?(sessionID: string): Promise<SessionInfo>
     /** Reattach domain-owned timers after a plugin reload. */
     reattachPluginTimers?(): Promise<void>
+    /** Prepare the domain runtime before the session loop starts
+     * (lattice: subscribe + reconcile persisted runs). */
+    init?(): void
+    /** Flush per-turn counters when the session loop exits (lattice:
+     * model-call accounting into the durable run). */
+    finalize?(sessionID: string, scopeID: string): Promise<void>
+    /** Record one model call for a session of this kind (lattice: budget). */
+    onModelCall?(sessionID: string): void
+    /** Whether the persisted workflow still owns recovery for this session
+     * (lattice: active or paused run). */
+    isActive?(session: SessionInfo): Promise<boolean>
+    /** Enable the workflow on a session; owns locking, conflict checks,
+     * durable projection, and rollback (lattice). */
+    enable?(
+      sessionID: string,
+      input: { mode: "auto" | "collaborative"; maxModelCalls?: number; goal?: string },
+    ): Promise<SessionInfo>
+    /** Release the domain's durable workflow state when the interactive
+     * workflow is cleared (lattice: disable the run). */
+    disable?(sessionID: string): Promise<void>
+    /** Classify a domain error thrown by enable as a user-facing workflow
+     * conflict (lattice: StateConflict → reply reason). */
+    workflowConflict?(error: unknown): { reason: string } | undefined
   }
 
   const contributions = new Map<string, Contribution>()

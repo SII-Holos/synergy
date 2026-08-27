@@ -28,9 +28,6 @@ import { NoteWriteTool } from "./note-write"
 import { NoteEditTool } from "./note-edit"
 import { NoteArchiveTool } from "./note-archive"
 import { NoteDeleteTool } from "./note-delete"
-import { PathwayReadTool } from "./pathway-read"
-import { PathwayWriteTool } from "./pathway-write"
-import { LatticeSubmitTool } from "./lattice-submit"
 import { SessionListTool } from "./session-list"
 import { SessionReadTool } from "./session-read"
 import { SessionSearchTool } from "./session-search"
@@ -377,9 +374,6 @@ export namespace ToolRegistry {
       NoteWriteTool,
       NoteEditTool,
       NoteDeleteTool,
-      PathwayReadTool,
-      PathwayWriteTool,
-      LatticeSubmitTool,
       ChannelPushTool,
       SessionListTool,
       SessionReadTool,

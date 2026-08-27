@@ -30,23 +30,13 @@ export namespace WorkflowUserWrapper {
   const VALID_MODES = new Set<Mode>(["plan", "lattice", "lightloop", "boss"])
 
   type PromptBuilder = (query: string) => string
-  type ModePromptBuilders = Record<Mode, PromptBuilder>
 
-  const PROMPT_BUILDERS: Record<string, Partial<ModePromptBuilders>> = {
-    synergy: {
-      plan: synergyPlan,
-      lattice: synergyLattice,
-    },
-    "synergy-max": {
-      plan: synergyMaxPlan,
-      lattice: synergyMaxLattice,
-    },
+  const PROMPT_BUILDERS: Record<string, PromptBuilder> = {
+    synergy: synergyPlan,
+    "synergy-max": synergyMaxPlan,
   }
 
-  const FALLBACK_BUILDERS: Partial<ModePromptBuilders> = {
-    plan: genericPlan,
-    lattice: genericLattice,
-  }
+  const FALLBACK_BUILDER: PromptBuilder = genericPlan
 
   export function activeMode(session?: Pick<SessionInfo, "workflow">): Mode | undefined {
     const workflow = session?.workflow
@@ -135,14 +125,13 @@ export namespace WorkflowUserWrapper {
 
   export function build(agentName: string, mode: Mode, query: string): string {
     const trimmed = query.trim() || "(empty request)"
-    if (mode === "boss" || mode === "lightloop") {
+    if (mode === "lattice" || mode === "boss" || mode === "lightloop") {
       // Workflow wrapper bytes live in the owning domains (H2); without
       // registration there is no workflow to wrap, so the request passes
       // through unchanged.
       return WorkflowPromptRegistry.get(mode)?.projectUserMessage?.(trimmed, agentName) ?? trimmed
     }
-    const builders = PROMPT_BUILDERS[agentName] ?? FALLBACK_BUILDERS
-    return builders[mode]?.(trimmed) ?? trimmed
+    return (PROMPT_BUILDERS[agentName] ?? FALLBACK_BUILDER)(trimmed)
   }
 
   function messageMode(msg: MessageV2.WithParts): Mode | undefined {
@@ -208,45 +197,6 @@ export namespace WorkflowUserWrapper {
       "User request:",
       query,
       "</plan-user-request>",
-    ].join("\n")
-  }
-
-  function genericLattice(query: string): string {
-    return [
-      "<lattice-user-request>",
-      "You are in the Lattice workflow.",
-      "Treat this message as evidence for the current Lattice responsibility; follow the current Lattice system state instead of restarting the workflow.",
-      "While clarifying, investigate and align requirements before proposing a Pathway or Blueprint.",
-      "",
-      "User request:",
-      query,
-      "</lattice-user-request>",
-    ].join("\n")
-  }
-
-  function synergyLattice(query: string): string {
-    return [
-      "<lattice-user-request>",
-      "You are synergy in the Lattice workflow.",
-      "Treat this message as evidence for the current Lattice responsibility; follow the current Lattice system state instead of restarting the workflow.",
-      "While clarifying, investigate and align requirements before proposing a Pathway or Blueprint.",
-      "",
-      "User request:",
-      query,
-      "</lattice-user-request>",
-    ].join("\n")
-  }
-
-  function synergyMaxLattice(query: string): string {
-    return [
-      "<lattice-user-request>",
-      "You are synergy-max in the Lattice workflow.",
-      "Treat this message as evidence for the current Lattice responsibility; follow the current Lattice system state instead of restarting the workflow.",
-      "While clarifying, investigate and align requirements before proposing a Pathway or Blueprint.",
-      "",
-      "User request:",
-      query,
-      "</lattice-user-request>",
     ].join("\n")
   }
 }

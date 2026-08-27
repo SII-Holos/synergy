@@ -1,11 +1,11 @@
-import { LatticeAction } from "../lattice/action"
-import { LatticeActionService } from "../lattice/action-service"
-import { LatticeError } from "../lattice/error"
-import { LatticeTypes } from "../lattice/types"
-import { ScopeContext } from "../scope/context"
-import { ToolDiagnosticError } from "./diagnostic"
+import { LatticeAction } from "../action"
+import { LatticeActionService } from "../action-service"
+import { LatticeError } from "../error"
+import { LatticeTypes } from "../types"
+import { ScopeContext } from "../../scope/context"
+import { ToolDiagnosticError } from "../../tool/diagnostic"
 import DESCRIPTION from "./lattice-submit.txt"
-import { Tool } from "./tool"
+import { Tool } from "../../tool/tool"
 
 function currentStep(run: LatticeTypes.Run) {
   return (

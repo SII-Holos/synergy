@@ -72,10 +72,6 @@ import { Scope } from "@/scope"
 import { LoopJob } from "./loop-job"
 import "./loop-signals"
 import { ContinuationKernel } from "./continuation-kernel"
-import { LatticeBridge } from "../lattice/bridge"
-import { LatticeStore } from "../lattice/store"
-import { LatticePrompt } from "../lattice/prompt"
-import { LatticeModelCalls } from "../lattice/model-calls"
 import "../library/chronicler"
 import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
@@ -324,7 +320,7 @@ export namespace SessionInvoke {
 
   async function loopBody(sessionID: string, lease: SessionManager.LoopLease): Promise<MessageV2.WithParts> {
     ContinuationKernel.init()
-    LatticeBridge.init()
+    for (const kind of WorkflowPromptRegistry.kinds()) WorkflowPromptRegistry.get(kind)?.init?.()
     const abort = lease.signal
 
     // Open the loop-scoped message cache window (#350 D2): while this loop owns
@@ -334,9 +330,13 @@ export namespace SessionInvoke {
     await using _ = defer(async () => {
       SessionMessageCache.disable(sessionID)
       evictRecallCache(sessionID)
-      if (LatticeModelCalls.peek(sessionID) > 0) {
-        await LatticeModelCalls.flush(scopeID, sessionID).catch(() => undefined)
-      }
+      await Promise.all(
+        WorkflowPromptRegistry.kinds().map((kind) =>
+          WorkflowPromptRegistry.get(kind)
+            ?.finalize?.(sessionID, scopeID)
+            .catch(() => undefined),
+        ),
+      )
     })
 
     const runtime = SessionManager.registerRuntime(sessionID)
@@ -733,9 +733,10 @@ export namespace SessionInvoke {
             if (agent.name === "synergy-max") systemParts.push(PLAN_SYNERGY_MAX.trim())
             break
           case "lattice": {
-            const latticeRun = await LatticeStore.getOrUndefined(scopeID, sessionID).catch(() => undefined)
-            if (latticeRun && latticeRun.status === "active") {
-              systemParts.push(LatticePrompt.build(session, latticeRun))
+            const contribution = WorkflowPromptRegistry.get("lattice")
+            if (contribution?.buildSystem) {
+              const parts = await contribution.buildSystem(session, { deliveryMetadata: undefined })
+              systemParts.push(...parts)
             }
             break
           }
@@ -1014,9 +1015,11 @@ export namespace SessionInvoke {
         }
 
         SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
-        // Count LLM calls for an active Lattice run in memory; flushed to the
-        // run at turn boundaries / policy entry (never written per call).
-        if (session?.workflow?.kind === "lattice") LatticeModelCalls.record(sessionID)
+        // Count LLM calls for registered workflow kinds in memory; flushed to
+        // the durable domain state at turn boundaries / policy entry.
+        if (session?.workflow?.kind) {
+          WorkflowPromptRegistry.get(session.workflow.kind)?.onModelCall?.(sessionID)
+        }
         const processTimer = log.time("processor.process")
         const timeoutCfg = await TimeoutConfig.resolve()
         const turnDeadline = new AbortController()

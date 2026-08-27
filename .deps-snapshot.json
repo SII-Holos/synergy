@@ -1,6 +1,6 @@
 {
   "totalModules": 65,
-  "totalFiles": 973,
+  "totalFiles": 974,
   "cyclicSCCs": [
     [
       "acp",
@@ -146,10 +146,6 @@
     ],
     [
       "session",
-      "lattice"
-    ],
-    [
-      "session",
       "library"
     ],
     [
@@ -199,10 +195,6 @@
     [
       "tool",
       "email"
-    ],
-    [
-      "tool",
-      "lattice"
     ],
     [
       "tool",
@@ -335,10 +327,6 @@
     [
       "channel",
       "holos"
-    ],
-    [
-      "channel",
-      "lattice"
     ],
     [
       "channel",

@@ -6,8 +6,8 @@ import { Identifier } from "@/id/id"
 import { Scope } from "@/scope"
 import { SessionProgress } from "./progress"
 import { isActiveLoopStatus, BlueprintLoopStore } from "../blueprint/loop-store"
-import { LatticeStore } from "../lattice/store"
 import { isActiveLightLoopWorkflow } from "./light-loop-state"
+import { WorkflowPromptRegistry } from "./workflow-prompt-registry"
 
 const log = Log.create({ service: "session.working" })
 
@@ -54,9 +54,7 @@ async function hasActiveWorkflow(input: { session: Info; scopeID: Identifier.Sco
   const workflow = input.session.workflow
   if (!workflow) return false
   if (workflow.kind === "lightloop") return isActiveLightLoopWorkflow(workflow)
-  if (workflow.kind !== "lattice") return false
-  const run = await LatticeStore.getOrUndefined(input.scopeID, input.session.id).catch(() => undefined)
-  return run?.status === "active" || run?.status === "paused"
+  return (await WorkflowPromptRegistry.get(workflow.kind)?.isActive?.(input.session)) === true
 }
 
 async function hasActiveBlueprintLoop(input: { session: Info; scopeID: Identifier.ScopeID }): Promise<boolean> {

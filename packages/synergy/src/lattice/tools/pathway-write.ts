@@ -1,12 +1,12 @@
 import z from "zod"
-import { LatticeError } from "../lattice/error"
-import { LatticeMachine } from "../lattice/machine"
-import { LatticeStore } from "../lattice/store"
-import { LatticeTypes } from "../lattice/types"
-import { ScopeContext } from "../scope/context"
-import { ToolDiagnosticError } from "./diagnostic"
+import { LatticeError } from "../error"
+import { LatticeMachine } from "../machine"
+import { LatticeStore } from "../store"
+import { LatticeTypes } from "../types"
+import { ScopeContext } from "../../scope/context"
+import { ToolDiagnosticError } from "../../tool/diagnostic"
 import DESCRIPTION from "./pathway-write.txt"
-import { Tool } from "./tool"
+import { Tool } from "../../tool/tool"
 
 const StepInput = z
   .object({
