@@ -28,7 +28,7 @@ Skills load in three levels to manage context:
 2. **Body** — the `SKILL.md` content, loaded only after the Skill triggers.
 3. **Resources** — `references/`, `scripts/`, and `assets/`, loaded or executed only when needed.
 
-Keep the body under 500 lines. When a Skill supports multiple variations, frameworks, or options, keep the core workflow and selection guidance in the body and move variant-specific details into reference files. Reference files must stay one level deep from the body, be linked directly from it, and state when to read them. Files longer than 100 lines should start with a table of contents so the reader can see the full scope when previewing. Avoid deeply nested references and avoid duplicating the same information in both the body and references.
+Keep the body under 500 lines. When a Skill supports multiple variations, frameworks, or options, keep the core workflow and selection guidance in the body and move variant-specific details into reference files. Reference files must stay one level deep from the body, be linked directly from it, and state when to read them. Reference files longer than 100 lines should start with a table of contents so the reader can see the full scope when previewing. Avoid deeply nested references and avoid duplicating the same information in both the body and references.
 
 ## Create or Update
 

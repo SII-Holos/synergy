@@ -30,7 +30,7 @@ description: Add or change a built-in Synergy primary agent, subagent, host-sele
 ## Prompt Quality
 
 1. Give the agent a role that is a real-world professional identity plus a concrete domain (for example, "a social-content growth strategist focused on short-video platforms"). Reject product, brand, or codename as the role, reject pipeline-step labels ("verb + agent"), and reject generic wrappers such as "smart assistant".
-2. Keep the prompt runtime-isolated: it may not reference code-side schema, field, or class names or pipeline-position vocabulary such as upstream/downstream. Write constraints as agent-facing behavior: "You receive the already-confirmed context", not "PushMessageDraft.risk_level comes from upstream".
+2. Keep prompts of end-user-deployed agents runtime-isolated: they may not reference code-side schema, field, or class names or pipeline-position vocabulary such as upstream/downstream — write constraints as agent-facing behavior ("You receive the already-confirmed context", not "PushMessageDraft.risk_level comes from upstream"). Internal subagents that operate on this repository may keep precise code vocabulary (class and pipeline names) where it is the accurate domain language.
 3. Use a layered structure: role and mission, scope and non-goals, tool authority and tool-use policy, output contract, safety and failure handling, and verification and self-check.
 
 ## Verify

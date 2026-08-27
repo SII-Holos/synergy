@@ -6,7 +6,7 @@ import CLI_CREATOR from "./references/cli-creator.txt"
 export const synergyAgentTooling = {
   name: "synergy-agent-tooling",
   description:
-    "Design, evaluate, or improve the tooling an agent works with: agent-facing tool contracts (names, descriptions, parameters, error recovery), MCP servers, and agent-friendly CLIs. Use when creating or reviewing tools, MCP servers, or CLI surfaces for agents; route Synergy MCP connection config to synergy-config.",
+    "Design, evaluate, or improve the tooling an agent works with: agent-facing tool contracts (names, descriptions, parameters, error recovery), MCP servers, and agent-friendly CLIs. Use when creating or reviewing tools, MCP servers, or CLI surfaces for agents; route Synergy MCP connection config to synergy-config, and follow the repository add-tool workflow for first-party Synergy product tools.",
   content: CONTENT,
   builtin: true as const,
   references: {

@@ -8,7 +8,7 @@ A tool's public surface is its contract. The agent cannot see the implementation
 
 - Use a verb-noun shape that states the action and the object ("create_draft", "list_customers", "resolve_issue").
 - Keep names unique within the tool set the agent sees; the name is the agent's primary identifier for the tool.
-- MCP tools are referenced by their fully qualified server-qualified name. Use the full `server:tool` form in prompts and documentation so the agent disambiguates same-named tools across servers.
+- Reference MCP tools by their fully qualified, server-qualified name in prompts, permissions, and documentation so same-named tools across servers stay unambiguous. Use the exact qualified form the target runtime exposes: Synergy exposes MCP tools as `mcp__<server>__<tool>` and keys permission patterns on the `mcp__` prefix; other clients may use different forms.
 - Keep names stable. Renaming a tool breaks every prompt and workflow that references it; prefer adding parameters or a new versioned tool over renaming.
 
 ## Description

@@ -223,6 +223,9 @@ describe.serial("skill discovery", () => {
         const backing = memoryBacking(config)
         expect(backing.references?.["references/agents.txt"]).toContain("modelRole")
         expect(backing.references?.["references/models.txt"]).toContain("## Role variants")
+        // Authoring routes must point at the builtin skills with a callable form.
+        expect(backing.content).toContain('skill(name: "synergy-prompt-architect")')
+        expect(backing.content).toContain('skill(name: "synergy-agent-tooling")')
         const clarus = skills.find((skill) => skill.name === "clarus-agent-participation")
         expect(clarus).toBeDefined()
         expect(clarus!.origin.kind).toBe("builtin")

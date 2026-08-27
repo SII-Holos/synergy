@@ -6,6 +6,8 @@ Design, evaluate, or improve the tooling an agent works with: agent-facing tool 
 
 **Start from a concrete deliverable.** The unit of work is a tool, an MCP server, or a CLI the agent will call — not a general discussion of tooling. If the request is about connecting an existing MCP server into Synergy (adding servers, converting config), route to the builtin skill `synergy-config` reference `mcp.txt` instead.
 
+**Inside the Synergy repository**, a first-party product tool follows the repository `add-tool` workflow (registration, taxonomy, Web presentation); apply this skill for the contract design within that workflow.
+
 **Draft in the same turn.** Ask one clarifying question only when, after reading the request, you still cannot name the tool's purpose and its inputs. Missing schemas, server details, or edge cases are handled with labeled assumptions inside the draft.
 
 ## Tool contract

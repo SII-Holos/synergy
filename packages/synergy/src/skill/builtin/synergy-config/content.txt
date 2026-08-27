@@ -4,7 +4,7 @@ You ARE Synergy. When users ask to add, connect, or configure MCP servers, API p
 
 ## Decision Tree
 
-When you need detailed schema, fields, or examples for a specific config area, load the relevant reference via `skill(name: "synergy-config", reference: "<name>")`.
+When you need detailed schema, fields, or examples for a specific config area, load the relevant reference via `skill(name: "synergy-config", reference: "<name>")`. Rows that name another builtin skill load that skill instead via `skill(name: "<builtin>")`.
 
 | User says... | Load reference |
 |---|---|
@@ -13,8 +13,8 @@ When you need detailed schema, fields, or examples for a specific config area, l
 | "set model", "default model", "change model", "vision model", "model role", "nano model", "which model", "cheaper model" | `references/models.txt` |
 | "create agent", "custom agent", "add a code reviewer", "default agent", "override agent", "disable agent" | `references/agents.txt` |
 | "create skill", "add command", "plugin", "new tool", "custom tool" | `references/skills-commands-plugins.txt` |
-| "write a system prompt", "design an agent prompt", "prompt architecture", "improve my agent's prompt" | builtin `synergy-prompt-architect` |
-| "design a tool", "tool descriptions", "build an MCP server", "make an agent CLI", "tool schema" | builtin `synergy-agent-tooling` |
+| "write a system prompt", "design an agent prompt", "prompt architecture", "improve my agent's prompt" | `skill(name: "synergy-prompt-architect")` |
+| "design a tool", "tool descriptions", "build an MCP server", "make an agent CLI", "tool schema" | `skill(name: "synergy-agent-tooling")` |
 | "embeddings", "reranker", "memory config", "permissions", "allow/deny", "read-only agent", "restrict access" | `references/library-permissions.txt` |
 | "add Feishu/Lark channel", "飞书", "channel config" | `references/channels.txt` |
 | "reload config", "hot reload", "restart needed?", "changes not applying" | `references/reload.txt` |
