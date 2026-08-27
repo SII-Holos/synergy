@@ -1,5 +1,4 @@
 import path from "path"
-import fs from "fs/promises"
 import { manifestHasTrustedUI, type PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import {
   computePermissionsHash,
@@ -7,6 +6,8 @@ import {
   type PluginGrantContract,
 } from "@ericsanchezok/synergy-plugin/integrity"
 import { Global } from "../../global/index.js"
+import { Storage } from "../../storage/storage.js"
+import { Lock } from "../../util/lock.js"
 import type { PluginSource, TrustTier } from "../trust.js"
 import { comparePluginAccess } from "./diff.js"
 
@@ -45,16 +46,19 @@ async function readAll(): Promise<PluginApprovalRecord[]> {
   }
 }
 
+// Lock is not reentrant: writeAll must stay lock-free because saveApproval,
+// removeApproval, and writeApprovals already hold Lock.write across their
+// read-modify-write, which serializes concurrent approval mutations in-process.
 async function writeAll(records: PluginApprovalRecord[]) {
-  const file = approvalPath()
-  await fs.mkdir(path.dirname(file), { recursive: true })
-  const temporary = `${file}.tmp`
-  await Bun.write(temporary, `${JSON.stringify(records, null, 2)}\n`)
-  await fs.rename(temporary, file)
+  await Storage.writeJsonAtomic(approvalPath(), `${JSON.stringify(records, null, 2)}\n`)
 }
 
 export const readApprovals = readAll
-export const writeApprovals = writeAll
+
+export async function writeApprovals(records: PluginApprovalRecord[]) {
+  using _ = await Lock.write(approvalPath())
+  await writeAll(records)
+}
 
 export function createApprovalRecord(input: {
   pluginId: string
@@ -87,12 +91,14 @@ export async function getApproval(pluginId: string, manifest?: PluginManifestTyp
 }
 
 export async function saveApproval(record: PluginApprovalRecord) {
+  using _ = await Lock.write(approvalPath())
   const records = (await readAll()).filter((item) => item.pluginId !== record.pluginId)
   records.push(record)
   await writeAll(records)
 }
 
 export async function removeApproval(pluginId: string) {
+  using _ = await Lock.write(approvalPath())
   await writeAll((await readAll()).filter((record) => record.pluginId !== pluginId))
 }
 
