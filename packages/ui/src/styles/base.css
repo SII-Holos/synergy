@@ -1,4 +1,10 @@
 /*
+  Provenance: Tailwind CSS Preflight ( https://github.com/tailwindlabs/tailwindcss/blob/main/packages/tailwindcss/preflight.css ), MIT-licensed.
+  Local adaptation: reset adapted for Synergy — typography defaults resolve through CSS variables,
+  and upstream issue links stay inline where a rule exists because of an upstream bug.
+*/
+
+/*
   1. Prevent padding and border from affecting element width. (https://github.com/mozdevs/cssremedy/issues/4)
   2. Remove default margins and padding
   3. Reset all borders.
