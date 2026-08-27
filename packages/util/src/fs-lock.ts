@@ -15,6 +15,7 @@ export interface FileLockOptions {
 const DEFAULT_RETRY_MS = 25
 const DEFAULT_TIMEOUT_MS = 60_000
 const DEFAULT_STALE_METADATA_MS = 5_000
+const VERIFIED_LIVE_TTL_MS = 1_000
 
 export const HOLOS_ACCOUNTS_WRITE_LOCK_KEY = "holos-accounts:write"
 export const LEGACY_API_KEY_WRITE_LOCK_KEY = "legacy-api-key:write"
@@ -57,7 +58,7 @@ async function acquireFileLock(options: FileLockOptions): Promise<{ release(): P
   const startedAt = Date.now()
   const startIdentity = await processStartIdentity(process.pid)
   const ownerToken = randomUUID()
-  const verifiedLive = new Set<string>()
+  const verifiedLiveUntil = new Map<string, number>()
 
   while (true) {
     if (Date.now() - startedAt >= timeoutMs) {
@@ -79,8 +80,8 @@ async function acquireFileLock(options: FileLockOptions): Promise<{ release(): P
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
       const snapshot = await readOwnerSnapshot(filename)
-      if (snapshot && (await isStaleOwner(filename, snapshot, staleMetadataMs, verifiedLive))) {
-        if (await removeLockIfUnchanged(filename, snapshot.contents)) continue
+      if (snapshot && (await isStaleOwner(filename, snapshot, staleMetadataMs, verifiedLiveUntil))) {
+        if (await removeStaleLock(filename, snapshot.contents)) continue
       }
       await sleep(retryMs)
     }
@@ -117,7 +118,7 @@ async function isStaleOwner(
   filename: string,
   snapshot: OwnerSnapshot,
   staleMetadataMs: number,
-  verifiedLive: Set<string>,
+  verifiedLiveUntil: Map<string, number>,
 ): Promise<boolean> {
   const owner = snapshot.owner
   if (owner?.pid === undefined) {
@@ -127,10 +128,15 @@ async function isStaleOwner(
   if (!processExists(owner.pid)) return true
   if (owner.startIdentity === undefined) return false
   const key = `${owner.pid}:${owner.startIdentity}`
-  if (verifiedLive.has(key)) return false
+  const verifiedUntil = verifiedLiveUntil.get(key)
+  if (verifiedUntil !== undefined && verifiedUntil > Date.now()) return false
   const current = await processStartIdentity(owner.pid)
   if (current === undefined || current === owner.startIdentity) {
-    verifiedLive.add(key)
+    // The owner was verified live. Cache the verdict briefly so the identity
+    // query (a subprocess on Windows) is not spawned on every retry, but
+    // recheck once it expires: the owner may exit and its pid be recycled
+    // while this acquisition attempt is still waiting.
+    verifiedLiveUntil.set(key, Date.now() + VERIFIED_LIVE_TTL_MS)
     return false
   }
   return true
@@ -138,40 +144,33 @@ async function isStaleOwner(
 
 /**
  * Remove the lock file only while its contents still match the snapshot the
- * stale decision was based on, so a concurrently recreated lock is never
- * deleted by a stale verdict.
+ * stale decision was based on. Read-compare-unlink, never rename-vacate: a
+ * rename briefly removes the canonical path, and when several waiters observe
+ * the same stale payload a delayed rename can displace a successor's fresh
+ * lock and then discard it on a failed restore — overlapping critical
+ * sections. The residual read-to-unlink window is far narrower and only
+ * deletes a lock that was replaced in that instant, not a lock we moved.
  */
-async function removeLockIfUnchanged(filename: string, expectedContents: string): Promise<boolean> {
-  const quarantinePath = `${filename}.stale-${randomUUID()}`
+async function removeStaleLock(filename: string, expectedContents: string): Promise<boolean> {
+  const current = await fs.readFile(filename, "utf8").catch(() => undefined)
+  if (current !== expectedContents) return false
   try {
-    await fs.rename(filename, quarantinePath)
-  } catch {
-    return false
+    await fs.unlink(filename)
+    return true
+  } catch (error) {
+    // ENOENT: another waiter already reclaimed it — treat as removed.
+    return (error as NodeJS.ErrnoException).code === "ENOENT"
   }
-  const quarantined = await fs.readFile(quarantinePath, "utf8").catch(() => undefined)
-  if (quarantined !== expectedContents) {
-    await restoreQuarantined(quarantinePath, filename)
-    return false
-  }
-  await fs.rm(quarantinePath, { force: true }).catch(() => {})
-  return true
 }
 
 async function releaseOwnedLock(filename: string, ownerToken: string): Promise<void> {
-  const quarantinePath = `${filename}.release-${randomUUID()}`
+  const contents = await fs.readFile(filename, "utf8").catch(() => undefined)
+  if (contents === undefined || readOwnerToken(contents) !== ownerToken) return
   try {
-    await fs.rename(filename, quarantinePath)
+    await fs.unlink(filename)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
-    return
   }
-  const contents = await fs.readFile(quarantinePath, "utf8").catch(() => undefined)
-  const owner = readOwnerToken(contents)
-  if (owner === ownerToken) {
-    await fs.rm(quarantinePath, { force: true }).catch(() => {})
-    return
-  }
-  await restoreQuarantined(quarantinePath, filename)
 }
 
 function readOwnerToken(contents: string | undefined): string | undefined {
@@ -183,16 +182,6 @@ function readOwnerToken(contents: string | undefined): string | undefined {
     return typeof ownerToken === "string" ? ownerToken : undefined
   } catch {
     return undefined
-  }
-}
-
-async function restoreQuarantined(quarantinePath: string, filename: string): Promise<void> {
-  try {
-    await fs.rename(quarantinePath, filename)
-  } catch {
-    // A newer owner already recreated the lock file; the quarantined payload
-    // is obsolete and safe to drop.
-    await fs.rm(quarantinePath, { force: true }).catch(() => {})
   }
 }
 

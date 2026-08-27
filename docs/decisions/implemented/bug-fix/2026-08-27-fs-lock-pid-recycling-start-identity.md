@@ -14,10 +14,11 @@ Stale-owner detection now uses the owner's **process start identity** — the cr
 
 Supporting hardening shipped with the decision, closing gaps the review of the age-based proposal surfaced:
 
-- Release is token-validated: the payload now carries a per-acquisition `ownerToken`, and release quarantines the file via rename and only deletes it when the token still matches, so a displaced or raced owner cannot unlink a successor's lock.
-- Stale reclamation removes the lock only if its contents still match the snapshot the stale verdict was based on (rename-quarantine, compare, delete).
+- Release is token-validated: the payload carries a per-acquisition `ownerToken`, and release reads back the file and unlinks only while the token still matches, so a displaced or raced owner cannot unlink a successor's lock.
+- Stale reclamation is read-compare-unlink against the snapshot the verdict was based on — never a rename that vacates the canonical path, which lets a delayed rename displace and discard a successor's fresh lock when several waiters observe the same stale payload.
 - The acquisition loop checks its timeout at the top of every iteration, so a lock file that keeps failing to unlink can no longer produce an unbounded no-sleep spin.
 - Payloads without `startIdentity` (written by older versions) are treated as owned while their pid is live — a transitional fail-safe, not a reclamation trigger.
+- Live-owner verdicts are cached only briefly (1s TTL), so an owner that exits and recycles during a long acquisition is re-detected instead of staying classified as live until timeout.
 
 ## Alternatives considered
 
@@ -29,4 +30,4 @@ Supporting hardening shipped with the decision, closing gaps the review of the a
 
 ## Consequences
 
-Recycling is now detected deterministically on every platform, and posix gains the same protection Windows needed (pids recycle there too, just more slowly). The identity query spawns one subprocess per contested lock that looks stale — only on the contested path, cached per acquire loop, and never on uncontended acquisition or normal release. When an identity cannot be queried (hardened PowerShell, missing `ps`), the owner is treated as live: the lock fails closed, preserving mutual exclusion at the cost of a possible timeout. `ServerProcessLock` now consumes the shared util module instead of its own copy of the query, and the util lock tests run on the Windows CI matrix, which previously never executed them. Legacy payloads predating `startIdentity` remain unreclaimable while their pid is live; they age out of deployment naturally and a crashed-owner-with-live-legacy-pid stall self-heals once the recycled pid's process exits.
+Recycling is now detected deterministically on every platform, and posix gains the same protection Windows needed (pids recycle there too, just more slowly). Linux identities include the boot id so start ticks cannot collide across a reboot; Windows normalizes WMIC local-time and PowerShell .NET-ticks to one UTC-epoch encoding so the two query paths stay comparable. The identity query spawns one subprocess per contested lock that looks stale — only on the contested path, cached per acquire loop and shared across concurrent acquisitions, and never on uncontended acquisition or normal release. When an identity cannot be queried (hardened PowerShell, missing `ps`), the owner is treated as live: the lock fails closed, preserving mutual exclusion at the cost o…
