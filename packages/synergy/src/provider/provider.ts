@@ -1200,6 +1200,9 @@ export namespace Provider {
             {
               ...opts,
               headers,
+              // Provenance: https://github.com/oven-sh/bun/issues/16682 .
+              // Local adaptation: Bun types reject `timeout: false`; passing it disables the built-in
+              // request timeout so the TTFB/idle timers below own stream aborting.
               // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
               timeout: false,
             },
