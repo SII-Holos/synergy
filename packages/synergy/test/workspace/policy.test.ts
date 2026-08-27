@@ -1,7 +1,6 @@
 import { test, expect, describe } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
-import { Scope } from "../../src/scope"
 import { WorkspacePolicy } from "../../src/workspace/policy"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
@@ -259,8 +258,10 @@ describe("ScopeContext.contains workspace awareness", () => {
 })
 
 // ===========================================================================
-// BUG-001: isPathContained must canonicalize symlinks (realpath) so an
-// in-project symlink whose target lies outside the workspace cannot escape.
+// BUG-001: isPathContained must resolve symlinks so an in-project link whose
+// target lies outside the workspace cannot bypass the boundary — including a
+// link followed into a not-yet-existing tail (write-through) and dangling
+// links whose target a write would create outside the workspace.
 // ===========================================================================
 
 describe("isPathContained symlink escape (BUG-001)", () => {
@@ -283,12 +284,108 @@ describe("isPathContained symlink escape (BUG-001)", () => {
     }
 
     try {
-      // The link itself, and a path through it, must both be rejected.
+      // The link itself, and an EXISTING file through it, must both be rejected.
       expect(isPathContained(workspace, linkPath)).toBe(false)
       expect(isPathContained(workspace, path.join(linkPath, "secret.txt"))).toBe(false)
     } finally {
       await fs.unlink(linkPath).catch(() => {})
       await fs.rm(outside, { recursive: true, force: true }).catch(() => {})
+    }
+  })
+
+  test("a NEW file written through an existing escape link is NOT contained (write-through)", async () => {
+    await using tmp = await tmpdir()
+    const scope = await tmp.scope()
+    const workspace = scope.directory
+
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "bug001-writethrough-"))
+    const linkPath = path.join(workspace, "escape-link")
+    const linked = await trySymlink(outside, linkPath, process.platform === "win32" ? "junction" : "dir")
+    if (!linked) {
+      await fs.rm(outside, { recursive: true, force: true }).catch(() => {})
+      return
+    }
+
+    try {
+      // The final component does not exist yet, so whole-path realpath fails —
+      // the containment check must still resolve the link it passes through
+      // and reject the write target outside the workspace.
+      expect(isPathContained(workspace, path.join(linkPath, "newly-created.txt"))).toBe(false)
+    } finally {
+      await fs.unlink(linkPath).catch(() => {})
+      await fs.rm(outside, { recursive: true, force: true }).catch(() => {})
+    }
+  })
+
+  test("a dangling symlink inside the workspace is NOT contained", async () => {
+    await using tmp = await tmpdir()
+    const scope = await tmp.scope()
+    const workspace = scope.directory
+
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "bug001-dangling-"))
+    // The target does not exist: realpath on the link fails with ENOENT, but a
+    // write through the link would CREATE the target outside the workspace.
+    const linkPath = path.join(workspace, "dangling-link")
+    const linked = await trySymlink(
+      path.join(outside, "not-yet-created"),
+      linkPath,
+      process.platform === "win32" ? "junction" : "file",
+    )
+    if (!linked) {
+      await fs.rm(outside, { recursive: true, force: true }).catch(() => {})
+      return
+    }
+
+    try {
+      expect(isPathContained(workspace, linkPath)).toBe(false)
+    } finally {
+      await fs.unlink(linkPath).catch(() => {})
+      await fs.rm(outside, { recursive: true, force: true }).catch(() => {})
+    }
+  })
+
+  test("internal symlinks and missing tails inside the workspace stay contained", async () => {
+    await using tmp = await tmpdir()
+    const scope = await tmp.scope()
+    const workspace = scope.directory
+
+    const realDir = path.join(workspace, "real-src")
+    await fs.mkdir(realDir, { recursive: true })
+    await fs.writeFile(path.join(realDir, "app.ts"), "content")
+
+    const linkPath = path.join(workspace, "internal-link")
+    const linked = await trySymlink(realDir, linkPath, process.platform === "win32" ? "junction" : "dir")
+    if (!linked) return
+
+    try {
+      expect(isPathContained(workspace, linkPath)).toBe(true)
+      expect(isPathContained(workspace, path.join(linkPath, "app.ts"))).toBe(true)
+      expect(isPathContained(workspace, path.join(linkPath, "brand-new.ts"))).toBe(true)
+    } finally {
+      await fs.unlink(linkPath).catch(() => {})
+    }
+  })
+
+  test("a workspace reached through a symlinked prefix does not reject new files", async () => {
+    await using tmp = await tmpdir()
+
+    const realRoot = path.join(tmp.path, "real-workspace")
+    await fs.mkdir(path.join(realRoot, "src"), { recursive: true })
+    await fs.writeFile(path.join(realRoot, "src", "app.ts"), "content")
+
+    // The workspace path string itself goes through a symlink, while the file
+    // about to be created does not exist. Both sides of the comparison must
+    // stay in one coordinate system: canonicalizing the parent but falling
+    // back to the lexical child would falsely report an escape.
+    const linkedRoot = path.join(tmp.path, "linked-workspace")
+    const linked = await trySymlink(realRoot, linkedRoot, process.platform === "win32" ? "junction" : "dir")
+    if (!linked) return
+
+    try {
+      expect(isPathContained(linkedRoot, path.join(linkedRoot, "src", "app.ts"))).toBe(true)
+      expect(isPathContained(linkedRoot, path.join(linkedRoot, "src", "new-file.ts"))).toBe(true)
+    } finally {
+      await fs.unlink(linkedRoot).catch(() => {})
     }
   })
 
@@ -309,9 +406,6 @@ describe("isPathContained symlink escape (BUG-001)", () => {
     const scope = await tmp.scope()
     const workspace = scope.directory
 
-    // A path that does not exist yet (e.g. a file about to be written). The
-    // fallback to the lexical check must keep it inside — fail-open on ENOENT
-    // is safe because a non-existent path has no symlink to follow.
     const future = path.join(workspace, "src", "new-file.ts")
     expect(isPathContained(workspace, future)).toBe(true)
   })

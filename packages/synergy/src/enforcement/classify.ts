@@ -123,9 +123,10 @@ export namespace PathClassifier {
   /**
    * Classify a path with original-checkout awareness for worktree sessions.
    *
-   * Pure string analysis — no filesystem I/O. Uses the same prefix-containment
-   * logic as classify() but enriches the reason when originalCheckout is provided
-   * and the path falls within the original checkout directory.
+   * Uses the same prefix-containment logic as classify() but enriches the
+   * reason when originalCheckout is provided and the path falls within the
+   * original checkout directory. Containment may resolve symlinks on disk
+   * (see isPathContained), so this is not guaranteed free of filesystem I/O.
    */
   export function classifyPath(input: string, options: Options): Result {
     const base = classify(input, options)

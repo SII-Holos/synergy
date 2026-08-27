@@ -1,34 +1,83 @@
 import path from "path"
-import { realpathSync } from "fs"
+import { lstatSync, readlinkSync, realpathSync } from "fs"
+
+// Matches the kernel SYMLOOP_MAX: chains deeper than this are loops, and the
+// OS refuses to resolve them anyway — remaining components stay lexical.
+const SYMLINK_DEPTH_LIMIT = 40
+
+// realpathSync.native may return Windows device-prefixed forms (\\?\C:\...,
+// \\?\UNC\server\share). canonicalize() mixes whole-path realpath results with
+// component-walk results; every returned form must land in the same coordinate
+// system or containment comparisons on Windows would falsely report escapes.
+function stripDevicePrefix(p: string): string {
+  if (p.startsWith(`\\\\?\\UNC\\`)) return `\\\\${p.slice(8)}`
+  if (p.startsWith(`\\\\?\\`) || p.startsWith(`\\??\\`)) return p.slice(4)
+  return p
+}
+
+function joinAll(base: string, components: string[]): string {
+  return components.length ? path.join(base, ...components) : base
+}
 
 /**
- * Resolve a path to its canonical physical form, following symlinks.
+ * Canonicalize a path by resolving symlinks wherever they sit in it, while
+ * keeping genuinely missing components lexical.
  *
- * Used by {@link isPathContained} so that an in-project symlink whose target
- * lies outside the workspace cannot bypass the boundary check: the resolved
- * target is compared against the (equally canonicalized) parent.
+ * Used by {@link isPathContained} so an in-project symlink whose target lies
+ * outside the workspace cannot bypass the boundary check. Whole-path realpath
+ * alone is not sufficient: it fails with ENOENT whenever any component does
+ * not exist — most commonly the final one, a file about to be written — and
+ * falling back to a lexical form there re-opens the escape for writes through
+ * an existing link (BUG-001). Resolving component by component follows links
+ * at any depth while missing tails, which have no link to follow, stay
+ * lexical. Dangling links (target missing) are resolved through readlink so a
+ * write that would create the target outside the boundary is still detected.
  *
- * If the path does not exist, realpath cannot resolve it. Falling back to the
- * lexical {@link path.resolve} result in that case preserves the pre-fix
- * behavior for not-yet-created paths (e.g. a file about to be written) rather
- * than widening access — a non-existent path has no link to follow, so the
- * lexical check is still safe there. Existing paths that fail to resolve for
- * other reasons (e.g. EACCES) likewise fall back conservatively.
- *
- * (BUG-001: previously this function was purely lexical, so a symlink inside
- * the workspace pointing at e.g. /etc or os.tmpdir() was treated as contained.
- * `Filesystem.normalizePath` performs the equivalent realpath-based casing
- * normalization on Windows; it is not reused here to avoid a circular import
- * — filesystem.ts imports isPathContained from this module — and because in
- * the fallback branch realpath has already failed, so normalizePath would only
- * re-attempt the same failing call.)
+ * Components that cannot be resolved at all (missing, EACCES, ELOOP past the
+ * depth cap) keep their lexical form, which is never wider than the pre-fix
+ * behavior.
  */
-function canonicalize(p: string): string {
+function canonicalize(input: string, depth = 0): string {
+  if (depth > SYMLINK_DEPTH_LIMIT) return path.resolve(input)
+  const resolved = path.resolve(input)
   try {
-    return realpathSync.native(p)
+    return stripDevicePrefix(realpathSync.native(resolved))
   } catch {
-    return path.resolve(p)
+    // The path does not fully exist — resolve it component by component.
   }
+  const { root } = path.parse(resolved)
+  const components = resolved.slice(root.length).split(path.sep).filter(Boolean)
+  let current = root
+  for (let index = 0; index < components.length; index++) {
+    const component = components[index]!
+    const candidate = path.join(current, component)
+    let stat: ReturnType<typeof lstatSync> | undefined
+    try {
+      stat = lstatSync(candidate)
+    } catch {
+      stat = undefined
+    }
+    if (!stat) return joinAll(current, components.slice(index))
+    if (!stat.isSymbolicLink()) {
+      current = candidate
+      continue
+    }
+    const remaining = components.slice(index + 1)
+    try {
+      const target = realpathSync.native(candidate)
+      return canonicalize(stripDevicePrefix(joinAll(target, remaining)), depth + 1)
+    } catch {
+      // Dangling link: realpath fails because the target is missing, but the
+      // link still redirects writes, so resolve it through readlink instead.
+      try {
+        const link = stripDevicePrefix(readlinkSync(candidate))
+        return canonicalize(joinAll(path.resolve(current, link), remaining), depth + 1)
+      } catch {
+        return joinAll(current, components.slice(index))
+      }
+    }
+  }
+  return current
 }
 
 export function isPathContained(parent: string, child: string): boolean {
