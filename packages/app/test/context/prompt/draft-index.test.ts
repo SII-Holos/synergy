@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, test } from "bun:test"
 import { Persist } from "../../../src/utils/persist"
-import { hasDraftSession, markDraftSession, rebuildDraftSessionIndex } from "../../../src/context/prompt/draft-index"
+import {
+  clearLocalDraftMark,
+  forgetDraftSession,
+  hasDraftSession,
+  markDraftSession,
+  rebuildDraftSessionIndex,
+} from "../../../src/context/prompt/draft-index"
 
 const DIR_A = "/tmp/workspace-draft-test-a"
 const DIR_B = "/tmp/workspace-draft-test-b"
@@ -79,7 +85,7 @@ describe("draft session index scan", () => {
   })
 })
 
-describe("draft session index live marks", () => {
+describe("draft session index marks", () => {
   test("adds and removes a session draft mark", () => {
     markDraftSession("ses_live", true)
     expect(hasDraftSession("ses_live")).toBe(true)
@@ -97,19 +103,49 @@ describe("draft session index live marks", () => {
     expect(hasDraftSession("ses_redundant")).toBe(false)
   })
 
-  test("rebuild replaces live marks with the stored truth", () => {
-    markDraftSession("ses_live_only", true)
+  test("rebuild replaces stored marks with the stored truth while local marks survive", () => {
+    markDraftSession("ses_local_only", true)
     writePromptState(DIR_A, "ses_stored", dirtyState)
 
     rebuildDraftSessionIndex()
 
-    expect(hasDraftSession("ses_live_only")).toBe(false)
     expect(hasDraftSession("ses_stored")).toBe(true)
+    expect(hasDraftSession("ses_local_only")).toBe(true)
+
+    clearLocalDraftMark("ses_local_only")
+    expect(hasDraftSession("ses_local_only")).toBe(false)
+  })
+
+  test("keeps a locally dirty composer marked when another tab clears the stored entry", () => {
+    markDraftSession("ses_two_tabs", true)
+
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: promptStorageEventKey(DIR_A, "ses_two_tabs"),
+        newValue: JSON.stringify(cleanState),
+      }),
+    )
+
+    expect(hasDraftSession("ses_two_tabs")).toBe(true)
+  })
+
+  test("clears a non-local session when another tab clears the stored entry", () => {
+    writePromptState(DIR_A, "ses_remote", dirtyState)
+    rebuildDraftSessionIndex()
+    expect(hasDraftSession("ses_remote")).toBe(true)
+
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: promptStorageEventKey(DIR_A, "ses_remote"),
+        newValue: JSON.stringify(cleanState),
+      }),
+    )
+
+    expect(hasDraftSession("ses_remote")).toBe(false)
   })
 
   test("marks the draft when another tab writes a workspace prompt entry", () => {
     writePromptState(DIR_A, "ses_cross_tab", dirtyState)
-    markDraftSession("ses_cross_tab", false)
 
     window.dispatchEvent(
       new StorageEvent("storage", {
@@ -121,21 +157,10 @@ describe("draft session index live marks", () => {
     expect(hasDraftSession("ses_cross_tab")).toBe(true)
   })
 
-  test("clears the draft mark when another tab clears a workspace prompt entry", () => {
-    markDraftSession("ses_cleared", true)
-
-    window.dispatchEvent(
-      new StorageEvent("storage", {
-        key: promptStorageEventKey(DIR_A, "ses_cleared"),
-        newValue: JSON.stringify(cleanState),
-      }),
-    )
-
-    expect(hasDraftSession("ses_cleared")).toBe(false)
-  })
-
-  test("clears the draft mark when another tab removes a workspace prompt entry", () => {
-    markDraftSession("ses_removed", true)
+  test("clears a scanned draft mark when another tab removes the workspace prompt entry", () => {
+    writePromptState(DIR_A, "ses_removed", dirtyState)
+    rebuildDraftSessionIndex()
+    expect(hasDraftSession("ses_removed")).toBe(true)
 
     window.dispatchEvent(
       new StorageEvent("storage", {
@@ -149,10 +174,19 @@ describe("draft session index live marks", () => {
 
   test("ignores storage events for unrelated keys", () => {
     writePromptState(DIR_A, "ses_pending", dirtyState)
-    markDraftSession("ses_pending", false)
+    rebuildDraftSessionIndex()
+    expect(hasDraftSession("ses_pending")).toBe(true)
 
     window.dispatchEvent(new StorageEvent("storage", { key: "synergy.global.dat:layout", newValue: "{}" }))
 
-    expect(hasDraftSession("ses_pending")).toBe(false)
+    expect(hasDraftSession("ses_pending")).toBe(true)
+  })
+
+  test("forget clears both mark kinds for pruned sessions", () => {
+    markDraftSession("ses_pruned", true)
+
+    forgetDraftSession("ses_pruned")
+
+    expect(hasDraftSession("ses_pruned")).toBe(false)
   })
 })

@@ -1232,7 +1232,7 @@ function SidebarSessionRow(props: {
           <span class="sb-session-completion-dot" />
         </Show>
       </span>
-      <SessionDraftBadge sessionID={props.entry.id} />
+      <SessionDraftBadge sessionID={props.entry.id} label={_(sidebar.draftBadge)} />
       <span class={props.flyout ? "sb-flyout-session-title" : "sb-session-title"}>
         {props.entry.title || _(sidebar.untitled)}
       </span>

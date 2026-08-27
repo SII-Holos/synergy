@@ -1,10 +1,23 @@
 import { createSignal } from "solid-js"
-import { forEachWorkspaceSessionEntry, parseWorkspaceSessionEntryKey } from "@/utils/persist"
+import { forEachWorkspaceSessionEntry, parseWorkspaceSessionEntryKey } from "../../utils/persist"
 import { sanitizePromptValue } from "./sanitize"
 import { DEFAULT_PROMPT, isPromptEqual } from "./equality"
 import type { Prompt } from "./index"
 
-const [draftSessions, setDraftSessions] = createSignal<ReadonlySet<string>>(new Set(), { equals: false })
+// Stored marks mirror persisted prompt entries; local marks mirror the dirty
+// state of composer sessions mounted in this tab. The badge is their union so
+// a cross-tab clear cannot erase the fact that the composer the user is typing
+// into still holds unsent input, while a submit in this tab clears both.
+const [storedDrafts, setStoredDrafts] = createSignal<ReadonlySet<string>>(new Set())
+const [localDrafts, setLocalDrafts] = createSignal<ReadonlySet<string>>(new Set())
+
+function withMark(current: ReadonlySet<string>, session: string, marked: boolean): ReadonlySet<string> {
+  if (current.has(session) === marked) return current
+  const next = new Set(current)
+  if (marked) next.add(session)
+  else next.delete(session)
+  return next
+}
 
 function isStoredDraft(value: string): boolean {
   let parsed: unknown
@@ -23,20 +36,27 @@ export function rebuildDraftSessionIndex() {
   forEachWorkspaceSessionEntry("prompt", (session, value) => {
     if (isStoredDraft(value)) next.add(session)
   })
-  setDraftSessions(next)
+  setStoredDrafts(next)
 }
 
 export function markDraftSession(session: string | undefined, dirty: boolean) {
   if (!session) return
-  const current = new Set(draftSessions())
-  const had = current.delete(session)
-  if (dirty) current.add(session)
-  if (dirty === had) return
-  setDraftSessions(current)
+  setLocalDrafts((current) => withMark(current, session, dirty))
+  setStoredDrafts((current) => withMark(current, session, dirty))
+}
+
+export function clearLocalDraftMark(session: string | undefined) {
+  if (!session) return
+  setLocalDrafts((current) => withMark(current, session, false))
+}
+
+export function forgetDraftSession(session: string) {
+  clearLocalDraftMark(session)
+  setStoredDrafts((current) => withMark(current, session, false))
 }
 
 export function hasDraftSession(session: string): boolean {
-  return draftSessions().has(session)
+  return storedDrafts().has(session) || localDrafts().has(session)
 }
 
 if (typeof window !== "undefined") {
@@ -47,7 +67,7 @@ if (typeof window !== "undefined") {
     }
     const session = parseWorkspaceSessionEntryKey(event.key, "prompt")
     if (!session) return
-    markDraftSession(session, event.newValue !== null && isStoredDraft(event.newValue))
+    setStoredDrafts((current) => withMark(current, session, event.newValue !== null && isStoredDraft(event.newValue)))
   })
   rebuildDraftSessionIndex()
 }

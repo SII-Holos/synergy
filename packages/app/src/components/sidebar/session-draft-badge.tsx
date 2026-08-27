@@ -1,13 +1,12 @@
 import { Show } from "solid-js"
-import { useLingui } from "@lingui/solid"
-import { sidebar } from "@/locales/messages"
-import { hasDraftSession } from "@/context/prompt/draft-index"
+import { hasDraftSession } from "../../context/prompt/draft-index"
 
-export function SessionDraftBadge(props: { sessionID: string }) {
-  const { _ } = useLingui()
+export function SessionDraftBadge(props: { sessionID: string; label: string; class?: string }) {
   return (
     <Show when={hasDraftSession(props.sessionID)}>
-      <span class="sb-session-draft-badge">[{_(sidebar.draftBadge)}]</span>
+      <span class={props.class ?? "sb-session-draft-badge"} data-draft-badge={props.sessionID}>
+        [{props.label}]
+      </span>
     </Show>
   )
 }

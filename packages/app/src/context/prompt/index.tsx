@@ -4,7 +4,7 @@ import { batch, createEffect, createMemo, createRoot, onCleanup } from "solid-js
 import { useParams } from "@solidjs/router"
 import type { FileSelection } from "@/context/file"
 import { Persist, persisted } from "@/utils/persist"
-import { markDraftSession } from "./draft-index"
+import { clearLocalDraftMark, markDraftSession } from "./draft-index"
 import { DEFAULT_PROMPT, isPromptEqual } from "./equality"
 import {
   sanitizeContextItemsValue,
@@ -171,6 +171,7 @@ function createPromptSession(dir: string, id: string | undefined) {
   const dirty = createMemo(() => !isPromptEqual(current(), DEFAULT_PROMPT))
 
   createEffect(() => markDraftSession(id, dirty()))
+  onCleanup(() => clearLocalDraftMark(id))
 
   return {
     ready,
