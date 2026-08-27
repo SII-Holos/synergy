@@ -15,6 +15,8 @@ import { Session } from "../../src/session"
 import { SessionDrive } from "../../src/session/drive"
 import { SessionInbox } from "../../src/session/inbox"
 import { ScopeContext } from "../../src/scope/context"
+import { Storage } from "../../src/storage/storage"
+import { StoragePath } from "../../src/storage/path"
 import { FakeNativeTunnelPort, taskAssignedEvent } from "./clarus-fixture"
 import { tmpdir } from "../fixture/fixture"
 
@@ -80,7 +82,7 @@ function acceptedMembershipPayload(projectID: string) {
       status: "active",
       invited_at: now,
       accepted_at: now,
-      invited_by_user_id: "user-1",
+      invited_by_user_id: 3,
       created_at: now,
     },
   }
@@ -217,29 +219,46 @@ describe("Clarus invitation acceptance readiness", () => {
     ])
   })
 
-  test("accepts nullable invitation timestamps and a numeric inviter from Platform membership", () => {
+  test("accepts every Platform membership status with nullable timestamps and integer inviter", () => {
     const fake = new FakeNativeTunnelPort()
     const received: ClarusObservedEvent[] = []
     createClarusAgentTunnelAdapter(fake).registerEventHandler((event) => {
       received.push(event)
     })
-    const payload = acceptedMembershipPayload("project-platform-member")
 
-    fake.emitEvent("clarus.project.membership.accepted", {
-      ...payload,
-      membership: {
-        ...payload.membership,
-        invited_at: null,
-        accepted_at: null,
-        invited_by_user_id: 3,
-      },
-    })
+    for (const [status, invitedBy] of [
+      ["pending", null],
+      ["active", 3],
+      ["declined", null],
+    ] as const) {
+      const payload = acceptedMembershipPayload(`project-platform-${status}`)
+      fake.emitEvent("clarus.project.membership.accepted", {
+        ...payload,
+        membership: {
+          ...payload.membership,
+          status,
+          invited_at: null,
+          accepted_at: null,
+          invited_by_user_id: invitedBy,
+        },
+      })
+    }
 
     expect(received).toEqual([
       expect.objectContaining({
         kind: "known",
         type: "projectMembershipAccepted",
-        projectID: "project-platform-member",
+        projectID: "project-platform-pending",
+      }),
+      expect.objectContaining({
+        kind: "known",
+        type: "projectMembershipAccepted",
+        projectID: "project-platform-active",
+      }),
+      expect.objectContaining({
+        kind: "known",
+        type: "projectMembershipAccepted",
+        projectID: "project-platform-declined",
       }),
     ])
   })
@@ -677,6 +696,110 @@ describe("Clarus task acceptance", () => {
     })
   })
 
+  test("live pending exact replay bypasses Host dispatch and does not send accept twice", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const instance = provider()
+        const host = ChannelHost.create({ channelType: "clarus", accountId: AGENT_ID, activateTasks: true })
+        await host.projects.ensure({ externalProjectId: "project-live-pending", name: "Live pending", isActive: true })
+        const event = taskAssignedEvent({
+          agentID: AGENT_ID,
+          projectID: "project-live-pending",
+          taskID: "task-live-pending",
+          runID: "run-live-pending",
+          subtaskID: "subtask-live-pending",
+          requestID: "assignment-live-pending",
+        })
+        let resolveAccept!: (
+          event: Extract<ClarusObservedEvent, { kind: "known"; type: "runtimeTaskAccepted" }>,
+        ) => void
+        const response = new Promise<Extract<ClarusObservedEvent, { kind: "known"; type: "runtimeTaskAccepted" }>>(
+          (resolve) => {
+            resolveAccept = resolve
+          },
+        )
+        const acceptRequestIDs: string[] = []
+        const tunnel = testTunnel({
+          acceptTask: (input: Parameters<ClarusAgentTunnelPort["acceptTask"]>[0]) => {
+            acceptRequestIDs.push(input.requestID)
+            return { requestID: input.requestID, response }
+          },
+        })
+        const connection: TestConnection = {
+          accountId: AGENT_ID,
+          config: accountConfig(),
+          tunnel,
+          signal: new AbortController().signal,
+          host,
+          projects: new Map([[event.projectID, "Live pending"]]),
+          outboundRequests: new Set(),
+        }
+        const originalDispatch = host.tasks.dispatch
+        const originalRequest = SessionDrive.request
+        let dispatchCalls = 0
+        let wakeCalls = 0
+        host.tasks.dispatch = mock(async (input: Parameters<typeof originalDispatch>[0]) => {
+          dispatchCalls++
+          return originalDispatch(input)
+        }) as typeof originalDispatch
+        ;(SessionDrive.request as unknown as (...args: unknown[]) => Promise<boolean>) = mock(async () => {
+          wakeCalls++
+          return true
+        })
+
+        try {
+          await handleEvent(instance, connection, event)
+          const pending = await ClarusAssignmentStore.findByIdentity({
+            accountId: AGENT_ID,
+            projectID: event.projectID,
+            taskID: event.taskID,
+          })
+          expect(pending?.assignment).toMatchObject({
+            acceptState: "pending",
+            acceptRequestID: event.requestID,
+          })
+          const firstInbox = await SessionInbox.list(pending!.assignment.sessionID)
+
+          await handleEvent(instance, connection, event)
+
+          expect(dispatchCalls).toBe(1)
+          expect(wakeCalls).toBe(1)
+          expect(acceptRequestIDs).toEqual([String(event.requestID)])
+          expect(await SessionInbox.list(pending!.assignment.sessionID)).toEqual(firstInbox)
+
+          resolveAccept({
+            kind: "known",
+            type: "runtimeTaskAccepted",
+            agentID: AGENT_ID,
+            requestID: String(event.requestID),
+            projectID: event.projectID,
+            runID: event.runID,
+            taskID: event.taskID,
+            subtaskID: event.subtaskID,
+            attempt: event.attempt,
+            acceptedAt: new Date().toISOString(),
+            epoch: 1,
+            generation: 1,
+          })
+          await waitFor(
+            () =>
+              ClarusAssignmentStore.findByIdentity({
+                accountId: AGENT_ID,
+                projectID: event.projectID,
+                taskID: event.taskID,
+              }),
+            (located) => located?.assignment.acceptState === "acknowledged",
+          )
+        } finally {
+          host.tasks.dispatch = originalDispatch
+          ;(SessionDrive.request as typeof SessionDrive.request) = originalRequest
+        }
+      },
+    })
+  })
+
   test("dispatches accept after binding and before wake without waiting for its ACK", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -697,6 +820,7 @@ describe("Clarus task acceptance", () => {
           runID: "run-order",
           subtaskID: "subtask-order",
           attempt: 3,
+          requestID: "assignment-order",
         })
         const tunnel = testTunnel({
           acceptTask: (input: Record<string, unknown>) => {
@@ -742,6 +866,113 @@ describe("Clarus task acceptance", () => {
         } finally {
           ;(SessionDrive.request as typeof SessionDrive.request) = originalRequest
         }
+      },
+    })
+  })
+
+  test("runtime accepted beats a concurrent transport failure and never regresses", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const instance = provider()
+        const host = ChannelHost.create({ channelType: "clarus", accountId: AGENT_ID, activateTasks: true })
+        await host.projects.ensure({ externalProjectId: "project-accept-race", name: "Accept race", isActive: true })
+        const event = taskAssignedEvent({
+          agentID: AGENT_ID,
+          projectID: "project-accept-race",
+          taskID: "task-accept-race",
+          runID: "run-accept-race",
+          subtaskID: "subtask-accept-race",
+          requestID: "assignment-accept-race",
+        })
+        let rejectAccept!: (error: unknown) => void
+        const response = new Promise<never>((_, reject) => {
+          rejectAccept = reject
+        })
+        const connection: TestConnection = {
+          accountId: AGENT_ID,
+          config: accountConfig(),
+          tunnel: testTunnel({
+            acceptTask: (input: Parameters<ClarusAgentTunnelPort["acceptTask"]>[0]) => ({
+              requestID: input.requestID,
+              response,
+            }),
+          }),
+          signal: new AbortController().signal,
+          host,
+          projects: new Map([[event.projectID, "Accept race"]]),
+          outboundRequests: new Set(),
+        }
+
+        await handleEvent(instance, connection, event)
+        const acceptedAt = new Date().toISOString()
+        await handleEvent(instance, connection, {
+          kind: "known",
+          type: "runtimeTaskAccepted",
+          agentID: AGENT_ID,
+          requestID: String(event.requestID),
+          projectID: event.projectID,
+          runID: event.runID,
+          taskID: event.taskID,
+          subtaskID: event.subtaskID,
+          attempt: event.attempt,
+          acceptedAt,
+          epoch: 1,
+          generation: 1,
+        })
+        expect(
+          (
+            await ClarusAssignmentStore.findByIdentity({
+              accountId: AGENT_ID,
+              projectID: event.projectID,
+              taskID: event.taskID,
+            })
+          )?.assignment,
+        ).toMatchObject({ acceptState: "acknowledged", acceptRequestID: event.requestID, acceptedAt })
+        await handleEvent(instance, connection, {
+          kind: "known",
+          type: "runtimeTaskAccepted",
+          agentID: AGENT_ID,
+          requestID: String(event.requestID),
+          projectID: event.projectID,
+          runID: event.runID,
+          taskID: event.taskID,
+          subtaskID: event.subtaskID,
+          attempt: event.attempt,
+          acceptedAt: new Date(Date.parse(acceptedAt) + 1_000).toISOString(),
+          epoch: 1,
+          generation: 1,
+        })
+        expect(
+          (
+            await ClarusAssignmentStore.findByIdentity({
+              accountId: AGENT_ID,
+              projectID: event.projectID,
+              taskID: event.taskID,
+            })
+          )?.assignment.acceptedAt,
+        ).toBe(acceptedAt)
+
+        rejectAccept({
+          disposition: "ambiguous",
+          requestID: event.requestID,
+          reason: "disconnected",
+          message: "connection failed after accepted push",
+        })
+        await waitFor(
+          () => connection.outboundRequests.has(String(event.requestID)),
+          (inFlight) => !inFlight,
+        )
+        expect(
+          (
+            await ClarusAssignmentStore.findByIdentity({
+              accountId: AGENT_ID,
+              projectID: event.projectID,
+              taskID: event.taskID,
+            })
+          )?.assignment.acceptState,
+        ).toBe("acknowledged")
       },
     })
   })
@@ -872,6 +1103,151 @@ describe("Clarus task acceptance", () => {
           status: "completed",
           resultState: "acknowledged",
         })
+      },
+    })
+  })
+  test("late correlated acknowledgement upgrades ambiguous accept state", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const instance = provider()
+        const host = ChannelHost.create({ channelType: "clarus", accountId: AGENT_ID, activateTasks: true })
+        await host.projects.ensure({ externalProjectId: "project-late-ack", name: "Late ACK", isActive: true })
+        const event = taskAssignedEvent({
+          agentID: AGENT_ID,
+          projectID: "project-late-ack",
+          taskID: "task-late-ack",
+          runID: "run-late-ack",
+          subtaskID: "subtask-late-ack",
+          requestID: "assignment-late-ack",
+        })
+        const connection: TestConnection = {
+          accountId: AGENT_ID,
+          config: accountConfig(),
+          tunnel: testTunnel({
+            acceptTask: (input: Parameters<ClarusAgentTunnelPort["acceptTask"]>[0]) => ({
+              requestID: input.requestID,
+              response: Promise.reject({
+                disposition: "ambiguous",
+                requestID: input.requestID,
+                reason: "timeout",
+                message: "accept timed out after dispatch",
+              }),
+            }),
+          }),
+          signal: new AbortController().signal,
+          host,
+          projects: new Map([[event.projectID, "Late ACK"]]),
+          outboundRequests: new Set(),
+        }
+
+        await handleEvent(instance, connection, event)
+        await waitFor(
+          () =>
+            ClarusAssignmentStore.findByIdentity({
+              accountId: AGENT_ID,
+              projectID: event.projectID,
+              taskID: event.taskID,
+            }),
+          (located) => located?.assignment.acceptState === "ambiguous",
+        )
+        await handleEvent(instance, connection, {
+          kind: "known",
+          type: "runtimeTaskAccepted",
+          agentID: AGENT_ID,
+          requestID: String(event.requestID),
+          projectID: event.projectID,
+          runID: event.runID,
+          taskID: event.taskID,
+          subtaskID: event.subtaskID,
+          attempt: event.attempt + 1,
+          acceptedAt: new Date().toISOString(),
+          epoch: 1,
+          generation: 1,
+        })
+        expect(
+          (
+            await ClarusAssignmentStore.findByIdentity({
+              accountId: AGENT_ID,
+              projectID: event.projectID,
+              taskID: event.taskID,
+            })
+          )?.assignment.acceptState,
+        ).toBe("ambiguous")
+
+        const acceptedAt = new Date().toISOString()
+        await handleEvent(instance, connection, {
+          kind: "known",
+          type: "runtimeTaskAccepted",
+          agentID: AGENT_ID,
+          requestID: String(event.requestID),
+          projectID: event.projectID,
+          runID: event.runID,
+          taskID: event.taskID,
+          subtaskID: event.subtaskID,
+          attempt: event.attempt,
+          acceptedAt,
+          epoch: 1,
+          generation: 1,
+        })
+        expect(
+          (
+            await ClarusAssignmentStore.findByIdentity({
+              accountId: AGENT_ID,
+              projectID: event.projectID,
+              taskID: event.taskID,
+            })
+          )?.assignment,
+        ).toMatchObject({ acceptState: "acknowledged", acceptRequestID: event.requestID, acceptedAt })
+      },
+    })
+  })
+
+  test("reads legacy assignment records with default accept state", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const instance = provider()
+        const host = ChannelHost.create({ channelType: "clarus", accountId: AGENT_ID, activateTasks: true })
+        await host.projects.ensure({
+          externalProjectId: "project-legacy-accept",
+          name: "Legacy accept",
+          isActive: true,
+        })
+        const event = taskAssignedEvent({
+          agentID: AGENT_ID,
+          projectID: "project-legacy-accept",
+          taskID: "task-legacy-accept",
+          requestID: "assignment-legacy-accept",
+        })
+        const connection: TestConnection = {
+          accountId: AGENT_ID,
+          config: accountConfig(),
+          tunnel: testTunnel(),
+          signal: new AbortController().signal,
+          host,
+          projects: new Map([[event.projectID, "Legacy accept"]]),
+          outboundRequests: new Set(),
+        }
+
+        await handleEvent(instance, connection, event)
+        const located = await ClarusAssignmentStore.findByIdentity({
+          accountId: AGENT_ID,
+          projectID: event.projectID,
+          taskID: event.taskID,
+        })
+        const legacy = { ...(located!.assignment as unknown as Record<string, unknown>) }
+        delete legacy.acceptState
+        delete legacy.acceptRequestID
+        delete legacy.acceptedAt
+        await Storage.write(StoragePath.clarusProviderAssignment(located!.accountHash, located!.assignmentHash), legacy)
+
+        const reloaded = await ClarusAssignmentStore.find(located!.accountHash, located!.assignmentHash)
+        expect(reloaded?.assignment).toMatchObject({ acceptState: "none" })
+        expect((reloaded?.assignment as unknown as Record<string, unknown>).acceptRequestID).toBeUndefined()
+        expect((reloaded?.assignment as unknown as Record<string, unknown>).acceptedAt).toBeUndefined()
       },
     })
   })

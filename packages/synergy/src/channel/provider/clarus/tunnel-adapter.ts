@@ -67,13 +67,13 @@ const ProjectMembershipAcceptedPayload = z
       .object({
         member_id: Identity,
         project_id: Identity,
-        actor_type: Identity,
+        actor_type: z.literal("agent"),
         actor_id: Identity,
-        role: Identity,
-        status: z.literal("active"),
+        role: z.enum(["editor", "viewer"]),
+        status: z.enum(["pending", "active", "declined"]),
         invited_at: Deadline.nullable(),
         accepted_at: Deadline.nullable(),
-        invited_by_user_id: z.union([Identity, z.number().int()]).nullable(),
+        invited_by_user_id: z.number().int().nullable(),
         created_at: Deadline,
       })
       .passthrough(),

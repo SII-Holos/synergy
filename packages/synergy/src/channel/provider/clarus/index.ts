@@ -83,7 +83,6 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
   readonly lifecycle = "borrowed_transport" as const
   private readonly log = Log.create({ service: "channel.clarus" })
   private readonly connections = new Map<string, AccountConnection>()
-  private readonly acknowledgedTaskAccepts = new WeakMap<AccountConnection, Set<string>>()
 
   constructor(private readonly holos: ClarusHolosDependencies = defaultHolosDependencies) {}
 
@@ -411,7 +410,8 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
       return
     }
     if (event.kind !== "known") return
-    if (event.requestID && connection.outboundRequests.has(event.requestID)) return
+    if (event.type !== "runtimeTaskAccepted" && event.requestID && connection.outboundRequests.has(event.requestID))
+      return
     switch (event.type) {
       case "projectSubscribed":
         await this.ensureProject(connection, event.projectID, connection.projects.get(event.projectID))
@@ -430,6 +430,7 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
         await this.handleAssignment(connection, event)
         return
       case "runtimeTaskAccepted":
+        await this.handleTaskAccepted(connection, event)
         return
       case "runtimeTaskExtended":
         await this.handleTaskExtended(connection, event)
@@ -440,6 +441,39 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
       default:
         return
     }
+  }
+
+  private async handleTaskAccepted(
+    connection: AccountConnection,
+    event: Extract<ClarusObservedEvent, { kind: "known"; type: "runtimeTaskAccepted" }>,
+  ): Promise<void> {
+    if (!event.requestID) return
+    const located = await ClarusAssignmentStore.findByIdentity({
+      accountId: connection.accountId,
+      projectID: event.projectID,
+      taskID: event.taskID,
+    })
+    if (!located) return
+    const assignment = located.assignment
+    if (
+      assignment.accountId !== connection.accountId ||
+      assignment.projectID !== event.projectID ||
+      assignment.taskID !== event.taskID ||
+      assignment.runID !== event.runID ||
+      assignment.subtaskID !== event.subtaskID ||
+      assignment.attempt !== event.attempt ||
+      assignment.assignmentMessageID !== event.requestID ||
+      assignment.acceptRequestID !== event.requestID
+    ) {
+      return
+    }
+    await ClarusAssignmentStore.settleAccept({
+      accountHash: located.accountHash,
+      assignmentHash: located.assignmentHash,
+      requestID: event.requestID,
+      state: "acknowledged",
+      acceptedAt: event.acceptedAt,
+    })
   }
 
   private async handleTaskExtended(
@@ -502,20 +536,19 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
     })
   }
 
-  private dispatchTaskAccept(connection: AccountConnection, assignment: ClarusAssignment): void {
-    const acceptRequestID =
-      assignment.assignmentMessageID ??
-      hash(
-        "clarus-task-accept",
-        assignment.accountId,
-        assignment.projectID,
-        assignment.taskID,
-        assignment.runID,
-        assignment.subtaskID,
-        String(assignment.attempt),
-      )
-    const acknowledged = this.acknowledgedTaskAccepts.get(connection)
-    if (acknowledged?.has(acceptRequestID) || connection.outboundRequests.has(acceptRequestID)) return
+  private async dispatchTaskAccept(connection: AccountConnection, assignment: ClarusAssignment): Promise<void> {
+    const acceptRequestID = assignment.acceptRequestID ?? assignment.assignmentMessageID
+    if (!acceptRequestID || assignment.acceptState === "acknowledged") return
+    if (connection.outboundRequests.has(acceptRequestID)) return
+
+    const pending = await ClarusAssignmentStore.beginAccept({
+      accountId: assignment.accountId,
+      projectID: assignment.projectID,
+      taskID: assignment.taskID,
+      requestID: acceptRequestID,
+    })
+    if (pending.assignment.acceptState === "acknowledged") return
+    if (connection.outboundRequests.has(acceptRequestID)) return
 
     connection.outboundRequests.add(acceptRequestID)
     try {
@@ -530,20 +563,39 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
         signal: connection.signal,
       })
       void result.response
-        .then(() => {
-          let requests = this.acknowledgedTaskAccepts.get(connection)
-          if (!requests) {
-            requests = new Set()
-            this.acknowledgedTaskAccepts.set(connection, requests)
-          }
-          requests.add(acceptRequestID)
-        })
-        .catch((error) => this.recordTaskAcceptFailure(connection, assignment, acceptRequestID, error))
+        .then((event) => this.handleTaskAccepted(connection, event))
+        .catch((error) => this.settleTaskAcceptFailure(connection, pending, assignment, acceptRequestID, error))
         .finally(() => connection.outboundRequests.delete(acceptRequestID))
     } catch (error) {
       connection.outboundRequests.delete(acceptRequestID)
-      void this.recordTaskAcceptFailure(connection, assignment, acceptRequestID, error)
+      void this.settleTaskAcceptFailure(connection, pending, assignment, acceptRequestID, error)
     }
+  }
+
+  private async settleTaskAcceptFailure(
+    connection: AccountConnection,
+    located: ClarusAssignmentStore.Located,
+    assignment: ClarusAssignment,
+    acceptRequestID: string,
+    error: unknown,
+  ): Promise<void> {
+    try {
+      await ClarusAssignmentStore.settleAccept({
+        accountHash: located.accountHash,
+        assignmentHash: located.assignmentHash,
+        requestID: acceptRequestID,
+        state: "ambiguous",
+      })
+    } catch (stateError) {
+      this.log.warn("failed to settle Clarus task accept state", {
+        accountHash: hash(connection.accountId),
+        projectHash: hash(assignment.projectID),
+        taskHash: hash(assignment.taskID),
+        acceptRequestID,
+        error: stateError,
+      })
+    }
+    await this.recordTaskAcceptFailure(connection, assignment, acceptRequestID, error)
   }
 
   private async recordTaskAcceptFailure(

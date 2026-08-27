@@ -198,7 +198,6 @@ export namespace ChannelHost {
           boundSessionID?: string
           systemGuidance?: { deliveryKey: string; text: string }
           beforeWake?: (result: { sessionID: string; deliveryCreated: boolean }) => void | Promise<void>
-          wakeOnDuplicate?: boolean
           prepare?: (result: {
             scope: Scope.Project
           }) =>
@@ -251,7 +250,7 @@ export namespace ChannelHost {
             scope,
             fn: () => input.beforeWake?.({ sessionID: session.id, deliveryCreated: result.created }),
           })
-          if (activateTasks && (result.created || input.wakeOnDuplicate !== false)) {
+          if (activateTasks) {
             await SessionDrive.request(session.id, `channel:${channelType}:task-dispatch`)
           }
 
