@@ -29614,11 +29614,20 @@
           "lastActivityAt": {
             "type": "number"
           },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
           "pinned": {
             "type": "number"
           },
           "archived": {
             "type": "boolean"
+          },
+          "archivedAt": {
+            "type": "number"
           },
           "parentID": {
             "type": "string"

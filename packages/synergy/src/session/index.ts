@@ -286,8 +286,11 @@ export namespace Session {
       title: session.title,
       category,
       lastActivityAt: session.time.updated,
+      createdAt: session.time.created,
+      updatedAt: session.time.updated,
       pinned: session.pinned ?? 0,
       archived: !!session.time.archived,
+      archivedAt: session.time.archived || undefined,
       parentID: session.parentID,
       endpointKind: channelEndpoint ? "channel" : undefined,
       chatId: channelEndpoint?.chatId,
@@ -1079,12 +1082,12 @@ export namespace Session {
       SessionMessageCache.disable(sessionID)
       await removeEndpointIndex(session)
       await MessageV2.removeOrderIndex(scopeID, canonicalSessionID)
+      await SessionNav.removeNavEntry(scope.id, sessionID)
       await Storage.removeTree(StoragePath.sessionRoot(scopeID, canonicalSessionID))
       await Storage.remove(StoragePath.sessionIndex(canonicalSessionID))
       await removePageIndexEntry(scope.id, sessionID)
       if (session.parentID) await removeChildIndexEntry(scope.id, session.parentID, sessionID)
       await removeChildIndex(scope.id, sessionID)
-      await SessionNav.removeNavEntry(scope.id, sessionID)
       removed.push(session)
     } catch (e) {
       log.error(e)

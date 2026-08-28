@@ -1507,8 +1507,11 @@ export type SessionNavEntry = {
   title: string
   category: "project" | "home" | "channel" | "background" | "github"
   lastActivityAt: number
+  createdAt?: number
+  updatedAt?: number
   pinned: number
   archived: boolean
+  archivedAt?: number
   parentID?: string
   endpointKind?: "channel"
   chatId?: string
