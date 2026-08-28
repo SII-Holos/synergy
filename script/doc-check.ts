@@ -25,6 +25,10 @@ const LIST_MARK = /^\s*([-*+]|\d+[.)])\s+/
 const TABLE_ROW = /^\s*\|/
 const BLOCKQUOTE = /^\s*>/
 const RAW_HTML_TAG = /^\s*<\/?[a-zA-Z][^>]*>\s*$/
+// Decision-record metadata lines are single structural lines by contract
+// (docs/decisions/README.md): `Status:` sits directly above `Archived:` with
+// no blank line, and sealed archive files can never be reflowed.
+const DECISION_META = /^(Status: (implemented|proposed|rejected\b.*)|Archived: \d{4}-\d{2}-\d{2})$/
 
 interface BudgetsFile {
   defaults: Record<string, number>
@@ -179,7 +183,8 @@ function isSpecialLine(line: string): boolean {
     LIST_MARK.test(line) ||
     TABLE_ROW.test(line) ||
     BLOCKQUOTE.test(line) ||
-    RAW_HTML_TAG.test(line)
+    RAW_HTML_TAG.test(line) ||
+    DECISION_META.test(line)
   )
 }
 
