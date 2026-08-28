@@ -584,11 +584,27 @@ export namespace MessageV2 {
     return next
   }
 
+  // Model prompts must be JSON-safe: AI SDK validation rejects undefined,
+  // NaN, Infinity, and BigInt in providerOptions and tool outputs. Providers
+  // can attach such values to in-memory metadata, and v8 IPC preserves them.
+  function jsonSafeReplacer(_key: string, value: unknown): unknown {
+    return typeof value === "bigint" ? value.toString() : value
+  }
+
+  function sanitizePromptPayload<T>(value: T): T | undefined {
+    if (value === undefined) return undefined
+    try {
+      return JSON.parse(JSON.stringify(value, jsonSafeReplacer)) as T
+    } catch {
+      return undefined
+    }
+  }
+
   function modelProviderMetadata(metadata: Record<string, any> | undefined): Record<string, any> | undefined {
     if (!metadata) return undefined
     const openai = metadata.openai
-    if (!openai || typeof openai !== "object" || Array.isArray(openai)) return metadata
-    if (!("itemId" in openai) && !("reasoningEncryptedContent" in openai)) return metadata
+    if (!openai || typeof openai !== "object" || Array.isArray(openai)) return sanitizePromptPayload(metadata)
+    if (!("itemId" in openai) && !("reasoningEncryptedContent" in openai)) return sanitizePromptPayload(metadata)
 
     const nextOpenAI = { ...openai }
     delete nextOpenAI.itemId
@@ -598,7 +614,7 @@ export namespace MessageV2 {
     if (Object.keys(nextOpenAI).length > 0) next.openai = nextOpenAI
     else delete next.openai
 
-    return Object.keys(next).length > 0 ? next : undefined
+    return Object.keys(next).length > 0 ? sanitizePromptPayload(next) : undefined
   }
 
   export const Assistant = Base.extend({
@@ -1180,12 +1196,14 @@ export namespace MessageV2 {
                   addModelMessageContribution(provenance, "toolActivity", attachmentIntroduction)
                 }
               }
-              const output = part.state.time.compacted ? "[Old tool result content cleared]" : part.state.output
+              const output = part.state.time.compacted
+                ? "[Old tool result content cleared]"
+                : sanitizePromptPayload(part.state.output)
               assistantMessage.parts.push({
                 type: ("tool-" + part.tool) as `tool-${string}`,
                 state: "output-available",
                 toolCallId: part.callID,
-                input: part.state.input,
+                input: sanitizePromptPayload(part.state.input),
                 output,
                 callProviderMetadata: modelProviderMetadata(part.metadata),
               })
@@ -1197,7 +1215,7 @@ export namespace MessageV2 {
                 type: ("tool-" + part.tool) as `tool-${string}`,
                 state: "output-error",
                 toolCallId: part.callID,
-                input: part.state.input,
+                input: sanitizePromptPayload(part.state.input),
                 errorText: part.state.error,
                 callProviderMetadata: modelProviderMetadata(part.metadata),
               })

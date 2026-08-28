@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import type { ModelMessage } from "ai"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Asset } from "../../src/asset/asset"
 
@@ -1059,6 +1060,275 @@ describe("session.message-v2.toModelMessage", () => {
     ]
 
     expect(MessageV2.toModelMessage(input)).toStrictEqual(MessageV2.projectModelMessages(input).messages)
+  })
+})
+
+describe("session.message-v2.model prompt metadata sanitization", () => {
+  function openrouterPollutedMetadata() {
+    return {
+      openrouter: {
+        reasoning_details: [
+          {
+            type: "reasoning.text",
+            text: ".",
+            format: "unknown",
+            index: 0,
+            signature: undefined,
+          },
+        ],
+      },
+    }
+  }
+
+  function pollutedTurn(): MessageV2.WithParts[] {
+    const userID = "m-user"
+    const assistantID = "m-assistant"
+    return [
+      {
+        info: userInfo(userID),
+        parts: [
+          {
+            ...basePart(userID, "u1"),
+            type: "text",
+            text: "add papers",
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: assistantInfo(assistantID, userID),
+        parts: [
+          {
+            ...basePart(assistantID, "a1"),
+            type: "reasoning",
+            text: "thinking",
+            time: { start: 0 },
+            metadata: openrouterPollutedMetadata(),
+          },
+          {
+            ...basePart(assistantID, "a2"),
+            type: "tool",
+            callID: "call-1",
+            tool: "ingest_paper",
+            state: {
+              status: "completed",
+              input: { url: "https://example.com/paper.pdf" },
+              output: "ingested",
+              title: "Ingest paper",
+              metadata: {},
+              time: { start: 0, end: 1 },
+            },
+            metadata: openrouterPollutedMetadata(),
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+  }
+
+  function firstToolCall(messages: ModelMessage[]): Record<string, any> {
+    const assistant = messages.find((msg) => msg.role === "assistant") as { content: Array<Record<string, any>> }
+    return assistant.content.find((part) => part.type === "tool-call") as Record<string, any>
+  }
+
+  test("drops undefined-valued metadata keys that break model prompt validation", () => {
+    const messages = MessageV2.toModelMessage(pollutedTurn())
+
+    const reasoningDetail = { type: "reasoning.text", text: ".", format: "unknown", index: 0 }
+    const assistant = messages.find((msg) => msg.role === "assistant") as { content: Array<Record<string, any>> }
+    const reasoning = assistant.content.find((part) => part.type === "reasoning") as Record<string, any>
+    const toolResult = (messages.find((msg) => msg.role === "tool") as { content: Array<Record<string, any>> })
+      .content[0]
+    const toolCall = firstToolCall(messages)
+
+    expect(toolCall.providerOptions.openrouter.reasoning_details).toStrictEqual([reasoningDetail])
+    expect(reasoning.providerOptions.openrouter.reasoning_details).toStrictEqual([reasoningDetail])
+    expect(toolResult.providerOptions.openrouter.reasoning_details).toStrictEqual([reasoningDetail])
+
+    for (const options of [toolCall.providerOptions, reasoning.providerOptions, toolResult.providerOptions]) {
+      expect(options).toStrictEqual(JSON.parse(JSON.stringify(options)))
+    }
+  })
+
+  test("pins sanitization semantics for non-JSON-safe metadata values", () => {
+    const userID = "m-user"
+    const assistantID = "m-assistant"
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo(userID),
+        parts: [
+          {
+            ...basePart(userID, "u1"),
+            type: "text",
+            text: "hi",
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: assistantInfo(assistantID, userID),
+        parts: [
+          {
+            ...basePart(assistantID, "a1"),
+            type: "tool",
+            callID: "call-1",
+            tool: "example",
+            state: {
+              status: "completed",
+              input: {},
+              output: "ok",
+              title: "Example",
+              metadata: {},
+              time: { start: 0, end: 1 },
+            },
+            metadata: {
+              provider: {
+                nan: NaN,
+                infinity: Infinity,
+                negativeInfinity: -Infinity,
+                bigintValue: BigInt(42),
+                omitted: undefined,
+                kept: "string",
+              },
+              nested: { list: [NaN, undefined, "tail"] },
+            },
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    expect(firstToolCall(MessageV2.toModelMessage(input)).providerOptions).toStrictEqual({
+      provider: {
+        nan: null,
+        infinity: null,
+        negativeInfinity: null,
+        bigintValue: "42",
+        kept: "string",
+      },
+      nested: { list: [null, null, "tail"] },
+    })
+  })
+
+  test("leaves clean metadata unchanged", () => {
+    const userID = "m-user"
+    const assistantID = "m-assistant"
+    const cleanMetadata = {
+      openrouter: {
+        reasoning_details: [{ type: "reasoning.text", text: ".", format: "unknown", index: 0 }],
+      },
+      custom: { keep: [1, "two", { three: true }] },
+    }
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo(userID),
+        parts: [
+          {
+            ...basePart(userID, "u1"),
+            type: "text",
+            text: "hi",
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: assistantInfo(assistantID, userID),
+        parts: [
+          {
+            ...basePart(assistantID, "a1"),
+            type: "tool",
+            callID: "call-1",
+            tool: "example",
+            state: {
+              status: "completed",
+              input: {},
+              output: "ok",
+              title: "Example",
+              metadata: {},
+              time: { start: 0, end: 1 },
+            },
+            metadata: cleanMetadata,
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    expect(JSON.stringify(firstToolCall(MessageV2.toModelMessage(input)).providerOptions)).toBe(
+      JSON.stringify(cleanMetadata),
+    )
+  })
+
+  test("keeps absent metadata absent", () => {
+    const userID = "m-user"
+    const assistantID = "m-assistant"
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo(userID),
+        parts: [
+          {
+            ...basePart(userID, "u1"),
+            type: "text",
+            text: "hi",
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: assistantInfo(assistantID, userID),
+        parts: [
+          {
+            ...basePart(assistantID, "a1"),
+            type: "reasoning",
+            text: "thinking",
+            time: { start: 0 },
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    const messages = MessageV2.toModelMessage(input)
+    const assistant = messages.find((msg) => msg.role === "assistant") as { content: Array<Record<string, any>> }
+    const reasoning = assistant.content[0]
+    expect(reasoning.providerOptions).toBeUndefined()
+  })
+
+  test("strips provider metadata that cannot be serialized instead of throwing", () => {
+    const circular: Record<string, any> = { openrouter: { detail: {} } }
+    circular.openrouter.detail.self = circular
+    const userID = "m-user"
+    const assistantID = "m-assistant"
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo(userID),
+        parts: [
+          {
+            ...basePart(userID, "u1"),
+            type: "text",
+            text: "hi",
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: assistantInfo(assistantID, userID),
+        parts: [
+          {
+            ...basePart(assistantID, "a1"),
+            type: "tool",
+            callID: "call-1",
+            tool: "example",
+            state: {
+              status: "completed",
+              input: {},
+              output: "ok",
+              title: "Example",
+              metadata: {},
+              time: { start: 0, end: 1 },
+            },
+            metadata: circular,
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    let messages: ModelMessage[]
+    expect(() => {
+      messages = MessageV2.toModelMessage(input)
+    }).not.toThrow()
+    expect(firstToolCall(messages!).providerOptions).toBeUndefined()
   })
 })
 
