@@ -49,6 +49,10 @@ export namespace SessionCortexRuntime {
       handle: { taskId: string; sessionId: string },
       delegation: unknown,
     ): PluginTaskSnapshotInfo | undefined
+    /** In-memory runtime view of a plugin task (execution timeout clamp). */
+    taskInfo(taskId: string): { timeoutMs?: number } | undefined
+    /** Resolve when the plugin task reaches a terminal state or the wait times out. */
+    waitForTask(taskId: string, timeoutSeconds: number): Promise<unknown>
   }
 
   let provider: Provider | undefined
@@ -86,5 +90,13 @@ export namespace SessionCortexRuntime {
     delegation: unknown,
   ): PluginTaskSnapshotInfo | undefined {
     return provider?.pluginTaskSnapshot(handle, delegation)
+  }
+
+  export function taskInfo(taskId: string): { timeoutMs?: number } | undefined {
+    return provider?.taskInfo(taskId)
+  }
+
+  export function waitForTask(taskId: string, timeoutSeconds: number): Promise<unknown> {
+    return provider?.waitForTask(taskId, timeoutSeconds) ?? Promise.resolve(undefined)
   }
 }

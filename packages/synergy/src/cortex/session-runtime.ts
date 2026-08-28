@@ -43,5 +43,10 @@ export function registerCortexSessionRuntime() {
     },
     pluginTaskSnapshot: (handle, delegation) =>
       pluginTaskSnapshotFromSession(handle, delegation as CortexDelegationInfo),
+    taskInfo: (taskId) => {
+      const task = Cortex.get(taskId)
+      return task ? { timeoutMs: task.timeoutMs } : undefined
+    },
+    waitForTask: (taskId, timeoutSeconds) => Cortex.waitFor(taskId, timeoutSeconds),
   })
 }

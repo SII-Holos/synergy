@@ -1,4 +1,5 @@
-import { Agenda, AgendaBootstrap } from "@/agenda"
+import { Agenda } from "@/agenda"
+import { AgendaBootstrap } from "@/agenda/bootstrap"
 import { ChannelOutbound } from "@/channel/outbound"
 import { registerProviders } from "@/channel/provider"
 import { ResponseCardRuntime } from "@/channel/response-card"

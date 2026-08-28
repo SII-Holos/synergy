@@ -12,7 +12,7 @@ import {
 } from "@ericsanchezok/synergy-plugin"
 import type { PluginHostServiceInvocationInput } from "../plugin-runtime/manager"
 import { Attachment } from "../attachment"
-import { Cortex } from "../cortex"
+import { SessionCortexRuntime } from "../session/cortex-runtime"
 import { EnforcementError } from "../enforcement/errors"
 import { EnforcementGate } from "../enforcement/gate"
 import { Global } from "../global"
@@ -47,6 +47,32 @@ import {
 } from "./host-services"
 import { DEFAULT_LIMITS } from "../plugin-runtime/health"
 import { resolvePluginRuntimeLimits } from "./runtime-limits"
+
+type LifecycleHookDeliveryResult =
+  | { status: "delivered"; handlerCount: number }
+  | { status: "plugin_mismatch" | "no_handler"; handlerCount: 0; error: string }
+  | { status: "failed"; handlerCount: number; succeededHandlerCount: number; error: string }
+
+interface PluginLifecycleHooks {
+  deliverHookForPlugin(
+    pluginId: string,
+    pluginGeneration: string,
+    pointName: string,
+    input: unknown,
+  ): Promise<LifecycleHookDeliveryResult>
+  updateConfig(plugin: { id: string; manifest: PluginManifestType }, values: unknown): Promise<unknown>
+}
+
+let lifecycleHooks: PluginLifecycleHooks | undefined
+
+export function setHostServiceLifecycleHooks(hooks: PluginLifecycleHooks): void {
+  lifecycleHooks = hooks
+}
+
+function requireLifecycleHooks(): PluginLifecycleHooks {
+  if (!lifecycleHooks) throw new Error("Plugin lifecycle hooks are not registered")
+  return lifecycleHooks
+}
 
 const capabilityByMethod = {
   "session.get": "session.read",
@@ -279,8 +305,7 @@ async function startPluginAgent(input: PluginHostServiceInvocationInput, value: 
         ScopeContext.provide({
           scope,
           fn: async () => {
-            const { deliverHookForPlugin } = await import("./lifecycle")
-            const delivery = await deliverHookForPlugin(
+            const delivery = await requireLifecycleHooks().deliverHookForPlugin(
               input.pluginId,
               input.manifest.artifacts.generation,
               "agent.call.after",
@@ -462,12 +487,12 @@ async function runPluginTask(input: PluginHostServiceInvocationInput, value: Rec
     request,
     limits: input.limits,
   })
-  const active = Cortex.get(handle.taskId)
+  const active = SessionCortexRuntime.taskInfo(handle.taskId)
   const taskTimeoutMs = active?.timeoutMs ?? request.timeoutMs
   const waitCeilingMs = input.limits?.taskRunWaitTimeoutMs ?? DEFAULT_LIMITS.taskRunWaitTimeoutMs
   const waitMs = taskTimeoutMs === undefined ? waitCeilingMs : Math.min(taskTimeoutMs, waitCeilingMs)
   const timeoutSeconds = Math.ceil((waitMs + 5_000) / 1_000)
-  const completed = Cortex.waitFor(handle.taskId, timeoutSeconds)
+  const completed = SessionCortexRuntime.waitForTask(handle.taskId, timeoutSeconds)
   const onAbort = () => {
     void cancelPluginTask({
       pluginId: input.pluginId,
@@ -693,8 +718,7 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
     }
     if (input.method === "settings.get") return getPluginConfig(input.pluginId, { manifest: input.manifest })
     if (input.method === "settings.replace") {
-      const { updateConfig } = await import("./lifecycle")
-      return updateConfig({ id: input.pluginId, manifest: input.manifest }, value.values)
+      return requireLifecycleHooks().updateConfig({ id: input.pluginId, manifest: input.manifest }, value.values)
     }
     if (input.method.startsWith("secrets.")) {
       const key = value.key

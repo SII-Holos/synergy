@@ -40,6 +40,7 @@ import {
 import { ResponseCardRuntime } from "./response-card"
 import { QuestionCardRuntime } from "./question-card"
 import { QuestionCardBridge } from "./question-card-bridge"
+import { getProvider as getProviderImpl, registerProvider as registerProviderImpl } from "./provider-registry"
 import { ChannelInteraction } from "./interaction"
 import { ChannelOutbound } from "./outbound"
 import { ChannelBusyHandoff } from "./busy-handoff"
@@ -276,17 +277,8 @@ export namespace Channel {
     return attempt.stopping
   }
 
-  const providers = new Map<string, Provider>()
-
-  export function registerProvider<TAccountConfig, TChannelConfig>(
-    provider: Provider<TAccountConfig, TChannelConfig>,
-  ): void {
-    providers.set(provider.type, provider as unknown as Provider)
-  }
-
-  export function getProvider(type: string): Provider | undefined {
-    return providers.get(type)
-  }
+  export const registerProvider = registerProviderImpl
+  export const getProvider = getProviderImpl
 
   const state = ScopedState.create(
     async (): Promise<State> => {
@@ -303,7 +295,7 @@ export namespace Channel {
       })
 
       for (const [channelType, channelConfig] of Object.entries(channels)) {
-        const provider = providers.get(channelType)
+        const provider = getProvider(channelType)
         if (!provider) {
           log.warn("unknown channel type, skipping", { channelType })
           continue
@@ -1188,7 +1180,7 @@ export namespace Channel {
       return
     }
 
-    const provider = providers.get(channelType)
+    const provider = getProvider(channelType)
     if (!provider) {
       throw new StartError({
         message: `Unknown channel provider: ${channelType}`,

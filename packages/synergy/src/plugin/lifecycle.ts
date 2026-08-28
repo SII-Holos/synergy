@@ -18,6 +18,7 @@ import {
 import { getPluginConfig, matchesPluginSettingCondition, replacePluginConfig } from "./config-store"
 import { replaceForPlugins } from "./mcp"
 import Ajv2020 from "ajv/dist/2020"
+import { setHostServiceLifecycleHooks } from "./host-services-runtime"
 import { WorkflowPromptRegistry } from "../session/workflow-prompt-registry"
 
 const log = Log.create({ service: "plugin.lifecycle" })
@@ -355,3 +356,5 @@ export async function notifyConfigHooks(input: {
 export async function manifest(pluginId: string) {
   return (await getPlugin(pluginId))?.manifest ?? null
 }
+
+setHostServiceLifecycleHooks({ deliverHookForPlugin, updateConfig })
