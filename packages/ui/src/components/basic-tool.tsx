@@ -71,6 +71,14 @@ export function ToolResultPresentationProvider(props: ParentProps) {
   return <ToolResultPresentationContext.Provider value>{props.children}</ToolResultPresentationContext.Provider>
 }
 
+/** Reports whether this renderer sits inside a result-only presentation (for
+ * example a Balanced activity-trace expansion), where the trigger header is
+ * owned by the surrounding surface and the renderer should lead with its
+ * result body. */
+export function useToolResultPresentation(): boolean {
+  return useContext(ToolResultPresentationContext)
+}
+
 /** Returns ToolTriggerProps from any trigger shape, or undefined for raw JSX. */
 function fromTrigger(
   trigger: Trigger | undefined,

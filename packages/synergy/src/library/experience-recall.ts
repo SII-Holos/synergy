@@ -17,6 +17,7 @@ export namespace ExperienceRecall {
     explorationConstant?: number
     simThreshold?: number
     vector?: number[]
+    requireScript?: boolean
   }
 
   export interface Result {
@@ -31,6 +32,7 @@ export namespace ExperienceRecall {
     qValue: number
     qValues: Record<string, number>
     qVisits: number
+    retrievalCount: number
     turnsRemaining: number | null
     score: number
     script: string | null
@@ -41,15 +43,46 @@ export namespace ExperienceRecall {
   }
 
   const pendingRetrievals = new Map<string, string[]>()
+  const committedRetrievals = new Set<string>()
 
+  /**
+   * Records that experiences were selected for injection. The persisted
+   * counter is deliberately NOT incremented here: the recall context may
+   * still be discarded downstream (e.g. buildMemoryContext exceeding the
+   * recall timeout), and a pull the model never received must not decay
+   * the exploration bonus. commitRetrieval applies the increment once the
+   * completed context is accepted for injection.
+   */
   export function trackRetrieval(sessionID: string, experienceIDs: string[]) {
     pendingRetrievals.set(sessionID, experienceIDs)
+    committedRetrievals.delete(sessionID)
     setTimeout(
       () => {
         pendingRetrievals.delete(sessionID)
+        committedRetrievals.delete(sessionID)
       },
       10 * 60 * 1000,
     )
+  }
+
+  /**
+   * Applies the persisted pull counters for a session whose recall context
+   * was accepted for injection. Best-effort and idempotent per session: a
+   * counting failure is logged and must never abort the injection it
+   * records, and repeated commits (e.g. cache replay) count once.
+   * consumeRetrieval still owns removing the pending entry for credit
+   * assignment.
+   */
+  export function commitRetrieval(sessionID: string) {
+    if (committedRetrievals.has(sessionID)) return
+    const ids = pendingRetrievals.get(sessionID)
+    if (!ids || ids.length === 0) return
+    committedRetrievals.add(sessionID)
+    try {
+      LibraryDB.Experience.incrementRetrievalCounts(ids)
+    } catch (err: any) {
+      log.warn("retrieval count increment failed", { error: err })
+    }
   }
 
   export function consumeRetrieval(sessionID: string): string[] {
@@ -72,6 +105,7 @@ export namespace ExperienceRecall {
     const wQ = options.wQ ?? retConfig.wQ
     const explorationConstant = options.explorationConstant ?? retConfig.explorationConstant
     const simThreshold = options.simThreshold ?? retConfig.simThreshold
+    const requireScript = options.requireScript ?? false
 
     using _ = log.time("retrieve", { scopeID })
 
@@ -98,12 +132,21 @@ export namespace ExperienceRecall {
     }
 
     const knnRows = new Map(LibraryDB.Experience.getMany(knnResults.map((k) => k.id)).map((r) => [r.id, r]))
+    // The candidate set must contain only arms the policy can actually
+    // inject: an arm that wins a topK slot but is then discarded (invalid
+    // intent, missing script) would never be counted as pulled and would
+    // hold a perpetual maximal UCB1 exploration bonus.
+    const contentRows = new Map(
+      (requireScript ? LibraryDB.Experience.getContentMany(knnResults.map((k) => k.id)) : []).map((r) => [r.id, r]),
+    )
     const candidates: Array<{ row: LibraryDB.Experience.Row; similarity: number }> = []
     for (const knn of knnResults) {
       const row = knnRows.get(knn.id)
       if (!row) continue
       const similarity = 1 - knn.distance
       if (similarity < simThreshold) continue
+      if (!Intent.isValid(row.intent)) continue
+      if (requireScript && !contentRows.get(knn.id)?.script) continue
       candidates.push({ row, similarity })
     }
 
@@ -125,22 +168,28 @@ export namespace ExperienceRecall {
     const zSim = zScoreNormalize(similarities)
     const zQ = zScoreNormalize(qScalars)
 
-    const totalVisits = candidates.reduce((sum, c) => sum + c.row.q_visits, 0)
-    const lnN = totalVisits > 0 ? Math.log(totalVisits) : 1
+    const totalRetrievals = candidates.reduce((sum, c) => sum + c.row.retrieval_count, 0)
+    // UCB1 explores arms that have been selected rarely. A fully cold set
+    // (nothing ever pulled) gets no exploration bonus rather than the old
+    // lnN = 1 fallback, which yielded explorationConstant * sqrt(1) — the
+    // maximal bonus — for every never-rewarded experience.
+    const lnN = totalRetrievals > 0 ? Math.log(totalRetrievals) : 0
 
     const scored = candidates.map((c, i) => {
       const base = zSim[i] * wSim + zQ[i] * wQ
-      const n = Math.max(c.row.q_visits, 1)
+      const n = Math.max(c.row.retrieval_count, 1)
       const ucbBonus = explorationConstant * Math.sqrt(lnN / n)
       return { ...c, score: base + ucbBonus, qScalar: qScalars[i] }
     })
 
     const selected = epsilonGreedy(scored, topK, epsilon)
-    const valid = selected.filter((item) => Intent.isValid(item.row.intent))
+    const selectedContents = new Map(
+      LibraryDB.Experience.getContentMany(selected.map((item) => item.row.id)).map((r) => [r.id, r]),
+    )
 
     const results: Result[] = []
-    for (const item of valid) {
-      const contentRow = LibraryDB.Experience.getContent(item.row.id)
+    for (const item of selected) {
+      const contentRow = selectedContents.get(item.row.id)
       const qv: Record<string, number> = JSON.parse(item.row.q_values)
       results.push({
         id: item.row.id,
@@ -154,6 +203,7 @@ export namespace ExperienceRecall {
         qValue: item.qScalar,
         qValues: qv,
         qVisits: item.row.q_visits,
+        retrievalCount: item.row.retrieval_count,
         turnsRemaining: item.row.turns_remaining,
         score: item.score,
         script: contentRow?.script ?? null,
@@ -164,7 +214,7 @@ export namespace ExperienceRecall {
       })
     }
 
-    log.info("phase B", { selected: valid.length, topK, epsilon })
+    log.info("phase B", { selected: selected.length, topK, epsilon })
     return results
   }
 

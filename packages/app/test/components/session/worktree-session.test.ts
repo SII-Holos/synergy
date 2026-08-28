@@ -55,6 +55,47 @@ describe("new session workspace selection", () => {
     ).toEqual({ mode: "existing", target: "/repo/.synergy/worktrees/feature" })
   })
 
+  test("defaults to a new worktree when the persisted preference is worktree", () => {
+    expect(
+      defaultNewSessionWorkspaceSelection({
+        currentDirectory: "/repo",
+        canonicalDirectory: "/repo",
+        preference: "worktree",
+      }),
+    ).toEqual({ mode: "create" })
+  })
+
+  test("keeps the main checkout default when the persisted preference is main", () => {
+    expect(
+      defaultNewSessionWorkspaceSelection({
+        currentDirectory: "/repo",
+        canonicalDirectory: "/repo",
+        preference: "main",
+      }),
+    ).toEqual({ mode: "current" })
+  })
+
+  test("an explicit selection still wins over the persisted worktree preference", () => {
+    expect(
+      defaultNewSessionWorkspaceSelection({
+        selected: { mode: "current" },
+        currentDirectory: "/repo",
+        canonicalDirectory: "/repo",
+        preference: "worktree",
+      }),
+    ).toEqual({ mode: "current" })
+  })
+
+  test("an existing worktree directory still wins over the persisted main preference", () => {
+    expect(
+      defaultNewSessionWorkspaceSelection({
+        currentDirectory: "/repo/.synergy/worktrees/feature",
+        canonicalDirectory: "/repo",
+        preference: "main",
+      }),
+    ).toEqual({ mode: "existing", target: "/repo/.synergy/worktrees/feature" })
+  })
+
   test("preserves an explicit create-new selection", () => {
     expect(
       defaultNewSessionWorkspaceSelection({

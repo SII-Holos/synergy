@@ -2,6 +2,7 @@ import fs from "fs/promises"
 import path from "path"
 import z from "zod"
 import { Global } from "../global"
+import { Storage } from "../storage/storage"
 
 const IncompatiblePluginRecord = z.object({
   pluginId: z.string(),
@@ -27,11 +28,7 @@ export namespace IncompatiblePluginStore {
   }
 
   export async function write(records: IncompatiblePluginRecord[], data = Global.Path.data): Promise<void> {
-    const file = filepath(data)
-    await fs.mkdir(path.dirname(file), { recursive: true })
-    const temporary = `${file}.tmp`
-    await Bun.write(temporary, `${JSON.stringify(records, null, 2)}\n`)
-    await fs.rename(temporary, file)
+    await Storage.writeJsonAtomic(filepath(data), `${JSON.stringify(records, null, 2)}\n`)
   }
 
   export function withoutPlugin(records: IncompatiblePluginRecord[], pluginId: string, specs: string[] = []) {
