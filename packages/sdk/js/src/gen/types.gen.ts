@@ -1507,8 +1507,10 @@ export type SessionNavEntry = {
   title: string
   category: "project" | "home" | "channel" | "background" | "github"
   lastActivityAt: number
+  createdAt?: number
   pinned: number
   archived: boolean
+  archivedAt?: number
   parentID?: string
   endpointKind?: "channel"
   chatId?: string
@@ -2602,6 +2604,10 @@ export type ProviderConfig = {
      * Enable promptCacheKey for this provider (default false)
      */
     setCacheKey?: boolean
+    /**
+     * Merge leading system messages into a single system message for strict OpenAI-compatible endpoints that reject multiple or non-leading system messages (e.g. vLLM Qwen chat templates). Default false.
+     */
+    mergeSystemMessages?: boolean
     /**
      * Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.
      */

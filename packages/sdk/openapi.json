@@ -29488,11 +29488,17 @@
           "lastActivityAt": {
             "type": "number"
           },
+          "createdAt": {
+            "type": "number"
+          },
           "pinned": {
             "type": "number"
           },
           "archived": {
             "type": "boolean"
+          },
+          "archivedAt": {
+            "type": "number"
           },
           "parentID": {
             "type": "string"
@@ -31756,6 +31762,10 @@
               },
               "setCacheKey": {
                 "description": "Enable promptCacheKey for this provider (default false)",
+                "type": "boolean"
+              },
+              "mergeSystemMessages": {
+                "description": "Merge leading system messages into a single system message for strict OpenAI-compatible endpoints that reject multiple or non-leading system messages (e.g. vLLM Qwen chat templates). Default false.",
                 "type": "boolean"
               },
               "timeout": {

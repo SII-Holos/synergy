@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
-import { Session } from "../session"
+import { SessionNav, type SessionNavEntry } from "../session/nav"
 import { Scope } from "../scope"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
@@ -78,6 +78,13 @@ function compareNumber(a: number | undefined, b: number | undefined, dir: SortDi
 function scopeSortLabel(scopeID: string, scopeInfo: ScopeInfo | undefined) {
   if (scopeID === "home") return "Home"
   return scopeInfo?.name || scopeInfo?.directory || scopeID
+}
+function titleMatchRank(title: string, term: string) {
+  const lower = title.toLowerCase()
+  if (lower.startsWith(term)) return 0
+  const idx = lower.indexOf(term)
+  if (idx > 0 && !/[a-z0-9]/.test(lower[idx - 1])) return 1
+  return 2
 }
 
 export const GlobalSessionRoute = new Hono().get(
@@ -160,51 +167,69 @@ export const GlobalSessionRoute = new Hono().get(
       }),
     )
 
-    // Collect all page index entries across scopes
-    type Entry = { entry: Session.PageIndex["entries"][number]; scopeID: string; info: SessionInfo | undefined }
-    const allEntries: Entry[] = []
+    // Filter and sort entirely on nav indexes; session infos are read only for
+    // the returned page and for legacy indexes that predate entry timestamps.
+    const indexes = await Promise.all(scopeIDs.map((sid) => SessionNav.readNavIndex(sid)))
+    let pageEntries: SessionNavEntry[] = indexes.flatMap((index) => index.entries)
 
-    for (const scopeID of scopeIDs) {
-      const index = await Session.readPageIndex(scopeID)
-      for (const entry of index.entries) {
-        if (archivedFilter === "exclude" && entry.archived) continue
-        if (archivedFilter === "only" && !entry.archived) continue
-        if (parentOnly && entry.parentID) continue
-        const info = await Storage.read<SessionInfo>(StoragePath.sessionInfo(asScopeID(scopeID), asSessionID(entry.id)))
-        allEntries.push({ entry, scopeID, info })
-      }
+    if (archivedFilter === "exclude") pageEntries = pageEntries.filter((entry) => !entry.archived)
+    if (archivedFilter === "only") pageEntries = pageEntries.filter((entry) => entry.archived)
+    if (parentOnly) pageEntries = pageEntries.filter((entry) => !entry.parentID)
+
+    const term = query.search?.trim().toLowerCase()
+    if (term) {
+      pageEntries = pageEntries.filter((entry) => entry.title.toLowerCase().includes(term))
     }
 
-    let pageEntries = allEntries
-    if (query.search) {
-      const term = query.search.toLowerCase()
-      pageEntries = pageEntries.filter(({ info }) => info?.scope && info.title.toLowerCase().includes(term))
-    }
-
-    pageEntries.sort((a, b) => {
-      let result = 0
-      switch (query.sortBy as SessionSortBy) {
-        case "created":
-          result = compareNumber(a.entry.created, b.entry.created, query.sortDir as SortDir)
-          break
-        case "archived":
-          result = compareNumber(a.info?.time.archived, b.info?.time.archived, query.sortDir as SortDir)
-          break
-        case "scope": {
-          const aScope = scopeSortLabel(a.scopeID, scopeInfoCache.get(a.scopeID))
-          const bScope = scopeSortLabel(b.scopeID, scopeInfoCache.get(b.scopeID))
-          result = query.sortDir === "asc" ? aScope.localeCompare(bScope) : bScope.localeCompare(aScope)
-          break
+    if (pageEntries.length > 0 && pageEntries.some((entry) => entry.createdAt === undefined)) {
+      const backfill = await Storage.readMany<SessionInfo>(
+        pageEntries.map((entry) => StoragePath.sessionInfo(asScopeID(entry.scopeID), asSessionID(entry.id))),
+      )
+      pageEntries = pageEntries.map((entry, i) => {
+        const info = backfill[i]
+        if (!info?.scope) return entry
+        return {
+          ...entry,
+          createdAt: entry.createdAt ?? info.time.created,
+          archivedAt: entry.archivedAt ?? (info.time.archived || undefined),
         }
-        case "updated":
-          result = compareNumber(a.entry.updated, b.entry.updated, query.sortDir as SortDir)
-          break
-      }
-      if (result !== 0) return result
-      const updated = compareNumber(a.entry.updated, b.entry.updated, "desc")
-      if (updated !== 0) return updated
-      return compareNumber(a.entry.created, b.entry.created, "desc")
-    })
+      })
+    }
+
+    if (term && raw.sortBy === undefined) {
+      pageEntries.sort((a, b) => {
+        const rank = titleMatchRank(a.title, term) - titleMatchRank(b.title, term)
+        if (rank !== 0) return rank
+        const updated = compareNumber(a.lastActivityAt, b.lastActivityAt, "desc")
+        if (updated !== 0) return updated
+        return b.id.localeCompare(a.id)
+      })
+    } else {
+      pageEntries.sort((a, b) => {
+        let result = 0
+        switch (query.sortBy as SessionSortBy) {
+          case "created":
+            result = compareNumber(a.createdAt, b.createdAt, query.sortDir as SortDir)
+            break
+          case "archived":
+            result = compareNumber(a.archivedAt, b.archivedAt, query.sortDir as SortDir)
+            break
+          case "scope": {
+            const aScope = scopeSortLabel(a.scopeID, scopeInfoCache.get(a.scopeID))
+            const bScope = scopeSortLabel(b.scopeID, scopeInfoCache.get(b.scopeID))
+            result = query.sortDir === "asc" ? aScope.localeCompare(bScope) : bScope.localeCompare(aScope)
+            break
+          }
+          case "updated":
+            result = compareNumber(a.lastActivityAt, b.lastActivityAt, query.sortDir as SortDir)
+            break
+        }
+        if (result !== 0) return result
+        const updated = compareNumber(a.lastActivityAt, b.lastActivityAt, "desc")
+        if (updated !== 0) return updated
+        return compareNumber(a.createdAt, b.createdAt, "desc")
+      })
+    }
 
     const total = pageEntries.length
 
@@ -212,29 +237,37 @@ export const GlobalSessionRoute = new Hono().get(
     const offset = query.offset ?? 0
     const slice = pageEntries.slice(offset, offset + limit)
 
+    const infos = slice.length
+      ? await Storage.readMany<SessionInfo>(
+          slice.map((entry) => StoragePath.sessionInfo(asScopeID(entry.scopeID), asSessionID(entry.id))),
+        )
+      : []
+
     // Build response
-    const data: GlobalSessionItem[] = slice.map(({ entry, scopeID, info }) => {
-      const scopeInfo = scopeInfoCache.get(scopeID)
+    const data: GlobalSessionItem[] = slice.map((entry, i) => {
+      const scopeInfo = scopeInfoCache.get(entry.scopeID)
+      const info = infos[i]
       const scope: Scope =
-        scopeID === "home"
+        entry.scopeID === "home"
           ? Scope.home()
           : {
               type: "project" as const,
-              id: scopeID,
+              id: entry.scopeID,
               directory: scopeInfo?.directory ?? "",
               worktree: scopeInfo?.worktree ?? "",
               sandboxes: scopeInfo?.sandboxes ?? [],
               time: scopeInfo?.time ?? { created: 0, updated: 0 },
             }
 
+      const archived = entry.archivedAt ?? info?.time?.archived
       return {
         id: entry.id,
-        title: info?.title ?? "",
+        title: info?.title ?? entry.title,
         scope: buildScopeField(scope, scopeInfo),
         time: {
-          created: entry.created,
-          updated: entry.updated,
-          ...(info?.time?.archived ? { archived: info.time.archived } : {}),
+          created: entry.createdAt ?? entry.lastActivityAt,
+          updated: entry.lastActivityAt,
+          ...(archived ? { archived } : {}),
         },
         pinned: entry.pinned || undefined,
         parentID: entry.parentID || undefined,

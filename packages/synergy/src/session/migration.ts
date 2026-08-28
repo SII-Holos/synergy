@@ -2491,6 +2491,13 @@ export const migrations: Migration[] = [
       await SessionNav.rebuildAllNavIndexes(progress)
     },
   },
+  {
+    id: "20260828-session-nav-timestamps",
+    description: "Rebuild session nav indexes to backfill created/archived timestamps",
+    async up(progress) {
+      await SessionNav.rebuildAllNavIndexes(progress)
+    },
+  },
 ]
 
 function canonicalFieldsDiffer(before: any, after: any): boolean {

@@ -18,8 +18,10 @@ export const SessionNavEntry = z
     title: z.string(),
     category: NavCategory,
     lastActivityAt: z.number(),
+    createdAt: z.number().optional(),
     pinned: z.number(),
     archived: z.boolean(),
+    archivedAt: z.number().optional(),
     parentID: z.string().optional(),
     endpointKind: z.literal("channel").optional(),
     chatId: z.string().optional(),
@@ -102,8 +104,10 @@ export interface SessionNavEntry {
   title: string
   category: NavCategory
   lastActivityAt: number
+  createdAt?: number
   pinned: number
   archived: boolean
+  archivedAt?: number
   parentID?: string
   endpointKind?: "channel"
   chatId?: string
@@ -219,8 +223,10 @@ export namespace SessionNav {
           title: session.title,
           category,
           lastActivityAt: session.time.updated,
+          createdAt: session.time.created,
           pinned: session.pinned ?? 0,
           archived: !!session.time.archived,
+          archivedAt: session.time.archived || undefined,
           parentID: session.parentID,
           endpointKind: channelEndpoint ? "channel" : undefined,
           chatId: channelEndpoint?.chatId,

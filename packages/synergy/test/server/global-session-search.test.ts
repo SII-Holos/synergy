@@ -1,3 +1,6 @@
+import { Storage } from "../../src/storage/storage"
+import { StoragePath } from "../../src/storage/path"
+import { Identifier } from "../../src/id/id"
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
 import { Session } from "../../src/session"
@@ -352,6 +355,175 @@ describe("GET /global/session", () => {
 
         await Session.remove(newer!.id)
         await Session.remove(older!.id)
+      },
+    })
+  })
+})
+
+describe("GET /global/session sort, ranking, and index compat", () => {
+  test("sorts by created timestamp across sortDir", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const scopeQuery = `scopeID=${encodeURIComponent(scope.id)}`
+
+    let early: Session.Info | undefined
+    let mid: Session.Info | undefined
+    let late: Session.Info | undefined
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        early = await Session.create({ title: "Created Early" })
+        mid = await Session.create({ title: "Created Mid" })
+        late = await Session.create({ title: "Created Late" })
+        await Session.update(early.id, (draft) => {
+          draft.time.created = 100
+        })
+        await Session.update(mid.id, (draft) => {
+          draft.time.created = 200
+        })
+        await Session.update(late.id, (draft) => {
+          draft.time.created = 300
+        })
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const app = Server.App()
+        const asc = await (await app.request(`/global/session?${scopeQuery}&sortBy=created&sortDir=asc`)).json()
+        expect(asc.data.map((s: any) => s.id)).toEqual([early!.id, mid!.id, late!.id])
+        const desc = await (await app.request(`/global/session?${scopeQuery}&sortBy=created&sortDir=desc`)).json()
+        expect(desc.data.map((s: any) => s.id)).toEqual([late!.id, mid!.id, early!.id])
+
+        await Session.remove(late!.id)
+        await Session.remove(mid!.id)
+        await Session.remove(early!.id)
+      },
+    })
+  })
+
+  test("returns lastExchange for matched sessions", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const scopeQuery = `scopeID=${encodeURIComponent(scope.id)}`
+
+    let session: Session.Info | undefined
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        session = await Session.create({ title: "Exchange Check" })
+        await Session.update(session.id, (draft) => {
+          draft.lastExchange = { user: "U-question", assistant: "A-answer" }
+        })
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const app = Server.App()
+        const res = await app.request(`/global/session?${scopeQuery}&search=Exchange`)
+        expect(res.status).toBe(200)
+        const body = await res.json()
+        const item = body.data.find((s: any) => s.id === session!.id)
+        expect(item).toBeDefined()
+        expect(item.lastExchange).toEqual({ user: "U-question", assistant: "A-answer" })
+
+        await Session.remove(session!.id)
+      },
+    })
+  })
+
+  test("keeps exact response values when the nav index lacks created/archivedAt fields", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const scopeQuery = `scopeID=${encodeURIComponent(scope.id)}`
+
+    let early: Session.Info | undefined
+    let late: Session.Info | undefined
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        early = await Session.create({ title: "Legacy Early" })
+        late = await Session.create({ title: "Legacy Late" })
+        await Session.update(early.id, (draft) => {
+          draft.time.created = 100
+        })
+        await Session.update(late.id, (draft) => {
+          draft.time.created = 300
+        })
+
+        const navKey = StoragePath.sessionNavIndex(Identifier.asScopeID(scope.id))
+        const nav = await Storage.read<any>(navKey)
+        const stripped = {
+          ...nav,
+          entries: nav.entries.map((e: any) => {
+            const copy = { ...e }
+            delete copy.createdAt
+            delete copy.archivedAt
+            return copy
+          }),
+        }
+        await Storage.write(navKey, stripped)
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const app = Server.App()
+        const res = await app.request(`/global/session?${scopeQuery}&search=Legacy&sortBy=created&sortDir=asc`)
+        expect(res.status).toBe(200)
+        const body = await res.json()
+        expect(body.data.map((s: any) => s.id)).toEqual([early!.id, late!.id])
+        expect(body.data[0].time.created).toBe(100)
+        expect(body.data[1].time.created).toBe(300)
+
+        await Session.remove(late!.id)
+        await Session.remove(early!.id)
+      },
+    })
+  })
+
+  test("ranks prefix and word-boundary matches above substring matches when searching", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const term = `NeedleRank${crypto.randomUUID().slice(0, 8)}`
+
+    let prefix: Session.Info | undefined
+    let word: Session.Info | undefined
+    let substring: Session.Info | undefined
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        prefix = await Session.create({ title: `${term} at the front` })
+        await Bun.sleep(3)
+        word = await Session.create({ title: `find ${term} here` })
+        await Bun.sleep(3)
+        substring = await Session.create({ title: `xx${term}zz embedded` })
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const app = Server.App()
+        const searchQuery = `search=${encodeURIComponent(term)}`
+
+        const relevance = await (await app.request(`/global/session?${searchQuery}`)).json()
+        expect(relevance.data.map((s: any) => s.id)).toEqual([prefix!.id, word!.id, substring!.id])
+
+        const explicit = await (await app.request(`/global/session?${searchQuery}&sortBy=updated`)).json()
+        expect(explicit.data.map((s: any) => s.id)).toEqual([substring!.id, word!.id, prefix!.id])
+
+        await Session.remove(substring!.id)
+        await Session.remove(word!.id)
+        await Session.remove(prefix!.id)
       },
     })
   })
