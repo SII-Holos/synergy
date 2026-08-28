@@ -18710,6 +18710,26 @@ msgstr "Visible background tasks"
 msgid "tool.misc.warnings"
 msgstr "Warnings"
 
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.no-steps"
+msgstr "No steps recorded"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.open-session"
+msgstr "Open subagent session"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.running"
+msgstr "Running"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.starting"
+msgstr "Starting…"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.waiting-approval"
+msgstr "Waiting for approval"
+
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.abort-session"
 msgstr "Abort Session"

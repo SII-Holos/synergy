@@ -18710,6 +18710,26 @@ msgstr ""
 msgid "tool.misc.warnings"
 msgstr ""
 
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.no-steps"
+msgstr ""
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.open-session"
+msgstr ""
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.running"
+msgstr ""
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.starting"
+msgstr ""
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.waiting-approval"
+msgstr ""
+
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.abort-session"
 msgstr ""
