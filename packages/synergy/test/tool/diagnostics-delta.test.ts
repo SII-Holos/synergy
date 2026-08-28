@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import type { LSPClient } from "../../src/lsp/client"
-import { diffDiagnostics, formatDiagnosticDelta } from "../../src/lsp/diagnostics-delta"
+import { diffDiagnostics, formatDiagnosticDelta } from "../../src/tool/diagnostics-delta"
+import type { ToolLspSource } from "../../src/tool/lsp-source"
 
 const filePath = "/tmp/example.ts"
 const otherFilePath = "/tmp/other.ts"
@@ -88,7 +88,7 @@ describe("diagnostics delta", () => {
   })
 })
 
-function diagnostic(line: number, severity: 1 | 2, message: string): LSPClient.Diagnostic {
+function diagnostic(line: number, severity: 1 | 2, message: string): ToolLspSource.Diagnostic {
   return {
     severity,
     range: {

@@ -31,7 +31,7 @@ export function registerPluginToolContext() {
             }
           }
           const approval = await getApproval(plugin.id, plugin.manifest)
-          if (approval) approvals[plugin.id] = approval
+          if (approval) approvals[plugin.id] = { approvedCapabilities: approval.approvedCapabilities }
         } catch (err) {
           log.warn("plugin gate data skipped", {
             pluginId: plugin.id,

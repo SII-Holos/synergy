@@ -40,9 +40,8 @@ import {
   type RuleMatch,
 } from "./exec-policy"
 import type { ProfileIdInput, ProfileRule, ProfileSandbox } from "../control-profile/types"
-import { PluginToolId } from "../plugin/ids.js"
-import type { PluginApprovalRecord } from "../plugin/consent/approval-store.js"
-import { controlProfileCapability, hasControlProfileCapability } from "../plugin/capability"
+import { PluginToolId } from "@ericsanchezok/synergy-plugin/ids"
+import { controlProfileCapability, hasControlProfileCapability } from "../control-profile/host-capability"
 import { capabilityNonBypassable } from "@ericsanchezok/synergy-util/capability"
 import { ObservabilityMetrics } from "@/observability/metrics"
 import { BashVirtualPath } from "@/tool/bash/virtual-path"
@@ -92,6 +91,14 @@ export interface Envelope {
   amendment?: ExecPolicyAmendment
 }
 
+/** Narrow approval-record view the gate consumes: only the approved
+ * capability list matters for classification. The index signature keeps
+ * full approval records assignable from callers and tests. */
+export interface PluginApprovalCapabilities {
+  approvedCapabilities: string[]
+  [key: string]: unknown
+}
+
 export interface GateOptions {
   activeWorkspace: string
   workspaceType: string
@@ -101,7 +108,7 @@ export interface GateOptions {
   /** Map from plugin tool full ID (e.g. plugin__x__y) to resolved capabilities */
   pluginToolCapabilities?: Record<string, PluginToolCapabilityMap>
   /** Pre-loaded approval records keyed by plugin ID. If absent, no approval check is performed. */
-  pluginApprovals?: Record<string, PluginApprovalRecord>
+  pluginApprovals?: Record<string, PluginApprovalCapabilities>
   originalCheckout?: string
   /** Additional directories where read-only access is treated as inside-workspace.
    *  Write operations are never allowed through readRoots. */

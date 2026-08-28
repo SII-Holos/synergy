@@ -39,11 +39,8 @@ import fs from "fs"
 import { type ToolDefinition, type ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import z from "zod"
 import Ajv2020 from "ajv/dist/2020"
-import { Plugin } from "../plugin"
-import { getPluginConfig, matchesPluginSettingCondition } from "../plugin/config-store"
-import { PluginToolId } from "../plugin/ids.js"
-import { ensureRuntime, type LoadedPlugin } from "../plugin/loader"
-import { pluginRuntimeManager } from "../plugin/runtime"
+import { ToolPluginSource } from "./plugin-source"
+import type { PluginSettingCondition } from "@ericsanchezok/synergy-plugin"
 import { WebSearchTool } from "./websearch"
 import { ArxivSearchTool, ArxivDownloadTool } from "./arxiv"
 import { Log } from "@/util/log"
@@ -79,18 +76,9 @@ export namespace ToolRegistry {
       }
     }
 
-    const plugins = await Plugin.getLoaded()
-    for (const plugin of plugins) {
-      try {
-        for (const contribution of Plugin.contributions(plugin, "tool")) {
-          custom.push(fromRuntimePlugin(contribution, plugin))
-        }
-      } catch (err) {
-        log.warn("plugin tools skipped due to registry failure", {
-          pluginId: plugin.id,
-          error: err instanceof Error ? err.message : String(err),
-        })
-      }
+    const pluginEntries = (await ToolPluginSource.get()?.toolEntries()) ?? []
+    for (const entry of pluginEntries) {
+      custom.push(fromRuntimePlugin(entry))
     }
 
     return { custom }
@@ -145,15 +133,12 @@ export namespace ToolRegistry {
     return result
   }
 
-  export const matchesSettingCondition = matchesPluginSettingCondition
+  export function matchesSettingCondition(condition: PluginSettingCondition, values: Record<string, unknown>): boolean {
+    return values[condition.setting] === condition.equals
+  }
 
-  async function conditionEnabled(
-    pluginId: string,
-    condition: { setting: string; equals: string | number | boolean },
-  ): Promise<boolean> {
-    const manifest = await Plugin.manifest(pluginId)
-    const values = await getPluginConfig(pluginId, { manifest })
-    return matchesSettingCondition(condition, values)
+  async function conditionEnabled(pluginId: string, condition: PluginSettingCondition): Promise<boolean> {
+    return (await ToolPluginSource.get()?.conditionEnabled(pluginId, condition)) ?? false
   }
 
   async function enabled(tool: Tool.Info): Promise<boolean> {
@@ -162,53 +147,38 @@ export namespace ToolRegistry {
     return conditionEnabled(tool.source.pluginId, tool.enabledWhen)
   }
 
-  function fromRuntimePlugin(
-    contribution: Extract<LoadedPlugin["manifest"]["contributions"][number], { kind: "tool" }>,
-    plugin: LoadedPlugin,
-  ): Tool.Info {
-    const fullId = PluginToolId.format(plugin.id, contribution.id)
+  function fromRuntimePlugin(entry: ToolPluginSource.Entry): Tool.Info {
     return {
-      id: fullId,
-      exposure: contribution.exposure as ToolExposure.Info | undefined,
-      display: contribution.display as ToolDisplay | undefined,
+      id: entry.fullId,
+      exposure: entry.exposure,
+      display: entry.display,
       source: {
         type: "plugin",
-        pluginId: plugin.id,
-        toolId: contribution.id,
-        pluginDir: plugin.pluginDir,
+        pluginId: entry.pluginId,
+        toolId: entry.toolId,
+        pluginDir: entry.pluginDir,
         runtimeMode: "process",
       },
-      inputSchema: contribution.input,
-      enabledWhen: contribution.enabledWhen,
+      inputSchema: entry.inputSchema,
+      enabledWhen: entry.enabledWhen,
       init: async (initCtx) => ({
-        parameters: manifestParameters(contribution.input),
-        description: contribution.description,
+        parameters: manifestParameters(entry.inputSchema),
+        description: entry.description,
         execute: async (args, ctx) => {
-          if (contribution.enabledWhen && !(await conditionEnabled(plugin.id, contribution.enabledWhen))) {
-            throw Object.assign(new Error(`Plugin tool ${fullId} is disabled by plugin settings.`), {
+          if (entry.enabledWhen && !(await conditionEnabled(entry.pluginId, entry.enabledWhen))) {
+            throw Object.assign(new Error(`Plugin tool ${entry.fullId} is disabled by plugin settings.`), {
               code: "CONTRIBUTION_DISABLED",
             })
           }
-          await ensureRuntime(plugin)
-          const raw = await pluginRuntimeManager.invoke({
-            pluginId: plugin.id,
-            handlerId: `tool:${contribution.id}`,
-            value: args,
-            context: {
-              scopeId: ScopeContext.current.scope.id,
-              sessionId: ctx.sessionID,
-              directory: ScopeContext.current.directory,
-              actor: {
-                type: "agent",
-                agent: ctx.agent,
-                messageId: ctx.messageID,
-                callId: ctx.callID ?? `${plugin.id}:${contribution.id}`,
-                userMessageId: typeof ctx.extra?.userMessageID === "string" ? ctx.extra.userMessageID : undefined,
-              },
-            },
-            pluginDir: plugin.pluginDir,
-            manifest: plugin.manifest,
-            signal: ctx.abort,
+          const raw = await entry.execute(args, {
+            sessionID: ctx.sessionID,
+            messageID: ctx.messageID,
+            agent: ctx.agent,
+            abort: ctx.abort,
+            callID: ctx.callID,
+            userMessageID: typeof ctx.extra?.userMessageID === "string" ? ctx.extra.userMessageID : undefined,
+            scopeId: ScopeContext.current.scope.id,
+            directory: ScopeContext.current.directory,
           })
           return normalizePluginResult(raw, initCtx?.agent)
         },

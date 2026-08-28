@@ -1,6 +1,6 @@
 {
   "totalModules": 66,
-  "totalFiles": 1005,
+  "totalFiles": 1061,
   "cyclicSCCs": [
     [
       "acp",
@@ -21,7 +21,6 @@
       "cortex",
       "daemon",
       "enforcement",
-      "external-agent",
       "file",
       "global",
       "hashline",
@@ -59,124 +58,7 @@
       "workspace-file"
     ]
   ],
-  "l1ToProduct": [
-    [
-      "agent",
-      "external-agent"
-    ],
-    [
-      "agent",
-      "library"
-    ],
-    [
-      "agent",
-      "plugin"
-    ],
-    [
-      "config",
-      "holos"
-    ],
-    [
-      "config",
-      "lsp"
-    ],
-    [
-      "enforcement",
-      "plugin"
-    ],
-    [
-      "permission",
-      "plugin"
-    ],
-    [
-      "provider",
-      "holos"
-    ],
-    [
-      "provider",
-      "plugin"
-    ],
-    [
-      "scope",
-      "library"
-    ],
-    [
-      "session",
-      "agenda"
-    ],
-    [
-      "session",
-      "blueprint"
-    ],
-    [
-      "session",
-      "channel"
-    ],
-    [
-      "session",
-      "command"
-    ],
-    [
-      "session",
-      "cortex"
-    ],
-    [
-      "session",
-      "external-agent"
-    ],
-    [
-      "session",
-      "library"
-    ],
-    [
-      "session",
-      "lsp"
-    ],
-    [
-      "session",
-      "mcp"
-    ],
-    [
-      "session",
-      "note"
-    ],
-    [
-      "session",
-      "plugin"
-    ],
-    [
-      "session",
-      "project"
-    ],
-    [
-      "session",
-      "question"
-    ],
-    [
-      "tool",
-      "lsp"
-    ],
-    [
-      "tool",
-      "note"
-    ],
-    [
-      "tool",
-      "plugin"
-    ],
-    [
-      "tool",
-      "remote"
-    ],
-    [
-      "tool",
-      "synergy-link"
-    ],
-    [
-      "workspace-file",
-      "lsp"
-    ]
-  ],
+  "l1ToProduct": [],
   "l1ToAssembly": [
     [
       "config",

@@ -10,7 +10,9 @@
  * domains (S7: skill, command, mcp), tool partition (S8: agenda, note,
  * email, channel), tool partition continuation (S9: browser, cortex,
  * project, question, library, lsp, synergy-link), session source
- * inversion (S9c: session's product edges).
+ * inversion (S9c: session's product edges), remaining L1 edge
+ * inversions (S9d: agent, config, enforcement, permission, provider,
+ * scope, tool, workspace-file).
  */
 import "./agenda/migration"
 import "./blueprint/migration"
@@ -67,6 +69,17 @@ import { registerMcpSessionInput } from "./mcp/session-input"
 import { registerLspSessionInput } from "./lsp/session-input"
 import { registerChannelSessionProjects } from "./channel/session-projects"
 import { registerSuperPlanSessionEnv } from "./superplan/session-env"
+import { registerAgentPluginSource } from "./plugin/agent-source"
+import { registerAgentExternalSource } from "./external-agent/agent-source"
+import { registerPermissionPluginSource } from "./plugin/permission-source"
+import { registerProviderPluginAuth } from "./plugin/provider-auth-source"
+import { registerScopeLibraryStore } from "./library/scope-migration-store"
+import { registerToolPluginSource } from "./plugin/tool-source"
+import { registerLspToolSource } from "./lsp/tool-source"
+import { registerWorkspaceFileSymbolSource } from "./lsp/workspace-symbol-source"
+import { registerLspConfigCatalog } from "./lsp/config-catalog"
+import { registerToolLinkTargetSource } from "./synergy-link/tool-target-source"
+import { registerNoteVirtualFileSource } from "./note/virtual-file-source"
 
 registerBossDomain()
 registerLightLoopDomain()
@@ -109,6 +122,18 @@ registerMcpSessionInput()
 registerLspSessionInput()
 registerChannelSessionProjects()
 registerSuperPlanSessionEnv()
+registerAgentPluginSource()
+registerAgentExternalSource()
+registerPermissionPluginSource()
+registerProviderPluginAuth()
+registerScopeLibraryStore()
+registerToolPluginSource()
+registerLspToolSource()
+registerWorkspaceFileSymbolSource()
+registerLspConfigCatalog()
+registerToolLinkTargetSource()
+registerNoteVirtualFileSource()
+
 // L4 assembly: the light-loop domain consumes plugin hook delivery through an
 // injected function so product domains stay acyclic (no light-loop→plugin
 // import; plugin→light-loop host-services remains the allowed direction).

@@ -1,5 +1,5 @@
 import { stripXmlTags, isJunk, isAssistantReasoning, hasToolHallucination, truncate } from "./encoder-sanitize"
-import { INTENT_MAX_CHARS, INTENT_MIN_CHARS } from "./encoder-constants"
+import { INTENT_MAX_CHARS, INTENT_MIN_CHARS } from "../util/encoder-constants"
 
 const TOOL_MARKER_RE = /\[Tool:\s*\w+/g
 const LOG_MARKER_RE = /\[Log\]\s+\w+/g

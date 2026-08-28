@@ -1,15 +1,17 @@
-import type { LSPClient } from "./client"
-import { LSP } from "."
+import { ToolLspSource } from "./lsp-source"
+import { prettyDiagnostic } from "./diagnostic-format"
 import { Filesystem } from "../util/filesystem"
 
+type Diagnostic = ToolLspSource.Diagnostic
+
 export interface DiagnosticDelta {
-  added: LSPClient.Diagnostic[]
-  resolved: LSPClient.Diagnostic[]
+  added: Diagnostic[]
+  resolved: Diagnostic[]
   unchanged: number
   errored?: boolean
 }
 
-function diagnosticKey(d: LSPClient.Diagnostic): string {
+function diagnosticKey(d: Diagnostic): string {
   const r = d.range
   return [
     r.start.line,
@@ -23,10 +25,10 @@ function diagnosticKey(d: LSPClient.Diagnostic): string {
 }
 
 export function diffDiagnostics(
-  before: Awaited<ReturnType<typeof LSP.diagnostics>> | undefined,
-  after: Awaited<ReturnType<typeof LSP.diagnostics>> | undefined,
+  before: ToolLspSource.DiagnosticsSnapshot | undefined,
+  after: ToolLspSource.DiagnosticsSnapshot | undefined,
   filePath: string,
-  include: (diagnostic: LSPClient.Diagnostic) => boolean = () => true,
+  include: (diagnostic: Diagnostic) => boolean = () => true,
 ): DiagnosticDelta {
   const normalizedPath = Filesystem.normalizePath(filePath)
 
@@ -37,18 +39,18 @@ export function diffDiagnostics(
   const beforeForFile = (before[normalizedPath] ?? []).filter(include)
   const afterForFile = (after[normalizedPath] ?? []).filter(include)
 
-  const beforeKeys = new Map<string, LSPClient.Diagnostic>()
+  const beforeKeys = new Map<string, Diagnostic>()
   for (const d of beforeForFile) {
     beforeKeys.set(diagnosticKey(d), d)
   }
 
-  const afterKeys = new Map<string, LSPClient.Diagnostic>()
+  const afterKeys = new Map<string, Diagnostic>()
   for (const d of afterForFile) {
     afterKeys.set(diagnosticKey(d), d)
   }
 
-  const added: LSPClient.Diagnostic[] = []
-  const resolved: LSPClient.Diagnostic[] = []
+  const added: Diagnostic[] = []
+  const resolved: Diagnostic[] = []
   let unchanged = 0
 
   for (const [key, d] of afterKeys) {
@@ -82,7 +84,7 @@ export function formatDiagnosticDelta(delta: DiagnosticDelta): string {
   if (delta.added.length > 0) {
     output += "New diagnostics introduced by this edit:\n"
     for (const d of delta.added) {
-      output += `  - ${LSP.Diagnostic.pretty(d)}\n`
+      output += `  - ${prettyDiagnostic(d)}\n`
     }
   } else {
     output += "No new diagnostics introduced by this edit.\n"
@@ -91,7 +93,7 @@ export function formatDiagnosticDelta(delta: DiagnosticDelta): string {
   if (delta.resolved.length > 0) {
     output += "Diagnostics resolved by this edit:\n"
     for (const d of delta.resolved) {
-      output += `  - ${LSP.Diagnostic.pretty(d)}\n`
+      output += `  - ${prettyDiagnostic(d)}\n`
     }
   }
 

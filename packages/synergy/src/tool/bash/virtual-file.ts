@@ -3,7 +3,7 @@ import { chmod, mkdtemp, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import type { Node } from "web-tree-sitter"
-import { NoteMarkdown, NoteStore } from "../../note"
+import { ToolNoteSource } from "../note-source"
 import { BashVirtualPath } from "./virtual-path"
 
 export namespace BashVirtualFile {
@@ -25,12 +25,19 @@ export namespace BashVirtualFile {
     read(scopeID: string, id: string): Promise<string>
   }
 
+  const noteSource = () => {
+    const source = ToolNoteSource.get()
+    if (!source) throw new Error("Note virtual-file source is not registered")
+    return source
+  }
+
   const providers = {
     note: {
-      extension: ".md",
-      async read(scopeID, id) {
-        const note = await NoteStore.getAny(scopeID, id)
-        return NoteMarkdown.toMarkdown(note.content)
+      get extension() {
+        return noteSource().noteExtension
+      },
+      read(scopeID: string, id: string) {
+        return noteSource().readNoteMarkdown(scopeID, id)
       },
     },
   } satisfies Record<BashVirtualPath.Provider, Provider>
