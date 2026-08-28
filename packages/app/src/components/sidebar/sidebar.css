@@ -623,6 +623,15 @@
   text-align: left;
 }
 
+.sb-session-draft-badge {
+  flex-shrink: 0;
+  font-size: var(--font-size-x-small);
+  font-weight: 500;
+  color: var(--text-error);
+  white-space: nowrap;
+  translate: 0 1px;
+}
+
 /* Dropdown menu */
 .sb-project-menu {
   min-width: 160px;

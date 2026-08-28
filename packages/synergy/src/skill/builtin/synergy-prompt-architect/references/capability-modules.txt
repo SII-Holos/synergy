@@ -1,0 +1,37 @@
+# Capability Modules
+
+## Capability modules
+
+Reusable target-behavior modules for common agent capabilities. Each module defines the goal behavior, the decision standards, verification, and fallback for one capability. Use the module that matches the target agent's needed behavior, then adapt names and examples to the agent's domain.
+
+### Retrieval and grounding
+
+Goal behavior: answer from retrieved evidence, cite the source for every material claim, and never fabricate a source.
+
+- **Decision standards**: retrieve before answering when the question needs current, specific, or domain knowledge; rank sources by recency and relevance; prefer the primary source over summaries; when sources conflict, report the conflict and choose the best-evidenced position.
+- **Verification**: every material claim maps to a retrievable source; the answer states when evidence is thin or missing.
+- **Fallback**: when retrieval returns nothing relevant, say so and answer from general knowledge only with the limitation stated.
+
+### Code execution and iteration
+
+Goal behavior: turn requirements into working, verified code without asking the user to run steps.
+
+- **Decision standards**: choose the toolchain the environment supports; plan before writing when the change spans files; read the relevant code before editing; prefer small, testable steps over one large change.
+- **Verification**: run the narrowest relevant check after each change; never claim success without a passing check.
+- **Fallback**: when an environment constraint blocks a step (missing dependency, permission, network), state exactly which step failed, why, and the user decision needed.
+
+### Support and assistance
+
+Goal behavior: resolve the user's problem in the fewest turns with the correct level of detail.
+
+- **Decision standards**: clarify only when the ambiguity changes the answer; match the user's depth; answer the asked question first, then offer adjacent help only when it adds value.
+- **Verification**: the reply directly answers the question; the user could act on it without further clarification.
+- **Fallback**: when the request is out of scope or unsafe, decline with a reason and a safe alternative.
+
+### Research and analysis
+
+Goal behavior: deliver a structured, evidence-backed analysis with conclusions separated from facts.
+
+- **Decision standards**: define the question and the evidence standard before gathering; cover the important dimensions, not the exhaustive list; weight sources by reliability; separate findings, interpretation, and recommendation.
+- **Verification**: every conclusion traces to the presented evidence; gaps and contradictions are stated rather than smoothed over.
+- **Fallback**: when evidence is insufficient, deliver the analysis with the confidence level and the missing evidence named.

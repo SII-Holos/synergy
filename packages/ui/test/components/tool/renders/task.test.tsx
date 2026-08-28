@@ -3,6 +3,8 @@ import { TOOL_TITLE_DESC } from "../../../../src/components/tool-title-descripto
 
 let registeredRender: ((props: Record<string, any>) => unknown) | undefined
 let capturedTrigger: Record<string, unknown> | undefined
+let capturedDetail: Record<string, unknown> | undefined
+let resultPresentation = false
 ;(globalThis as typeof globalThis & { React: unknown }).React = {
   createElement(type: unknown, props: Record<string, unknown> | null, ...children: unknown[]) {
     if (typeof type === "function") return type({ ...(props ?? {}), children })
@@ -19,7 +21,11 @@ mock.module("solid-js", () => ({
   Show: () => null,
 }))
 mock.module("../../../../src/context", () => ({
-  useData: () => ({ store: { permission: {} } }),
+  useData: () => ({
+    store: { permission: {} },
+    view: { permissionsFor: () => [] },
+    navigateToSession: undefined,
+  }),
 }))
 mock.module("../../../../src/hooks", () => ({
   createAutoScroll: () => ({
@@ -33,6 +39,7 @@ mock.module("../../../../src/components/basic-tool", () => ({
     capturedTrigger = props.trigger
     return null
   },
+  useToolResultPresentation: () => resultPresentation,
 }))
 mock.module("../../../../src/components/icon", () => ({ Icon: () => null }))
 mock.module("../../../../src/components/message-part", () => ({
@@ -43,11 +50,19 @@ mock.module("../../../../src/components/message-part", () => ({
   },
   getToolInfo: () => ({ icon: "settings", title: "Tool" }),
 }))
+mock.module("../../../../src/components/tool/task-subagent-detail", () => ({
+  TaskSubagentDetail: (props: { info: Record<string, unknown> }) => {
+    capturedDetail = props.info
+    return "subagent-detail"
+  },
+  TaskSubagentSteps: () => null,
+}))
 
 await import("../../../../src/components/tool/renders/task")
 
 describe("registered task tool renderer", () => {
   test("uses the shared action title and keeps the agent type as metadata", () => {
+    resultPresentation = false
     registeredRender?.({
       input: {
         subagent_type: "explore",
@@ -63,5 +78,34 @@ describe("registered task tool renderer", () => {
       subtitle: "Inspect the tool registry",
       tags: [{ label: "explore" }, { label: "background" }],
     })
+  })
+
+  test("renders the subagent detail instead of the tool card in result-only presentation", () => {
+    resultPresentation = true
+    capturedTrigger = undefined
+    capturedDetail = undefined
+    registeredRender?.({
+      input: {
+        subagent_type: "explore",
+        description: "Inspect the tool registry",
+      },
+      metadata: {
+        background: false,
+        sessionId: "child-1",
+        summary: [{ id: "p1", tool: "bash", state: { status: "completed", title: "Ran tests" } }],
+      },
+      status: "running",
+      tool: "task",
+    })
+
+    expect(capturedDetail).toMatchObject({
+      agentType: "explore",
+      description: "Inspect the tool registry",
+      background: false,
+      sessionId: "child-1",
+      running: true,
+    })
+    expect(capturedTrigger).toBeUndefined()
+    resultPresentation = false
   })
 })

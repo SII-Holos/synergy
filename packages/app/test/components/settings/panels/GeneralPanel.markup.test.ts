@@ -42,6 +42,23 @@ describe("GeneralPanel activity display markup", () => {
   })
 })
 
+describe("GeneralPanel new session workspace markup", () => {
+  test("exposes the workspace selection to assistive technology", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../../../../src/components/settings/panels/GeneralPanel.tsx"),
+      "utf8",
+    )
+    expect(source).toContain('id: "settings.general.workspace.title"')
+    expect(source).toContain("ariaLabel={_(copy.workspaceTitle)}")
+    const segmentSource = readFileSync(
+      join(import.meta.dir, "../../../../src/components/settings/components/SegmentPill.tsx"),
+      "utf8",
+    )
+    expect(segmentSource).toContain('role="group"')
+    expect(segmentSource).toContain("aria-pressed={props.value === option.value}")
+  })
+})
+
 describe("GeneralPanel interface zoom markup", () => {
   test("gates the zoom row behind the desktop zoom bridge", () => {
     const source = readFileSync(

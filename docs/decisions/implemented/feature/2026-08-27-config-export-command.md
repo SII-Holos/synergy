@@ -1,0 +1,31 @@
+# Decision Record: Config export command and API
+
+Status: implemented
+
+## Problem
+
+Configuration import (`synergy config import`, Settings Import UI) had no export counterpart: users could not snapshot or move their configuration between machines or scopes. Read APIs (`config.get`, `config.global`, `config.domain.get`) return scope-merged, client-shaped config, not an import-ready payload, and there was no way to produce one without hand-merging domain files.
+
+## Decision
+
+- **`ConfigExport` namespace** (`packages/synergy/src/config/export.ts`) builds an export from the domain registry: `build({scope, only, includeSecrets?})` reads each selected domain's own file at the target scope (global or the active project), merges keys in registry order, and emits a `ConfigExportResult` (`{scope, scopeID, secretsIncluded, domains, config}`). Only domains with configuration are included. The export carries **no `$schema`** — the only schema URL the runtime knows is the install-local `file://` path (`Global.Path.configSchemaUrl`), a broken link on any other machine, and the import side ignores `$schema` — so the output stays machine-independent.
+- **Secrets are redacted by default** through `Config.redactForClient()`, so the default export carries the `__REDACTED__` sentinel. Coverage extends beyond fixed paths to free-form maps: MCP remote `headers`, MCP local `environment`, agent/provider/model `options` redact secret-shaped keys (component-matched: token, password, authorization, api-key, credential, secret, private-key), and `mergeRedactedSecrets` restores those sentinels symmetrically so redacted round-trips stay lossless. `includeSecrets` (CLI only) keeps plaintext values.
+- **CLI `synergy config export`** (`packages/synergy/src/cli/cmd/config.ts`): `--include-secrets` (default false), `--only <domain>` (repeatable), `--scope global|project` (default `global`), `--output`/`-o` (default stdout). The plaintext-secrets warning is printed to stderr for both file and stdout output (redirected backups still surface it); files written with `--include-secrets` are chmod'd `0600`, and a chmod failure prints a warning instead of being swallowed. Per-domain read warnings (skipped broken files) are also printed.
+- **Route `GET /config/export`** (`config.export`, `packages/synergy/src/server/config-route.ts`) returns the same `ConfigExportResult` (now including a `warnings` array) for the Settings UI and SDK. **Plaintext export is CLI-only**: the HTTP surface rejects `includeSecrets=true` with `400 ConfigExportSecretsRejectedError` — the route has no authentication that could gate a plaintext response, and loopback-wide CORS would expose it to any localhost page. Its query schema deliberately has **no `meta({ref})`**: a ref'd query object is registered by hono-openapi as a single-parameter component that keeps only its first property, which silently dropped `only` and `includeSecrets` from the generated SDK (pre-existing behavior; `PerformanceSummaryQuery` loses fields the same way).
+- **CLI reference generator fix** (`script/gen/gen-cli-reference.ts`): the top-level command table now resolves each command's description from the command blocks of its own module. A single global name-keyed map is ambiguous once a top-level command and a nested subcommand share a block name (`export` for sessions vs `config export`) — the last module visited won, and the table mislabeled `synergy export`. The `config` and `doctor` rows now also match `synergy <command> --help` (they previously echoed the first-seen duplicate block from another module). Detail sections keep the merged view.
+
+## Alternatives considered
+
+- **Export the merged runtime config** (`Config.current()` / `Config.globalRaw()`) — Rejected for moving config between machines: it contains env-expanded values and resolved defaults that domain files only state implicitly. Reading each domain file emits exactly what the user configured, which is what import expects to merge.
+- **Separate `synergy config export --redact` flag** — Redaction is the safe default for anything written to disk or shared; opting into plaintext (`--include-secrets`) keeps the dangerous direction explicit rather than the safe direction.
+- **Keep the `meta({ref})` and accept a partial SDK surface** — Dropping `only`/`includeSecrets` from the SDK would make the route unusable from the Settings UI; an inline query schema documents all three parameters in `openapi.json`.
+- **Scanner-generated key patch for the CLI table only** — Leaves the same duplicate-name ambiguity for future commands; resolving descriptions per module removes the class of bug.
+
+## Consequences
+
+- New user surface: `synergy config export [--include-secrets] [--only <domain>...] [--scope ...] [--output file]`; SDK gains `client.config.export({scope, only})` (HTTP is always redacted); `openapi.json` gains `/config/export` including the `warnings` field and the 400 secrets-rejected error.
+- A redacted export re-imported on the _same_ machine is a no-op for secrets (sentinel merges back with the stored value, including MCP headers/environment and agent-option keys); on a _different_ machine the sentinel stays in the file until the user replaces it — imports with placeholder secrets will not silently carry working credentials across machines. `--include-secrets` is the explicit tool for full migration.
+- Plaintext exports are `0600` but travel as ordinary files afterward; the warning states this in the terminal (stderr, so redirects keep it out of the payload), and both guides mark the output as sensitive.
+- Export is read-only: it reads each domain file under the domain read lock and reports a broken file as a `warnings` entry instead of quarantining it — the CLI prints the warning and the API carries it in the result. This intentionally differs from `domainGet`, which moves broken files aside.
+- `{env:}`/`{file:}` references resolve at read time and `plugin` specs are re-relativized to the config directory; both semantics (resolved values written back as literals on re-import; plugin paths varying across machines) are documented in the configuration layout reference.
+- `docs/reference/cli.md` table descriptions for `config` and `doctor` changed to match runtime help output.

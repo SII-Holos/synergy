@@ -1,0 +1,14 @@
+# Prompt Engineering Principles
+
+## Principles
+
+1. **Specific instructions beat abstract advice.** Say exactly what the agent should do, in what order, and what to avoid. A prompt that reads like general advice produces general output.
+2. **Positive instructions outperform prohibitions.** State the desired behavior before the boundary. For high-risk actions, keep a short explicit refusal line with a safe alternative.
+3. **Structure matters more than eloquence.** Use short imperative sentences, lists, and section markers. Long paragraphs dilute the signal.
+4. **Give the agent a model of the output.** Show the expected shape — a template, an example, or a field list — before asking for the output.
+5. **Make standards measurable.** Replace "high quality" with observable criteria the agent can check before finishing (length, structure, coverage, tone, sources).
+6. **Prefer one canonical phrasing.** Pick one term per concept and use it consistently in instructions, examples, and output contracts. Synonyms create ambiguity.
+7. **Write for the runtime, not the author.** The agent reads only the prompt. Any context the author assumes must be stated explicitly, or the agent will guess.
+8. **Avoid stating the obvious.** Do not describe what the agent already knows from its training or the request. Every line should add decision or behavior the agent could not infer.
+9. **Keep instructions near their subject.** Put the rule that governs a tool, a source, or an output field next to where that tool, source, or field is used.
+10. **Give a stopping rule.** Say when the agent is done and what it should not do instead (re-ask, hallucinate, over-format, or continue past the deliverable).

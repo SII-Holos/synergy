@@ -48,6 +48,11 @@ function srgbToLinear(c: number): number {
   return Math.pow((c + 0.055) / 1.055, 2.4)
 }
 
+// Provenance: Björn Ottosson, "A perceptual color space for image processing" —
+// https://bottosson.github.io/posts/oklab/ (public domain reference implementation);
+// matrices as specified for sRGB by CSS Color 4 §9.2 ( https://www.w3.org/TR/css-color-4/#color-conversion ).
+// Local adaptation: coefficient matrices transcribed for direct sRGB (linear) input and
+// paired with the inverse below; hue in degrees, no gamut clamping.
 export function rgbToOklch(r: number, g: number, b: number): OklchColor {
   const lr = srgbToLinear(r)
   const lg = srgbToLinear(g)

@@ -51,6 +51,13 @@ export namespace PathClassifier {
   export interface Options {
     workspace: string
     originalCheckout?: string
+    /**
+     * When false, a symlink in the final component is judged as the directory
+     * entry itself rather than followed. Pathname-mutating shell operations
+     * (rm/mv/ln/rmdir/unlink) act on the entry: an external link pointing
+     * into the workspace is still an external write target.
+     */
+    followFinalSymlink?: boolean
   }
 
   export interface Result {
@@ -92,7 +99,10 @@ export namespace PathClassifier {
     if (containsParentTraversal(input)) return outside("path traverses outside the active workspace")
 
     const candidate = normalizeCandidate(input, workspace)
-    if (Filesystem.contains(workspace, candidate)) return inside("path is inside the active workspace")
+    const contained = Filesystem.contains(workspace, candidate, {
+      followFinalSymlink: options.followFinalSymlink,
+    })
+    if (contained) return inside("path is inside the active workspace")
     return outside("absolute path is outside the active workspace")
   }
 
@@ -123,9 +133,10 @@ export namespace PathClassifier {
   /**
    * Classify a path with original-checkout awareness for worktree sessions.
    *
-   * Pure string analysis — no filesystem I/O. Uses the same prefix-containment
-   * logic as classify() but enriches the reason when originalCheckout is provided
-   * and the path falls within the original checkout directory.
+   * Uses the same prefix-containment logic as classify() but enriches the
+   * reason when originalCheckout is provided and the path falls within the
+   * original checkout directory. Containment may resolve symlinks on disk
+   * (see isPathContained), so this is not guaranteed free of filesystem I/O.
    */
   export function classifyPath(input: string, options: Options): Result {
     const base = classify(input, options)

@@ -28,6 +28,8 @@ Use `AGENTS.override.md` for local-only overrides. Configure fallback filenames 
 3. **Reload** — `runtime_reload(target: "agent")`. Markdown agent files in watched directories are auto-detected, but an explicit reload is more reliable.
 4. **Verify** — check that the agent appears in the `@` menu (primary mode) or is available to the `task` tool (subagent mode).
 
+To write the agent's system prompt itself, load the builtin skill `synergy-prompt-architect`; this reference covers only where and how to configure the agent.
+
 ## Two ways to define agents
 
 ### 1. Markdown file (recommended for most agents)
