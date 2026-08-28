@@ -1,98 +1,57 @@
 {
   "totalModules": 66,
-  "totalFiles": 1061,
+  "totalFiles": 1064,
   "cyclicSCCs": [
     [
-      "acp",
-      "agenda",
       "agent",
       "asset",
       "attachment",
-      "blueprint",
-      "boss",
-      "browser",
       "bus",
-      "channel",
-      "cli",
-      "command",
       "config",
       "conflict",
       "control-profile",
-      "cortex",
-      "daemon",
       "enforcement",
       "file",
       "global",
       "hashline",
-      "holos",
       "instruction",
-      "lattice",
-      "library",
-      "light-loop",
-      "lsp",
-      "mcp",
       "migration",
-      "note",
       "observability",
-      "performance",
       "permission",
-      "plugin",
-      "plugin-runtime",
       "process",
-      "project",
       "provider",
-      "question",
-      "remote",
-      "runtime",
       "sandbox",
       "scope",
-      "server",
       "session",
-      "skill",
-      "stats",
       "storage",
-      "synergy-link",
       "tool",
       "util",
       "vector",
       "workspace-file"
+    ],
+    [
+      "agenda",
+      "blueprint",
+      "boss",
+      "channel",
+      "cli",
+      "daemon",
+      "holos",
+      "lattice",
+      "library",
+      "light-loop",
+      "mcp",
+      "note",
+      "performance",
+      "plugin",
+      "plugin-runtime",
+      "remote",
+      "runtime",
+      "server"
     ]
   ],
   "l1ToProduct": [],
-  "l1ToAssembly": [
-    [
-      "config",
-      "runtime"
-    ],
-    [
-      "enforcement",
-      "server"
-    ],
-    [
-      "file",
-      "runtime"
-    ],
-    [
-      "observability",
-      "daemon"
-    ],
-    [
-      "observability",
-      "server"
-    ],
-    [
-      "provider",
-      "runtime"
-    ],
-    [
-      "session",
-      "server"
-    ],
-    [
-      "tool",
-      "runtime"
-    ]
-  ],
+  "l1ToAssembly": [],
   "productInternalPairs": [
     [
       "agenda",
@@ -161,10 +120,6 @@
     [
       "command",
       "skill"
-    ],
-    [
-      "cortex",
-      "plugin"
     ],
     [
       "cortex",
@@ -245,10 +200,6 @@
     [
       "plugin-runtime",
       "plugin"
-    ],
-    [
-      "project",
-      "command"
     ],
     [
       "project",

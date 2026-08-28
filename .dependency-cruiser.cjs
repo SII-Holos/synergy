@@ -1,8 +1,8 @@
 /**
  * Harness-core layering rules (Blueprint: Harness-Core 分层重构 S0–S10).
  *
- * R1  L1 harness-core must not import product modules.         (warn → error at S10)
- * R2  product layer must be acyclic.                            (warn → error at S10)
+ * R1  L1 harness-core must not import product or assembly   (error since S10)
+ * R2  product layer must be acyclic.                            (error since S10)
  * R3  no product→product module pairs beyond .deps-snapshot.json (warn; snapshot is
  *     recorded/refreshed by `bun run deps:snapshot`).
  * R4  L0 shared base must not depend on any upper layer.        (error from day one)
@@ -78,15 +78,17 @@ module.exports = {
   forbidden: [
     {
       name: "r1-core-no-product",
-      comment: "L1 harness-core directories must not import product modules",
-      severity: "warn",
+      comment: "L1 harness-core directories must not import product or assembly modules",
+      severity: "error",
       from: { path: L1 },
-      to: { path: PRODUCT },
+      to: {
+        path: `^${SRC_PREFIX}(${PRODUCT_MODULES.join("|")}|server|cli|daemon|runtime)/`,
+      },
     },
     {
       name: "r2-product-acyclic",
       comment: "product layer must stay acyclic",
-      severity: "warn",
+      severity: "error",
       from: { path: PRODUCT },
       to: { path: PRODUCT, circular: true },
     },
