@@ -1,6 +1,7 @@
 # Decision Record: Delivered attachments render as collapsible cards in the session timeline
 
 Status: implemented
+Archived: 2026-08-28
 
 ## Problem
 
