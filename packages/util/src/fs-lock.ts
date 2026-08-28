@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto"
-import fs from "node:fs/promises"
+import fs, { type FileHandle } from "node:fs/promises"
 import path from "node:path"
 import { processStartIdentity } from "./process-identity"
 
@@ -64,26 +64,37 @@ async function acquireFileLock(options: FileLockOptions): Promise<{ release(): P
     if (Date.now() - startedAt >= timeoutMs) {
       throw new Error(options.timeoutMessage ?? `Timed out acquiring file lock for ${options.key}`)
     }
+    let handle: FileHandle
     try {
-      const handle = await fs.open(filename, "wx", 0o600)
-      try {
-        await handle.writeFile(JSON.stringify({ pid: process.pid, acquiredAt: Date.now(), startIdentity, ownerToken }))
-      } catch (error) {
-        await fs.unlink(filename).catch(() => {})
-        throw error
-      } finally {
-        await handle.close()
-      }
-      return {
-        release: () => releaseOwnedLock(filename, ownerToken),
-      }
+      handle = await fs.open(filename, "wx", 0o600)
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
+      const code = (error as NodeJS.ErrnoException).code
+      // Provenance: DeleteFileW delete-pending semantics — an open on a
+      // delete-pending entry fails with access-denied until the last handle
+      // closes ( https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-deletefilew ).
+      // Local adaptation: libuv maps that failure to EPERM, so an exclusive
+      // create can see EPERM instead of EEXIST right after a release — treat
+      // it as contention and retry. Only the create itself qualifies:
+      // EPERM from payload writes or close stays a caller-visible failure,
+      // bounded here by the top-of-loop timeout check.
+      if (code !== "EEXIST" && code !== "EPERM") throw error
       const snapshot = await readOwnerSnapshot(filename)
       if (snapshot && (await isStaleOwner(filename, snapshot, staleMetadataMs, verifiedLiveUntil))) {
         if (await removeStaleLock(filename, snapshot.contents)) continue
       }
       await sleep(retryMs)
+      continue
+    }
+    try {
+      await handle.writeFile(JSON.stringify({ pid: process.pid, acquiredAt: Date.now(), startIdentity, ownerToken }))
+    } catch (error) {
+      await fs.unlink(filename).catch(() => {})
+      throw error
+    } finally {
+      await handle.close()
+    }
+    return {
+      release: () => releaseOwnedLock(filename, ownerToken),
     }
   }
 }

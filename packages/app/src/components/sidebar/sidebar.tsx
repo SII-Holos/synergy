@@ -37,6 +37,7 @@ import {
 } from "@/components/sidebar/session-visual-state"
 import { setSessionDragData } from "@/utils/session-drag"
 import { SidebarAttentionNotice } from "./sidebar-attention-notice"
+import { SessionDraftBadge } from "./session-draft-badge"
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import "./sidebar.css"
 import { SlotOutlet } from "@/plugin/slot-outlet"
@@ -1231,6 +1232,7 @@ function SidebarSessionRow(props: {
           <span class="sb-session-completion-dot" />
         </Show>
       </span>
+      <SessionDraftBadge sessionID={props.entry.id} label={_(sidebar.draftBadge)} />
       <span class={props.flyout ? "sb-flyout-session-title" : "sb-session-title"}>
         {props.entry.title || _(sidebar.untitled)}
       </span>
