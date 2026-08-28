@@ -7,6 +7,7 @@ import { Global } from "../../src/global"
 import { HolosAccounts } from "../../src/holos/accounts"
 import { HolosAuth } from "../../src/holos/auth"
 import { HolosLoginFlow } from "../../src/holos/login-flow"
+import { performHolosLogin } from "../../src/holos/login"
 import { HolosEndpoint } from "../../src/holos/endpoint"
 import { migrations } from "../../src/holos/migration"
 import { HolosProfile } from "../../src/holos/profile"
@@ -210,6 +211,29 @@ describe("Holos endpoint configuration", () => {
     }
   })
 
+  test("CLI login resolves configuration before starting its callback listener", async () => {
+    const originalGlobalResolved = Config.globalResolved
+    const originalServe = Bun.serve
+    let listenerStarts = 0
+    Config.globalResolved = async () => {
+      throw new Error("resolved config unavailable")
+    }
+    Bun.serve = (() => {
+      listenerStarts++
+      throw new Error("callback listener should not start")
+    }) as typeof Bun.serve
+
+    try {
+      await expect(performHolosLogin({ silent: true, profile: { name: "Fail Closed Agent" } })).rejects.toThrow(
+        "resolved config unavailable",
+      )
+      expect(listenerStarts).toBe(0)
+    } finally {
+      Config.globalResolved = originalGlobalResolved
+      Bun.serve = originalServe
+    }
+  })
+
   test("configuring credentials preserves the selected Holos environment", async () => {
     try {
       await Config.domainUpdate("holos", { holos: { enabled: true, ...custom } })
@@ -266,6 +290,37 @@ describe("Holos endpoint configuration", () => {
 })
 
 describe("Holos profile routes", () => {
+  test("login URL failure does not retain pending callback state", async () => {
+    const originalCreateConfiguredBindUrl = HolosLoginFlow.createConfiguredBindUrl
+    let generatedState = ""
+    HolosLoginFlow.createConfiguredBindUrl = async (input) => {
+      generatedState = input.state
+      throw new Error("resolved config unavailable")
+    }
+
+    try {
+      const app = new Hono()
+      app.onError((error, c) => c.json({ message: error.message }, 500))
+      app.route("/holos", HolosRoute)
+      const loginRes = await app.request("http://127.0.0.1:4096/holos/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          callbackUrl: "http://127.0.0.1:4096/holos/callback",
+          profile: { name: "Fail Closed Agent" },
+        }),
+      })
+
+      expect(loginRes.status).toBe(500)
+      expect(generatedState).not.toBe("")
+      const callbackRes = await app.request(
+        `http://127.0.0.1:4096/holos/callback?code=unused&state=${encodeURIComponent(generatedState)}`,
+      )
+      expect(await callbackRes.text()).toContain("Invalid or expired state.")
+    } finally {
+      HolosLoginFlow.createConfiguredBindUrl = originalCreateConfiguredBindUrl
+    }
+  })
   test("login callback success page notifies Synergy and closes itself", async () => {
     globalThis.WebSocket = TestWebSocket as unknown as typeof WebSocket
     mockFetch((url) => {

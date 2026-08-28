@@ -110,6 +110,16 @@ describe("Clarus Channel provider", () => {
         "/environment/api/v1/holos/clarus/projects",
       ])
       expect(requestedUrls.map((url) => url.searchParams.get("status"))).toEqual(["active", "paused"])
+      for (const apiUrl of ["https://api.holosai.io/environment?", "https://api.holosai.io/environment#"]) {
+        expect(
+          () =>
+            new ClarusProjectClient(
+              apiUrl,
+              async () => ({ agentID: "account-a", agentSecret: "secret" }),
+              new AbortController().signal,
+            ),
+        ).toThrow("Invalid Holos api URL structure")
+      }
     } finally {
       globalThis.fetch = originalFetch
     }

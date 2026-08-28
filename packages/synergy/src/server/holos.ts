@@ -108,6 +108,7 @@ export const HolosRoute = new Hono()
       if (!callbackUrl) return c.json({ message: "callbackUrl must point to this server's /holos/callback" }, 400)
 
       const state = crypto.randomUUID()
+      const url = await HolosLoginFlow.createConfiguredBindUrl({ callbackUrl, state })
       pendingStates.set(state, {
         state,
         createdAt: Date.now(),
@@ -116,7 +117,7 @@ export const HolosRoute = new Hono()
         profile: body.profile,
       })
 
-      return c.json({ url: await HolosLoginFlow.createConfiguredBindUrl({ callbackUrl, state }) })
+      return c.json({ url })
     },
   )
   .get(

@@ -451,6 +451,8 @@ test("Clarus account accepts secure base paths and rejects unsafe endpoint struc
     "https://clarus.example.test/environment?tenant=one",
     "https://clarus.example.test/environment#section",
     "ftp://clarus.example.test/environment",
+    "https://clarus.example.test/environment?",
+    "https://clarus.example.test/environment#",
     "http://clarus.example.test/environment",
   ]) {
     expect(() => Config.ChannelClarusAccount.parse({ apiUrl })).toThrow()
