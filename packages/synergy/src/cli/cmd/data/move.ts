@@ -5,7 +5,7 @@ import * as prompts from "@clack/prompts"
 import { cmd } from "../cmd"
 import { UI } from "../../ui"
 import { Global } from "../../../global"
-import { ServerProcessLock } from "../../../daemon/server-process-lock"
+import { ServerProcessLock } from "../../../util/server-process-lock"
 import {
   CATEGORIES,
   scanCategories,

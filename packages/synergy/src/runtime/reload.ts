@@ -7,11 +7,10 @@ import { Config } from "../config/config"
 import { CortexConcurrency } from "../cortex/concurrency"
 import { ConfigDomain } from "../config/domain"
 import { ScopeContext } from "../scope/context"
-import { RuntimeSchema } from "./schema"
+import { RuntimeSchema, formatCompactReloadResult } from "../config/reload-schema"
 import { Log } from "../util/log"
-import { isPathContained } from "../util/path-contain"
 import type { Skill } from "../skill/skill"
-import { RuntimeReloadPath } from "./reload-path"
+import { RuntimeReloadPath } from "../config/reload-path"
 import { AgentTurn } from "../session/agent-turn"
 
 export namespace RuntimeReload {
@@ -25,8 +24,7 @@ export namespace RuntimeReload {
   export type Result = RuntimeSchema.ReloadResult
 
   const CONFIG_RESTART_REQUIRED = new Set(["server", "logLevel"])
-  const BUILTIN_SOURCE_RESTART_WARNING =
-    "Runtime reload refreshes runtime state only. Source edits under packages/synergy/src still require restarting the backend process to load new built-in module code."
+  const BUILTIN_SOURCE_RESTART_WARNING = RuntimeReloadPath.BUILTIN_SOURCE_RESTART_WARNING
   export const CONFIG_LIVE_APPLIED = new Set([
     "model",
     "nano_model",
@@ -69,13 +67,8 @@ export namespace RuntimeReload {
     ),
   }
 
-  export const Input = z.object({
-    targets: z.array(Target).min(1),
-    scope: Scope.optional(),
-    force: z.boolean().optional(),
-    reason: z.string().optional(),
-  })
-  export type Input = z.infer<typeof Input>
+  export const Input = RuntimeSchema.ReloadInput
+  export type Input = RuntimeSchema.ReloadInput
 
   interface ReloadOptions {
     configChange?: Config.Change
@@ -682,10 +675,7 @@ export namespace RuntimeReload {
   // detectTargetsForFile so they always agree.
 
   export function builtinSourceEditWarning(filePath: string) {
-    const normalized = path.resolve(filePath)
-    const builtinRoot = path.resolve(path.join(ScopeContext.current.directory, "packages", "synergy", "src"))
-    if (!isPathContained(builtinRoot, normalized)) return undefined
-    return BUILTIN_SOURCE_RESTART_WARNING
+    return RuntimeReloadPath.builtinSourceEditWarning(filePath)
   }
 
   export function detectScopeForFile(filePath: string): Scope | undefined {
@@ -708,35 +698,7 @@ export namespace RuntimeReload {
 
   /** Format a compact summary of reload diagnostics suitable for auto-reload tool output. */
   export function formatCompactResult(result: Result): string {
-    const lines: string[] = [
-      `Runtime reload applied`,
-      `<runtime_reload>`,
-      `targets=${result.requested.join(",")}`,
-      `executed=${result.executed.join(",")}`,
-    ]
-    if (result.failed.length > 0) {
-      lines.push(`failed=${result.failed.join(",")}`)
-    }
-    lines.push(`</runtime_reload>`)
-
-    if (result.failures.length > 0) {
-      for (const f of result.failures) {
-        lines.push(`  - [failure] ${f.target} ${f.code ?? "unknown"}: ${f.message}`)
-      }
-    }
-    const maxDiagnostics = 5
-    if (result.diagnostics.length > 0) {
-      const shown = result.diagnostics.slice(0, maxDiagnostics)
-      for (const d of shown) {
-        const loc = d.name ? ` ${d.name}` : d.path ? ` at ${d.path}` : ""
-        lines.push(`  - [${d.severity}] ${d.target}${d.code ? ` ${d.code}` : ""}${loc}: ${d.message}`)
-      }
-      if (result.diagnostics.length > maxDiagnostics) {
-        lines.push(`  ... and ${result.diagnostics.length - maxDiagnostics} more diagnostics in metadata.runtimeReload`)
-      }
-    }
-
-    return lines.join("\n")
+    return formatCompactReloadResult(result)
   }
 
   // ─── Auto-reload (file watcher integration) ─────────────────────────

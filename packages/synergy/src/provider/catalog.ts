@@ -959,8 +959,8 @@ export namespace ProviderCatalog {
   ) {
     try {
       await refresh(providerID, profileID, baseURL, configured)
-      const { RuntimeReload } = await import("@/runtime/reload")
-      await RuntimeReload.reload({ targets: ["provider"], reason: "provider model catalog refreshed" })
+      const { RuntimeReloadExecutor } = await import("@/config/reload-executor")
+      await RuntimeReloadExecutor.reload({ targets: ["provider"], reason: "provider model catalog refreshed" })
     } catch (error) {
       log.warn("failed to apply provider model catalog refresh", { providerID, error })
     }
@@ -1209,8 +1209,8 @@ export namespace ProviderCatalog {
     .then((modelsDevRuntime) =>
       modelsDevRuntime.onRefresh(async () => {
         invalidateModelsDevProjection()
-        const { RuntimeReload } = await import("@/runtime/reload")
-        await RuntimeReload.reloadGlobal({ targets: ["provider"], reason: "models.dev catalog refreshed" })
+        const { RuntimeReloadExecutor } = await import("@/config/reload-executor")
+        await RuntimeReloadExecutor.reloadGlobal({ targets: ["provider"], reason: "models.dev catalog refreshed" })
       }),
     )
     .catch((error) => {

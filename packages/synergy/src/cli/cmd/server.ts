@@ -4,7 +4,7 @@ import { run as runServerRuntime } from "../../server/runtime"
 import { UI } from "../ui"
 import { FormatError, FormatUnknownError } from "../error"
 import { Log } from "../../util/log"
-import { ServerProcessLock } from "../../daemon/server-process-lock"
+import { ServerProcessLock } from "../../util/server-process-lock"
 import { Server } from "../../server/server"
 import type { RuntimeOptions } from "../../server/runtime"
 

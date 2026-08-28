@@ -13,7 +13,7 @@ import { Log } from "../util/log"
 import * as ChannelTypes from "../channel/types"
 import { Provider } from "../provider/provider"
 import { DaemonLogRotate } from "../daemon/log-rotate"
-import { ServerProcessLock } from "../daemon/server-process-lock"
+import { ServerProcessLock } from "../util/server-process-lock"
 import { StartupReporter } from "../cli/startup-reporter"
 import { Flag } from "../flag/flag"
 import { GlobalRuntime } from "./global-runtime"
@@ -21,7 +21,7 @@ import { Observability, ObservabilityResources, ObservabilityStore } from "../ob
 import { Session } from "../session"
 import { Plugin } from "../plugin"
 import { PluginSpec } from "../util/plugin-spec"
-import { watchManagedParent } from "./managed-parent"
+import { watchManagedParent } from "../util/managed-parent"
 import { configureRuntimeEndpoint, peekRuntimeEndpointGeneration } from "./runtime-endpoint"
 
 const log = Log.create({ service: "server-runtime" })

@@ -1,13 +1,15 @@
 import path from "path"
-import { ConfigDomain } from "../config/domain"
+import { ConfigDomain } from "./domain"
 import { Global } from "../global"
 import { ScopeContext } from "../scope/context"
 import { SkillSourceProfile } from "../instruction/source-profile"
 import { isPathContained } from "../util/path-contain"
-import { RuntimeSchema } from "./schema"
+import { RuntimeSchema } from "./reload-schema"
 
 export namespace RuntimeReloadPath {
   export type Target = RuntimeSchema.ReloadTarget
+  export const BUILTIN_SOURCE_RESTART_WARNING =
+    "Runtime reload refreshes runtime state only. Source edits under packages/synergy/src still require restarting the backend process to load new built-in module code."
   export type Scope = RuntimeSchema.ReloadScope
 
   export type PathPlatform = "win32" | "posix"
@@ -186,5 +188,11 @@ export namespace RuntimeReloadPath {
     }
 
     return [...new Set(targets)]
+  }
+  export function builtinSourceEditWarning(filePath: string) {
+    const normalized = path.resolve(filePath)
+    const builtinRoot = path.resolve(path.join(ScopeContext.current.directory, "packages", "synergy", "src"))
+    if (!isPathContained(builtinRoot, normalized)) return undefined
+    return BUILTIN_SOURCE_RESTART_WARNING
   }
 }

@@ -10,9 +10,9 @@
  * domains (S7: skill, command, mcp), tool partition (S8: agenda, note,
  * email, channel), tool partition continuation (S9: browser, cortex,
  * project, question, library, lsp, synergy-link), session source
- * inversion (S9c: session's product edges), remaining L1 edge
  * inversions (S9d: agent, config, enforcement, permission, provider,
- * scope, tool, workspace-file).
+ * scope, tool, workspace-file), final structural slice (S10a: runtime
+ * reload executor port, L1 reload schema/path, L0 lock infrastructure).
  */
 import "./agenda/migration"
 import "./blueprint/migration"
@@ -23,6 +23,9 @@ import "./library/migration"
 import "./note/migration"
 import "./plugin/migration"
 import "./library/chronicler"
+
+import { RuntimeReload } from "./runtime/reload"
+import { RuntimeReloadExecutor } from "./config/reload-executor"
 
 import { registerBossDomain } from "./boss/register"
 import { registerLightLoopDomain } from "./light-loop/register"
@@ -145,3 +148,8 @@ setTerminalHookDeliverer((pluginId, pluginGeneration, pointName, input) =>
 // guard through an injected function (agenda dynamically imports blueprint
 // for wakeup instructions; a static reverse edge would close a cycle).
 setBlueprintAgendaAssertClear((input) => AgendaSessionWakeup.assertClear(input))
+
+// L4 assembly: L1 write paths reach the runtime reload orchestrator through
+// the executor port in config/reload-executor (no L1 import of runtime/).
+RuntimeReloadExecutor.setExecutor((input, options) => RuntimeReload.reload(input, options))
+RuntimeReloadExecutor.setGlobalExecutor((input, options) => RuntimeReload.reloadGlobal(input, options))

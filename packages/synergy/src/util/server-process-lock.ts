@@ -1,5 +1,5 @@
 import fs from "fs/promises"
-import { DaemonPaths } from "./paths"
+import { DaemonPaths } from "./daemon-paths"
 import { execFile } from "child_process"
 import { randomUUID } from "crypto"
 import { promisify } from "util"

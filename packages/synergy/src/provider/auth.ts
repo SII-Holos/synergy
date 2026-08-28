@@ -15,7 +15,7 @@ import { MiniMaxProvider } from "./minimax"
 import { GitHubProvider } from "./github"
 import { registerBuiltinProviderProfiles } from "./builtin"
 import { Provider } from "./provider"
-import { RuntimeReload } from "@/runtime/reload"
+import { RuntimeReloadExecutor } from "@/config/reload-executor"
 import { ProviderAuthHealth } from "./auth-health"
 import { Config } from "@/config/config"
 import { ProviderProfile } from "./profile"
@@ -92,7 +92,7 @@ export namespace ProviderAuth {
 
   async function reloadProvider(reason: string) {
     if (ScopeContext.tryScope()) {
-      await RuntimeReload.reload({ targets: ["provider"], reason })
+      await RuntimeReloadExecutor.reload({ targets: ["provider"], reason })
       return
     }
     await Provider.reload()

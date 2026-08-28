@@ -1,3 +1,10 @@
+/**
+ * Pure zod schemas for the runtime reload pipeline, colocated with config so
+ * L1 consumers (tool write paths, config import/setup, provider auth) can
+ * classify and format reloads without importing the L4 orchestrator. Also
+ * exports `formatCompactReloadResult`, the compact reload summary shared by
+ * the write tools' auto-reload output.
+ */
 import z from "zod"
 
 export namespace RuntimeSchema {
@@ -67,4 +74,44 @@ export namespace RuntimeSchema {
     })
     .meta({ ref: "RuntimeReloadResult" })
   export type ReloadResult = z.infer<typeof ReloadResult>
+  export const ReloadInput = z.object({
+    targets: z.array(ReloadTarget).min(1),
+    scope: ReloadScope.optional(),
+    force: z.boolean().optional(),
+    reason: z.string().optional(),
+  })
+  export type ReloadInput = z.infer<typeof ReloadInput>
+}
+
+/** Format a compact summary of reload diagnostics suitable for auto-reload tool output. */
+export function formatCompactReloadResult(result: RuntimeSchema.ReloadResult): string {
+  const lines: string[] = [
+    `Runtime reload applied`,
+    `<runtime_reload>`,
+    `targets=${result.requested.join(",")}`,
+    `executed=${result.executed.join(",")}`,
+  ]
+  if (result.failed.length > 0) {
+    lines.push(`failed=${result.failed.join(",")}`)
+  }
+  lines.push(`</runtime_reload>`)
+
+  if (result.failures.length > 0) {
+    for (const f of result.failures) {
+      lines.push(`  - [failure] ${f.target} ${f.code ?? "unknown"}: ${f.message}`)
+    }
+  }
+  const maxDiagnostics = 5
+  if (result.diagnostics.length > 0) {
+    const shown = result.diagnostics.slice(0, maxDiagnostics)
+    for (const d of shown) {
+      const loc = d.name ? ` ${d.name}` : d.path ? ` at ${d.path}` : ""
+      lines.push(`  - [${d.severity}] ${d.target}${d.code ? ` ${d.code}` : ""}${loc}: ${d.message}`)
+    }
+    if (result.diagnostics.length > maxDiagnostics) {
+      lines.push(`  ... and ${result.diagnostics.length - maxDiagnostics} more diagnostics in metadata.runtimeReload`)
+    }
+  }
+
+  return lines.join("\n")
 }

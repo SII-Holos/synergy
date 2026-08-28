@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite"
 import fs from "fs"
 import path from "path"
-import { watchManagedParent } from "../server/managed-parent"
+import { watchManagedParent } from "../util/managed-parent"
 import { ObservabilityDbSchema } from "./db-schema"
 import { ObservabilityDbWrites } from "./db-writes"
 import { ObservabilitySqliteMaintenance } from "./sqlite-maintenance"

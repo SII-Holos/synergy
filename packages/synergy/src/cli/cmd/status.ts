@@ -1,7 +1,7 @@
 import { cmd } from "./cmd"
 import { Daemon } from "../../daemon"
 import { DaemonOutput } from "../../daemon/output"
-import { ServerProcessLock } from "../../daemon/server-process-lock"
+import { ServerProcessLock } from "../../util/server-process-lock"
 import { ProcessRegistry } from "../../process/registry"
 import { Observability } from "../../observability"
 import { UI } from "../ui"
