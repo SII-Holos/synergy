@@ -89,7 +89,7 @@ export async function performHolosLogin(options?: {
     return null
   }
 
-  const bindUrl = await HolosLoginFlow.createBindUrl({ callbackUrl, state })
+  const bindUrl = await HolosLoginFlow.createConfiguredBindUrl({ callbackUrl, state })
 
   try {
     await open(bindUrl)

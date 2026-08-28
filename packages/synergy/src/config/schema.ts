@@ -131,15 +131,14 @@ export const ChannelClarusAccount = z
     apiUrl: z
       .string()
       .optional()
-      .describe("Clarus REST API origin override; defaults to the configured Holos API origin"),
+      .describe("Clarus REST API base URL override; defaults to the configured Holos API base URL"),
     agent: z.string().optional().describe("Primary Synergy agent for project and assignment Sessions"),
   })
   .strict()
   .superRefine((value, ctx) => {
     if (!value.apiUrl) return
     try {
-      const url = validateHolosEndpoint(value.apiUrl, "api")
-      if (url.pathname !== "/" || url.search || url.hash) throw new Error("Clarus apiUrl must be an origin")
+      validateHolosEndpoint(value.apiUrl, "api")
     } catch (error) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

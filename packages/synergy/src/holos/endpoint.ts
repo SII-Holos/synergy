@@ -14,7 +14,7 @@ export namespace HolosEndpoint {
     portalUrl: HOLOS_PORTAL_URL,
   }
   export async function resolve(): Promise<Info> {
-    const config = await Config.globalResolved().catch(() => undefined)
+    const config = await Config.globalResolved()
     return {
       apiUrl: config?.holos?.apiUrl ?? defaults.apiUrl,
       wsUrl: config?.holos?.wsUrl ?? defaults.wsUrl,

@@ -9,12 +9,23 @@ export namespace HolosLoginFlow {
     agentSecret: string
   }
 
-  export async function createBindUrl(input: { callbackUrl: string; state: string }) {
+  type BindUrlInput = { callbackUrl: string; state: string }
+
+  function createBindUrlForPortal(input: BindUrlInput, portalBaseUrl: string): string {
+    return (
+      HolosEndpoint.url("/api/v1/holos/agent_tunnel/bind/start", portalBaseUrl) +
+      `?local_callback=${encodeURIComponent(input.callbackUrl)}` +
+      `&state=${encodeURIComponent(input.state)}`
+    )
+  }
+
+  export function createBindUrl(input: BindUrlInput): string {
+    return createBindUrlForPortal(input, HolosEndpoint.defaults.portalUrl)
+  }
+
+  export async function createConfiguredBindUrl(input: BindUrlInput): Promise<string> {
     const endpoints = await HolosEndpoint.resolve()
-    const url = new URL(HolosEndpoint.url("/api/v1/holos/agent_tunnel/bind/start", endpoints.portalUrl))
-    url.searchParams.set("local_callback", input.callbackUrl)
-    url.searchParams.set("state", input.state)
-    return url.toString()
+    return createBindUrlForPortal(input, endpoints.portalUrl)
   }
 
   export async function exchange(input: {

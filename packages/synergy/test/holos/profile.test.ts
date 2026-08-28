@@ -7,6 +7,7 @@ import { Global } from "../../src/global"
 import { HolosAccounts } from "../../src/holos/accounts"
 import { HolosAuth } from "../../src/holos/auth"
 import { HolosLoginFlow } from "../../src/holos/login-flow"
+import { HolosEndpoint } from "../../src/holos/endpoint"
 import { migrations } from "../../src/holos/migration"
 import { HolosProfile } from "../../src/holos/profile"
 import { HolosState } from "../../src/holos/state"
@@ -168,6 +169,47 @@ describe("Holos endpoint configuration", () => {
     portalUrl: "https://portal.example.test/holos",
   }
 
+  test("synchronous browser binding keeps the public default portal contract", () => {
+    const bindUrl = HolosLoginFlow.createBindUrl({
+      callbackUrl: "http://127.0.0.1:4096/holos/callback",
+      state: "state",
+    })
+    expect(typeof bindUrl).toBe("string")
+    const url = new URL(bindUrl)
+    expect(`${url.origin}${url.pathname}`).toBe("https://www.holosai.io/api/v1/holos/agent_tunnel/bind/start")
+    expect(url.searchParams.get("local_callback")).toBe("http://127.0.0.1:4096/holos/callback")
+    expect(url.searchParams.get("state")).toBe("state")
+  })
+
+  test("configuration resolution errors fail closed before requests or configuration writes", async () => {
+    const originalGlobalResolved = Config.globalResolved
+    const originalDomainUpdate = Config.domainUpdate
+    let requests = 0
+    let writes = 0
+    Config.globalResolved = async () => {
+      throw new Error("resolved config unavailable")
+    }
+    Config.domainUpdate = (async (...args: Parameters<typeof originalDomainUpdate>) => {
+      writes++
+      return originalDomainUpdate(...args)
+    }) as typeof Config.domainUpdate
+    mockFetch(() => {
+      requests++
+      return json({ code: 0, data: { ws_token: "unexpected", expires_in: 60 } })
+    })
+
+    try {
+      await expect(HolosEndpoint.resolve()).rejects.toThrow("resolved config unavailable")
+      await expect(HolosAuth.verifyCredentials("secret")).rejects.toThrow("resolved config unavailable")
+      await expect(HolosAuth.configureHolos()).rejects.toThrow("resolved config unavailable")
+      expect(requests).toBe(0)
+      expect(writes).toBe(0)
+    } finally {
+      Config.globalResolved = originalGlobalResolved
+      Config.domainUpdate = originalDomainUpdate
+    }
+  })
+
   test("configuring credentials preserves the selected Holos environment", async () => {
     try {
       await Config.domainUpdate("holos", { holos: { enabled: true, ...custom } })
@@ -180,12 +222,15 @@ describe("Holos endpoint configuration", () => {
     }
   })
 
-  test("browser binding uses the configured portal base path", async () => {
+  test("configured browser binding preserves the portal base path", async () => {
     try {
       await Config.domainUpdate("holos", { holos: { enabled: true, ...custom } })
 
       const url = new URL(
-        await HolosLoginFlow.createBindUrl({ callbackUrl: "http://127.0.0.1:4096/holos/callback", state: "state" }),
+        await HolosLoginFlow.createConfiguredBindUrl({
+          callbackUrl: "http://127.0.0.1:4096/holos/callback",
+          state: "state",
+        }),
       )
 
       expect(`${url.origin}${url.pathname}`).toBe(

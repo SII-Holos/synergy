@@ -116,7 +116,7 @@ export const HolosRoute = new Hono()
         profile: body.profile,
       })
 
-      return c.json({ url: await HolosLoginFlow.createBindUrl({ callbackUrl, state }) })
+      return c.json({ url: await HolosLoginFlow.createConfiguredBindUrl({ callbackUrl, state }) })
     },
   )
   .get(

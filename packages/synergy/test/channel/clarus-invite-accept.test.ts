@@ -23,9 +23,9 @@ import { tmpdir } from "../fixture/fixture"
 const AGENT_ID = "invite-accept-agent"
 const AGENT_SECRET = "invite-accept-secret"
 
-function accountConfig(): Config.ChannelClarusAccount {
+function accountConfig(apiUrl = "https://clarus-api.test"): Config.ChannelClarusAccount {
   return {
-    apiUrl: "https://clarus-api.test",
+    apiUrl,
     agent: "",
     enabled: true,
   }
@@ -312,6 +312,7 @@ describe("Clarus invitation acceptance readiness", () => {
     })
     const originalFetch = globalThis.fetch
     const requests: Request[] = []
+    const configuredAccount = accountConfig("https://clarus-api.test/environment")
     let accepted = false
     globalThis.fetch = Object.assign(
       mock(async (input: RequestInfo | URL) => {
@@ -340,8 +341,8 @@ describe("Clarus invitation acceptance readiness", () => {
     try {
       await instance.connect({
         accountId: AGENT_ID,
-        accountConfig: accountConfig(),
-        channelConfig: { type: "clarus", accounts: { [AGENT_ID]: accountConfig() } },
+        accountConfig: configuredAccount,
+        channelConfig: { type: "clarus", accounts: { [AGENT_ID]: configuredAccount } },
         signal: abort.signal,
         host,
       })
@@ -374,6 +375,12 @@ describe("Clarus invitation acceptance readiness", () => {
         "paused",
         "active",
         "paused",
+      ])
+      expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
+        "/environment/api/v1/holos/clarus/projects",
+        "/environment/api/v1/holos/clarus/projects",
+        "/environment/api/v1/holos/clarus/projects",
+        "/environment/api/v1/holos/clarus/projects",
       ])
     } finally {
       abort.abort()
