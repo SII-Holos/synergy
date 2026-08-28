@@ -8,7 +8,8 @@
  * Current scope: product-domain migrations (S1), boss domain (S2), light-loop
  * domain (S3), blueprint domain (S4), lattice domain (S5), instruction
  * domains (S7: skill, command, mcp), tool partition (S8: agenda, note,
- * email, channel).
+ * email, channel), tool partition continuation (S9: browser, cortex,
+ * project, question, library, lsp, synergy-link).
  */
 import "./agenda/migration"
 import "./blueprint/migration"
@@ -29,6 +30,13 @@ import { registerAgendaTools } from "./agenda/tools"
 import { registerNoteTools } from "./note/tools"
 import { registerEmailTools } from "./email/tools"
 import { registerChannelTools } from "./channel/tools"
+import { registerBrowserTools } from "./browser/tools"
+import { registerCortexTools } from "./cortex/tools"
+import { registerProjectTools } from "./project/tools"
+import { registerQuestionTools } from "./question/tools"
+import { registerLibraryTools } from "./library/tools"
+import { registerLspTools } from "./lsp/tools"
+import { registerSynergyLinkTools } from "./synergy-link/tools"
 import { registerPluginSkillSource } from "./plugin/skill-source"
 import { registerPluginToolContext } from "./plugin/tool-context"
 import { registerMcpCommandSource } from "./mcp/instruction-source"
@@ -49,6 +57,13 @@ registerAgendaTools()
 registerNoteTools()
 registerEmailTools()
 registerChannelTools()
+registerBrowserTools()
+registerCortexTools()
+registerProjectTools()
+registerQuestionTools()
+registerLibraryTools()
+registerLspTools()
+registerSynergyLinkTools()
 registerPluginSkillSource()
 registerMcpCommandSource()
 registerPluginToolContext()

@@ -1,6 +1,6 @@
 {
   "totalModules": 66,
-  "totalFiles": 992,
+  "totalFiles": 999,
   "cyclicSCCs": [
     [
       "acp",
@@ -174,18 +174,6 @@
     ],
     [
       "tool",
-      "browser"
-    ],
-    [
-      "tool",
-      "cortex"
-    ],
-    [
-      "tool",
-      "library"
-    ],
-    [
-      "tool",
       "lsp"
     ],
     [
@@ -195,14 +183,6 @@
     [
       "tool",
       "plugin"
-    ],
-    [
-      "tool",
-      "project"
-    ],
-    [
-      "tool",
-      "question"
     ],
     [
       "tool",
@@ -407,6 +387,10 @@
     [
       "project",
       "command"
+    ],
+    [
+      "project",
+      "question"
     ],
     [
       "remote",

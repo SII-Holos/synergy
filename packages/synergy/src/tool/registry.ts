@@ -1,4 +1,3 @@
-import { QuestionTool } from "./question"
 import { BashTool } from "./bash"
 import { EditTool } from "./edit"
 import { GlobTool } from "./glob"
@@ -12,20 +11,14 @@ import { ResolveConflictsTool } from "./resolve-conflicts"
 import { SaveFileTool } from "./save-file"
 import { ScanFilesTool } from "./scan-files"
 import { ParseCodeTool } from "./parse-code"
-import { TaskTool } from "./task"
-import { TaskListTool } from "./task-list"
-import { TaskOutputTool } from "./task-output"
-import { TaskCancelTool } from "./task-cancel"
 import { TodoWriteTool, TodoReadTool } from "./todo"
 import { DagWriteTool, DagReadTool, DagPatchTool } from "./dag"
 import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
-import { MemoryWriteTool, MemoryEditTool, MemorySearchTool, MemoryGetTool } from "./memory"
 import { SessionListTool } from "./session-list"
 import { SessionReadTool } from "./session-read"
 import { SessionSearchTool } from "./session-search"
 import { SessionSendTool } from "./session-send"
-import { SessionControlTool } from "./session-control"
 
 import { ScopeListTool } from "./scope-list"
 import { AttachTool } from "./attach"
@@ -53,40 +46,14 @@ import { ensureRuntime, type LoadedPlugin } from "../plugin/loader"
 import { pluginRuntimeManager } from "../plugin/runtime"
 import { WebSearchTool } from "./websearch"
 import { ArxivSearchTool, ArxivDownloadTool } from "./arxiv"
-import { Flag } from "@/flag/flag"
 import { Log } from "@/util/log"
-import { LspTool } from "./lsp"
 import { ProcessTool } from "./process"
-import { ConnectTool } from "./connect"
 import { Truncate } from "./truncation"
 import { RenderTool } from "./render"
 import { RuntimeReloadTool } from "./runtime-reload"
 import { CodexProvider } from "@/provider/codex"
 import { SearchToolsTool } from "./search-tools"
 import { ExpandToolsTool } from "./expand-tools"
-import { WorktreeEnterTool } from "./worktree-enter"
-import { WorktreeLeaveTool } from "./worktree-leave"
-import { WorktreeListTool } from "./worktree-list"
-import { BrowserAnnotateTool } from "./browser-annotate"
-import { BrowserSnapshotTool } from "./browser-snapshot"
-import { BrowserScreenshotTool } from "./browser-screenshot"
-import { BrowserInspectTool } from "./browser-inspect"
-import { BrowserWaitTool } from "./browser-wait"
-import { BrowserConsoleTool } from "./browser-console"
-import { BrowserNetworkTool } from "./browser-network"
-import { BrowserDownloadsTool } from "./browser-downloads"
-import { BrowserReadTool } from "./browser-read"
-import { BrowserClipboardTool } from "./browser-clipboard"
-import { BrowserNavigationTool } from "./browser-navigation"
-import { BrowserActionTool } from "./browser-action"
-import { BrowserEvalTool } from "./browser-eval"
-import { BrowserViewTool } from "./browser-view"
-import { BrowserAssetsTool } from "./browser-assets"
-import { BrowserPerformanceTool } from "./browser-performance"
-import { BrowserAuditTool } from "./browser-audit"
-import { BrowserEmulateTool } from "./browser-emulate"
-import { BrowserDialogTool } from "./browser-dialog"
-import { BrowserUploadTool } from "./browser-upload"
 import { ToolExposure } from "./exposure"
 
 export namespace ToolRegistry {
@@ -306,10 +273,8 @@ export namespace ToolRegistry {
     await Config.current()
 
     const builtin: Tool.Info[] = [
-      ...(Flag.SYNERGY_CLIENT === "cli" ? [QuestionTool] : []),
       BashTool,
       ProcessTool,
-      ConnectTool,
       ReadTool,
       ViewImageTool,
       ViewFileTool,
@@ -323,10 +288,6 @@ export namespace ToolRegistry {
       GrepTool,
       EditTool,
       WriteTool,
-      TaskTool,
-      TaskListTool,
-      TaskOutputTool,
-      TaskCancelTool,
       WebFetchTool,
       TodoWriteTool,
       TodoReadTool,
@@ -342,43 +303,14 @@ export namespace ToolRegistry {
       LookAtTool,
       ScanDocumentTool,
       AstGrepTool,
-      MemoryWriteTool,
-      MemoryEditTool,
-      MemorySearchTool,
-      MemoryGetTool,
       SessionListTool,
       SessionReadTool,
       SessionSearchTool,
       SessionSendTool,
-      SessionControlTool,
       ScopeListTool,
       AttachTool,
       RenderTool,
       RuntimeReloadTool,
-      WorktreeEnterTool,
-      WorktreeLeaveTool,
-      WorktreeListTool,
-      BrowserAnnotateTool,
-      BrowserSnapshotTool,
-      BrowserScreenshotTool,
-      BrowserInspectTool,
-      BrowserWaitTool,
-      BrowserConsoleTool,
-      BrowserNetworkTool,
-      BrowserDownloadsTool,
-      BrowserReadTool,
-      BrowserClipboardTool,
-      BrowserNavigationTool,
-      BrowserAssetsTool,
-      BrowserActionTool,
-      BrowserEvalTool,
-      BrowserViewTool,
-      BrowserPerformanceTool,
-      BrowserAuditTool,
-      BrowserEmulateTool,
-      BrowserDialogTool,
-      BrowserUploadTool,
-      ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
     ]
 
     const codexAccess = await CodexProvider.resolveToken({

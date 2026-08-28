@@ -1,5 +1,5 @@
 import { describe, expect, test, mock, afterEach } from "bun:test"
-import { WorktreeListTool } from "../../src/tool/worktree-list"
+import { WorktreeListTool } from "../../src/project/tools/worktree-list"
 import { Worktree } from "../../src/project/worktree"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
