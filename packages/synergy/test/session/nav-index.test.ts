@@ -520,3 +520,41 @@ describe("SessionNav timestamps", () => {
     })
   })
 })
+
+describe("SessionNav updatedAt authority", () => {
+  test("updatedAt tracks info time.updated while lastActivityAt stays frozen during pendingReply", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    let session: Session.Info | undefined
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        session = await Session.create({ title: "Pending Reply Freeze" })
+        await Session.update(session.id, (draft) => {
+          draft.pendingReply = true
+        })
+        const afterReply = await SessionNav.readNavIndex(scope.id)
+        const frozen = afterReply.entries.find((e) => e.id === session!.id)!
+
+        await Bun.sleep(5)
+        await Session.update(session.id, (draft) => {
+          draft.title = "Pending Reply Freeze Renamed"
+        })
+
+        const afterSecond = await SessionNav.readNavIndex(scope.id)
+        const entry = afterSecond.entries.find((e) => e.id === session!.id)!
+        const info = await Storage.read<any>(
+          StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(session!.id)),
+        )
+
+        expect(entry.lastActivityAt).toBe(frozen.lastActivityAt)
+        expect(entry.updatedAt).toBe(info.time.updated)
+        expect(entry.updatedAt!).toBeGreaterThan(frozen.lastActivityAt)
+
+        await Session.remove(session!.id)
+      },
+    })
+  })
+})

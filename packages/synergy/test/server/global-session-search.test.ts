@@ -4,6 +4,7 @@ import { Identifier } from "../../src/id/id"
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
 import { Session } from "../../src/session"
+import { SessionNav } from "../../src/session/nav"
 import { Log } from "../../src/util/log"
 import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
@@ -524,6 +525,82 @@ describe("GET /global/session sort, ranking, and index compat", () => {
         await Session.remove(substring!.id)
         await Session.remove(word!.id)
         await Session.remove(prefix!.id)
+      },
+    })
+  })
+})
+
+describe("GET /global/session authority and orphan handling", () => {
+  test("excludes nav entries whose session info no longer exists", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const scopeQuery = `scopeID=${encodeURIComponent(scope.id)}`
+
+    let session: Session.Info | undefined
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        session = await Session.create({ title: "Ghost Candidate" })
+        // Simulate an interrupted delete: info file removed, nav entry retained
+        await Storage.remove(
+          StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(session!.id)),
+        )
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const app = Server.App()
+        const res = await app.request(`/global/session?${scopeQuery}&search=Ghost`)
+        expect(res.status).toBe(200)
+        const body = await res.json()
+        expect(body.data.map((s: any) => s.id)).not.toContain(session!.id)
+      },
+    })
+  })
+
+  test("reports authoritative updated time while pendingReply freezes nav activity", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const scopeQuery = `scopeID=${encodeURIComponent(scope.id)}`
+
+    let session: Session.Info | undefined
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        session = await Session.create({ title: "Authoritative Update" })
+        await Session.update(session.id, (draft) => {
+          draft.pendingReply = true
+        })
+        const frozen = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session!.id)!
+
+        await Bun.sleep(5)
+        await Session.update(session.id, (draft) => {
+          draft.title = "Authoritative Update Renamed"
+        })
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const app = Server.App()
+        const res = await app.request(`/global/session?${scopeQuery}&search=Authoritative`)
+        expect(res.status).toBe(200)
+        const body = await res.json()
+        const item = body.data.find((s: any) => s.id === session!.id)
+        expect(item).toBeDefined()
+
+        const info = await Storage.read<any>(
+          StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(session!.id)),
+        )
+        expect(item.time.updated).toBe(info.time.updated)
+        expect(item.time.updated).toBeGreaterThan(info.time.created)
+
+        await Session.remove(session!.id)
       },
     })
   })

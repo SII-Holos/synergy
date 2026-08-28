@@ -87,6 +87,10 @@ function titleMatchRank(title: string, term: string) {
   return 2
 }
 
+function entryUpdatedAt(entry: SessionNavEntry) {
+  return entry.updatedAt ?? entry.lastActivityAt
+}
+
 export const GlobalSessionRoute = new Hono().get(
   "/",
   describeRoute({
@@ -181,7 +185,10 @@ export const GlobalSessionRoute = new Hono().get(
       pageEntries = pageEntries.filter((entry) => entry.title.toLowerCase().includes(term))
     }
 
-    if (pageEntries.length > 0 && pageEntries.some((entry) => entry.createdAt === undefined)) {
+    if (
+      pageEntries.length > 0 &&
+      pageEntries.some((entry) => entry.createdAt === undefined || entry.updatedAt === undefined)
+    ) {
       const backfill = await Storage.readMany<SessionInfo>(
         pageEntries.map((entry) => StoragePath.sessionInfo(asScopeID(entry.scopeID), asSessionID(entry.id))),
       )
@@ -191,6 +198,7 @@ export const GlobalSessionRoute = new Hono().get(
         return {
           ...entry,
           createdAt: entry.createdAt ?? info.time.created,
+          updatedAt: entry.updatedAt ?? info.time.updated,
           archivedAt: entry.archivedAt ?? (info.time.archived || undefined),
         }
       })
@@ -200,7 +208,7 @@ export const GlobalSessionRoute = new Hono().get(
       pageEntries.sort((a, b) => {
         const rank = titleMatchRank(a.title, term) - titleMatchRank(b.title, term)
         if (rank !== 0) return rank
-        const updated = compareNumber(a.lastActivityAt, b.lastActivityAt, "desc")
+        const updated = compareNumber(entryUpdatedAt(a), entryUpdatedAt(b), "desc")
         if (updated !== 0) return updated
         return b.id.localeCompare(a.id)
       })
@@ -221,11 +229,11 @@ export const GlobalSessionRoute = new Hono().get(
             break
           }
           case "updated":
-            result = compareNumber(a.lastActivityAt, b.lastActivityAt, query.sortDir as SortDir)
+            result = compareNumber(entryUpdatedAt(a), entryUpdatedAt(b), query.sortDir as SortDir)
             break
         }
         if (result !== 0) return result
-        const updated = compareNumber(a.lastActivityAt, b.lastActivityAt, "desc")
+        const updated = compareNumber(entryUpdatedAt(a), entryUpdatedAt(b), "desc")
         if (updated !== 0) return updated
         return compareNumber(a.createdAt, b.createdAt, "desc")
       })
@@ -244,9 +252,12 @@ export const GlobalSessionRoute = new Hono().get(
       : []
 
     // Build response
-    const data: GlobalSessionItem[] = slice.map((entry, i) => {
-      const scopeInfo = scopeInfoCache.get(entry.scopeID)
+    const data: GlobalSessionItem[] = slice.flatMap((entry, i) => {
       const info = infos[i]
+      // An entry whose info file is gone is an orphan from an interrupted
+      // delete; the authoritative record wins and the entry is skipped.
+      if (!info?.scope) return []
+      const scopeInfo = scopeInfoCache.get(entry.scopeID)
       const scope: Scope =
         entry.scopeID === "home"
           ? Scope.home()
@@ -259,20 +270,22 @@ export const GlobalSessionRoute = new Hono().get(
               time: scopeInfo?.time ?? { created: 0, updated: 0 },
             }
 
-      const archived = entry.archivedAt ?? info?.time?.archived
-      return {
-        id: entry.id,
-        title: info?.title ?? entry.title,
-        scope: buildScopeField(scope, scopeInfo),
-        time: {
-          created: entry.createdAt ?? entry.lastActivityAt,
-          updated: entry.lastActivityAt,
-          ...(archived ? { archived } : {}),
+      const archived = entry.archivedAt ?? info.time.archived
+      return [
+        {
+          id: entry.id,
+          title: info.title,
+          scope: buildScopeField(scope, scopeInfo),
+          time: {
+            created: entry.createdAt ?? entryUpdatedAt(entry),
+            updated: entryUpdatedAt(entry),
+            ...(archived ? { archived } : {}),
+          },
+          pinned: entry.pinned || undefined,
+          parentID: entry.parentID || undefined,
+          lastExchange: info.lastExchange,
         },
-        pinned: entry.pinned || undefined,
-        parentID: entry.parentID || undefined,
-        lastExchange: info?.lastExchange,
-      }
+      ]
     })
 
     return c.json({ data, total, offset, limit })

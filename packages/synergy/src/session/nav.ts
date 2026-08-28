@@ -19,6 +19,7 @@ export const SessionNavEntry = z
     category: NavCategory,
     lastActivityAt: z.number(),
     createdAt: z.number().optional(),
+    updatedAt: z.number().optional(),
     pinned: z.number(),
     archived: z.boolean(),
     archivedAt: z.number().optional(),
@@ -105,6 +106,7 @@ export interface SessionNavEntry {
   category: NavCategory
   lastActivityAt: number
   createdAt?: number
+  updatedAt?: number
   pinned: number
   archived: boolean
   archivedAt?: number
@@ -224,6 +226,7 @@ export namespace SessionNav {
           category,
           lastActivityAt: session.time.updated,
           createdAt: session.time.created,
+          updatedAt: session.time.updated,
           pinned: session.pinned ?? 0,
           archived: !!session.time.archived,
           archivedAt: session.time.archived || undefined,

@@ -29491,6 +29491,9 @@
           "createdAt": {
             "type": "number"
           },
+          "updatedAt": {
+            "type": "number"
+          },
           "pinned": {
             "type": "number"
           },

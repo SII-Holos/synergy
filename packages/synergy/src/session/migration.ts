@@ -2493,7 +2493,7 @@ export const migrations: Migration[] = [
   },
   {
     id: "20260828-session-nav-timestamps",
-    description: "Rebuild session nav indexes to backfill created/archived timestamps",
+    description: "Rebuild session nav indexes to backfill created/updated/archived timestamps",
     async up(progress) {
       await SessionNav.rebuildAllNavIndexes(progress)
     },

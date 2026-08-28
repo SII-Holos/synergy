@@ -1508,6 +1508,7 @@ export type SessionNavEntry = {
   category: "project" | "home" | "channel" | "background" | "github"
   lastActivityAt: number
   createdAt?: number
+  updatedAt?: number
   pinned: number
   archived: boolean
   archivedAt?: number
