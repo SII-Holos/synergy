@@ -2,6 +2,7 @@ import type * as ChannelTypes from "@/channel/types"
 import { ChannelHost } from "@/channel/host"
 import type { Config } from "@/config/config"
 import { HolosAuth } from "@/holos/auth"
+import { HolosEndpoint } from "@/holos/endpoint"
 import { HolosRuntime } from "@/holos/runtime"
 import { Log } from "@/util/log"
 import {
@@ -329,10 +330,7 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
 
   private async syncProjects(connection: AccountConnection, signal: AbortSignal = connection.signal): Promise<void> {
     const accountHash = hash(connection.accountId)
-    const apiUrl =
-      connection.config.apiUrl ??
-      (await import("@/config/config").then(({ Config }) => Config.current())).holos?.apiUrl ??
-      "https://api.holosai.io"
+    const apiUrl = connection.config.apiUrl ?? (await HolosEndpoint.resolve()).apiUrl
     const rest = new ClarusProjectClient(
       apiUrl,
       async () => {
@@ -646,10 +644,7 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
     if (!credential || credential.agentId !== connection.accountId) {
       throw new Error("The Clarus channel account is not the active Holos account")
     }
-    const apiUrl =
-      connection.config.apiUrl ??
-      (await import("@/config/config").then(({ Config }) => Config.current())).holos?.apiUrl ??
-      "https://api.holosai.io"
+    const apiUrl = connection.config.apiUrl ?? (await HolosEndpoint.resolve()).apiUrl
     let refreshedOwnership = false
     while (true) {
       try {

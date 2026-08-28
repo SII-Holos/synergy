@@ -5,6 +5,8 @@ import path from "node:path"
 import { Config } from "../../src/config/config"
 import { Global } from "../../src/global"
 import { HolosAccounts } from "../../src/holos/accounts"
+import { HolosAuth } from "../../src/holos/auth"
+import { HolosLoginFlow } from "../../src/holos/login-flow"
 import { migrations } from "../../src/holos/migration"
 import { HolosProfile } from "../../src/holos/profile"
 import { HolosState } from "../../src/holos/state"
@@ -151,6 +153,70 @@ describe("HolosProfile", () => {
       description: "New description",
       avatarUrl: null,
     })
+  })
+})
+
+describe("Holos endpoint configuration", () => {
+  const defaults = {
+    apiUrl: "https://api.holosai.io",
+    wsUrl: "wss://api.holosai.io",
+    portalUrl: "https://www.holosai.io",
+  }
+  const custom = {
+    apiUrl: "https://experiment.example.test/holos",
+    wsUrl: "wss://experiment.example.test/holos",
+    portalUrl: "https://portal.example.test/holos",
+  }
+
+  test("configuring credentials preserves the selected Holos environment", async () => {
+    try {
+      await Config.domainUpdate("holos", { holos: { enabled: true, ...custom } })
+
+      await HolosAuth.configureHolos()
+
+      expect((await Config.globalResolved()).holos).toEqual({ enabled: true, ...custom })
+    } finally {
+      await Config.domainUpdate("holos", { holos: { enabled: true, ...defaults } })
+    }
+  })
+
+  test("browser binding uses the configured portal base path", async () => {
+    try {
+      await Config.domainUpdate("holos", { holos: { enabled: true, ...custom } })
+
+      const url = new URL(
+        await HolosLoginFlow.createBindUrl({ callbackUrl: "http://127.0.0.1:4096/holos/callback", state: "state" }),
+      )
+
+      expect(`${url.origin}${url.pathname}`).toBe(
+        "https://portal.example.test/holos/api/v1/holos/agent_tunnel/bind/start",
+      )
+      expect(url.searchParams.get("local_callback")).toBe("http://127.0.0.1:4096/holos/callback")
+      expect(url.searchParams.get("state")).toBe("state")
+    } finally {
+      await Config.domainUpdate("holos", { holos: { enabled: true, ...defaults } })
+    }
+  })
+
+  test("credential verification uses the configured API base path", async () => {
+    const urls: string[] = []
+    try {
+      await Config.domainUpdate("holos", { holos: { enabled: true, ...custom } })
+      await HolosAccounts.saveAndActivateAccount("agent_environment", "secret_environment")
+      mockFetch((url) => {
+        urls.push(url)
+        return json({ code: 0, data: { ws_token: "token", expires_in: 60 } })
+      })
+
+      await expect(HolosAuth.verifyStoredCredentials()).resolves.toEqual({
+        valid: true,
+        agentId: "agent_environment",
+      })
+      expect(urls).toEqual(["https://experiment.example.test/holos/api/v1/holos/agent_tunnel/ws_token"])
+    } finally {
+      await HolosAccounts.deleteAccount("agent_environment")
+      await Config.domainUpdate("holos", { holos: { enabled: true, ...defaults } })
+    }
   })
 })
 

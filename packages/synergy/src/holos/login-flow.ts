@@ -1,5 +1,5 @@
 import { HolosAuth } from "./auth"
-import { HOLOS_PORTAL_URL, HOLOS_URL } from "./constants"
+import { HolosEndpoint } from "./endpoint"
 import { HolosProfile } from "./profile"
 import { HolosProtocol } from "./protocol"
 
@@ -9,12 +9,12 @@ export namespace HolosLoginFlow {
     agentSecret: string
   }
 
-  export function createBindUrl(input: { callbackUrl: string; state: string }) {
-    return (
-      `${HOLOS_PORTAL_URL}/api/v1/holos/agent_tunnel/bind/start` +
-      `?local_callback=${encodeURIComponent(input.callbackUrl)}` +
-      `&state=${encodeURIComponent(input.state)}`
-    )
+  export async function createBindUrl(input: { callbackUrl: string; state: string }) {
+    const endpoints = await HolosEndpoint.resolve()
+    const url = new URL(HolosEndpoint.url("/api/v1/holos/agent_tunnel/bind/start", endpoints.portalUrl))
+    url.searchParams.set("local_callback", input.callbackUrl)
+    url.searchParams.set("state", input.state)
+    return url.toString()
   }
 
   export async function exchange(input: {
@@ -22,7 +22,8 @@ export namespace HolosLoginFlow {
     state: string
     profile: HolosProfile.Input
   }): Promise<ExchangeResult> {
-    const exchangeRes = await fetch(`${HOLOS_URL}/api/v1/holos/agent_tunnel/bind/exchange`, {
+    const endpoints = await HolosEndpoint.resolve()
+    const exchangeRes = await fetch(HolosEndpoint.url("/api/v1/holos/agent_tunnel/bind/exchange", endpoints.apiUrl), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

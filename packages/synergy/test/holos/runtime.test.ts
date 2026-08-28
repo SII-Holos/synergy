@@ -10,6 +10,47 @@ afterEach(async () => {
   Presence.clear()
 })
 
+describe("HolosProvider endpoint configuration", () => {
+  test("preserves configured base paths for the token and WebSocket routes", async () => {
+    const requests: string[] = []
+    using server = Bun.serve({
+      port: 0,
+      fetch(request, server) {
+        const url = new URL(request.url)
+        requests.push(`${url.pathname}${url.search}`)
+        if (url.pathname === "/environment/api/v1/holos/agent_tunnel/ws_token") {
+          return Response.json({ code: 0, data: { ws_token: "test-token", expires_in: 60 } })
+        }
+        if (url.pathname === "/environment/api/v1/holos/agent_tunnel/ws" && server.upgrade(request)) return
+        return new Response("Not found", { status: 404 })
+      },
+      websocket: { message() {} },
+    })
+    const abort = new AbortController()
+    const provider = new HolosProvider()
+
+    try {
+      await HolosAccounts.saveAndActivateAccount(testAgentID, "test-secret")
+      await provider.connect({
+        config: {
+          enabled: true,
+          apiUrl: `http://127.0.0.1:${server.port}/environment`,
+          wsUrl: `ws://127.0.0.1:${server.port}/environment`,
+          portalUrl: `http://127.0.0.1:${server.port}/environment`,
+        },
+        signal: abort.signal,
+      })
+
+      expect(requests).toEqual([
+        "/environment/api/v1/holos/agent_tunnel/ws_token",
+        "/environment/api/v1/holos/agent_tunnel/ws?token=test-token",
+      ])
+    } finally {
+      abort.abort()
+    }
+  })
+})
+
 describe("HolosProvider send delivery", () => {
   test("treats the absence of ws_failed during the failure window as delivered", async () => {
     const received = Promise.withResolvers<Record<string, unknown>>()
