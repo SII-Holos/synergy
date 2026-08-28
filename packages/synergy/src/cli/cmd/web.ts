@@ -1,4 +1,4 @@
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 import { cmd } from "./cmd"
 import open from "open"
 import { Server } from "../../server/server"

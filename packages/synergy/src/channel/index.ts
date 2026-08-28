@@ -23,7 +23,7 @@ import { resolveChannelAccountInvocation, resolveChannelAccountAgent } from "./m
 import { createStatusReactionController } from "./status-reactions"
 import { buildAssistantTranscript, resolveFinalResponseText } from "./response-text"
 import { ManagedProjectOwnership } from "./managed-project-ownership"
-import { externalIdentityHash } from "./identity"
+import { externalIdentityHash } from "../util/identity"
 import { ChannelHost } from "./host"
 import {
   recording as recordDiagnostic,

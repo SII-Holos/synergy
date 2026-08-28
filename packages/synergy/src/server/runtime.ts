@@ -22,7 +22,7 @@ import { Session } from "../session"
 import { Plugin } from "../plugin"
 import { PluginSpec } from "../util/plugin-spec"
 import { watchManagedParent } from "../util/managed-parent"
-import { configureRuntimeEndpoint, peekRuntimeEndpointGeneration } from "./runtime-endpoint"
+import { configureRuntimeEndpoint, peekRuntimeEndpointGeneration } from "../util/runtime-endpoint"
 
 const log = Log.create({ service: "server-runtime" })
 

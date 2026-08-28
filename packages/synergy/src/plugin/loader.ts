@@ -18,7 +18,7 @@ import * as Lockfile from "./lockfile"
 import { stopForPlugin } from "./mcp"
 import { pluginContributionAdapters } from "./contribution-registry"
 import { getApproval, readApprovals, verifyApproval, type PluginApprovalRecord } from "./consent/approval-store"
-import { resolvePluginRuntimeLimits } from "./runtime-limits"
+import { resolvePluginRuntimeLimits } from "../plugin-runtime/runtime-limits"
 import { IncompatiblePluginStore, type IncompatiblePluginRecord } from "./incompatible-store"
 import type { PluginLockfile } from "./lockfile-schema"
 

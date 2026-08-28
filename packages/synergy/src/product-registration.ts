@@ -51,6 +51,7 @@ import { registerMcpToolSource } from "./mcp/tool-source"
 import { registerBlueprintToolAccess } from "./blueprint/tool-access"
 import { setTerminalHookDeliverer } from "./light-loop/runtime"
 import { setBlueprintAgendaAssertClear } from "./blueprint/tools/blueprint-loop-stop"
+import { setLightLoopAgendaAssertClear } from "./light-loop/tools/loop-stop"
 import { AgendaSessionWakeup } from "./agenda/session-wakeup"
 import { registerPluginStartup } from "./plugin/startup"
 import { registerLatticeStartup } from "./lattice/startup"
@@ -148,6 +149,10 @@ setTerminalHookDeliverer((pluginId, pluginGeneration, pointName, input) =>
 // guard through an injected function (agenda dynamically imports blueprint
 // for wakeup instructions; a static reverse edge would close a cycle).
 setBlueprintAgendaAssertClear((input) => AgendaSessionWakeup.assertClear(input))
+
+// L4 assembly: the light-loop domain's stop tool consumes the agenda wakeup
+// guard through the same injected-function pattern as blueprint above.
+setLightLoopAgendaAssertClear((input) => AgendaSessionWakeup.assertClear(input))
 
 // L4 assembly: L1 write paths reach the runtime reload orchestrator through
 // the executor port in config/reload-executor (no L1 import of runtime/).

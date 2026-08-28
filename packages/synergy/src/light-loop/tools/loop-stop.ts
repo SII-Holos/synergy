@@ -1,9 +1,26 @@
 import z from "zod"
 import { Tool } from "../../tool/tool"
 import { Session } from "../../session"
-import { AgendaSessionWakeup } from "../../agenda/session-wakeup"
 import { ScopeContext } from "../../scope/context"
 import DESCRIPTION from "./loop-stop.txt"
+
+/**
+ * Agenda wakeup guard, injected from the L4 product manifest (mirrors
+ * blueprint/tools/blueprint-loop-stop.ts). The tool must not import agenda
+ * statically: agenda renders loop-wakeup instructions for light-loop
+ * sessions, and a static reverse edge would close a product-layer cycle.
+ */
+export type LightLoopAgendaAssertClear = (input: {
+  sessionID: string
+  scopeID: string
+  operation: "Light Loop review"
+}) => Promise<void>
+
+let agendaAssertClear: LightLoopAgendaAssertClear | undefined
+
+export function setLightLoopAgendaAssertClear(fn: LightLoopAgendaAssertClear): void {
+  agendaAssertClear = fn
+}
 
 const parameters = z.object({
   summary: z.string().describe("Summary of what was completed."),
@@ -41,7 +58,10 @@ export const LoopStopTool = Tool.define("loop_stop", {
         },
       }
     }
-    await AgendaSessionWakeup.assertClear({
+    if (!agendaAssertClear) {
+      throw new Error("LightLoop stop guard is not wired (load src/product-registration)")
+    }
+    await agendaAssertClear({
       sessionID: ctx.sessionID,
       scopeID: ScopeContext.current.scope.id,
       operation: "Light Loop review",

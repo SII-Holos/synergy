@@ -89,7 +89,7 @@ async function syncSynergyLink(
     return
   }
   const { HolosSynergyLinkClient } = await import("@/remote/client")
-  const { HolosSynergyLinkTransport } = await import("@/remote/holos-transport")
+  const { HolosSynergyLinkTransport } = await import("./synergy-link-transport")
   SynergyLinkExecution.setClient(new HolosSynergyLinkClient(new HolosSynergyLinkTransport(input.provider)))
 }
 

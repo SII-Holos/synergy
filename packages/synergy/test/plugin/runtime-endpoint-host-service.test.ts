@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import z from "zod"
 import { capability, compilePluginManifest, definePlugin, operation } from "@ericsanchezok/synergy-plugin"
 import { executePluginHostService } from "../../src/plugin/host-services-runtime"
-import { configureRuntimeEndpoint, peekRuntimeEndpointGeneration } from "../../src/server/runtime-endpoint"
+import { configureRuntimeEndpoint, peekRuntimeEndpointGeneration } from "../../src/util/runtime-endpoint"
 import { tmpdir } from "../fixture/fixture"
 
 function manifest(input: { capability?: boolean; contributionRequires?: boolean } = {}) {

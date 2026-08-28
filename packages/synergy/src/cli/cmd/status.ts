@@ -4,7 +4,7 @@ import { DaemonOutput } from "../../daemon/output"
 import { ServerProcessLock } from "../../util/server-process-lock"
 import { ProcessRegistry } from "../../process/registry"
 import { Observability } from "../../observability"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 
 export const StatusCommand = cmd({
   command: "status",

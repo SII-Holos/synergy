@@ -6,7 +6,7 @@ import { MessageV2 } from "@/session/message-v2"
 import { SessionManager } from "@/session/manager"
 import { SessionProgress } from "@/session/progress"
 import { Session } from "@/session"
-import { externalIdentityHash } from "./identity"
+import { externalIdentityHash } from "../util/identity"
 import {
   loadChannelTaskMessages,
   markChannelTaskAttachmentsDelivered,

@@ -2,9 +2,9 @@ import { Config } from "../config/config"
 import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
 import { pluginRuntimeManager } from "./runtime"
-import { pluginAgentCallRuntime } from "./agent-call-runtime"
+import { pluginAgentCallRuntime } from "../plugin-runtime/agent-call-runtime"
 import { PluginHookPointRegistry } from "./hook-points"
-import { resolvePluginRuntimeLimits } from "./runtime-limits"
+import { resolvePluginRuntimeLimits } from "../plugin-runtime/runtime-limits"
 import {
   ensureRuntime,
   getLoadedPlugins,

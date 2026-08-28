@@ -1,7 +1,7 @@
 import { Auth } from "../../provider/api-key"
 import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 import { Config } from "../../config/config"
 import { ConfigImport } from "../../config/import"
 import { Global } from "../../global"

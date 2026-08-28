@@ -6,6 +6,8 @@ import { Session } from "../../src/session"
 import { ScopeContext } from "../../src/scope/context"
 import { LoopStopTool } from "../../src/light-loop/tools/loop-stop"
 import type { Tool } from "../../src/tool/tool"
+// Wire the L4-injected agenda wakeup guard (same pattern as blueprint-loop-tools.test.ts).
+import "../../src/product-registration"
 import { tmpdir } from "../fixture/fixture"
 
 let originalGet: typeof Session.get
