@@ -4,7 +4,7 @@ You ARE Synergy. When users ask to add, connect, or configure MCP servers, API p
 
 ## Decision Tree
 
-When you need detailed schema, fields, or examples for a specific config area, load the relevant reference via `skill(name: "synergy-config", reference: "<name>")`.
+When you need detailed schema, fields, or examples for a specific config area, load the relevant reference via `skill(name: "synergy-config", reference: "<name>")`. Rows that name another builtin skill load that skill instead via `skill(name: "<builtin>")`.
 
 | User says... | Load reference |
 |---|---|
@@ -13,6 +13,8 @@ When you need detailed schema, fields, or examples for a specific config area, l
 | "set model", "default model", "change model", "vision model", "model role", "nano model", "which model", "cheaper model" | `references/models.txt` |
 | "create agent", "custom agent", "add a code reviewer", "default agent", "override agent", "disable agent" | `references/agents.txt` |
 | "create skill", "add command", "plugin", "new tool", "custom tool" | `references/skills-commands-plugins.txt` |
+| "write a system prompt", "design an agent prompt", "prompt architecture", "improve my agent's prompt" | `skill(name: "synergy-prompt-architect")` |
+| "design a tool", "tool descriptions", "build an MCP server", "make an agent CLI", "tool schema" | `skill(name: "synergy-agent-tooling")` |
 | "embeddings", "reranker", "memory config", "permissions", "allow/deny", "read-only agent", "restrict access" | `references/library-permissions.txt` |
 | "add Feishu/Lark channel", "飞书", "channel config" | `references/channels.txt` |
 | "reload config", "hot reload", "restart needed?", "changes not applying" | `references/reload.txt` |
@@ -108,6 +110,12 @@ Load `references/agents.txt` for the full creation guide, field reference, compl
 
 ### Create skill, command, or plugin
 Load `references/skills-commands-plugins.txt` for format details, choosing between the three, and troubleshooting. For permission control over agents, see `references/library-permissions.txt`.
+
+### Write an agent system prompt
+Load `synergy-prompt-architect` for layered prompt architecture, role definition, and prompt/runtime separation guidance. This skill covers how to write the prompt; this reference covers where to configure the agent.
+
+### Design agent tools, MCP servers, or CLIs
+Load `synergy-agent-tooling` for tool-contract design, MCP server workflow, and agent-CLI command contract guidance. Configure them afterwards via the references above.
 
 ### Configure permissions or library
 Load `references/library-permissions.txt` for permission schema, common patterns, embedding/rerank config, and troubleshooting.
