@@ -7,6 +7,8 @@ import { relativeTime } from "@/utils/time"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { sessionActionVisibility } from "@/components/session/session-actions"
+import { SessionDraftBadge } from "@/components/sidebar/session-draft-badge"
+import { sidebar } from "@/locales/messages"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 
 export interface SessionRowProps {
@@ -228,6 +230,11 @@ export function SessionRow(props: SessionRowProps) {
       {/* Main content */}
       <div class="flex items-center gap-3 px-3 py-2.5 flex-1 min-w-0">
         <StatusDot {...props} />
+        <SessionDraftBadge
+          sessionID={props.session.id}
+          label={i18n._(sidebar.draftBadge.id)}
+          class="shrink-0 translate-y-px text-10-medium text-text-error"
+        />
 
         {/* Text block */}
         <div class="flex-1 min-w-0">

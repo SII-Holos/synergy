@@ -14,6 +14,7 @@ type PersistTarget = {
 }
 
 const GLOBAL_STORAGE = "synergy.global.dat"
+const WORKSPACE_STORAGE_PREFIX = "synergy.workspace."
 
 function snapshot(value: unknown) {
   return JSON.parse(JSON.stringify(value)) as unknown
@@ -61,6 +62,27 @@ function workspaceStorage(dir: string) {
   const head = dir.slice(0, 12) || "workspace"
   const sum = checksum(dir) ?? "0"
   return `synergy.workspace.${head}.${sum}.dat`
+}
+
+function workspaceSessionEntryMatcher(name: string) {
+  return new RegExp(`:session:([^:]+):${name}$`)
+}
+
+export function parseWorkspaceSessionEntryKey(storageKey: string, name: string): string | undefined {
+  if (!storageKey.startsWith(WORKSPACE_STORAGE_PREFIX)) return undefined
+  return workspaceSessionEntryMatcher(name).exec(storageKey)?.[1]
+}
+
+export function forEachWorkspaceSessionEntry(name: string, visit: (session: string, value: string) => void) {
+  const matcher = workspaceSessionEntryMatcher(name)
+  for (const storageKey of Object.keys(localStorage)) {
+    if (!storageKey.startsWith(WORKSPACE_STORAGE_PREFIX)) continue
+    const session = matcher.exec(storageKey)?.[1]
+    if (!session) continue
+    const value = localStorage.getItem(storageKey)
+    if (value === null) continue
+    visit(session, value)
+  }
 }
 
 const quotaWarnedKeys = new Set<string>()

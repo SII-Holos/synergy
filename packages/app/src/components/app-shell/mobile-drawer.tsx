@@ -277,6 +277,7 @@ function ScopeListView(props: {
         emptyLabel={_(sidebar.noRecentSessions)}
         loadMoreLabel={_(sidebar.loadMore)}
         untitledLabel={_(sidebar.untitled)}
+        draftLabel={_(sidebar.draftBadge)}
         entries={layout.nav.recentEntries()}
         currentSessionID={params.id}
         unreadLabel={recentUnreadLabel}

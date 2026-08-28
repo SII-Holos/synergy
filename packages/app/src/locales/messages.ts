@@ -755,6 +755,7 @@ export const sidebar = {
   orphanGroup: { id: "app.sidebar.channel.orphan", message: "Other" },
   // Session fallback
   untitled: { id: "app.sidebar.session.untitled", message: "Untitled" },
+  draftBadge: { id: "app.sidebar.session.draftBadge", message: "Draft" },
   // Brand / logo
   logoAlt: { id: "app.sidebar.brand.logo", message: "HOLOS" },
   channelFeishu: { id: "app.sidebar.channel.feishu", message: "Feishu" },

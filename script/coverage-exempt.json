@@ -985,6 +985,10 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
+          "glob": "src/components/sidebar/session-draft-badge.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
           "glob": "src/components/sidebar/sidebar-attention-notice.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
