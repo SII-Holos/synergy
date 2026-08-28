@@ -1,6 +1,6 @@
 {
   "totalModules": 66,
-  "totalFiles": 999,
+  "totalFiles": 1005,
   "cyclicSCCs": [
     [
       "acp",
@@ -98,27 +98,7 @@
     ],
     [
       "scope",
-      "command"
-    ],
-    [
-      "scope",
-      "lattice"
-    ],
-    [
-      "scope",
       "library"
-    ],
-    [
-      "scope",
-      "lsp"
-    ],
-    [
-      "scope",
-      "plugin"
-    ],
-    [
-      "scope",
-      "project"
     ],
     [
       "session",

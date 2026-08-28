@@ -45,6 +45,11 @@ import { registerBlueprintToolAccess } from "./blueprint/tool-access"
 import { setTerminalHookDeliverer } from "./light-loop/runtime"
 import { setBlueprintAgendaAssertClear } from "./blueprint/tools/blueprint-loop-stop"
 import { AgendaSessionWakeup } from "./agenda/session-wakeup"
+import { registerPluginStartup } from "./plugin/startup"
+import { registerLatticeStartup } from "./lattice/startup"
+import { registerLspStartup } from "./lsp/startup"
+import { registerProjectStartup } from "./project/startup"
+import { registerCommandStartup } from "./command/startup"
 import { Plugin } from "./plugin"
 
 registerBossDomain()
@@ -66,9 +71,13 @@ registerLspTools()
 registerSynergyLinkTools()
 registerPluginSkillSource()
 registerMcpCommandSource()
-registerPluginToolContext()
 registerMcpToolSource()
 registerBlueprintToolAccess()
+registerPluginStartup()
+registerLatticeStartup()
+registerLspStartup()
+registerProjectStartup()
+registerCommandStartup()
 
 // L4 assembly: the light-loop domain consumes plugin hook delivery through an
 // injected function so product domains stay acyclic (no light-loop→plugin
