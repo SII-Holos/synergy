@@ -26,3 +26,24 @@ export function getTaskToolTrigger(input: Record<string, unknown>, options: { ba
     tags: tags.length > 0 ? tags : undefined,
   }
 }
+
+export type TaskSubagentSummaryItem = {
+  id: string
+  tool: string
+  state: { status: string; title?: string }
+}
+
+export function parseTaskSubagentSummary(value: unknown): TaskSubagentSummaryItem[] {
+  if (!Array.isArray(value)) return []
+  const items: TaskSubagentSummaryItem[] = []
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue
+    const source = entry as Record<string, unknown>
+    if (typeof source.id !== "string" || typeof source.tool !== "string") continue
+    const state = source.state && typeof source.state === "object" ? (source.state as Record<string, unknown>) : {}
+    const status = typeof state.status === "string" ? state.status : "running"
+    const title = typeof state.title === "string" ? state.title : undefined
+    items.push({ id: source.id, tool: source.tool, state: { status, title } })
+  }
+  return items
+}

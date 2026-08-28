@@ -86,7 +86,7 @@ For backward compatibility, a strict-source candidate is retried through lenient
 
 Lenient sources are Claude, Codex, and OpenClaw. They require only a non-empty `name` and `description` to load. Supported Synergy fields normalize when their types are valid. Unknown vendor fields are ignored and reported as warnings. Invalid optional fields also produce warnings rather than inventing alternate runtime state.
 
-Programmatic built-in Skills use strict manifest normalization. Programmatic plugin Skills retain the public plugin contract's compatible non-empty names and descriptions rather than inheriting filesystem filename constraints. The built-in creator Skill is `synergy-skill-creator`, invoked as `/synergy-skill-creator` when user invocation is enabled by the command catalog.
+Programmatic built-in Skills use strict manifest normalization. Programmatic plugin Skills retain the public plugin contract's compatible non-empty names and descriptions rather than inheriting filesystem filename constraints. The built-in creator Skill is `synergy-skill-creator`, invoked as `/synergy-skill-creator` when user invocation is enabled by the command catalog. Additional authoring built-ins ship with the product: `synergy-prompt-architect` (layered system-prompt design, prompt-vs-runtime separation, capability vs runtime tool specs) and `synergy-agent-tooling` (agent tool contracts, MCP server building, agent-friendly CLIs), both user-invocable by default with model-invocable references loaded on demand.
 
 ## Deterministic Precedence
 

@@ -232,9 +232,15 @@ function ActivityStep(props: { step: ActivityStepProjection; serverUrl: string }
           </span>
           <div data-slot="activity-step-copy">
             <span data-slot="activity-step-family">{familyLabel()}</span>
-            <span data-slot="activity-step-title">{title()}</span>
+            <span data-slot="activity-step-title" title={title()}>
+              {title()}
+            </span>
             <Show when={props.step.subtitle}>
-              {(subtitle) => <span data-slot="activity-step-subtitle">{subtitle()}</span>}
+              {(subtitle) => (
+                <span data-slot="activity-step-subtitle" title={subtitle()}>
+                  {subtitle()}
+                </span>
+              )}
             </Show>
           </div>
           <ActivityState state={props.step.state} label={stateLabel()} />
@@ -334,9 +340,15 @@ function ActivityReceiptRow(props: {
       <span data-slot="activity-receipt-icon" aria-hidden="true">
         <Icon name={familyIcon(props.group.family)} size="small" />
       </span>
-      <span data-slot="activity-receipt-title">{props.title}</span>
+      <span data-slot="activity-receipt-title" title={props.title}>
+        {props.title}
+      </span>
       <Show when={props.step?.subtitle}>
-        {(subtitle) => <span data-slot="activity-receipt-scope">{subtitle()}</span>}
+        {(subtitle) => (
+          <span data-slot="activity-receipt-scope" title={subtitle()}>
+            {subtitle()}
+          </span>
+        )}
       </Show>
       <ActivityState state={props.group.state} label={props.stateLabel} />
       <Show when={props.expandable}>

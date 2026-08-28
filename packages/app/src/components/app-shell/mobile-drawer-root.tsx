@@ -2,6 +2,7 @@ import { createUniqueId, For, Show } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { NavEntry } from "@/context/layout"
+import { SessionDraftBadge } from "../sidebar/session-draft-badge"
 
 function MobileDrawerActionButton(props: { label: string; icon: SemanticIconTokenName; onClick: () => void }) {
   return (
@@ -30,6 +31,7 @@ export function MobileDrawerRecent(props: {
   emptyLabel: string
   loadMoreLabel: string
   untitledLabel: string
+  draftLabel: string
   entries: NavEntry[]
   currentSessionID?: string
   unreadLabel: (entry: NavEntry) => string | undefined
@@ -71,6 +73,11 @@ export function MobileDrawerRecent(props: {
                       <span class="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-icon-critical-base" />
                     </Show>
                   </span>
+                  <SessionDraftBadge
+                    sessionID={entry.id}
+                    label={props.draftLabel}
+                    class="shrink-0 translate-y-px text-10-medium text-text-error"
+                  />
                   <span class="min-w-0 flex-1 truncate text-13-medium">{entry.title || props.untitledLabel}</span>
                   <Show when={props.unreadLabel(entry)}>{(label) => <span class="sr-only">{label()}</span>}</Show>
                 </button>

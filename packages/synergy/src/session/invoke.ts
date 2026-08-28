@@ -78,6 +78,7 @@ import { LatticePrompt } from "../lattice/prompt"
 import { LatticeModelCalls } from "../lattice/model-calls"
 import "../library/chronicler"
 import { ExperienceEncoder } from "../library/experience-encoder"
+import { ExperienceRecall } from "../library/experience-recall"
 import { GitHealth } from "../project/git-health"
 import { BlueprintLoopStore } from "../blueprint/loop-store"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
@@ -846,6 +847,11 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           lateSystemParts.push(memoryResult.context)
           if (step === 1) cacheResult(sessionID, memoryResult)
           const { injection } = memoryResult
+          // Commit pull counters only for the turn that actually built the
+          // recall (step 1) and only when experience was injected: cache
+          // replays and the always-memory timeout fallback must neither
+          // re-count nor count pulls the model never received.
+          if (step === 1 && injection.experience) ExperienceRecall.commitRetrieval(sessionID)
           if ((injection.memory || injection.experience) && !R.metadata?.injectedContext) {
             const updated = await Session.mergeMessageMetadata({
               sessionID,
