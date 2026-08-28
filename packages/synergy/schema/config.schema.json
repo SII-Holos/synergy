@@ -2155,7 +2155,7 @@
                       "type": "boolean"
                     },
                     "apiUrl": {
-                      "description": "Clarus REST API base URL override; defaults to the configured Holos API base URL",
+                      "description": "Clarus REST API base URL override, including an optional path prefix; defaults to the configured Holos API base URL",
                       "type": "string"
                     },
                     "agent": {

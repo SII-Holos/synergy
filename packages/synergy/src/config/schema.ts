@@ -131,7 +131,9 @@ export const ChannelClarusAccount = z
     apiUrl: z
       .string()
       .optional()
-      .describe("Clarus REST API base URL override; defaults to the configured Holos API base URL"),
+      .describe(
+        "Clarus REST API base URL override, including an optional path prefix; defaults to the configured Holos API base URL",
+      ),
     agent: z.string().optional().describe("Primary Synergy agent for project and assignment Sessions"),
   })
   .strict()
