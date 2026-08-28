@@ -4745,6 +4745,50 @@ export type ConfigDomainOpenError = {
 
 export type ConfigImportScope = "global" | "project"
 
+export type ConfigExportResult = {
+  scope: ConfigImportScope
+  scopeID: string
+  secretsIncluded: boolean
+  domains: Array<
+    | "general"
+    | "models"
+    | "providers"
+    | "library"
+    | "mcp"
+    | "plugins"
+    | "skills"
+    | "agents"
+    | "commands"
+    | "permissions"
+    | "channels"
+    | "holos"
+    | "email"
+    | "github"
+    | "runtime"
+  >
+  warnings: Array<string>
+  config: Config
+}
+
+export type ConfigImportProjectScopeRequiredError = {
+  name: "ConfigImportProjectScopeRequiredError"
+  data: {
+    message: string
+  }
+}
+
+export type ConfigExportSecretsRejectedError = {
+  name: "ConfigExportSecretsRejectedError"
+  data: {
+    message: string
+  }
+}
+
+export type ConfigExportBadRequestError =
+  | BadRequestError
+  | ConfigImportProjectScopeRequiredError
+  | ConfigExportSecretsRejectedError
+
 export type ConfigImportDiagnostic = {
   severity: "warning" | "info"
   code: string
@@ -4792,13 +4836,6 @@ export type ConfigDomainImportPlan = {
   revision: string
   domains: Array<ConfigDomainImportDomainPlan>
   conflicts: Array<ConfigDomainImportChange>
-}
-
-export type ConfigImportProjectScopeRequiredError = {
-  name: "ConfigImportProjectScopeRequiredError"
-  data: {
-    message: string
-  }
 }
 
 export type ConfigImportInvalidConfigError = {
@@ -11287,6 +11324,73 @@ export type ConfigDomainOpenResponses = {
 }
 
 export type ConfigDomainOpenResponse2 = ConfigDomainOpenResponses[keyof ConfigDomainOpenResponses]
+
+export type ConfigExportData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+    scope?: ConfigImportScope
+    only?:
+      | "general"
+      | "models"
+      | "providers"
+      | "library"
+      | "mcp"
+      | "plugins"
+      | "skills"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "github"
+      | "runtime"
+      | Array<
+          | "general"
+          | "models"
+          | "providers"
+          | "library"
+          | "mcp"
+          | "plugins"
+          | "skills"
+          | "agents"
+          | "commands"
+          | "permissions"
+          | "channels"
+          | "holos"
+          | "email"
+          | "github"
+          | "runtime"
+        >
+    includeSecrets?: string
+  }
+  url: "/config/export"
+}
+
+export type ConfigExportErrors = {
+  /**
+   * Invalid export query, missing project scope, or includeSecrets requested over HTTP
+   */
+  400: ConfigExportBadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ConfigExportError = ConfigExportErrors[keyof ConfigExportErrors]
+
+export type ConfigExportResponses = {
+  /**
+   * Exported config
+   */
+  200: ConfigExportResult
+}
+
+export type ConfigExportResponse = ConfigExportResponses[keyof ConfigExportResponses]
 
 export type ConfigImportPlanData = {
   body?: ConfigDomainImportPlanInput
