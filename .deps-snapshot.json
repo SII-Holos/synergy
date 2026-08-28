@@ -53,162 +53,45 @@
   "l1ToProduct": [],
   "l1ToAssembly": [],
   "productInternalPairs": [
-    [
-      "agenda",
-      "blueprint"
-    ],
-    [
-      "agenda",
-      "cortex"
-    ],
-    [
-      "agenda",
-      "plugin"
-    ],
-    [
-      "blueprint",
-      "cortex"
-    ],
-    [
-      "blueprint",
-      "note"
-    ],
-    [
-      "blueprint",
-      "plugin"
-    ],
-    [
-      "boss",
-      "agenda"
-    ],
-    [
-      "boss",
-      "channel"
-    ],
-    [
-      "boss",
-      "library"
-    ],
-    [
-      "boss",
-      "project"
-    ],
-    [
-      "browser",
-      "cortex"
-    ],
-    [
-      "channel",
-      "agenda"
-    ],
-    [
-      "channel",
-      "boss"
-    ],
-    [
-      "channel",
-      "holos"
-    ],
-    [
-      "channel",
-      "question"
-    ],
-    [
-      "command",
-      "project"
-    ],
-    [
-      "command",
-      "skill"
-    ],
-    [
-      "cortex",
-      "project"
-    ],
-    [
-      "external-agent",
-      "library"
-    ],
-    [
-      "external-agent",
-      "plugin"
-    ],
-    [
-      "holos",
-      "remote"
-    ],
-    [
-      "lattice",
-      "blueprint"
-    ],
-    [
-      "lattice",
-      "note"
-    ],
-    [
-      "library",
-      "plugin"
-    ],
-    [
-      "light-loop",
-      "agenda"
-    ],
-    [
-      "light-loop",
-      "cortex"
-    ],
-    [
-      "mcp",
-      "plugin"
-    ],
-    [
-      "note",
-      "plugin"
-    ],
-    [
-      "performance",
-      "browser"
-    ],
-    [
-      "performance",
-      "cortex"
-    ],
-    [
-      "performance",
-      "mcp"
-    ],
-    [
-      "performance",
-      "plugin"
-    ],
-    [
-      "plugin",
-      "cortex"
-    ],
-    [
-      "plugin",
-      "light-loop"
-    ],
-    [
-      "plugin",
-      "mcp"
-    ],
-    [
-      "plugin",
-      "plugin-runtime"
-    ],
-    [
-      "plugin-runtime",
-      "plugin"
-    ],
-    [
-      "project",
-      "question"
-    ],
-    [
-      "remote",
-      "holos"
-    ]
+    ["agenda", "blueprint"],
+    ["agenda", "cortex"],
+    ["agenda", "plugin"],
+    ["blueprint", "cortex"],
+    ["blueprint", "note"],
+    ["blueprint", "plugin"],
+    ["boss", "agenda"],
+    ["boss", "channel"],
+    ["boss", "library"],
+    ["boss", "project"],
+    ["browser", "cortex"],
+    ["channel", "agenda"],
+    ["channel", "boss"],
+    ["channel", "holos"],
+    ["channel", "question"],
+    ["command", "project"],
+    ["command", "skill"],
+    ["cortex", "project"],
+    ["external-agent", "library"],
+    ["external-agent", "plugin"],
+    ["holos", "remote"],
+    ["lattice", "blueprint"],
+    ["lattice", "note"],
+    ["library", "plugin"],
+    ["light-loop", "agenda"],
+    ["light-loop", "cortex"],
+    ["mcp", "plugin"],
+    ["note", "plugin"],
+    ["performance", "browser"],
+    ["performance", "cortex"],
+    ["performance", "mcp"],
+    ["performance", "plugin"],
+    ["plugin", "cortex"],
+    ["plugin", "light-loop"],
+    ["plugin", "mcp"],
+    ["plugin", "plugin-runtime"],
+    ["plugin-runtime", "plugin"],
+    ["project", "question"],
+    ["remote", "holos"]
   ],
   "r3Violations": []
 }

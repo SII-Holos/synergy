@@ -307,16 +307,19 @@ function printReport(summary: LayeringSummary): void {
   for (const [from, to] of summary.r3Violations) console.log(`  R3 ${from} -> ${to}`)
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const snapshot = process.argv.includes("--snapshot")
   const graph = buildGraph(SRC)
   const summary = summarize(graph)
   printReport(summary)
   if (snapshot) {
+    // Format through Prettier (the repository formatter) so generated
+    // snapshots always pass format:check without manual fixups.
+    const { format } = await import("prettier")
     writeFileSync(
       SNAPSHOT_FILE,
-      JSON.stringify(
-        {
+      await format(
+        JSON.stringify({
           totalModules: summary.totalModules,
           totalFiles: summary.totalFiles,
           cyclicSCCs: summary.cyclicSCCs,
@@ -324,10 +327,9 @@ function main(): void {
           l1ToAssembly: summary.l1ToAssembly,
           productInternalPairs: summary.productInternalPairs,
           r3Violations: summary.r3Violations,
-        },
-        null,
-        2,
-      ) + "\n",
+        }),
+        { parser: "json" },
+      ),
     )
     console.log(`snapshot written: ${relative(REPO_ROOT, SNAPSHOT_FILE)}`)
   }
