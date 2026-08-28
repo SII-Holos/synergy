@@ -8,14 +8,14 @@ import { Snapshot } from "@/session/snapshot"
 import { Bus } from "@/bus"
 import { SessionRetry } from "./retry"
 import { SessionManager } from "./manager"
-import { Plugin } from "@/plugin"
+import { SessionPluginHooks as Plugin } from "./plugin-hooks"
 import type { Provider } from "@/provider/provider"
 import { LLM } from "./llm"
 import { Config } from "@/config/config"
 import { TimeoutConfig } from "@/util/timeout-config"
 import { PermissionNext } from "@/permission/next"
-import { ExperienceEncoder } from "@/library/experience-encoder"
-import { Question } from "@/question"
+import { SessionLibraryRecall } from "./library-recall"
+import { SessionQuestionErrors } from "./question-errors"
 import { ToolTimeout } from "@/tool/timeout"
 import { Observability } from "@/observability"
 import { ToolDiagnostic } from "@/tool/diagnostic"
@@ -1297,7 +1297,7 @@ export namespace SessionProcessor {
                       const slot = executions.get(value.toolCallId)
                       const rejected =
                         value.error instanceof PermissionNext.RejectedError ||
-                        value.error instanceof Question.RejectedError
+                        SessionQuestionErrors.isRejected(value.error)
                       // A hidden-but-authorized tool call that the processor will
                       // auto-expand must not be failure-recorded or error-settled
                       // here; it stays `running` until the deferred dispatch below
@@ -1602,7 +1602,7 @@ export namespace SessionProcessor {
                   if (
                     shouldBreak &&
                     (task.errorName === PermissionNext.RejectedError.name ||
-                      task.errorName === Question.RejectedError.name)
+                      SessionQuestionErrors.isRejectedErrorName(task.errorName))
                   ) {
                     blocked = true
                   }
@@ -1747,7 +1747,7 @@ export namespace SessionProcessor {
             Session.updateLastExchange(input.sessionID).catch((e) =>
               log.warn("failed to update lastExchange", { sessionID: input.sessionID, error: e }),
             )
-            ExperienceEncoder.onComplete(input.assistantMessage)
+            SessionLibraryRecall.onAssistantComplete(input.assistantMessage)
             await Plugin.trigger(
               "session.turn.after",
               {

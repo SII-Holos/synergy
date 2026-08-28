@@ -5,7 +5,7 @@ import { MessageV2 } from "./message-v2"
 import { Identifier } from "@/id/id"
 import { Scope } from "@/scope"
 import { SessionProgress } from "./progress"
-import { isActiveLoopStatus, BlueprintLoopStore } from "../blueprint/loop-store"
+import { SessionBlueprintState } from "./blueprint-state"
 import { isActiveLightLoopWorkflow } from "./light-loop-state"
 import { WorkflowPromptRegistry } from "./workflow-prompt-registry"
 import { WorkflowKindRegistry } from "./workflow-kind-registry"
@@ -62,8 +62,8 @@ async function hasActiveWorkflow(input: { session: Info; scopeID: Identifier.Sco
 async function hasActiveBlueprintLoop(input: { session: Info; scopeID: Identifier.ScopeID }): Promise<boolean> {
   const loopID = input.session.blueprint?.loopID
   if (!loopID) return false
-  const loop = await BlueprintLoopStore.get(input.scopeID, loopID).catch(() => undefined)
-  return !!loop && isActiveLoopStatus(loop.status)
+  const loop = await SessionBlueprintState.getLoop(input.scopeID, loopID)
+  return !!loop && SessionBlueprintState.isActiveStatus(loop.status)
 }
 
 export function toStatus(working: WorkingInfo): StatusInfo {

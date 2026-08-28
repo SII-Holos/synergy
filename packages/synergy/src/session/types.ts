@@ -6,7 +6,7 @@ import { PermissionNext } from "@/permission/next"
 import { SessionInteraction } from "@/session/interaction"
 import { opaque } from "@/util/schema"
 import { SessionEndpoint } from "./endpoint"
-import { CortexTypes } from "@/cortex/types"
+import { SessionCortexContract as CortexTypes } from "./cortex-contract"
 import { Workspace } from "./workspace-schema"
 
 export { Workspace }

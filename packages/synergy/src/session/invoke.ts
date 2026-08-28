@@ -13,7 +13,7 @@ import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { Bus } from "../bus"
 import { SystemPrompt } from "./system"
 import { SessionEndpoint } from "./endpoint"
-import { Plugin } from "../plugin"
+import { SessionPluginHooks as Plugin } from "./plugin-hooks"
 import MAX_STEPS from "./prompt/max-steps.txt"
 import CORTEX_REMINDER from "./prompt/cortex-reminder.txt"
 import PLANNING_REMINDER from "./prompt/planning-reminder.txt"
@@ -22,7 +22,7 @@ import PLAN_SYNERGY from "./prompt/plan-synergy.txt"
 import PLAN_SYNERGY_MAX from "./prompt/plan-synergy-max.txt"
 import COAUTHOR_REMINDER from "./prompt/coauthor-reminder.txt"
 import { defer } from "../util/defer"
-import type { Command } from "../command/command"
+import { SessionCommandRuntime } from "./command-runtime"
 import { InstructionRegistry } from "../instruction/registry"
 import "./summary"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
@@ -30,8 +30,7 @@ import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
 import { SessionMemoryPressure } from "./memory-pressure"
 import { SessionMemoryIncident } from "./memory-incident"
-import { ExternalAgentProcessor } from "@/external-agent/processor"
-import { ExternalAgent } from "@/external-agent/bridge"
+import { SessionExternalAgents } from "./external-agents"
 import { withPreambleSection } from "@/agent/prompt/preamble"
 import { SessionManager } from "./manager"
 import { SessionMessageCache } from "./message-cache"
@@ -46,7 +45,7 @@ import { PermissionNext } from "@/permission/next"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
 import { buildPermissionContext } from "./permission-context"
 import { Config } from "@/config/config"
-import { pluginTaskSnapshotFromSession } from "@/cortex/plugin-task"
+import { SessionCortexRuntime } from "./cortex-runtime"
 import { Observability } from "@/observability"
 import { withTimeout } from "@/util/timeout"
 import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./input"
@@ -71,11 +70,10 @@ import { Scope } from "@/scope"
 import { LoopJob } from "./loop-job"
 import "./loop-signals"
 import { ContinuationKernel } from "./continuation-kernel"
-import "../library/chronicler"
-import { ExperienceEncoder } from "../library/experience-encoder"
-import { GitHealth } from "../project/git-health"
-import { BlueprintLoopStore } from "../blueprint/loop-store"
-import { buildBlueprintLoopContext } from "../blueprint/prompt"
+import { SessionLibraryRecall } from "./library-recall"
+import { SessionProjectHealth } from "./project-health"
+import { SessionBlueprintState } from "./blueprint-state"
+import { SessionAgendaSignals } from "./agenda-signals"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 import { WorkflowPromptRegistry } from "./workflow-prompt-registry"
 import { WorkflowKindRegistry } from "./workflow-kind-registry"
@@ -119,10 +117,6 @@ export namespace SessionInvoke {
       ...(channelReply ? { channelReply: true } : {}),
       ...(channelReply && channelReplyToMessageId && !replyAnchorConflict ? { channelReplyToMessageId } : {}),
     }
-  }
-
-  async function commandRuntime() {
-    return (await import("../command/command")).Command
   }
 
   export function assertIdle(sessionID: string) {
@@ -496,7 +490,7 @@ export namespace SessionInvoke {
             sessionID: session?.id,
             agentControlProfile: agent.controlProfile,
           })
-          const adapter = ExternalAgent.getAdapter(agent.external.adapter, sessionID)
+          const adapter = SessionExternalAgents.getAdapter(agent.external.adapter, sessionID)
           if (!adapter) {
             log.error("external adapter not found", { adapter: agent.external.adapter, sessionID })
             break
@@ -536,16 +530,16 @@ export namespace SessionInvoke {
 
           const instructions = [agent.prompt?.trim(), ...instructionParts].filter(Boolean).join("\n\n")
 
-          const context: ExternalAgent.TurnContext = {
+          const context: SessionExternalAgents.TurnContext = {
             sessionID,
             prompt: MessageV2.extractText(RParts!),
             instructions: instructions ? withPreambleSection(instructions) : withPreambleSection(),
             taskContext: taskContext ?? undefined,
           }
 
-          const approvalDelegate: ExternalAgent.ApprovalDelegate = async () => false
+          const approvalDelegate: SessionExternalAgents.ApprovalDelegate = async () => false
 
-          await ExternalAgentProcessor.process({
+          await SessionExternalAgents.process({
             sessionID,
             agent: agent.name,
             adapter,
@@ -770,10 +764,10 @@ export namespace SessionInvoke {
           }
         }
         if (sessionBlueprint?.loopID) {
-          const loop = await BlueprintLoopStore.get(scopeID, sessionBlueprint.loopID).catch(() => undefined)
+          const loop = await SessionBlueprintState.getLoop(scopeID, sessionBlueprint.loopID)
           if (loop) {
             const isAuditSession = sessionBlueprint.loopRole === "audit" || session?.id === loop.auditSessionID
-            systemParts.push(buildBlueprintLoopContext({ loop, isAuditSession, agentName: agent.name }))
+            systemParts.push(SessionBlueprintState.buildLoopContext({ loop, isAuditSession, agentName: agent.name }))
           }
         }
 
@@ -796,7 +790,7 @@ export namespace SessionInvoke {
         lateSystemParts.push(...envParts)
 
         // Layer 4.5: Dynamic advisory context — git health diagnostics (warns about uncommitted changes, large files, etc.)
-        const gitHealthBlock = GitHealth.injectCached(ScopeContext.current.directory)
+        const gitHealthBlock = SessionProjectHealth.injectCachedGitHealth(ScopeContext.current.directory)
         if (gitHealthBlock) lateSystemParts.push(gitHealthBlock)
 
         // Layer 4.55: Configurable advisory context — git commit coauthor footer reminder
@@ -1456,7 +1450,7 @@ export namespace SessionInvoke {
     Session.updateLastExchange(input.sessionID).catch((error) =>
       log.warn("failed to update lastExchange", { sessionID: input.sessionID, error }),
     )
-    ExperienceEncoder.onComplete(message)
+    SessionLibraryRecall.onAssistantComplete(message)
     await Plugin.trigger(
       "session.turn.after",
       {
@@ -1521,7 +1515,7 @@ export namespace SessionInvoke {
     Session.updateLastExchange(sessionID).catch((err) =>
       log.warn("failed to update lastExchange", { sessionID, error: err }),
     )
-    ExperienceEncoder.onComplete(assistant)
+    SessionLibraryRecall.onAssistantComplete(assistant)
     await Plugin.trigger(
       "session.turn.after",
       {
@@ -1575,7 +1569,7 @@ export namespace SessionInvoke {
       error: new MessageV2.AbortedError({ message: "Session ended before producing an assistant message" }).toObject(),
       sessionID,
     })) as MessageV2.Assistant
-    ExperienceEncoder.onComplete(assistantMessage)
+    SessionLibraryRecall.onAssistantComplete(assistantMessage)
     await Plugin.trigger(
       "session.turn.after",
       {
@@ -1654,9 +1648,8 @@ export namespace SessionInvoke {
   }
 
   async function buildCortexExecutionContext(sessionID: string): Promise<string | undefined> {
-    const { Cortex } = await import("../cortex/manager")
-    const task = Cortex.list().find((task) => task.sessionID === sessionID)
-    if (!task || task.executionRole !== "delegated_subagent") return undefined
+    const task = await SessionCortexRuntime.delegatedTask(sessionID)
+    if (!task) return undefined
 
     const upstreamContext = await buildDagUpstreamContext(sessionID, task.parentSessionID, task.dagNodeId)
 
@@ -1677,20 +1670,14 @@ export namespace SessionInvoke {
   }
 
   async function buildCortexReminder(sessionID: string): Promise<string | undefined> {
-    const mod = await import("../cortex/manager")
-    const Cortex = mod.Cortex
-    if (!Cortex || typeof Cortex.getRunningTasks !== "function") return undefined
-    const running = Cortex.getRunningTasks().filter((t) => t.parentSessionID === sessionID)
+    const running = await SessionCortexRuntime.runningTaskRows(sessionID)
     if (running.length === 0) return undefined
 
     const taskList = running
       .map((t) => {
         const elapsed = Math.floor((Date.now() - t.startedAt) / 1000)
-        const info = Cortex.describe(t)
-        const lastTool = info.lastTool
-          ? ` | last: ${info.lastTool}${info.lastToolStatus ? ` (${info.lastToolStatus})` : ""}`
-          : ""
-        return `- \`${t.id}\` [${elapsed}s] — @${t.agent} — ${t.description} — ${info.health}${lastTool}`
+        const lastTool = t.lastTool ? ` | last: ${t.lastTool}${t.lastToolStatus ? ` (${t.lastToolStatus})` : ""}` : ""
+        return `- \`${t.id}\` [${elapsed}s] — @${t.agent} — ${t.description} — ${t.health}${lastTool}`
       })
       .join("\n")
 
@@ -1703,8 +1690,7 @@ export namespace SessionInvoke {
    * doesn't need to poll or set redundant watches.
    */
   async function buildAgendaReminder(sessionID: string, scopeID: string): Promise<string | undefined> {
-    const { AgendaStore } = await import("../agenda/store")
-    const items = await AgendaStore.listForScope(scopeID)
+    const items = await SessionAgendaSignals.upcomingWakeups(scopeID, sessionID)
     const now = Date.now()
 
     // Filter to items that:
@@ -1715,15 +1701,15 @@ export namespace SessionInvoke {
     const waking = items.filter((item) => {
       if (item.status !== "active" && item.status !== "pending") return false
       if (item.wake === false) return false
-      if (item.origin.sessionID !== sessionID) return false
-      if (item.state.nextRunAt === undefined || item.state.nextRunAt <= now) return false
+      if (item.originSessionID !== sessionID) return false
+      if (item.nextRunAt === undefined || item.nextRunAt <= now) return false
       return true
     })
 
     if (waking.length === 0) return undefined
 
     const lines = waking.map((item) => {
-      const remaining = item.state.nextRunAt! - now
+      const remaining = item.nextRunAt! - now
       const remainingStr = formatElapsed(remaining)
       return `- **\`${item.id}\`** "${item.title}" will wake this session in ~${remainingStr}`
     })
@@ -1909,7 +1895,7 @@ export namespace SessionInvoke {
       .optional(),
   })
   export type CommandInput = z.infer<typeof CommandInput>
-  function commandMetadata(command: Command.Info) {
+  function commandMetadata(command: SessionCommandRuntime.CommandInfo) {
     return {
       command: {
         name: command.name,
@@ -1924,8 +1910,11 @@ export namespace SessionInvoke {
     }
   }
 
-  async function deterministicCommandResult(input: CommandInput, command: Command.Info, result: Command.Result) {
-    const CommandRuntime = await commandRuntime()
+  async function deterministicCommandResult(
+    input: CommandInput,
+    command: SessionCommandRuntime.CommandInfo,
+    result: SessionCommandRuntime.CommandResult,
+  ) {
     const userID = input.messageID ?? Identifier.ascending("message")
     const agentName = input.agent ?? (await Agent.defaultAgent().catch(() => "system"))
     const parsedModel = input.model
@@ -1990,7 +1979,7 @@ export namespace SessionInvoke {
       text: result.output,
       metadata: result.metadata,
     })
-    Bus.publish(CommandRuntime.Event.Executed, {
+    void SessionCommandRuntime.publishExecuted({
       name: input.command,
       sessionID: input.sessionID,
       arguments: input.arguments,
@@ -2001,16 +1990,15 @@ export namespace SessionInvoke {
 
   export async function command(input: CommandInput) {
     log.info("command", input)
-    const CommandRuntime = await commandRuntime()
-    const command = await CommandRuntime.require(input.command)
+    const command = await SessionCommandRuntime.require(input.command)
     if (command.kind === "action") {
-      if (!command.action) throw new CommandRuntime.UnknownActionError({ action: "" })
+      if (!command.action) throw SessionCommandRuntime.unknownActionError("")
       return SessionManager.run(input.sessionID, async () => {
-        const result = await CommandRuntime.runAction({ action: command.action!, input, command })
+        const result = await SessionCommandRuntime.runAction({ action: command.action!, input, command })
         return deterministicCommandResult(input, command, result)
       })
     }
-    if (!command.template) throw new CommandRuntime.NotFoundError({ name: input.command })
+    if (!command.template) throw SessionCommandRuntime.notFoundError(input.command)
     const agentName = command.agent ?? input.agent ?? (await Agent.defaultAgent())
 
     const template = await command.template
@@ -2078,7 +2066,7 @@ export namespace SessionInvoke {
       variant: input.variant,
     })) as MessageV2.WithParts
 
-    Bus.publish(CommandRuntime.Event.Executed, {
+    void SessionCommandRuntime.publishExecuted({
       name: input.command,
       sessionID: input.sessionID,
       arguments: input.arguments,
@@ -2096,12 +2084,11 @@ export namespace SessionInvoke {
       messageID: Identifier.schema("message"),
     }),
     async (input) => {
-      const CommandRuntime = await commandRuntime()
       await command({
         sessionID: input.sessionID,
         messageID: input.messageID,
         model: input.providerID + "/" + input.modelID,
-        command: CommandRuntime.Default.INIT,
+        command: SessionCommandRuntime.defaultInitCommand(),
         arguments: "",
       })
     },
@@ -2111,8 +2098,7 @@ export namespace SessionInvoke {
     await reconcileInterruptedCortexDelegations(input?.scopeID)
     const { SessionRecovery } = await import("./recovery")
     await SessionRecovery.resumePendingStopRequests(input?.scopeID)
-    const { Cortex } = await import("../cortex/manager")
-    await Cortex.reconcileParentNotifications(input?.scopeID)
+    await SessionCortexRuntime.reconcileParentNotifications(input?.scopeID)
 
     // Startup inbox discovery: sessions with a durable queued task are driven
     // through the existing SessionDrive/wake path so the owning loop performs
@@ -2185,7 +2171,7 @@ export namespace SessionInvoke {
       })
       const updated = await Session.get(sessionID)
       if (!updated?.cortex) continue
-      const snapshot = pluginTaskSnapshotFromSession(
+      const snapshot = SessionCortexRuntime.pluginTaskSnapshot(
         { taskId: updated.cortex.taskID, sessionId: updated.id },
         updated.cortex,
       )

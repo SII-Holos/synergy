@@ -11,6 +11,7 @@ import { SessionRecovery } from "../../src/session/recovery"
 import { SessionProgress } from "../../src/session/progress"
 import * as SessionWorking from "../../src/session/working"
 import { Log } from "../../src/util/log"
+import "../../src/product-registration"
 import { tmpdir } from "../fixture/fixture"
 
 Log.init({ print: false })

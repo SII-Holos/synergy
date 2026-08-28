@@ -9,7 +9,8 @@
  * domain (S3), blueprint domain (S4), lattice domain (S5), instruction
  * domains (S7: skill, command, mcp), tool partition (S8: agenda, note,
  * email, channel), tool partition continuation (S9: browser, cortex,
- * project, question, library, lsp, synergy-link).
+ * project, question, library, lsp, synergy-link), session source
+ * inversion (S9c: session's product edges).
  */
 import "./agenda/migration"
 import "./blueprint/migration"
@@ -19,6 +20,7 @@ import "./lattice/migration"
 import "./library/migration"
 import "./note/migration"
 import "./plugin/migration"
+import "./library/chronicler"
 
 import { registerBossDomain } from "./boss/register"
 import { registerLightLoopDomain } from "./light-loop/register"
@@ -51,6 +53,20 @@ import { registerLspStartup } from "./lsp/startup"
 import { registerProjectStartup } from "./project/startup"
 import { registerCommandStartup } from "./command/startup"
 import { Plugin } from "./plugin"
+import { registerBlueprintSessionState } from "./blueprint/session-state"
+import { registerProjectSessionHealth } from "./project/session-health"
+import { registerLibrarySessionRecall } from "./library/session-recall"
+import { registerNoteSessionAccess } from "./note/session-access"
+import { registerPluginSessionHooks } from "./plugin/session-hooks"
+import { registerCommandSessionRuntime } from "./command/session-runtime"
+import { registerCortexSessionRuntime } from "./cortex/session-runtime"
+import { registerExternalAgentSessionBridge } from "./external-agent/session-bridge"
+import { registerAgendaSessionSignals } from "./agenda/session-signals"
+import { registerQuestionSessionErrors } from "./question/session-errors"
+import { registerMcpSessionInput } from "./mcp/session-input"
+import { registerLspSessionInput } from "./lsp/session-input"
+import { registerChannelSessionProjects } from "./channel/session-projects"
+import { registerSuperPlanSessionEnv } from "./superplan/session-env"
 
 registerBossDomain()
 registerLightLoopDomain()
@@ -70,6 +86,7 @@ registerLibraryTools()
 registerLspTools()
 registerSynergyLinkTools()
 registerPluginSkillSource()
+registerPluginToolContext()
 registerMcpCommandSource()
 registerMcpToolSource()
 registerBlueprintToolAccess()
@@ -78,7 +95,20 @@ registerLatticeStartup()
 registerLspStartup()
 registerProjectStartup()
 registerCommandStartup()
-
+registerBlueprintSessionState()
+registerProjectSessionHealth()
+registerLibrarySessionRecall()
+registerNoteSessionAccess()
+registerPluginSessionHooks()
+registerCommandSessionRuntime()
+registerCortexSessionRuntime()
+registerExternalAgentSessionBridge()
+registerAgendaSessionSignals()
+registerQuestionSessionErrors()
+registerMcpSessionInput()
+registerLspSessionInput()
+registerChannelSessionProjects()
+registerSuperPlanSessionEnv()
 // L4 assembly: the light-loop domain consumes plugin hook delivery through an
 // injected function so product domains stay acyclic (no light-loop→plugin
 // import; plugin→light-loop host-services remains the allowed direction).

@@ -1,4 +1,4 @@
-import { BlueprintLoopStore } from "../blueprint/loop-store"
+import { SessionBlueprintState } from "./blueprint-state"
 import { ScopeContext } from "../scope/context"
 import { Lock } from "../util/lock"
 import { Session } from "./index"
@@ -26,7 +26,7 @@ function activeLoopStatus(status: string): boolean {
 async function activeBlueprintLoop(session: Session.Info) {
   const loopID = session.blueprint?.loopID
   if (!loopID) return undefined
-  const loop = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loopID).catch(() => undefined)
+  const loop = await SessionBlueprintState.getLoop(ScopeContext.current.scope.id, loopID)
   if (!loop || !activeLoopStatus(loop.status)) return undefined
   return loop
 }

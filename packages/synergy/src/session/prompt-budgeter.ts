@@ -1,6 +1,6 @@
 import type { JSONSchema7, ModelMessage } from "ai"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
-import { Plugin } from "@/plugin"
+import { SessionPluginHooks as Plugin } from "./plugin-hooks"
 import { ProviderTransform } from "@/provider/transform"
 import type { Provider } from "@/provider/provider"
 import { Token } from "@/util/token"

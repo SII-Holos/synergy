@@ -45,6 +45,7 @@ import { SessionEndpoint } from "./endpoint"
 import { createDefaultTitle } from "./title"
 import * as SessionWorking from "./working"
 import { SessionMutation } from "./mutation"
+import { SessionProjectHealth } from "./project-health"
 
 export namespace Session {
   export const Info = InfoSchema
@@ -483,9 +484,8 @@ export namespace Session {
   ): Promise<Info & { working?: WorkingInfoType }> {
     if (!selection || selection.mode === "current") return get(sessionID)
 
-    const { Worktree } = await import("../project/worktree")
     if (selection.mode === "create") {
-      await Worktree.create({
+      await SessionProjectHealth.createWorktree({
         sessionID,
         name: selection.name,
         baseRef: selection.baseRef ?? "current",
@@ -494,8 +494,7 @@ export namespace Session {
       })
       return get(sessionID)
     }
-
-    await Worktree.enter({
+    await SessionProjectHealth.enterWorktree({
       sessionID,
       target: selection.target,
       force: selection.force ?? false,
@@ -880,8 +879,7 @@ export namespace Session {
     }
 
     if (!before.time.archived && result.time.archived) {
-      const { Worktree } = await import("../project/worktree")
-      await Worktree.detachSession(result.id).catch((error) => {
+      await SessionProjectHealth.detachWorktreeSession(result.id).catch((error) => {
         log.warn("failed to detach worktree during session archive", { sessionID: result.id, error })
       })
     }
@@ -1070,8 +1068,7 @@ export namespace Session {
       for (const child of await children(sessionID)) {
         await removeInternal(child.id, removed)
       }
-      const { Worktree } = await import("../project/worktree")
-      await Worktree.detachSession(sessionID).catch((error) => {
+      await SessionProjectHealth.detachWorktreeSession(sessionID).catch((error) => {
         log.warn("failed to detach worktree during session removal", { sessionID, error })
       })
       SessionManager.unregisterRuntime(sessionID)
