@@ -1,6 +1,6 @@
 {
   "totalModules": 66,
-  "totalFiles": 1064,
+  "totalFiles": 1065,
   "cyclicSCCs": [
     [
       "agent",
@@ -29,26 +29,7 @@
       "vector",
       "workspace-file"
     ],
-    [
-      "agenda",
-      "blueprint",
-      "boss",
-      "channel",
-      "cli",
-      "daemon",
-      "holos",
-      "lattice",
-      "library",
-      "light-loop",
-      "mcp",
-      "note",
-      "performance",
-      "plugin",
-      "plugin-runtime",
-      "remote",
-      "runtime",
-      "server"
-    ]
+    ["cli", "daemon", "server"]
   ],
   "l1ToProduct": [],
   "l1ToAssembly": [],
@@ -60,7 +41,6 @@
     ["blueprint", "note"],
     ["blueprint", "plugin"],
     ["boss", "agenda"],
-    ["boss", "channel"],
     ["boss", "library"],
     ["boss", "project"],
     ["browser", "cortex"],
@@ -77,9 +57,7 @@
     ["lattice", "blueprint"],
     ["lattice", "note"],
     ["library", "plugin"],
-    ["light-loop", "agenda"],
     ["light-loop", "cortex"],
-    ["mcp", "plugin"],
     ["note", "plugin"],
     ["performance", "browser"],
     ["performance", "cortex"],
@@ -89,9 +67,7 @@
     ["plugin", "light-loop"],
     ["plugin", "mcp"],
     ["plugin", "plugin-runtime"],
-    ["plugin-runtime", "plugin"],
-    ["project", "question"],
-    ["remote", "holos"]
+    ["project", "question"]
   ],
   "r3Violations": []
 }
