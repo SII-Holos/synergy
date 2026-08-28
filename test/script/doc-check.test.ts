@@ -110,7 +110,7 @@ describe("doc-check wrap", () => {
     )
   })
 
-  test("treats decision-record status metadata lines as structural, not prose", () => {
+  test("treats only the decision-record archive seal line as structural", () => {
     const markdown = [
       "# Decision Record: Example",
       "",
@@ -126,6 +126,7 @@ describe("doc-check wrap", () => {
     expect(joined).toBe(0)
     expect(text).toContain("Status: implemented\nArchived: 2026-08-28")
 
+    expect(findWrapViolations(["wrapped prose line", "Status: implemented"].join("\n"))).toEqual([1])
     expect(findWrapViolations(["Status: some free-form prose", "continues here."].join("\n"))).toEqual([1])
   })
 })
