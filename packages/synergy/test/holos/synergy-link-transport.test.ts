@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { SynergyLinkBridge, SynergyLinkEnvelope } from "@ericsanchezok/synergy-link-protocol"
 import { HolosRuntime } from "../../src/holos/runtime"
-import { HolosSynergyLinkTransport } from "../../src/remote/holos-transport"
+import { HolosSynergyLinkTransport } from "../../src/holos/synergy-link-transport"
 import type { SynergyLinkRequest } from "../../src/remote/client"
 
 const caller = (agentID: string) => ({

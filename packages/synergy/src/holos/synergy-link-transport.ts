@@ -1,9 +1,9 @@
 import { SynergyLinkBridge, SynergyLinkEnvelope } from "@ericsanchezok/synergy-link-protocol"
-import { Envelope } from "@/holos/envelope"
+import { SynergyLinkRemoteError } from "@/remote/client"
+import type { SynergyLinkRequest, SynergyLinkTransportFailureReason } from "@/remote/client"
 import { HolosRuntime } from "@/holos/runtime"
 import type { HolosProvider } from "@/holos/runtime"
-import { SynergyLinkRemoteError } from "./client"
-import type { SynergyLinkRequest, SynergyLinkTransportFailureReason } from "./client"
+import { Envelope } from "@/holos/envelope"
 export class HolosSynergyLinkTransport {
   readonly #pending = new Map<
     string,

@@ -1,5 +1,5 @@
 import { Config } from "@/config/config"
-import { resolveRuntimeLimits, type RuntimeLimits } from "../plugin-runtime/health"
+import { resolveRuntimeLimits, type RuntimeLimits } from "./health"
 
 /**
  * Resolve the effective plugin runtime limits from the canonical

@@ -110,6 +110,11 @@ export namespace ContinuationKernel {
 
   export async function propose(sessionID: string): Promise<Proposal | undefined> {
     drainProviders()
+    if (policies.length === 0) {
+      log.warn("continuation kernel has no policies registered", {
+        providers: providerIDs().length,
+      })
+    }
     const gate = await passesSharedGate(sessionID)
     if (!gate) return undefined
 
