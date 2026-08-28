@@ -25,6 +25,7 @@ await runBatchedTests({
     "test/components/session-turn-projection-memoization.dom.test.ts",
     "test/components/session-switch-stress.dom.test.ts",
     "test/components/tool/renders/task.test.tsx",
+    "test/components/tool/task-subagent-detail.test.tsx",
     "test/components/tool/renders/standard.test.tsx",
     "test/components/tool/renders/file-ops.test.tsx",
     "test/components/tooltip.test.ts",
