@@ -250,9 +250,7 @@ export namespace ChannelHost {
             scope,
             fn: () => input.beforeWake?.({ sessionID: session.id, deliveryCreated: result.created }),
           })
-          if (activateTasks) {
-            await SessionDrive.request(session.id, `channel:${channelType}:task-dispatch`)
-          }
+          if (activateTasks) await SessionDrive.request(session.id, `channel:${channelType}:task-dispatch`)
 
           return { sessionID: session.id, deliveryCreated: result.created }
         },
