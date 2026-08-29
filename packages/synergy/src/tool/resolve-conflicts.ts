@@ -12,7 +12,9 @@ import { resolveAllConflicts } from "../conflict/resolve"
 import { normalizeContent, splitContentLines } from "../hashline/tag"
 import { stripBom } from "../hashline/normalize"
 import { SessionHashlineStore } from "../hashline/store"
-import { RuntimeReload } from "../runtime/reload"
+import { RuntimeReloadPath } from "../config/reload-path"
+import { RuntimeReloadExecutor } from "../config/reload-executor"
+import { formatCompactReloadResult } from "../config/reload-schema"
 import { diffStats, displayPath, hashlineHeaderFor, recordSeenSessionLines, resolveFilePath } from "./anchored-file"
 import { captureWriteDiagnosticsBefore, collectWriteDiagnostics } from "./write-quality"
 import { SnapshotSchema } from "@/session/snapshot-schema"
@@ -165,16 +167,16 @@ export const ResolveConflictsTool = Tool.define("resolve_conflicts", {
 
         FileTime.read(ctx.sessionID, filePath)
         const diagnostics = await collectWriteDiagnostics(filePath, { before: beforeDiagnostics })
-        const runtimeReloadTargets = RuntimeReload.detectTargetsForFile(filePath)
-        const runtimeReloadScope = RuntimeReload.detectScopeForFile(filePath) ?? "auto"
+        const runtimeReloadTargets = RuntimeReloadPath.detectTargetsForFile(filePath)
+        const runtimeReloadScope = RuntimeReloadPath.detectScopeForFile(filePath) ?? "auto"
         const runtimeReload = runtimeReloadTargets.length
-          ? await RuntimeReload.reload({
+          ? await RuntimeReloadExecutor.reload({
               targets: runtimeReloadTargets,
               scope: runtimeReloadScope,
               reason: `resolve_conflicts:${title}`,
             })
           : undefined
-        const builtinSourceWarning = RuntimeReload.builtinSourceEditWarning(filePath)
+        const builtinSourceWarning = RuntimeReloadPath.builtinSourceEditWarning(filePath)
 
         const header = hashlineHeaderFor(ctx.sessionID, filePath, stripBom(finalContent).text)
         const tag = header.match(/#([0-9A-F]{4})\]$/)?.[1]
@@ -199,7 +201,7 @@ export const ResolveConflictsTool = Tool.define("resolve_conflicts", {
 
         let output = `${header}\nResolved ${previousConflict.conflicts.length} conflict block${previousConflict.conflicts.length === 1 ? "" : "s"}.`
         output += diagnostics.output
-        if (runtimeReload) output += `\n${RuntimeReload.formatCompactResult(runtimeReload)}`
+        if (runtimeReload) output += `\n${formatCompactReloadResult(runtimeReload)}`
         if (builtinSourceWarning) output += `\n${builtinSourceWarning}`
 
         return {

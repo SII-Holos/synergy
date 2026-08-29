@@ -1377,9 +1377,6 @@ export type ChannelInfo = {
   createdAt?: number
 }
 
-/**
- * Endpoint context if created from a session endpoint
- */
 export type SessionEndpoint = {
   kind: "channel"
   channel: ChannelInfo
@@ -4312,6 +4309,16 @@ export type SessionWorkspace = {
   [key: string]: unknown | string
 }
 
+export type WorkflowExtension = {
+  kind: string
+  payload?: unknown
+}
+
+export type SessionWorkflowExtension = {
+  kind: "extension"
+  extension: WorkflowExtension
+}
+
 export type SessionWorkflowInfo =
   | {
       kind: "plan"
@@ -4369,6 +4376,7 @@ export type SessionWorkflowInfo =
       rootID?: string
       instructions?: string
     }
+  | SessionWorkflowExtension
 
 export type Session = {
   id: string
@@ -8411,68 +8419,32 @@ export type EventScopeRuntimeDisposed = {
   }
 }
 
+export type EventAgendaItemCreated = {
+  type: "agenda.item.created"
+  properties: {
+    item: AgendaItem
+  }
+}
+
+export type EventAgendaItemUpdated = {
+  type: "agenda.item.updated"
+  properties: {
+    item: AgendaItem
+  }
+}
+
+export type EventAgendaItemDeleted = {
+  type: "agenda.item.deleted"
+  properties: {
+    id: string
+    scopeID: string
+  }
+}
+
 export type EventProviderAuthUpdated = {
   type: "provider.auth.updated"
   properties: {
     health: ProviderAuthHealth
-  }
-}
-
-export type EventConfigUpdated = {
-  type: "config.updated"
-  properties: {
-    scope: "global" | "project"
-    changedFields: Array<string>
-  }
-}
-
-export type EventInstallationUpdated = {
-  type: "installation.updated"
-  properties: {
-    version: string
-  }
-}
-
-export type EventInstallationUpdateAvailable = {
-  type: "installation.update-available"
-  properties: {
-    version: string
-  }
-}
-
-export type EventMcpToolsChanged = {
-  type: "mcp.tools.changed"
-  properties: {
-    server: string
-  }
-}
-
-export type EventMcpPromptsChanged = {
-  type: "mcp.prompts.changed"
-  properties: {
-    server: string
-  }
-}
-
-export type EventMcpResourcesChanged = {
-  type: "mcp.resources.changed"
-  properties: {
-    server: string
-  }
-}
-
-export type EventMcpReady = {
-  type: "mcp.ready"
-  properties: {
-    [key: string]: unknown
-  }
-}
-
-export type EventMcpFailed = {
-  type: "mcp.failed"
-  properties: {
-    server: string
-    error: string
   }
 }
 
@@ -8505,6 +8477,23 @@ export type EventMessagePartRemoved = {
     sessionID: string
     messageID: string
     partID: string
+  }
+}
+
+export type EventConfigUpdated = {
+  type: "config.updated"
+  properties: {
+    scope: "global" | "project"
+    changedFields: Array<string>
+  }
+}
+
+export type EventRuntimeReloaded = {
+  type: "runtime.reloaded"
+  properties: {
+    executed: Array<RuntimeReloadTarget>
+    cascaded: Array<RuntimeReloadTarget>
+    changedFields: Array<string>
   }
 }
 
@@ -8595,11 +8584,77 @@ export type EventSessionTurnEnd = {
   }
 }
 
+export type EventInstallationUpdated = {
+  type: "installation.updated"
+  properties: {
+    version: string
+  }
+}
+
+export type EventInstallationUpdateAvailable = {
+  type: "installation.update-available"
+  properties: {
+    version: string
+  }
+}
+
 export type EventSessionInboxUpdated = {
   type: "session.inbox.updated"
   properties: {
     sessionID: string
     items: Array<SessionInboxItem>
+  }
+}
+
+export type EventFileEdited = {
+  type: "file.edited"
+  properties: {
+    file: string
+  }
+}
+
+export type EventTodoUpdated = {
+  type: "todo.updated"
+  properties: {
+    sessionID: string
+    todos: Array<Todo>
+  }
+}
+
+export type EventDagUpdated = {
+  type: "dag.updated"
+  properties: {
+    sessionID: string
+    nodes: Array<DagNode>
+    ready: Array<string>
+  }
+}
+
+export type EventSessionCompacted = {
+  type: "session.compacted"
+  properties: {
+    sessionID: string
+  }
+}
+
+export type EventCortexTaskCreated = {
+  type: "cortex.task.created"
+  properties: {
+    task: CortexTask
+  }
+}
+
+export type EventCortexTaskCompleted = {
+  type: "cortex.task.completed"
+  properties: {
+    task: CortexTask
+  }
+}
+
+export type EventCortexTasksUpdated = {
+  type: "cortex.tasks.updated"
+  properties: {
+    tasks: Array<CortexTask>
   }
 }
 
@@ -8699,6 +8754,57 @@ export type EventNoteUnarchived = {
   }
 }
 
+export type EventPluginEvent = {
+  type: "plugin.event"
+  properties: {
+    pluginId: string
+    pluginVersion: string
+    generation: string
+    eventId: string
+    scopeId: string
+    sessionId?: string
+    sequence: number
+    timestamp: number
+    payload: unknown
+  }
+}
+
+export type EventMcpToolsChanged = {
+  type: "mcp.tools.changed"
+  properties: {
+    server: string
+  }
+}
+
+export type EventMcpPromptsChanged = {
+  type: "mcp.prompts.changed"
+  properties: {
+    server: string
+  }
+}
+
+export type EventMcpResourcesChanged = {
+  type: "mcp.resources.changed"
+  properties: {
+    server: string
+  }
+}
+
+export type EventMcpReady = {
+  type: "mcp.ready"
+  properties: {
+    [key: string]: unknown
+  }
+}
+
+export type EventMcpFailed = {
+  type: "mcp.failed"
+  properties: {
+    server: string
+    error: string
+  }
+}
+
 export type EventLatticeRunCreated = {
   type: "lattice.run.created"
   properties: {
@@ -8717,6 +8823,31 @@ export type EventLatticeEventAppended = {
   type: "lattice.event.appended"
   properties: {
     event: LatticeEvent
+  }
+}
+
+export type EventFileWatcherUpdated = {
+  type: "file.watcher.updated"
+  properties: {
+    file: string
+    event: "added" | "changed" | "deleted" | "renamed"
+    absolute?: string
+    oldPath?: string
+    oldAbsolute?: string
+    parent?: string
+    node?: unknown
+    resync?: boolean
+  }
+}
+
+export type EventChannelCommandExecuted = {
+  type: "channel.command.executed"
+  properties: {
+    name: string
+    channelType: string
+    accountId: string
+    chatId: string
+    userId?: string
   }
 }
 
@@ -8750,94 +8881,6 @@ export type EventQuestionTimedOut = {
   }
 }
 
-export type EventSessionCompacted = {
-  type: "session.compacted"
-  properties: {
-    sessionID: string
-  }
-}
-
-export type EventFileEdited = {
-  type: "file.edited"
-  properties: {
-    file: string
-  }
-}
-
-export type EventRuntimeReloaded = {
-  type: "runtime.reloaded"
-  properties: {
-    executed: Array<RuntimeReloadTarget>
-    cascaded: Array<RuntimeReloadTarget>
-    changedFields: Array<string>
-  }
-}
-
-export type EventLspClientDiagnostics = {
-  type: "lsp.client.diagnostics"
-  properties: {
-    serverID: string
-    path: string
-  }
-}
-
-export type EventLspUpdated = {
-  type: "lsp.updated"
-  properties: {
-    [key: string]: unknown
-  }
-}
-
-export type EventDagUpdated = {
-  type: "dag.updated"
-  properties: {
-    sessionID: string
-    nodes: Array<DagNode>
-    ready: Array<string>
-  }
-}
-
-export type EventTodoUpdated = {
-  type: "todo.updated"
-  properties: {
-    sessionID: string
-    todos: Array<Todo>
-  }
-}
-
-export type EventAgendaItemCreated = {
-  type: "agenda.item.created"
-  properties: {
-    item: AgendaItem
-  }
-}
-
-export type EventAgendaItemUpdated = {
-  type: "agenda.item.updated"
-  properties: {
-    item: AgendaItem
-  }
-}
-
-export type EventAgendaItemDeleted = {
-  type: "agenda.item.deleted"
-  properties: {
-    id: string
-    scopeID: string
-  }
-}
-
-export type EventChannelCommandExecuted = {
-  type: "channel.command.executed"
-  properties: {
-    name: string
-    channelType: string
-    accountId: string
-    chatId: string
-    userId?: string
-  }
-}
-
 export type EventChannelConnected = {
   type: "channel.connected"
   properties: {
@@ -8852,27 +8895,6 @@ export type EventChannelDisconnected = {
     channelType: string
     accountId: string
     reason?: string
-  }
-}
-
-export type EventSynergyLinkTargetCreated = {
-  type: "synergy_link.target.created"
-  properties: {
-    target: SynergyLinkTarget
-  }
-}
-
-export type EventSynergyLinkTargetUpdated = {
-  type: "synergy_link.target.updated"
-  properties: {
-    target: SynergyLinkTarget
-  }
-}
-
-export type EventSynergyLinkTargetRemoved = {
-  type: "synergy_link.target.removed"
-  properties: {
-    id: string
   }
 }
 
@@ -8920,39 +8942,46 @@ export type EventHolosPresence = {
   }
 }
 
-export type EventCortexTaskCreated = {
-  type: "cortex.task.created"
+export type EventLspClientDiagnostics = {
+  type: "lsp.client.diagnostics"
   properties: {
-    task: CortexTask
+    serverID: string
+    path: string
   }
 }
 
-export type EventCortexTaskCompleted = {
-  type: "cortex.task.completed"
+export type EventLspUpdated = {
+  type: "lsp.updated"
   properties: {
-    task: CortexTask
+    [key: string]: unknown
   }
 }
 
-export type EventCortexTasksUpdated = {
-  type: "cortex.tasks.updated"
+export type EventSynergyLinkTargetCreated = {
+  type: "synergy_link.target.created"
   properties: {
-    tasks: Array<CortexTask>
+    target: SynergyLinkTarget
   }
 }
 
-export type EventPluginEvent = {
-  type: "plugin.event"
+export type EventSynergyLinkTargetUpdated = {
+  type: "synergy_link.target.updated"
   properties: {
-    pluginId: string
-    pluginVersion: string
-    generation: string
-    eventId: string
-    scopeId: string
-    sessionId?: string
-    sequence: number
-    timestamp: number
-    payload: unknown
+    target: SynergyLinkTarget
+  }
+}
+
+export type EventSynergyLinkTargetRemoved = {
+  type: "synergy_link.target.removed"
+  properties: {
+    id: string
+  }
+}
+
+export type EventVcsBranchUpdated = {
+  type: "vcs.branch.updated"
+  properties: {
+    branch?: string
   }
 }
 
@@ -8963,27 +8992,6 @@ export type EventCommandExecuted = {
     sessionID: string
     arguments: string
     messageID: string
-  }
-}
-
-export type EventFileWatcherUpdated = {
-  type: "file.watcher.updated"
-  properties: {
-    file: string
-    event: "added" | "changed" | "deleted" | "renamed"
-    absolute?: string
-    oldPath?: string
-    oldAbsolute?: string
-    parent?: string
-    node?: unknown
-    resync?: boolean
-  }
-}
-
-export type EventVcsBranchUpdated = {
-  type: "vcs.branch.updated"
-  properties: {
-    branch?: string
   }
 }
 
@@ -9034,19 +9042,16 @@ export type Event =
   | EventScopeUpdated
   | EventScopeRemoved
   | EventScopeRuntimeDisposed
+  | EventAgendaItemCreated
+  | EventAgendaItemUpdated
+  | EventAgendaItemDeleted
   | EventProviderAuthUpdated
-  | EventConfigUpdated
-  | EventInstallationUpdated
-  | EventInstallationUpdateAvailable
-  | EventMcpToolsChanged
-  | EventMcpPromptsChanged
-  | EventMcpResourcesChanged
-  | EventMcpReady
-  | EventMcpFailed
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
+  | EventConfigUpdated
+  | EventRuntimeReloaded
   | EventPermissionAsked
   | EventPermissionReplied
   | EventSessionUpdated
@@ -9058,7 +9063,16 @@ export type Event =
   | EventSessionIdle
   | EventSessionTurnStart
   | EventSessionTurnEnd
+  | EventInstallationUpdated
+  | EventInstallationUpdateAvailable
   | EventSessionInboxUpdated
+  | EventFileEdited
+  | EventTodoUpdated
+  | EventDagUpdated
+  | EventSessionCompacted
+  | EventCortexTaskCreated
+  | EventCortexTaskCompleted
+  | EventCortexTasksUpdated
   | EventBlueprintLoopCreated
   | EventBlueprintLoopUpdated
   | EventBlueprintLoopCompleted
@@ -9071,42 +9085,36 @@ export type Event =
   | EventNoteDeleted
   | EventNoteArchived
   | EventNoteUnarchived
+  | EventPluginEvent
+  | EventMcpToolsChanged
+  | EventMcpPromptsChanged
+  | EventMcpResourcesChanged
+  | EventMcpReady
+  | EventMcpFailed
   | EventLatticeRunCreated
   | EventLatticeRunUpdated
   | EventLatticeEventAppended
+  | EventFileWatcherUpdated
+  | EventChannelCommandExecuted
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
   | EventQuestionTimedOut
-  | EventSessionCompacted
-  | EventFileEdited
-  | EventRuntimeReloaded
-  | EventLspClientDiagnostics
-  | EventLspUpdated
-  | EventDagUpdated
-  | EventTodoUpdated
-  | EventAgendaItemCreated
-  | EventAgendaItemUpdated
-  | EventAgendaItemDeleted
-  | EventChannelCommandExecuted
   | EventChannelConnected
   | EventChannelDisconnected
-  | EventSynergyLinkTargetCreated
-  | EventSynergyLinkTargetUpdated
-  | EventSynergyLinkTargetRemoved
   | EventHolosContactAdded
   | EventHolosContactRemoved
   | EventHolosContactUpdated
   | EventHolosConnected
   | EventHolosConnectionStatusChanged
   | EventHolosPresence
-  | EventCortexTaskCreated
-  | EventCortexTaskCompleted
-  | EventCortexTasksUpdated
-  | EventPluginEvent
-  | EventCommandExecuted
-  | EventFileWatcherUpdated
+  | EventLspClientDiagnostics
+  | EventLspUpdated
+  | EventSynergyLinkTargetCreated
+  | EventSynergyLinkTargetUpdated
+  | EventSynergyLinkTargetRemoved
   | EventVcsBranchUpdated
+  | EventCommandExecuted
   | EventPtyCreated
   | EventPtyUpdated
   | EventPtyExited

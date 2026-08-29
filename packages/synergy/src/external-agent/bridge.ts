@@ -1,5 +1,6 @@
 import z from "zod"
 import { Log } from "@/util/log"
+import { AgentExternal } from "../agent/external-source"
 
 export namespace ExternalAgent {
   const log = Log.create({ service: "external-agent" })
@@ -129,15 +130,8 @@ export namespace ExternalAgent {
   // Registration info — what gets injected into the Agent registry
   // ---------------------------------------------------------------------------
 
-  export const Info = z
-    .object({
-      adapter: z.string(),
-      path: z.string().optional(),
-      version: z.string().optional(),
-      config: z.record(z.string(), z.any()).optional(),
-    })
-    .meta({ ref: "ExternalAgentInfo" })
-  export type Info = z.infer<typeof Info>
+  export const Info = AgentExternal.Info
+  export type Info = AgentExternal.Info
 
   // ---------------------------------------------------------------------------
   // Adapter registry — adapters self-register here

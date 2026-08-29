@@ -15,6 +15,7 @@ import { SessionEndpoint } from "./endpoint"
 import { SessionMemoryPressure } from "./memory-pressure"
 import { SessionInbox } from "./inbox"
 import { ObservabilityMetrics } from "@/observability/metrics"
+import { SessionProjectHealth } from "./project-health"
 
 const log = Log.create({ service: "session.manager" })
 
@@ -356,13 +357,12 @@ export namespace SessionManager {
               activate(lease)
               return fn(lease)
             }
-            const { Worktree } = await import("../project/worktree")
-            await Worktree.lock(workspace.path)
+            await SessionProjectHealth.lockWorktree(workspace.path)
             try {
               activate(lease)
               return await fn(lease)
             } finally {
-              await Worktree.unlock(workspace.path)
+              await SessionProjectHealth.unlockWorktree(workspace.path)
             }
           },
         })
@@ -370,8 +370,7 @@ export namespace SessionManager {
       if (workspace.type !== "git_worktree") {
         result = await runWithScope()
       } else {
-        const { Worktree } = await import("../project/worktree")
-        result = await Worktree.withUse(workspace.path, session.id, runWithScope)
+        result = await SessionProjectHealth.withWorktree(workspace.path, session.id, runWithScope)
       }
       completed = true
       return result

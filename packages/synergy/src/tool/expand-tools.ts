@@ -1,9 +1,9 @@
 import { Agent } from "@/agent/agent"
-import { MCP } from "@/mcp"
 import { Session } from "@/session"
 import z from "zod"
 import { ToolDiscovery } from "./discovery"
 import { ToolExposure } from "./exposure"
+import { ToolMcpSource } from "./mcp-source"
 import { Tool } from "./tool"
 
 const parameters = z
@@ -27,10 +27,12 @@ interface ExpandToolsIssues {
 }
 
 export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => {
-  const mcpCatalog = await MCP.deferredGroupCatalog().catch(() => ({
-    totalTools: 0,
-    servers: [],
-  }))
+  const mcpCatalog = await Promise.resolve(ToolMcpSource.get()?.deferredGroupCatalog())
+    .then((catalog) => catalog ?? { totalTools: 0, servers: [] })
+    .catch(() => ({
+      totalTools: 0,
+      servers: [],
+    }))
   const mcpSection =
     mcpCatalog.totalTools >= ToolExposure.MCP_DEFER_THRESHOLD
       ? ["Connected MCP groups:", ToolExposure.mcpGroupTable(mcpCatalog.servers)].join("\n")

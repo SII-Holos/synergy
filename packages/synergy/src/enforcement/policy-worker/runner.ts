@@ -1,4 +1,4 @@
-import { watchManagedParent } from "@/server/managed-parent"
+import { watchManagedParent } from "@/util/managed-parent"
 import { EnforcementGate, type GateOptions } from "../gate"
 import { PolicyWorkerProtocol, type PolicyClassificationInput } from "./protocol"
 

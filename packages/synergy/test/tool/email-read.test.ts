@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, mock, test } from "bun:test"
 import path from "path"
 import { pathToFileURL } from "url"
-import type { EmailReadTool as EmailReadToolType } from "../../src/tool/email-read"
+import type { EmailReadTool as EmailReadToolType } from "../../src/email/tools/email-read"
 
 // Fake IMAP service: module-level injection so the tool's hybrid search
 // orchestration is exercised without a real server.
@@ -104,7 +104,7 @@ mock.module(imapModule, () => ({
 let EmailReadTool: typeof EmailReadToolType
 
 beforeAll(async () => {
-  const mod = await import("../../src/tool/email-read")
+  const mod = await import("../../src/email/tools/email-read")
   EmailReadTool = mod.EmailReadTool
 })
 

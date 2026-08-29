@@ -6,9 +6,11 @@ import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionWorkflowService } from "../../src/session/workflow"
-import { BossService } from "../../src/session/boss"
-import { BossProjectTool, DEFAULT_PROJECT_BOSS_INSTRUCTIONS } from "../../src/tool/boss-project"
+import { BossService } from "../../src/boss/boss"
+import { BossProjectTool, DEFAULT_PROJECT_BOSS_INSTRUCTIONS } from "../../src/boss/tools/boss-project"
 import { ToolRegistry } from "../../src/tool/registry"
+// Product domains register tool providers via the L4 manifest
+import "../../src/product-registration"
 import type { Tool } from "../../src/tool/tool"
 import { tmpdir } from "../fixture/fixture"
 

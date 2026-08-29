@@ -1,5 +1,5 @@
 import { stripXmlTags, isJunk, isAssistantReasoning, hasToolHallucination } from "./encoder-sanitize"
-import { SCRIPT_MIN_CHARS, SCRIPT_MIN_STEPS } from "./encoder-constants"
+import { SCRIPT_MIN_CHARS, SCRIPT_MIN_STEPS } from "../util/encoder-constants"
 
 type SanitizeReason = "ok" | "tool-hallucination" | "assistant-reasoning" | "junk" | "no-steps" | "too-few-steps"
 

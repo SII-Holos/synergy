@@ -9,6 +9,10 @@ import { Worktree } from "../../src/project/worktree"
 import { Log } from "../../src/util/log"
 import { Identifier } from "../../src/id/id"
 import { Server } from "../../src/server/server"
+// Product registrations must be mounted: the POST /session workspace-create
+// route reaches worktree creation through the inverted L1 ports, which
+// throw in an isolated process without the manifest.
+import "../../src/product-registration"
 import { SessionManager } from "../../src/session/manager"
 
 Log.init({ print: false })

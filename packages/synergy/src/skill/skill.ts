@@ -6,9 +6,9 @@ import { ScopedState } from "../scope/scoped-state"
 import { Log } from "../util/log"
 import { BUILTIN_SKILLS } from "./builtin"
 import { ConfigMarkdown } from "../config/markdown"
-import { Plugin } from "../plugin"
 import { SkillManifest } from "./manifest"
-import { SkillSourceProfile } from "./source-profile"
+import { SkillSourceProfile } from "../instruction/source-profile"
+import { SkillSourceProviders } from "../instruction/source-provider"
 import { Config } from "../config/config"
 
 export namespace Skill {
@@ -286,7 +286,7 @@ export namespace Skill {
     }
 
     try {
-      for (const pluginSkill of await Plugin.skillEntries()) {
+      for (const pluginSkill of await SkillSourceProviders.list()) {
         const contributionID = pluginSkill.contributionId ?? pluginSkill.name
         const resourceDiagnostics: Diagnostic[] = []
         let backing: Info["backing"] = {

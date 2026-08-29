@@ -2105,8 +2105,6 @@ Kind: `knowledge.skill`
 | `title` | - | yes |  |
 | `output` | content.trim | yes |  |
 | `metadata` | - | yes |  |
-| `name` | params.name | yes |  |
-| `dir` | skill.backing.kind | yes |  |
 | `title` | - | yes |  |
 | `output` | parts.join | yes |  |
 | `metadata` | - | yes |  |

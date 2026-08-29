@@ -4,7 +4,7 @@ import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
 import { DaemonState } from "../daemon/state"
-import { DaemonPaths } from "../daemon/paths"
+import { DaemonPaths } from "../util/daemon-paths"
 import { Installation } from "../global/installation"
 
 const NPM_PACKAGE = "@ericsanchezok/synergy"

@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import { Config } from "../../src/config/config"
 import { LSP } from "../../src/lsp"
+import { registerLspToolSource } from "../../src/lsp/tool-source"
 import type { LSPClient } from "../../src/lsp/client"
 import { captureWriteDiagnosticsBefore, collectWriteDiagnostics } from "../../src/tool/write-quality"
+
+registerLspToolSource()
 
 const filePath = "/tmp/example.ts"
 const otherFilePath = "/tmp/other.ts"

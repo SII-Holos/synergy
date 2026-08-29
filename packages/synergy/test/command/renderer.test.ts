@@ -89,6 +89,12 @@ describe("CommandRenderer", () => {
     ).resolves.toBe('one value | two three | "one value" two three')
   })
 
+  test("trims the rendered template when arguments carry no placeholders", async () => {
+    await expect(
+      CommandRenderer.render({ template: "  Review the diff.  ", arguments: "ignored extra" }),
+    ).resolves.toBe("Review the diff.")
+  })
+
   test("keeps !`command` shell syntax literal instead of executing it", async () => {
     await expect(
       CommandRenderer.render({

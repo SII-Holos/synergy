@@ -245,7 +245,7 @@
           "reason": "tool implementations require live tool runtime context"
         },
         {
-          "glob": "src/tool/session-control.ts",
+          "glob": "src/project/tools/session-control.ts",
           "reason": "tool implementations require live tool runtime context"
         }
       ]

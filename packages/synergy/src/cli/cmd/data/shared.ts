@@ -2,7 +2,7 @@ import fs from "fs/promises"
 import fsSync from "fs"
 import path from "path"
 import os from "os"
-import { UI } from "../../ui"
+import { UI } from "../../../util/ui"
 import { Global } from "../../../global"
 
 export interface Category {

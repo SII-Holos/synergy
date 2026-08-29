@@ -10,9 +10,8 @@ import type { Info, StatusInfo } from "./types"
 import { SessionProgress } from "./progress"
 import { Session } from "./index"
 import { MessageV2 } from "./message-v2"
-import { BlueprintLoopStore, isActiveLoopStatus } from "../blueprint/loop-store"
-import type { Info as BlueprintLoopInfo } from "../blueprint/types"
-import { NoteStore } from "../note"
+import { SessionBlueprintState } from "./blueprint-state"
+import { SessionNoteAccess } from "./note-access"
 import { ScopeContext } from "../scope/context"
 import { isActiveLightLoopWorkflow } from "./light-loop-state"
 
@@ -56,13 +55,13 @@ export namespace SessionRecovery {
     entries: Array<{ scopeID: string; sessionID?: string; noteID?: string; loopID?: string; action: string }>
   }
 
-  const TERMINAL_LOOP_STATUSES = new Set<BlueprintLoopInfo["status"]>(["completed", "failed", "cancelled"])
+  const TERMINAL_LOOP_STATUSES = new Set<SessionBlueprintState.LoopStatus>(["completed", "failed", "cancelled"])
 
-  function isActiveLoop(loop: BlueprintLoopInfo | undefined) {
-    return !!loop && isActiveLoopStatus(loop.status)
+  function isActiveLoop(loop: SessionBlueprintState.LoopInfo | undefined) {
+    return !!loop && SessionBlueprintState.isActiveStatus(loop.status)
   }
 
-  function isTerminalLoop(loop: BlueprintLoopInfo | undefined) {
+  function isTerminalLoop(loop: SessionBlueprintState.LoopInfo | undefined) {
     return !!loop && TERMINAL_LOOP_STATUSES.has(loop.status)
   }
 
@@ -127,18 +126,16 @@ export namespace SessionRecovery {
 
   async function reconcileNoteActiveLoop(input: {
     scopeID: string
-    loop: BlueprintLoopInfo
+    loop: SessionBlueprintState.LoopInfo
     apply: boolean
     report: RuntimeReconcileReport
   }) {
-    const note = await NoteStore.getAny(input.scopeID, input.loop.noteID).catch(() => undefined)
-    if (!note || note.kind !== "blueprint") return
-    if (note.blueprint?.activeLoopID === input.loop.id) return
+    const note = await SessionNoteAccess.getBlueprintNote(input.scopeID, input.loop.noteID)
+    if (!note) return
+    if (note.activeLoopID === input.loop.id) return
 
     if (input.apply) {
-      await NoteStore.updateAny(input.scopeID, input.loop.noteID, {
-        blueprint: { activeLoopID: input.loop.id },
-      })
+      await SessionNoteAccess.setBlueprintActiveLoop(input.scopeID, input.loop.noteID, input.loop.id)
     }
     reportChange(input.report, {
       scopeID: input.scopeID,
@@ -149,17 +146,15 @@ export namespace SessionRecovery {
 
   async function clearNoteActiveLoop(input: {
     scopeID: string
-    loop: BlueprintLoopInfo
+    loop: SessionBlueprintState.LoopInfo
     apply: boolean
     report: RuntimeReconcileReport
   }) {
-    const note = await NoteStore.getAny(input.scopeID, input.loop.noteID).catch(() => undefined)
-    if (!note || note.kind !== "blueprint" || note.blueprint?.activeLoopID !== input.loop.id) return
+    const note = await SessionNoteAccess.getBlueprintNote(input.scopeID, input.loop.noteID)
+    if (!note || note.activeLoopID !== input.loop.id) return
 
     if (input.apply) {
-      await NoteStore.updateAny(input.scopeID, input.loop.noteID, {
-        blueprint: { activeLoopID: null },
-      })
+      await SessionNoteAccess.setBlueprintActiveLoop(input.scopeID, input.loop.noteID, null)
     }
     reportChange(input.report, {
       scopeID: input.scopeID,
@@ -225,7 +220,7 @@ export namespace SessionRecovery {
   async function reconcileSessionBlueprintReference(input: {
     scopeID: string
     session: Info
-    loops: Map<string, BlueprintLoopInfo>
+    loops: Map<string, SessionBlueprintState.LoopInfo>
     apply: boolean
     report: RuntimeReconcileReport
   }) {
@@ -249,26 +244,23 @@ export namespace SessionRecovery {
 
   async function reconcileNoteBlueprintReferences(input: {
     scopeID: string
-    loops: Map<string, BlueprintLoopInfo>
+    loops: Map<string, SessionBlueprintState.LoopInfo>
     apply: boolean
     report: RuntimeReconcileReport
   }) {
-    const notes = await NoteStore.list(input.scopeID, "all").catch(() => [])
+    const notes = await SessionNoteAccess.listBlueprintNotes(input.scopeID)
     for (const note of notes) {
-      if (note.kind !== "blueprint") continue
-      const loopID = note.blueprint?.activeLoopID
+      const loopID = note.activeLoopID
       if (!loopID) continue
       const loop = input.loops.get(loopID)
       if (isActiveLoop(loop)) continue
 
       if (input.apply) {
-        await NoteStore.updateAny(input.scopeID, note.id, {
-          blueprint: { activeLoopID: null },
-        })
+        await SessionNoteAccess.setBlueprintActiveLoop(input.scopeID, note.noteID, null)
       }
       reportChange(input.report, {
         scopeID: input.scopeID,
-        noteID: note.id,
+        noteID: note.noteID,
         loopID,
         action: loop ? "note_inactive_loop_cleared" : "note_missing_loop_cleared",
       })
@@ -278,7 +270,7 @@ export namespace SessionRecovery {
   async function reconcileRuntimeScope(input: { scopeID: string; apply: boolean; report: RuntimeReconcileReport }) {
     const [sessions, loops] = await Promise.all([
       sessionInfos(input.scopeID),
-      BlueprintLoopStore.list(input.scopeID).catch(() => [] as BlueprintLoopInfo[]),
+      SessionBlueprintState.listLoops(input.scopeID),
     ])
     input.report.sessionsScanned += sessions.length
     input.report.loopsScanned += loops.length
@@ -351,10 +343,7 @@ export namespace SessionRecovery {
   export async function resumePendingStopRequests(targetScopeID?: string): Promise<number> {
     let requested = 0
     for (const scopeID of await scopeIDsForRuntimeRecovery(targetScopeID)) {
-      const [sessions, loops] = await Promise.all([
-        sessionInfos(scopeID),
-        BlueprintLoopStore.list(scopeID).catch(() => [] as BlueprintLoopInfo[]),
-      ])
+      const [sessions, loops] = await Promise.all([sessionInfos(scopeID), SessionBlueprintState.listLoops(scopeID)])
       const sessionsByID = new Map(sessions.map((session) => [session.id, session]))
       const pending = new Map<string, Info>()
 
@@ -384,7 +373,7 @@ export namespace SessionRecovery {
         if (loop.status === "auditing" && loop.auditSessionID) {
           const reviewer = sessionsByID.get(loop.auditSessionID)
           if (reviewer?.cortex?.status === "interrupted") {
-            await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
+            await SessionBlueprintState.updateLoopStatus(scopeID, loop.id, {
               status: "running",
               auditSessionID: null,
               auditTaskID: null,
@@ -416,10 +405,7 @@ export namespace SessionRecovery {
 
   export async function recoverableStatuses(scopeID: string): Promise<Record<string, StatusInfo>> {
     const { resolve, toStatus } = await import("./working")
-    const [sessions, loops] = await Promise.all([
-      sessionInfos(scopeID),
-      BlueprintLoopStore.list(scopeID).catch(() => [] as BlueprintLoopInfo[]),
-    ])
+    const [sessions, loops] = await Promise.all([sessionInfos(scopeID), SessionBlueprintState.listLoops(scopeID)])
     const sessionsByID = new Map(sessions.map((session) => [session.id, session]))
     const candidates = new Map<string, Info>()
     const activeLoopSessionIDs = new Set<string>()

@@ -2,11 +2,16 @@ import { describe, expect, mock, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import { Plugin } from "../../src/plugin"
+import { registerPluginSkillSource } from "../../src/plugin/skill-source"
+import { registerSkillDomain } from "../../src/skill/register"
 import { Skill } from "../../src/skill"
 import { SkillTool } from "../../src/tool/skill"
 import { ToolRegistry } from "../../src/tool/registry"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
+
+registerPluginSkillSource()
+registerSkillDomain()
 
 const ctx = {
   sessionID: "test",

@@ -1,4 +1,4 @@
-import { ChannelTarget } from "../channel/types"
+import { ChannelTarget } from "./channel-endpoint"
 
 import z from "zod"
 import { Identifier } from "../id/id"
@@ -7,6 +7,7 @@ import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
 import { Lock } from "../util/lock"
 import { Info as SessionInfo } from "./types"
+import { SessionManagedProjects } from "./managed-projects"
 
 export type NavCategory = "project" | "home" | "channel" | "background" | "github"
 export const NavCategory = z.enum(["project", "home", "channel", "background", "github"])
@@ -381,8 +382,7 @@ export namespace SessionNav {
 
   export async function buildScopeIndex(): Promise<ScopeNavEntry[]> {
     const scopeIDs = await getAllScopeIDs()
-    const { ManagedProjectOwnership } = await import("../channel/managed-project-ownership")
-    const ownershipRecords = await ManagedProjectOwnership.listAll()
+    const ownershipRecords = await SessionManagedProjects.listOwnership()
     const ownershipByScopeID = new Map(ownershipRecords.map((r) => [r.scopeID, r]))
     const results: ScopeNavEntry[] = []
     const { Scope } = await import("../scope")

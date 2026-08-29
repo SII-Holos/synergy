@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
-import { DaemonPaths } from "../../src/daemon/paths"
+import { DaemonPaths } from "../../src/util/daemon-paths"
 
 describe("daemon.schtasks paths", () => {
   test("builds a Windows task script path under daemon state", () => {

@@ -1,4 +1,6 @@
 import { Log } from "@/util/log"
+import { SessionAgendaSignals } from "./agenda-signals"
+import { SessionCortexRuntime } from "./cortex-runtime"
 
 export namespace ContinuationWait {
   const log = Log.create({ service: "session.continuation-wait" })
@@ -53,18 +55,14 @@ export namespace ContinuationWait {
         const { SessionManager } = await import("./manager")
         const session = await SessionManager.getSession(sessionID)
         if (!session) return []
-        const { AgendaSessionWakeup } = await import("../agenda/session-wakeup")
-        const response = await AgendaSessionWakeup.list(sessionID, session.scope.id)
-        return response.items.map((item) => ({ owner: "agenda", id: item.itemID, description: item.title }))
+        const blockers = await SessionAgendaSignals.sessionBlockers(sessionID, session.scope.id)
+        return blockers.map((item) => ({ owner: "agenda", id: item.id, description: item.description }))
       },
     })
     register({
       id: "cortex",
       async list(sessionID) {
-        const { Cortex } = await import("../cortex/manager")
-        const active = Cortex.getTasksForSession(sessionID).filter(
-          (task) => task.status === "queued" || task.status === "running",
-        )
+        const active = await SessionCortexRuntime.activeTaskRows(sessionID)
         if (active.length > 0) {
           return active.map((task) => ({ owner: "cortex", id: task.id, description: task.description }))
         }

@@ -9,8 +9,8 @@ import { contributionGatedCapabilities, createPluginInvocationContext } from "./
 import { pathToFileURL } from "node:url"
 import { Installation } from "../global/installation.js"
 import { startMemoryMonitor, type MemoryMonitorInput, type MemoryMonitor } from "./resource-limits.js"
-import { pluginAgentCallRuntime } from "../plugin/agent-call-runtime.js"
-import { resolvePluginRuntimeLimits } from "../plugin/runtime-limits.js"
+import { pluginAgentCallRuntime } from "./agent-call-runtime.js"
+import { resolvePluginRuntimeLimits } from "./runtime-limits.js"
 
 export type PluginRuntimeErrorCode =
   | "PLUGIN_UNAVAILABLE"

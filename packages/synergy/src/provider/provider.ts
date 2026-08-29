@@ -11,7 +11,6 @@ import { Auth } from "./api-key"
 import { Env } from "../util/env"
 import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
-import { SYNERGY_REFERER } from "../holos/constants" // DISABLED — inlined below
 import { iife } from "@/util/iife"
 import net from "node:net"
 import tls from "node:tls"
@@ -24,6 +23,7 @@ import { normalizeImageMediaTypes } from "./image-capability"
 import { ProviderStream } from "./stream"
 import { ProviderModelUnavailableError } from "./model-unavailable-error"
 import { loadBundledProvider, loadBundledProviderSync } from "./sdk-registry"
+import { ProviderPluginAuth } from "./plugin-auth-source"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -711,14 +711,9 @@ export namespace Provider {
       }
     }
 
-    const [{ getAuthProviderEntries }, { authHook }] = await Promise.all([
-      import("@/plugin/loader"),
-      import("@/plugin/auth-provider"),
-    ])
-    const authProviderPlugins = new Map<string, ReturnType<typeof authHook>>()
-    for (const entry of await getAuthProviderEntries()) {
-      const plugin = authHook(entry.plugin, entry.contribution)
-      const providerID = plugin.provider
+    const authProviderHooks = (await ProviderPluginAuth.get()?.authProviderHooks()) ?? []
+    const authProviderPlugins = new Map<string, ProviderPluginAuth.AuthProviderHookEntry["hook"]>()
+    for (const { providerID, hook: plugin } of authProviderHooks) {
       authProviderPlugins.set(providerID, plugin)
       if (disabled.has(providerID)) continue
 

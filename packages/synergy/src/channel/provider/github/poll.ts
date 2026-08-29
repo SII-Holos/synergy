@@ -9,7 +9,7 @@ import type { ChannelHost } from "../../host"
 import type { MessageContext } from "../../types"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
-import { externalIdentityHash } from "../../identity"
+import { externalIdentityHash } from "../../../util/identity"
 import { Lock } from "@/util/lock"
 
 const log = Log.create({ service: "channel.github.poll" })

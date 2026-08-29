@@ -19,10 +19,10 @@ import { reload, triggerForPlugin } from "./lifecycle"
 import * as Lockfile from "./lockfile"
 import { PluginInstallationTransaction, withPluginInstallationLock } from "./installation-transaction"
 import { pluginRuntimeManager } from "./runtime"
-import { peekRuntimeEndpointGeneration } from "../server/runtime-endpoint"
+import { peekRuntimeEndpointGeneration } from "../util/runtime-endpoint"
 import { resolvePluginSpec } from "./spec-resolver"
 import type { PluginSource } from "./trust"
-import { resolvePluginRuntimeLimits } from "./runtime-limits"
+import { resolvePluginRuntimeLimits } from "../plugin-runtime/runtime-limits"
 
 const log = Log.create({ service: "plugin.install" })
 

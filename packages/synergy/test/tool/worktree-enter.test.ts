@@ -1,5 +1,5 @@
 import { describe, expect, test, mock, afterEach } from "bun:test"
-import { WorktreeEnterTool } from "../../src/tool/worktree-enter"
+import { WorktreeEnterTool } from "../../src/project/tools/worktree-enter"
 import { Worktree } from "../../src/project/worktree"
 import { ScopeContext } from "../../src/scope/context"
 import { PermissionNext } from "../../src/permission/next"

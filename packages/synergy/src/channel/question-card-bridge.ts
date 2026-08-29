@@ -4,7 +4,7 @@ import { ScopedState } from "@/scope/scoped-state"
 import { Session } from "@/session"
 import { MessageV2 } from "@/session/message-v2"
 import { Log } from "@/util/log"
-import { Channel } from "."
+import { getProvider } from "./provider-registry"
 import { QuestionCardRuntime } from "./question-card"
 
 const log = Log.create({ service: "channel.question-card-bridge" })
@@ -55,7 +55,7 @@ export namespace QuestionCardBridge {
 
       const channel = session.endpoint.channel
       if (!channel.accountId || !channel.chatId) return
-      const provider = Channel.getProvider(channel.type)
+      const provider = getProvider(channel.type)
       if (!provider?.sendQuestionCard) return
 
       const toolMessageID = request.tool?.messageID
