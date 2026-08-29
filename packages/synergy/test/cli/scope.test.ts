@@ -48,7 +48,9 @@ describe("resolveCliScope", () => {
 
     expect(resolved.type).toBe("project")
     expect(resolved.directory).toBe(launch.path)
-    expect((await Scope.list()).some((scope) => scope.id === resolved.id)).toBe(true)
+    // Scope.list() filters ephemeral test-artifact worktrees; verify the
+    // persisted record directly via fromID.
+    expect((await Scope.fromID(resolved.id))?.type).toBe("project")
   })
 })
 

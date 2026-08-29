@@ -38,6 +38,7 @@ import {
 } from "./nav"
 import { createDesktopBadgeSync } from "./desktop-badge"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
+import { isEphemeralTestWorktree } from "@/utils/ephemeral-test-worktree"
 import { planMessagePageApply } from "../session-message-page"
 import { internMessages, internParts } from "../string-intern"
 import { findSessionIndex } from "../session-collection"
@@ -898,7 +899,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     const list = createMemo(() => {
       // Locally-tracked scopes (user-opened, persisted in localStorage).
-      const local = enriched().flatMap(colorize)
+      const local = enriched()
+        .filter((s) => !isEphemeralTestWorktree(s.worktree))
+        .flatMap(colorize)
       const index = scopeIndex()
       const managedScopeIDs = new Set(
         channelProjection().channelAccounts.flatMap((account) => account.projects.map((p) => p.scopeID)),
@@ -930,7 +933,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         })
       }
 
-      const raw = [...local.filter((s) => !s.id || !managedScopeIDs.has(s.id)), ...supplemented.flatMap(colorize)]
+      const raw = [
+        ...local.filter((s) => !s.id || !managedScopeIDs.has(s.id)),
+        ...supplemented.flatMap(colorize).filter((s) => !isEphemeralTestWorktree(s.worktree)),
+      ]
 
       // Stable sort: pinned projects first (most-recently-pinned on top),
       // then by creation time ascending (oldest first), with directory as

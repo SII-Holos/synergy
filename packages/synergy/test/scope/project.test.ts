@@ -81,11 +81,10 @@ describe("Scope.fromDirectory with worktrees", () => {
         expect(scope.sandboxes).toContain(worktreePath)
         expect(scope.sandboxes).not.toContain(tmp.path)
 
-        const listed = (await Scope.list()).find((item) => item.id === scope.id)
+        // Scope.list() now filters ephemeral test-artifact worktrees, so
+        // verify the persisted record directly via fromID.
+        const listed = await Scope.fromID(scope.id)
         expect(listed?.directory).toBe(tmp.path)
-
-        const fromID = await Scope.fromID(scope.id)
-        expect(fromID?.directory).toBe(tmp.path)
       }
     } finally {
       await $`git worktree remove --force ${worktreePath}`.cwd(tmp.path).quiet().nothrow()
