@@ -71,6 +71,7 @@ export class PluginRuntimeManager {
   readonly logs = new PluginLogBuffer()
   #invocations = new Map<string, RuntimeInvocationRecord>()
   #startInputs = new Map<string, StartPluginRuntimeInput>()
+  #starts = new Map<string, Promise<PluginRuntimeEntry>>()
   #lastRecovery:
     | {
         action: "recycle"
@@ -121,6 +122,24 @@ export class PluginRuntimeManager {
     const key = pluginRuntimeKey(manifest.id, manifest.version, generation)
     const existing = this.registry.get(key)
     if (existing?.state === "ready") return existing
+    // Single-flight: concurrent starts for the same key join the in-flight
+    // startup instead of spawning duplicate runtimes that would overwrite
+    // each other's registry entry and orphan the replaced process.
+    const inFlight = this.#starts.get(key)
+    if (inFlight) return inFlight
+    const starting = this.#startEntry(input)
+    this.#starts.set(key, starting)
+    try {
+      return await starting
+    } finally {
+      this.#starts.delete(key)
+    }
+  }
+
+  async #startEntry(input: StartPluginRuntimeInput): Promise<PluginRuntimeEntry> {
+    const manifest = input.manifest
+    const generation = manifest.artifacts.generation
+    const key = pluginRuntimeKey(manifest.id, manifest.version, generation)
     const expectedHandlers = manifest.contributions
       .filter((item) =>
         [

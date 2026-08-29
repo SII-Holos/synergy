@@ -457,4 +457,114 @@ describe("PluginRuntimeManager", () => {
     expect(manager.registry.active(definition.id)?.version).toBe("1.0.0")
     await manager.stop(definition.id)
   }, 15_000)
+
+  test("deduplicates concurrent starts for the same generation into one process", async () => {
+    let spawnCount = 0
+    const manager = new PluginRuntimeManager(undefined, {
+      startMemoryMonitor(input) {
+        spawnCount++
+        return { stop() {} }
+      },
+    })
+    const entryPath = path.join(import.meta.dir, "fixtures", "runtime-plugin.ts")
+    const manifest = compilePluginManifest(definition, {
+      generation: "concurrent-start",
+      runtime: { entry: "runtime/index.js", sha256: "test" },
+    })
+    const input = { manifest, pluginDir: path.dirname(entryPath), entryPath }
+    const started = await Promise.all(Array.from({ length: 8 }, () => manager.start(input)))
+    try {
+      expect(spawnCount).toBe(1)
+      expect(manager.registry.list()).toHaveLength(1)
+      expect(manager.resourceStats().processCount).toBe(1)
+      for (const entry of started) expect(entry).toBe(started[0])
+      expect(started[0]?.state).toBe("ready")
+    } finally {
+      const stopped = new Set<object>()
+      for (const entry of started) {
+        if (entry.process && !stopped.has(entry.process)) {
+          stopped.add(entry.process)
+          await entry.process.stop(500).catch(() => undefined)
+        }
+      }
+      await manager.stop(manifest.id)
+    }
+  }, 15_000)
+
+  test("clears the in-flight slot after a failed startup and permits retry", async () => {
+    let spawnCount = 0
+    const manager = new PluginRuntimeManager(undefined, {
+      startMemoryMonitor(input) {
+        spawnCount++
+        return { stop() {} }
+      },
+    })
+    const badEntryPath = path.join(import.meta.dir, "fixtures", "does-not-exist.ts")
+    const manifest = compilePluginManifest(definition, {
+      generation: "retry-after-failure",
+      runtime: { entry: "runtime/index.js", sha256: "test" },
+    })
+    const results = await Promise.allSettled([
+      manager.start({ manifest, pluginDir: path.dirname(badEntryPath), entryPath: badEntryPath }),
+      manager.start({ manifest, pluginDir: path.dirname(badEntryPath), entryPath: badEntryPath }),
+    ])
+    expect(results.every((result) => result.status === "rejected")).toBe(true)
+    expect(spawnCount).toBe(1)
+    expect(manager.registry.list()).toHaveLength(1)
+    expect(manager.registry.list()[0]?.state).toBe("crashed")
+
+    const entryPath = path.join(import.meta.dir, "fixtures", "runtime-plugin.ts")
+    const retried = await manager.start({ manifest, pluginDir: path.dirname(entryPath), entryPath })
+    try {
+      expect(spawnCount).toBe(2)
+      expect(retried.state).toBe("ready")
+      expect(manager.registry.active(manifest.id)?.state).toBe("ready")
+    } finally {
+      await manager.stop(manifest.id)
+    }
+  }, 15_000)
+
+  test("keeps concurrent starts independent across generations", async () => {
+    let spawnCount = 0
+    const manager = new PluginRuntimeManager(undefined, {
+      startMemoryMonitor(input) {
+        spawnCount++
+        return { stop() {} }
+      },
+    })
+    const entryPath = path.join(import.meta.dir, "fixtures", "runtime-plugin.ts")
+    const firstManifest = compilePluginManifest(definition, {
+      generation: "concurrent-gen-a",
+      runtime: { entry: "runtime/index.js", sha256: "test" },
+    })
+    const secondManifest = compilePluginManifest(definition, {
+      generation: "concurrent-gen-b",
+      runtime: { entry: "runtime/index.js", sha256: "test" },
+    })
+    const [first, second] = await Promise.all([
+      manager.start({
+        manifest: firstManifest,
+        pluginDir: path.dirname(entryPath),
+        entryPath,
+        activate: false,
+      }),
+      manager.start({
+        manifest: secondManifest,
+        pluginDir: path.dirname(entryPath),
+        entryPath,
+        activate: false,
+      }),
+    ])
+    try {
+      expect(spawnCount).toBe(2)
+      expect(first).not.toBe(second)
+      expect(manager.registry.list()).toHaveLength(2)
+      expect(manager.resourceStats().processCount).toBe(2)
+      expect(first?.state).toBe("ready")
+      expect(second?.state).toBe("ready")
+    } finally {
+      if (first) await manager.stopGeneration(first.key)
+      if (second) await manager.stopGeneration(second.key)
+    }
+  }, 15_000)
 })
