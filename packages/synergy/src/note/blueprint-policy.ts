@@ -1,7 +1,7 @@
 export namespace NoteBlueprintPolicy {
   export type Kind = "note" | "blueprint"
   export type WriteAction = "create" | "update" | "edit"
-  export type WorkflowKind = "plan" | "lightloop" | "lattice" | "boss"
+  export type WorkflowKind = "plan" | "lightloop" | "lattice" | "boss" | (string & {})
   export type BlockReason = "non_plan_blueprint_write"
 
   export type Decision =

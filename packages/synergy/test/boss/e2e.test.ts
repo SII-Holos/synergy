@@ -5,7 +5,7 @@ import { Session } from "../../src/session"
 import { SessionInbox } from "../../src/session/inbox"
 import { SessionManager } from "../../src/session/manager"
 import { SessionWorkflowService } from "../../src/session/workflow"
-import { BossService } from "../../src/session/boss"
+import { BossService } from "../../src/boss/boss"
 import { tmpdir } from "../fixture/fixture"
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {

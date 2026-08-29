@@ -1,5 +1,5 @@
 import fs from "fs/promises"
-import { ServerProcessLock } from "../../src/daemon/server-process-lock"
+import { ServerProcessLock } from "../../src/util/server-process-lock"
 
 const id = process.env.LOCK_WORKER_ID!
 const readyPath = process.env.LOCK_READY_PATH!

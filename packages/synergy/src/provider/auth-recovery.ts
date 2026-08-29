@@ -119,8 +119,8 @@ export namespace ProviderAuthRecovery {
 
   async function reloadProvider(reason: string, enabled: boolean) {
     if (!enabled || !ScopeContext.tryScope()) return
-    const { RuntimeReload } = await import("@/runtime/reload")
-    await RuntimeReload.reload({ targets: ["provider"], reason })
+    const { RuntimeReloadExecutor } = await import("@/config/reload-executor")
+    await RuntimeReloadExecutor.reload({ targets: ["provider"], reason })
   }
 
   function runtimeCredential(providerID: string, profileID?: string, environment?: string[]) {

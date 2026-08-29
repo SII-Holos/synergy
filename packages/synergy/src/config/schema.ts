@@ -14,10 +14,10 @@ import {
 import { DEFAULT_PLUGIN_RUNTIME_LIMITS } from "@ericsanchezok/synergy-util/plugin-policy"
 import { MAX_EXECUTION_CANCEL_GRACE_MS } from "@ericsanchezok/synergy-util/runtime-shutdown"
 import { ModelsDev } from "../provider/models-schemas"
-import { LSPServer } from "../lsp/server"
+import { ConfigLspCatalog } from "./lsp-catalog"
 import { ModelRole } from "../provider/model-role"
 import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
-import { validateHolosEndpoint } from "../holos/security"
+import { validateHolosEndpoint } from "../util/holos"
 
 export const McpRetry = McpRetryConfig
 export type McpRetry = McpRetryConfig
@@ -1933,11 +1933,9 @@ export const Info = z
         (data) => {
           if (!data) return true
           if (typeof data === "boolean") return true
-          const serverIds = new Set(Object.values(LSPServer).map((s) => s.id))
-
           return Object.entries(data).every(([id, config]) => {
             if (config.disabled) return true
-            if (serverIds.has(id)) return true
+            if (ConfigLspCatalog.isKnownServer(id)) return true
             return Boolean(config.extensions)
           })
         },

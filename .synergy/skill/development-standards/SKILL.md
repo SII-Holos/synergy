@@ -44,6 +44,16 @@ A durable development convention is part of the implementation deliverable, not 
 6. Validate every changed or added Skill and its links with `bun run skill:check` from the repository root.
 7. Keep one nearest `AGENTS.md` for every root workspace package and validate coverage with `bun run package-guide:check`.
 
+## Preserve Harness-Core Layering
+
+The `packages/synergy/src/` layer boundary is machine-enforced. Before adding any import, classify both endpoints with the layer table in [Ownership Map](../../../docs/architecture/README.md#ownership-map):
+
+1. L1 harness-core directories (`session/`, `tool/`, `agent/`, `config/`, `provider/`, `enforcement/`, `permission/`, `scope/`, `bus/`, `storage/`, `file/`, `workspace-file/`, `observability/`, `instruction/`, `migration/`, `sandbox/`, `control-profile/`) must never import product domains (`plugin/`, `cortex/`, `channel/`, `browser/`, `mcp/`, `blueprint/`, `lattice/`, `boss/`, `light-loop/`, `library/`, `note/`, `agenda/`, `holos/`, `skill/`, `command/`, `project/`, `question/`, `lsp/`, `email/`, `synergy-link/`, `remote/`, `acp/`, `external-agent/`, `superplan/`, `performance/`) or assembly (`server/`, `runtime/`, `cli/`, `daemon/`, `main/`). R1 is error-level.
+2. When L1 needs product behavior, invert it through the existing L1 port registries — `SessionPluginHooks`, `SessionToolContext`, `SessionCortexRuntime`, `SessionBlueprintState`, `InstructionRegistry`, `ToolMcpSource`, `ScopeStartup`, `RuntimeReloadExecutor`, `SkillSourceProviders`, `CommandSourceProviders`, `SessionEnvContributor` — with the product-side adapter registered in `src/product-registration.ts`. Do not invent a parallel registry when one of these fits.
+3. Product domains stay acyclic (R2, error). Break a new product↔product ring with the established patterns: extract a shared leaf module, or use a domain-internal setter injection (precedent: `setTerminalHookDeliverer`).
+4. New product-domain tools, migrations, and startup steps belong in the owning domain (`<domain>/tools.ts`, `<domain>/migration.ts`, `<domain>/startup.ts`), wired through the manifest — never appended to `tool/registry.ts` builtin arrays or `scope/runtime.ts`.
+5. Verify with `bun run deps:check` (repo root) before finishing; refresh the recorded baseline with `bun run deps:snapshot` only when the change is intentional, and explain the edge movement in the decision record.
+
 Do not add a rule only to a PR comment, prompt, or one package guide if future agents need it to implement the same change correctly.
 
 ## Preserve External Provenance

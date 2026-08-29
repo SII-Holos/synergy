@@ -8,7 +8,7 @@ import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { Lock } from "@/util/lock"
 import { Log } from "@/util/log"
-import { externalIdentityHash } from "../../identity"
+import { externalIdentityHash } from "../../../util/identity"
 import { buildCredentialCommand } from "./api"
 
 const log = Log.create({ service: "channel.github.workspace" })

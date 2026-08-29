@@ -6,7 +6,7 @@ import { PermissionNext } from "@/permission/next"
 import { SessionInteraction } from "@/session/interaction"
 import { opaque } from "@/util/schema"
 import { SessionEndpoint } from "./endpoint"
-import { CortexTypes } from "@/cortex/types"
+import { SessionCortexContract as CortexTypes } from "./cortex-contract"
 import { Workspace } from "./workspace-schema"
 
 export { Workspace }
@@ -135,6 +135,17 @@ export const WorkflowInfo = z
       rootID: z.string().optional(),
       instructions: z.string().optional(),
     }),
+    z
+      .object({
+        kind: z.literal("extension"),
+        extension: z
+          .object({
+            kind: z.string().min(1),
+            payload: z.unknown().optional(),
+          })
+          .meta({ ref: "WorkflowExtension" }),
+      })
+      .meta({ ref: "SessionWorkflowExtension" }),
   ])
   .meta({ ref: "SessionWorkflowInfo" })
 export type WorkflowInfo = z.infer<typeof WorkflowInfo>

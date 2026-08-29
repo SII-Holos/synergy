@@ -1,7 +1,7 @@
 import type { Argv } from "yargs"
 import { pathToFileURL } from "url"
 import path from "path"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 import { cmd } from "./cmd"
 import { Flag } from "../../flag/flag"
 import { withScopeContext } from "../scope"

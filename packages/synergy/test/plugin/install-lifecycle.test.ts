@@ -12,7 +12,7 @@ import {
 import type { LoadedPlugin } from "../../src/plugin/loader"
 import * as Lockfile from "../../src/plugin/lockfile"
 import { ScopeContext } from "../../src/scope/context"
-import { configureRuntimeEndpoint } from "../../src/server/runtime-endpoint"
+import { configureRuntimeEndpoint } from "../../src/util/runtime-endpoint"
 import { sha256File } from "../../src/util/crypto"
 import { tmpdir } from "../fixture/fixture"
 

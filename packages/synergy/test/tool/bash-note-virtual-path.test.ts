@@ -8,6 +8,7 @@ import type {
 import { mkdir, readdir, stat } from "node:fs/promises"
 import path from "node:path"
 import { NoteMarkdown, NoteStore } from "../../src/note"
+import { registerNoteVirtualFileSource } from "../../src/note/virtual-file-source"
 import { ProcessRegistry } from "../../src/process/registry"
 import { ScopeContext } from "../../src/scope/context"
 import { BashTool } from "../../src/tool/bash"
@@ -15,6 +16,8 @@ import { BashVirtualFile } from "../../src/tool/bash/virtual-file"
 import { SynergyLinkExecution } from "../../src/tool/synergy-link-execution"
 import { Shell } from "../../src/util/shell"
 import { tmpdir } from "../fixture/fixture"
+
+registerNoteVirtualFileSource()
 
 const baseContext = {
   sessionID: "test",

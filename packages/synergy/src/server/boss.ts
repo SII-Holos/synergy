@@ -2,7 +2,7 @@ import { Hono, type Context } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
 import { Session } from "../session"
-import { BossService } from "../session/boss"
+import { BossService } from "../boss/boss"
 import { errors } from "./error"
 
 const SessionID = z.object({ id: z.string().min(1).meta({ description: "Session ID" }) }).strict()

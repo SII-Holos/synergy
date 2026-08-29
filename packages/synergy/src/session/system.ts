@@ -1,7 +1,8 @@
 import { Session } from "../session"
 import { formatLocalDate, formatLocalDateTime } from "../util/time-format"
 
-import { GitHealth } from "../project/git-health"
+import { SessionProjectHealth } from "./project-health"
+import { SessionEnvContributor } from "./env-contributor"
 
 import { ScopeContext } from "../scope/context"
 import { Scope } from "@/scope"
@@ -44,7 +45,8 @@ export namespace SystemPrompt {
     // created before `git init` keeps vcs undefined for the whole session,
     // which used to contradict the git-health block forever. Same probe as
     // git-health so the two can never disagree.
-    const isGitRepo = scope.type === "project" ? await GitHealth.isGitRepo(ScopeContext.current.directory) : false
+    const isGitRepo =
+      scope.type === "project" ? await SessionProjectHealth.isGitRepo(ScopeContext.current.directory) : false
     const envLines = [
       `  Working directory: ${ScopeContext.current.directory}`,
       `  Is directory a git repo: ${isGitRepo ? "yes" : "no"}`,
@@ -86,11 +88,8 @@ export namespace SystemPrompt {
       }
     }
 
-    if (session?.superplan) {
-      envLines.push(`  SuperPlan run: ${session.superplan.runID}`)
-      envLines.push(`  SuperPlan role: ${session.superplan.role}`)
-      if (session.superplan.nodeID) envLines.push(`  SuperPlan node: ${session.superplan.nodeID}`)
-      if (session.superplan.mergeID) envLines.push(`  SuperPlan merge: ${session.superplan.mergeID}`)
+    for (const contributor of SessionEnvContributor.list()) {
+      envLines.push(...(await contributor.envHints(session)))
     }
 
     if (scope.type === "home") {

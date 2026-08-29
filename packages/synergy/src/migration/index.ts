@@ -9,19 +9,13 @@ import { Global } from "../global"
 import { Installation } from "../global/installation"
 import { setActiveMigrationContext } from "./context"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
-// Side-effect imports: register domain migrations in MigrationRegistry
-import "../agenda/migration"
-import "../browser/migration"
+// Side-effect imports: register harness-core domain migrations in
+// MigrationRegistry. Product-domain migrations register through the L4
+// product manifest (src/product-registration.ts) loaded by real entry points.
 import "../config/migration"
-import "../library/migration"
 import "../scope/migration"
 import "../session/migration"
-import "../note/migration"
 import "../observability/migration"
-import "../blueprint/migration"
-import "../lattice/migration"
-import "../holos/migration"
-import "../plugin/migration"
 import type { Migration, RunOptions, MigrationContext, MigrationSummary } from "./types"
 
 export type { Migration, RunOptions, RunResult, MigrationContext, MigrationSummary, MigrationReporter } from "./types"

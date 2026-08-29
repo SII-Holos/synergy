@@ -6,6 +6,9 @@ import { Agent } from "../../src/agent/agent"
 import { PermissionNext } from "../../src/permission/next"
 import { RuntimeReload } from "../../src/runtime/reload"
 import { Plugin } from "../../src/plugin"
+import { registerAgentPluginSource } from "../../src/plugin/agent-source"
+
+registerAgentPluginSource()
 
 // Helper to evaluate permission for a tool with wildcard pattern
 function evalPerm(agent: Agent.Info | undefined, permission: string): PermissionNext.Action | undefined {

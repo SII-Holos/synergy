@@ -5,9 +5,10 @@ import { MessageV2 } from "./message-v2"
 import { Identifier } from "@/id/id"
 import { Scope } from "@/scope"
 import { SessionProgress } from "./progress"
-import { isActiveLoopStatus, BlueprintLoopStore } from "../blueprint/loop-store"
-import { LatticeStore } from "../lattice/store"
+import { SessionBlueprintState } from "./blueprint-state"
 import { isActiveLightLoopWorkflow } from "./light-loop-state"
+import { WorkflowPromptRegistry } from "./workflow-prompt-registry"
+import { WorkflowKindRegistry } from "./workflow-kind-registry"
 
 const log = Log.create({ service: "session.working" })
 
@@ -54,16 +55,15 @@ async function hasActiveWorkflow(input: { session: Info; scopeID: Identifier.Sco
   const workflow = input.session.workflow
   if (!workflow) return false
   if (workflow.kind === "lightloop") return isActiveLightLoopWorkflow(workflow)
-  if (workflow.kind !== "lattice") return false
-  const run = await LatticeStore.getOrUndefined(input.scopeID, input.session.id).catch(() => undefined)
-  return run?.status === "active" || run?.status === "paused"
+  const kind = WorkflowKindRegistry.effectiveKind(workflow) ?? workflow.kind
+  return (await WorkflowPromptRegistry.get(kind)?.isActive?.(input.session)) === true
 }
 
 async function hasActiveBlueprintLoop(input: { session: Info; scopeID: Identifier.ScopeID }): Promise<boolean> {
   const loopID = input.session.blueprint?.loopID
   if (!loopID) return false
-  const loop = await BlueprintLoopStore.get(input.scopeID, loopID).catch(() => undefined)
-  return !!loop && isActiveLoopStatus(loop.status)
+  const loop = await SessionBlueprintState.getLoop(input.scopeID, loopID)
+  return !!loop && SessionBlueprintState.isActiveStatus(loop.status)
 }
 
 export function toStatus(working: WorkingInfo): StatusInfo {

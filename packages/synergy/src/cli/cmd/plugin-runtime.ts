@@ -1,5 +1,5 @@
 import { cmd } from "./cmd"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 import type { Argv } from "yargs"
 import { attachOption, ensureServer, fetchPluginApi } from "./plugin-server"
 

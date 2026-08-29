@@ -1,7 +1,7 @@
 import type { ApprovalApproveBody, ApprovalReview } from "../../plugin/consent/approval-service"
 import type { PluginPermissionDiff } from "../../plugin/consent/schema"
 import type { PluginStatus } from "../../plugin/status"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 
 function formatAccessItem(item: PluginPermissionDiff["access"][number]): string {
   return `${item.title}${item.description ? ` — ${UI.Style.TEXT_DIM}${item.description}${UI.Style.TEXT_NORMAL}` : ""}`

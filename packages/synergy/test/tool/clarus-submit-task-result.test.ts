@@ -4,11 +4,14 @@ import { ChannelHost } from "../../src/channel/host"
 import type { RuntimeTaskAssignedEvent } from "../../src/channel/provider/clarus/agent-tunnel-port"
 import { ClarusAssignmentRuntime } from "../../src/channel/provider/clarus/assignment-runtime"
 import { ClarusProvider } from "../../src/channel/provider/clarus"
-import { ClarusSubmitTaskResultTool } from "../../src/tool/clarus-submit-task-result"
+import { ClarusSubmitTaskResultTool } from "../../src/channel/tools/clarus-submit-task-result"
 import { ToolRegistry } from "../../src/tool/registry"
 import type { Tool } from "../../src/tool/tool"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
+
+// Product domains register tools via the L4 manifest
+import "../../src/product-registration"
 
 test("Clarus result tool rejects ordinary Sessions before provider access", async () => {
   await using tmp = await tmpdir()

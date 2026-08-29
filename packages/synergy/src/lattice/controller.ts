@@ -15,6 +15,11 @@ import { LatticeModelCalls } from "./model-calls"
 import { LatticePrompt } from "./prompt"
 import { LatticeStore } from "./store"
 import { LatticeTypes } from "./types"
+import { LatticeRunService } from "./run-service"
+
+LatticeRunService.setReconcileDirect((scopeID, sessionID, reason) =>
+  LatticeController.reconcileDirect(scopeID, sessionID, reason),
+)
 
 export namespace LatticeController {
   const log = Log.create({ service: "lattice.controller" })
@@ -177,7 +182,6 @@ export namespace LatticeController {
     const runs = await LatticeStore.listCurrent(scopeID)
     const completionSessionIDs = new Set<string>()
     if (coldStart) {
-      const { LatticeRunService } = await import("./run-service")
       const allRuns = await LatticeStore.list(scopeID)
       for (const run of allRuns) {
         if (run.status === "active") continue

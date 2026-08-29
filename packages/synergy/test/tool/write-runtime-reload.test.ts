@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test"
 import path from "path"
 import { WriteTool } from "../../src/tool/write"
 import { ScopeContext } from "../../src/scope/context"
+import { RuntimeReload } from "../../src/runtime/reload"
+import { RuntimeReloadExecutor } from "../../src/config/reload-executor"
 import { tmpdir } from "../fixture/fixture"
+
+RuntimeReloadExecutor.setExecutor((input, options) => RuntimeReload.reload(input, options))
+RuntimeReloadExecutor.setGlobalExecutor((input, options) => RuntimeReload.reloadGlobal(input, options))
 
 const ctx = {
   sessionID: "test",

@@ -6,7 +6,7 @@ import type {
   SynergyLinkProcess,
   SynergyLinkSession,
 } from "@ericsanchezok/synergy-link-protocol"
-import { ConnectTool } from "../../src/tool/connect"
+import { ConnectTool } from "../../src/synergy-link/tools/connect"
 import { SynergyLinkExecution } from "../../src/tool/synergy-link-execution"
 
 const ctx = {

@@ -1,8 +1,11 @@
 import { describe, expect, spyOn, test } from "bun:test"
 import { Ripgrep } from "../../src/file/ripgrep"
 import { Plugin } from "../../src/plugin"
+import { registerPluginStartup } from "../../src/plugin/startup"
 import { ScopeRuntime } from "../../src/scope/runtime"
 import { tmpdir } from "../fixture/fixture"
+
+registerPluginStartup()
 
 describe("ScopeRuntime", () => {
   test("does not start a repository index until file search needs it", async () => {

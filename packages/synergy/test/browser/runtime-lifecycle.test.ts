@@ -1,6 +1,9 @@
 import { afterAll, describe, expect, test } from "bun:test"
 import { BrowserOwner } from "../../src/browser/owner"
 import { BrowserRuntime } from "../../src/browser/runtime"
+// BrowserCommandService registers the disposal executor BrowserRuntime
+// depends on; load it alongside the runtime under test.
+import "../../src/browser/command-service"
 import { BrowserStorage } from "../../src/browser/storage"
 import { CortexTypes } from "../../src/cortex/types"
 import { Identifier } from "../../src/id/id"

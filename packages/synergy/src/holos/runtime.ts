@@ -19,6 +19,9 @@ import {
   NATIVE_MAX_OBJECT_DEPTH,
   NATIVE_MAX_PAYLOAD_BYTES,
 } from "./native"
+import { Mailbox, setHolosProviderResolver } from "./mailbox"
+
+setHolosProviderResolver(() => HolosRuntime.getProvider())
 
 const log = Log.create({ service: "holos.runtime" })
 export const HOLOS_HEARTBEAT_INTERVAL_MS = 30_000
@@ -86,7 +89,7 @@ async function syncSynergyLink(
     return
   }
   const { HolosSynergyLinkClient } = await import("@/remote/client")
-  const { HolosSynergyLinkTransport } = await import("@/remote/holos-transport")
+  const { HolosSynergyLinkTransport } = await import("./synergy-link-transport")
   SynergyLinkExecution.setClient(new HolosSynergyLinkClient(new HolosSynergyLinkTransport(input.provider)))
 }
 
@@ -949,7 +952,6 @@ export class HolosProvider {
     }
 
     try {
-      const { Mailbox } = await import("./mailbox")
       await Mailbox.receive({
         fromId: caller.agent_id,
         text: parsed.data.text,

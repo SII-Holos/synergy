@@ -1,7 +1,7 @@
 import { Config } from "../config/config"
-import { LSP } from "../lsp"
-import type { LSPClient } from "../lsp/client"
-import { type DiagnosticDelta, diffDiagnostics, formatDiagnosticDelta } from "../lsp/diagnostics-delta"
+import { ToolLspSource } from "./lsp-source"
+import { prettyDiagnostic } from "./diagnostic-format"
+import { type DiagnosticDelta, diffDiagnostics, formatDiagnosticDelta } from "./diagnostics-delta"
 import { Filesystem } from "../util/filesystem"
 
 const MAX_DIAGNOSTICS_PER_FILE = 20
@@ -15,13 +15,15 @@ const DEFAULT_DIAGNOSTICS_POLICY: ResolvedDiagnosticsPolicy = {
   scope: "project",
 }
 
-export type WriteDiagnosticsSnapshot = Awaited<ReturnType<typeof LSP.diagnostics>>
+export type WriteDiagnosticsSnapshot = ToolLspSource.DiagnosticsSnapshot
 
 export async function captureWriteDiagnosticsBefore(): Promise<WriteDiagnosticsSnapshot | undefined> {
   const config = await Config.current()
   const policy = resolveDiagnosticsPolicy(config.lspDiagnostics)
   if (config.lspWriteDiagnostics === false || policy.scope !== "delta") return undefined
-  return LSP.diagnostics().catch(() => undefined)
+  return ToolLspSource.get()
+    ?.diagnostics()
+    .catch(() => undefined)
 }
 
 export async function collectWriteDiagnostics(
@@ -38,8 +40,11 @@ export async function collectWriteDiagnostics(
   const policy = resolveDiagnosticsPolicy(config.lspDiagnostics)
   const include = severityPredicate(policy.severity)
 
-  await LSP.touchFile(filePath, true)
-  const diagnostics = await LSP.diagnostics()
+  const source = ToolLspSource.get()
+  if (!source) return { diagnostics: {}, output: "" }
+
+  await source.touchFile(filePath, true)
+  const diagnostics = await source.diagnostics()
 
   if (policy.scope === "delta" && options?.before) {
     const delta = diffDiagnostics(options.before, diagnostics, filePath, include)
@@ -56,7 +61,7 @@ function resolveDiagnosticsPolicy(policy: DiagnosticsPolicy | undefined): Resolv
 
 function severityPredicate(
   severity: ResolvedDiagnosticsPolicy["severity"],
-): (diagnostic: LSPClient.Diagnostic) => boolean {
+): (diagnostic: ToolLspSource.Diagnostic) => boolean {
   if (severity === "warning") return (diagnostic) => diagnostic.severity === 1 || diagnostic.severity === 2
   return (diagnostic) => diagnostic.severity === 1
 }
@@ -83,13 +88,13 @@ function formatDiagnostics(
 
     if (file === normalizedFilePath) {
       const label = severity === "warning" ? "errors or warnings" : "errors"
-      output += `\nThis file has ${label}, please fix\n<file_diagnostics>\n${limited.map(LSP.Diagnostic.pretty).join("\n")}${suffix}\n</file_diagnostics>\n`
+      output += `\nThis file has ${label}, please fix\n<file_diagnostics>\n${limited.map(prettyDiagnostic).join("\n")}${suffix}\n</file_diagnostics>\n`
       continue
     }
 
     if (projectDiagnosticsCount >= MAX_PROJECT_DIAGNOSTICS_FILES) continue
     projectDiagnosticsCount++
-    output += `\n<project_diagnostics>\n${file}\n${limited.map(LSP.Diagnostic.pretty).join("\n")}${suffix}\n</project_diagnostics>\n`
+    output += `\n<project_diagnostics>\n${file}\n${limited.map(prettyDiagnostic).join("\n")}${suffix}\n</project_diagnostics>\n`
   }
 
   return output
