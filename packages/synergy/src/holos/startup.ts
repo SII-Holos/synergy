@@ -1,5 +1,5 @@
 import * as prompts from "@clack/prompts"
-import { UI } from "@/cli/ui"
+import { UI } from "@/util/ui"
 import { performHolosLogin } from "./login"
 import { HolosAuth } from "./auth"
 import { HolosProfile } from "./profile"

@@ -4,6 +4,8 @@ import path from "node:path"
 import { Config } from "../../src/config/config"
 import { Global } from "../../src/global"
 import { HolosAccounts } from "../../src/holos/accounts"
+// Side-effect import: registers the holos migration domain under test
+import "../../src/holos/migration"
 import { ensureMigrations, getMigrationStatus, resetMigrations } from "../../src/migration"
 import { MigrationRegistry } from "../../src/migration/registry"
 

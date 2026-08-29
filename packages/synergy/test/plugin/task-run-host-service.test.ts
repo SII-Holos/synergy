@@ -19,6 +19,8 @@ import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionInvoke } from "../../src/session/invoke"
 import { tmpdir } from "../fixture/fixture"
+// Registers the SessionCortexRuntime provider task.run waits through.
+import "../../src/product-registration"
 import { Config } from "../../src/config/config"
 
 type TaskRunContext = PluginInvocationContext & {

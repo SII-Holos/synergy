@@ -6,7 +6,7 @@ import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessag
 import { ProviderModelUnavailableError } from "@/provider/model-unavailable-error"
 import { ProviderModelVariantUnavailableError } from "@/provider/model-variant-unavailable-error"
 import { Identifier } from "../id/id"
-import { LSPSchema } from "../lsp/schema"
+import { SymbolRange } from "./symbol-range"
 import { SnapshotSchema } from "@/session/snapshot-schema"
 import { fn } from "@/util/fn"
 import { Storage } from "@/storage/storage"
@@ -193,7 +193,7 @@ export namespace MessageV2 {
   export const SymbolSource = AttachmentSourceBase.extend({
     type: z.literal("symbol"),
     path: z.string(),
-    range: LSPSchema.Range,
+    range: SymbolRange,
     name: z.string(),
     kind: z.number().int(),
   }).meta({

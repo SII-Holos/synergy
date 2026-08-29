@@ -28,6 +28,16 @@ import { SessionEvent } from "../../src/session/event"
 import { Command } from "../../src/command/command"
 import { SessionDrive } from "../../src/session/drive"
 
+import { registerSkillDomain } from "../../src/skill/register"
+import { registerCommandDomain } from "../../src/command/register"
+import { registerCommandSessionRuntime } from "../../src/command/session-runtime"
+import { registerLibrarySessionRecall } from "../../src/library/session-recall"
+
+registerSkillDomain()
+registerCommandDomain()
+registerCommandSessionRuntime()
+registerLibrarySessionRecall()
+
 const sessionID = "ses_test"
 
 function userMessage(id: string, noReply?: boolean): MessageV2.WithParts {

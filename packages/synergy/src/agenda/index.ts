@@ -17,7 +17,6 @@ export { AgendaReactor } from "./reactor"
 export { AgendaDelivery } from "./delivery"
 export { AgendaWatcher } from "./watcher"
 export { AgendaWebhook } from "./webhook"
-export { AgendaBootstrap } from "./bootstrap"
 export { AgendaSessionTrigger } from "./session-trigger"
 export { AgendaGithubTrigger } from "./github-trigger"
 

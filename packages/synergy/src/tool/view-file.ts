@@ -1,7 +1,7 @@
 import z from "zod"
 import DESCRIPTION from "./view-file.txt"
 import { Tool } from "./tool"
-import { LSP } from "../lsp"
+import { ToolLspSource } from "./lsp-source"
 import { SessionBounds } from "../session/bounds"
 import { conflictWarning, detectConflicts } from "../conflict/detect"
 import {
@@ -110,7 +110,7 @@ export const ViewFileTool = Tool.define("view_file", {
     const fullContentForConflict = snapshotAvailable ? content : await readTextFile(filePath).catch(() => content)
     const tag = snapshotAvailable ? formatRecordedBlock(ctx.sessionID, filePath, content).tag : undefined
     markFileRead(ctx.sessionID, filePath)
-    LSP.touchFile(filePath, false)
+    void ToolLspSource.get()?.touchFile(filePath, false)
 
     const lines = splitDisplayLines(content)
     const display = displayPath(filePath)

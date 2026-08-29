@@ -8,7 +8,7 @@ import definition from "./fixtures/runtime-plugin"
 import upgradeDefinition from "./fixtures/upgrade-plugin-v2"
 import { PluginRuntimeError, PluginRuntimeManager } from "../../src/plugin-runtime/manager"
 import { DEFAULT_LIMITS } from "../../src/plugin-runtime/health"
-import { pluginAgentCallRuntime } from "../../src/plugin/agent-call-runtime"
+import { pluginAgentCallRuntime } from "../../src/plugin-runtime/agent-call-runtime"
 import { PLUGIN_RUNTIME_PROTOCOL_VERSION } from "../../src/plugin-runtime/protocol"
 
 describe("PluginRuntimeManager", () => {

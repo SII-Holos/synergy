@@ -4,11 +4,14 @@ import path from "path"
 import { TextReader, Uint8ArrayReader, Uint8ArrayWriter, ZipReader, ZipWriter } from "@zip.js/zip.js"
 import { Global } from "../../src/global"
 import { Plugin } from "../../src/plugin"
+import { registerPluginSkillSource } from "../../src/plugin/skill-source"
 import { ScopeContext } from "../../src/scope/context"
 import { Server } from "../../src/server/server"
 import { Skill } from "../../src/skill"
 import { SkillArchive } from "../../src/skill/archive"
 import { tmpdir } from "../fixture/fixture"
+
+registerPluginSkillSource()
 
 const manifest = (name: string, extra = "") => `---
 name: ${name}

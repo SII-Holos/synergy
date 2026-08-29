@@ -6,11 +6,11 @@ import { Session } from "../session"
 import { SessionEndpoint } from "../session/endpoint"
 import { Provider } from "../provider/provider"
 import type { Scope } from "@/scope"
-import { externalIdentityHash } from "./identity"
-import { LatticeError } from "../lattice/error"
+import { externalIdentityHash } from "../util/identity"
 import { BusyError } from "../session/error"
 import { ChannelInteraction } from "./interaction"
 import { SessionWorkflowService, WorkflowConflictError } from "../session/workflow"
+import { WorkflowPromptRegistry } from "../session/workflow-prompt-registry"
 
 export namespace ChannelCommand {
   const log = Log.create({ service: "channel.command" })
@@ -90,10 +90,13 @@ export namespace ChannelCommand {
         reply: `⚠️ ${error.message} Use /chat first to exit the current workflow.`,
       }
     }
-    if (error instanceof LatticeError.StateConflict) {
-      return {
-        action: "handled",
-        reply: `⚠️ ${error.data.reason} Use /chat first to exit the current workflow.`,
+    for (const kind of WorkflowPromptRegistry.kinds()) {
+      const conflict = WorkflowPromptRegistry.get(kind)?.workflowConflict?.(error)
+      if (conflict) {
+        return {
+          action: "handled",
+          reply: `⚠️ ${conflict.reason} Use /chat first to exit the current workflow.`,
+        }
       }
     }
     throw error

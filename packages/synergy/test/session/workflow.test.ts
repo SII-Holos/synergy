@@ -9,6 +9,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { SessionWorkflowService } from "../../src/session/workflow"
+import "../../src/product-registration"
 import { tmpdir } from "../fixture/fixture"
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {

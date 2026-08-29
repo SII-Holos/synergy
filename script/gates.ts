@@ -36,6 +36,7 @@ const LOCAL_GATES: Gate[] = [
   { id: "brand:gen:check", run: "bun run brand:gen:check", needs: [] },
   { id: "doc:check", run: "bun run doc:check", needs: [] },
   { id: "decision:check", run: "bun run decision:check", needs: [] },
+  { id: "deps:check", run: "bun run deps:check", needs: [] },
   { id: "deadcode", run: "bun run deadcode", needs: [] },
   {
     id: "browser-crypto:check",

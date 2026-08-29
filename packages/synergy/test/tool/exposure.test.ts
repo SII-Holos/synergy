@@ -22,6 +22,9 @@ import { Log } from "../../src/util/log"
 import { tool as pluginTool } from "../../../plugin/src/tool"
 import { tmpdir } from "../fixture/fixture"
 
+// Product domains register tools via the L4 manifest
+import "../../src/product-registration"
+
 Log.init({ print: false })
 
 const model = {

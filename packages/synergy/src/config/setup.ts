@@ -6,7 +6,7 @@ import { ProviderTransform } from "../provider/transform"
 import { Config } from "./config"
 import { ConfigImport } from "./import"
 import { ConfigDomain } from "./domain"
-import { RuntimeReload } from "../runtime/reload"
+import { RuntimeReloadExecutor } from "./reload-executor"
 import { Global } from "../global"
 import { BunProc } from "../util/bun"
 import { Env } from "../util/env"
@@ -512,7 +512,7 @@ export namespace ConfigSetup {
 
   async function reloadProviderConfigState() {
     try {
-      await RuntimeReload.reload({
+      await RuntimeReloadExecutor.reload({
         targets: ["config"],
         scope: "global",
         reason: "cli-setup-commit",

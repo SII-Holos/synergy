@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { NoteStore } from "../../src/note"
-import { NoteReadTool } from "../../src/tool/note-read"
+import { NoteReadTool } from "../../src/note/tools/note-read"
 import { tmpdir } from "../fixture/fixture"
 
 const ctx = {

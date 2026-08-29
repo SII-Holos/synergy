@@ -10,6 +10,7 @@ import { registerBuiltinProviderProfiles } from "./builtin"
 import { CodexProvider } from "./codex"
 import { ModelsDev } from "./models-schemas"
 import { ProviderProfile } from "./profile"
+import { ProviderPluginAuth } from "./plugin-auth-source"
 import { normalizeImageMediaTypes } from "./image-capability"
 import { Env } from "@/util/env"
 
@@ -958,8 +959,8 @@ export namespace ProviderCatalog {
   ) {
     try {
       await refresh(providerID, profileID, baseURL, configured)
-      const { RuntimeReload } = await import("@/runtime/reload")
-      await RuntimeReload.reload({ targets: ["provider"], reason: "provider model catalog refreshed" })
+      const { RuntimeReloadExecutor } = await import("@/config/reload-executor")
+      await RuntimeReloadExecutor.reload({ targets: ["provider"], reason: "provider model catalog refreshed" })
     } catch (error) {
       log.warn("failed to apply provider model catalog refresh", { providerID, error })
     }
@@ -1152,13 +1153,11 @@ export namespace ProviderCatalog {
   }
 
   async function registerPluginProfiles() {
-    const { Plugin } = await import("../plugin")
-    const entries = await Plugin.authProviderEntries().catch(() => [])
+    const entries = (await ProviderPluginAuth.get()?.authProviderProfiles()) ?? []
     ProviderProfile.clearPluginProfiles()
-    for (const { contribution } of entries) {
-      const profile = contribution.provider
+    for (const profile of entries) {
       ProviderProfile.register({
-        id: contribution.id,
+        id: profile.id,
         name: profile.name,
         origin: "plugin",
         aliases: profile.aliases,
@@ -1168,7 +1167,7 @@ export namespace ProviderCatalog {
         env: profile.env,
         baseURL: profile.baseURL,
         modelsURL: profile.modelsURL,
-        authKind: profile.authKind,
+        authKind: profile.authKind as ProviderProfile.Profile["authKind"],
         fallbackModels: profile.fallbackModels,
       })
     }
@@ -1210,8 +1209,8 @@ export namespace ProviderCatalog {
     .then((modelsDevRuntime) =>
       modelsDevRuntime.onRefresh(async () => {
         invalidateModelsDevProjection()
-        const { RuntimeReload } = await import("@/runtime/reload")
-        await RuntimeReload.reloadGlobal({ targets: ["provider"], reason: "models.dev catalog refreshed" })
+        const { RuntimeReloadExecutor } = await import("@/config/reload-executor")
+        await RuntimeReloadExecutor.reloadGlobal({ targets: ["provider"], reason: "models.dev catalog refreshed" })
       }),
     )
     .catch((error) => {

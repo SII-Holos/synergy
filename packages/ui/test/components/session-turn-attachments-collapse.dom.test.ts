@@ -228,9 +228,9 @@ afterAll(async () => {
 })
 
 describe("SessionTurn delivered attachment collapse", () => {
-  test("renders hidden-card tool attachments in a default-expanded collapsible card", async () => {
+  test("renders hidden-card attach deliveries in a default-expanded collapsible card", async () => {
     const cards = document.querySelectorAll('[data-component="collapsible"][data-variant="tool"]')
-    expect(cards.length).toBe(2)
+    expect(cards.length).toBe(1)
 
     const attachCard = cards[0] as HTMLElement
     expect(attachCard.hasAttribute("data-expanded")).toBe(true)
@@ -246,9 +246,21 @@ describe("SessionTurn delivered attachment collapse", () => {
 
     expect(attachCard.hasAttribute("data-expanded")).toBe(false)
     expect(attachCard.querySelector('[data-component="attachment-gallery"]')).toBeNull()
+  })
 
-    const mediaCard = cards[1] as HTMLElement
-    expect(mediaCard.hasAttribute("data-expanded")).toBe(true)
-    expect(mediaCard.querySelector('[data-component="attachment-gallery"]')).toBeTruthy()
+  test("renders completed media-generation deliveries as a bare inline gallery", () => {
+    const items = document.querySelectorAll('[data-slot="session-turn-timeline-item"][data-kind="tool-attachments"]')
+    expect(items.length).toBe(2)
+
+    const attachItem = items[0] as HTMLElement
+    expect(attachItem.querySelector('[data-component="collapsible"]')).toBeTruthy()
+
+    const mediaItem = items[1] as HTMLElement
+    expect(mediaItem.querySelector('[data-component="collapsible"]')).toBeNull()
+    expect(mediaItem.querySelector('[data-slot="collapsible-trigger"]')).toBeNull()
+
+    const gallery = mediaItem.querySelector('[data-component="attachment-gallery"]')
+    expect(gallery).toBeTruthy()
+    expect(mediaItem.querySelector('[data-component="attachment-card"]')).toBeTruthy()
   })
 })

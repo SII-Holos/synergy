@@ -6,7 +6,7 @@ import {
   PluginAgentCallRuntimeError,
   type PluginAgentCallTerminal,
   warnPluginAgentCallDelivery,
-} from "@/plugin/agent-call-runtime"
+} from "@/plugin-runtime/agent-call-runtime"
 import { ObservabilityStore } from "@/observability/store"
 
 // The observability mirror writes log.record events asynchronously, and the
