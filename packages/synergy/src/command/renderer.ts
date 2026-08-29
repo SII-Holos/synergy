@@ -1,6 +1,3 @@
-import { $ } from "bun"
-import { ConfigMarkdown } from "../config/markdown"
-
 export namespace CommandRenderer {
   const argumentPattern = /(?:\[Image\s+\d+\]|"[^"]*"|'[^']*'|[^\s"']+)/gi
   const placeholderPattern = /\$(\d+)/g
@@ -23,21 +20,6 @@ export namespace CommandRenderer {
       if (position === highestPosition) return args.slice(argumentIndex).join(" ")
       return args[argumentIndex]
     })
-    let rendered = withPositions.replaceAll("$ARGUMENTS", input.arguments)
-    const shellExpressions = ConfigMarkdown.shell(rendered)
-    if (shellExpressions.length > 0) {
-      const results = await Promise.all(
-        shellExpressions.map(async ([, command]) => {
-          try {
-            return await $`${{ raw: command }}`.quiet().nothrow().text()
-          } catch (error) {
-            return `Error executing command: ${error instanceof Error ? error.message : String(error)}`
-          }
-        }),
-      )
-      let index = 0
-      rendered = rendered.replace(ConfigMarkdown.SHELL_REGEX, () => results[index++])
-    }
-    return rendered.trim()
+    return withPositions.replaceAll("$ARGUMENTS", input.arguments).trim()
   }
 }

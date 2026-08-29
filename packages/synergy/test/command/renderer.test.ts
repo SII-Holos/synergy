@@ -88,4 +88,13 @@ describe("CommandRenderer", () => {
       }),
     ).resolves.toBe('one value | two three | "one value" two three')
   })
+
+  test("keeps !`command` shell syntax literal instead of executing it", async () => {
+    await expect(
+      CommandRenderer.render({
+        template: "Report: !`echo UNEXPECTED`",
+        arguments: "",
+      }),
+    ).resolves.toBe("Report: !`echo UNEXPECTED`")
+  })
 })
