@@ -8,8 +8,8 @@ import { cancelLightLoop, getLightLoop, startLightLoop } from "../../src/plugin/
 import { createPluginInvocationContext } from "../../src/plugin-runtime/context-factory"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
-import { LightLoopRuntime } from "../../src/session/light-loop-runtime"
-import { LightLoopTerminalStore } from "../../src/session/light-loop-terminal-hook"
+import { LightLoopRuntime } from "../../src/light-loop/runtime"
+import { LightLoopTerminalStore } from "../../src/light-loop/terminal-hook"
 import { tmpdir } from "../fixture/fixture"
 
 const originalAgentGet = Agent.get

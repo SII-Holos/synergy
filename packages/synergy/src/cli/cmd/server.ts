@@ -1,10 +1,10 @@
 import { cmd } from "./cmd"
 import { withNetworkOptions, resolveNetworkOptions } from "../network"
 import { run as runServerRuntime } from "../../server/runtime"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 import { FormatError, FormatUnknownError } from "../error"
 import { Log } from "../../util/log"
-import { ServerProcessLock } from "../../daemon/server-process-lock"
+import { ServerProcessLock } from "../../util/server-process-lock"
 import { Server } from "../../server/server"
 import type { RuntimeOptions } from "../../server/runtime"
 

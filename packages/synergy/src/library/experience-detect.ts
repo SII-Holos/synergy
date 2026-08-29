@@ -8,7 +8,7 @@
  */
 
 import { Database } from "bun:sqlite"
-import { INTENT_MAX_CHARS, INTENT_MIN_CHARS } from "./encoder-constants"
+import { INTENT_MAX_CHARS, INTENT_MIN_CHARS } from "../util/encoder-constants"
 import { Intent } from "./intent"
 import { Script } from "./script"
 

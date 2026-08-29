@@ -1,8 +1,8 @@
 import z from "zod"
 import { Tool } from "./tool"
 import DESCRIPTION from "./runtime-reload.txt"
-import { RuntimeReload } from "../runtime/reload"
-import { RuntimeSchema } from "../runtime/schema"
+import { RuntimeReloadExecutor } from "../config/reload-executor"
+import { RuntimeSchema } from "../config/reload-schema"
 
 const parameters = z.object({
   target: z
@@ -18,7 +18,7 @@ export const RuntimeReloadTool = Tool.define<typeof parameters, RuntimeSchema.Re
   parameters,
   async execute(params) {
     const targets = Array.isArray(params.target) ? params.target : [params.target]
-    const result = await RuntimeReload.reload({
+    const result = await RuntimeReloadExecutor.reload({
       targets,
       scope: params.scope,
       force: params.force,

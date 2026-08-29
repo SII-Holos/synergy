@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
-// Side-effect import: registers all domain migrations in MigrationRegistry
+// Side-effect imports: the L1 runner registers its own domains; product domains
+// register through the L4 product manifest that real entry points load.
 import "../../src/migration"
+import "../../src/product-registration"
 import { MigrationRegistry } from "../../src/migration/registry"
 
 describe("MigrationRegistry", () => {

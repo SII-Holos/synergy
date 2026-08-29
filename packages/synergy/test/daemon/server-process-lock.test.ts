@@ -2,8 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import os from "os"
 import path from "path"
-import { ServerProcessLock } from "../../src/daemon/server-process-lock"
-import { DaemonPaths } from "../../src/daemon/paths"
+import { ServerProcessLock } from "../../src/util/server-process-lock"
+import { DaemonPaths } from "../../src/util/daemon-paths"
 
 type WorkerResult = { id: string; acquired?: boolean; ownerToken?: string; error?: string }
 

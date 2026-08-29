@@ -16,7 +16,7 @@ import { PluginCreateCommand } from "./plugin-create"
 import { pluginCliRequestTimeoutMs } from "./plugin-server"
 import { pluginStatusText, printPluginPermissionDiff } from "./plugin-consent"
 import { cmd } from "./cmd"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 import { Plugin } from "@/plugin"
 import { PluginSpec } from "../../util/plugin-spec"
 

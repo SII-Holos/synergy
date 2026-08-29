@@ -5,7 +5,7 @@ import { Storage } from "../storage/storage"
 import { Session } from "../session"
 import { BusyError } from "../session/error"
 import { SessionWorkflowService, WorkflowConflictError } from "../session/workflow"
-import { LightLoopTerminalStore } from "../session/light-loop-terminal-hook"
+import { LightLoopTerminalStore } from "../light-loop/terminal-hook"
 import { LatticeError } from "../lattice/error"
 import { errors } from "./error"
 

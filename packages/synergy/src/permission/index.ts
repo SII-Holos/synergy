@@ -3,7 +3,7 @@ import { Bus } from "@/bus"
 import z from "zod"
 import { Log } from "../util/log"
 import { Identifier } from "../id/id"
-import { Plugin } from "../plugin"
+import { PermissionPluginSource } from "./plugin-source"
 import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
 import { TimeoutConfig } from "@/util/timeout-config"
@@ -125,11 +125,11 @@ export namespace Permission {
       },
     }
 
-    switch (
-      await Plugin.trigger("permission.ask", info, {
-        status: "ask",
-      }).then((x) => x.status)
-    ) {
+    const pluginSource = PermissionPluginSource.get()
+    const hookStatus = pluginSource
+      ? await pluginSource.triggerAsk(info, { status: "ask" }).then((x) => x.status)
+      : ("ask" as const)
+    switch (hookStatus) {
       case "deny":
         throw new RejectedError(info.sessionID, info.id, info.callID, info.metadata)
       case "allow":

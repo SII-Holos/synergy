@@ -1,6 +1,6 @@
 import * as prompts from "@clack/prompts"
 import open from "open"
-import { UI } from "@/cli/ui"
+import { UI } from "@/util/ui"
 import { HolosLoginFlow } from "./login-flow"
 import { HolosProfile } from "./profile"
 

@@ -2,7 +2,7 @@ import { SYNERGY_CAPABILITY_DETAILS } from "@ericsanchezok/synergy-util/capabili
 import type { Argv } from "yargs"
 import type { PluginStatus } from "../../plugin/status"
 import { cmd } from "./cmd"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 import { attachOption, ensureServer, fetchPluginApi } from "./plugin-server"
 
 function describeCapability(capability: string) {

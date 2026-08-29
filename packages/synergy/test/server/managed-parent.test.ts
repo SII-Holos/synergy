@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { watchManagedParent } from "../../src/server/managed-parent"
+import { watchManagedParent } from "../../src/util/managed-parent"
 
 describe("managed server parent lifecycle", () => {
   test("requests shutdown immediately when the desktop parent is already gone", () => {

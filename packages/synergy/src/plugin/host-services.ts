@@ -27,10 +27,10 @@ import { PluginToolId } from "./ids"
 import { baseCapabilities, toolCapabilities } from "./capability"
 import { DEFAULT_LIMITS } from "../plugin-runtime/health"
 import { pluginTaskSnapshotFromSession, pluginTaskSnapshotFromTask } from "../cortex/plugin-task"
-import { startBlueprint, getBlueprint, cancelBlueprint } from "../blueprint/plugin-adapter"
+import { lightLoopPluginAdapter } from "../light-loop/plugin-adapter"
 import { SessionWorkflowService } from "../session/workflow"
-import { LightLoopRuntime } from "../session/light-loop-runtime"
-import { LightLoopTerminalStore } from "../session/light-loop-terminal-hook"
+import type { Info as SessionInfo } from "../session/types"
+import type { LightLoopTerminalStatus } from "../session/light-loop-state"
 
 type RuntimeContext = {
   pluginId?: string
@@ -247,6 +247,95 @@ function normalizePluginToolId(toolId: string | undefined): string | undefined {
   return PluginToolId.parse(toolId)?.toolId ?? toolId
 }
 /**
+ * Protocol 5 Blueprint adapter slot. The blueprint domain contributes its
+ * start/get/cancel implementation through src/product-registration.ts so the
+ * plugin host surface holds no static product-domain import (the plugin↔
+ * blueprint cycle keeps only the allowed blueprint→plugin direction).
+ */
+export interface PluginBlueprintAdapter {
+  start(input: {
+    context: {
+      pluginId: string
+      pluginGeneration: string
+      scopeId: string
+      pluginDir?: string
+      parentSessionID: string
+      parentMessageID: string
+    }
+    request: BlueprintStartInput
+  }): Promise<BlueprintLoopInfo>
+  get(input: {
+    scopeId: string
+    loopID: string
+    pluginId: string
+    pluginGeneration: string
+  }): Promise<BlueprintLoopInfo>
+  cancel(input: {
+    pluginId: string
+    pluginGeneration: string
+    scopeId: string
+    loopID: string
+  }): Promise<BlueprintLoopInfo>
+}
+
+let blueprintAdapter: PluginBlueprintAdapter | undefined
+
+export function registerPluginBlueprintAdapter(adapter: PluginBlueprintAdapter): void {
+  blueprintAdapter = adapter
+}
+
+function blueprintAdapterOrThrow(): PluginBlueprintAdapter {
+  if (!blueprintAdapter) {
+    throw new Error(
+      "Blueprint host service invoked before the blueprint domain registered its adapter (load src/product-registration)",
+    )
+  }
+  return blueprintAdapter
+}
+
+/**
+ * LightLoop adapter slot (mirrors the blueprint slot above). The slot keeps
+ * this file free of light-loop runtime imports: only the leaf adapter object
+ * from light-loop/plugin-adapter is imported (registered at the bottom of
+ * this module), because the R3 snapshot baselines plugin→light-loop — a
+ * light-loop-side registration import would be a new product pair. The
+ * plugin↔light-loop cycle stays broken because light-loop itself has no
+ * product out-edges (its agenda edge moved to an L4-injected guard).
+ */
+export type PluginLightLoopTerminal = {
+  status: LightLoopTerminalStatus
+  instructions: string
+  error?: string
+  pluginOwner?: {
+    pluginId: string
+    pluginGeneration: string
+    scopeId: string
+    correlationId?: string
+  }
+}
+
+export interface PluginLightLoopAdapter {
+  scheduleDeadline(sessionID: string, deadlineAt: number): void
+  setTerminalStatus(sessionID: string, status: LightLoopTerminalStatus, error?: string): Promise<void>
+  getTerminal(session: Pick<SessionInfo, "id" | "scope">): Promise<PluginLightLoopTerminal | undefined>
+}
+
+let lightLoopAdapter: PluginLightLoopAdapter | undefined
+
+export function registerPluginLightLoopAdapter(adapter: PluginLightLoopAdapter): void {
+  lightLoopAdapter = adapter
+}
+
+function lightLoopAdapterOrThrow(): PluginLightLoopAdapter {
+  if (!lightLoopAdapter) {
+    throw new Error(
+      "LightLoop host service invoked before the light-loop domain registered its adapter (load src/product-registration)",
+    )
+  }
+  return lightLoopAdapter
+}
+
+/**
  * Protocol 5 Blueprint atomic start — full validation, note/session/loop creation, rollback on failure.
  */
 export async function startPluginBlueprint(input: {
@@ -263,7 +352,7 @@ export async function startPluginBlueprint(input: {
     patterns: [input.request.executionAgent, input.request.auditAgent],
     metadata: { capability: "blueprint.delegate", source: "plugin" },
   })
-  return startBlueprint({
+  return blueprintAdapterOrThrow().start({
     context: {
       pluginId: input.pluginId,
       pluginGeneration: input.pluginGeneration,
@@ -282,7 +371,7 @@ export async function getPluginBlueprint(input: {
   pluginId: string
   pluginGeneration: string
 }): Promise<BlueprintLoopInfo> {
-  return getBlueprint(input)
+  return blueprintAdapterOrThrow().get(input)
 }
 
 export async function cancelPluginBlueprint(input: {
@@ -298,7 +387,12 @@ export async function cancelPluginBlueprint(input: {
     patterns: [input.loopID],
     metadata: { capability: "blueprint.delegate", source: "plugin", loopID: input.loopID },
   })
-  return cancelBlueprint(input)
+  return blueprintAdapterOrThrow().cancel({
+    pluginId: input.pluginId,
+    pluginGeneration: input.pluginGeneration,
+    scopeId: input.scopeId,
+    loopID: input.loopID,
+  })
 }
 
 async function assertLightLoopDelegation(
@@ -435,7 +529,7 @@ export async function startLightLoop(input: {
     })
 
     await Cortex.start(task.id)
-    LightLoopRuntime.scheduleDeadline(task.sessionID, deadlineAt)
+    lightLoopAdapterOrThrow().scheduleDeadline(task.sessionID, deadlineAt)
 
     return {
       sessionID: task.sessionID,
@@ -461,7 +555,7 @@ export async function getLightLoop(input: {
   const session = await Session.get(input.sessionID)
   if (!session) throw new Error(`LightLoop session not found: ${input.sessionID}`)
 
-  const terminal = await LightLoopTerminalStore.get(session)
+  const terminal = await lightLoopAdapterOrThrow().getTerminal(session)
   const workflow = session.workflow?.kind === "lightloop" ? session.workflow : undefined
   const owner = workflow?.pluginOwner ?? terminal?.pluginOwner
   if (!owner) throw new Error(`Session ${input.sessionID} is not a plugin-owned LightLoop`)
@@ -499,7 +593,7 @@ export async function cancelLightLoop(input: {
 }): Promise<LightLoopInfo> {
   const session = await Session.get(input.sessionID)
   if (!session) throw new Error(`LightLoop session not found: ${input.sessionID}`)
-  const terminal = await LightLoopTerminalStore.get(session)
+  const terminal = await lightLoopAdapterOrThrow().getTerminal(session)
   if (terminal) {
     if (
       terminal.pluginOwner === undefined ||
@@ -543,8 +637,8 @@ export async function cancelLightLoop(input: {
     }
   }
 
-  await LightLoopRuntime.setTerminalStatus(input.sessionID, "cancelled")
-  const result = await LightLoopTerminalStore.get(session)
+  await lightLoopAdapterOrThrow().setTerminalStatus(input.sessionID, "cancelled")
+  const result = await lightLoopAdapterOrThrow().getTerminal(session)
   if (!result) throw new Error(`LightLoop ${input.sessionID} did not persist its terminal result`)
   return {
     sessionID: input.sessionID,
@@ -677,3 +771,5 @@ function normalizeTaskStartInput(input: PluginTaskStartInput): PluginTaskStartIn
     visibility: input.visibility ?? "visible",
   }
 }
+
+registerPluginLightLoopAdapter(lightLoopPluginAdapter)

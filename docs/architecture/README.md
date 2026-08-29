@@ -51,6 +51,21 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 
 ## Ownership Map
 
+### Harness-core layering
+
+The runtime enforces a hard layer boundary with `dependency-cruiser` (`bun run deps:check`, snapshot `bun run deps:analyze` from the repository root):
+
+| Layer           | Directories                                                                                                                                                                                                                                                                                            | Rule                                                                                                                                                                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| L0 shared base  | `util/`, `id/`, `flag/`, `global/`, `asset/`, `hashline/`, `vector/`, `process/`, `stats/`                                                                                                                                                                                                             | never imports product or assembly layers                                                                                                                                                                                                               |
+| L1 harness-core | `agent/`, `session/`, `tool/`, `enforcement/`, `permission/`, `sandbox/`, `control-profile/`, `bus/`, `scope/`, `storage/`, `migration/`, `file/`, `workspace-file/`, `provider/`, `config/`, `observability/`, `instruction/`                                                                         | zero product-layer and zero assembly-layer imports (R1, error); product domains attach through the L1 port registries (`SessionPluginHooks`, `SessionToolContext`, `ToolMcpSource`, `InstructionRegistry`, `ScopeStartup`, `RuntimeReloadExecutor`, …) |
+| Product layer   | `boss/`, `light-loop/`, `blueprint/`, `lattice/`, `channel/`, `cortex/`, `agenda/`, `browser/`, `plugin/`, `library/`, `note/`, `mcp/`, `holos/`, `email/`, `synergy-link/`, `remote/`, `acp/`, `external-agent/`, `project/`, `question/`, `lsp/`, `performance/`, `skill/`, `command/`, `superplan/` | acyclic (R2); internal composition follows the recorded allowlist (R3); each domain registers through `src/product-registration.ts`                                                                                                                    |
+| L4 assembly     | `server/`, `runtime/`, `cli/`, `daemon/`, `main/`, `src/product-registration.ts`                                                                                                                                                                                                                       | the only place that may compose product domains                                                                                                                                                                                                        |
+
+Product domains own their tools (`<domain>/tools/` + `<domain>/tools.ts`), migrations (`<domain>/migration.ts`), and startup contributions (`<domain>/startup.ts`), registered through the L4 manifest that every real entry point loads.
+
+### Areas
+
 | Area                     | Primary implementation                                                                     |
 | ------------------------ | ------------------------------------------------------------------------------------------ |
 | Runtime and server       | `packages/synergy/src/server/`, `daemon/`, `global/`                                       |

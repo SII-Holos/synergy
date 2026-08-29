@@ -1,6 +1,10 @@
 import { expect, mock, test } from "bun:test"
 import { streamText } from "ai"
 import z from "zod"
+// SessionToolContext/ToolMcpSource must be mounted: the resolver reaches
+// plugin hooks and MCP entries through the L1 ports (adapters are
+// late-bound to the mocked Plugin.trigger / MCP.toolEntries).
+import "../../src/product-registration"
 import { Config } from "../../src/config/config"
 import { PermissionNext } from "../../src/permission/next"
 import { ScopeContext } from "../../src/scope/context"

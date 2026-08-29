@@ -12,7 +12,7 @@ import { SessionDrive } from "../../src/session/drive"
 import { ContinuationWait } from "../../src/session/continuation-wait"
 import { Identifier } from "../../src/id/id"
 import { CortexOutput } from "../../src/cortex/output"
-import { TaskOutputTool } from "../../src/tool/task-output"
+import { TaskOutputTool } from "../../src/cortex/tools/task-output"
 import { Agent } from "../../src/agent/agent"
 import { tmpdir } from "../fixture/fixture"
 
