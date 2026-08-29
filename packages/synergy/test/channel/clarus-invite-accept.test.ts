@@ -18,6 +18,8 @@ import { ScopeContext } from "../../src/scope/context"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { FakeNativeTunnelPort, taskAssignedEvent } from "./clarus-fixture"
+import { ClarusDeadlineAgenda } from "../../src/channel/provider/clarus/deadline-agenda"
+import { AgendaStore } from "../../src/agenda"
 import { tmpdir } from "../fixture/fixture"
 
 const AGENT_ID = "invite-accept-agent"
@@ -382,6 +384,71 @@ describe("Clarus invitation acceptance readiness", () => {
         "/environment/api/v1/holos/clarus/projects",
         "/environment/api/v1/holos/clarus/projects",
       ])
+    } finally {
+      abort.abort()
+      globalThis.fetch = originalFetch
+    }
+  })
+  test("concurrent membership bursts share one authoritative project sync", async () => {
+    const fake = new FakeNativeTunnelPort()
+    fake.setAgentID(AGENT_ID)
+    const instance = new ClarusProvider({
+      auth: {
+        getStoredCredential: async () => ({
+          agentId: AGENT_ID,
+          agentSecret: AGENT_SECRET,
+          maskedSecret: "invite-••••-secret",
+        }),
+        getCredentialOrThrow: async () => ({
+          agentId: AGENT_ID,
+          agentSecret: AGENT_SECRET,
+          maskedSecret: "invite-••••-secret",
+        }),
+      },
+      runtime: {
+        status: async () => ({ status: "connected" }),
+        getNativeIdentity: async () => ({
+          agentID: AGENT_ID,
+          sessionID: "invite-accept-session",
+          generation: 1,
+          epoch: 1,
+        }),
+        getNativeTunnel: async () => fake,
+      },
+    })
+    const originalFetch = globalThis.fetch
+    const requests: string[] = []
+    globalThis.fetch = Object.assign(
+      mock(async (input: RequestInfo | URL) => {
+        const request = input instanceof Request ? input : new Request(input)
+        requests.push(new URL(request.url).searchParams.get("status") ?? "")
+        return new Response(JSON.stringify({ code: 0, data: { items: [], next_cursor: null } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      }),
+      { preconnect: originalFetch.preconnect },
+    )
+    const abort = new AbortController()
+    const host = ChannelHost.create({ channelType: "clarus", accountId: AGENT_ID })
+
+    try {
+      await instance.connect({
+        accountId: AGENT_ID,
+        accountConfig: accountConfig(),
+        channelConfig: { type: "clarus", accounts: { [AGENT_ID]: accountConfig() } },
+        signal: abort.signal,
+        host,
+      })
+      fake.emitEvent("clarus.project.membership.accepted", acceptedMembershipPayload("project-burst-a"))
+      fake.emitEvent("clarus.project.membership.accepted", acceptedMembershipPayload("project-burst-b"))
+
+      await waitFor(
+        () => requests.length,
+        (count) => count === 4,
+      )
+      await Bun.sleep(50)
+      expect(requests).toEqual(["active", "paused", "active", "paused"])
     } finally {
       abort.abort()
       globalThis.fetch = originalFetch
@@ -1255,6 +1322,54 @@ describe("Clarus task acceptance", () => {
         expect(reloaded?.assignment).toMatchObject({ acceptState: "none" })
         expect((reloaded?.assignment as unknown as Record<string, unknown>).acceptRequestID).toBeUndefined()
         expect((reloaded?.assignment as unknown as Record<string, unknown>).acceptedAt).toBeUndefined()
+      },
+    })
+  })
+
+  test("exact replay restores a lost deadline agenda", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const instance = provider()
+        const host = ChannelHost.create({ channelType: "clarus", accountId: AGENT_ID, activateTasks: true })
+        await host.projects.ensure({
+          externalProjectId: "project-replay-agenda",
+          name: "Replay agenda",
+          isActive: true,
+        })
+        const event = taskAssignedEvent({
+          agentID: AGENT_ID,
+          projectID: "project-replay-agenda",
+          taskID: "task-replay-agenda",
+          runID: "run-replay-agenda",
+          subtaskID: "subtask-replay-agenda",
+          requestID: "assignment-replay-agenda",
+          deadlineAt: new Date(Date.now() + 3_600_000).toISOString(),
+        })
+        const connection: TestConnection = {
+          accountId: AGENT_ID,
+          config: accountConfig(),
+          tunnel: testTunnel(),
+          signal: new AbortController().signal,
+          host,
+          projects: new Map([[event.projectID, "Replay agenda"]]),
+          outboundRequests: new Set(),
+        }
+        const identity = { accountId: AGENT_ID, projectID: event.projectID, taskID: event.taskID }
+
+        await handleEvent(instance, connection, event)
+        await waitFor(
+          () => AgendaStore.find(ClarusDeadlineAgenda.itemID(identity)),
+          (found) => found?.item.status === "active",
+        )
+        await ClarusDeadlineAgenda.cancel(identity)
+
+        await handleEvent(instance, connection, event)
+        await waitFor(
+          () => AgendaStore.find(ClarusDeadlineAgenda.itemID(identity)),
+          (found) => found?.item.status === "active",
+        )
       },
     })
   })

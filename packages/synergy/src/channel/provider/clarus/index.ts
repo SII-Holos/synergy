@@ -68,6 +68,7 @@ type AccountConnection = {
   host: ChannelHost.Instance
   projects: Map<string, string>
   outboundRequests: Set<string>
+  projectSync?: Promise<void>
 }
 
 function hash(...parts: string[]): string {
@@ -329,6 +330,25 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
   }
 
   private async syncProjects(connection: AccountConnection, signal: AbortSignal = connection.signal): Promise<void> {
+    while (true) {
+      const inFlight = connection.projectSync
+      if (!inFlight) break
+      const succeeded = await inFlight.then(
+        () => true,
+        () => false,
+      )
+      if (succeeded) return
+    }
+    const run = this.runProjectSync(connection, signal)
+    connection.projectSync = run
+    try {
+      await run
+    } finally {
+      if (connection.projectSync === run) connection.projectSync = undefined
+    }
+  }
+
+  private async runProjectSync(connection: AccountConnection, signal: AbortSignal): Promise<void> {
     const accountHash = hash(connection.accountId)
     const apiUrl = connection.config.apiUrl ?? (await HolosEndpoint.resolve()).apiUrl
     const rest = new ClarusProjectClient(

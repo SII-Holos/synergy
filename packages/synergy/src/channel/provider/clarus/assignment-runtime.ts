@@ -101,6 +101,14 @@ export namespace ClarusAssignmentRuntime {
           accountId: input.accountId,
         })
       }
+      await ClarusDeadlineAgenda.sync({
+        accountId: input.accountId,
+        projectID: input.event.projectID,
+        taskID: input.event.taskID,
+        sessionID: existing.assignment.sessionID,
+        deadlineAt: existing.assignment.deadlineAt,
+        active: existing.assignment.status === "running" && existing.assignment.resultState !== "acknowledged",
+      })
       if (existing.assignment.acceptState !== "acknowledged") {
         await input.acceptTask?.(existing.assignment)
       }
