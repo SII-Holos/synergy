@@ -12,6 +12,8 @@ export function registerLspStartup() {
     phase: "surface",
     after: ["format"],
     before: ["file-watcher"],
-    init: () => void LSP.init(),
+    init: async () => {
+      await LSP.init()
+    },
   })
 }
