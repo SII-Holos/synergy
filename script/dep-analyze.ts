@@ -7,6 +7,11 @@
  * Modes:
  *   bun script/dep-analyze.ts             print the layering report
  *   bun script/dep-analyze.ts --snapshot  write .deps-snapshot.json at repo root
+ *   bun script/dep-analyze.ts --check     gate mode: exit 1 on any violation
+ *                                         (wired into bun run deps:check; covers
+ *                                         module-level product cycles that the
+ *                                         file-level dependency-cruiser rules
+ *                                         cannot see)
  */
 import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -270,6 +275,23 @@ export interface LayeringSummary {
   l1ToAssembly: [string, string][]
   productInternalPairs: [string, string][]
   r3Violations: [string, string][]
+  /** Module-level product cycles: SCCs over the product→product subgraph.
+   * File-level circular rules cannot see these (reciprocal edges may pass
+   * through different files), so this is the R2 module-level invariant. */
+  productModuleCycles: string[][]
+}
+
+export function productModuleCycles(
+  edges: Record<string, string[]>,
+  productDirs: readonly string[] = PRODUCT_DIRS,
+): string[][] {
+  const productOnly: Record<string, string[]> = {}
+  for (const [from, targets] of Object.entries(edges)) {
+    if (!productDirs.includes(from)) continue
+    const within = targets.filter((to) => productDirs.includes(to))
+    if (within.length > 0) productOnly[from] = within
+  }
+  return stronglyConnectedComponents(productOnly)
 }
 
 export function summarize(graph: ModuleGraph): LayeringSummary {
@@ -288,6 +310,7 @@ export function summarize(graph: ModuleGraph): LayeringSummary {
     l1ToAssembly: pairList((from, to) => layerOf(from) === "L1" && layerOf(to) === "L4"),
     productInternalPairs: pairList((from, to) => layerOf(from) === "product" && layerOf(to) === "product"),
     r3Violations: r3Violations(graph.edges, { allowlist: loadSnapshotPairs() }),
+    productModuleCycles: productModuleCycles(graph.edges),
   }
 }
 
@@ -305,12 +328,44 @@ function printReport(summary: LayeringSummary): void {
     `product -> product edges: ${summary.productInternalPairs.length} (R3 violations: ${summary.r3Violations.length})`,
   )
   for (const [from, to] of summary.r3Violations) console.log(`  R3 ${from} -> ${to}`)
+  console.log(`product module cycles (R2 module-level): ${summary.productModuleCycles.length}`)
+  for (const cycle of summary.productModuleCycles) console.log(`  cycle: ${cycle.join(" -> ")}`)
+}
+
+/** Gate mode for CI: exits non-zero when any layering invariant is violated
+ * (L1→product, L1→assembly, R3 ratchet, or module-level product cycles —
+ * the invariant file-level circular rules cannot see). */
+function checkMode(summary: LayeringSummary): number {
+  const failures: string[] = []
+  if (summary.l1ToProduct.length > 0) {
+    failures.push(`L1 -> product edges: ${summary.l1ToProduct.map(([a, b]) => `${a}->${b}`).join(", ")}`)
+  }
+  if (summary.l1ToAssembly.length > 0) {
+    failures.push(`L1 -> assembly edges: ${summary.l1ToAssembly.map(([a, b]) => `${a}->${b}`).join(", ")}`)
+  }
+  if (summary.r3Violations.length > 0) {
+    failures.push(`R3 violations: ${summary.r3Violations.map(([a, b]) => `${a}->${b}`).join(", ")}`)
+  }
+  if (summary.productModuleCycles.length > 0) {
+    failures.push(`product module cycles: ${summary.productModuleCycles.map((cycle) => cycle.join("->")).join("; ")}`)
+  }
+  if (failures.length === 0) {
+    console.log("deps check: OK (0 L1->product, 0 L1->assembly, 0 R3, 0 product module cycles)")
+    return 0
+  }
+  for (const failure of failures) console.error(`deps check FAILED: ${failure}`)
+  return 1
 }
 
 async function main(): Promise<void> {
   const snapshot = process.argv.includes("--snapshot")
+  const check = process.argv.includes("--check")
   const graph = buildGraph(SRC)
   const summary = summarize(graph)
+  if (check) {
+    process.exitCode = checkMode(summary)
+    return
+  }
   printReport(summary)
   if (snapshot) {
     // Format through Prettier (the repository formatter) so generated

@@ -43,7 +43,7 @@
     "decision:check": "bun script/decision-check.ts",
     "deps:analyze": "bun script/dep-analyze.ts",
     "deps:snapshot": "bun script/dep-analyze.ts --snapshot",
-    "deps:check": "depcruise --config .dependency-cruiser.cjs --no-progress --output-type err packages/synergy/src",
+    "deps:check": "depcruise --config .dependency-cruiser.cjs --no-progress --output-type err packages/synergy/src && bun script/dep-analyze.ts --check",
     "coverage:check": "bun script/coverage-check.ts",
     "quality:quick": "bun script/gates.ts local",
     "quality": "bun run quality:quick && bun run release:test && bun turbo test",
