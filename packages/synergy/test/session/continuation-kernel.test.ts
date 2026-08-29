@@ -6,6 +6,8 @@ import { AgendaStore } from "../../src/agenda/store"
 import { Cortex } from "../../src/cortex/manager"
 import { Identifier } from "../../src/id/id"
 import { ContinuationKernel } from "../../src/session/continuation-kernel"
+// Product domains register continuation policy providers via the L4 manifest
+import "../../src/product-registration"
 import { Session } from "../../src/session"
 import { SessionDrive } from "../../src/session/drive"
 import { SessionInbox } from "../../src/session/inbox"
@@ -529,4 +531,54 @@ describe("ContinuationKernel arbitration", () => {
       },
     })
   }, 15_000)
+})
+
+describe("empty registry signature (criterion 5)", () => {
+  // Spawned as a subprocess: this file imports product-registration at the
+  // top, so the in-process registry always carries the four domain policy
+  // providers. The worker starts with a genuinely empty registry; it prints
+  // the propose() result on stdout while Log.init({ print: true }) mirrors
+  // the empty-registry warn to stderr.
+  test("propose() returns undefined and warns when no policies are registered", async () => {
+    const worker = import.meta.dir + "/continuation-kernel-empty-worker.ts"
+    const proc = Bun.spawn([process.execPath, "run", worker], {
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
+    const exitCode = await proc.exited
+
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain("PROPOSE_RESULT:undefined")
+    expect(stderr).toContain("continuation kernel has no policies registered")
+    expect(stderr).toContain("service=session.continuation-kernel")
+  }, 30_000)
+})
+
+describe("provider drain reload contract (H5)", () => {
+  // H5 reload contract: ContinuationKernel.reset() clears the drained-source
+  // markers so registered providers re-drain on the next access — the L1
+  // analogue of ToolRegistry.reload() forcing provider re-drain.
+  test("reset() clears drained sources so providers re-drain on next access", () => {
+    let drains = 0
+    ContinuationKernel.reset()
+    ContinuationKernel.registerProvider("redrain-probe", () => {
+      drains++
+      return []
+    })
+    try {
+      const first = ContinuationKernel.registeredPolicyIDs()
+      expect(drains).toBe(1)
+      ContinuationKernel.registeredPolicyIDs()
+      expect(drains).toBe(1)
+
+      ContinuationKernel.reset()
+
+      const second = ContinuationKernel.registeredPolicyIDs()
+      expect(drains).toBe(2)
+      expect(second).toEqual(first)
+    } finally {
+      ContinuationKernel.reset()
+    }
+  })
 })

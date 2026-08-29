@@ -2,6 +2,9 @@ import { describe, expect, setDefaultTimeout, spyOn, test } from "bun:test"
 import { Hono } from "hono"
 import { Identifier } from "../../src/id/id"
 import { LatticeStore } from "../../src/lattice/store"
+// The Controller registers the reconcileDirect forwarder LatticeRunService
+// depends on; load it alongside the route under test.
+import "../../src/lattice/controller"
 import { LatticeRunService } from "../../src/lattice/run-service"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"

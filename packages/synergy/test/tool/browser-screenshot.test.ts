@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { BrowserScreenshotTool } from "../../src/tool/browser-screenshot"
-import { BrowserToolHelper } from "../../src/tool/browser-shared"
+import { BrowserScreenshotTool } from "../../src/browser/tools/browser-screenshot"
+import { BrowserToolHelper } from "../../src/browser/tools/browser-shared"
 
 const PNG_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="

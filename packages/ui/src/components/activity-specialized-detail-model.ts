@@ -1,10 +1,12 @@
 import type { DagNode } from "./dag-graph"
 import type { ActivityStepProjection } from "./session-turn-activity"
 import type { ToolDiffPreviewFileDiff } from "./tool/diff-preview"
+import type { TaskSubagentDetailInfo } from "./tool/task-subagent-detail"
 
 export type SpecializedActivityDetail =
   | { kind: "diff"; diff: ToolDiffPreviewFileDiff; patch?: string }
   | { kind: "dag"; nodes: DagNode[]; ready: string[] }
+  | { kind: "subagent"; info: TaskSubagentDetailInfo }
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {}
@@ -35,6 +37,23 @@ export function specializedActivityDetail(step: ActivityStepProjection): Special
         ? metadata.ready.filter((value): value is string => typeof value === "string")
         : []
       return { kind: "dag", nodes: nodes as DagNode[], ready }
+    }
+  }
+  if (step.family === "delegate" && step.part.tool === "task") {
+    const input = record(state.input)
+    const background = metadata.background === true
+    return {
+      kind: "subagent",
+      info: {
+        agentType: typeof input.subagent_type === "string" ? input.subagent_type : undefined,
+        description: typeof input.description === "string" ? input.description : undefined,
+        background,
+        sessionId: typeof metadata.sessionId === "string" ? metadata.sessionId : undefined,
+        summary: metadata.summary,
+        running: background || step.state === "running" || step.state === "waiting-approval",
+        waitingApproval: step.state === "waiting-approval",
+        error: state.status === "error" ? state.error : undefined,
+      },
     }
   }
 }

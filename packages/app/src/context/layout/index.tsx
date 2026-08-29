@@ -8,6 +8,7 @@ import { useServer } from "../server"
 import { usePlatform } from "../platform"
 import { Scope, Session } from "@ericsanchezok/synergy-sdk"
 import { Persist, persisted, removePersisted } from "@/utils/persist"
+import { forgetDraftSession } from "@/context/prompt/draft-index"
 import { same } from "@/utils/same"
 import { createScrollPersistence, type SessionScroll } from "./scroll"
 import { retry } from "@ericsanchezok/synergy-util/retry"
@@ -189,6 +190,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
           const legacyKey = `${dir}/${entry.legacy}${session ? "/" + session : ""}.${entry.version}`
           void removePersisted({ key: legacyKey })
+          if (session && entry.key === "prompt") forgetDraftSession(session)
         }
       }
     }

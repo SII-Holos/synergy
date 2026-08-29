@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { buildSynergyMaxPrompt } from "../../src/agent/prompt/synergy-max/builder"
 import { buildSynergyPrompt } from "../../src/agent/prompt/synergy/builder"
 import CORTEX_REMINDER from "../../src/session/prompt/cortex-reminder.txt"
-import TASK_DESCRIPTION from "../../src/tool/task.txt"
+import TASK_DESCRIPTION from "../../src/cortex/tools/task.txt"
 
 const noPollingRule = "Do not repeatedly call `task_output` while a task is running."
 const notificationRule = "wait for the automatic completion notification"

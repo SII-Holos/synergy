@@ -1,5 +1,5 @@
 import z from "zod"
-import { Info as ChannelInfo, toKey as channelToKey } from "@/channel/types"
+import { Info as ChannelInfo, toKey as channelToKey } from "./channel-endpoint"
 
 export namespace SessionEndpoint {
   export const Channel = z

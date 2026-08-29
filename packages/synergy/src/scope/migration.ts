@@ -1,7 +1,7 @@
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Identifier } from "@/id/id"
-import { LibraryDB } from "@/library/database"
+import { ScopeLibraryStore } from "./library-store"
 import { Global } from "@/global"
 import type { Migration } from "@/migration"
 import type { Info as SessionInfo } from "../session/types"
@@ -62,9 +62,9 @@ export const migrations: Migration[] = [
 
       // Also check library for scopeIDs
       try {
-        const conn = LibraryDB.connection()
-        const rows = conn.prepare("SELECT DISTINCT scope_id FROM experience").all() as { scope_id: string }[]
-        for (const row of rows) dataScopeIDs.add(row.scope_id)
+        for (const scopeID of ScopeLibraryStore.get()?.experienceScopeIDs() ?? []) {
+          dataScopeIDs.add(scopeID)
+        }
       } catch {}
 
       dataScopeIDs.delete(LEGACY_GLOBAL_SCOPE_ID)
@@ -173,7 +173,7 @@ export const migrations: Migration[] = [
       let totalRemoved = 0
       for (const orphanID of orphanIDs) {
         try {
-          const removed = LibraryDB.Experience.removeByScope(orphanID)
+          const removed = ScopeLibraryStore.get()?.removeExperiencesByScope(orphanID) ?? 0
           totalRemoved += removed
         } catch (err) {
           log.warn("failed to remove orphan library experiences", { scopeID: orphanID, error: err })
@@ -472,7 +472,7 @@ async function patchHomeBlueprintLoops() {
 
 async function renameLibraryScope() {
   try {
-    const changed = LibraryDB.Experience.renameScope(LEGACY_GLOBAL_SCOPE_ID, HOME_SCOPE_ID)
+    const changed = ScopeLibraryStore.get()?.renameExperienceScope(LEGACY_GLOBAL_SCOPE_ID, HOME_SCOPE_ID) ?? 0
     if (changed > 0) log.info("renamed library experience scope", { changed })
   } catch (err) {
     log.warn("failed to rename library experience scope", { error: String(err) })

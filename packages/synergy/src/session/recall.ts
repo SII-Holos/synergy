@@ -1,8 +1,6 @@
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
-import { ExperienceRecall } from "../library/experience-recall"
-import { LibraryDB } from "../library/database"
-import { MemoryRecall } from "../library/memory-recall"
+import { SessionLibraryRecall } from "./library-recall"
 import { Embedding } from "../vector/embedding"
 import { Config } from "../config/config"
 
@@ -95,7 +93,7 @@ function extractLastUserText(messages: MessageV2.WithParts[]): string | undefine
   return text.trim() || undefined
 }
 
-const CATEGORY_INSTRUCTIONS: Record<LibraryDB.Memory.Category, string> = {
+const CATEGORY_INSTRUCTIONS: Record<SessionLibraryRecall.MemoryCategory, string> = {
   user: "Stable facts about the user — identity, background, responsibilities, and enduring context.",
   self: "Your persistent identity, role, and operating commitments. Stay aligned with this self-knowledge.",
   relationship: "Established collaboration patterns and expectations between you and the user. Use these as defaults.",
@@ -103,8 +101,7 @@ const CATEGORY_INSTRUCTIONS: Record<LibraryDB.Memory.Category, string> = {
   workflow:
     "Recurring ways of working, process expectations, and execution habits that shape how tasks should be handled.",
   coding: "Engineering conventions, codebase habits, debugging patterns, and technical preferences for coding work.",
-  writing:
-    "Writing preferences, editorial standards, voice, and document expectations for drafting or revising content.",
+  writing: "Writing preferences, editorial standards, voice, and document expectations for drafting or revising text.",
   asset: "Important resources, accounts, tools, environments, and external assets available for future work.",
   insight: "Transferable patterns in how the user thinks, decides, and evaluates tradeoffs. Use to anticipate needs.",
   knowledge: "Specific factual knowledge, project conventions, and learned lessons that apply in relevant contexts.",
@@ -112,19 +109,19 @@ const CATEGORY_INSTRUCTIONS: Record<LibraryDB.Memory.Category, string> = {
   general: "Other durable information worth preserving when it does not fit a more specific category.",
 }
 
-function formatCategorySection(category: LibraryDB.Memory.Category, entries: string[]): string {
+function formatCategorySection(category: SessionLibraryRecall.MemoryCategory, entries: string[]): string {
   return `<category name="${category}" instruction="${CATEGORY_INSTRUCTIONS[category]}">\n${entries.join("\n")}\n</category>`
 }
 
-function formatStoredMemoryEntry(entry: LibraryDB.Memory.Row): string {
+function formatStoredMemoryEntry(entry: SessionLibraryRecall.StoredMemoryRow): string {
   return `<entry title="${entry.title}">\n${entry.content}\n</entry>`
 }
 
-function formatRetrievedMemoryEntry(entry: MemoryRecall.Result): string {
+function formatRetrievedMemoryEntry(entry: SessionLibraryRecall.RetrievedMemory): string {
   return `<entry title="${entry.title}" similarity="${entry.similarity.toFixed(3)}">\n${entry.content}\n</entry>`
 }
 
-function renderMemoryBlock(groupedEntries: Map<LibraryDB.Memory.Category, string[]>): string | undefined {
+function renderMemoryBlock(groupedEntries: Map<SessionLibraryRecall.MemoryCategory, string[]>): string | undefined {
   const sections = [...groupedEntries.entries()]
     .filter(([, entries]) => entries.length > 0)
     .map(([category, entries]) => formatCategorySection(category, entries))
@@ -132,9 +129,9 @@ function renderMemoryBlock(groupedEntries: Map<LibraryDB.Memory.Category, string
   return ["<active-memory>", ...sections, "</active-memory>"].join("\n")
 }
 
-function groupAlwaysRows(): Map<LibraryDB.Memory.Category, string[]> {
-  const grouped = new Map<LibraryDB.Memory.Category, string[]>()
-  for (const row of LibraryDB.Memory.list({ recallModes: ["always"] })) {
+function groupAlwaysRows(): Map<SessionLibraryRecall.MemoryCategory, string[]> {
+  const grouped = new Map<SessionLibraryRecall.MemoryCategory, string[]>()
+  for (const row of SessionLibraryRecall.listAlwaysMemories()) {
     const items = grouped.get(row.category) ?? []
     items.push(formatStoredMemoryEntry(row))
     grouped.set(row.category, items)
@@ -183,10 +180,10 @@ async function buildActiveMemoryContext(
   queryVector?: number[],
 ): Promise<{ context: string; memoryBlock?: string }> {
   const parts: string[] = []
-  const categories = Object.keys(activeRetrieval.categories) as LibraryDB.Memory.Category[]
+  const categories = Object.keys(activeRetrieval.categories) as SessionLibraryRecall.MemoryCategory[]
   const groupedEntries = groupAlwaysRows()
 
-  const appendEntry = (category: LibraryDB.Memory.Category, entry: string) => {
+  const appendEntry = (category: SessionLibraryRecall.MemoryCategory, entry: string) => {
     const items = groupedEntries.get(category) ?? []
     items.push(entry)
     groupedEntries.set(category, items)
@@ -198,7 +195,7 @@ async function buildActiveMemoryContext(
       const contextualResults = await Promise.all(
         categories.map(async (category) => {
           const config = activeRetrieval.categories[category]
-          const results = await MemoryRecall.search({
+          const results = await SessionLibraryRecall.searchMemories({
             query: userText,
             vector,
             topK: config.topK,
@@ -244,22 +241,22 @@ async function buildExperienceContext(
   if (!userText) return { context: undefined }
 
   try {
-    const results = await ExperienceRecall.retrieve(scopeID, userText, { vector: queryVector })
+    const results = await SessionLibraryRecall.retrieveExperiences(scopeID, userText, {
+      vector: queryVector,
+      requireScript: true,
+    })
     if (results.length === 0) return { context: undefined }
 
-    const withScript = results.filter((r) => r.script)
-    if (withScript.length === 0) return { context: undefined }
-
-    ExperienceRecall.trackRetrieval(
+    SessionLibraryRecall.trackExperienceRetrieval(
       sessionID,
-      withScript.map((r) => r.id),
+      results.map((r) => r.id),
     )
 
-    const entries = withScript.map((r) => {
+    const entries = results.map((r) => {
       const parts = [`<experience sim="${r.similarity.toFixed(3)}" q="${r.qValue.toFixed(3)}">`]
       parts.push(`<intent>${r.intent}</intent>`)
       parts.push(`<script>${r.script}</script>`)
-      const evaluation = ExperienceRecall.buildEvaluation(r.rewards, learning.snapThreshold)
+      const evaluation = SessionLibraryRecall.buildExperienceEvaluation(r.rewards, learning.snapThreshold)
       if (evaluation) parts.push(`<evaluation>${evaluation}</evaluation>`)
       parts.push("</experience>")
       return parts.join("\n")
@@ -273,7 +270,7 @@ async function buildExperienceContext(
       "</experience-context>",
     ].join("\n")
 
-    ExperienceRecall.writeDebugLog(sessionID, scopeID, userText, results, injected)
+    SessionLibraryRecall.writeExperienceDebugLog(sessionID, scopeID, userText, results, injected)
 
     log.info("experience context built", { sessionID })
     return { context: injected }
@@ -290,8 +287,8 @@ function resolveActiveRetrieval(retrieval?: {
   const simThreshold = retrieval?.simThreshold ?? 0.7
   const topK = retrieval?.topK ?? 3
   const overrides = retrieval?.categories
-  const categories = {} as Record<LibraryDB.Memory.Category, CategoryRetrieval>
-  for (const category of LibraryDB.Memory.CATEGORIES) {
+  const categories = {} as Record<SessionLibraryRecall.MemoryCategory, CategoryRetrieval>
+  for (const category of SessionLibraryRecall.MEMORY_CATEGORIES) {
     const override = overrides?.[category]
     categories[category] = {
       simThreshold: override?.simThreshold ?? simThreshold,
@@ -303,7 +300,7 @@ function resolveActiveRetrieval(retrieval?: {
 
 interface ActiveRetrieval {
   enabled: boolean
-  categories: Record<LibraryDB.Memory.Category, CategoryRetrieval>
+  categories: Record<SessionLibraryRecall.MemoryCategory, CategoryRetrieval>
 }
 
 interface CategoryRetrieval {

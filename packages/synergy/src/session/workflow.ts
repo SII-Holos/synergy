@@ -1,12 +1,11 @@
-import { BlueprintLoopStore } from "../blueprint/loop-store"
+import { SessionBlueprintState } from "./blueprint-state"
 import { ScopeContext } from "../scope/context"
-import { LatticeError } from "../lattice/error"
-import { LatticeRunService } from "../lattice/run-service"
 import { Lock } from "../util/lock"
 import { Session } from "./index"
 import { SessionManager } from "./manager"
 import { SessionAbort } from "./abort"
-import { LightLoopRuntime } from "./light-loop-runtime"
+import { WorkflowPromptRegistry } from "./workflow-prompt-registry"
+import { WorkflowKindRegistry } from "./workflow-kind-registry"
 
 type BlueprintLoopSource = "user" | "lattice" | "plugin"
 
@@ -27,7 +26,7 @@ function activeLoopStatus(status: string): boolean {
 async function activeBlueprintLoop(session: Session.Info) {
   const loopID = session.blueprint?.loopID
   if (!loopID) return undefined
-  const loop = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loopID).catch(() => undefined)
+  const loop = await SessionBlueprintState.getLoop(ScopeContext.current.scope.id, loopID)
   if (!loop || !activeLoopStatus(loop.status)) return undefined
   return loop
 }
@@ -43,6 +42,10 @@ function workflowLock(sessionID: string) {
 }
 
 export namespace SessionWorkflowService {
+  /** Serialize competing workflow changes across core and registered domains. */
+  export function lock(sessionID: string) {
+    return workflowLock(sessionID)
+  }
   export type SetInput =
     | { kind: "none" }
     | { kind: "plan" }
@@ -104,6 +107,27 @@ export namespace SessionWorkflowService {
     return enableLattice(sessionID, input)
   }
 
+  /** Enable a registered extension workflow kind (H3). The mutual-exclusion
+   * gate stays here: a session holds one interactive workflow, and the
+   * descriptor's declared conflict set is consulted for the error surface. */
+  export async function setExtension(
+    sessionID: string,
+    kind: string,
+    args: Record<string, unknown>,
+  ): Promise<Session.Info> {
+    const descriptor = WorkflowKindRegistry.get(kind)
+    if (!descriptor) throw new Error(`Workflow kind "${kind}" is not registered`)
+    using _ = await workflowLock(sessionID)
+    SessionManager.assertIdle(sessionID)
+    const session = await Session.get(sessionID)
+    const current = WorkflowKindRegistry.effectiveKind(session.workflow)
+    if (current) {
+      throw new WorkflowConflictError(current, `Cannot enable ${kind} while the ${current} workflow is active.`)
+    }
+    await assertNoActiveBlueprintLoop(session, kind)
+    await descriptor.enable({ sessionID, args })
+    return Session.get(sessionID)
+  }
   /**
    * Enable Boss Mode on a session, making it the root boss of a worker tree.
    * Workers are created by BossService.spawn as children; disabling only clears
@@ -115,18 +139,14 @@ export namespace SessionWorkflowService {
     SessionManager.assertIdle(sessionID)
     const session = await Session.get(sessionID)
     if (session.workflow) {
-      throw new WorkflowConflictError(
-        session.workflow.kind,
-        `Cannot enable Boss Mode while the ${session.workflow.kind} workflow is active.`,
-      )
+      const current = WorkflowKindRegistry.effectiveKind(session.workflow) ?? session.workflow.kind
+      throw new WorkflowConflictError(current, `Cannot enable Boss Mode while the ${current} workflow is active.`)
     }
     await assertNoActiveBlueprintLoop(session, "Boss Mode")
     return Session.update(sessionID, (draft) => {
       if (draft.workflow) {
-        throw new WorkflowConflictError(
-          draft.workflow.kind,
-          `Cannot enable Boss Mode while the ${draft.workflow.kind} workflow is active.`,
-        )
+        const current = WorkflowKindRegistry.effectiveKind(draft.workflow) ?? draft.workflow.kind
+        throw new WorkflowConflictError(current, `Cannot enable Boss Mode while the ${current} workflow is active.`)
       }
       draft.workflow = { kind: "boss", role: "boss" }
     })
@@ -136,8 +156,10 @@ export namespace SessionWorkflowService {
     using _ = await workflowLock(sessionID)
     if (!options?.allowRunning) SessionManager.assertIdle(sessionID)
     const session = await Session.get(sessionID)
-    if (session.workflow?.kind === "lattice") {
-      await LatticeRunService.disable(sessionID)
+    const kind = WorkflowKindRegistry.effectiveKind(session.workflow)
+    if (kind) {
+      await WorkflowPromptRegistry.get(kind)?.disable?.(sessionID)
+      await WorkflowKindRegistry.get(kind)?.disable?.(sessionID)
     }
     return Session.update(sessionID, (draft) => {
       draft.workflow = undefined
@@ -187,18 +209,14 @@ export namespace SessionWorkflowService {
     SessionManager.assertIdle(sessionID)
     const session = await Session.get(sessionID)
     if (session.workflow) {
-      throw new WorkflowConflictError(
-        session.workflow.kind,
-        `Cannot enable Plan while the ${session.workflow.kind} workflow is active.`,
-      )
+      const current = WorkflowKindRegistry.effectiveKind(session.workflow) ?? session.workflow.kind
+      throw new WorkflowConflictError(current, `Cannot enable Plan while the ${current} workflow is active.`)
     }
     await assertNoActiveBlueprintLoop(session, "Plan")
     return Session.update(sessionID, (draft) => {
       if (draft.workflow) {
-        throw new WorkflowConflictError(
-          draft.workflow.kind,
-          `Cannot enable Plan while the ${draft.workflow.kind} workflow is active.`,
-        )
+        const current = WorkflowKindRegistry.effectiveKind(draft.workflow) ?? draft.workflow.kind
+        throw new WorkflowConflictError(current, `Cannot enable Plan while the ${current} workflow is active.`)
       }
       draft.workflow = { kind: "plan" }
     })
@@ -212,18 +230,14 @@ export namespace SessionWorkflowService {
 
     const session = await Session.get(sessionID)
     if (session.workflow) {
-      throw new WorkflowConflictError(
-        session.workflow.kind,
-        `Cannot enable Light Loop while the ${session.workflow.kind} workflow is active.`,
-      )
+      const current = WorkflowKindRegistry.effectiveKind(session.workflow) ?? session.workflow.kind
+      throw new WorkflowConflictError(current, `Cannot enable Light Loop while the ${current} workflow is active.`)
     }
     await assertNoActiveBlueprintLoop(session, "Light Loop")
     return Session.update(sessionID, (draft) => {
       if (draft.workflow) {
-        throw new WorkflowConflictError(
-          draft.workflow.kind,
-          `Cannot enable Light Loop while the ${draft.workflow.kind} workflow is active.`,
-        )
+        const current = WorkflowKindRegistry.effectiveKind(draft.workflow) ?? draft.workflow.kind
+        throw new WorkflowConflictError(current, `Cannot enable Light Loop while the ${current} workflow is active.`)
       }
       draft.workflow = { kind: "lightloop", instructions: trimmed }
     })
@@ -247,83 +261,23 @@ export namespace SessionWorkflowService {
 
   export async function cancelLightloop(sessionID: string): Promise<Session.Info> {
     using _ = await workflowLock(sessionID)
-    const session = await Session.get(sessionID)
-    if (session.workflow?.kind !== "lightloop") return session
-
-    await SessionAbort.abort(sessionID)
-    // Use the single terminal path so the authoritative terminal record is
-    // persisted and the interactive workflow is cleared consistently with
-    // approval, exhaustion, deadline, and failure.
-    await LightLoopRuntime.setTerminalStatus(sessionID, "cancelled")
-    return Session.get(sessionID)
+    const contribution = WorkflowPromptRegistry.get("lightloop")
+    if (!contribution?.cancel) return Session.get(sessionID)
+    return (await contribution.cancel(sessionID)) as Session.Info
   }
 
   export async function enableLattice(
     sessionID: string,
     input: Extract<SetInput, { kind: "lattice" }>,
   ): Promise<Session.Info> {
-    let run: Awaited<ReturnType<typeof LatticeRunService.enable>>
-    let projected: Session.Info
-    {
-      using _ = await workflowLock(sessionID)
-      SessionManager.assertIdle(sessionID)
-      const session = await Session.get(sessionID)
-      if (session.workflow && session.workflow.kind !== "lattice") {
-        throw new LatticeError.StateConflict({
-          state: session.workflow.kind,
-          reason: `Cannot enable Lattice while the ${session.workflow.kind} workflow is active.`,
-        })
-      }
-
-      const loop = await activeBlueprintLoop(session)
-      if (loop?.source === "user" || loop?.source === "plugin") {
-        throw new LatticeError.StateConflict({
-          state: "blueprint_loop",
-          reason: `Cannot enable Lattice while a ${loop.source} BlueprintLoop is active.`,
-        })
-      }
-
-      const outcome = await LatticeRunService.enableForProjection({
-        sessionID,
-        mode: input.mode,
-        maxModelCalls: input.maxModelCalls,
-        goal: input.goal,
-      })
-      run = outcome.run
-      try {
-        projected = await Session.update(sessionID, (draft) => {
-          if (draft.workflow && draft.workflow.kind !== "lattice") {
-            throw new LatticeError.StateConflict({
-              state: draft.workflow.kind,
-              reason: `Cannot enable Lattice while the ${draft.workflow.kind} workflow is active.`,
-            })
-          }
-          draft.workflow = {
-            kind: "lattice",
-            runID: run.id,
-            mode: run.mode,
-          }
-        })
-      } catch (error) {
-        if (outcome.created) {
-          await LatticeRunService.cancelUnprojected(run.id).catch(() => undefined)
-          const previousRunID = session.workflow?.kind === "lattice" ? session.workflow.runID : undefined
-          await Session.update(sessionID, (draft) => {
-            if (
-              draft.workflow?.kind === "lattice" &&
-              (draft.workflow.runID === run.id || draft.workflow.runID === previousRunID)
-            ) {
-              draft.workflow = undefined
-            }
-          }).catch(() => undefined)
-        }
-        throw error
-      }
+    const contribution = WorkflowPromptRegistry.get("lattice")
+    if (!contribution?.enable) {
+      throw new Error("Lattice workflow is not registered (load src/product-registration)")
     }
-    if (run.effect?.kind === "deliver_prompt") {
-      const { LatticeController } = await import("../lattice/controller")
-      await LatticeController.reconcileDirect(ScopeContext.current.scope.id, sessionID, "enable")
-    }
-    return projected
+    return contribution.enable(sessionID, {
+      mode: input.mode,
+      maxModelCalls: input.maxModelCalls,
+      goal: input.goal,
+    })
   }
 }

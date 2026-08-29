@@ -9,6 +9,7 @@ import { Log } from "@/util/log"
 import { Contact } from "./contact"
 import { Envelope } from "./envelope"
 import { HolosAuth } from "./auth"
+import { HolosEndpoint } from "./endpoint"
 import { HolosProfile } from "./profile"
 import { HolosProtocol } from "./protocol"
 import { Presence } from "./presence"
@@ -19,6 +20,9 @@ import {
   NATIVE_MAX_OBJECT_DEPTH,
   NATIVE_MAX_PAYLOAD_BYTES,
 } from "./native"
+import { Mailbox, setHolosProviderResolver } from "./mailbox"
+
+setHolosProviderResolver(() => HolosRuntime.getProvider())
 
 const log = Log.create({ service: "holos.runtime" })
 export const HOLOS_HEARTBEAT_INTERVAL_MS = 30_000
@@ -67,7 +71,7 @@ type RuntimeConnection = {
 }
 
 async function fetchWsToken(apiUrl: string, agentSecret: string): Promise<string> {
-  const res = await fetch(`${apiUrl}/api/v1/holos/agent_tunnel/ws_token`, {
+  const res = await fetch(HolosEndpoint.url("/api/v1/holos/agent_tunnel/ws_token", apiUrl), {
     headers: { Authorization: `Bearer ${agentSecret}` },
   })
   if (!res.ok) throw new Error(`Failed to get ws_token: ${res.status} ${res.statusText}`)
@@ -86,7 +90,7 @@ async function syncSynergyLink(
     return
   }
   const { HolosSynergyLinkClient } = await import("@/remote/client")
-  const { HolosSynergyLinkTransport } = await import("@/remote/holos-transport")
+  const { HolosSynergyLinkTransport } = await import("./synergy-link-transport")
   SynergyLinkExecution.setClient(new HolosSynergyLinkClient(new HolosSynergyLinkTransport(input.provider)))
 }
 
@@ -571,7 +575,8 @@ export class HolosProvider {
     const credentials = await HolosAuth.getCredentialOrThrow()
 
     const wsToken = await fetchWsToken(holosConfig.apiUrl, credentials.agentSecret)
-    const wsEndpoint = `${holosConfig.wsUrl}/api/v1/holos/agent_tunnel/ws?token=${wsToken}`
+    const wsEndpoint = new URL(HolosEndpoint.url("/api/v1/holos/agent_tunnel/ws", holosConfig.wsUrl))
+    wsEndpoint.searchParams.set("token", wsToken)
     const ws = new WebSocket(wsEndpoint)
 
     this.state = {
@@ -949,7 +954,6 @@ export class HolosProvider {
     }
 
     try {
-      const { Mailbox } = await import("./mailbox")
       await Mailbox.receive({
         fromId: caller.agent_id,
         text: parsed.data.text,

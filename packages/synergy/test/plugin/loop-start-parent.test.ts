@@ -2,6 +2,8 @@ import type { PluginHostServiceMethod } from "../../src/plugin-runtime"
 import { afterEach, describe, expect, test } from "bun:test"
 import { compilePluginManifest, definePlugin, capability } from "@ericsanchezok/synergy-plugin"
 import { executePluginHostService } from "../../src/plugin/host-services-runtime"
+// Product domains (including the blueprint host adapter) register via the L4 manifest
+import "../../src/product-registration"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { tmpdir } from "../fixture/fixture"

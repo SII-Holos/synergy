@@ -25,6 +25,12 @@ const LIST_MARK = /^\s*([-*+]|\d+[.)])\s+/
 const TABLE_ROW = /^\s*\|/
 const BLOCKQUOTE = /^\s*>/
 const RAW_HTML_TAG = /^\s*<\/?[a-zA-Z][^>]*>\s*$/
+// Decision-record archive seal line (docs/decisions/README.md): `Archived:`
+// sits directly below `Status:` with no blank line, and sealed archives can
+// never be reflowed. Exempting only the seal shields the `Status:` line above
+// it (violations depend on the next line being non-special prose) while
+// keeping wrapped prose that ends in `Status: implemented` reportable.
+const DECISION_META = /^Archived: \d{4}-\d{2}-\d{2}$/
 
 interface BudgetsFile {
   defaults: Record<string, number>
@@ -179,7 +185,8 @@ function isSpecialLine(line: string): boolean {
     LIST_MARK.test(line) ||
     TABLE_ROW.test(line) ||
     BLOCKQUOTE.test(line) ||
-    RAW_HTML_TAG.test(line)
+    RAW_HTML_TAG.test(line) ||
+    DECISION_META.test(line)
   )
 }
 

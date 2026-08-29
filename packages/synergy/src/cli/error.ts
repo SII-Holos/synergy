@@ -2,7 +2,7 @@ import { ConfigMarkdown } from "@/config/markdown"
 import { Config } from "../config/config"
 import { MCP } from "../mcp"
 import { Provider } from "../provider/provider"
-import { UI } from "./ui"
+import { UI } from "../util/ui"
 
 function summarizeConfigJsonError(message?: string) {
   if (!message) return

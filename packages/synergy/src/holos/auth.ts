@@ -2,7 +2,7 @@ import { Auth } from "@/provider/api-key"
 import { Config } from "@/config/config"
 import { ScopeContext } from "@/scope/context"
 import { Scope } from "@/scope"
-import { HOLOS_PORTAL_URL, HOLOS_URL, HOLOS_WS_URL } from "./constants"
+import { HolosEndpoint } from "./endpoint"
 import { HolosProtocol } from "./protocol"
 import { HolosAccounts } from "./accounts"
 
@@ -12,7 +12,8 @@ export namespace HolosAuth {
   export async function verifyCredentials(
     agentSecret: string,
   ): Promise<{ valid: true } | { valid: false; reason: string }> {
-    const res = await fetch(`${HOLOS_URL}/api/v1/holos/agent_tunnel/ws_token`, {
+    const endpoints = await HolosEndpoint.resolve()
+    const res = await fetch(HolosEndpoint.url("/api/v1/holos/agent_tunnel/ws_token", endpoints.apiUrl), {
       headers: { Authorization: `Bearer ${agentSecret}` },
     })
     const body = HolosProtocol.WsTokenResponse.safeParse(await res.json())
@@ -76,13 +77,9 @@ export namespace HolosAuth {
   }
 
   export async function configureHolos(): Promise<void> {
+    const endpoints = await HolosEndpoint.resolve()
     await Config.domainUpdate("holos", {
-      holos: {
-        enabled: true,
-        apiUrl: HOLOS_URL,
-        wsUrl: HOLOS_WS_URL,
-        portalUrl: HOLOS_PORTAL_URL,
-      },
+      holos: { enabled: true, ...endpoints },
     })
     const credential = await getStoredCredential()
     if (!credential) return

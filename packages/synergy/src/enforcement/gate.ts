@@ -40,9 +40,8 @@ import {
   type RuleMatch,
 } from "./exec-policy"
 import type { ProfileIdInput, ProfileRule, ProfileSandbox } from "../control-profile/types"
-import { PluginToolId } from "../plugin/ids.js"
-import type { PluginApprovalRecord } from "../plugin/consent/approval-store.js"
-import { controlProfileCapability, hasControlProfileCapability } from "../plugin/capability"
+import { PluginToolId } from "@ericsanchezok/synergy-plugin/ids"
+import { controlProfileCapability, hasControlProfileCapability } from "../control-profile/host-capability"
 import { capabilityNonBypassable } from "@ericsanchezok/synergy-util/capability"
 import { ObservabilityMetrics } from "@/observability/metrics"
 import { BashVirtualPath } from "@/tool/bash/virtual-path"
@@ -92,6 +91,14 @@ export interface Envelope {
   amendment?: ExecPolicyAmendment
 }
 
+/** Narrow approval-record view the gate consumes: only the approved
+ * capability list matters for classification. The index signature keeps
+ * full approval records assignable from callers and tests. */
+export interface PluginApprovalCapabilities {
+  approvedCapabilities: string[]
+  [key: string]: unknown
+}
+
 export interface GateOptions {
   activeWorkspace: string
   workspaceType: string
@@ -101,7 +108,7 @@ export interface GateOptions {
   /** Map from plugin tool full ID (e.g. plugin__x__y) to resolved capabilities */
   pluginToolCapabilities?: Record<string, PluginToolCapabilityMap>
   /** Pre-loaded approval records keyed by plugin ID. If absent, no approval check is performed. */
-  pluginApprovals?: Record<string, PluginApprovalRecord>
+  pluginApprovals?: Record<string, PluginApprovalCapabilities>
   originalCheckout?: string
   /** Additional directories where read-only access is treated as inside-workspace.
    *  Write operations are never allowed through readRoots. */
@@ -358,8 +365,12 @@ function uniqueCapability(caps: Capability[], cap: Capability) {
   caps.push(cap)
 }
 
-function isTrustedPath(pathInput: string, roots: string[] | undefined): boolean {
-  return roots?.some((root) => Filesystem.contains(root, pathInput)) ?? false
+function isTrustedPath(
+  pathInput: string,
+  roots: string[] | undefined,
+  options?: { followFinalSymlink?: boolean },
+): boolean {
+  return roots?.some((root) => Filesystem.contains(root, pathInput, options)) ?? false
 }
 
 function classifyPathCapability(
@@ -371,14 +382,24 @@ function classifyPathCapability(
     write?: boolean
     readRoots?: string[]
     trustedRoots?: string[]
+    /**
+     * When false, a symlink in the final component is judged as the directory
+     * entry itself (rm/mv/ln semantics) instead of followed. External links
+     * pointing into the workspace then classify as external writes instead of
+     * ordinary workspace writes.
+     */
+    followFinalSymlink?: boolean
   },
 ) {
+  const containmentOptions =
+    options.followFinalSymlink === undefined ? undefined : { followFinalSymlink: options.followFinalSymlink }
   const classification = PathClassifier.classifyPath(pathInput, {
     workspace: options.activeWorkspace,
     originalCheckout: options.originalCheckout,
+    followFinalSymlink: options.followFinalSymlink,
   })
 
-  if (classification.boundary === "inside" || isTrustedPath(pathInput, options.trustedRoots)) {
+  if (classification.boundary === "inside" || isTrustedPath(pathInput, options.trustedRoots, containmentOptions)) {
     uniqueCapability(caps, {
       class: options.write ? "file_write" : "file_read",
       nonBypassable: false,
@@ -453,8 +474,13 @@ function extractShellPathArguments(command: string, cwd: string): string[] {
   return paths
 }
 
+// Pathname-mutating shell commands act on the directory entry itself: rm /
+// rmdir / unlink remove the entry, mv renames it, ln creates it. For these,
+// containment must judge the final entry (an external link pointing into the
+// workspace is still an external write target) instead of following it.
+const PATHNAME_MUTATING_COMMANDS = new Set(["rm", "rmdir", "unlink", "mv", "ln"])
+
 const COPY_OPERAND_COMMANDS = new Set(["cp", "install", "ln"])
-const COPY_VALUE_LONG_FLAGS = new Set(["target-directory"])
 const COPY_OPTIONAL_VALUE_LONG_FLAGS = new Set(["backup", "context", "group", "mode", "owner", "preserve", "suffix"])
 const COPY_BOOLEAN_LONG_FLAGS = new Set([
   "archive",
@@ -977,6 +1003,9 @@ export namespace EnforcementGate {
           classifyPathCapability(caps, candidate, { ...pathOptions, write: aggregateWriteCapable })
         }
         for (const segment of pathSegments) {
+          const segmentTokens = shellTokenize(segment)
+          const entrySemantics = segmentTokens !== undefined && PATHNAME_MUTATING_COMMANDS.has(segmentTokens[0]!)
+          const containmentOptions = entrySemantics ? ({ followFinalSymlink: false } as const) : {}
           const writeCapable = aggregateWriteCapable || ShellSafety.classifyBashRisk(segment) !== "shell_read"
           const pathCandidates = [...extractAbsolutePaths(segment), ...extractShellPathArguments(segment, cwd)].filter(
             (candidate) => !BashVirtualPath.isShellCandidate(candidate),
@@ -988,7 +1017,7 @@ export namespace EnforcementGate {
                 originalCheckout,
                 synergyRoot,
               })
-              classifyPathCapability(caps, candidate, { ...pathOptions, write: writeCapable })
+              classifyPathCapability(caps, candidate, { ...pathOptions, write: writeCapable, ...containmentOptions })
             }
             continue
           }
@@ -1000,7 +1029,7 @@ export namespace EnforcementGate {
                 originalCheckout,
                 synergyRoot,
               })
-              classifyPathCapability(caps, candidate, { ...pathOptions, write: true })
+              classifyPathCapability(caps, candidate, { ...pathOptions, write: true, ...containmentOptions })
             }
             continue
           }
@@ -1013,7 +1042,7 @@ export namespace EnforcementGate {
               originalCheckout,
               synergyRoot,
             })
-            classifyPathCapability(caps, candidate, { ...pathOptions, write })
+            classifyPathCapability(caps, candidate, { ...pathOptions, write, ...containmentOptions })
           }
           if (!pathCandidates.includes(copyOperands.target)) {
             classifyProtectedPathCapability(caps, copyOperands.target, "write", {
@@ -1021,7 +1050,7 @@ export namespace EnforcementGate {
               originalCheckout,
               synergyRoot,
             })
-            classifyPathCapability(caps, copyOperands.target, { ...pathOptions, write: true })
+            classifyPathCapability(caps, copyOperands.target, { ...pathOptions, write: true, ...containmentOptions })
           }
         }
 

@@ -14,10 +14,10 @@ import {
 import { DEFAULT_PLUGIN_RUNTIME_LIMITS } from "@ericsanchezok/synergy-util/plugin-policy"
 import { MAX_EXECUTION_CANCEL_GRACE_MS } from "@ericsanchezok/synergy-util/runtime-shutdown"
 import { ModelsDev } from "../provider/models-schemas"
-import { LSPServer } from "../lsp/server"
+import { ConfigLspCatalog } from "./lsp-catalog"
 import { ModelRole } from "../provider/model-role"
 import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
-import { validateHolosEndpoint } from "../holos/security"
+import { validateHolosEndpoint, validateHolosPortalUrl } from "../util/holos"
 
 export const McpRetry = McpRetryConfig
 export type McpRetry = McpRetryConfig
@@ -131,15 +131,16 @@ export const ChannelClarusAccount = z
     apiUrl: z
       .string()
       .optional()
-      .describe("Clarus REST API origin override; defaults to the configured Holos API origin"),
+      .describe(
+        "Clarus REST API base URL override, including an optional path prefix; defaults to the configured Holos API base URL",
+      ),
     agent: z.string().optional().describe("Primary Synergy agent for project and assignment Sessions"),
   })
   .strict()
   .superRefine((value, ctx) => {
     if (!value.apiUrl) return
     try {
-      const url = validateHolosEndpoint(value.apiUrl, "api")
-      if (url.pathname !== "/" || url.search || url.hash) throw new Error("Clarus apiUrl must be an origin")
+      validateHolosEndpoint(value.apiUrl, "api")
     } catch (error) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -172,6 +173,26 @@ export const Holos = z
       .describe("Holos portal URL for browser-facing pages (bind/start)"),
   })
   .strict()
+  .superRefine((value, ctx) => {
+    const checks: Array<{ path: string; url?: string; kind: "api" | "ws" | "portal" }> = [
+      { path: "apiUrl", url: value.apiUrl, kind: "api" },
+      { path: "wsUrl", url: value.wsUrl, kind: "ws" },
+      { path: "portalUrl", url: value.portalUrl, kind: "portal" },
+    ]
+    for (const check of checks) {
+      if (!check.url) continue
+      try {
+        if (check.kind === "portal") validateHolosPortalUrl(check.url)
+        else validateHolosEndpoint(check.url, check.kind)
+      } catch (error) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [check.path],
+          message: error instanceof Error ? error.message : `Invalid Holos ${check.kind} URL`,
+        })
+      }
+    }
+  })
   .meta({ ref: "HolosConfig" })
 export type Holos = z.infer<typeof Holos>
 
@@ -1473,6 +1494,14 @@ export const Info = z
       .describe(
         "How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)",
       ),
+    defaultSessionWorkspace: z
+      .enum(["main", "worktree"])
+      .optional()
+      .describe(
+        "Default workspace for new sessions started from the Web composer: main = run in the main checkout, " +
+          "worktree = start each new session in an isolated git worktree (default: main). " +
+          "Programmatic session creation (API, channels, Cortex) always uses the main checkout.",
+      ),
     keybinds: Keybinds.optional().describe("Custom keybind configurations"),
     logLevel: Log.Level.optional().describe("Log level"),
     server: Server.optional().describe("Server configuration for synergy serve and web commands"),
@@ -1925,11 +1954,9 @@ export const Info = z
         (data) => {
           if (!data) return true
           if (typeof data === "boolean") return true
-          const serverIds = new Set(Object.values(LSPServer).map((s) => s.id))
-
           return Object.entries(data).every(([id, config]) => {
             if (config.disabled) return true
-            if (serverIds.has(id)) return true
+            if (ConfigLspCatalog.isKnownServer(id)) return true
             return Boolean(config.extensions)
           })
         },

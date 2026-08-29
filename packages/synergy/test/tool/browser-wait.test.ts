@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { BrowserWaitTool } from "../../src/tool/browser-wait"
-import { BrowserToolHelper } from "../../src/tool/browser-shared"
+import { BrowserWaitTool } from "../../src/browser/tools/browser-wait"
+import { BrowserToolHelper } from "../../src/browser/tools/browser-shared"
 
 const originalResolvePage = BrowserToolHelper.resolvePage
 const originalExecute = BrowserToolHelper.execute

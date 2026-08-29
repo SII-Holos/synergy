@@ -13,11 +13,11 @@ Generated from the CLI registration in `packages/synergy/src/main.ts`. Concept a
 | `auth` | manage credentials |
 | `browser` | diagnose and install Chromium for Browser tools |
 | `channel` | manage messaging channels |
-| `config` | show resolved configuration |
+| `config` | manage synergy configuration |
 | `data` |  |
 | `debug` | debugging and troubleshooting tools |
 | `diagnostics` | create a local diagnostics package |
-| `doctor` | diagnose plugin config, lockfile, and cache drift |
+| `doctor` | diagnose synergy sandbox and environment |
 | `embed` | manage the local embedding model |
 | `export` |  |
 | `generate` |  |
@@ -201,6 +201,17 @@ configure embedding provider (writes to global config)
 | Option | Description |
 | --- | --- |
 | `--print` (boolean) | print config instead of writing to file |
+
+## export
+
+export config as JSONC (secrets redacted by default)
+
+| Option | Description |
+| --- | --- |
+| `--include-secrets` (boolean) | Include plaintext api keys and secrets in the export |
+| `--only` (array) | Export only this domain; can be repeated |
+| `--scope` (string) | Export global or current project config |
+| `--output` (string) | Write to this file instead of stdout |
 
 ## export [sessionID]
 

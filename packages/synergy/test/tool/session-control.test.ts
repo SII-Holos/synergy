@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
-import { SessionControlTool } from "../../src/tool/session-control"
+import { SessionControlTool } from "../../src/project/tools/session-control"
 import { Session } from "../../src/session"
 import { SessionInteraction } from "../../src/session/interaction"
 import { SessionManager } from "../../src/session/manager"

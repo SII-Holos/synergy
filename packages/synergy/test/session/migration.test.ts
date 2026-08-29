@@ -1371,3 +1371,57 @@ describe("session migrations", () => {
     })
   })
 })
+
+describe("session nav timestamps migration", () => {
+  test("rebuilds nav indexes to backfill created/updated/archived timestamps from session info", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const session = await Session.create({ title: "Timestamp Backfill" })
+        const scope = Identifier.asScopeID(tmpScope.id)
+
+        // Seed deterministic pre-migration state on the authoritative record
+        // (Session.update would overwrite time.updated with Date.now()).
+        const infoKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(session.id))
+        await Storage.update<any>(infoKey, (draft) => {
+          draft.time.created = 111
+          draft.time.updated = 222
+          draft.time.archived = 333
+        })
+
+        // Strip the nav entry down to a pre-migration shape
+        const navKey = StoragePath.sessionNavIndex(scope)
+        const current = await Storage.read<any>(navKey)
+        const legacyEntry = current.entries.find((entry: any) => entry.id === session.id)
+        delete legacyEntry.createdAt
+        delete legacyEntry.updatedAt
+        delete legacyEntry.archivedAt
+        await Storage.write(navKey, current)
+
+        const migration = migrations.find((entry) => entry.id === "20260828-session-nav-timestamps")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+        await migration!.up(() => {})
+
+        const migrated = (await SessionNav.readNavIndex(tmpScope.id)).entries.find((e) => e.id === session.id)
+        expect(migrated).toBeDefined()
+        expect(migrated!.createdAt).toBe(111)
+        expect(migrated!.updatedAt).toBe(222)
+        expect(migrated!.archivedAt).toBe(333)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("registers the nav timestamps migration after the channel provider fields migration", () => {
+    const ids = migrations.map((entry) => entry.id)
+    const providerIdx = ids.indexOf("20260730-session-nav-channel-provider-fields")
+    const timestampsIdx = ids.indexOf("20260828-session-nav-timestamps")
+    expect(providerIdx).toBeGreaterThan(-1)
+    expect(timestampsIdx).toBeGreaterThan(providerIdx)
+  })
+})

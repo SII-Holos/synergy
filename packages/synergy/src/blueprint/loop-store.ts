@@ -4,6 +4,7 @@ import { StoragePath } from "../storage/path"
 import { ScopeContext } from "../scope/context"
 import { Bus } from "../bus"
 import { LoopEvent } from "./event"
+import { cancelDeadline } from "./deadline"
 import { LoopError } from "./error"
 import { NoteStore } from "../note"
 import { Session } from "../session"
@@ -203,8 +204,7 @@ export namespace BlueprintLoopStore {
 
     const isTerminal = patch.status === "completed" || patch.status === "failed" || patch.status === "cancelled"
     if (isTerminal) {
-      const { BlueprintLoopRuntime } = await import("./loop-runtime")
-      BlueprintLoopRuntime.cancelDeadline(scopeID, id)
+      cancelDeadline(scopeID, id)
     }
 
     const updated = await Storage.update<Info>(StoragePath.blueprintLoop(sid, id), (draft) => {

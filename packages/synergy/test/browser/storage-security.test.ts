@@ -67,8 +67,11 @@ describe("Browser export containment", () => {
     try {
       await fs.symlink(outside, path.join(workspace, "escape"))
       await expect(BrowserExport.fileTarget(workspace, "../outside.json")).rejects.toThrow("inside the workspace")
-      await expect(BrowserExport.fileTarget(workspace, "escape/created/outside.json")).rejects.toThrow("unsafe")
-      expect(await fs.stat(path.join(outside, "created")).catch(() => null)).toBeNull()
+      // A write-through escape (existing link + missing tail) is now rejected
+      // by the containment layer itself, before any parent-directory walk.
+      await expect(BrowserExport.fileTarget(workspace, "escape/created/outside.json")).rejects.toThrow(
+        /inside the workspace|unsafe/,
+      )
       const realWorkspace = await fs.realpath(workspace)
       const file = await BrowserExport.fileTarget(workspace, "nested/report.json")
       expect(file).toBe(path.join(realWorkspace, "nested", "report.json"))

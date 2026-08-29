@@ -7,7 +7,9 @@ import { Bus } from "../bus"
 import { File } from "../file"
 import { FileTime } from "../file/time"
 import { detectConflicts } from "../conflict/detect"
-import { RuntimeReload } from "../runtime/reload"
+import { RuntimeReloadPath } from "../config/reload-path"
+import { RuntimeReloadExecutor } from "../config/reload-executor"
+import { formatCompactReloadResult } from "../config/reload-schema"
 import { computeFileHash, formatHashlineBlock, formatHashlineHeader } from "../hashline/format"
 import { Patch, PatchSection } from "../hashline/input"
 import { normalizeToLF } from "../hashline/normalize"
@@ -71,7 +73,7 @@ function buildSectionDiff(before: string, after: string): string {
   return trimDiff(createTwoFilesPatch("file", "file", before, after))
 }
 
-const noRuntimeReload = undefined as Awaited<ReturnType<typeof RuntimeReload.reload>> | undefined
+const noRuntimeReload = undefined as Awaited<ReturnType<typeof RuntimeReloadExecutor.reload>> | undefined
 
 export const ReviseFileTool = Tool.define("revise_file", {
   description: DESCRIPTION,
@@ -292,17 +294,17 @@ export const ReviseFileTool = Tool.define("revise_file", {
     const diagnostics = await collectWriteDiagnostics(primaryCanonical, { before: beforeDiagnostics })
     if (diagnostics.output) outputBlocks.push(diagnostics.output.trim())
 
-    const reloadTargets = RuntimeReload.detectTargetsForFile(primaryCanonical)
-    const reloadScope = RuntimeReload.detectScopeForFile(primaryCanonical) ?? "auto"
+    const reloadTargets = RuntimeReloadPath.detectTargetsForFile(primaryCanonical)
+    const reloadScope = RuntimeReloadPath.detectScopeForFile(primaryCanonical) ?? "auto"
     const runtimeReload = reloadTargets.length
-      ? await RuntimeReload.reload({
+      ? await RuntimeReloadExecutor.reload({
           targets: reloadTargets,
           scope: reloadScope,
           reason: `revise_file:${displayPath(primaryCanonical)}`,
         })
       : undefined
-    const builtinSourceWarning = RuntimeReload.builtinSourceEditWarning(primaryCanonical)
-    if (runtimeReload) outputBlocks.push(RuntimeReload.formatCompactResult(runtimeReload))
+    const builtinSourceWarning = RuntimeReloadPath.builtinSourceEditWarning(primaryCanonical)
+    if (runtimeReload) outputBlocks.push(formatCompactReloadResult(runtimeReload))
     if (builtinSourceWarning) outputBlocks.push(builtinSourceWarning)
 
     const output = outputBlocks.join("\n")

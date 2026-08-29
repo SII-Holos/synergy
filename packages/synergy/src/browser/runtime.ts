@@ -13,6 +13,24 @@ import { BrowserEvent } from "./event.js"
 import type { BrowserSession } from "./types.js"
 export { type BrowserSession } from "./types.js"
 
+interface BrowserCommandExecutor {
+  disposeOwner(owner: BrowserOwner.Info, dispose: () => Promise<void>): Promise<void>
+  clear(): void
+}
+
+let commandExecutor: BrowserCommandExecutor | undefined
+
+/** BrowserCommandService owns owner-scoped disposal queues; it registers its
+ * executor at module load so the runtime never imports it back. */
+export function registerBrowserCommandExecutor(executor: BrowserCommandExecutor): void {
+  commandExecutor = executor
+}
+
+function requireCommandExecutor(): BrowserCommandExecutor {
+  if (!commandExecutor) throw new Error("Browser command executor is not registered")
+  return commandExecutor
+}
+
 export namespace BrowserRuntime {
   const log = Log.create({ service: "browser.runtime" })
 
@@ -62,12 +80,10 @@ export namespace BrowserRuntime {
     const failures: unknown[] = []
     collectFailures(await Promise.allSettled(Array.from(disposalPromises.values())), failures)
     collectFailures(await Promise.allSettled(Array.from(sessionPromises.values())), failures)
-    const { BrowserCommandService } = await import("./command-service.js")
+    const executor = requireCommandExecutor()
     collectFailures(
       await Promise.allSettled(
-        Array.from(sessions.values(), (session) =>
-          BrowserCommandService.disposeOwner(session.owner, () => session.dispose()),
-        ),
+        Array.from(sessions.values(), (session) => executor.disposeOwner(session.owner, () => session.dispose())),
       ),
       failures,
     )
@@ -78,7 +94,7 @@ export namespace BrowserRuntime {
     }
     sessions.clear()
     sessionPromises.clear()
-    BrowserCommandService.clear()
+    executor.clear()
 
     if (driver) {
       try {
@@ -119,8 +135,7 @@ export namespace BrowserRuntime {
     if (pending) await pending
     const session = sessions.get(key)
     if (!session) return
-    const { BrowserCommandService } = await import("./command-service.js")
-    await BrowserCommandService.disposeOwner(owner, () => session.dispose())
+    await requireCommandExecutor().disposeOwner(owner, () => session.dispose())
     sessions.delete(key)
     BrowserNetworkGateway.revoke(owner)
     BrowserBroker.release(owner)

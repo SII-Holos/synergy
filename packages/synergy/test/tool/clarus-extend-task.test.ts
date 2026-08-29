@@ -12,6 +12,9 @@ import { AgendaStore } from "../../src/agenda/store"
 import type { RuntimeTaskAssignedEvent } from "../../src/channel/provider/clarus/agent-tunnel-port"
 import { tmpdir } from "../fixture/fixture"
 
+// Product domains register tools via the L4 manifest
+import "../../src/product-registration"
+
 // Expected contract tests for the clarus_extend_task tool.
 // Tests fail RED until:
 //   1. Tool is registered in ToolRegistry as "clarus_extend_task"

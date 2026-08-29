@@ -506,7 +506,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       activeLoopID: params.id ? info()?.blueprint?.loopID : undefined,
     })
   })
-  const armedWorkflowKind = createMemo<"plan" | "lightloop" | "lattice" | "boss" | undefined>(() => {
+  const armedWorkflowKind = createMemo<"plan" | "lightloop" | "lattice" | "boss" | "extension" | undefined>(() => {
     const workflow = activeWorkflow()?.kind
     if (workflow) return workflow
     if (pendingPlan()) return "plan"

@@ -6,6 +6,9 @@ import { SessionManager } from "../../src/session/manager"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
+// Product domains register workflows and tools via the L4 manifest
+import "../../src/product-registration"
+
 describe("ChannelCommand", () => {
   const endpointSuffix = crypto.randomUUID()
   const baseContext = {

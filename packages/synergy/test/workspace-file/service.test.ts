@@ -10,9 +10,12 @@ import { WorkspaceFileSearch } from "../../src/workspace-file/search"
 import { WorkspaceFileService } from "../../src/workspace-file/service"
 import { WorkspaceFileStatus } from "../../src/workspace-file/status"
 import { LSP } from "../../src/lsp"
+import { registerWorkspaceFileSymbolSource } from "../../src/lsp/workspace-symbol-source"
 import { Ripgrep } from "../../src/file/ripgrep"
 import { ProcessOutput } from "../../src/process/output"
 import { tmpdir } from "../fixture/fixture"
+
+registerWorkspaceFileSymbolSource()
 
 function isSymlinkPrivilegeError(error: unknown) {
   const code = (error as { code?: unknown })?.code

@@ -7595,6 +7595,10 @@ msgstr "Home"
 msgid "app.sidebar.section.recent"
 msgstr "Recent"
 
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.session.draftBadge"
+msgstr "Draft"
+
 #. Session fallback
 msgid "app.sidebar.session.untitled"
 msgstr "Untitled"
@@ -14295,6 +14299,10 @@ msgid "settings.catalog.general.row.interfaceLanguage"
 msgstr "Interface Language"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.general.row.newSessionWorkspace"
+msgstr "New Session Workspace"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.general.row.notifications"
 msgstr "Notifications"
 
@@ -14316,7 +14324,7 @@ msgstr "Interface Zoom"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.searchTerms"
-msgstr "appearance | color | light | dark | auto | language | snapshot | activity | activity display | product update | toast | notification"
+msgstr "appearance | color | light | dark | auto | language | snapshot | activity | activity display | workspace | worktree | checkout | product update | toast | notification"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.github.description"
@@ -15465,6 +15473,22 @@ msgstr "Update Synergy Service"
 #. js-lingui-explicit-id
 msgid "settings.general.updates.web.description"
 msgstr "Refresh this browser when the server has newer Web assets."
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.description"
+msgstr "Start new sessions in the main checkout or an isolated git worktree"
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.main"
+msgstr "Main checkout"
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.title"
+msgstr "New session workspace"
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.worktree"
+msgstr "Worktree"
 
 #. js-lingui-explicit-id
 msgid "settings.general.zoom.aria"
@@ -18685,6 +18709,26 @@ msgstr "Visible background tasks"
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.warnings"
 msgstr "Warnings"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.no-steps"
+msgstr "No steps recorded"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.open-session"
+msgstr "Open subagent session"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.running"
+msgstr "Running"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.starting"
+msgstr "Starting…"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.waiting-approval"
+msgstr "Waiting for approval"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.abort-session"

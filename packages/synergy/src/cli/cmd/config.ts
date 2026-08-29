@@ -1,14 +1,17 @@
 import { Auth } from "../../provider/api-key"
 import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 import { Config } from "../../config/config"
+import { ConfigExport } from "../../config/export"
 import { ConfigImport } from "../../config/import"
 import { Global } from "../../global"
 import { withScopeContext } from "../scope"
 import { ConfigDomain } from "../../config/domain"
 import { ProviderCatalog } from "@/provider/catalog"
 import { ProviderRecommendation } from "@/provider/recommendation"
+import fs from "fs/promises"
+import { EOL } from "os"
 
 export const ConfigCommand = cmd({
   command: "config",
@@ -17,10 +20,75 @@ export const ConfigCommand = cmd({
     yargs
       .command(ConfigPathCommand)
       .command(ConfigImportCommand)
+      .command(ConfigExportCommand)
       .command(ConfigEmbeddingCommand)
       .command(ConfigRerankCommand)
       .command(ConfigWizardCommand),
   async handler() {},
+})
+
+export const ConfigExportCommand = cmd({
+  command: "export",
+  describe: "export config as JSONC (secrets redacted by default)",
+  builder: (yargs) =>
+    yargs
+      .option("include-secrets", {
+        type: "boolean",
+        default: false,
+        describe: "Include plaintext api keys and secrets in the export",
+      })
+      .option("only", {
+        type: "array",
+        choices: ConfigDomain.Id.options,
+        describe: "Export only this domain; can be repeated",
+      })
+      .option("scope", {
+        type: "string",
+        choices: ["global", "project"] as const,
+        default: "global" as const,
+        describe: "Export global or current project config",
+      })
+      .option("output", {
+        type: "string",
+        alias: "o",
+        describe: "Write to this file instead of stdout",
+      }),
+  async handler(args) {
+    const only = args.only ? (Array.isArray(args.only) ? args.only : [args.only]) : []
+    const scope = ConfigImport.Scope.parse(args.scope)
+    const run = async () => {
+      try {
+        const result = await ConfigExport.build({
+          scope,
+          only: only.length > 0 ? only.map((id) => ConfigDomain.Id.parse(id)) : undefined,
+          includeSecrets: Boolean(args["include-secrets"]),
+        })
+        const text = ConfigExport.render(result)
+        if (result.secretsIncluded) {
+          process.stderr.write(
+            `Warning: export contains plaintext secrets; keep the output private and restrict file permissions${EOL}`,
+          )
+        }
+        for (const warning of result.warnings) process.stderr.write(`Warning: ${warning}${EOL}`)
+        if (args.output) {
+          await Bun.write(args.output, text)
+          if (result.secretsIncluded) {
+            await fs.chmod(args.output, 0o600).catch(() => {
+              process.stderr.write(`Warning: could not restrict permissions on ${args.output}${EOL}`)
+            })
+          }
+          process.stderr.write(`Exported ${result.domains.length} domain(s) to ${args.output}${EOL}`)
+        } else {
+          process.stdout.write(text)
+        }
+      } catch (error) {
+        UI.error(formatError(error))
+        process.exitCode = 1
+      }
+    }
+    if (scope === "project") return withScopeContext(process.cwd(), run)
+    return run()
+  },
 })
 
 export const ConfigPathCommand = cmd({
