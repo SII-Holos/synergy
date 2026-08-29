@@ -69,14 +69,15 @@ describe("Clarus Channel provider", () => {
     })
   })
 
-  test("project discovery requests active and paused lifecycle pages", async () => {
+  test("project discovery preserves the configured Clarus base path", async () => {
     const originalFetch = globalThis.fetch
-    const requestedStatuses: string[] = []
+    const requestedUrls: URL[] = []
     globalThis.fetch = Object.assign(
       async (input: RequestInfo | URL) => {
         const request = input instanceof Request ? input : new Request(input)
-        const status = new URL(request.url).searchParams.get("status")
-        requestedStatuses.push(status ?? "")
+        const url = new URL(request.url)
+        const status = url.searchParams.get("status")
+        requestedUrls.push(url)
         return new Response(
           JSON.stringify({
             code: 0,
@@ -92,7 +93,7 @@ describe("Clarus Channel provider", () => {
     )
     try {
       const client = new ClarusProjectClient(
-        "https://api.holosai.io",
+        "https://api.holosai.io/environment",
         async () => ({ agentID: "account-a", agentSecret: "secret" }),
         new AbortController().signal,
       )
@@ -104,7 +105,21 @@ describe("Clarus Channel provider", () => {
       expect(paused.projects).toEqual([
         { projectID: "project-paused", projectName: "paused Project", status: "paused" },
       ])
-      expect(requestedStatuses).toEqual(["active", "paused"])
+      expect(requestedUrls.map((url) => url.pathname)).toEqual([
+        "/environment/api/v1/holos/clarus/projects",
+        "/environment/api/v1/holos/clarus/projects",
+      ])
+      expect(requestedUrls.map((url) => url.searchParams.get("status"))).toEqual(["active", "paused"])
+      for (const apiUrl of ["https://api.holosai.io/environment?", "https://api.holosai.io/environment#"]) {
+        expect(
+          () =>
+            new ClarusProjectClient(
+              apiUrl,
+              async () => ({ agentID: "account-a", agentSecret: "secret" }),
+              new AbortController().signal,
+            ),
+        ).toThrow("Invalid Holos api URL structure")
+      }
     } finally {
       globalThis.fetch = originalFetch
     }

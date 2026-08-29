@@ -1,1 +1,1 @@
-export { validateHolosEndpoint } from "../util/holos"
+export { validateHolosEndpoint, validateHolosPortalUrl } from "../util/holos"

@@ -9,6 +9,7 @@ import { Log } from "@/util/log"
 import { Contact } from "./contact"
 import { Envelope } from "./envelope"
 import { HolosAuth } from "./auth"
+import { HolosEndpoint } from "./endpoint"
 import { HolosProfile } from "./profile"
 import { HolosProtocol } from "./protocol"
 import { Presence } from "./presence"
@@ -70,7 +71,7 @@ type RuntimeConnection = {
 }
 
 async function fetchWsToken(apiUrl: string, agentSecret: string): Promise<string> {
-  const res = await fetch(`${apiUrl}/api/v1/holos/agent_tunnel/ws_token`, {
+  const res = await fetch(HolosEndpoint.url("/api/v1/holos/agent_tunnel/ws_token", apiUrl), {
     headers: { Authorization: `Bearer ${agentSecret}` },
   })
   if (!res.ok) throw new Error(`Failed to get ws_token: ${res.status} ${res.statusText}`)
@@ -574,7 +575,8 @@ export class HolosProvider {
     const credentials = await HolosAuth.getCredentialOrThrow()
 
     const wsToken = await fetchWsToken(holosConfig.apiUrl, credentials.agentSecret)
-    const wsEndpoint = `${holosConfig.wsUrl}/api/v1/holos/agent_tunnel/ws?token=${wsToken}`
+    const wsEndpoint = new URL(HolosEndpoint.url("/api/v1/holos/agent_tunnel/ws", holosConfig.wsUrl))
+    wsEndpoint.searchParams.set("token", wsToken)
     const ws = new WebSocket(wsEndpoint)
 
     this.state = {

@@ -17,6 +17,9 @@ const Assignment = z.object({
   status: z.enum(["assigned", "running", "completed", "cancelled", "reconciliation_error"]),
   deadlineAt: z.string().optional(),
   assignmentMessageID: z.string().optional(),
+  acceptState: z.enum(["none", "pending", "acknowledged", "ambiguous"]).default("none"),
+  acceptRequestID: z.string().optional(),
+  acceptedAt: z.string().optional(),
   resultState: z.enum(["none", "pending", "acknowledged", "not_dispatched", "rejected", "ambiguous"]),
   resultRequestID: z.string().optional(),
   extensionState: z
@@ -99,6 +102,52 @@ export namespace ClarusAssignmentStore {
     const cancelled = Assignment.parse({ ...assignment, status: "cancelled", updatedAt: Date.now() })
     await Storage.write(key, cancelled)
     return { ...located, assignment: cancelled }
+  }
+
+  export async function beginAccept(input: {
+    accountId: string
+    projectID: string
+    taskID: string
+    requestID: string
+  }): Promise<Located> {
+    const located = await findByIdentity(input)
+    if (!located) throw new Error("This task is not bound to a Clarus assignment")
+    using _ = await Lock.write(`channel:clarus:assignment:${located.accountHash}:${located.assignmentHash}`)
+    const key = StoragePath.clarusProviderAssignment(located.accountHash, located.assignmentHash)
+    const assignment = Assignment.parse(await Storage.read<unknown>(key))
+    if (assignment.acceptState === "acknowledged") return { ...located, assignment }
+    const pending = Assignment.parse({
+      ...assignment,
+      acceptState: "pending",
+      acceptRequestID: input.requestID,
+      acceptedAt: undefined,
+      updatedAt: Date.now(),
+    })
+    await Storage.write(key, pending)
+    return { ...located, assignment: pending }
+  }
+
+  export async function settleAccept(
+    input: {
+      accountHash: string
+      assignmentHash: string
+      requestID: string
+    } & ({ state: "acknowledged"; acceptedAt: string } | { state: "ambiguous" }),
+  ): Promise<void> {
+    using _ = await Lock.write(`channel:clarus:assignment:${input.accountHash}:${input.assignmentHash}`)
+    const key = StoragePath.clarusProviderAssignment(input.accountHash, input.assignmentHash)
+    const assignment = Assignment.parse(await Storage.read<unknown>(key))
+    if (assignment.acceptRequestID !== input.requestID) return
+    if (assignment.acceptState === "acknowledged") return
+    await Storage.write(
+      key,
+      Assignment.parse({
+        ...assignment,
+        acceptState: input.state,
+        acceptedAt: input.state === "acknowledged" ? input.acceptedAt : undefined,
+        updatedAt: Date.now(),
+      }),
+    )
   }
 
   export async function beginResult(sessionID: string, requestID: string): Promise<Located> {
@@ -247,6 +296,8 @@ export namespace ClarusAssignmentStore {
       (existing.runID !== input.event.runID ||
         existing.subtaskID !== input.event.subtaskID ||
         existing.attempt !== input.event.attempt)
+    const acceptReassigned =
+      reassigned || existing?.assignmentMessageID !== (input.event.requestID ?? existing?.assignmentMessageID)
     const assignment = Assignment.parse({
       accountId: input.accountId,
       projectID: input.event.projectID,
@@ -259,6 +310,9 @@ export namespace ClarusAssignmentStore {
       status: existing && !reassigned ? existing.status : "running",
       deadlineAt: input.event.deadlineAt ?? undefined,
       assignmentMessageID: input.event.requestID ?? existing?.assignmentMessageID,
+      acceptState: existing && !acceptReassigned ? existing.acceptState : "none",
+      acceptRequestID: existing && !acceptReassigned ? existing.acceptRequestID : undefined,
+      acceptedAt: existing && !acceptReassigned ? existing.acceptedAt : undefined,
       resultState: existing && !reassigned ? existing.resultState : "none",
       resultRequestID: existing && !reassigned ? existing.resultRequestID : undefined,
       extensionState: existing && !reassigned ? existing.extensionState : "none",

@@ -3207,7 +3207,7 @@ export type ChannelFeishuConfig = {
 export type ChannelClarusAccountConfig = {
   enabled?: boolean
   /**
-   * Clarus REST API origin override; defaults to the configured Holos API origin
+   * Clarus REST API base URL override, including an optional path prefix; defaults to the configured Holos API base URL
    */
   apiUrl?: string
   /**
