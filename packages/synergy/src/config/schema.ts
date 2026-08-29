@@ -17,7 +17,7 @@ import { ModelsDev } from "../provider/models-schemas"
 import { LSPServer } from "../lsp/server"
 import { ModelRole } from "../provider/model-role"
 import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
-import { validateHolosEndpoint } from "../holos/security"
+import { validateHolosEndpoint, validateHolosPortalUrl } from "../holos/security"
 
 export const McpRetry = McpRetryConfig
 export type McpRetry = McpRetryConfig
@@ -173,6 +173,26 @@ export const Holos = z
       .describe("Holos portal URL for browser-facing pages (bind/start)"),
   })
   .strict()
+  .superRefine((value, ctx) => {
+    const checks: Array<{ path: string; url?: string; kind: "api" | "ws" | "portal" }> = [
+      { path: "apiUrl", url: value.apiUrl, kind: "api" },
+      { path: "wsUrl", url: value.wsUrl, kind: "ws" },
+      { path: "portalUrl", url: value.portalUrl, kind: "portal" },
+    ]
+    for (const check of checks) {
+      if (!check.url) continue
+      try {
+        if (check.kind === "portal") validateHolosPortalUrl(check.url)
+        else validateHolosEndpoint(check.url, check.kind)
+      } catch (error) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [check.path],
+          message: error instanceof Error ? error.message : `Invalid Holos ${check.kind} URL`,
+        })
+      }
+    }
+  })
   .meta({ ref: "HolosConfig" })
 export type Holos = z.infer<typeof Holos>
 

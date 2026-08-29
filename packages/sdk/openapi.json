@@ -19641,7 +19641,10 @@
             "in": "path",
             "name": "agentId",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9._-]+$"
             },
             "required": true
           }

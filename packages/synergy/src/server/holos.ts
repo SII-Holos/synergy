@@ -897,7 +897,17 @@ export const HolosDataRoute = new Hono()
         ...errors(404, 503),
       },
     }),
-    validator("param", z.object({ agentId: z.string() })),
+    validator(
+      "param",
+      z.object({
+        agentId: z
+          .string()
+          .min(1)
+          .max(256)
+          .regex(/^[A-Za-z0-9._-]+$/, "agentId contains unsupported characters")
+          .refine((id) => id !== "." && id !== "..", "agentId must not be a dot segment"),
+      }),
+    ),
     async (c) => {
       const holos = await HolosReadiness.snapshot()
       if (!holos.credential) {
@@ -908,7 +918,7 @@ export const HolosDataRoute = new Hono()
       }
 
       const agentId = c.req.valid("param").agentId
-      const res = await fetch(await holosApiUrl(`/api/v1/holos/agent_tunnel/agents/${agentId}`), {
+      const res = await fetch(await holosApiUrl(`/api/v1/holos/agent_tunnel/agents/${encodeURIComponent(agentId)}`), {
         headers: { Authorization: `Bearer ${holos.credential.agentSecret}` },
       })
       if (!res.ok) return c.json({ message: `Agent not found: ${res.status}` }, 404)
