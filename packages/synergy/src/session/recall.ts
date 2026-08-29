@@ -241,18 +241,18 @@ async function buildExperienceContext(
   if (!userText) return { context: undefined }
 
   try {
-    const results = await SessionLibraryRecall.retrieveExperiences(scopeID, userText, { vector: queryVector })
+    const results = await SessionLibraryRecall.retrieveExperiences(scopeID, userText, {
+      vector: queryVector,
+      requireScript: true,
+    })
     if (results.length === 0) return { context: undefined }
-
-    const withScript = results.filter((r) => r.script)
-    if (withScript.length === 0) return { context: undefined }
 
     SessionLibraryRecall.trackExperienceRetrieval(
       sessionID,
-      withScript.map((r) => r.id),
+      results.map((r) => r.id),
     )
 
-    const entries = withScript.map((r) => {
+    const entries = results.map((r) => {
       const parts = [`<experience sim="${r.similarity.toFixed(3)}" q="${r.qValue.toFixed(3)}">`]
       parts.push(`<intent>${r.intent}</intent>`)
       parts.push(`<script>${r.script}</script>`)

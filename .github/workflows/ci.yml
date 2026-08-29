@@ -94,6 +94,9 @@ jobs:
           test/sandbox/phase3-windows-config.test.ts
           test/session/tool-resolver-bash-profile.test.ts
 
+      - name: Run util lock tests
+        run: bun test --timeout 30000 --cwd packages/util test/fs-lock.test.ts test/process-identity.test.ts
+
       - name: Run Desktop Windows-focused tests
         run: >-
           bun test --cwd packages/desktop

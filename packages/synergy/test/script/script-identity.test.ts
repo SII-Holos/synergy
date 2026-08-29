@@ -1,14 +1,22 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from "bun:test"
 
 // One module evaluation per process: pin the environment BEFORE importing so
 // the module's top-level awaits run deterministically with no network access.
 // SYNERGY_BUMP drives the "latest" channel; a 404 registry response leaves no
 // published versions and exercises the bump arithmetic against the baseline.
+// The stub replaces globalThis.fetch for the whole shard process, so capture
+// the real fetch before installing it and restore it after the last test —
+// sibling files that fetch local test servers would otherwise see every
+// request answered with 404.
 process.env.SYNERGY_BUMP = "minor"
 delete process.env.SYNERGY_VERSION
 delete process.env.SYNERGY_CHANNEL
+const realFetch = globalThis.fetch
 const registryFetch = (async () => new Response(null, { status: 404 })) as unknown as typeof fetch
 globalThis.fetch = registryFetch
+afterAll(() => {
+  globalThis.fetch = realFetch
+})
 
 const { Script } = await import("../../script/script-identity")
 

@@ -18,8 +18,10 @@ export function registerLibrarySessionRecall() {
       ExperienceRecall.retrieve(scopeID, query, {
         ...(options?.simThreshold !== undefined ? { simThreshold: options.simThreshold } : {}),
         ...(options?.vector !== undefined ? { vector: options.vector } : {}),
+        ...(options?.requireScript !== undefined ? { requireScript: options.requireScript } : {}),
       }),
     trackExperienceRetrieval: (sessionID, experienceIDs) => ExperienceRecall.trackRetrieval(sessionID, experienceIDs),
+    commitExperienceRetrieval: (sessionID) => ExperienceRecall.commitRetrieval(sessionID),
     buildExperienceEvaluation: (rewards, snapThreshold) =>
       ExperienceRecall.buildEvaluation(rewards as LibraryDB.Experience.Rewards, snapThreshold),
     writeExperienceDebugLog: (sessionID, scopeID, query, results, injected) =>

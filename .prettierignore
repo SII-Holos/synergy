@@ -21,3 +21,4 @@ packages/sdk/js/openapi.json
 # stale copies linger when a hook times out mid-run)
 packages/ui/test/components/.provider-icon-fixture-*/
 packages/ui/test/components/.tooltip-fixture-*/
+.tmp-scout/

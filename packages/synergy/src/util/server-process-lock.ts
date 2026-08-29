@@ -3,9 +3,9 @@ import { DaemonPaths } from "./daemon-paths"
 import { execFile } from "child_process"
 import { randomUUID } from "crypto"
 import { promisify } from "util"
+import { processStartIdentity } from "@ericsanchezok/synergy-util/process-identity"
 
 const execFileAsync = promisify(execFile)
-let ownProcessStartIdentity: Promise<string | undefined> | undefined
 
 export namespace ServerProcessLock {
   export interface LockInfo {
@@ -55,12 +55,12 @@ export namespace ServerProcessLock {
     await fs.mkdir(DaemonPaths.root(), { recursive: true })
 
     const ownerToken = randomUUID()
-    const processStartIdentity = (await getProcessStartIdentity(process.pid)) ?? `unknown:${process.pid}`
+    const identity = (await processStartIdentity(process.pid)) ?? `unknown:${process.pid}`
     const payload: LockInfo = {
       pid: process.pid,
       startedAt: Date.now(),
       ownerToken,
-      processStartIdentity,
+      processStartIdentity: identity,
       command: process.argv.slice(),
       cwd: process.cwd(),
       mode: process.env.SYNERGY_DAEMON === "1" ? "daemon" : "server",
@@ -88,7 +88,7 @@ export namespace ServerProcessLock {
     const release = async () => {
       if (released) return
       released = true
-      await removeOwnedLock(lockPath, { pid: process.pid, ownerToken, processStartIdentity })
+      await removeOwnedLock(lockPath, { pid: process.pid, ownerToken, processStartIdentity: identity })
     }
 
     return { release }
@@ -275,60 +275,8 @@ export namespace ServerProcessLock {
   async function isProcessOwnerAlive(lock: LockInfo) {
     if (!(await isPidAlive(lock.pid))) return false
     if (!lock.processStartIdentity || lock.processStartIdentity.startsWith("unknown:")) return true
-    const current = await getProcessStartIdentity(lock.pid)
+    const current = await processStartIdentity(lock.pid)
     return current === undefined || current === lock.processStartIdentity
-  }
-
-  async function getProcessStartIdentity(pid: number) {
-    if (pid === process.pid) {
-      ownProcessStartIdentity ??= queryProcessStartIdentity(pid)
-      return ownProcessStartIdentity
-    }
-    return queryProcessStartIdentity(pid)
-  }
-
-  async function queryProcessStartIdentity(pid: number) {
-    if (process.platform === "linux") {
-      const stat = await fs.readFile(`/proc/${pid}/stat`, "utf8").catch(() => "")
-      const closingParen = stat.lastIndexOf(")")
-      const fields =
-        closingParen < 0
-          ? []
-          : stat
-              .slice(closingParen + 1)
-              .trim()
-              .split(/\s+/)
-      const startTicks = fields[19]
-      if (startTicks) return `linux:${startTicks}`
-    }
-
-    if (process.platform === "win32") {
-      const wmic = await execFileAsync("wmic.exe", [
-        "process",
-        "where",
-        `(ProcessId=${pid})`,
-        "get",
-        "CreationDate",
-        "/value",
-      ]).catch(() => ({ stdout: "" }))
-      const creationDate = wmic.stdout.match(/CreationDate=(\d+)/)?.[1]
-      if (creationDate) return `windows:${creationDate}`
-
-      const result = await execFileAsync("powershell.exe", [
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`,
-      ]).catch(() => ({ stdout: "" }))
-      const ticks = result.stdout.trim()
-      if (ticks) return `windows:${ticks}`
-
-      return undefined
-    }
-
-    const result = await execFileAsync("ps", ["-p", String(pid), "-o", "lstart="]).catch(() => ({ stdout: "" }))
-    const startedAt = Date.parse(result.stdout.trim())
-    return Number.isNaN(startedAt) ? undefined : `unix:${startedAt}`
   }
 
   export async function inspect(lock: LockInfo, input?: { healthUrl?: string }): Promise<ProcessInspection> {

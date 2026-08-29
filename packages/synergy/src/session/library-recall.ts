@@ -63,6 +63,8 @@ export namespace SessionLibraryRecall {
   export interface ExperienceOptions {
     simThreshold?: number
     vector?: number[]
+    /** Server-side filter: only return experiences that carry a script. */
+    requireScript?: boolean
   }
 
   export interface Provider {
@@ -74,6 +76,8 @@ export namespace SessionLibraryRecall {
       options?: ExperienceOptions,
     ): Promise<ExperienceResult[]>
     trackExperienceRetrieval(sessionID: string, experienceIDs: string[]): void
+    /** Commit pending experience-retrieval pull counters for the session. */
+    commitExperienceRetrieval(sessionID: string): void
     buildExperienceEvaluation(rewards: unknown, snapThreshold?: number): string | undefined
     writeExperienceDebugLog(
       sessionID: string,
@@ -114,6 +118,12 @@ export namespace SessionLibraryRecall {
 
   export function trackExperienceRetrieval(sessionID: string, experienceIDs: string[]): void {
     provider?.trackExperienceRetrieval(sessionID, experienceIDs)
+  }
+
+  /** Commit the session's pending experience-retrieval pull counters (the
+   * turn that actually injected experience owns the commit). */
+  export function commitExperienceRetrieval(sessionID: string): void {
+    provider?.commitExperienceRetrieval(sessionID)
   }
 
   export function buildExperienceEvaluation(rewards: unknown, snapThreshold?: number): string | undefined {

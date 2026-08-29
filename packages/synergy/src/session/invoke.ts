@@ -776,6 +776,11 @@ export namespace SessionInvoke {
           lateSystemParts.push(memoryResult.context)
           if (step === 1) cacheResult(sessionID, memoryResult)
           const { injection } = memoryResult
+          // Commit pull counters only for the turn that actually built the
+          // recall (step 1) and only when experience was injected: cache
+          // replays and the always-memory timeout fallback must neither
+          // re-count nor count pulls the model never received.
+          if (step === 1 && injection.experience) SessionLibraryRecall.commitExperienceRetrieval(sessionID)
           if ((injection.memory || injection.experience) && !R.metadata?.injectedContext) {
             const updated = await Session.mergeMessageMetadata({
               sessionID,

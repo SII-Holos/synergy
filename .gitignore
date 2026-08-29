@@ -55,6 +55,7 @@ ref/
 
 # Scout agent cloned repos
 .scout-tmp/
+.tmp-scout/
 
 # Research and papers (not part of the product)
 holos-paper/

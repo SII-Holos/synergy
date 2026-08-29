@@ -4,14 +4,15 @@ export function buildPreambleSection(): string {
   return [
     PREAMBLE_HEADING,
     "",
-    "Before using tools, send one brief sentence telling the user what you are about to do.",
-    "Group related reads, searches, edits, commands, or external calls under a single preamble instead of narrating every individual tool call.",
+    "Tool calls are already visible as they happen, so do not narrate every read, search, edit, or command.",
     "",
-    "Keep preambles concise, concrete, and forward-looking:",
-    "- Say the immediate next action.",
-    "- Mention relevant prior progress when it helps.",
-    "- Use one sentence by default.",
-    "- Keep the tone direct and collaborative.",
+    "Send a short message only when it helps the user follow along:",
+    "- Starting a multi-step task: one sentence on the plan.",
+    "- Key decisions: what you are choosing and why.",
+    "- Unexpected findings or risks: what differs from expectations.",
+    "- Completion: the outcome and anything still uncertain.",
+    "",
+    "Keep each message concise, concrete, and forward-looking — one sentence by default.",
   ].join("\n")
 }
 

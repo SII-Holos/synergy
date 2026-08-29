@@ -1,27 +1,22 @@
 import { TOOL_MISC_DESC } from "../../tool-title-descriptors"
-import { getTaskToolTrigger } from "../task-info"
-import { createMemo, For, Show } from "solid-js"
+import { getTaskToolTrigger, parseTaskSubagentSummary } from "../task-info"
+import { TaskSubagentDetail, TaskSubagentSteps } from "../task-subagent-detail"
+import { createMemo } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { useData } from "../../../context"
 import { createAutoScroll } from "../../../hooks"
-import { BasicTool } from "../../basic-tool"
-import { Icon } from "../../icon"
-import type { MessageDescriptor } from "@lingui/core"
-import { ToolRegistry, getToolInfo } from "../../message-part"
-
-function resolveTitle(title: string | MessageDescriptor, _: (d: MessageDescriptor) => string): string {
-  if (typeof title === "string") return title
-  return _(title)
-}
+import { BasicTool, useToolResultPresentation } from "../../basic-tool"
+import { ToolRegistry } from "../../message-part"
 
 ToolRegistry.register({
   name: "task",
   render(props) {
     const data = useData()
     const view = data.view
+    const resultOnly = useToolResultPresentation()
     const { _ } = useLingui()
-    const summary = () =>
-      (props.metadata.summary ?? []) as { id: string; tool: string; state: { status: string; title?: string } }[]
+    const summary = () => props.metadata.summary
+    const steps = createMemo(() => parseTaskSubagentSummary(summary()))
     const isBackground = () => props.metadata.background === true
     const trigger = createMemo(() =>
       getTaskToolTrigger(props.input, {
@@ -48,6 +43,25 @@ ToolRegistry.register({
       }
     }
 
+    if (resultOnly) {
+      return (
+        <TaskSubagentDetail
+          info={{
+            agentType: typeof props.input.subagent_type === "string" ? props.input.subagent_type : undefined,
+            description: typeof props.input.description === "string" ? props.input.description : undefined,
+            background: isBackground(),
+            sessionId: childSessionId(),
+            summary: summary(),
+            running:
+              isBackground() ||
+              props.status === "pending" ||
+              props.status === "running" ||
+              props.status === "generating",
+          }}
+        />
+      )
+    }
+
     return (
       <div data-component="tool-part-wrapper" data-permission={!!childPermission()}>
         <BasicTool
@@ -55,7 +69,7 @@ ToolRegistry.register({
           metadata={props.metadata}
           time={props.time}
           defaultOpen={true}
-          hideDetails={summary().length === 0}
+          hideDetails={steps().length === 0}
           trigger={trigger()}
           onSubtitleClick={handleSubtitleClick}
         >
@@ -65,21 +79,8 @@ ToolRegistry.register({
             data-component="tool-output"
             data-scrollable
           >
-            <div ref={autoScroll.contentRef} data-component="task-tools">
-              <For each={summary()}>
-                {(item) => {
-                  const info = getToolInfo(item.tool)
-                  return (
-                    <div data-slot="task-tool-item">
-                      <Icon name={info.icon} size="small" />
-                      <span data-slot="task-tool-title">{resolveTitle(info.title, _)}</span>
-                      <Show when={item.state.title}>
-                        <span data-slot="task-tool-subtitle">{item.state.title}</span>
-                      </Show>
-                    </div>
-                  )
-                }}
-              </For>
+            <div ref={autoScroll.contentRef}>
+              <TaskSubagentSteps summary={summary()} />
             </div>
           </div>
         </BasicTool>

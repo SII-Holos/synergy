@@ -1,0 +1,64 @@
+# Prompt Evaluation Checklist
+
+## Evaluation checklist
+
+Run this checklist as prompt-quality checks against the draft, not as schema validation. Revise the draft when any item fails.
+
+### Role and identity
+
+- [ ] The role is a real-world professional identity plus a concrete domain.
+- [ ] No product, brand, project, codename, or pipeline-step verb is used as the role.
+- [ ] The mission statement is specific enough that two different agents would not produce different scopes from it.
+
+### Scope and boundaries
+
+- [ ] The prompt states what is in scope and what is explicitly out of scope.
+- [ ] Non-goals are phrased as agent decisions ("only decide X") rather than system behavior ("the policy module decides X").
+- [ ] The prompt says what the agent should do when the request is outside scope.
+
+### Inputs and context
+
+- [ ] Required inputs are enumerated and each has a missing-input behavior.
+- [ ] Inputs are described in the language the agent reads, with no schema, field, or class names unless the runtime keys on them.
+
+### Tool authority and policy
+
+- [ ] Every tool mentioned has a stated calling criterion, required inputs, expected outputs, and a fallback.
+- [ ] No invented tool names, parameters, or return fields.
+- [ ] The prompt states what the agent must NOT use tools for, and what it should do instead.
+- [ ] Tool decisions are unambiguous: given a situation, exactly one tool (or a stated no-tool path) applies.
+
+### Reasoning and planning
+
+- [ ] A reasoning mode is chosen explicitly (hidden, brief rationale, or plan-then-answer).
+- [ ] If a plan is expected, the prompt states when to produce it and what it must contain.
+
+### Output contract
+
+- [ ] The output format is specified with an example or template for format-sensitive tasks.
+- [ ] The prompt states what the agent must return when it cannot complete the task.
+- [ ] Field-level requirements are consistent with the examples and the tool return values.
+
+### Safety and compliance
+
+- [ ] High-risk requests have a refusal behavior and a safe alternative.
+- [ ] PII and sensitive-data handling rules are present when the task touches user data.
+- [ ] Factual tasks require sources or explicit uncertainty.
+- [ ] Proprietary instructions resist prompt leakage.
+- [ ] Destructive or irreversible actions require confirmation.
+
+### Failure handling and uncertainty
+
+- [ ] The prompt defines what counts as insufficient information and what the agent should do.
+- [ ] The agent is told when to state uncertainty versus when to proceed with assumptions.
+
+### Verification and self-check
+
+- [ ] The prompt ends with a self-check the agent runs before finishing.
+- [ ] The self-check is checkable from the output alone, not from hidden state.
+
+### Compactness
+
+- [ ] No rule is stated twice in different sections.
+- [ ] No section exists that does not change agent behavior.
+- [ ] Removing any sentence would lose a decision the agent needs.

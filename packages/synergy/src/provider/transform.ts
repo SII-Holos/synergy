@@ -492,6 +492,99 @@ export namespace ProviderTransform {
 
   const WIDELY_SUPPORTED_EFFORTS = ["low", "medium", "high"]
   const ROUTED_MODEL_EFFORT_FALLBACK = ["none", "minimal", ...WIDELY_SUPPORTED_EFFORTS, "xhigh"]
+  // Anthropic extended thinking split into incompatible generations: 4.5-era and
+  // earlier support only `enabled + budget_tokens`; 4.6 deprecates budget in favor
+  // of `adaptive + effort`; 4.7+ reject `enabled` outright (HTTP 400).
+  const ANTHROPIC_ADAPTIVE_EFFORTS = ["low", "medium", "high", "xhigh", "max"]
+  const ANTHROPIC_DUAL_EFFORTS = ["low", "medium", "high", "max"]
+  // API hard floor for budget_tokens and the text room we keep for the visible
+  // answer. Source: extended-thinking docs, "Minimum of 1,024 tokens. The API
+  // rejects smaller values." and "budget must leave room for the final response":
+  // https://platform.claude.com/docs/en/build-with-claude/extended-thinking
+  const ANTHROPIC_BUDGET_MIN = 1024
+  const ANTHROPIC_TEXT_FLOOR = 1024
+  // Ecosystem-stable anchors: opencode uses 16_000/31_999 for high/max
+  // (https://github.com/anomalyco/opencode/blob/main/packages/opencode/src/provider/transform.ts)
+  // and Claude Code defaults MAX_THINKING_TOKENS to 31_999
+  // (https://code.claude.com/docs/en/env-vars). They also match the official
+  // guidance to start complex tasks at 16k and avoid budgets beyond 32k.
+  const ANTHROPIC_BUDGET_HIGH = 16_000
+  const ANTHROPIC_BUDGET_MAX = 31_999
+
+  type AnthropicThinkingGeneration = "adaptive" | "dual" | "budget"
+
+  type AnthropicVersion = {
+    major: number
+    minor: number | undefined
+  }
+
+  // Parse an Anthropic API model id into a generation version. Handles both
+  // id conventions:
+  // - family-first: claude-opus-4-5, claude-opus-4.5, claude-opus-45 (legacy
+  //   concatenated alias), claude-opus-4-20250514 (no minor + date suffix);
+  // - family-last (3.x era): claude-3-7-sonnet-20250219, claude-3-haiku-20240307.
+  // The major is single-digit so `claude-opus-41` parses as 4.1, never as
+  // major 41; the lookahead stops at the date/@ suffix without consuming it.
+  function anthropicVersion(apiID: string): AnthropicVersion | undefined {
+    const id = apiID.toLowerCase()
+    const familyFirst = /^claude-(opus|sonnet|haiku)-(\d)(?:[-.](\d{1,2})|(\d))?(?![a-z0-9.])/.exec(id)
+    if (familyFirst) {
+      return {
+        major: Number(familyFirst[2]),
+        minor:
+          familyFirst[3] !== undefined
+            ? Number(familyFirst[3])
+            : familyFirst[4] !== undefined
+              ? Number(familyFirst[4])
+              : undefined,
+      }
+    }
+    const familyLast = /^claude-(\d)(?:[-.](\d{1,2}))?-(opus|sonnet|haiku)(?![a-z0-9.])/.exec(id)
+    if (familyLast) {
+      return { major: Number(familyLast[1]), minor: familyLast[2] !== undefined ? Number(familyLast[2]) : undefined }
+    }
+    return undefined
+  }
+
+  function anthropicThinkingGeneration(model: Provider.Model): AnthropicThinkingGeneration {
+    const version = anthropicVersion(model.api.id)
+    if (!version) return "budget"
+    if (version.major >= 5) return "adaptive"
+    if (version.major === 4 && version.minor !== undefined && version.minor >= 7) return "adaptive"
+    if (version.major === 4 && version.minor === 6) return "dual"
+    return "budget"
+  }
+
+  function anthropicOutputCap(model: Provider.Model): number {
+    const configured = model.limit.output || ModelLimit.OUTPUT_TOKEN_MAX
+    const cap =
+      model.limit.context && model.limit.context > 0 && configured >= model.limit.context
+        ? Math.max(model.limit.context - ModelLimit.OUTPUT_TOKEN_HEADROOM, 1)
+        : configured
+    return Math.min(cap, ModelLimit.OUTPUT_TOKEN_MAX)
+  }
+
+  function anthropicBudgetVariants(envelope: number): Record<string, Record<string, any>> {
+    if (envelope < ANTHROPIC_BUDGET_MIN + ANTHROPIC_TEXT_FLOOR) return {}
+    const highBudget = Math.min(ANTHROPIC_BUDGET_HIGH, Math.max(ANTHROPIC_BUDGET_MIN, Math.floor(envelope / 2 - 1)))
+    const maxBudget = Math.min(ANTHROPIC_BUDGET_MAX, Math.max(highBudget, envelope - ANTHROPIC_TEXT_FLOOR))
+    const variants: Record<string, Record<string, any>> = {
+      high: { thinking: { type: "enabled", budgetTokens: highBudget } },
+    }
+    if (maxBudget > highBudget) {
+      variants.max = { thinking: { type: "enabled", budgetTokens: maxBudget } }
+    }
+    return variants
+  }
+
+  function anthropicPinnedToBudget(model: Provider.Model): boolean {
+    const version = anthropicVersion(model.api.id)
+    if (!version) return false
+    // Opus 4.5 is the sole extended-only model that also supports effort
+    // (docs: the only model where budget_tokens and output_config.effort combine).
+    if (version.major === 4 && version.minor === 5 && model.api.id.toLowerCase().includes("opus")) return false
+    return true
+  }
 
   function modelIdentityTokens(model: Provider.Model) {
     return [model.id, model.api.id, model.family ?? ""].map((id) => id.toLowerCase())
@@ -591,35 +684,37 @@ export namespace ProviderTransform {
           include: ["reasoning.encrypted_content"],
         }))
 
-      case "@ai-sdk/anthropic":
+      case "@ai-sdk/anthropic": {
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/anthropic
-        if (["opus-4-6", "opus-4.6", "sonnet-4-6", "sonnet-4.6"].some((v) => model.api.id.includes(v))) {
-          return effortVariants(modelEfforts ?? ["low", "medium", "high", "max"], (effort) => ({
-            thinking: { type: "adaptive" },
-            effort,
-          }))
-        }
-        if (["opus-4-7", "opus-4.7"].some((v) => model.api.id.includes(v))) {
-          return effortVariants(modelEfforts ?? ["low", "medium", "high", "xhigh", "max"], (effort) => ({
+        const generation = anthropicThinkingGeneration(model)
+        if (generation === "adaptive") {
+          // 4.7+ (and 5.x) reject `enabled + budget_tokens` with HTTP 400;
+          // adaptive + effort is the only accepted form. `display: summarized`
+          // keeps thinking visible in the transcript (newer models default to omitted).
+          return effortVariants(modelEfforts ?? ANTHROPIC_ADAPTIVE_EFFORTS, (effort) => ({
             thinking: { type: "adaptive", display: "summarized" },
             effort,
           }))
         }
-        if (modelEfforts !== undefined) return effortVariants(modelEfforts, (effort) => ({ effort }))
-        return {
-          high: {
-            thinking: {
-              type: "enabled",
-              budgetTokens: Math.min(16_000, Math.floor(model.limit.output / 2 - 1)),
-            },
-          },
-          max: {
-            thinking: {
-              type: "enabled",
-              budgetTokens: Math.min(31_999, model.limit.output - 1),
-            },
-          },
+        if (generation === "dual") {
+          // 4.6 models: `enabled` still works but is deprecated; prefer adaptive + effort.
+          return effortVariants(modelEfforts ?? ANTHROPIC_DUAL_EFFORTS, (effort) => ({
+            thinking: { type: "adaptive" },
+            effort,
+          }))
         }
+        // Budget generation (3.x-4.5): `enabled + budget_tokens` with a
+        // text-safe split derived from the effective output cap. The SDK adds
+        // budgetTokens back into wire max_tokens, so the budget is the thinking
+        // allowance and the remainder is guaranteed visible-answer room.
+        // Catalog effort declarations are trusted for unknown/unversioned ids
+        // and for Opus 4.5 (docs: the sole extended-only model that also
+        // supports effort); recognizable earlier generations stay on budgets.
+        if (modelEfforts !== undefined && !anthropicPinnedToBudget(model)) {
+          return effortVariants(modelEfforts, (effort) => ({ effort }))
+        }
+        return anthropicBudgetVariants(anthropicOutputCap(model))
+      }
 
       case "@ai-sdk/amazon-bedrock":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/amazon-bedrock

@@ -770,7 +770,7 @@ export namespace ToolResolver {
       throw new EnforcementError.PolicyDenied(diagnosticReason, decision.capabilities, envelope.profileId)
     }
 
-    // Provenance: sessions created by system scheduling (e.g. agenda wake)
+    // Pre-authorization origin: sessions created by system scheduling (e.g. agenda wake)
     // may pre-authorize specific tools to bypass the ask gate. This only
     // applies within this session and cannot override profile denies,
     // protected paths, or explicit user deny rules.

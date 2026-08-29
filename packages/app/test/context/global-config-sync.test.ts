@@ -3,7 +3,7 @@ import { shouldRefreshGlobalConfig } from "../../src/context/global-config-sync"
 
 describe("global config snapshot refresh", () => {
   test("refreshes the global authority for global client-side field updates", () => {
-    for (const field of ["locale", "theme", "keybinds", "layout", "toast"]) {
+    for (const field of ["locale", "theme", "keybinds", "layout", "toast", "defaultSessionWorkspace"]) {
       expect(
         shouldRefreshGlobalConfig({
           scope: "global",

@@ -4302,6 +4302,132 @@
         ]
       }
     },
+    "/config/export": {
+      "get": {
+        "operationId": "config.export",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "$ref": "#/components/schemas/ConfigImportScope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "only",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "general",
+                    "models",
+                    "providers",
+                    "library",
+                    "mcp",
+                    "plugins",
+                    "skills",
+                    "agents",
+                    "commands",
+                    "permissions",
+                    "channels",
+                    "holos",
+                    "email",
+                    "github",
+                    "runtime"
+                  ]
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "general",
+                      "models",
+                      "providers",
+                      "library",
+                      "mcp",
+                      "plugins",
+                      "skills",
+                      "agents",
+                      "commands",
+                      "permissions",
+                      "channels",
+                      "holos",
+                      "email",
+                      "github",
+                      "runtime"
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeSecrets",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Export config",
+        "description": "Export selected config domains as one merged config object. Secrets are always redacted over HTTP; use `synergy config export --include-secrets` for a plaintext export.",
+        "responses": {
+          "200": {
+            "description": "Exported config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigExportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid export query, missing project scope, or includeSecrets requested over HTTP",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigExportBadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.export({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/config/import/plan": {
       "post": {
         "operationId": "config.import.plan",
@@ -29488,11 +29614,20 @@
           "lastActivityAt": {
             "type": "number"
           },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
           "pinned": {
             "type": "number"
           },
           "archived": {
             "type": "boolean"
+          },
+          "archivedAt": {
+            "type": "number"
           },
           "parentID": {
             "type": "string"
@@ -31758,6 +31893,10 @@
                 "description": "Enable promptCacheKey for this provider (default false)",
                 "type": "boolean"
               },
+              "mergeSystemMessages": {
+                "description": "Merge leading system messages into a single system message for strict OpenAI-compatible endpoints that reject multiple or non-leading system messages (e.g. vLLM Qwen chat templates). Default false.",
+                "type": "boolean"
+              },
               "timeout": {
                 "description": "Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.",
                 "anyOf": [
@@ -33255,6 +33394,11 @@
             "description": "How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)",
             "type": "string",
             "enum": ["full", "balanced", "minimal"]
+          },
+          "defaultSessionWorkspace": {
+            "description": "Default workspace for new sessions started from the Web composer: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main). Programmatic session creation (API, channels, Cortex) always uses the main checkout.",
+            "type": "string",
+            "enum": ["main", "worktree"]
           },
           "keybinds": {
             "$ref": "#/components/schemas/KeybindsConfig"
@@ -36049,6 +36193,104 @@
         "type": "string",
         "enum": ["global", "project"]
       },
+      "ConfigExportResult": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/ConfigImportScope"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "secretsIncluded": {
+            "type": "boolean"
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "general",
+                "models",
+                "providers",
+                "library",
+                "mcp",
+                "plugins",
+                "skills",
+                "agents",
+                "commands",
+                "permissions",
+                "channels",
+                "holos",
+                "email",
+                "github",
+                "runtime"
+              ]
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "config": {
+            "$ref": "#/components/schemas/Config"
+          }
+        },
+        "required": ["scope", "scopeID", "secretsIncluded", "domains", "warnings", "config"]
+      },
+      "ConfigImportProjectScopeRequiredError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigImportProjectScopeRequiredError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigExportSecretsRejectedError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigExportSecretsRejectedError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigExportBadRequestError": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/BadRequestError"
+          },
+          {
+            "$ref": "#/components/schemas/ConfigImportProjectScopeRequiredError"
+          },
+          {
+            "$ref": "#/components/schemas/ConfigExportSecretsRejectedError"
+          }
+        ]
+      },
       "ConfigImportDiagnostic": {
         "type": "object",
         "properties": {
@@ -36166,25 +36408,6 @@
           }
         },
         "required": ["scope", "scopeID", "source", "revision", "domains", "conflicts"]
-      },
-      "ConfigImportProjectScopeRequiredError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "ConfigImportProjectScopeRequiredError"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": ["message"]
-          }
-        },
-        "required": ["name", "data"]
       },
       "ConfigImportInvalidConfigError": {
         "type": "object",
