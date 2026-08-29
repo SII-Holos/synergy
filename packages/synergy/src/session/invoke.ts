@@ -839,6 +839,15 @@ export namespace SessionInvoke {
         const modelProjection = MessageV2.projectModelMessages(modelSessionMessages, {
           maxHistoryImages: jobCtx.compactionMaxHistoryImages,
         })
+        const { converted, dropped, failed } = modelProjection.sanitization
+        if (converted + dropped + failed > 0) {
+          log.info("model prompt sanitized non-JSON-safe values", {
+            sessionID,
+            converted,
+            dropped,
+            failed,
+          })
+        }
         const projectedHistoryBytes = LLMTurnMemory.estimateBytes(modelProjection.messages)
         memoryTurn.projected({ historyAfterBytes: projectedHistoryBytes })
         let preparedMessages = [
