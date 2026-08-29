@@ -27,7 +27,7 @@ Break every cycle at its owning layer, byte-equal behavior:
 - `bun run deps:check`: zero r2 violations; 0 errors, 15 warnings — all unchanged `r4-l0-core-uplift-baseline` entries (L0→L1 uplift, tracked for later).
 - `bun run deps:analyze`: L1→product 0, L1→assembly 0, R3 0, product pairs 39. The module SCC graph is now SCC(25) (core layer: L1+L0) and SCC(18) (product+assembly) — no L1 module shares a component with any product module; the historical SCC(53) is fully decomposed. cortex and browser left the product component; the command/project SCC(2) dissolved.
 - Registration timing became load-sensitive for three test files that bypass the domain load chain (lattice-route, browser runtime-lifecycle, plugin task-run); they now import the registering module or the product manifest explicitly — the same mounting convention as every other registry test.
-- Two baseline failures remain outside this change (stash-verified on a clean tree): one cortex dag-result assertion and three project worktree-route tests.
+- Isolated-process coverage initially surfaced two apparent baseline failures (cortex dag-result, project worktree routes). A later clean-baseline rerun (fresh checkout of 4de7a53b8) proved both were in-program regressions the branch-internal stash comparison had misattributed — the dag-result delegated-context case degrades silently without the SessionCortexRuntime adapter and the worktree POST /session route 500s without the manifest; both suites now mount the product registration (26/26, 11/11). Lesson recorded: stash comparisons measure against the branch's own dirty tree, not the true baseline — attribution claims require the baseline commit itself.
 
 ## Follow-up: module-level decomposition (S10c)
 
