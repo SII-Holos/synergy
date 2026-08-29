@@ -584,11 +584,63 @@ export namespace MessageV2 {
     return next
   }
 
-  function modelProviderMetadata(metadata: Record<string, any> | undefined): Record<string, any> | undefined {
+  // Model prompts must be JSON-safe: AI SDK validation rejects undefined,
+  // NaN, Infinity, and BigInt in providerOptions and tool outputs. Providers
+  // can attach such values to in-memory metadata, and v8 IPC preserves them.
+  export interface PromptSanitizationStats {
+    /** Values transformed to another JSON-safe type (BigInt/Date → string, NaN/Infinity → null). */
+    converted: number
+    /** undefined values removed: object keys dropped, array positions → null. */
+    dropped: number
+    /** Payloads that could not serialize (e.g. circular) and were removed whole. */
+    failed: number
+  }
+
+  function createPromptSanitizationStats(): PromptSanitizationStats {
+    return { converted: 0, dropped: 0, failed: 0 }
+  }
+
+  function jsonSafeReplacer(stats: PromptSanitizationStats): (key: string, value: unknown) => unknown {
+    return (_key: string, value: unknown) => {
+      if (typeof value === "bigint") {
+        stats.converted++
+        return value.toString()
+      }
+      if (value === undefined) {
+        stats.dropped++
+        return value
+      }
+      if (value instanceof Date) {
+        stats.converted++
+        return value
+      }
+      if (typeof value === "number" && !Number.isFinite(value)) {
+        stats.converted++
+        return value
+      }
+      return value
+    }
+  }
+
+  function sanitizePromptPayload<T>(value: T, stats: PromptSanitizationStats): T | undefined {
+    if (value === undefined) return undefined
+    if (typeof value === "string") return value
+    try {
+      return JSON.parse(JSON.stringify(value, jsonSafeReplacer(stats))) as T
+    } catch {
+      stats.failed++
+      return undefined
+    }
+  }
+
+  function modelProviderMetadata(
+    metadata: Record<string, any> | undefined,
+    stats: PromptSanitizationStats,
+  ): Record<string, any> | undefined {
     if (!metadata) return undefined
     const openai = metadata.openai
-    if (!openai || typeof openai !== "object" || Array.isArray(openai)) return metadata
-    if (!("itemId" in openai) && !("reasoningEncryptedContent" in openai)) return metadata
+    if (!openai || typeof openai !== "object" || Array.isArray(openai)) return sanitizePromptPayload(metadata, stats)
+    if (!("itemId" in openai) && !("reasoningEncryptedContent" in openai)) return sanitizePromptPayload(metadata, stats)
 
     const nextOpenAI = { ...openai }
     delete nextOpenAI.itemId
@@ -598,7 +650,7 @@ export namespace MessageV2 {
     if (Object.keys(nextOpenAI).length > 0) next.openai = nextOpenAI
     else delete next.openai
 
-    return Object.keys(next).length > 0 ? next : undefined
+    return Object.keys(next).length > 0 ? sanitizePromptPayload(next, stats) : undefined
   }
 
   export const Assistant = Base.extend({
@@ -1068,7 +1120,7 @@ export namespace MessageV2 {
   export function projectModelMessages(
     input: WithParts[],
     opts?: { maxHistoryImages?: number },
-  ): { messages: ModelMessage[]; provenance: ModelMessageProvenance } {
+  ): { messages: ModelMessage[]; provenance: ModelMessageProvenance; sanitization: PromptSanitizationStats } {
     // Pass 1: collect unique image hashes in order of first appearance
     const imageHashSet = new Set<string>()
     const orderedHashes: string[] = []
@@ -1101,6 +1153,7 @@ export namespace MessageV2 {
 
     const result: UIMessage[] = []
     const provenance = createModelMessageProvenance()
+    const sanitization = createPromptSanitizationStats()
 
     for (const msg of input) {
       if (msg.parts.length === 0 || !isPromptVisible(msg)) continue
@@ -1149,7 +1202,7 @@ export namespace MessageV2 {
             assistantMessage.parts.push({
               type: "text",
               text: part.text,
-              providerMetadata: modelProviderMetadata(part.metadata),
+              providerMetadata: modelProviderMetadata(part.metadata, sanitization),
             })
             addModelMessageContribution(provenance, "conversation", part.text)
           }
@@ -1180,28 +1233,32 @@ export namespace MessageV2 {
                   addModelMessageContribution(provenance, "toolActivity", attachmentIntroduction)
                 }
               }
-              const output = part.state.time.compacted ? "[Old tool result content cleared]" : part.state.output
+              const input = sanitizePromptPayload(part.state.input, sanitization)
+              const output = part.state.time.compacted
+                ? "[Old tool result content cleared]"
+                : sanitizePromptPayload(part.state.output, sanitization)
               assistantMessage.parts.push({
                 type: ("tool-" + part.tool) as `tool-${string}`,
                 state: "output-available",
                 toolCallId: part.callID,
-                input: part.state.input,
+                input,
                 output,
-                callProviderMetadata: modelProviderMetadata(part.metadata),
+                callProviderMetadata: modelProviderMetadata(part.metadata, sanitization),
               })
-              addModelMessageContribution(provenance, "toolActivity", JSON.stringify(part.state.input))
+              addModelMessageContribution(provenance, "toolActivity", JSON.stringify(input))
               addModelMessageContribution(provenance, "toolActivity", output)
             }
             if (part.state.status === "error") {
+              const input = sanitizePromptPayload(part.state.input, sanitization)
               assistantMessage.parts.push({
                 type: ("tool-" + part.tool) as `tool-${string}`,
                 state: "output-error",
                 toolCallId: part.callID,
-                input: part.state.input,
+                input,
                 errorText: part.state.error,
-                callProviderMetadata: modelProviderMetadata(part.metadata),
+                callProviderMetadata: modelProviderMetadata(part.metadata, sanitization),
               })
-              addModelMessageContribution(provenance, "toolActivity", JSON.stringify(part.state.input))
+              addModelMessageContribution(provenance, "toolActivity", JSON.stringify(input))
               addModelMessageContribution(provenance, "toolActivity", part.state.error)
             }
           }
@@ -1209,7 +1266,7 @@ export namespace MessageV2 {
             assistantMessage.parts.push({
               type: "reasoning",
               text: part.text,
-              providerMetadata: modelProviderMetadata(part.metadata),
+              providerMetadata: modelProviderMetadata(part.metadata, sanitization),
             })
             addModelMessageContribution(provenance, "conversation", part.text)
           }
@@ -1223,6 +1280,7 @@ export namespace MessageV2 {
     return {
       messages: convertToModelMessages(result.filter((msg) => msg.parts.some((part) => part.type !== "step-start"))),
       provenance,
+      sanitization,
     }
   }
 
