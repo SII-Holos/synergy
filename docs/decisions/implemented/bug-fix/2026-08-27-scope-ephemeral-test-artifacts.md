@@ -29,6 +29,6 @@ Make the scope domain the single authoritative filter, archive existing artifact
 ## Consequences
 
 - `Scope.list()` hides test artifacts for all consumers immediately; the migration archives existing leaks on next startup without user action.
-- Existing tests that asserted fixture scopes appear in `Scope.list()` were updated to verify via `Scope.fromID()` (domain filter intentionally hides fixture worktrees, which live under tmp with `synergy-test-*` basename).
-- Real projects are never hidden: the backend requires tmpdir containment, the frontend requires the exact basename prefix.
+- Test fixtures no longer collide with the filter: the `tmpdir()` fixture helper creates `synergy-fixture-*` directories, so fixture scopes model real projects and stay visible in `Scope.list()`.
+- Real projects are not hidden by the backend filter: tmpdir containment is required in addition to the basename prefix. The frontend mirror is basename-only (browsers cannot resolve `os.tmpdir()`), so a real project literally named `synergy-test-*`/`synergy-orchestrated-*` would still be hidden from the sidebar — accepted tradeoff.
 - No schema, OpenAPI, SDK, or config changes; no data deletion.
