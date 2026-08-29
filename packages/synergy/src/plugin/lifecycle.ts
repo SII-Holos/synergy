@@ -297,7 +297,9 @@ async function reattachWorkflowTimers(): Promise<void> {
     WorkflowPromptRegistry.kinds().map((kind) =>
       WorkflowPromptRegistry.get(kind)
         ?.reattachPluginTimers?.()
-        .catch(() => undefined),
+        .catch((error) => {
+          log.warn("workflow timer reattachment failed", { kind, error })
+        }),
     ),
   )
 }
