@@ -83,6 +83,8 @@ Commands are reusable named prompt templates loaded from configuration and comma
 
 Commands are user entry points, not hidden tools: invoking one creates ordinary session work and retains normal history and control-profile semantics.
 
+Command templates are prompt text, not scripts: `!`command`` shell syntax stays literal and is never executed during rendering, matching Skill rendering.
+
 ## Agent Client Protocol
 
 `synergy acp` exposes Synergy as an Agent Client Protocol v1 agent over NDJSON stdio while hosting a local Synergy server for the connection. An ACP client can create or load a Synergy session, select advertised modes and models, prompt it, receive streaming text/reasoning and tool updates, and answer Synergy permission requests with allow-once or reject.

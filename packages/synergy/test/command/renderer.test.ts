@@ -95,9 +95,12 @@ describe("CommandRenderer", () => {
     ).resolves.toBe("Review the diff.")
   })
 
-  test("expands !`command` shell expressions after placeholder substitution", async () => {
-    await expect(CommandRenderer.render({ template: "Branch: !`echo main`", arguments: "" })).resolves.toBe(
-      "Branch: main",
-    )
+  test("keeps !`command` shell syntax literal instead of executing it", async () => {
+    await expect(
+      CommandRenderer.render({
+        template: "Report: !`echo UNEXPECTED`",
+        arguments: "",
+      }),
+    ).resolves.toBe("Report: !`echo UNEXPECTED`")
   })
 })
