@@ -92,6 +92,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
+import { isEphemeralTestWorktree } from "@/utils/ephemeral-test-worktree"
 import {
   browserPerformanceEnabled,
   recordTokenApply,
@@ -1876,7 +1877,7 @@ function createGlobalSync() {
         globalSDK.client.scope.list().then(async (result) => {
           const scopes = (result.data ?? [])
             .filter((scope) => !!scope?.id)
-            .filter((scope) => !!scope.worktree && !scope.worktree.includes("synergy-test"))
+            .filter((scope) => !!scope.worktree && !isEphemeralTestWorktree(scope.worktree))
             .filter((scope) => !scope.time?.archived)
             .slice()
             .sort((a, b) => a.id.localeCompare(b.id))
