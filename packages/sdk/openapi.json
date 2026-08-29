@@ -19641,7 +19641,10 @@
             "in": "path",
             "name": "agentId",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9._-]+$"
             },
             "required": true
           }
@@ -32784,7 +32787,7 @@
             "type": "boolean"
           },
           "apiUrl": {
-            "description": "Clarus REST API origin override; defaults to the configured Holos API origin",
+            "description": "Clarus REST API base URL override, including an optional path prefix; defaults to the configured Holos API base URL",
             "type": "string"
           },
           "agent": {

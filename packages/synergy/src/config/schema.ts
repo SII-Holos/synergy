@@ -17,7 +17,7 @@ import { ModelsDev } from "../provider/models-schemas"
 import { ConfigLspCatalog } from "./lsp-catalog"
 import { ModelRole } from "../provider/model-role"
 import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
-import { validateHolosEndpoint } from "../util/holos"
+import { validateHolosEndpoint, validateHolosPortalUrl } from "../util/holos"
 
 export const McpRetry = McpRetryConfig
 export type McpRetry = McpRetryConfig
@@ -131,15 +131,16 @@ export const ChannelClarusAccount = z
     apiUrl: z
       .string()
       .optional()
-      .describe("Clarus REST API origin override; defaults to the configured Holos API origin"),
+      .describe(
+        "Clarus REST API base URL override, including an optional path prefix; defaults to the configured Holos API base URL",
+      ),
     agent: z.string().optional().describe("Primary Synergy agent for project and assignment Sessions"),
   })
   .strict()
   .superRefine((value, ctx) => {
     if (!value.apiUrl) return
     try {
-      const url = validateHolosEndpoint(value.apiUrl, "api")
-      if (url.pathname !== "/" || url.search || url.hash) throw new Error("Clarus apiUrl must be an origin")
+      validateHolosEndpoint(value.apiUrl, "api")
     } catch (error) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -172,6 +173,26 @@ export const Holos = z
       .describe("Holos portal URL for browser-facing pages (bind/start)"),
   })
   .strict()
+  .superRefine((value, ctx) => {
+    const checks: Array<{ path: string; url?: string; kind: "api" | "ws" | "portal" }> = [
+      { path: "apiUrl", url: value.apiUrl, kind: "api" },
+      { path: "wsUrl", url: value.wsUrl, kind: "ws" },
+      { path: "portalUrl", url: value.portalUrl, kind: "portal" },
+    ]
+    for (const check of checks) {
+      if (!check.url) continue
+      try {
+        if (check.kind === "portal") validateHolosPortalUrl(check.url)
+        else validateHolosEndpoint(check.url, check.kind)
+      } catch (error) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [check.path],
+          message: error instanceof Error ? error.message : `Invalid Holos ${check.kind} URL`,
+        })
+      }
+    }
+  })
   .meta({ ref: "HolosConfig" })
 export type Holos = z.infer<typeof Holos>
 

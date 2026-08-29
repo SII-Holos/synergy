@@ -1,5 +1,6 @@
 import z from "zod"
 import { Contact } from "./contact"
+import { HolosEndpoint } from "./endpoint"
 import { Presence } from "./presence"
 import { HolosReadiness } from "./readiness"
 import { HolosAccounts } from "./accounts"
@@ -86,10 +87,8 @@ export namespace HolosState {
     }
   }
 
-  async function currentHolosApiUrl(): Promise<string | undefined> {
-    const { Config } = await import("@/config/config")
-    const config = await Config.current().catch(() => undefined)
-    return config?.holos?.apiUrl
+  async function currentHolosApiUrl(): Promise<string> {
+    return (await HolosEndpoint.resolve()).apiUrl
   }
 
   async function fetchAccountProfile(input: {
