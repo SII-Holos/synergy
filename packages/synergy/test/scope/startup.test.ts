@@ -46,6 +46,27 @@ describe("ScopeStartup registration", () => {
     expect(indexOf("vcs-init")).toBeLessThan(indexOf("command-watcher"))
   })
 
+  test("reset() keeps contributions recoverable: re-registration restores the full set", () => {
+    // Pins the invariant the restore-dance in the test above relies on:
+    // register dedupes by name against the live contributions array (no
+    // module-level latched flags), so reset() followed by re-registering
+    // the domain modules always restores the complete startup set.
+    const before = ScopeStartup.registered()
+      .map((step) => step.name)
+      .sort()
+    ScopeStartup.reset()
+    expect(ScopeStartup.registered()).toEqual([])
+    registerPluginStartup()
+    registerLatticeStartup()
+    registerLspStartup()
+    registerProjectStartup()
+    registerCommandStartup()
+    const after = ScopeStartup.registered()
+      .map((step) => step.name)
+      .sort()
+    expect(after).toEqual(before)
+  })
+
   test("mis-registered ordering references fail loudly", () => {
     ScopeStartup.reset()
     try {
