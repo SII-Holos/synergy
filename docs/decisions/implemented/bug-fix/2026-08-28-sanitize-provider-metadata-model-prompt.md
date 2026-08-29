@@ -35,3 +35,17 @@ The sanitization deliberately targets the payload fields before `convertToModelM
 ## Consequences
 
 Model prompts are now JSON-safe by construction at the projection boundary, closing the whole failure class for every current and future provider rather than only the openrouter instance. The trade-off is that malformed metadata is silently cleaned instead of crashing the turn — an accepted exchange of an opaque hard failure for a degradable one, with the root cause documented here and reported upstream so the provider-level fix can land. `NaN`/`Infinity` now reach the model as `null`, matching what disk persistence already produces, so in-memory and post-restart prompts converge instead of diverging. Each projection performs one additional JSON round-trip per provider-metadata/payload field, the same cost class as the provenance stringification already done in this function.
+
+## Review follow-ups (2026-08-29)
+
+An in-depth review of the first fix found the projection could still throw on the pollution class it claimed to neutralize, and refined three secondary aspects:
+
+**Shared sanitized values for prompt fields and provenance.** The provenance contributions stringified the raw `part.state.input` (`JSON.stringify` without the replacer), so a BigInt or circular tool input threw from inside `projectModelMessages` itself — the sanitize helper's try/catch never saw it. Both terminal tool branches now sanitize once into a local `input` and feed the same product to the prompt part and the provenance contribution, which also removes the double serialization of every tool input.
+
+**String fast-path.** `state.output` is schema-pinned to `z.string()` and strings are already JSON-safe; the helper returns them unchanged instead of paying a full stringify+parse round-trip on the largest field of every historical tool result.
+
+**Observability instead of silence.** The replacer now counts what it does — `converted` (BigInt → string, Date → ISO string, NaN/Infinity → null), `dropped` (undefined values), `failed` (payloads removed whole, e.g. circular) — surfaced as `sanitization` on the projection result. The invoke loop logs one line whenever any counter is non-zero, so a provider regressing into this failure class is visible in logs instead of surfacing only as silently altered prompts.
+
+**Value-mapping asymmetry, accepted.** BigInt is preserved as a string while NaN/Infinity degrade to `null`. This follows `JSON.stringify` semantics — which disk persistence already applies — so in-memory and post-restart prompts converge; keeping the number-ish values as strings mirrors what a restart would have produced for them too.
+
+The JSON round-trip also covers Date values (→ ISO string) and exotic objects like Uint8Array/Map (→ their JSON-serializable shape), matching what the disk path has always produced for them.
