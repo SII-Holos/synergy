@@ -16,6 +16,51 @@ describe("PluginRuntimeManager", () => {
     expect(PUBLIC_PLUGIN_RUNTIME_PROTOCOL_VERSION).toBe(PLUGIN_RUNTIME_PROTOCOL_VERSION)
   })
 
+  test("deduplicates concurrent starts for the same plugin generation", async () => {
+    const manager = new PluginRuntimeManager()
+    const entryPath = path.join(import.meta.dir, "fixtures", "runtime-plugin.ts")
+    const manifest = compilePluginManifest(definition, {
+      generation: "concurrent-start",
+      runtime: { entry: "runtime/index.js", sha256: "test" },
+    })
+    const input = { manifest, pluginDir: path.dirname(entryPath), entryPath }
+
+    const entries = await Promise.all(Array.from({ length: 9 }, () => manager.start(input)))
+    try {
+      expect(new Set(entries)).toHaveLength(1)
+      expect(new Set(entries.map((entry) => entry.process?.process.pid))).toHaveLength(1)
+      expect(manager.registry.list()).toHaveLength(1)
+      expect(manager.resourceStats().processCount).toBe(1)
+    } finally {
+      await manager.stop(manifest.id)
+    }
+  })
+
+  test("allows a retry after a failed deduplicated start", async () => {
+    const manager = new PluginRuntimeManager()
+    const entryPath = path.join(import.meta.dir, "fixtures", "runtime-plugin.ts")
+    const manifest = compilePluginManifest(definition, {
+      generation: "concurrent-start-retry",
+      runtime: { entry: "runtime/index.js", sha256: "test" },
+    })
+
+    await expect(
+      Promise.all(
+        Array.from({ length: 2 }, () =>
+          manager.start({ manifest, pluginDir: path.dirname(entryPath), entryPath: `${entryPath}.missing` }),
+        ),
+      ),
+    ).rejects.toThrow()
+
+    const entry = await manager.start({ manifest, pluginDir: path.dirname(entryPath), entryPath })
+    try {
+      expect(entry.state).toBe("ready")
+      expect(manager.registry.list()).toHaveLength(1)
+    } finally {
+      await manager.stop(manifest.id)
+    }
+  })
+
   test("memory recycling is generation-safe and reports the reclaimed runtime", async () => {
     const monitors: Array<{
       pid: number

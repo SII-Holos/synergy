@@ -263,6 +263,31 @@ export const migrations: Migration[] = [
       log.info("legacy global scope migrated to home")
     },
   },
+  {
+    id: "20260827-scope-archive-ephemeral-test-artifacts",
+    description: "Archive scopes whose worktree is an ephemeral test artifact (synergy-test-*/synergy-orchestrated-*)",
+    async up(progress) {
+      const { Scope } = await import("./index")
+      const { isEphemeralTestWorktree } = await import("./test-artifacts")
+      const ids = await Storage.scan(StoragePath.scopeRoot())
+      const archived: string[] = []
+      let done = 0
+      for (const rawID of ids) {
+        const data = await Storage.read<{
+          id: string
+          worktree?: string
+          time?: { archived?: number }
+        }>(StoragePath.scope(Identifier.asScopeID(rawID))).catch(() => undefined)
+        if (data && !data.time?.archived && data.worktree && isEphemeralTestWorktree(data.worktree)) {
+          await Scope.remove(data.id)
+          archived.push(data.id)
+        }
+        done++
+        progress(done, ids.length)
+      }
+      if (archived.length > 0) log.info("archived ephemeral test-artifact scopes", { count: archived.length })
+    },
+  },
 ]
 MigrationRegistry.register("scope", migrations)
 
