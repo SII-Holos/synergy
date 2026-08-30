@@ -11,16 +11,25 @@
   height: 100%;
   background: var(--sb-bg);
   border-right: 1px solid var(--sb-border);
-  transition: width 200ms cubic-bezier(0.16, 1, 0.3, 1);
   overflow: visible;
   flex-shrink: 0;
   position: relative;
+}
+
+.sb-root:not(.sb-resizing) {
+  transition: width 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sb-resizing {
+  transition: none;
 }
 
 .sb-collapsed {
   width: 48px;
 }
 
+/* Pre-hydration fallback only — the expanded width is an inline style driven by
+   the persisted layout store (see sidebar.tsx). */
 .sb-expanded {
   width: 300px;
 }

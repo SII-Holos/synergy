@@ -16,7 +16,7 @@ import { computeDefaultWorkspaceWidth } from "./workspace"
 import type { WorkbenchPanelSurface, WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
 import type { WorkbenchSurfaceState } from "../workbench/panel-model"
 import { migrateWorkbenchLayout } from "../workbench/layout-migration"
-import { createInitialLayoutDefaults } from "./defaults"
+import { clampSidebarWidth, createInitialLayoutDefaults, effectiveSidebarWidth } from "./defaults"
 import { reconcile } from "solid-js/store"
 import {
   applySessionToNavList,
@@ -1317,9 +1317,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         toggle() {
           setStore("sidebar", "opened", (x) => !x)
         },
-        width: createMemo(() => store.sidebar.width),
+        width: createMemo(() => effectiveSidebarWidth(store.sidebar)),
         resize(width: number) {
-          setStore("sidebar", "width", width)
+          setStore("sidebar", { width: clampSidebarWidth(width), resized: true })
         },
       },
       review: {

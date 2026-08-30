@@ -159,13 +159,31 @@ describe("migrateWorkbenchLayout", () => {
     expect(migrated.sidebar).toEqual({ opened: false })
   })
 
-  test("drops unsupported persisted layout fields", () => {
+  test("drops dead un-flagged sidebar width from legacy layouts", () => {
     const migrated = migrateWorkbenchLayout({
       sidebar: { opened: true, width: 320 },
       obsoletePanelState: { opened: true },
     }) as Record<string, unknown>
 
-    expect(migrated.sidebar).toEqual({ opened: true, width: 320 })
+    expect(migrated.sidebar).toEqual({ opened: true })
     expect(migrated.obsoletePanelState).toBeUndefined()
+  })
+
+  test("keeps user-resized sidebar width clamped to the adjustable band", () => {
+    const wide = migrateWorkbenchLayout({ sidebar: { opened: true, width: 9999, resized: true } }) as {
+      sidebar: Record<string, unknown>
+    }
+    const narrow = migrateWorkbenchLayout({ sidebar: { opened: true, width: 40, resized: true } }) as {
+      sidebar: Record<string, unknown>
+    }
+
+    expect(wide.sidebar).toEqual({ opened: true, width: 420, resized: true })
+    expect(narrow.sidebar).toEqual({ opened: true, width: 220, resized: true })
+  })
+
+  test("normalizing sidebar width is idempotent", () => {
+    const once = migrateWorkbenchLayout({ sidebar: { opened: true, width: 360, resized: true } })
+
+    expect(migrateWorkbenchLayout(once)).toEqual(once)
   })
 })
