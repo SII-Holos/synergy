@@ -6,6 +6,7 @@ import { GlobalEventClients } from "./global-event-clients"
 import { Log } from "../util/log"
 import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
 import { Hono, type Context, type MiddlewareHandler, type Next } from "hono"
+import { compress } from "hono/compress"
 import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
 import * as fs from "fs"
@@ -578,6 +579,7 @@ export namespace Server {
             maxAge: 600,
           }),
         )
+        .use(compress({ encoding: "gzip" }))
         .use(async (c, next) => {
           if (!_shuttingDown) return next()
           return c.json(
