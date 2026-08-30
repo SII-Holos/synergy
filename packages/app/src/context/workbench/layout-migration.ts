@@ -1,3 +1,4 @@
+import { clampSidebarWidth } from "../layout/defaults"
 import type { WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
 import type { WorkbenchSurfaceState } from "./panel-model"
 
@@ -59,6 +60,17 @@ function basename(value: string) {
 
 const currentLayoutKeys = ["sidebar", "review", "mobileSidebar", "rightSidebar", "sessionView"] as const
 
+function normalizeSidebarState(value: unknown): unknown {
+  if (!isRecord(value)) return value
+  if (value.resized === true && typeof value.width === "number" && Number.isFinite(value.width)) {
+    return { ...value, width: clampSidebarWidth(value.width) }
+  }
+  const next = { ...value }
+  delete next.width
+  delete next.resized
+  return next
+}
+
 export function migrateWorkbenchLayout(value: unknown): unknown {
   if (!isRecord(value)) return value
 
@@ -67,6 +79,7 @@ export function migrateWorkbenchLayout(value: unknown): unknown {
     if (key in value) next[key] = value[key]
   }
   if (!("sidebar" in value)) next.sidebar = { opened: false }
+  next.sidebar = normalizeSidebarState(next.sidebar)
   const oldTerminal = isRecord(value.terminal) ? value.terminal : undefined
   const oldWorkspaceSessions = isRecord(value.workspaceSessions) ? value.workspaceSessions : undefined
   const existingSurfaces = isRecord(value.workbenchSurfaces) ? { ...value.workbenchSurfaces } : {}

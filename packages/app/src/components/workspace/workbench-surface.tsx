@@ -16,7 +16,13 @@ import {
   isWorkbenchPanelLaunchable,
   workbenchPanelMountKey,
 } from "@/context/workbench/panel-model"
-import { computeMaxWorkspaceWidth, WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
+import {
+  computeMaxWorkspaceWidth,
+  sidebarOccupancy,
+  WORKSPACE_MIN_WIDTH,
+  WORKSPACE_SESSION_MIN_WIDTH,
+} from "@/context/layout/workspace"
+import { useLayout } from "@/context/layout"
 import type {
   WorkbenchPanelContentProps,
   WorkbenchPanelEntry,
@@ -227,6 +233,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
   const lingui = useLingui()
   const dialog = useDialog()
   const workbench = useWorkbenchPanels()
+  const layout = useLayout()
   const state = createMemo(() => workbench.surface(props.surface))
   const panels = createMemo(() => workbench.panels(props.surface).filter(isWorkbenchPanelLaunchable))
   const activeTab = createMemo(() => state().activeTab())
@@ -298,14 +305,18 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
   const maxSideWidth = () =>
     Math.max(
       WORKSPACE_MIN_WIDTH,
-      computeMaxWorkspaceWidth(window.innerWidth, { sessionMinWidth: WORKSPACE_SESSION_MIN_WIDTH }),
+      computeMaxWorkspaceWidth(
+        window.innerWidth - sidebarOccupancy(layout.isDesktop(), layout.sidebar.opened(), layout.sidebar.width()),
+        { sessionMinWidth: WORKSPACE_SESSION_MIN_WIDTH },
+      ),
     )
   const maxBottomHeight = () => window.innerHeight * 0.6
+  const displaySize = () => (isSide() ? Math.min(size(), maxSideWidth()) : size())
 
   const rootStyle = () =>
     isSide()
-      ? { width: state().opened() ? `${size()}px` : "0px" }
-      : { height: state().opened() ? `${size()}px` : "0px" }
+      ? { width: state().opened() ? `${displaySize()}px` : "0px" }
+      : { height: state().opened() ? `${displaySize()}px` : "0px" }
 
   const focusTab = (index: number) => {
     const tabs = state().tabs()
@@ -338,7 +349,12 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
       <ResizeHandle
         direction={isSide() ? "horizontal" : "vertical"}
         edge={isSide() ? "start" : undefined}
-        size={size()}
+        aria-label={
+          isSide()
+            ? lingui._({ id: W.resizeSide.id, message: W.resizeSide.message })
+            : lingui._({ id: W.resizeBottom.id, message: W.resizeBottom.message })
+        }
+        size={displaySize()}
         min={isSide() ? WORKSPACE_MIN_WIDTH : 120}
         max={isSide() ? maxSideWidth() : maxBottomHeight()}
         collapseThreshold={isSide() ? 200 : 50}
