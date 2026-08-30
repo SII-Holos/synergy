@@ -694,7 +694,7 @@ export function StatusBar() {
   )
 
   return (
-    <div class="flex flex-col items-center gap-1 py-1 min-w-0 w-full">
+    <div class="flex flex-col items-center gap-1 pt-3 pb-1 min-w-0 w-full">
       <div class="statusbar-glass flex items-center gap-1.5 min-w-0 max-w-full overflow-hidden px-2 py-1.5 rounded-full">
         <HolosIconButton />
 
