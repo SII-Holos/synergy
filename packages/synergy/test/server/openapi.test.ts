@@ -274,6 +274,16 @@ describe("OpenAPI spec generation", () => {
     expect(relink?.required).toEqual(expect.arrayContaining(["kind", "targetAgentID", "linkID"]))
   })
 
+  test("survives a /doc request earlier in the same process", async () => {
+    // The /doc handler shares route-resolver state with Server.openapi();
+    // requesting /doc first must not strip components from a later generation.
+    await (await Server.App().request("/doc")).json()
+    const spec = await Server.openapi()
+    expect(spec.components?.schemas?.ProviderListResponse).toBeDefined()
+    expect(spec.components?.schemas?.Provider).toBeDefined()
+    expect(spec.components?.schemas?.Model).toBeDefined()
+  })
+
   test("documents runtime shutdown for every API operation", async () => {
     const spec = await Server.openapi()
     const methods = ["get", "put", "post", "delete", "patch"] as const

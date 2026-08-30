@@ -4,8 +4,9 @@ import { GlobalBus } from "@/bus/global"
 import { EventWire } from "./event-wire"
 import { GlobalEventClients } from "./global-event-clients"
 import { Log } from "../util/log"
-import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
+import { describeRoute, generateSpecs, validator, resolver } from "hono-openapi"
 import { Hono, type Context, type MiddlewareHandler, type Next } from "hono"
+import { compress } from "hono/compress"
 import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
 import * as fs from "fs"
@@ -578,6 +579,7 @@ export namespace Server {
             maxAge: 600,
           }),
         )
+        .use(compress({ encoding: "gzip" }))
         .use(async (c, next) => {
           if (!_shuttingDown) return next()
           return c.json(
@@ -894,19 +896,7 @@ export namespace Server {
             return c.json({ accepted: true })
           },
         )
-        .get(
-          "/doc",
-          openAPIRouteHandler(app, {
-            documentation: {
-              info: {
-                title: "synergy",
-                version: "0.0.3",
-                description: "synergy api",
-              },
-              openapi: "3.1.1",
-            },
-          }),
-        )
+        .get("/doc", async (c) => c.json(await openapi()))
         .use(validator("query", z.object({ directory: z.string().optional(), scopeID: z.string().optional() })))
 
         .route("/scope", ScopeRoute)
@@ -1626,7 +1616,19 @@ export namespace Server {
     _appMounted = true
   }
 
-  export async function openapi() {
+  // Spec generation consumes describeRoute resolvers in one pass (hono-openapi
+  // rewrites each entry in place), so a second generation in the same process
+  // would emit $refs without components. Both /doc and the CLI share this
+  // singleton to make once-per-process the public invariant.
+  type OpenAPISpecs = Awaited<ReturnType<typeof generateSpecs>>
+  let _openapiSpecs: Promise<OpenAPISpecs> | undefined
+
+  export function openapi(): Promise<OpenAPISpecs> {
+    _openapiSpecs ??= buildOpenAPISpecs()
+    return _openapiSpecs
+  }
+
+  async function buildOpenAPISpecs() {
     // Cast to break excessive type recursion from long route chains
     const result = await generateSpecs(App() as Hono, {
       documentation: {
