@@ -7,7 +7,7 @@ import { Plugin } from "../plugin"
 import { getPluginConfig } from "../plugin/config-store"
 import { PluginApprovalRequiredError } from "../plugin/install"
 import { invokePluginOperation, PluginOperationError } from "../plugin/operation"
-import { reloadDevelopmentGeneration, getLoadedPlugins } from "../plugin/loader"
+import { reloadDevelopmentGeneration, getLoadedPlugins, getCatalogPlugin } from "../plugin/loader"
 import { PluginStatusSchema } from "../plugin/status"
 import { isPathContained } from "../util/path-contain"
 import { errors } from "./error"
@@ -27,6 +27,7 @@ import { PluginMarketplaceRegistry } from "../plugin/marketplace-registry"
 import { PluginInstallationTransaction } from "../plugin/installation-transaction"
 import { reload } from "../plugin/lifecycle"
 import { readApprovals } from "../plugin/consent/approval-store"
+import { listGlobalThemePlugins } from "../plugin/global-themes"
 
 const JsonValue = z.any()
 const UIContribution = z.object({
@@ -42,6 +43,18 @@ const UIContribution = z.object({
 
 const InvokeBody = z.object({ input: JsonValue.optional(), sessionId: z.string().optional() })
 const PluginConfigUpdate = z.record(z.string(), z.unknown()).meta({ ref: "PluginConfigUpdate" })
+const GlobalThemeContribution = z
+  .object({
+    pluginId: z.string(),
+    name: z.string(),
+    version: z.string(),
+    generation: z.string(),
+    enabledScopes: z.array(z.string()),
+    capabilities: z.array(z.string()),
+    contributions: z.array(z.record(z.string(), z.unknown())),
+    uiArtifact: z.object({ entry: z.string(), sha256: z.string() }).optional(),
+  })
+  .meta({ ref: "GlobalThemeContribution" })
 
 function uiContributions(plugin: Plugin.LoadedPlugin) {
   return {
@@ -80,6 +93,22 @@ const ApprovalReviewErrorSchema = StructuredErrorSchema.extend({
 
 export const PluginRoute = new Hono()
   .get(
+    "/ui/contributions/themes",
+    describeRoute({
+      summary: "List plugin theme contributions across all enabled scopes",
+      description:
+        "Themes are a global user preference. This endpoint aggregates ui.theme contributions from the process-wide plugin catalog (any scope), so theme registration survives scope switches.",
+      operationId: "plugin.listGlobalThemeContributions",
+      responses: {
+        200: {
+          description: "Global theme contributions",
+          content: { "application/json": { schema: resolver(z.array(GlobalThemeContribution)) } },
+        },
+      },
+    }),
+    async (context) => context.json(listGlobalThemePlugins()),
+  )
+  .get(
     "/ui/contributions",
     describeRoute({
       summary: "List enabled plugin UI contributions",
@@ -101,7 +130,12 @@ export const PluginRoute = new Hono()
       responses: { 200: { description: "Asset" }, ...errors(404) },
     }),
     async (context) => {
-      const plugin = await Plugin.get(context.req.param("pluginId"))
+      // The asset route is global (isGlobalRoute): fall back to the process-wide
+      // catalog so assets of plugins enabled in any scope — including global
+      // theme registrations — resolve without a scope hint. The generation check
+      // still pins the response to the exact requested artifact generation.
+      const plugin =
+        (await Plugin.get(context.req.param("pluginId"))) ?? getCatalogPlugin(context.req.param("pluginId"))
       if (!plugin || plugin.manifest.artifacts.generation !== context.req.param("generation"))
         return context.json({ message: "Plugin generation not found" }, 404)
       const relative = context.req.param("asset")

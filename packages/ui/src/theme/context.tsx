@@ -63,7 +63,12 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       const activeId = store.themeId || synergyTheme.id
       const knownTheme = getTheme(activeId)?.theme
       if (!knownTheme && isPluginThemeRegistryReady()) {
-        setStore("themeId", synergyTheme.id)
+        // The registry settled without the selected theme (scope switch or a
+        // transient asset failure). Keep the selection and render degraded
+        // default tokens — writing the bootstrap snapshot here would destroy
+        // the persisted choice before the registry refills the theme, and the
+        // retained themeId lets this effect re-apply it automatically.
+        applyThemeToDocument(document, tokens(), store.mode, activeId)
         return
       }
       const theme = activeTheme()
