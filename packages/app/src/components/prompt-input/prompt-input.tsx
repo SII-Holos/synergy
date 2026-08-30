@@ -1944,21 +1944,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             onKeyDown={handleKeyDown}
             classList={{
               "select-text": true,
-              "w-full px-5 py-3 pr-12 text-14-regular text-text-strong focus:outline-none whitespace-pre-wrap": true,
+              "w-full px-4 py-3 pr-12 text-14-regular text-text-strong focus:outline-none whitespace-pre-wrap": true,
               "[&_[data-type=file]]:text-syntax-property": true,
               "font-mono!": store.mode === "shell",
             }}
           />
           <Show when={activeCompletion()}>
             {(completion) => (
-              <div class="absolute top-0 inset-x-0 px-5 py-3 pr-12 text-14-regular pointer-events-none whitespace-pre-wrap text-text-subtle">
+              <div class="absolute top-0 inset-x-0 px-4 py-3 pr-12 text-14-regular pointer-events-none whitespace-pre-wrap text-text-subtle">
                 <span class="invisible">{editor.completionPrefix()}</span>
                 <span>{completion().text}</span>
               </div>
             )}
           </Show>
           <Show when={!prompt.dirty()}>
-            <div class="absolute top-0 inset-x-0 px-5 py-3 pr-12 text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate">
+            <div class="absolute top-0 inset-x-0 px-4 py-3 pr-12 text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate">
               {store.mode === "shell"
                 ? i18n._(PI.placeholderShell)
                 : planActive()
@@ -1975,8 +1975,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <Switch>
               <Match when={store.mode === "shell"}>
                 <div class="prompt-input-toolbar-chip flex items-center gap-2">
-                  <Icon name={getSemanticIcon("prompt.shell")} size="small" class="text-icon-interactive-base" />
-                  <span class="text-12-medium text-text-interactive-base">{i18n._(PI.shellLabel)}</span>
+                  <Icon name={getSemanticIcon("prompt.shell")} size="small" class="text-icon-base" />
+                  <span class="text-12-medium text-text-base">{i18n._(PI.shellLabel)}</span>
                   <span class="text-11-regular text-text-subtle">{i18n._(PI.shellEscToExit)}</span>
                 </div>
               </Match>
@@ -2180,7 +2180,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         aria-label={i18n._(PI.startBpLoop)}
                         icon={getSemanticIcon("prompt.blueprintStart")}
                         variant="primary"
-                        class="prompt-input-submit size-8 rounded-full! bg-text-interactive-base!"
+                        class="prompt-input-submit size-[34px] rounded-full! bg-text-interactive-base!"
                       />
                     </Tooltip>
                   </div>
@@ -2290,7 +2290,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           : getSemanticIcon("prompt.submitArrow")
                     }
                     variant="primary"
-                    class="prompt-input-submit size-9 rounded-full!"
+                    class={`prompt-input-submit size-[34px] rounded-full!${submitStopsSession() ? " bg-text-strong!" : ""}`}
                   />
                 </Tooltip>
               </Match>
