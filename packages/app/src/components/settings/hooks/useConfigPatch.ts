@@ -50,6 +50,11 @@ function buildGeneralPatch(cfg: Config, state: SettingsState, patch: Record<stri
   const resolvedActivityDisplay = cfg.activityDisplay ?? UI_DEFAULTS.activityDisplay
   if (general.activityDisplay !== resolvedActivityDisplay) patch.activityDisplay = general.activityDisplay
 
+  const resolvedDefaultSessionWorkspace = cfg.defaultSessionWorkspace ?? UI_DEFAULTS.defaultSessionWorkspace
+  if (general.defaultSessionWorkspace !== resolvedDefaultSessionWorkspace) {
+    patch.defaultSessionWorkspace = general.defaultSessionWorkspace
+  }
+
   const toast = toastPatchFromPreferences(general.mutedToasts, general.toastDurations)
   const current = normalizeServerToast(cfg.toast) ?? { muted: [] }
   // Always include muted so domain mergeDeep can replace/clear the array.

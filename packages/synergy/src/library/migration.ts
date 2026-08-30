@@ -355,5 +355,29 @@ export const migrations: Migration[] = [
       if (recovered > 0) log.info("recovered experience user input", { recovered })
     },
   },
+  {
+    id: "20260824-library-experience-retrieval-count",
+    description: "Add retrieval_count selection counter to experiences for UCB1 exploration",
+    async up(progress) {
+      const conn = LibraryDB.connection()
+      progress(0, 2)
+      if (!hasColumn(conn, "experience", "retrieval_count")) {
+        conn.exec("ALTER TABLE experience ADD COLUMN retrieval_count INTEGER NOT NULL DEFAULT 0")
+        log.info("added column", { table: "experience", column: "retrieval_count" })
+      }
+
+      // Previously-rewarded experiences have q_visits > 0 from the reward
+      // path; before this counter existed those were the only selection-ish
+      // evidence, so seed from them so they do not read as never-pulled.
+      // Unrewarded experiences (q_visits = 0) stay 0: they were genuinely
+      // never selected by the new counter.
+      progress(1, 2)
+      const updated = conn
+        .prepare("UPDATE experience SET retrieval_count = q_visits WHERE q_visits > 0 AND retrieval_count = 0")
+        .run().changes
+      progress(2, 2)
+      if (updated > 0) log.info("seeded retrieval_count from q_visits", { updated })
+    },
+  },
 ]
 MigrationRegistry.register("library", migrations)

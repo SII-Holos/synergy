@@ -5,7 +5,7 @@ import { Session } from "../../src/session"
 import { SessionWorkflowService } from "../../src/session/workflow"
 import { SessionInbox } from "../../src/session/inbox"
 import { SessionManager } from "../../src/session/manager"
-import { BossService } from "../../src/session/boss"
+import { BossService } from "../../src/boss/boss"
 import { Config } from "../../src/config/config"
 import { tmpdir } from "../fixture/fixture"
 

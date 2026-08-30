@@ -33,9 +33,17 @@ export namespace LatticeRunService {
 
   type DirectReason = "enable" | "resume" | "action" | "note_change"
 
+  let reconcileDirectFn: ((scopeID: string, sessionID: string, reason: DirectReason) => Promise<void>) | undefined
+
+  /** LatticeController owns reconciliation; it registers its forwarder at module
+   * load so this service never imports the controller back. */
+  export function setReconcileDirect(fn: (scopeID: string, sessionID: string, reason: DirectReason) => Promise<void>) {
+    reconcileDirectFn = fn
+  }
+
   async function reconcileDirect(scopeID: string, sessionID: string, reason: DirectReason): Promise<void> {
-    const { LatticeController } = await import("./controller")
-    await LatticeController.reconcileDirect(scopeID, sessionID, reason)
+    if (!reconcileDirectFn) throw new Error("Lattice reconcileDirect forwarder is not registered")
+    await reconcileDirectFn(scopeID, sessionID, reason)
   }
 
   async function currentScopeSession(sessionID: string): Promise<Session.Info> {

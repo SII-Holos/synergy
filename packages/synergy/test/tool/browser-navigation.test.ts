@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { BrowserNavigationTool } from "../../src/tool/browser-navigation"
-import { BrowserToolHelper } from "../../src/tool/browser-shared"
+import { BrowserNavigationTool } from "../../src/browser/tools/browser-navigation"
+import { BrowserToolHelper } from "../../src/browser/tools/browser-shared"
 import { ScopeContext } from "../../src/scope/context"
 
 const originalResolvePage = BrowserToolHelper.resolvePage

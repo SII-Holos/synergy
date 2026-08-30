@@ -2,6 +2,23 @@ import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { Log } from "@/util/log"
 
+interface MailboxTransport {
+  send(targetAgentId: string, event: string, payload: unknown): Promise<{ sent: boolean; reason?: string }>
+}
+
+let providerResolver: (() => Promise<MailboxTransport | null>) | undefined
+
+/** HolosRuntime owns the native provider; it registers its resolver at module
+ * load so the mailbox never imports the runtime back. */
+export function setHolosProviderResolver(resolver: () => Promise<MailboxTransport | null>): void {
+  providerResolver = resolver
+}
+
+async function resolveProvider(): Promise<MailboxTransport | null> {
+  if (!providerResolver) throw new Error("Holos provider resolver is not registered")
+  return providerResolver()
+}
+
 const log = Log.create({ service: "holos.mailbox" })
 
 export namespace Mailbox {
@@ -54,8 +71,7 @@ export namespace Mailbox {
     }
     await Storage.write(StoragePath.holosMailboxOutboxItem(input.toId, msgId), msg)
 
-    const { HolosRuntime } = await import("./runtime")
-    const provider = await HolosRuntime.getProvider()
+    const provider = await resolveProvider()
     if (!provider) {
       const failed: Message = { ...msg, status: "failed", errorReason: "no_provider" }
       await Storage.write(StoragePath.holosMailboxOutboxItem(input.toId, msgId), failed)
@@ -149,8 +165,7 @@ export namespace Mailbox {
       throw new Error(`Message ${messageId} is not an outbound message`)
     }
 
-    const { HolosRuntime } = await import("./runtime")
-    const provider = await HolosRuntime.getProvider()
+    const provider = await resolveProvider()
     if (!provider) {
       const failed: Message = { ...msg, status: "failed", errorReason: "no_provider" }
       await Storage.write(foundKey, failed)

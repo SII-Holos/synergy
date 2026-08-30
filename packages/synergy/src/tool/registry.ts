@@ -1,4 +1,3 @@
-import { QuestionTool } from "./question"
 import { BashTool } from "./bash"
 import { EditTool } from "./edit"
 import { GlobTool } from "./glob"
@@ -12,53 +11,17 @@ import { ResolveConflictsTool } from "./resolve-conflicts"
 import { SaveFileTool } from "./save-file"
 import { ScanFilesTool } from "./scan-files"
 import { ParseCodeTool } from "./parse-code"
-import { TaskTool } from "./task"
-import { TaskListTool } from "./task-list"
-import { TaskOutputTool } from "./task-output"
-import { TaskCancelTool } from "./task-cancel"
 import { TodoWriteTool, TodoReadTool } from "./todo"
 import { DagWriteTool, DagReadTool, DagPatchTool } from "./dag"
 import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
-import { MemoryWriteTool, MemoryEditTool, MemorySearchTool, MemoryGetTool } from "./memory"
-import { NoteListTool } from "./note-list"
-import { NoteReadTool } from "./note-read"
-import { NoteSearchTool } from "./note-search"
-import { NoteWriteTool } from "./note-write"
-import { NoteEditTool } from "./note-edit"
-import { NoteArchiveTool } from "./note-archive"
-import { NoteDeleteTool } from "./note-delete"
-import { BlueprintLoopStopTool } from "./blueprint-loop-stop"
-import { BlueprintLoopApproveTool } from "./blueprint-loop-approve"
-import { BlueprintLoopRejectTool } from "./blueprint-loop-reject"
-import { LoopStopTool } from "./loop-stop"
-import { LightLoopApproveTool } from "./light-loop-approve"
-import { LightLoopRejectTool } from "./light-loop-reject"
-import { PathwayReadTool } from "./pathway-read"
-import { PathwayWriteTool } from "./pathway-write"
-import { LatticeSubmitTool } from "./lattice-submit"
 import { SessionListTool } from "./session-list"
 import { SessionReadTool } from "./session-read"
 import { SessionSearchTool } from "./session-search"
 import { SessionSendTool } from "./session-send"
-import { SessionControlTool } from "./session-control"
-import { BossSpawnTool } from "./boss-spawn"
-import { BossAssignTool } from "./boss-assign"
-import { BossReportTool } from "./boss-report"
-import { BossStatusTool } from "./boss-status"
-import { BossCancelTool } from "./boss-cancel"
-import { BossProjectTool } from "./boss-project"
-import { ChannelPushTool } from "./channel-push"
+
 import { ScopeListTool } from "./scope-list"
-import { AgendaScheduleTool } from "./agenda-schedule"
-import { AgendaWatchTool } from "./agenda-watch"
-import { AgendaListTool } from "./agenda-list"
-import { AgendaUpdateTool } from "./agenda-update"
-import { AgendaCancelTool } from "./agenda-cancel"
-import { AgendaTriggerTool } from "./agenda-trigger"
-import { AgendaLogsTool } from "./agenda-logs"
 import { AttachTool } from "./attach"
-import { ResponseCardTool } from "./response-card"
 import { OpenAIImageGenTool } from "./openai-image-gen"
 import { OpenAIImageEditTool } from "./openai-image-edit"
 
@@ -76,52 +39,18 @@ import fs from "fs"
 import { type ToolDefinition, type ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import z from "zod"
 import Ajv2020 from "ajv/dist/2020"
-import { Plugin } from "../plugin"
-import { getPluginConfig, matchesPluginSettingCondition } from "../plugin/config-store"
-import { PluginToolId } from "../plugin/ids.js"
-import { ensureRuntime, type LoadedPlugin } from "../plugin/loader"
-import { pluginRuntimeManager } from "../plugin/runtime"
+import { ToolPluginSource } from "./plugin-source"
+import type { PluginSettingCondition } from "@ericsanchezok/synergy-plugin"
 import { WebSearchTool } from "./websearch"
 import { ArxivSearchTool, ArxivDownloadTool } from "./arxiv"
-import { Flag } from "@/flag/flag"
 import { Log } from "@/util/log"
-import { LspTool } from "./lsp"
 import { ProcessTool } from "./process"
-import { ConnectTool } from "./connect"
 import { Truncate } from "./truncation"
 import { RenderTool } from "./render"
-import { EmailSendTool } from "./email"
-import { EmailReadTool } from "./email-read"
-import { ClarusSubmitTaskResultTool } from "./clarus-submit-task-result"
-import { ClarusExtendTaskTool } from "./clarus-extend-task"
-import { GithubDeliverFixTool } from "./github-deliver-fix"
 import { RuntimeReloadTool } from "./runtime-reload"
 import { CodexProvider } from "@/provider/codex"
 import { SearchToolsTool } from "./search-tools"
 import { ExpandToolsTool } from "./expand-tools"
-import { WorktreeEnterTool } from "./worktree-enter"
-import { WorktreeLeaveTool } from "./worktree-leave"
-import { WorktreeListTool } from "./worktree-list"
-import { BrowserAnnotateTool } from "./browser-annotate"
-import { BrowserSnapshotTool } from "./browser-snapshot"
-import { BrowserScreenshotTool } from "./browser-screenshot"
-import { BrowserInspectTool } from "./browser-inspect"
-import { BrowserWaitTool } from "./browser-wait"
-import { BrowserConsoleTool } from "./browser-console"
-import { BrowserNetworkTool } from "./browser-network"
-import { BrowserDownloadsTool } from "./browser-downloads"
-import { BrowserReadTool } from "./browser-read"
-import { BrowserClipboardTool } from "./browser-clipboard"
-import { BrowserNavigationTool } from "./browser-navigation"
-import { BrowserActionTool } from "./browser-action"
-import { BrowserEvalTool } from "./browser-eval"
-import { BrowserViewTool } from "./browser-view"
-import { BrowserAssetsTool } from "./browser-assets"
-import { BrowserPerformanceTool } from "./browser-performance"
-import { BrowserAuditTool } from "./browser-audit"
-import { BrowserEmulateTool } from "./browser-emulate"
-import { BrowserDialogTool } from "./browser-dialog"
-import { BrowserUploadTool } from "./browser-upload"
 import { ToolExposure } from "./exposure"
 
 export namespace ToolRegistry {
@@ -147,18 +76,9 @@ export namespace ToolRegistry {
       }
     }
 
-    const plugins = await Plugin.getLoaded()
-    for (const plugin of plugins) {
-      try {
-        for (const contribution of Plugin.contributions(plugin, "tool")) {
-          custom.push(fromRuntimePlugin(contribution, plugin))
-        }
-      } catch (err) {
-        log.warn("plugin tools skipped due to registry failure", {
-          pluginId: plugin.id,
-          error: err instanceof Error ? err.message : String(err),
-        })
-      }
+    const pluginEntries = (await ToolPluginSource.get()?.toolEntries()) ?? []
+    for (const entry of pluginEntries) {
+      custom.push(fromRuntimePlugin(entry))
     }
 
     return { custom }
@@ -213,15 +133,12 @@ export namespace ToolRegistry {
     return result
   }
 
-  export const matchesSettingCondition = matchesPluginSettingCondition
+  export function matchesSettingCondition(condition: PluginSettingCondition, values: Record<string, unknown>): boolean {
+    return values[condition.setting] === condition.equals
+  }
 
-  async function conditionEnabled(
-    pluginId: string,
-    condition: { setting: string; equals: string | number | boolean },
-  ): Promise<boolean> {
-    const manifest = await Plugin.manifest(pluginId)
-    const values = await getPluginConfig(pluginId, { manifest })
-    return matchesSettingCondition(condition, values)
+  async function conditionEnabled(pluginId: string, condition: PluginSettingCondition): Promise<boolean> {
+    return (await ToolPluginSource.get()?.conditionEnabled(pluginId, condition)) ?? false
   }
 
   async function enabled(tool: Tool.Info): Promise<boolean> {
@@ -230,53 +147,38 @@ export namespace ToolRegistry {
     return conditionEnabled(tool.source.pluginId, tool.enabledWhen)
   }
 
-  function fromRuntimePlugin(
-    contribution: Extract<LoadedPlugin["manifest"]["contributions"][number], { kind: "tool" }>,
-    plugin: LoadedPlugin,
-  ): Tool.Info {
-    const fullId = PluginToolId.format(plugin.id, contribution.id)
+  function fromRuntimePlugin(entry: ToolPluginSource.Entry): Tool.Info {
     return {
-      id: fullId,
-      exposure: contribution.exposure as ToolExposure.Info | undefined,
-      display: contribution.display as ToolDisplay | undefined,
+      id: entry.fullId,
+      exposure: entry.exposure,
+      display: entry.display,
       source: {
         type: "plugin",
-        pluginId: plugin.id,
-        toolId: contribution.id,
-        pluginDir: plugin.pluginDir,
+        pluginId: entry.pluginId,
+        toolId: entry.toolId,
+        pluginDir: entry.pluginDir,
         runtimeMode: "process",
       },
-      inputSchema: contribution.input,
-      enabledWhen: contribution.enabledWhen,
+      inputSchema: entry.inputSchema,
+      enabledWhen: entry.enabledWhen,
       init: async (initCtx) => ({
-        parameters: manifestParameters(contribution.input),
-        description: contribution.description,
+        parameters: manifestParameters(entry.inputSchema),
+        description: entry.description,
         execute: async (args, ctx) => {
-          if (contribution.enabledWhen && !(await conditionEnabled(plugin.id, contribution.enabledWhen))) {
-            throw Object.assign(new Error(`Plugin tool ${fullId} is disabled by plugin settings.`), {
+          if (entry.enabledWhen && !(await conditionEnabled(entry.pluginId, entry.enabledWhen))) {
+            throw Object.assign(new Error(`Plugin tool ${entry.fullId} is disabled by plugin settings.`), {
               code: "CONTRIBUTION_DISABLED",
             })
           }
-          await ensureRuntime(plugin)
-          const raw = await pluginRuntimeManager.invoke({
-            pluginId: plugin.id,
-            handlerId: `tool:${contribution.id}`,
-            value: args,
-            context: {
-              scopeId: ScopeContext.current.scope.id,
-              sessionId: ctx.sessionID,
-              directory: ScopeContext.current.directory,
-              actor: {
-                type: "agent",
-                agent: ctx.agent,
-                messageId: ctx.messageID,
-                callId: ctx.callID ?? `${plugin.id}:${contribution.id}`,
-                userMessageId: typeof ctx.extra?.userMessageID === "string" ? ctx.extra.userMessageID : undefined,
-              },
-            },
-            pluginDir: plugin.pluginDir,
-            manifest: plugin.manifest,
-            signal: ctx.abort,
+          const raw = await entry.execute(args, {
+            sessionID: ctx.sessionID,
+            messageID: ctx.messageID,
+            agent: ctx.agent,
+            abort: ctx.abort,
+            callID: ctx.callID,
+            userMessageID: typeof ctx.extra?.userMessageID === "string" ? ctx.extra.userMessageID : undefined,
+            scopeId: ScopeContext.current.scope.id,
+            directory: ScopeContext.current.directory,
           })
           return normalizePluginResult(raw, initCtx?.agent)
         },
@@ -313,6 +215,19 @@ export namespace ToolRegistry {
     }
   }
 
+  const toolProviders = new Map<string, ToolProvider>()
+  export type ToolProvider = () => Tool.Info[]
+
+  /** Product domains register tool providers under a stable source id;
+   * `all()` drains them alongside the static builtin list. */
+  export function registerToolProvider(sourceID: string, provider: ToolProvider): void {
+    toolProviders.set(sourceID, provider)
+  }
+
+  export function toolProviderIDs(): string[] {
+    return [...toolProviders.keys()].sort()
+  }
+
   export async function register(tool: Tool.Info) {
     const { custom } = await state()
     const idx = custom.findIndex((t) => t.id === tool.id)
@@ -328,10 +243,8 @@ export namespace ToolRegistry {
     await Config.current()
 
     const builtin: Tool.Info[] = [
-      ...(Flag.SYNERGY_CLIENT === "cli" ? [QuestionTool] : []),
       BashTool,
       ProcessTool,
-      ConnectTool,
       ReadTool,
       ViewImageTool,
       ViewFileTool,
@@ -345,10 +258,6 @@ export namespace ToolRegistry {
       GrepTool,
       EditTool,
       WriteTool,
-      TaskTool,
-      TaskListTool,
-      TaskOutputTool,
-      TaskCancelTool,
       WebFetchTool,
       TodoWriteTool,
       TodoReadTool,
@@ -364,79 +273,14 @@ export namespace ToolRegistry {
       LookAtTool,
       ScanDocumentTool,
       AstGrepTool,
-      MemoryWriteTool,
-      MemoryEditTool,
-      MemorySearchTool,
-      MemoryGetTool,
-      NoteArchiveTool,
-      NoteListTool,
-      NoteReadTool,
-      NoteSearchTool,
-      NoteWriteTool,
-      NoteEditTool,
-      NoteDeleteTool,
-      BlueprintLoopStopTool,
-      BlueprintLoopApproveTool,
-      BlueprintLoopRejectTool,
-      LoopStopTool,
-      LightLoopApproveTool,
-      LightLoopRejectTool,
-      PathwayReadTool,
-      PathwayWriteTool,
-      LatticeSubmitTool,
-      BossSpawnTool,
-      BossAssignTool,
-      BossReportTool,
-      BossStatusTool,
-      BossCancelTool,
-      BossProjectTool,
-      ChannelPushTool,
       SessionListTool,
       SessionReadTool,
       SessionSearchTool,
       SessionSendTool,
-      SessionControlTool,
       ScopeListTool,
-      AgendaScheduleTool,
-      AgendaWatchTool,
-      AgendaListTool,
-      AgendaUpdateTool,
-      AgendaCancelTool,
-      AgendaTriggerTool,
-      AgendaLogsTool,
       AttachTool,
-      ResponseCardTool,
       RenderTool,
-      EmailSendTool,
-      EmailReadTool,
-      ClarusSubmitTaskResultTool,
-      ClarusExtendTaskTool,
-      GithubDeliverFixTool,
       RuntimeReloadTool,
-      WorktreeEnterTool,
-      WorktreeLeaveTool,
-      WorktreeListTool,
-      BrowserAnnotateTool,
-      BrowserSnapshotTool,
-      BrowserScreenshotTool,
-      BrowserInspectTool,
-      BrowserWaitTool,
-      BrowserConsoleTool,
-      BrowserNetworkTool,
-      BrowserDownloadsTool,
-      BrowserReadTool,
-      BrowserClipboardTool,
-      BrowserNavigationTool,
-      BrowserAssetsTool,
-      BrowserActionTool,
-      BrowserEvalTool,
-      BrowserViewTool,
-      BrowserPerformanceTool,
-      BrowserAuditTool,
-      BrowserEmulateTool,
-      BrowserDialogTool,
-      BrowserUploadTool,
-      ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
     ]
 
     const codexAccess = await CodexProvider.resolveToken({
@@ -445,7 +289,8 @@ export namespace ToolRegistry {
     }).catch(() => undefined)
     if (codexAccess) builtin.push(OpenAIImageGenTool, OpenAIImageEditTool)
 
-    return [...builtin, ...custom]
+    const provided = [...toolProviders.values()].flatMap((provider) => provider())
+    return [...builtin, ...provided, ...custom]
   }
 
   export async function ids() {

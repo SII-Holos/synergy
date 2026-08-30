@@ -1,6 +1,6 @@
 import * as prompts from "@clack/prompts"
 import open from "open"
-import { UI } from "@/cli/ui"
+import { UI } from "@/util/ui"
 import { HolosLoginFlow } from "./login-flow"
 import { HolosProfile } from "./profile"
 
@@ -52,6 +52,7 @@ export async function performHolosLogin(options?: {
   const state = crypto.randomUUID()
   const port = 19836 + Math.floor(Math.random() * 1000)
   const callbackUrl = `http://127.0.0.1:${port}/holos/login`
+  const bindUrl = await HolosLoginFlow.createConfiguredBindUrl({ callbackUrl, state })
 
   let resolveCallback: (params: { code: string; state: string }) => void
   let rejectCallback: (err: Error) => void
@@ -88,8 +89,6 @@ export async function performHolosLogin(options?: {
   } catch {
     return null
   }
-
-  const bindUrl = HolosLoginFlow.createBindUrl({ callbackUrl, state })
 
   try {
     await open(bindUrl)

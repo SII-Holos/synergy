@@ -6,7 +6,12 @@ import { ConfigDomain } from "../../src/config/domain"
 import { ConfigImport } from "../../src/config/import"
 import { Global } from "../../src/global"
 import { ScopeContext } from "../../src/scope/context"
+import { RuntimeReload } from "../../src/runtime/reload"
+import { RuntimeReloadExecutor } from "../../src/config/reload-executor"
 import { tmpdir } from "../fixture/fixture"
+
+RuntimeReloadExecutor.setExecutor((input, options) => RuntimeReload.reload(input, options))
+RuntimeReloadExecutor.setGlobalExecutor((input, options) => RuntimeReload.reloadGlobal(input, options))
 
 async function withProject<T>(fn: (input: { project: string; root: string }) => Promise<T>) {
   await using tmp = await tmpdir({ git: true })

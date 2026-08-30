@@ -454,3 +454,107 @@ test("sets endpointKind on entries from session endpoint info", async () => {
     },
   })
 })
+
+describe("SessionNav timestamps", () => {
+  test("upsertNavEntry and buildNavIndex carry createdAt and archivedAt", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    let session: Session.Info | undefined
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        session = await Session.create({ title: "Timestamped" })
+        await Session.update(session.id, (draft) => {
+          draft.time.created = 111
+          draft.time.archived = 222
+        })
+
+        const live = await SessionNav.readNavIndex(scope.id)
+        const liveEntry = live.entries.find((e) => e.id === session!.id)
+        expect(liveEntry).toBeDefined()
+        expect(liveEntry!.createdAt).toBe(111)
+        expect(liveEntry!.archivedAt).toBe(222)
+
+        const rebuilt = await SessionNav.buildNavIndex(scope.id)
+        const rebuiltEntry = rebuilt.entries.find((e) => e.id === session!.id)
+        expect(rebuiltEntry).toBeDefined()
+        expect(rebuiltEntry!.createdAt).toBe(111)
+        expect(rebuiltEntry!.archivedAt).toBe(222)
+
+        await Session.remove(session!.id)
+      },
+    })
+  })
+
+  test("archivedAt clears when a session is restored", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    let session: Session.Info | undefined
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        session = await Session.create({ title: "Restore Timestamp" })
+        await Session.update(session.id, (draft) => {
+          draft.time.archived = 400
+        })
+
+        const archived = await SessionNav.readNavIndex(scope.id)
+        const archivedEntry = archived.entries.find((e) => e.id === session!.id)
+        expect(archivedEntry!.archivedAt).toBe(400)
+        expect(archivedEntry!.archived).toBe(true)
+
+        await Session.update(session.id, (draft) => {
+          draft.time.archived = 0
+        })
+
+        const restored = await SessionNav.readNavIndex(scope.id)
+        const restoredEntry = restored.entries.find((e) => e.id === session!.id)
+        expect(restoredEntry!.archived).toBe(false)
+
+        await Session.remove(session!.id)
+      },
+    })
+  })
+})
+
+describe("SessionNav updatedAt authority", () => {
+  test("updatedAt tracks info time.updated while lastActivityAt stays frozen during pendingReply", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    let session: Session.Info | undefined
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        session = await Session.create({ title: "Pending Reply Freeze" })
+        await Session.update(session.id, (draft) => {
+          draft.pendingReply = true
+        })
+        const afterReply = await SessionNav.readNavIndex(scope.id)
+        const frozen = afterReply.entries.find((e) => e.id === session!.id)!
+
+        await Bun.sleep(5)
+        await Session.update(session.id, (draft) => {
+          draft.title = "Pending Reply Freeze Renamed"
+        })
+
+        const afterSecond = await SessionNav.readNavIndex(scope.id)
+        const entry = afterSecond.entries.find((e) => e.id === session!.id)!
+        const info = await Storage.read<any>(
+          StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(session!.id)),
+        )
+
+        expect(entry.lastActivityAt).toBe(frozen.lastActivityAt)
+        expect(entry.updatedAt).toBe(info.time.updated)
+        expect(entry.updatedAt!).toBeGreaterThan(frozen.lastActivityAt)
+
+        await Session.remove(session!.id)
+      },
+    })
+  })
+})

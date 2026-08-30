@@ -1,11 +1,14 @@
 import { expect, test } from "bun:test"
 import { Channel } from "../../src/channel"
 import { GithubProvider, assertNotBaseBranch, resolveCanonicalBranch } from "../../src/channel/provider/github"
-import { GithubDeliverFixTool } from "../../src/tool/github-deliver-fix"
+import { GithubDeliverFixTool } from "../../src/channel/tools/github-deliver-fix"
 import { ToolRegistry } from "../../src/tool/registry"
 import type { Tool } from "../../src/tool/tool"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
+
+// Product domains register tools via the L4 manifest
+import "../../src/product-registration"
 
 function toolContext(sessionID: string): Tool.Context {
   return {

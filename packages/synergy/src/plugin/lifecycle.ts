@@ -2,9 +2,9 @@ import { Config } from "../config/config"
 import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
 import { pluginRuntimeManager } from "./runtime"
-import { pluginAgentCallRuntime } from "./agent-call-runtime"
+import { pluginAgentCallRuntime } from "../plugin-runtime/agent-call-runtime"
 import { PluginHookPointRegistry } from "./hook-points"
-import { resolvePluginRuntimeLimits } from "./runtime-limits"
+import { resolvePluginRuntimeLimits } from "../plugin-runtime/runtime-limits"
 import {
   ensureRuntime,
   getLoadedPlugins,
@@ -18,8 +18,8 @@ import {
 import { getPluginConfig, matchesPluginSettingCondition, replacePluginConfig } from "./config-store"
 import { replaceForPlugins } from "./mcp"
 import Ajv2020 from "ajv/dist/2020"
-import { LightLoopRuntime } from "../session/light-loop-runtime"
-import { BlueprintLoopRuntime } from "../blueprint/loop-runtime"
+import { setHostServiceLifecycleHooks } from "./host-services-runtime"
+import { WorkflowPromptRegistry } from "../session/workflow-prompt-registry"
 
 const log = Log.create({ service: "plugin.lifecycle" })
 
@@ -290,11 +290,24 @@ export function disposeScope(scopeId: string) {
   return pluginAgentCallRuntime.disableScope(scopeId)
 }
 
+/** Reattach workflow-domain timers (lightloop and BlueprintLoop) through the
+ * prompt registry after plugin init and reload. */
+async function reattachWorkflowTimers(): Promise<void> {
+  await Promise.all(
+    WorkflowPromptRegistry.kinds().map((kind) =>
+      WorkflowPromptRegistry.get(kind)
+        ?.reattachPluginTimers?.()
+        .catch((error) => {
+          log.warn("workflow timer reattachment failed", { kind, error })
+        }),
+    ),
+  )
+}
+
 export async function init() {
   const plugins = await state().then((value) => value.loaded)
   await replaceForPlugins(await mcpCandidates(plugins))
-  await LightLoopRuntime.reattachPluginTimers()
-  await BlueprintLoopRuntime.reattachPluginTimers()
+  await reattachWorkflowTimers()
 }
 
 export async function reload() {
@@ -307,8 +320,7 @@ export async function reload() {
   await Promise.all([Agent.reload(), ToolRegistry.reload()])
   const loaded = await getLoadedPlugins()
   await replaceForPlugins(await mcpCandidates(loaded))
-  await LightLoopRuntime.reattachPluginTimers()
-  await BlueprintLoopRuntime.reattachPluginTimers()
+  await reattachWorkflowTimers()
 }
 
 export async function reloadMcpContributions() {
@@ -346,3 +358,5 @@ export async function notifyConfigHooks(input: {
 export async function manifest(pluginId: string) {
   return (await getPlugin(pluginId))?.manifest ?? null
 }
+
+setHostServiceLifecycleHooks({ deliverHookForPlugin, updateConfig })

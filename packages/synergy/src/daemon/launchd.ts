@@ -1,6 +1,6 @@
 import fs from "fs/promises"
 import { Global } from "../global"
-import { DaemonPaths } from "./paths"
+import { DaemonPaths } from "../util/daemon-paths"
 import type { DaemonService } from "./service"
 
 export const LaunchdService: DaemonService.Service = {

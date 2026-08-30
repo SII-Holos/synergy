@@ -43,7 +43,11 @@ import { attachmentSize, formatAttachmentSize, resolveAttachmentPresentation } f
 import { BasicTool } from "./basic-tool"
 import { classifyTool } from "./tool/classifier"
 import { MediaGenerationCard } from "./media-generation-card"
-import { isActiveMediaGenerationToolPart, isToolCardHidden } from "./tool-result-presentation"
+import {
+  isActiveMediaGenerationToolPart,
+  isMediaGenerationToolPart,
+  isToolCardHidden,
+} from "./tool-result-presentation"
 import "./session-turn.css"
 import "./tool-renders"
 import { Icon } from "./icon"
@@ -529,6 +533,9 @@ function TimelineItemDisplay(props: {
     return <Part part={props.item.part} message={props.item.message} />
   }
   if (props.item.kind === "media-pending") return <MediaGenerationCard part={props.item.part} />
+  if (isMediaGenerationToolPart(props.item.part)) {
+    return <AttachmentGallery files={props.item.files} serverUrl={props.serverUrl} />
+  }
   return <DeliveredAttachmentsCard item={props.item} serverUrl={props.serverUrl} />
 }
 

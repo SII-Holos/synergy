@@ -2,7 +2,7 @@ import fs from "fs/promises"
 import fsSync from "fs"
 import path from "path"
 import os from "os"
-import { UI } from "../../ui"
+import { UI } from "../../../util/ui"
 import { Global } from "../../../global"
 
 export interface Category {
@@ -433,6 +433,14 @@ export async function mergeLibraryDB(
   target.exec("PRAGMA journal_mode=WAL")
   target.exec("PRAGMA busy_timeout=5000")
 
+  // Targets created before the retrieval_count migration lack the column the
+  // experience INSERT below references; add it idempotently so merging into
+  // an older library.db keeps working.
+  const experienceColumns = target.prepare("PRAGMA table_info(experience)").all() as { name: string }[]
+  if (!experienceColumns.some((column) => column.name === "retrieval_count")) {
+    target.exec("ALTER TABLE experience ADD COLUMN retrieval_count INTEGER NOT NULL DEFAULT 0")
+  }
+
   const source = new Database(sourceDbPath, { readonly: true })
 
   type MemoryRow = {
@@ -459,6 +467,7 @@ export async function mergeLibraryDB(
     rewards: string
     q_values: string
     q_visits: number
+    retrieval_count?: number
     q_updated_at: number | null
     q_history: string
     retrieved_experience_ids: string
@@ -509,7 +518,7 @@ export async function mergeLibraryDB(
   // Merge experiences
   const experiences = source.prepare("SELECT * FROM experience").all() as ExperienceRow[]
   const insertExperience = target.prepare(
-    "INSERT OR IGNORE INTO experience (id, session_id, scope_id, intent, intent_embedding_model, script_embedding_model, source_provider_id, source_model_id, reward, rewards, q_values, q_visits, q_updated_at, q_history, retrieved_experience_ids, reward_status, turns_remaining, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+    "INSERT OR IGNORE INTO experience (id, session_id, scope_id, intent, intent_embedding_model, script_embedding_model, source_provider_id, source_model_id, reward, rewards, q_values, q_visits, retrieval_count, q_updated_at, q_history, retrieved_experience_ids, reward_status, turns_remaining, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
   )
 
   for (const exp of experiences) {
@@ -527,6 +536,10 @@ export async function mergeLibraryDB(
       exp.rewards,
       exp.q_values,
       exp.q_visits,
+      // A pre-retrieval_count source has no pull evidence; mirror the
+      // migration's approximation and seed from q_visits so imported rows
+      // are not ranked as never-pulled.
+      exp.retrieval_count ?? exp.q_visits,
       exp.q_updated_at,
       exp.q_history,
       exp.retrieved_experience_ids,

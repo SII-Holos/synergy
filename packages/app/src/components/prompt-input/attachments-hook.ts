@@ -30,7 +30,7 @@ type PromptAttachmentsInput = {
   setLocalArmedLoop: Setter<BlueprintSlot | null>
   activeLoopID: Accessor<string | undefined>
   working: Accessor<boolean>
-  workflowKind: Accessor<"plan" | "lightloop" | "lattice" | "boss" | undefined>
+  workflowKind: Accessor<"plan" | "lightloop" | "lattice" | "boss" | "extension" | undefined>
   clearPendingWorkflows: () => void
   setStore: SetStoreFunction<PromptInputStore>
 }

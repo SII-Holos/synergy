@@ -17,9 +17,8 @@ import { buildLightLoopReviewerPrompt } from "./prompt/lightloop-reviewer/builde
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Log } from "@/util/log"
-import { ExternalAgent } from "@/external-agent/bridge"
-import { ExternalAgentDiscovery } from "@/external-agent/discovery"
-import { Plugin } from "../plugin"
+import { AgentExternal, AgentExternalSource } from "./external-source"
+import { AgentPluginSource } from "./plugin-source"
 import { MODEL_ROLE_IDS, ModelRole, type ModelRole as ModelRoleType } from "../provider/model-role"
 import { CodexProvider } from "@/provider/codex"
 
@@ -179,7 +178,7 @@ export namespace Agent {
       prompt: z.string().optional(),
       options: z.record(z.string(), z.any()),
       steps: z.number().int().positive().optional(),
-      external: ExternalAgent.Info.optional(),
+      external: AgentExternal.Info.optional(),
       defaultVariant: z.string().optional(),
     })
     .meta({
@@ -277,7 +276,7 @@ export namespace Agent {
     }
 
     // Merge plugin-contributed agents (lower priority than config agents)
-    const pluginAgents = await Plugin.agentEntries()
+    const pluginAgents = (await AgentPluginSource.get()?.agentEntries()) ?? []
     for (const agent of pluginAgents) {
       if (result[agent.name]) {
         log.info("plugin agent skipped, name already exists", {
@@ -361,14 +360,13 @@ export namespace Agent {
       openclaw:
         "OpenClaw multi-model agent platform. Versatile generalist with 39+ built-in tools including web search, browser, image generation, and multi-provider model routing. Good for tasks that need diverse tool access beyond pure coding.",
     }
-    try {
-      await import("@/external-agent/adapter/codex")
-      await import("@/external-agent/adapter/claude-code")
-      await import("@/external-agent/adapter/openclaw")
-    } catch (e) {
-      log.warn("failed to import external agent adapters", { error: String(e) })
+    const externalSource = AgentExternalSource.get()
+    if (externalSource) {
+      await externalSource.loadAdapters().catch((e) => {
+        log.warn("failed to import external agent adapters", { error: String(e) })
+      })
     }
-    const discovered = await ExternalAgentDiscovery.discover(externalConfig)
+    const discovered = (await externalSource?.discover(externalConfig)) ?? new Map<string, AgentExternal.Info>()
     log.info("external agent discovery results", {
       discovered: [...discovered.keys()],
     })

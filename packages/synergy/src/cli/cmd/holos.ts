@@ -1,6 +1,6 @@
 import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 import { performHolosLogin } from "../../holos/login"
 import { HolosAuth } from "../../holos/auth"
 import { HolosProfile } from "../../holos/profile"

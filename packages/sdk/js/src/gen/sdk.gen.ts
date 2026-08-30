@@ -150,6 +150,8 @@ import type {
   ConfigDomainUpdateErrors,
   ConfigDomainUpdateInput,
   ConfigDomainUpdateResponses,
+  ConfigExportErrors,
+  ConfigExportResponses,
   ConfigGetErrors,
   ConfigGetResponses,
   ConfigGlobalErrors,
@@ -158,6 +160,7 @@ import type {
   ConfigImportApplyResponses,
   ConfigImportPlanErrors,
   ConfigImportPlanResponses,
+  ConfigImportScope,
   ConfigInstructionsGetErrors,
   ConfigInstructionsGetResponses,
   ConfigInstructionsResetErrors,
@@ -6261,6 +6264,74 @@ export class Config extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<ConfigDiagnosticsResponses, ConfigDiagnosticsErrors, ThrowOnError>({
       url: "/config/diagnostics",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Export config
+   *
+   * Export selected config domains as one merged config object. Secrets are always redacted over HTTP; use `synergy config export --include-secrets` for a plaintext export.
+   */
+  public export<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      scope?: ConfigImportScope
+      only?:
+        | "general"
+        | "models"
+        | "providers"
+        | "library"
+        | "mcp"
+        | "plugins"
+        | "skills"
+        | "agents"
+        | "commands"
+        | "permissions"
+        | "channels"
+        | "holos"
+        | "email"
+        | "github"
+        | "runtime"
+        | Array<
+            | "general"
+            | "models"
+            | "providers"
+            | "library"
+            | "mcp"
+            | "plugins"
+            | "skills"
+            | "agents"
+            | "commands"
+            | "permissions"
+            | "channels"
+            | "holos"
+            | "email"
+            | "github"
+            | "runtime"
+          >
+      includeSecrets?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "scope" },
+            { in: "query", key: "only" },
+            { in: "query", key: "includeSecrets" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ConfigExportResponses, ConfigExportErrors, ThrowOnError>({
+      url: "/config/export",
       ...options,
       ...params,
     })

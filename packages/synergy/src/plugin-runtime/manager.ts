@@ -9,8 +9,8 @@ import { contributionGatedCapabilities, createPluginInvocationContext } from "./
 import { pathToFileURL } from "node:url"
 import { Installation } from "../global/installation.js"
 import { startMemoryMonitor, type MemoryMonitorInput, type MemoryMonitor } from "./resource-limits.js"
-import { pluginAgentCallRuntime } from "../plugin/agent-call-runtime.js"
-import { resolvePluginRuntimeLimits } from "../plugin/runtime-limits.js"
+import { pluginAgentCallRuntime } from "./agent-call-runtime.js"
+import { resolvePluginRuntimeLimits } from "./runtime-limits.js"
 
 export type PluginRuntimeErrorCode =
   | "PLUGIN_UNAVAILABLE"
@@ -71,6 +71,7 @@ export class PluginRuntimeManager {
   readonly logs = new PluginLogBuffer()
   #invocations = new Map<string, RuntimeInvocationRecord>()
   #startInputs = new Map<string, StartPluginRuntimeInput>()
+  #starting = new Map<string, Promise<PluginRuntimeEntry>>()
   #lastRecovery:
     | {
         action: "recycle"
@@ -116,6 +117,23 @@ export class PluginRuntimeManager {
   }
 
   async start(input: StartPluginRuntimeInput): Promise<PluginRuntimeEntry> {
+    const manifest = input.manifest
+    const key = pluginRuntimeKey(manifest.id, manifest.version, manifest.artifacts.generation)
+    const existing = this.registry.get(key)
+    if (existing?.state === "ready") return existing
+    const pending = this.#starting.get(key)
+    if (pending) return pending
+
+    const starting = this.#start(input)
+    this.#starting.set(key, starting)
+    try {
+      return await starting
+    } finally {
+      if (this.#starting.get(key) === starting) this.#starting.delete(key)
+    }
+  }
+
+  async #start(input: StartPluginRuntimeInput): Promise<PluginRuntimeEntry> {
     const manifest = input.manifest
     const generation = manifest.artifacts.generation
     const key = pluginRuntimeKey(manifest.id, manifest.version, generation)

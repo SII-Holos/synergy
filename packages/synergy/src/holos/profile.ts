@@ -1,5 +1,5 @@
 import z from "zod"
-import { HOLOS_URL } from "./constants"
+import { HolosEndpoint } from "./endpoint"
 
 export namespace HolosProfile {
   export const Info = z
@@ -114,8 +114,9 @@ export namespace HolosProfile {
     }
   }
 
-  function endpoint(path: string, apiUrl?: string): string {
-    return new URL(path, apiUrl ?? HOLOS_URL).toString()
+  async function endpoint(path: string, apiUrl?: string): Promise<string> {
+    const baseUrl = apiUrl ?? (await HolosEndpoint.resolve()).apiUrl
+    return HolosEndpoint.url(path, baseUrl)
   }
 
   function authHeaders(agentSecret: string, extra?: HeadersInit): HeadersInit {
@@ -126,7 +127,7 @@ export namespace HolosProfile {
   }
 
   export async function getMe(input: { agentSecret: string; apiUrl?: string }): Promise<Me> {
-    const res = await fetch(endpoint("/api/v1/holos/agent_tunnel/me", input.apiUrl), {
+    const res = await fetch(await endpoint("/api/v1/holos/agent_tunnel/me", input.apiUrl), {
       headers: authHeaders(input.agentSecret),
     })
     const body = await readJson(res)
@@ -155,7 +156,7 @@ export namespace HolosProfile {
       throw new Error(`Holos secret belongs to ${current.agentId}, not ${input.agentId}`)
     }
     const nextProfile = toRemoteProfile(input.profile, current.rawProfile)
-    const res = await fetch(endpoint("/api/v1/holos/agent_tunnel/me/profile", input.apiUrl), {
+    const res = await fetch(await endpoint("/api/v1/holos/agent_tunnel/me/profile", input.apiUrl), {
       method: "POST",
       headers: authHeaders(input.agentSecret, { "Content-Type": "application/json" }),
       body: JSON.stringify({ profile: nextProfile }),

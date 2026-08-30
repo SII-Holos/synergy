@@ -1,7 +1,7 @@
 import fs from "fs/promises"
 import path from "path"
 import { SYSTEMD_SERVER_SHUTDOWN_TIMEOUT_SECONDS } from "@ericsanchezok/synergy-util/runtime-shutdown"
-import { DaemonPaths } from "./paths"
+import { DaemonPaths } from "../util/daemon-paths"
 import type { DaemonService } from "./service"
 
 const UNIT_PROPERTIES = ["LoadState", "ActiveState", "SubState", "UnitFileState", "MainPID"] as const

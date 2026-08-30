@@ -439,6 +439,26 @@ test("Clarus account defaults disabled", () => {
   expect(Config.ChannelClarusAccount.parse({ enabled: true }).enabled).toBe(true)
 })
 
+test("Clarus account accepts secure base paths and rejects unsafe endpoint structures", () => {
+  expect(
+    Config.ChannelClarusAccount.parse({ apiUrl: "https://clarus.example.test/environment", agent: "primary" }),
+  ).toEqual({ apiUrl: "https://clarus.example.test/environment", agent: "primary", enabled: false })
+  expect(Config.ChannelClarusAccount.parse({ apiUrl: "http://127.0.0.1:8080/environment" }).apiUrl).toBe(
+    "http://127.0.0.1:8080/environment",
+  )
+  for (const apiUrl of [
+    "https://user:secret@clarus.example.test/environment",
+    "https://clarus.example.test/environment?tenant=one",
+    "https://clarus.example.test/environment#section",
+    "ftp://clarus.example.test/environment",
+    "https://clarus.example.test/environment?",
+    "https://clarus.example.test/environment#",
+    "http://clarus.example.test/environment",
+  ]) {
+    expect(() => Config.ChannelClarusAccount.parse({ apiUrl })).toThrow()
+  }
+})
+
 test("throws error for invalid JSON", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
@@ -950,7 +970,7 @@ test("loads configurable plugin runtime timeout limits from plugin config domain
 
 test("plugin runtime timeout limits keep shared defaults when unset", async () => {
   await using tmp = await tmpdir({ git: true })
-  const { resolvePluginRuntimeLimits } = await import("../../src/plugin/runtime-limits")
+  const { resolvePluginRuntimeLimits } = await import("../../src/plugin-runtime/runtime-limits")
 
   await ScopeContext.provide({
     scope: await tmp.scope(),

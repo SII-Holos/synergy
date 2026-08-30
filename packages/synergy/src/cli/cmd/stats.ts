@@ -1,6 +1,6 @@
 import type { Argv } from "yargs"
 import { cmd } from "./cmd"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 import { Engine } from "@/stats"
 import type { StatsSnapshot, ProgressCallback } from "@/stats"
 

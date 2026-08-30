@@ -1,5 +1,5 @@
 import { PermissionNext } from "@/permission/next"
-import { INTENT_MAX_CHARS } from "../library/encoder-constants"
+import { INTENT_MAX_CHARS } from "../util/encoder-constants"
 import type { Agent } from "./agent"
 import { resolveAgentModelRole, type BuiltinAgentContext } from "./builtin-context"
 import PROMPT_ACTIVITY_SUMMARY from "./prompt/activity-summary.txt"

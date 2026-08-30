@@ -12,6 +12,10 @@ import { SessionProcessor } from "../../src/session/processor"
 import { ToolResolver } from "../../src/session/tool-resolver"
 import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
+// SessionCortexRuntime must be mounted: the DAG upstream-results context
+// flows through the L1 port (delegatedTask), which degrades silently in an
+// isolated process without the product registration.
+import "../../src/product-registration"
 import { tmpdir } from "../fixture/fixture"
 import { CortexOutput } from "../../src/cortex/output"
 import { PermissionNext } from "../../src/permission/next"

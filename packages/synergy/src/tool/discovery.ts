@@ -1,11 +1,11 @@
 import type { Agent } from "@/agent/agent"
-import { MCP } from "@/mcp"
 import { PermissionNext } from "@/permission/next"
 import type { Provider } from "@/provider/provider"
 import { SessionModePolicy } from "@/session/tool-mode-policy"
 import type { Info as SessionInfo } from "@/session/types"
 import type { ToolDiagnostic } from "./diagnostic"
 import { ToolExposure } from "./exposure"
+import { ToolMcpSource } from "./mcp-source"
 
 export namespace ToolDiscovery {
   export interface Entry {
@@ -57,7 +57,7 @@ export namespace ToolDiscovery {
     }
 
     if (input.includeMCP !== false) {
-      const entries = await MCP.toolEntries()
+      const entries = (await ToolMcpSource.get()?.toolEntries()) ?? []
       const deferMCP = entries.length >= ToolExposure.MCP_DEFER_THRESHOLD
       const toolsByServer = new Map<string, string[]>()
       for (const entry of entries) {

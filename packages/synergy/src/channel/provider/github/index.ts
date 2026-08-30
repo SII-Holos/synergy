@@ -8,7 +8,7 @@ import { GitHubChannelAuth, buildCredentialCommand } from "./api"
 import { GithubChannelWorkspace } from "./workspace"
 import { runRepositoryPollLoop } from "./poll"
 import { lookupBodyChat, lookupCommentChat } from "./reactions"
-import { externalIdentityHash } from "../../identity"
+import { externalIdentityHash } from "../../../util/identity"
 const log = Log.create({ service: "channel.github" })
 
 /**

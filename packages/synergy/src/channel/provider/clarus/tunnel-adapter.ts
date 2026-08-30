@@ -13,6 +13,7 @@ import type { NativeMessage, NativeTunnelPort } from "@/holos/native"
 import type {
   SubscribeProjectInput,
   UnsubscribeProjectInput,
+  AcceptTaskInput,
   ExtendTaskInput,
   RecordTaskResultInput,
   ClarusRequestResult,
@@ -20,6 +21,7 @@ import type {
   ProjectSubscribedEvent,
   ProjectUnsubscribedEvent,
   RuntimeTaskAssignedEvent,
+  RuntimeTaskAcceptedEvent,
   RuntimeTaskExtendedEvent,
   RuntimeTaskResultRecordedEvent,
   ClarusKnownEvent,
@@ -58,6 +60,34 @@ const Deadline = z.string().refine((value) => Number.isFinite(Date.parse(value))
 
 const ProjectSubscribedPayload = z.object({ project_id: Identity, subscribed: z.literal(true) }).passthrough()
 const ProjectUnsubscribedPayload = z.object({ project_id: Identity, subscribed: z.literal(false) }).passthrough()
+const ProjectMembershipAcceptedPayload = z
+  .object({
+    project_id: Identity,
+    membership: z
+      .object({
+        member_id: Identity,
+        project_id: Identity,
+        actor_type: z.literal("agent"),
+        actor_id: Identity,
+        role: z.enum(["editor", "viewer"]),
+        status: z.enum(["pending", "active", "declined"]),
+        invited_at: Deadline.nullable(),
+        accepted_at: Deadline.nullable(),
+        invited_by_user_id: z.number().int().nullable(),
+        created_at: Deadline,
+      })
+      .passthrough(),
+  })
+  .superRefine((value, context) => {
+    if (value.membership.project_id !== value.project_id) {
+      context.addIssue({
+        code: "custom",
+        path: ["membership", "project_id"],
+        message: "membership project_id must match project_id",
+      })
+    }
+  })
+  .passthrough()
 
 const RuntimeTaskAssignedPayload = z
   .object({
@@ -70,6 +100,16 @@ const RuntimeTaskAssignedPayload = z
     deadline_at: Deadline.nullable(),
     attempt_mode: Identity.nullable().optional(),
     retry_of_task_id: Identity.nullable().optional(),
+  })
+  .passthrough()
+const RuntimeTaskAcceptedPayload = z
+  .object({
+    run_id: NonBlankRunID,
+    project_id: Identity,
+    task_id: Identity,
+    subtask_id: Identity,
+    attempt: z.number().int().positive(),
+    accepted_at: Deadline,
   })
   .passthrough()
 
@@ -109,7 +149,9 @@ const RuntimeTaskResultRecordedPayload = z
 const knownPayloadSchemas = {
   "clarus.project.subscribed": ProjectSubscribedPayload,
   "clarus.project.unsubscribed": ProjectUnsubscribedPayload,
+  "clarus.project.membership.accepted": ProjectMembershipAcceptedPayload,
   "clarus.runtime.task.assigned": RuntimeTaskAssignedPayload,
+  "clarus.runtime.task.accepted": RuntimeTaskAcceptedPayload,
   "clarus.runtime.task.extended": RuntimeTaskExtendedPayload,
   "clarus.runtime.task.result.recorded": RuntimeTaskResultRecordedPayload,
 } as const
@@ -117,6 +159,7 @@ const knownPayloadSchemas = {
 const OUTBOUND_OPERATIONS = {
   subscribeProject: { wireType: "clarus.project.subscribe", responseType: "clarus.project.subscribed" },
   unsubscribeProject: { wireType: "clarus.project.unsubscribe", responseType: "clarus.project.unsubscribed" },
+  acceptTask: { wireType: "clarus.runtime.task.accept", responseType: "clarus.runtime.task.accepted" },
   extendTask: { wireType: "clarus.runtime.task.extend", responseType: "clarus.runtime.task.extended" },
   recordTaskResult: { wireType: "clarus.runtime.task.result", responseType: "clarus.runtime.task.result.recorded" },
 } as const
@@ -212,6 +255,11 @@ function toSemanticDTO(
       dto = { ...base, type: "projectUnsubscribed", projectID: p.project_id }
       break
     }
+    case "clarus.project.membership.accepted": {
+      const p = parsed.payload
+      dto = { ...base, type: "projectMembershipAccepted", projectID: p.project_id }
+      break
+    }
     case "clarus.runtime.task.assigned": {
       const p = parsed.payload
       const extra = p as Record<string, unknown>
@@ -237,6 +285,20 @@ function toSemanticDTO(
         input,
         context,
         taskInput,
+      }
+      break
+    }
+    case "clarus.runtime.task.accepted": {
+      const p = parsed.payload
+      dto = {
+        ...base,
+        type: "runtimeTaskAccepted",
+        projectID: p.project_id,
+        runID: p.run_id,
+        taskID: p.task_id,
+        subtaskID: p.subtask_id,
+        attempt: p.attempt,
+        acceptedAt: p.accepted_at,
       }
       break
     }
@@ -389,10 +451,7 @@ export function createClarusAgentTunnelAdapter(tunnel: NativeTunnelPort): Clarus
     registerEventHandler(handler) {
       return tunnel.registerNativeObserver((msg) => {
         if (!msg.type.startsWith("clarus.")) return
-        const result = handler(
-          toSemanticEvent(msg.type, msg.agentID, msg.requestID, msg.epoch, msg.generation, msg.payload),
-        )
-        if (result instanceof Promise) result.catch(() => {})
+        return handler(toSemanticEvent(msg.type, msg.agentID, msg.requestID, msg.epoch, msg.generation, msg.payload))
       })
     },
     registerConnectionHandler(handler) {
@@ -441,6 +500,51 @@ export function createClarusAgentTunnelAdapter(tunnel: NativeTunnelPort): Clarus
             epoch: msg.epoch,
             generation: msg.generation,
             projectID: p.project_id,
+          }
+        },
+      )
+    },
+    acceptTask(input: AcceptTaskInput) {
+      const rejection = rejectBlankRunID<RuntimeTaskAcceptedEvent>(input)
+      if (rejection) return rejection
+      return makeRequest(
+        tunnel,
+        OUTBOUND_OPERATIONS.acceptTask.wireType,
+        OUTBOUND_OPERATIONS.acceptTask.responseType,
+        {
+          run_id: input.runID,
+          project_id: input.projectID,
+          task_id: input.taskID,
+          subtask_id: input.subtaskID,
+          attempt: input.attempt,
+        },
+        input.requestID,
+        input.timeoutMs,
+        input.signal,
+        (msg) => {
+          const p = RuntimeTaskAcceptedPayload.parse(msg.payload)
+          if (
+            p.run_id !== input.runID ||
+            p.project_id !== input.projectID ||
+            p.task_id !== input.taskID ||
+            p.subtask_id !== input.subtaskID ||
+            p.attempt !== input.attempt
+          ) {
+            throw new Error("Task accept response identity mismatch")
+          }
+          return {
+            kind: "known" as const,
+            type: "runtimeTaskAccepted" as const,
+            agentID: msg.agentID,
+            requestID: msg.requestID,
+            epoch: msg.epoch,
+            generation: msg.generation,
+            projectID: p.project_id,
+            runID: p.run_id,
+            taskID: p.task_id,
+            subtaskID: p.subtask_id,
+            attempt: p.attempt,
+            acceptedAt: p.accepted_at,
           }
         },
       )

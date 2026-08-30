@@ -40,6 +40,7 @@ File: `00-general.jsonc` · Merge: merge
 | `username` | string (optional) | Custom username to display in conversations instead of system username |
 | `locale` | "system" \| "en" \| "zh-CN" (optional) | UI locale (system = follow OS, default: system) |
 | `activityDisplay` | "full" \| "balanced" \| "minimal" (optional) | How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced) |
+| `defaultSessionWorkspace` | "main" \| "worktree" (optional) | Default workspace for new sessions started from the Web composer: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main). Programmatic session creation (API, channels, Cortex) always uses the main checkout. |
 | `layout` | Layout.optional (optional) | @deprecated Always uses stretch layout. |
 | `embedding` | EmbeddingConfig |  |
 | `rerank` | RerankConfig |  |

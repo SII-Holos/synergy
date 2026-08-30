@@ -21,6 +21,11 @@
       "type": "string",
       "enum": ["full", "balanced", "minimal"]
     },
+    "defaultSessionWorkspace": {
+      "description": "Default workspace for new sessions started from the Web composer: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main). Programmatic session creation (API, channels, Cortex) always uses the main checkout.",
+      "type": "string",
+      "enum": ["main", "worktree"]
+    },
     "logLevel": {
       "description": "Log level",
       "ref": "LogLevel",
@@ -2150,7 +2155,7 @@
                       "type": "boolean"
                     },
                     "apiUrl": {
-                      "description": "Clarus REST API origin override; defaults to the configured Holos API origin",
+                      "description": "Clarus REST API base URL override, including an optional path prefix; defaults to the configured Holos API base URL",
                       "type": "string"
                     },
                     "agent": {
