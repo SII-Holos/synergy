@@ -178,7 +178,7 @@ describe("migrateWorkbenchLayout", () => {
     }
 
     expect(wide.sidebar).toEqual({ opened: true, width: 420, resized: true })
-    expect(narrow.sidebar).toEqual({ opened: true, width: 220, resized: true })
+    expect(narrow.sidebar).toEqual({ opened: true, width: 230, resized: true })
   })
 
   test("normalizing sidebar width is idempotent", () => {

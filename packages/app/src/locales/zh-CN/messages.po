@@ -2644,6 +2644,10 @@ msgid "app.fileExplorer.loadingMore"
 msgstr "正在加载更多…"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileExplorer.resize"
+msgstr "调整文件面板宽度"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileExplorer.search.label"
 msgstr "搜索文件"
 
@@ -7576,6 +7580,10 @@ msgid "app.sidebar.projects"
 msgstr "项目"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.resize"
+msgstr "调整侧边栏宽度"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.search"
 msgstr "搜索会话"
 
@@ -8734,8 +8742,16 @@ msgid "app.workspace.surface.bottom"
 msgstr "底部工作区"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.surface.bottom.resize"
+msgstr "调整底部工作区宽度"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.surface.side"
 msgstr "侧边工作区"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.surface.side.resize"
+msgstr "调整侧边工作区宽度"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.tab.close"

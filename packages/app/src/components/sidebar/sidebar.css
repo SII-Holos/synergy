@@ -24,6 +24,12 @@
   transition: none;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .sb-root:not(.sb-resizing) {
+    transition: none;
+  }
+}
+
 .sb-collapsed {
   width: 48px;
 }

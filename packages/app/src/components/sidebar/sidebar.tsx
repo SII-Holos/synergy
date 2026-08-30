@@ -354,6 +354,7 @@ export function Sidebar(props: SidebarProps) {
       <Show when={isExpanded()}>
         <ResizeHandle
           direction="horizontal"
+          aria-label={_(sidebar.resize)}
           size={sidebarWidth()}
           min={SIDEBAR_WIDTH_MIN}
           max={SIDEBAR_WIDTH_MAX}

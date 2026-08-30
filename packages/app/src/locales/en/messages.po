@@ -2644,6 +2644,10 @@ msgid "app.fileExplorer.loadingMore"
 msgstr "Loading more…"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileExplorer.resize"
+msgstr "Resize file explorer"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileExplorer.search.label"
 msgstr "Search files"
 
@@ -7576,6 +7580,10 @@ msgid "app.sidebar.projects"
 msgstr "Projects"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.resize"
+msgstr "Resize sidebar"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.search"
 msgstr "Search sessions"
 
@@ -8734,8 +8742,16 @@ msgid "app.workspace.surface.bottom"
 msgstr "Bottom workspace"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.surface.bottom.resize"
+msgstr "Resize bottom workspace"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.surface.side"
 msgstr "Side workspace"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.surface.side.resize"
+msgstr "Resize side workspace"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.tab.close"
