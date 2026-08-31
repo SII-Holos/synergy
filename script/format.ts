@@ -2,4 +2,4 @@
 
 import { $ } from "bun"
 
-await $`bun run prettier --ignore-unknown --write .`
+await $`bun run prettier --ignore-unknown --cache --cache-strategy content --write .`

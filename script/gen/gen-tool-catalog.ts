@@ -44,12 +44,17 @@ function builtinNames(registrySource: string): string[] {
   return names
 }
 
-async function resolveToolFile(moduleName: string, registrySource: string): Promise<string | null> {
+async function resolveToolFile(
+  moduleName: string,
+  registrySource: string,
+  baseDir: string = TOOL_DIR,
+): Promise<string | null> {
   const importMatch = registrySource.match(
-    new RegExp(`import\\s*\\{[^}]*\\b${moduleName}\\b[^}]*\\}\\s*from\\s*"(\\.\\/[^"]+)"`),
+    new RegExp(`import\\s*\\{[^}]*\\b${moduleName}\\b[^}]*\\}\\s*from\\s*"([^"]+)"`),
   )
   if (importMatch) {
-    const base = path.resolve(TOOL_DIR, importMatch[1]!)
+    const specifier = importMatch[1]!
+    const base = specifier.startsWith(".") ? path.resolve(baseDir, specifier) : path.resolve(TOOL_DIR, specifier)
     for (const candidate of [`${base}.ts`, `${base}.tsx`, path.join(base, "index.ts")]) {
       const exists = await readFile(candidate, "utf8")
         .then(() => true)
@@ -57,12 +62,37 @@ async function resolveToolFile(moduleName: string, registrySource: string): Prom
       if (exists) return candidate
     }
   }
+  if (baseDir !== TOOL_DIR) {
+    for (const file of await readdir(baseDir, { recursive: true })) {
+      const candidate = path.join(baseDir, file)
+      if (!candidate.endsWith(".ts")) continue
+      const source = await readFile(candidate, "utf8")
+      if (source.includes(`export const ${moduleName} =`)) return candidate
+    }
+    return null
+  }
   for (const file of await readdir(TOOL_DIR)) {
     if (!file.endsWith(".ts")) continue
     const source = await readFile(path.join(TOOL_DIR, file), "utf8")
     if (source.includes(`export const ${moduleName} =`)) return path.join(TOOL_DIR, file)
   }
   return null
+}
+
+/** Domain register modules (src/&lt;domain&gt;/register.ts) contribute builtin
+ * tools through ToolRegistry providers; harvest their names and dirs. */
+async function domainRegistries(): Promise<Array<{ source: string; dir: string }>> {
+  const srcRoot = path.dirname(TOOL_DIR)
+  const out: Array<{ source: string; dir: string }> = []
+  for (const entry of await readdir(srcRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    for (const name of ["register.ts", "tools.ts"]) {
+      const registerPath = path.join(srcRoot, entry.name, name)
+      const source = await readFile(registerPath, "utf8").catch(() => "")
+      if (source) out.push({ source, dir: path.dirname(registerPath) })
+    }
+  }
+  return out
 }
 
 /** Resolve a description identifier to its literal or imported .txt content. */
@@ -200,13 +230,20 @@ export async function generate(): Promise<string> {
   const registry = await readFile(REGISTRY, "utf8")
   const taxonomy = await readFile(TAXONOMY, "utf8")
   const classify = parseTaxonomy(taxonomy)
-  const names = builtinNames(registry)
   const tools: ToolEntry[] = []
-  for (const name of names) {
+  for (const name of builtinNames(registry)) {
     const file = await resolveToolFile(name, registry)
     if (!file) continue
     const entry = await parseToolFile(file, name, classify)
     if (entry) tools.push(entry)
+  }
+  for (const domain of await domainRegistries()) {
+    for (const name of builtinNames(domain.source)) {
+      const file = await resolveToolFile(name, domain.source, domain.dir)
+      if (!file) continue
+      const entry = await parseToolFile(file, name, classify)
+      if (entry && !tools.some((existing) => existing.id === entry.id)) tools.push(entry)
+    }
   }
   tools.sort((a, b) => a.id.localeCompare(b.id))
 

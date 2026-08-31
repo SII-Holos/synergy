@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { TaskOutputTool } from "../../src/tool/task-output"
+import { TaskOutputTool } from "../../src/cortex/tools/task-output"
 
 describe("task_output parameters", () => {
   test("allows blocking only for full result retrieval", async () => {

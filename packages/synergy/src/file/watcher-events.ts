@@ -1,7 +1,7 @@
 import path from "path"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { FileIgnore } from "./ignore"
-import { RuntimeReloadPath } from "../runtime/reload-path"
+import { RuntimeReloadPath } from "../config/reload-path"
 
 export namespace FileWatcherEvents {
   export type WorkspaceEvent = "added" | "changed" | "deleted" | "renamed"

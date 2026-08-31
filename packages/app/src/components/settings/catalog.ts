@@ -119,13 +119,14 @@ const BUILTIN_SETTINGS_COPY = {
     searchTerms: {
       id: "settings.catalog.general.searchTerms",
       message:
-        "appearance | color | light | dark | auto | language | snapshot | activity | activity display | product update | toast | notification",
+        "appearance | color | light | dark | auto | language | snapshot | activity | activity display | workspace | worktree | checkout | product update | toast | notification",
       comment: SEARCH_TERMS_COMMENT,
     },
     rowLabels: [
       { id: "settings.catalog.general.row.colorScheme", message: "Color Scheme" },
       { id: "settings.catalog.general.row.interfaceLanguage", message: "Interface Language" },
       { id: "settings.catalog.general.row.activityDisplay", message: "Activity display" },
+      { id: "settings.catalog.general.row.newSessionWorkspace", message: "New Session Workspace" },
       { id: "settings.catalog.general.row.snapshot", message: "Snapshot" },
       { id: "settings.catalog.general.row.productUpdates", message: "Product Updates" },
       { id: "settings.catalog.general.row.notifications", message: "Notifications" },

@@ -1,5 +1,5 @@
 import type { Argv } from "yargs"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 import * as prompts from "@clack/prompts"
 import { Installation } from "../../global/installation"
 import { DesktopInstallation } from "../../global/desktop-installation"

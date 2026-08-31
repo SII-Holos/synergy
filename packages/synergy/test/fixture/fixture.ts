@@ -75,7 +75,7 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
         "write fixtures into the real home directory.",
     )
   }
-  const dirpath = Filesystem.sanitizePath(path.join(root, "synergy-test-" + Math.random().toString(36).slice(2)))
+  const dirpath = Filesystem.sanitizePath(path.join(root, "synergy-fixture-" + Math.random().toString(36).slice(2)))
   await fs.mkdir(dirpath, { recursive: true })
   if (options?.git) await initializeGitFixture(dirpath)
   if (options?.config) {

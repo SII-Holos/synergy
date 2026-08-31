@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { SYSTEMD_SERVER_SHUTDOWN_TIMEOUT_SECONDS } from "@ericsanchezok/synergy-util/runtime-shutdown"
 import path from "path"
-import { DaemonPaths } from "../../src/daemon/paths"
+import { DaemonPaths } from "../../src/util/daemon-paths"
 import { renderSystemdUnit } from "../../src/daemon/systemd"
 
 describe("daemon.systemd", () => {

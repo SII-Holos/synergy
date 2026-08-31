@@ -5,7 +5,10 @@ import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionEndpoint } from "../../src/session/endpoint"
 import { SessionNav } from "../../src/session/nav"
+import { registerChannelSessionProjects } from "../../src/channel/session-projects"
 import { tmpdir } from "../fixture/fixture"
+
+registerChannelSessionProjects()
 
 function identity() {
   const suffix = crypto.randomUUID()

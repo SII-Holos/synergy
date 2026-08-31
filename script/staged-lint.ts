@@ -34,6 +34,12 @@ export async function runStagedLint(options: { root?: string; cwd?: string } = {
 
   const output = await $`bunx oxlint -c oxlintrc.json --fix --quiet ${files}`.cwd(root).nothrow()
   if (output.exitCode !== 0) {
+    // A staging set consisting solely of oxlint-ignored paths (e.g. the
+    // generated SDK tree) makes oxlint exit 1 with "No files found to
+    // lint"; that is not a lint failure.
+    if (/No files found to lint/.test(output.stderr.toString() + output.stdout.toString())) {
+      return { files, exitCode: 0 }
+    }
     return { files, exitCode: output.exitCode }
   }
 

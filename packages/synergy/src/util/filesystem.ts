@@ -26,8 +26,8 @@ export namespace Filesystem {
       return p
     }
   }
-  export function contains(parent: string, child: string) {
-    return isPathContained(parent, child)
+  export function contains(parent: string, child: string, options?: { followFinalSymlink?: boolean }) {
+    return isPathContained(parent, child, options)
   }
 
   export async function findUp(target: string, start: string, stop?: string) {

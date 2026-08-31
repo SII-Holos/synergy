@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BrowserDownloads } from "../../src/browser/downloads.js"
 import { BrowserAssets } from "../../src/browser/assets.js"
-import { BrowserDownloadsTool } from "../../src/tool/browser-downloads.js"
+import { BrowserDownloadsTool } from "../../src/browser/tools/browser-downloads.js"
 import type { BrowserOwner } from "../../src/browser/owner.js"
 
 const ownerA: BrowserOwner.Info = { mode: "session", scopeID: "scope-a", sessionID: "session-a", directory: "/tmp/a" }

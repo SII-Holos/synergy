@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { ResponseCard } from "../../src/channel/types"
-import { ResponseCardTool } from "../../src/tool/response-card"
+import { ResponseCardTool } from "../../src/channel/tools/response-card"
 import type { Tool } from "../../src/tool/tool"
 
 function context(): Tool.Context {

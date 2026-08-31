@@ -150,6 +150,8 @@ import type {
   ConfigDomainUpdateErrors,
   ConfigDomainUpdateInput,
   ConfigDomainUpdateResponses,
+  ConfigExportErrors,
+  ConfigExportResponses,
   ConfigGetErrors,
   ConfigGetResponses,
   ConfigGlobalErrors,
@@ -158,6 +160,7 @@ import type {
   ConfigImportApplyResponses,
   ConfigImportPlanErrors,
   ConfigImportPlanResponses,
+  ConfigImportScope,
   ConfigInstructionsGetErrors,
   ConfigInstructionsGetResponses,
   ConfigInstructionsResetErrors,
@@ -437,6 +440,8 @@ import type {
   PluginGetConfigResponses,
   PluginInvokeOperationErrors,
   PluginInvokeOperationResponses,
+  PluginListGlobalThemeContributionsErrors,
+  PluginListGlobalThemeContributionsResponses,
   PluginListUiContributionsErrors,
   PluginListUiContributionsResponses,
   PluginRuntimeLogsErrors,
@@ -1582,7 +1587,7 @@ export class Files extends HeyApiClient {
   /**
    * Read workspace file bytes
    *
-   * Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected.
+   * Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected. For opening HTML in a new browser tab with working relative resources, use GET /workspace/files/raw/{scope}/{path} instead.
    */
   public content<ThrowOnError extends boolean = false>(
     parameters: {
@@ -6267,6 +6272,74 @@ export class Config extends HeyApiClient {
   }
 
   /**
+   * Export config
+   *
+   * Export selected config domains as one merged config object. Secrets are always redacted over HTTP; use `synergy config export --include-secrets` for a plaintext export.
+   */
+  public export<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      scope?: ConfigImportScope
+      only?:
+        | "general"
+        | "models"
+        | "providers"
+        | "library"
+        | "mcp"
+        | "plugins"
+        | "skills"
+        | "agents"
+        | "commands"
+        | "permissions"
+        | "channels"
+        | "holos"
+        | "email"
+        | "github"
+        | "runtime"
+        | Array<
+            | "general"
+            | "models"
+            | "providers"
+            | "library"
+            | "mcp"
+            | "plugins"
+            | "skills"
+            | "agents"
+            | "commands"
+            | "permissions"
+            | "channels"
+            | "holos"
+            | "email"
+            | "github"
+            | "runtime"
+          >
+      includeSecrets?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "scope" },
+            { in: "query", key: "only" },
+            { in: "query", key: "includeSecrets" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ConfigExportResponses, ConfigExportErrors, ThrowOnError>({
+      url: "/config/export",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * List config providers
    *
    * Get a list of all configured AI providers and their default models.
@@ -10228,6 +10301,40 @@ export class Browser extends HeyApiClient {
 }
 
 export class Plugin extends HeyApiClient {
+  /**
+   * List plugin theme contributions across all enabled scopes
+   *
+   * Themes are a global user preference. This endpoint aggregates ui.theme contributions from the process-wide plugin catalog (any scope), so theme registration survives scope switches.
+   */
+  public listGlobalThemeContributions<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      PluginListGlobalThemeContributionsResponses,
+      PluginListGlobalThemeContributionsErrors,
+      ThrowOnError
+    >({
+      url: "/plugin/ui/contributions/themes",
+      ...options,
+      ...params,
+    })
+  }
+
   /**
    * List enabled plugin UI contributions
    */

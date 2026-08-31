@@ -3,7 +3,7 @@ import path from "path"
 import os from "os"
 import * as prompts from "@clack/prompts"
 import { cmd } from "../cmd"
-import { UI } from "../../ui"
+import { UI } from "../../../util/ui"
 import { Global } from "../../../global"
 import {
   shortenPath,

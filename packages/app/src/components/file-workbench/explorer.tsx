@@ -158,6 +158,7 @@ export function FileExplorer(props: { onClose: () => void }) {
       <ResizeHandle
         direction="horizontal"
         edge="start"
+        aria-label={lingui._({ id: X.resize.id, message: X.resize.message })}
         size={file.explorer.width()}
         min={220}
         max={420}

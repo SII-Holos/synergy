@@ -32,7 +32,6 @@ export namespace McpAuth {
     isCurrent?: () => boolean
   }
 
-  let cache: { filepath: string; data: Record<string, Entry> } | undefined
   let mutation: Promise<void> = Promise.resolve()
 
   function serialize<T>(fn: () => Promise<T>): Promise<T> {
@@ -61,16 +60,9 @@ export namespace McpAuth {
     })
   }
 
-  export function invalidateCache() {
-    cache = undefined
-  }
-
   export async function all(): Promise<Record<string, Entry>> {
-    const filepath = Global.Path.authMcp
-    if (cache?.filepath === filepath) return cache.data
-    const file = Bun.file(filepath)
+    const file = Bun.file(Global.Path.authMcp)
     const data = (await file.json().catch(() => ({}))) as Record<string, Entry>
-    cache = { filepath, data }
     return data
   }
 

@@ -186,9 +186,11 @@ export namespace GrokProvider {
     }
   }
 
-  // Standard RFC 8628 device authorization. PKCE (S256) is included to mirror
-  // the openai-codex flow; auth.x.ai (Okta) supports code_challenge on the
-  // device authorization request and code_verifier on the token request.
+  // Provenance: RFC 8628 (OAuth 2.0 Device Authorization Grant); PKCE S256 challenge
+  // per RFC 7636 §4.2 ( https://www.rfc-editor.org/rfc/rfc7636#section-4.2 ).
+  // Local adaptation: auth.x.ai (Okta) accepts code_challenge on the device
+  // authorization request and code_verifier on the token request, so PKCE is sent
+  // alongside the device grant, mirroring the openai-codex flow.
   export async function requestDeviceCode(fetchFn: FetchLike = fetch): Promise<{
     device: DeviceCode
     codeVerifier: string

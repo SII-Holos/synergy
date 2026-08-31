@@ -4,7 +4,7 @@ import os from "os"
 import path from "path"
 import { Hono } from "hono"
 import { DaemonState } from "../../src/daemon/state"
-import { DaemonPaths } from "../../src/daemon/paths"
+import { DaemonPaths } from "../../src/util/daemon-paths"
 import { resolveControlCommand, setServerUpdateWorkerControlsForTest, UpdateRoute } from "../../src/server/update-route"
 
 const originalEnv = { ...process.env }

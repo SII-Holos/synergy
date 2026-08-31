@@ -195,8 +195,8 @@ export namespace FileWatcher {
           label: "global config",
           options: { backend },
           resync: async () => {
-            const { RuntimeReload } = await import("../runtime/reload")
-            await RuntimeReload.reloadGlobal({
+            const { RuntimeReloadExecutor } = await import("../config/reload-executor")
+            await RuntimeReloadExecutor.reloadGlobal({
               targets: ["config", "agent", "command", "skill", "tool_registry"],
               reason: "global config watcher recovery",
             })
@@ -250,8 +250,8 @@ export namespace FileWatcher {
             ignore: FileWatcherEvents.projectRuntimeSubscriptionIgnores(),
           },
           resync: async () => {
-            const { RuntimeReload } = await import("../runtime/reload")
-            await RuntimeReload.reload({
+            const { RuntimeReloadExecutor } = await import("../config/reload-executor")
+            await RuntimeReloadExecutor.reload({
               targets: ["config", "agent", "command", "skill", "tool_registry"],
               scope: "project",
               reason: "project config watcher recovery",

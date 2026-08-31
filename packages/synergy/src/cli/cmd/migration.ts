@@ -1,6 +1,6 @@
 import { cmd } from "./cmd"
 import { runMigrations, rollbackMigrations, getMigrationStatus } from "../../migration"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 import { MigrationRegistry } from "../../migration/registry"
 
 export const MigrationCommand = cmd({

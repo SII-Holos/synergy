@@ -281,6 +281,31 @@ Feishu/Lark account configuration may pair an explicit `model` with `variant`. T
 
 A Feishu/Lark account may also set `projectDir` to bind the account's sessions to a project Scope. Resolution rules and error behavior are documented in the [Channels reference](../product/connections.md).
 
+## MCP Server Authentication
+
+Remote MCP servers (`type: "remote"` in `40-mcp.jsonc`) use OAuth 2.0 authorization-code flows with PKCE and dynamic client registration by default. Credentials (tokens, registered client info, and in-flight PKCE state) live in the auth store, never in `40-mcp.jsonc`; the `oauth` object in the server config only carries a pre-registered `clientId`/`clientSecret`/`scope` when a server does not support dynamic registration.
+
+```jsonc
+{
+  "mcp": {
+    "notion": {
+      "type": "remote",
+      "url": "https://mcp.notion.com/mcp",
+      "oauth": {},
+      "startup": "eager",
+    },
+  },
+}
+```
+
+Authenticate a server with `synergy mcp auth <name>` (or `synergy mcp auth` to pick from a list). The command opens the provider's authorization page in a browser, waits for the local callback, exchanges the code for tokens, and saves them to the auth store. A long-running server process picks up CLI-authenticated credentials automatically within ~30 seconds (the supervisor re-checks servers in the `needs_auth` state on an interval and reconnects when valid tokens appear), so no restart is required after authenticating from the CLI.
+
+Background supervision never writes PKCE state: an unauthenticated server is marked `needs_auth` (with an actionable `synergy mcp auth <name>` error on the status) and left idle (no network probes) until credentials exist. Once credentials exist, the supervisor reconnects within ~30 seconds even if the stored access token already expired, as long as a refresh token is present — refreshed tokens are persisted back to the auth store. This keeps background auto-connect from interfering with an interactive `mcp auth` flow for the same server.
+
+`startup` controls when a server connects: `"eager"` (default) connects at runtime start, `"lazy"` connects on first tool use, and `"manual"` never auto-connects (use `synergy mcp connect <name>`). Set `"manual"` for a server you only authenticate on demand.
+
+The OAuth callback listener runs on `127.0.0.1:19876` by default. If another Synergy process is already running an OAuth flow on that port, `mcp auth` fails with an actionable error; set `SYNERGY_OAUTH_CALLBACK_PORT` to a free port to run a flow in the second process.
+
 ## Feishu/Lark Channel Settings
 
 `90-channels.jsonc` owns the built-in Feishu/Lark Channel provider under `channel.feishu`. A minimal configuration is:
@@ -573,6 +598,25 @@ All domains are importable and default to `merge` mode. A stale plan (revised co
 ### Web Settings Import
 
 The Settings Import surface accepts file upload, URL fetch, or pasted JSON/JSONC. It supports explicit Global/Project target selection, a project chooser for project imports, domain-level selection with a re-review gate when the domain set changes, value-level current-versus-imported display, diagnostic warnings, stale-plan detection with a refresh action, and a reload-result summary after apply.
+
+## Config Export
+
+`synergy config export` writes the merged config at the target scope as JSONC to stdout, or to a file with `--output`/`-o`. The `config.export` API (SDK: `client.config.export()`) returns the same payload for the Web Settings surface.
+
+Export secrets handling:
+
+- By default, secrets are replaced with the `__REDACTED__` sentinel — the same redaction the `config.get`/`config.global` APIs apply. Covered fields: provider `apiKey`s (provider and model `options`), email passwords, Feishu `appSecret`s, embedding/rerank keys, MCP OAuth `clientSecret`s, MCP remote `headers` and local `environment` entries, and secret-shaped keys (token/password/authorization/api-key/credential) inside free-form option maps such as agent `options`.
+- `--include-secrets` keeps plaintext values. Files written with this flag are chmod'd to `0600`, and the command prints a warning to stderr; stdout exports print the same warning, so redirected output still surfaces it. Treat the output as sensitive.
+- A redacted export is a valid import payload: `synergy config import` merges `__REDACTED__` values back with the stored secrets on the target machine, so a redacted backup restores configuration without carrying secrets in the file. On a machine without the stored secret, the sentinel is written as a literal placeholder and must be replaced manually.
+
+`--scope global|project` selects the source scope (default `global`; project requires an active project), and `--only <domain>` limits the export to selected domains, repeatable. Only domains with configuration are included. The output does not carry a `$schema` reference: the runtime only knows the install-local `file:` schema URL, which is a broken link on any other machine, and the import side ignores `$schema`.
+
+Additional export semantics:
+
+- **Export is read-only.** A domain file that fails to parse is skipped and reported in the result's `warnings` (and on stderr for the CLI); it is not quarantined. This differs from the startup/reload path, which moves broken files aside.
+- **`{env:VAR}` and `{file:path}` references are resolved at read time.** An export therefore contains resolved values, not the references: `--include-secrets` backups materialize the referenced secret, and re-importing an export produced from referenced values writes those values back as plain literals. If you rely on env/file indirection, re-add the `{env:}`/`{file:}` references after importing.
+- **`plugin` specs are exported relative to the config directory** (`./dev-plugins/foo` stays `./dev-plugins/foo`) so the payload is machine-independent in shape. The referenced plugin directories themselves commonly differ across machines — after a cross-machine import, re-check plugin paths before reloading.
+- **The HTTP API is always redacted.** `GET /config/export` rejects `includeSecrets=true` with `400 ConfigExportSecretsRejectedError`; plaintext export is available only through the local CLI (`synergy config export --include-secrets`).
 
 ## Config Editing
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BrowserProtocolError } from "@ericsanchezok/synergy-browser"
-import { BrowserActionTool } from "../../src/tool/browser-action"
-import { BrowserToolHelper } from "../../src/tool/browser-shared"
+import { BrowserActionTool } from "../../src/browser/tools/browser-action"
+import { BrowserToolHelper } from "../../src/browser/tools/browser-shared"
 
 const originalResolvePage = BrowserToolHelper.resolvePage
 const originalExecute = BrowserToolHelper.execute

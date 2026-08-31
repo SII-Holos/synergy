@@ -280,6 +280,27 @@ export namespace WorkspaceFileService {
       stream: file.stream(),
     }
   }
+
+  export async function serveFile(input: {
+    path: string
+  }): Promise<{ absolute: string; node: WorkspaceFile.Node; stream: ReadableStream; mime: string }> {
+    const absolute = resolve(input.path)
+    await assertRealpathInside(absolute)
+    const info = await node(absolute, { resolveGitStatus: false })
+    if (info.type !== "file") {
+      throw new AccessDeniedError(`Access denied: path is not a file (${info.path})`)
+    }
+    if (info.size > PREVIEW_MAX_BYTES) {
+      throw new TooLargeError(`File too large to serve (${info.size} bytes, limit ${PREVIEW_MAX_BYTES})`)
+    }
+    const file = Bun.file(absolute)
+    return {
+      absolute,
+      node: info,
+      stream: file.stream(),
+      mime: file.type,
+    }
+  }
   const WRITE_MAX_BYTES = 8 * 1024 * 1024
 
   function assertWritableTarget(absolute: string) {

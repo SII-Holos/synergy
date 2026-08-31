@@ -7,7 +7,9 @@ import { Bus } from "../bus"
 import { File } from "../file"
 import { FileTime } from "../file/time"
 import { detectConflicts } from "../conflict/detect"
-import { RuntimeReload } from "../runtime/reload"
+import { RuntimeReloadPath } from "../config/reload-path"
+import { RuntimeReloadExecutor } from "../config/reload-executor"
+import { formatCompactReloadResult } from "../config/reload-schema"
 import {
   diffStats,
   displayPath,
@@ -80,16 +82,16 @@ export const SaveFileTool = Tool.define("save_file", {
         FileTime.read(ctx.sessionID, filePath)
 
         const diagnostics = await collectWriteDiagnostics(filePath, { before: beforeDiagnostics })
-        const runtimeReloadTargets = RuntimeReload.detectTargetsForFile(filePath)
-        const runtimeReloadScope = RuntimeReload.detectScopeForFile(filePath) ?? "auto"
+        const runtimeReloadTargets = RuntimeReloadPath.detectTargetsForFile(filePath)
+        const runtimeReloadScope = RuntimeReloadPath.detectScopeForFile(filePath) ?? "auto"
         const runtimeReload = runtimeReloadTargets.length
-          ? await RuntimeReload.reload({
+          ? await RuntimeReloadExecutor.reload({
               targets: runtimeReloadTargets,
               scope: runtimeReloadScope,
               reason: `save_file:${title}`,
             })
           : undefined
-        const builtinSourceWarning = RuntimeReload.builtinSourceEditWarning(filePath)
+        const builtinSourceWarning = RuntimeReloadPath.builtinSourceEditWarning(filePath)
         const header = hashlineHeaderFor(ctx.sessionID, filePath, finalContent)
         const tag = header.match(/#([0-9A-F]{4})\]$/)?.[1]
         if (tag) {
@@ -111,7 +113,7 @@ export const SaveFileTool = Tool.define("save_file", {
         })
         let output = header
         output += diagnostics.output
-        if (runtimeReload) output += `\n${RuntimeReload.formatCompactResult(runtimeReload)}`
+        if (runtimeReload) output += `\n${formatCompactReloadResult(runtimeReload)}`
         if (builtinSourceWarning) output += `\n${builtinSourceWarning}`
 
         return {

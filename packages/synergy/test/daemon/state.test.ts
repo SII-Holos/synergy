@@ -3,7 +3,7 @@ import fs from "fs/promises"
 import os from "os"
 import path from "path"
 import { DaemonState } from "../../src/daemon/state"
-import { DaemonPaths } from "../../src/daemon/paths"
+import { DaemonPaths } from "../../src/util/daemon-paths"
 
 const originalTestHome = process.env.SYNERGY_TEST_HOME
 

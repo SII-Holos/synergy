@@ -25,7 +25,7 @@ export interface SessionVisualStore {
   session_status: Record<string, { type?: string } | undefined>
   permission: Record<string, unknown[] | undefined>
   question: Record<string, unknown[] | undefined>
-  cortex: { parentSessionID?: string; status?: string }[]
+  cortex: { sessionID?: string; parentSessionID?: string; status?: string }[]
   session: {
     id: string
     parentID?: string
@@ -57,6 +57,7 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
     const fullSession = store.session.find((session) => session.id === entry.id)
 
     if (fullSession?.blueprint?.loopID) {
+      const boundLoopID = fullSession.blueprint.loopID
       const blueprintIcon = getSemanticIcon("blueprint.main")
       if (waiting)
         return {
@@ -80,11 +81,23 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
           tone: "blueprint-running",
           pulse: true,
         }
-      if (childTasksRunning)
+      const auditTaskRunning = store.cortex.some((task) => {
+        if (task.parentSessionID !== entry.id || task.status !== "running") return false
+        const child = task.sessionID ? store.session.find((s) => s.id === task.sessionID) : undefined
+        return child?.blueprint?.loopID === boundLoopID && child?.blueprint?.loopRole === "audit"
+      })
+      if (auditTaskRunning)
         return {
           icon: getSemanticIcon("command.review"),
           label: { id: "session.state.auditingBlueprint", message: "Auditing Blueprint" },
           tone: "blueprint-audit",
+          pulse: true,
+        }
+      if (childTasksRunning)
+        return {
+          icon: blueprintIcon,
+          label: { id: "session.state.runningBlueprint", message: "Running Blueprint" },
+          tone: "blueprint-running",
           pulse: true,
         }
       return {

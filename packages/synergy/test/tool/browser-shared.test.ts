@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { BrowserProtocolError } from "@ericsanchezok/synergy-browser"
-import { withUnknownOutcomeGuidance } from "../../src/tool/browser-shared"
+import { withUnknownOutcomeGuidance } from "../../src/browser/tools/browser-shared"
 
 const unknownOutcomeCodes = [
   "browser_command_aborted",

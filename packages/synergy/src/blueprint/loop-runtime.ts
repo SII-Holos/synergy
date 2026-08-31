@@ -1,27 +1,7 @@
 import { BlueprintLoopStore, isActiveLoopStatus } from "./loop-store"
+import { clearTimer, hasDeadlineTimer, setDeadlineTimer } from "./deadline"
 import { Session } from "../session"
 import { Cortex } from "../cortex"
-
-const activeTimers = new Map<string, Timer>()
-
-function timerKey(scopeID: string, loopID: string): string {
-  return `blueprint_deadline:${scopeID}:${loopID}`
-}
-
-function clearTimer(scopeID: string, loopID: string) {
-  const existing = activeTimers.get(timerKey(scopeID, loopID))
-  if (existing) {
-    clearTimeout(existing)
-    activeTimers.delete(timerKey(scopeID, loopID))
-  }
-}
-
-function setDeadlineTimer(scopeID: string, loopID: string, maxRuntimeMs: number, onExpire: () => void) {
-  clearTimer(scopeID, loopID)
-  const timer = setTimeout(onExpire, maxRuntimeMs)
-  timer.unref()
-  activeTimers.set(timerKey(scopeID, loopID), timer)
-}
 
 export namespace BlueprintLoopRuntime {
   /**
@@ -43,7 +23,7 @@ export namespace BlueprintLoopRuntime {
         }
         if (!loop.budget?.maxRuntimeMs) continue
         if (loop.status === "armed") continue
-        if (activeTimers.has(timerKey(scopeID, loop.id))) continue
+        if (hasDeadlineTimer(scopeID, loop.id)) continue
         const elapsed = Date.now() - loop.time.created
         const remaining = Math.max(0, loop.budget.maxRuntimeMs - elapsed)
         if (remaining <= 0) {

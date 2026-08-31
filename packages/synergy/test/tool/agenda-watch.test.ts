@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { AgendaWatchTool } from "../../src/tool/agenda-watch"
+import { AgendaWatchTool } from "../../src/agenda/tools/agenda-watch"
 
 describe("agenda_watch parameters", () => {
   test("delay and onSessionEnd are mutually exclusive — neither is rejected", async () => {

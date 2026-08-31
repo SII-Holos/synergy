@@ -13,6 +13,7 @@ import { Cortex } from "../../src/cortex"
 import { SessionInbox } from "../../src/session/inbox"
 import { SessionEvent } from "../../src/session/event"
 import { MessageV2 } from "../../src/session/message-v2"
+import "../../src/product-registration"
 
 const projectRoot = path.join(__dirname, "../..")
 Log.init({ print: false })

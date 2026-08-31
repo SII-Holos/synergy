@@ -14,6 +14,7 @@ import { GlobalBus } from "@/bus/global"
 import { BusEvent } from "@/bus/bus-event"
 import { type Home as HomeType, type Project as ProjectType, Info as InfoSchema, type Info as InfoType } from "./types"
 import { ScopeRoots } from "./roots"
+import { isEphemeralTestWorktree } from "./test-artifacts"
 
 export type Scope = Scope.Home | Scope.Project
 
@@ -385,7 +386,12 @@ export namespace Scope {
       log.info("archived scopes with missing worktrees", { ids: detached })
     }
 
-    return valid.map((data) => ({
+    // Ephemeral test-artifact scopes (worktrees under the OS temp dir with a
+    // synergy-test-*/synergy-orchestrated-* basename) are created by test
+    // scaffolding and must never surface in project lists. See test-artifacts.ts.
+    const visible = valid.filter((data) => !isEphemeralTestWorktree(data.worktree))
+
+    return visible.map((data) => ({
       type: "project" as const,
       id: data.id,
       directory: data.worktree,

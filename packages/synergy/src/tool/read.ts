@@ -2,7 +2,7 @@ import z from "zod"
 import * as fs from "fs"
 import * as path from "path"
 import { Tool } from "./tool"
-import { LSP } from "../lsp"
+import { ToolLspSource } from "./lsp-source"
 import { FileTime } from "../file/time"
 import DESCRIPTION from "./read.txt"
 import { ScopeContext } from "../scope/context"
@@ -164,7 +164,7 @@ export const ReadTool = Tool.define("read", {
     output += "\n</file>"
 
     // just warms the lsp client
-    LSP.touchFile(filepath, false)
+    void ToolLspSource.get()?.touchFile(filepath, false)
     FileTime.read(ctx.sessionID, filepath)
 
     return {

@@ -7,7 +7,7 @@ import {
 } from "@ericsanchezok/synergy-browser"
 import { BrowserOwner } from "./owner.js"
 import { BrowserPolicy } from "./policy.js"
-import { BrowserRuntime } from "./runtime.js"
+import { BrowserRuntime, registerBrowserCommandExecutor } from "./runtime.js"
 import type { BrowserSession } from "./types.js"
 import { ObservabilityBrowserTelemetry } from "../observability/browser-metrics.js"
 import { Log } from "../util/log.js"
@@ -466,3 +466,8 @@ function throwIfAborted(signal: AbortSignal | undefined, commandId: string): voi
     commandId,
   })
 }
+
+registerBrowserCommandExecutor({
+  disposeOwner: BrowserCommandService.disposeOwner,
+  clear: BrowserCommandService.clear,
+})

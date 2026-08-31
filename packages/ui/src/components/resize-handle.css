@@ -1,6 +1,14 @@
 [data-component="resize-handle"] {
   position: absolute;
   z-index: 10;
+  /* Pointer-based resizing must own the gesture; without this, touch drags
+     become browser pans and end in pointercancel. */
+  touch-action: none;
+
+  &:focus-visible {
+    outline: 2px solid var(--border-focus);
+    outline-offset: -1px;
+  }
 
   &::after {
     content: "";
@@ -12,7 +20,8 @@
   }
 
   &:hover::after,
-  &:active::after {
+  &:active::after,
+  &:focus-visible::after {
     opacity: 1;
   }
 

@@ -53,6 +53,7 @@ See [Development reference](docs/reference/development.md) for modes, isolated i
 - Preserve structured error data. Use `NamedError.create()` or local error classes where the owning domain already does.
 - Use Bun file APIs where they improve clarity and match surrounding code.
 - Do not add inline comments, headers, adapters, fallbacks, or abstractions unless they explain a durable non-obvious constraint.
+- Cite materially used papers, standards, upstream or community work, benchmarks, experiments, and research beside the authoritative implementation; `development-standards` defines format and [the decision record](docs/decisions/implemented/process/2026-08-25-preserve-external-implementation-provenance.md) holds the rationale.
 
 ### Persistence and compatibility
 

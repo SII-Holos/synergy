@@ -10,7 +10,7 @@ import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
-import { externalIdentityHash } from "../../src/channel/identity"
+import { externalIdentityHash } from "../../src/util/identity"
 import { Global } from "../../src/global"
 
 // ---------------------------------------------------------------------------
