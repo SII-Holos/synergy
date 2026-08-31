@@ -71,8 +71,13 @@ export const AssetRoute = new Hono()
         return c.json({ message: `Asset not found: ${id}` }, 404)
       }
       c.header("Cache-Control", "public, immutable, max-age=31536000")
-      return c.body(file.stream(), {
-        headers: { "Content-Type": file.type || Asset.mimeFromExt(Asset.extFromId(id)) },
-      })
+      const contentType = file.type || Asset.mimeFromExt(Asset.extFromId(id))
+      // Script-capable assets render in an opaque origin. Attachment content is
+      // untrusted: it must not reach the app localStorage, the unauthenticated
+      // HTTP control plane, the event WebSocket, or the Desktop preload bridge.
+      if (contentType.split(";")[0]!.trim().toLowerCase() === "text/html") {
+        c.header("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-popups allow-modals")
+      }
+      return c.body(file.stream(), { headers: { "Content-Type": contentType } })
     },
   )

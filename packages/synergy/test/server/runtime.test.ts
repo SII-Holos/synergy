@@ -85,6 +85,37 @@ describe("server request scope boundaries", () => {
     expect(await response.text()).toContain("<svg")
   })
 
+  test("html assets render in a sandboxed opaque origin", async () => {
+    const app = Server.App()
+    const id = await Asset.write(
+      Buffer.from("<!doctype html><title>x</title><script>1</script>"),
+      "text/html",
+      "demo.html",
+    )
+
+    const response = await app.request(`/asset/${id}`, { method: "GET" })
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toContain("text/html")
+    expect(response.headers.get("content-security-policy")).toBe(
+      "sandbox allow-scripts allow-forms allow-popups allow-modals",
+    )
+  })
+
+  test("non-html assets do not receive the sandbox policy", async () => {
+    const app = Server.App()
+    const id = await Asset.write(
+      Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>'),
+      "image/svg+xml",
+      "demo.svg",
+    )
+
+    const response = await app.request(`/asset/${id}`, { method: "GET" })
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-security-policy")).not.toBe(
+      "sandbox allow-scripts allow-forms allow-popups allow-modals",
+    )
+  })
+
   test("scoped routes use home scopeID without resolving a project directory", async () => {
     const original = Scope.fromDirectory
     let called = false

@@ -192,10 +192,10 @@ export function AttachmentWorkbenchContent(props: WorkbenchPanelContentProps) {
                 </Show>
                 <Show when={url()}>
                   {(href) => (
-                    <a class="attachment-workbench-action" href={href()} target="_blank" rel="noopener noreferrer">
-                      <Icon name={getSemanticIcon("action.open")} size="small" />
+                    <button type="button" class="attachment-workbench-action" onClick={() => platform.openLink(href())}>
+                      <Icon name={getSemanticIcon("action.export")} size="small" />
                       <span>{lingui._(A.openFullPage)}</span>
-                    </a>
+                    </button>
                   )}
                 </Show>
                 <Show when={url()}>
