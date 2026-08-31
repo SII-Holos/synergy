@@ -588,7 +588,11 @@ async function expectAttachmentToolbarFitsNarrowPanel(css: string) {
             </div>
             <button type="button" class="attachment-workbench-action">
               <span class="fixture-icon"></span>
-              <span>Open in browser</span>
+              <span>Open in Synergy browser</span>
+            </button>
+            <button type="button" class="attachment-workbench-action">
+              <span class="fixture-icon"></span>
+              <span>Open in your browser</span>
             </button>
             <button type="button" class="attachment-workbench-action">
               <span class="fixture-icon"></span>
