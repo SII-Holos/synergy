@@ -820,8 +820,12 @@ msgid "app.attachment.action.download"
 msgstr "下载"
 
 #. js-lingui-explicit-id
+msgid "app.attachment.action.openFullPage"
+msgstr "在你的浏览器中打开"
+
+#. js-lingui-explicit-id
 msgid "app.attachment.action.openInBrowser"
-msgstr "在浏览器中打开"
+msgstr "在 Synergy 浏览器中打开"
 
 #. js-lingui-explicit-id
 msgid "app.attachment.action.viewSourceFile"
@@ -870,6 +874,10 @@ msgstr "缩小"
 #. js-lingui-explicit-id
 msgid "app.attachment.preview.error"
 msgstr "无法预览此附件。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.htmlScriptsDisabled"
+msgstr "交互式文档在预览中不执行脚本。请在你的浏览器中打开查看完整渲染效果。"
 
 #. js-lingui-explicit-id
 msgid "app.attachment.preview.tooLarge"

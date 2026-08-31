@@ -85,6 +85,50 @@ describe("server request scope boundaries", () => {
     expect(await response.text()).toContain("<svg")
   })
 
+  test("html assets render in a sandboxed opaque origin", async () => {
+    const app = Server.App()
+    const id = await Asset.write(
+      Buffer.from("<!doctype html><title>x</title><script>1</script>"),
+      "text/html",
+      "demo.html",
+    )
+
+    const response = await app.request(`/asset/${id}`, { method: "GET" })
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toContain("text/html")
+    expect(response.headers.get("content-security-policy")).toBe(
+      "sandbox allow-scripts allow-forms allow-popups allow-modals",
+    )
+  })
+
+  test("svg assets also render in a sandboxed opaque origin", async () => {
+    const app = Server.App()
+    const id = await Asset.write(
+      Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>'),
+      "image/svg+xml",
+      "demo.svg",
+    )
+
+    const response = await app.request(`/asset/${id}`, { method: "GET" })
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toContain("image/svg+xml")
+    expect(response.headers.get("content-security-policy")).toBe(
+      "sandbox allow-scripts allow-forms allow-popups allow-modals",
+    )
+  })
+
+  test("non-script-capable assets do not receive the sandbox policy", async () => {
+    const app = Server.App()
+    const id = await Asset.write(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), "image/png", "demo.png")
+
+    const response = await app.request(`/asset/${id}`, { method: "GET" })
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toContain("image/png")
+    expect(response.headers.get("content-security-policy")).not.toBe(
+      "sandbox allow-scripts allow-forms allow-popups allow-modals",
+    )
+  })
+
   test("scoped routes use home scopeID without resolving a project directory", async () => {
     const original = Scope.fromDirectory
     let called = false
@@ -176,5 +220,29 @@ describe("server request scope boundaries", () => {
       ;(Plugin as any).getLoaded = originalGetLoaded
       ;(Plugin as any).get = originalGet
     }
+  })
+})
+
+describe("global event origin allowlist", () => {
+  test("allows the server's own origin over WebSocket", () => {
+    expect(
+      Server.globalEventOriginAllowed("http://localhost:3000", "ws://localhost:3000/global/event/ws?stream=delta"),
+    ).toBe(true)
+  })
+
+  test("allows loopback-to-loopback peers", () => {
+    expect(Server.globalEventOriginAllowed("http://127.0.0.1:4000", "ws://localhost:3000/global/event/ws")).toBe(true)
+  })
+
+  test("rejects missing origins", () => {
+    expect(Server.globalEventOriginAllowed(undefined, "ws://localhost:3000/global/event/ws")).toBe(false)
+  })
+
+  test("rejects opaque sandboxed origins", () => {
+    expect(Server.globalEventOriginAllowed("null", "ws://localhost:3000/global/event/ws")).toBe(false)
+  })
+
+  test("rejects cross-origin pages", () => {
+    expect(Server.globalEventOriginAllowed("https://evil.example", "ws://localhost:3000/global/event/ws")).toBe(false)
   })
 })
