@@ -7,4 +7,4 @@ await $`bun ./packages/sdk/js/script/build.ts`
 
 await writeFile("packages/sdk/openapi.json", await $`bun dev generate`.cwd("packages/synergy").text())
 
-await $`bun prettier --write packages/sdk/openapi.json`
+await $`bun prettier --cache --cache-strategy content --write packages/sdk/openapi.json`
