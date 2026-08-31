@@ -13,11 +13,14 @@ A user reported that switching sessions occasionally switched the visual theme. 
 - User reported probabilistic skin flips on session switches; no console errors, no persisted preference visible in Settings.
 - Source tracing found three interacting owners: the plugin host reload (`PluginHostProvider` keyed on scope), the theme registry replace (`replacePluginThemes` per scope generation), and the provider fallback (`ThemeProvider` resetting unknown ids once the registry was ready).
 - Runtime verification on an isolated instance confirmed the chain end-to-end and surfaced a second gap: the global theme asset URL 404'd from a non-owning scope, which alone produced the same "silently missing theme" state.
+- User verification on the isolated instance after the registry fix surfaced a second mechanism with a tighter loop: a fresh selection was lost on the very next session switch, a hard refresh restored it, and selecting again re-broke it. That signature pointed at a stale replay source rather than the registry lifecycle.
 - Fix, tests, and docs landed as one PR.
 
 ## Root cause
 
 Theme selection is global (config `general.theme`, scope-less reads/writes), but registration was scope-local: each scope switch atomically replaced the theme registry with that scope's plugin set. `ThemeProvider` treated "ready registry without the selected id" as "reset to default", and the same effect wrote the bootstrap snapshot — overwriting the persisted choice with the default skin. Recovery only happened when an unrelated registry event refilled the theme, which is why the flip appeared probabilistic and self-healing. Transient theme-asset fetch failures (reported per-asset as `errors`, not rejections) produced the identical missing-theme state. Why the safety nets missed it: registry-replacement tests asserted atomicity, not cross-scope retention; provider tests covered the reset path as intended behavior; no test coupled the two lifecycles.
+
+The replay side had the same ownership disease in miniature: `PluginThemeConfigBridge` fetched the config preference once at mount (`createResource` with no refetch source). Selections made in the UI persist server-side immediately, so the mount-time snapshot went stale the moment the user picked a theme; the next registry or host event replayed the stale value over the fresh selection. A hard refresh re-fetched the now-persisted preference (works), until the next selection re-staled the snapshot — hence "force refresh fixes it, selecting again breaks it". The fix tracks a replay baseline: the bootstrap skin seeds it, the config preference applies exactly once while no local selection has happened, and any themeId change away from the baseline is adopted as the new baseline (a selection).
 
 ## Guardrails added
 
@@ -25,6 +28,7 @@ Theme selection is global (config `general.theme`, scope-less reads/writes), but
 - Registrar factory tests pin that a generation reporting asset `errors` keeps the last published registry instead of publishing a partial one (`packages/app/test/plugin/global-themes.test.ts`).
 - `ThemeProvider` fallback is non-destructive and covered by `packages/ui/test/theme-provider-fallback.test.ts`: selection retained, degraded default tokens, cache untouched, automatic re-apply; `degraded()` gates Desktop persistence.
 - Route tests cover the global asset fallback including the disposed-scope 404 (`packages/synergy/test/server/plugin-global-theme-routes.test.ts`).
+- The config bridge's selection-aware replay baseline is covered by `packages/app/test/plugin/theme-config-bridge.test.ts`: a selection survives registry/host events despite the stale snapshot, the persisted preference applies once at boot, and a selection made before the config resolves wins over the stale value.
 - Placement rule reinforced: the bug narrative lives here, the architecture in the [decision record](../decisions/implemented/architecture/2026-08-30-global-plugin-theme-registration.md).
 
 ## Lessons

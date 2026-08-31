@@ -46,6 +46,7 @@ await runBatchedTests({
     "test/pages/fatal-error.test.tsx",
     "test/plugin/builtin-navigation.test.ts",
     "test/plugin/global-themes-registrar-lifecycle.test.tsx",
+    "test/plugin/theme-config-bridge.test.ts",
     "test/plugin/registries/slot-outlet.test.ts",
     "test/plugin/registries/tool-renderer-registry.test.ts",
   ],

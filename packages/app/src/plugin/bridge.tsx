@@ -63,10 +63,34 @@ export function PluginThemeConfigBridge() {
     return result.data
   })
 
+  const normalize = (id: string) => (!id || id === "synergy" ? "" : id)
+  // The bootstrap skin reflects the last locally applied choice, so it is
+  // the replay baseline until the config preference resolves.
+  const bootstrapBaseline = normalize(theme.themeId())
+  let baseline = bootstrapBaseline
+
+  // Selections made in this UI persist server-side immediately, so the config
+  // snapshot goes stale the moment the user picks a theme. Any themeId change
+  // away from the current baseline is a selection: adopt it as the new
+  // baseline so registry events (scope switch, host reload) replay the fresh
+  // choice instead of the stale mount-time preference.
+  createEffect(() => {
+    const applied = normalize(theme.themeId())
+    if (applied === baseline) return
+    baseline = applied
+  })
+
   createEffect(() => {
     host.plugins()
     theme.themes()
-    theme.setThemeId(config()?.theme ?? "")
+    const persisted = config()?.theme
+    if (persisted === undefined) return
+    if (baseline === bootstrapBaseline && normalize(persisted) !== baseline) {
+      // Config is authoritative exactly once, and only while no local
+      // selection has happened: afterwards the snapshot is stale by design.
+      baseline = normalize(persisted)
+    }
+    theme.setThemeId(baseline || "synergy")
   })
 
   return null
