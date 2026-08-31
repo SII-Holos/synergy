@@ -2,6 +2,8 @@ import { BrowserProtocolError } from "./error.js"
 import { redactBrowserHeaders, redactBrowserText, redactBrowserURL } from "./redaction.js"
 import { BrowserStagingLeasePool } from "./staging.js"
 import {
+  BROWSER_ACTION_SETTLE_TIMEOUT_MS,
+  BROWSER_NAVIGATION_SETTLE_TIMEOUT_MS,
   BROWSER_SETTLE_QUIET_MS,
   BROWSER_SETTLE_TIMEOUT_MS,
   BrowserBackendCommandSchema,
@@ -177,9 +179,21 @@ interface NetworkEntry {
   timestamp: number
 }
 
+interface LocatorCandidateSummary {
+  tag?: string
+  role?: string | null
+  name?: string
+  id?: string
+  class?: string
+  visible?: boolean
+  bounds?: { x: number; y: number; width: number; height: number }
+  receivesEvents?: boolean
+  frame?: string
+}
+
 interface LocatorSummary {
   count: number
-  candidates: BrowserObstruction[]
+  candidates: LocatorCandidateSummary[]
 }
 
 interface ElementSample {
@@ -205,6 +219,9 @@ const MAX_REF_ENTRIES = 25_000
 const MAX_SNAPSHOT_TEXT_CHARS = 2_000_000
 const LONG_LIVED_NETWORK_TYPES = new Set(["WebSocket", "EventSource"])
 const SETTLE_ELIGIBLE_ACTIONS = new Set(["click", "dblclick", "fill", "type", "press", "select", "setChecked", "drag"])
+const MAX_AMBIGUOUS_CANDIDATES = 5
+const AMBIGUOUS_CANDIDATE_TIMEOUT_MS = 2_000
+const BEST_EFFORT_SNAPSHOT_TIMEOUT_MS = 4_000
 
 function boxesAreStable(previous: ElementState["box"], current: ElementState["box"]): boolean {
   if (!previous || !current) return previous === current
@@ -272,12 +289,11 @@ export class CdpPageController {
         })
         const settle = await this.settle({
           mode: this.settleModeFor(command.source, command.settleMode),
-          timeoutMs: command.settleTimeoutMs,
+          timeoutMs: command.settleTimeoutMs ?? BROWSER_NAVIGATION_SETTLE_TIMEOUT_MS,
         })
         const page = await this.safePageState()
         let snapshot: unknown
-        if (this.includeSnapshotFor(command.source, command.includeSnapshot) && settle.settled)
-          snapshot = await this.safeSnapshot()
+        if (this.includeSnapshotFor(command.source, command.includeSnapshot)) snapshot = await this.safeSnapshot()
         return { type: "navigation", page, ...(snapshot ? { snapshot } : {}), ...settle }
       }
       case "reload": {
@@ -285,12 +301,11 @@ export class CdpPageController {
         await this.options.transport.send("Page.reload", { ignoreCache: command.ignoreCache ?? false })
         const settle = await this.settle({
           mode: this.settleModeFor(command.source, command.settleMode),
-          timeoutMs: command.settleTimeoutMs,
+          timeoutMs: command.settleTimeoutMs ?? BROWSER_NAVIGATION_SETTLE_TIMEOUT_MS,
         })
         const page = await this.safePageState()
         let snapshot: unknown
-        if (this.includeSnapshotFor(command.source, command.includeSnapshot) && settle.settled)
-          snapshot = await this.safeSnapshot()
+        if (this.includeSnapshotFor(command.source, command.includeSnapshot)) snapshot = await this.safeSnapshot()
         return { type: "navigation", page, ...(snapshot ? { snapshot } : {}), ...settle }
       }
       case "stop":
@@ -667,6 +682,15 @@ export class CdpPageController {
     this.objectFrameOffsets.clear()
   }
 
+  private storeRef(key: string, entry: RefEntry): void {
+    while (this.refs.size >= MAX_REF_ENTRIES) {
+      const oldest = this.refs.keys().next().value
+      if (typeof oldest !== "string") break
+      this.refs.delete(oldest)
+    }
+    this.refs.set(key, entry)
+  }
+
   private async ensureInitialized() {
     this.initialized ??= (async () => {
       await Promise.all([
@@ -715,12 +739,11 @@ export class CdpPageController {
     }
     const settle = await this.settle({
       mode: this.settleModeFor(command.source, command.settleMode),
-      timeoutMs: command.settleTimeoutMs,
+      timeoutMs: command.settleTimeoutMs ?? BROWSER_NAVIGATION_SETTLE_TIMEOUT_MS,
     })
     const page = await this.safePageState()
     let snapshot: unknown
-    if (this.includeSnapshotFor(command.source, command.includeSnapshot) && settle.settled)
-      snapshot = await this.safeSnapshot()
+    if (this.includeSnapshotFor(command.source, command.includeSnapshot)) snapshot = await this.safeSnapshot()
     return {
       type: "navigation",
       page,
@@ -741,7 +764,9 @@ export class CdpPageController {
     if (explicit !== undefined) return explicit
     // User-initiated navigation (address bar, back/forward, reload from the panel,
     // session restore) must stay immediate: settling is an agent-tool concern.
-    return source === "user" ? "none" : "networkquiet"
+    // Agent navigation defaults to the load lifecycle so long-polling pages that
+    // never reach network quiet still settle in bounded time.
+    return source === "user" ? "none" : "load"
   }
 
   private includeSnapshotFor(source: "user" | "agent" | undefined, explicit: boolean | undefined): boolean {
@@ -765,15 +790,19 @@ export class CdpPageController {
     }
   }
 
-  private async safeSnapshot(): Promise<unknown> {
+  private async safeSnapshot(budgetMs = BEST_EFFORT_SNAPSHOT_TIMEOUT_MS): Promise<unknown> {
     try {
-      return await this.snapshot(undefined, 500)
+      return await this.snapshot(undefined, 500, budgetMs)
     } catch {
       return undefined
     }
   }
 
-  private async settle(options: { mode?: "networkquiet" | "load" | "none"; timeoutMs?: number }): Promise<{
+  private async settle(options: {
+    mode?: "networkquiet" | "load" | "none"
+    timeoutMs?: number
+    defaultTimeoutMs?: number
+  }): Promise<{
     settled?: boolean
     settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
     settleElapsedMs?: number
@@ -783,7 +812,10 @@ export class CdpPageController {
     if (mode === "none") {
       return { settled: true, settleReason: "none", settleElapsedMs: 0, inflightRequests: this.inflightRequests.size }
     }
-    const timeoutMs = options.timeoutMs ?? BROWSER_SETTLE_TIMEOUT_MS
+    const timeoutMs = Math.min(
+      options.timeoutMs ?? options.defaultTimeoutMs ?? BROWSER_SETTLE_TIMEOUT_MS,
+      BROWSER_SETTLE_TIMEOUT_MS,
+    )
     const startedAt = this.now()
     const deadline = startedAt + timeoutMs
     let quietSince = this.now()
@@ -859,8 +891,15 @@ export class CdpPageController {
     }
   }
 
-  private async snapshot(query: string | undefined, maxNodes: number): Promise<BrowserBackendResult> {
-    const result = await this.options.transport.send<{ nodes?: CdpAxNode[] }>("Accessibility.getFullAXTree")
+  private async snapshot(
+    query: string | undefined,
+    maxNodes: number,
+    timeoutMs?: number,
+  ): Promise<BrowserBackendResult> {
+    const treeCommand = this.options.transport.send<{ nodes?: CdpAxNode[] }>("Accessibility.getFullAXTree")
+    const result = await (timeoutMs
+      ? withCdpCommandTimeout(treeCommand, "Accessibility.getFullAXTree", timeoutMs)
+      : treeCommand)
     const snapshotId = `snap-${this.generation}-${++this.snapshotSequence}`
     const normalizedQuery = query?.trim().toLocaleLowerCase()
     const nodes = Array.isArray(result?.nodes) ? result.nodes : []
@@ -899,18 +938,14 @@ export class CdpPageController {
       if (textChars + nodeChars > MAX_SNAPSHOT_TEXT_CHARS) break
       textChars += nodeChars
       const ref = `@${this.snapshotSequence}-${elements.length + 1}`
-      while (this.refs.size >= MAX_REF_ENTRIES) {
-        const oldest = this.refs.keys().next().value
-        if (typeof oldest !== "string") break
-        this.refs.delete(oldest)
-      }
-      this.refs.set(`${snapshotId}:${ref}`, {
+      this.storeRef(`${snapshotId}:${ref}`, {
         snapshotId,
         ref,
         generation: this.generation,
         backendNodeId,
         frameId: node?.frameId,
       })
+
       elements.push({
         ref,
         role,
@@ -1149,7 +1184,11 @@ export class CdpPageController {
     }
 
     const settle = SETTLE_ELIGIBLE_ACTIONS.has(action.type)
-      ? await this.settle({ mode: action.settleMode, timeoutMs: action.settleTimeoutMs })
+      ? await this.settle({
+          mode: action.settleMode,
+          timeoutMs: action.settleTimeoutMs,
+          defaultTimeoutMs: BROWSER_ACTION_SETTLE_TIMEOUT_MS,
+        })
       : {
           settled: true,
           settleReason: "none" as const,
@@ -1157,7 +1196,7 @@ export class CdpPageController {
           inflightRequests: this.inflightRequests.size,
         }
     let snapshot: unknown
-    if (action.includeSnapshot !== false && settle.settled) snapshot = await this.safeSnapshot()
+    if (action.includeSnapshot !== false) snapshot = await this.safeSnapshot()
     return {
       type: "action",
       pageId: this.options.pageId,
@@ -1500,29 +1539,87 @@ export class CdpPageController {
     const summary = await this.runtimeValue<LocatorSummary>(
       `(() => {
         const matches = ${expression};
-        return {
-          count: matches.length,
-          candidates: matches.slice(0, 5).map((el) => ({
+        const sample = (el) => {
+          const rect = el.getBoundingClientRect();
+          const style = getComputedStyle(el);
+          const visible = rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none" && Number(style.opacity) > 0;
+          const x = rect.x + rect.width / 2;
+          const y = rect.y + rect.height / 2;
+          const root = el.getRootNode?.();
+          const hit = visible ? (root?.elementFromPoint?.(x, y) || document.elementFromPoint(x, y)) : null;
+          const receivesEvents = !visible ? false : !hit || hit === el || el.contains?.(hit);
+          return {
             tag: el.tagName?.toLowerCase(),
-            role: el.getAttribute?.("role"),
+            role: (el.getAttribute?.("role") || "").slice(0, 1_000) || null,
             name: el.getAttribute?.("aria-label") || el.innerText?.trim()?.slice(0, 120) || "",
             id: el.id || undefined,
-          })),
+            class: typeof el.className === "string" ? el.className.slice(0, 200) : undefined,
+            visible,
+            bounds: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+            receivesEvents,
+          };
+        };
+        return {
+          count: matches.length,
+          candidates: matches.slice(0, ${MAX_AMBIGUOUS_CANDIDATES}).map(sample),
         };
       })()`,
       contextId,
     )
     if (!summary || summary.count === 0) this.throwMissing(locator)
     if (summary.count !== 1) {
+      const snapshotId = `cand-${this.generation}-${++this.snapshotSequence}`
+      const candidates = await Promise.all(
+        summary.candidates.slice(0, MAX_AMBIGUOUS_CANDIDATES).map(async (candidate, index) => {
+          const redacted = {
+            ...candidate,
+            frame: location.frameId,
+            name: candidate.name !== undefined ? redactBrowserText(candidate.name).slice(0, 1_000) : undefined,
+            id: candidate.id !== undefined ? redactBrowserText(candidate.id).slice(0, 1_000) : undefined,
+            class: candidate.class !== undefined ? redactBrowserText(candidate.class).slice(0, 1_000) : undefined,
+          }
+          try {
+            const backendNodeId = await withCdpCommandTimeout(
+              (async () => {
+                const result = await this.runtimeEvaluate(`(${expression})[${index}]`, {
+                  returnByValue: false,
+                  ...(contextId ? { contextId } : {}),
+                })
+                if (!result.result.objectId) return undefined
+                const described = await this.options.transport.send<CdpNodeResult>("DOM.describeNode", {
+                  objectId: result.result.objectId,
+                  depth: 0,
+                })
+                return described?.node?.backendNodeId
+              })(),
+              "Browser.locatorCandidate",
+              AMBIGUOUS_CANDIDATE_TIMEOUT_MS,
+            )
+            if (!backendNodeId) return redacted
+            const ref = `@${this.snapshotSequence}-${index + 1}`
+            this.storeRef(`${snapshotId}:${ref}`, {
+              snapshotId,
+              ref,
+              generation: this.generation,
+              backendNodeId,
+              ...(location.frameId ? { frameId: location.frameId } : {}),
+            })
+            return { ...redacted, ref }
+          } catch {
+            return redacted
+          }
+        }),
+      )
       throw new BrowserProtocolError({
         code: "browser_locator_ambiguous",
         message: `Locator matched ${summary.count} elements; exactly one is required.`,
         retryable: true,
         pageId: this.options.pageId,
         locator,
-        obstruction: { candidates: summary.candidates },
+        snapshotId,
+        obstruction: { candidates },
         suggestedAction:
-          "Use exact matching, scope the locator to a stable container, choose a role/test-id/CSS locator, or use a fresh snapshot ref.",
+          "Disambiguate with a snapshotId/ref from the candidates above, use exact matching, or scope the locator to a stable container.",
       })
     }
     const result = await this.runtimeEvaluate(`(${expression})[0]`, {
@@ -1591,8 +1688,9 @@ export class CdpPageController {
 
   private async contextForLocator(
     locator: BrowserLocator,
-  ): Promise<{ contextId: number | undefined; x: number; y: number }> {
+  ): Promise<{ contextId: number | undefined; x: number; y: number; frameId: string | undefined }> {
     let contextId = this.mainFrameId ? this.frameContexts.get(this.mainFrameId) : undefined
+    let frameId = this.mainFrameId
     let x = 0
     let y = 0
     for (const frameLocator of locator.framePath ?? []) {
@@ -1608,8 +1706,8 @@ export class CdpPageController {
         depth: 1,
         pierce: true,
       })
-      const frameId = described?.node?.frameId
-      if (!frameId) {
+      const resolvedFrameId = described?.node?.frameId
+      if (!resolvedFrameId) {
         throw new BrowserProtocolError({
           code: "browser_frame_not_found",
           message: "The frame locator did not resolve to a browsing context.",
@@ -1618,10 +1716,11 @@ export class CdpPageController {
           locator: frameLocator,
         })
       }
-      contextId = await this.waitForFrameContext(frameId)
+      frameId = resolvedFrameId
+      contextId = await this.waitForFrameContext(resolvedFrameId)
       await this.runtimeEvaluate(webVitalsBootstrap, { returnByValue: true, contextId }).catch(() => undefined)
     }
-    return { contextId, x, y }
+    return { contextId, x, y, frameId }
   }
 
   private async resolveLocatorInContext(locator: BrowserLocator, contextId?: number): Promise<string> {

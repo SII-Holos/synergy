@@ -3,6 +3,7 @@ import {
   BrowserWebRTCMessageSchema,
   type BrowserWebRTCSignal,
 } from "@ericsanchezok/synergy-browser"
+import { ObservabilityBrowserTelemetry } from "../observability/browser-metrics.js"
 import { BrowserOwner } from "./owner.js"
 
 export interface BrowserWebRTCSocket {
@@ -45,6 +46,7 @@ export namespace BrowserWebRTCSignaling {
   ): void {
     const channel = getChannel(owner, pageId)
     if (channel.viewer) {
+      ObservabilityBrowserTelemetry.recordWebRTCReconnect(owner, "viewer")
       channel.viewer.socket.close(4001, "Browser viewer replaced")
       closeActiveConnection(channel, pageId, channel.host?.socket)
       channel.generation = -1
@@ -65,6 +67,7 @@ export namespace BrowserWebRTCSignaling {
   ): void {
     const channel = getChannel(owner, pageId)
     if (channel.host) {
+      ObservabilityBrowserTelemetry.recordWebRTCReconnect(owner, "host")
       channel.host.socket.close(4001, "Browser Host signaling replaced")
       closeActiveConnection(channel, pageId, channel.viewer?.socket)
     }

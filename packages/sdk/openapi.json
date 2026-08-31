@@ -31758,6 +31758,10 @@
                 "description": "Enable promptCacheKey for this provider (default false)",
                 "type": "boolean"
               },
+              "mergeSystemMessages": {
+                "description": "Merge leading system messages into a single system message for strict OpenAI-compatible endpoints that reject multiple or non-leading system messages (e.g. vLLM Qwen chat templates). Default false.",
+                "type": "boolean"
+              },
               "timeout": {
                 "description": "Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.",
                 "anyOf": [
@@ -44179,6 +44183,42 @@
                 "type": "string",
                 "maxLength": 1000
               },
+              "ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20000
+              },
+              "visible": {
+                "type": "boolean"
+              },
+              "bounds": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  },
+                  "width": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "height": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": ["x", "y", "width", "height"],
+                "additionalProperties": false
+              },
+              "frame": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "receivesEvents": {
+                "type": "boolean"
+              },
               "candidates": {
                 "maxItems": 5,
                 "type": "array",
@@ -44211,6 +44251,42 @@
                     "class": {
                       "type": "string",
                       "maxLength": 1000
+                    },
+                    "ref": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 20000
+                    },
+                    "visible": {
+                      "type": "boolean"
+                    },
+                    "bounds": {
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "type": "number"
+                        },
+                        "y": {
+                          "type": "number"
+                        },
+                        "width": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "height": {
+                          "type": "number",
+                          "minimum": 0
+                        }
+                      },
+                      "required": ["x", "y", "width", "height"],
+                      "additionalProperties": false
+                    },
+                    "frame": {
+                      "type": "string",
+                      "maxLength": 200
+                    },
+                    "receivesEvents": {
+                      "type": "boolean"
                     }
                   },
                   "additionalProperties": false
@@ -44976,12 +45052,12 @@
                     "const": "user"
                   },
                   "settleMode": {
-                    "description": "Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.",
+                    "description": "Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.",
                     "type": "string",
                     "enum": ["networkquiet", "load", "none"]
                   },
                   "settleTimeoutMs": {
-                    "description": "Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.",
+                    "description": "Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.",
                     "type": "integer",
                     "minimum": 1000,
                     "maximum": 30000
@@ -45011,12 +45087,12 @@
                     "const": "user"
                   },
                   "settleMode": {
-                    "description": "Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.",
+                    "description": "Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.",
                     "type": "string",
                     "enum": ["networkquiet", "load", "none"]
                   },
                   "settleTimeoutMs": {
-                    "description": "Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.",
+                    "description": "Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.",
                     "type": "integer",
                     "minimum": 1000,
                     "maximum": 30000
@@ -45045,12 +45121,12 @@
                     "const": "user"
                   },
                   "settleMode": {
-                    "description": "Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.",
+                    "description": "Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.",
                     "type": "string",
                     "enum": ["networkquiet", "load", "none"]
                   },
                   "settleTimeoutMs": {
-                    "description": "Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.",
+                    "description": "Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.",
                     "type": "integer",
                     "minimum": 1000,
                     "maximum": 30000

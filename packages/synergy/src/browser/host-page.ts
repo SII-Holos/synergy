@@ -1,8 +1,11 @@
-import type {
-  BrowserBackendCommand,
-  BrowserBackendResult,
-  BrowserHostPageEvent,
-  BrowserPresentationKind,
+import {
+  BrowserProtocolError,
+  isSafeBrowserObservation,
+  type BrowserBackendCommand,
+  type BrowserBackendResult,
+  type BrowserHostPageEvent,
+  type BrowserHostStatus,
+  type BrowserPresentationKind,
 } from "@ericsanchezok/synergy-browser"
 import { BrowserBroker } from "./broker.js"
 import type { BrowserOwner } from "./owner.js"
@@ -15,7 +18,12 @@ export class BrowserHostPage implements BrowserPageBackend {
   title = ""
   loading = false
   lastActiveAt: number | null = null
+  private _hostStatus: BrowserHostStatus = "pending"
   private unsubscribe: () => void
+
+  get hostStatus(): BrowserHostStatus {
+    return this._hostStatus
+  }
 
   private constructor(
     private owner: BrowserOwner.Info,
@@ -46,6 +54,7 @@ export class BrowserHostPage implements BrowserPageBackend {
         url: input.url,
       })
       page.sync(result)
+      page._hostStatus = "ready"
       return page
     } catch (error) {
       page.unsubscribe()
@@ -54,6 +63,10 @@ export class BrowserHostPage implements BrowserPageBackend {
   }
 
   async execute(command: BrowserBackendCommand): Promise<BrowserBackendResult> {
+    if (command.type !== "resume" && command.type !== "close" && !isSafeBrowserObservation(command)) {
+      if (this._hostStatus === "restarting") throw hostStatusError(this.id, "restarting")
+      if (this._hostStatus === "failed") throw hostStatusError(this.id, "failed")
+    }
     const result = await BrowserBroker.command(this.owner, this.id, command)
     this.sync(result)
     return result
@@ -88,7 +101,10 @@ export class BrowserHostPage implements BrowserPageBackend {
   }
 
   private handleEvent(event: BrowserHostPageEvent): void {
-    if (event.type === "host.status") return
+    if (event.type === "host.status") {
+      this._hostStatus = event.status
+      return
+    }
     if (event.type === "page.loading") {
       this.loading = true
       this.url = event.url
@@ -129,4 +145,18 @@ export class BrowserHostPage implements BrowserPageBackend {
     }
     this.events.onDownload?.(this, event.entry)
   }
+}
+
+function hostStatusError(pageId: string, status: "restarting" | "failed"): BrowserProtocolError {
+  const failed = status === "failed"
+  const guidance = failed
+    ? "Use browser_navigation with action resume or the native Browser Retry control to recover this page; use snapshot, read, or current to verify it before retrying a side effect."
+    : "Wait for the Browser Host to report ready or use browser_navigation with action resume; do not retry a side effect while recovery is in progress."
+  return new BrowserProtocolError({
+    code: failed ? "browser_native_recovery_failed" : "browser_native_restarting",
+    message: `The Browser Host is ${failed ? "in a failed recovery state" : "restarting"}. ${guidance}`,
+    retryable: true,
+    pageId,
+    suggestedAction: guidance,
+  })
 }

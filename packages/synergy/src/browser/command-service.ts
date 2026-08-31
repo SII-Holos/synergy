@@ -9,6 +9,7 @@ import { BrowserOwner } from "./owner.js"
 import { BrowserPolicy } from "./policy.js"
 import { BrowserRuntime } from "./runtime.js"
 import type { BrowserSession } from "./types.js"
+import { ObservabilityBrowserTelemetry } from "../observability/browser-metrics.js"
 import { Log } from "../util/log.js"
 
 interface ExecuteRequest {
@@ -106,13 +107,19 @@ export namespace BrowserCommandService {
           await session.resumePage()
         }
       }
+      const span = ObservabilityBrowserTelemetry.startCommand(owner, command)
+      ObservabilityBrowserTelemetry.recordCommand(owner, command)
       try {
         const result = await executeOnce(owner, command, request)
+        ObservabilityBrowserTelemetry.recordSettle(owner, command, result)
         cache(queue, request.commandId, { fingerprint, result, bytes: encodedBytes(result) })
+        ObservabilityBrowserTelemetry.endCommand(span, undefined, result)
         return result
       } catch (error) {
         const normalized = normalizeCommandError(error, request.commandId)
         cache(queue, request.commandId, { fingerprint, error: normalized, bytes: encodedBytes(normalized) })
+        ObservabilityBrowserTelemetry.endCommand(span, normalized)
+        recordCommandFailureTelemetry(owner, command, normalized)
         throw normalized
       }
     })
@@ -314,6 +321,14 @@ function encodedBytes(value: unknown): number {
   }
 }
 
+function recordCommandFailureTelemetry(owner: BrowserOwner.Info, command: BrowserBackendCommand, error: unknown): void {
+  if (!(error instanceof BrowserProtocolError)) {
+    ObservabilityBrowserTelemetry.recordCommandFailure(owner, command, "browser_command_failed")
+    return
+  }
+  ObservabilityBrowserTelemetry.recordCommandFailure(owner, command, error.code, error.obstruction?.candidates?.length)
+}
+
 function normalizeCommandError(error: unknown, commandId: string): unknown {
   if (error instanceof BrowserProtocolError) {
     if (error.commandId) return error
@@ -330,7 +345,6 @@ function normalizeCommandError(error: unknown, commandId: string): unknown {
     { cause: error },
   )
 }
-
 async function executeOnce(
   owner: BrowserOwner.Info,
   command: BrowserBackendCommand,

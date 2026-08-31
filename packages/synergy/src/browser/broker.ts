@@ -1,5 +1,7 @@
 import { randomBytes, timingSafeEqual } from "node:crypto"
 import {
+  BROWSER_ACTION_SETTLE_TIMEOUT_MS,
+  BROWSER_NAVIGATION_SETTLE_TIMEOUT_MS,
   BROWSER_PROTOCOL_VERSION,
   BrowserBackendCommandSchema,
   BrowserHostMessageSchema,
@@ -19,6 +21,7 @@ import { BrowserStorage } from "./storage.js"
 import { BrowserTicket } from "./ticket.js"
 import { BrowserDownloads } from "./downloads.js"
 import { BrowserEvent } from "./event.js"
+import { ObservabilityBrowserTelemetry } from "../observability/browser-metrics.js"
 
 export interface BrowserBrokerSocket {
   send(data: string): void
@@ -152,6 +155,7 @@ export namespace BrowserBroker {
       eventCount: 0,
     }
     notifyHostStatus("ready")
+    ObservabilityBrowserTelemetry.recordHostStatus("ready")
     notifyActivity()
     send({ type: "host.registered", protocolVersion: BROWSER_PROTOCOL_VERSION, hostId: message.hostId })
   }
@@ -161,6 +165,7 @@ export namespace BrowserBroker {
     disconnect(connection, new Error("Browser Host broker disconnected."))
     connection = null
     notifyHostStatus("restarting")
+    ObservabilityBrowserTelemetry.recordHostStatus("restarting")
     notifyActivity()
   }
 
@@ -195,6 +200,7 @@ export namespace BrowserBroker {
             pageId: message.pageId,
             status: message.event.status,
           })
+          ObservabilityBrowserTelemetry.recordHostStatus(message.event.status, preference.owner)
         }
       }
       for (const listener of eventListeners.get(key) ?? []) listener(message.event)
@@ -289,12 +295,17 @@ export namespace BrowserBroker {
             if (connection === active) active.pages.delete(reservedPageKey)
             BrowserTicket.revoke(input.owner, input.pageId)
             notifyActivity()
+            ObservabilityBrowserTelemetry.recordResourceCleanup(input.owner, "ok")
           })
-          .catch(() => active.socket.close(1011, "Browser Host page creation could not be cleaned up"))
+          .catch(() => {
+            active.socket.close(1011, "Browser Host page creation could not be cleaned up")
+            ObservabilityBrowserTelemetry.recordResourceCleanup(input.owner, "failed")
+          })
       } else {
         active.pages.delete(reservedPageKey)
         BrowserTicket.revoke(input.owner, input.pageId)
         notifyActivity()
+        ObservabilityBrowserTelemetry.recordResourceCleanup(input.owner, "ok")
       }
       throw error
     }
@@ -326,6 +337,7 @@ export namespace BrowserBroker {
     connection?.pages.delete(pageKey(owner, pageId))
     BrowserTicket.revoke(owner, pageId)
     notifyActivity()
+    ObservabilityBrowserTelemetry.recordResourceCleanup(owner, "ok")
   }
 
   export function subscribe(
@@ -391,6 +403,11 @@ function request(
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       active.pending.delete(message.requestId)
+      ObservabilityBrowserTelemetry.recordBrokerTimeout(
+        message.type,
+        message.type === "page.command" ? message.command.type : undefined,
+        telemetryOwner(message),
+      )
       reject(
         new BrowserProtocolError({
           code: "browser_host_timeout",
@@ -424,11 +441,11 @@ function requestTimeout(
   if (command.type === "evaluate") return Math.min(125_000, (command.timeoutMs ?? 30_000) + 5_000)
   if (command.type === "wait") return command.timeoutMs + 5_000
   if (command.type === "action") {
-    const settleMs = command.action.settleTimeoutMs ?? 30_000
+    const settleMs = command.action.settleTimeoutMs ?? BROWSER_ACTION_SETTLE_TIMEOUT_MS
     return (command.action.timeoutMs ?? 5_000) + settleMs + 5_000
   }
   if (command.type === "navigate" || command.type === "history" || command.type === "reload") {
-    const settleMs = command.settleTimeoutMs ?? 30_000
+    const settleMs = command.settleTimeoutMs ?? BROWSER_NAVIGATION_SETTLE_TIMEOUT_MS
     return settleMs + 10_000
   }
   return 35_000
@@ -440,12 +457,23 @@ function disconnect(active: Connection, error: Error): void {
     pending.reject(error)
   }
   active.pending.clear()
+  for (const preference of preferences.values()) {
+    ObservabilityBrowserTelemetry.recordHostDisconnected(preference.owner)
+  }
   for (const key of active.pages) {
     const separator = key.lastIndexOf(":")
+    const ownerKey = separator > 0 ? key.slice(0, separator) : undefined
+    const pageId = separator > 0 ? key.slice(separator + 1) : undefined
     const listeners = eventListeners.get(key)
-    if (separator > 0 && listeners) {
-      const pageId = key.slice(separator + 1)
-      for (const listener of listeners) listener({ type: "page.error", pageId, message: error.message })
+    const preference = ownerKey ? preferences.get(ownerKey) : undefined
+    if (pageId && preference) {
+      BrowserEvent.publish(preference.owner, { type: "host.status", pageId, status: "restarting" })
+    }
+    if (pageId && listeners) {
+      for (const listener of listeners) {
+        listener({ type: "host.status", pageId, status: "restarting" })
+        listener({ type: "page.error", pageId, message: error.message })
+      }
     }
   }
   active.pages.clear()
@@ -485,4 +513,10 @@ function secureEqual(actual: string, expected: string): boolean {
   const a = Buffer.from(actual)
   const b = Buffer.from(expected)
   return a.byteLength === b.byteLength && timingSafeEqual(a, b)
+}
+
+function telemetryOwner(
+  message: Extract<BrowserHostMessage, { type: "page.create" | "page.command" | "page.close" }>,
+): BrowserOwner.Info | undefined {
+  return preferences.get(message.ownerKey)?.owner
 }

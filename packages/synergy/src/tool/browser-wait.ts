@@ -5,7 +5,7 @@ import { BrowserToolHelper } from "./browser-shared"
 
 export const BrowserWaitTool = Tool.define("browser_wait", {
   description:
-    "Wait for a specific page condition: load state, URL, title, text, locator state, download, or dialog. Actions and navigation already settle the page by default (up to 30s), so use this tool only for conditions the engine cannot infer — a business result, an async task completion, a specific error message, a download, or a dialog. Prefer a concrete condition (text/locator/url/load) over pure timing waits. Default timeout is 10 seconds; raise timeoutMs for slow asynchronous operations.",
+    "Wait for a specific page condition: load state, URL, title, text, locator state, download, or dialog. The result only reports that the requested condition was observed; it is never evidence of business completion. Actions settle with networkquiet for up to 10s and navigation with load for up to 15s by default (hard cap 30s), so use this tool for conditions the engine cannot infer, such as a business result, async task completion, specific error message, download, or dialog.",
   parameters: z
     .object({
       condition: BrowserWaitConditionSchema,

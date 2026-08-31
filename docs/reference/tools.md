@@ -29,7 +29,7 @@ Generated from the builtin tool registry in `packages/synergy/src/tool/registry.
 | `boss_report` | `orchestration.session` | Report a worker's outcome to its parent in the Boss Mode tree. Only workers may call this. The report is delivered to the parent session (the boss or an intermediate worker), which wakes and decides t |
 | `boss_spawn` | `orchestration.session` | Spawn a persistent specialist worker session as a direct child of the current boss session. The worker is a real session that can be assigned tasks repeatedly via boss_assign. Workers are the executio |
 | `boss_status` | `orchestration.session` | Show the current Boss Mode worker tree under the calling session. The tree is derived live from the session parent chain: each node shows the session title, role (boss/worker), specialist role, agent, |
-| `browser_action` | `browser.interact` | Perform one deterministic browser interaction. The tool first waits for the target to be actionable (visible, stable, enabled), dispatches the input, then settles the page by default (up to 30s, quiet |
+| `browser_action` | `browser.interact` | Perform one deterministic browser interaction. The tool waits for the target to be actionable, dispatches the input, then settles with networkquiet for up to 10s by default (hard cap 30s) and returns  |
 | `browser_annotate` | `browser.annotate` | Read or manage user annotations on browser pages. Annotations are user comments attached to specific elements or regions of a page. |
 | `browser_assets` | `browser.inspect` | List a bounded set of page assets or export a real manifest bundle into an authorized workspace directory. |
 | `browser_audit` | `browser.inspect` | Audit the current document for accessibility, semantic HTML, SEO, and frontend best-practice issues. |
@@ -40,7 +40,7 @@ Generated from the builtin tool registry in `packages/synergy/src/tool/registry.
 | `browser_emulate` | `browser.inspect` | Apply viewport, DPR, mobile/touch, color scheme, motion, forced colors, locale/timezone, CPU, or network emulation. |
 | `browser_eval` | `browser.inspect` | Evaluate JavaScript in the current page. readonly runs with CDP side-effect rejection; trusted permits mutations and requires its dedicated capability. |
 | `browser_inspect` | `browser.inspect` | Inspect one uniquely matched element, including attributes, HTML, computed styles, box model, accessibility properties, and registered listeners. |
-| `browser_navigation` | `browser.navigate` | Navigate, resume, close, or read the one browser page owned by the current session. goto, back, forward, and reload settle the page by default (up to 30s, quiet-network strategy) and return a fresh sn |
+| `browser_navigation` | `browser.navigate` | Navigate, resume, close, or read the one browser page owned by the current session. Agent navigation uses load for up to 15s by default; actions use networkquiet for up to 10s; every settle request ha |
 | `browser_network` | `browser.inspect` | Read or clear Chromium network requests, responses, failures, redirects, timing, and resource types. For debugging, clear immediately before reproducing, list failed/status-filtered records, then get  |
 | `browser_performance` | `browser.inspect` | Measure Web Vitals, long tasks and resource timing, or start/stop a CDP performance trace. |
 | `browser_read` | `browser.inspect` | Read a bounded text, Markdown, or HTML representation of the current page or one uniquely matched element. |
@@ -48,7 +48,7 @@ Generated from the builtin tool registry in `packages/synergy/src/tool/registry.
 | `browser_snapshot` | `browser.inspect` | Capture the current accessibility and interactive DOM snapshot. Returned opaque refs are valid only with the returned snapshotId and current document generation. |
 | `browser_upload` | `browser.interact` | Upload permission-reviewed workspace files to one uniquely matched file input through isolated staging. |
 | `browser_view` | `browser.inspect` | Control the Browser Side Workspace panel. Show or hide the Browser UI, switch focus to the browser page, or query the Side Workspace open state. This does not affect CDP or the running browser — only  |
-| `browser_wait` | `browser.inspect` | Wait for a specific page condition: load state, URL, title, text, locator state, download, or dialog. Actions and navigation already settle the page by default (up to 30s), so use this tool only for c |
+| `browser_wait` | `browser.inspect` | Wait for a specific page condition: load state, URL, title, text, locator state, download, or dialog. The result only reports that the requested condition was observed; it is never evidence of busines |
 | `channel_push` | `orchestration.session` | 把结果或状态显式推送到当前会话绑定的渠道群(或回复某条消息),是 Boss Mode 的显式回执工具。Push a text receipt to the channel chat this session is bound to, or reply to an existing message. accountId and chatId default to the session's chan |
 | `clarus_extend_task` | `platform.collaboration` | Extend the current Clarus assignment deadline. The current session supplies assignment identity; never provide project, task, run, subtask, or account IDs. |
 | `clarus_submit_task_result` | `platform.collaboration` | Submit the current Clarus assignment result. The current session supplies assignment identity; never provide project, task, run, subtask, or account IDs. |
@@ -556,7 +556,7 @@ Show the current Boss Mode worker tree under the calling session. The tree is de
 
 Kind: `browser.interact`
 
-Perform one deterministic browser interaction. The tool first waits for the target to be actionable (visible, stable, enabled), dispatches the input, then settles the page by default (up to 30s, quiet-network strategy) and returns a fresh accessibility snapshot so the next step can act without an extra snapshot call. Do NOT call browser_wait after every action — only when you need a specific business condition (text, locator state, URL change, download, dialog). If the result reports settled:false, the page was still active when the budget ended; prefer a targeted browser_wait or a fresh snapshot over a blind retry. Set includeSnapshot:false when chaining many pure input events and token cost matters. Prefer a fresh snapshot ref; label locators target labelled form controls; use role/name for buttons. For select, strings match HTML option values; use {label: "Visible text"} for displayed labels. Same-page actions are serialized and should be issued sequentially.
+Perform one deterministic browser interaction. The tool waits for the target to be actionable, dispatches the input, then settles with networkquiet for up to 10s by default (hard cap 30s) and returns a fresh accessibility snapshot when available. Agent navigation uses load for up to 15s. Use browser_wait only for a specific business condition; settled:false is a settle outcome, not an action failure, and results never claim business completion.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -712,12 +712,12 @@ Inspect one uniquely matched element, including attributes, HTML, computed style
 
 Kind: `browser.navigate`
 
-Navigate, resume, close, or read the one browser page owned by the current session. goto, back, forward, and reload settle the page by default (up to 30s, quiet-network strategy) and return a fresh snapshot; a settle timeout does not fail the navigation — it reports settled:false so you can decide whether to wait for a specific business condition with browser_wait. Only use browser_wait when the result you need is not the page itself (specific text, locator state, URL change, download, dialog). Close is terminal for the current page and should be tested only after all navigation, debugging, and external-site checks; a later goto creates a new page.
+Navigate, resume, close, or read the one browser page owned by the current session. Agent navigation uses load for up to 15s by default; actions use networkquiet for up to 10s; every settle request has a 30s hard cap and returns current page state plus a best-effort snapshot. A settle timeout reports settled:false rather than an action failure, so inspect the current state before using browser_wait for a specific condition. Results report observed engine state and never claim business completion.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `title` | page | yes |  |
-| `output` | page | yes |  |
+| `output` | lines.join | yes |  |
 | `metadata` | - | yes |  |
 | `status` | session.status | yes |  |
 | `pageId` | page | yes |  |
@@ -728,6 +728,8 @@ Navigate, resume, close, or read the one browser page owned by the current sessi
 | `source` | - | yes |  |
 | `type` | - | yes |  |
 | `ignoreCache` | params.ignoreCache | yes |  |
+| `snapshotAvailable` | Boolean | yes |  |
+| `snapshotUnavailable` | settled | yes |  |
 | `title` | - | yes |  |
 | `output` | page | yes |  |
 | `metadata` | - | yes |  |
@@ -856,7 +858,7 @@ Control the Browser Side Workspace panel. Show or hide the Browser UI, switch fo
 
 Kind: `browser.inspect`
 
-Wait for a specific page condition: load state, URL, title, text, locator state, download, or dialog. Actions and navigation already settle the page by default (up to 30s), so use this tool only for conditions the engine cannot infer — a business result, an async task completion, a specific error message, a download, or a dialog. Prefer a concrete condition (text/locator/url/load) over pure timing waits. Default timeout is 10 seconds; raise timeoutMs for slow asynchronous operations.
+Wait for a specific page condition: load state, URL, title, text, locator state, download, or dialog. The result only reports that the requested condition was observed; it is never evidence of business completion. Actions settle with networkquiet for up to 10s and navigation with load for up to 15s by default (hard cap 30s), so use this tool for conditions the engine cannot infer, such as a business result, async task completion, specific error message, download, or dialog.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |

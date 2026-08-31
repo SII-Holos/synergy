@@ -19,6 +19,7 @@ import {
   BrowserWebRTCSignalSchema,
   BrowserWebRTCMessageSchema,
   browserOwnerKey,
+  isSafeBrowserObservation,
   normalizeBrowserURL,
   parseBrowserPresentationPreference,
   selectBrowserPresentation,
@@ -586,4 +587,74 @@ describe("browser upload and checkpoint schema limits", () => {
 test("falls back to a search URL when a base-relative URL cannot be constructed", () => {
   expect(normalizeBrowserURL("http://", "https://example.com")).toBe("https://www.google.com/search?q=http%3A%2F%2F")
   expect(browserOwnerKey({ mode: "scope", scopeID: "scope-1" })).toBe("scope:scope-1:scope")
+})
+
+describe("browser safe-observation allowlist", () => {
+  test("admits read-only diagnostics and rejects every side effect during recovery", () => {
+    const safe = [
+      { type: "snapshot" },
+      { type: "read", format: "text" },
+      { type: "inspect", target: { kind: "testId", value: "field" } },
+      { type: "screenshot" },
+      { type: "console", action: "list" },
+      { type: "console", action: "get", id: "console-1" },
+      { type: "network", action: "list" },
+      { type: "network", action: "get", id: "req-1" },
+      { type: "performance", action: "measure" },
+      { type: "audit" },
+      { type: "dialog", action: "status" },
+      { type: "clipboard", action: "read" },
+      { type: "checkpoint", action: "capture" },
+    ] as const
+    for (const command of safe) {
+      expect(isSafeBrowserObservation(BrowserBackendCommandSchema.parse(command))).toBe(true)
+    }
+
+    const sideEffects = [
+      { type: "console", action: "clear" },
+      { type: "network", action: "clear" },
+      { type: "performance", action: "startTrace" },
+      { type: "performance", action: "stopTrace" },
+      { type: "dialog", action: "accept" },
+      { type: "dialog", action: "dismiss" },
+      { type: "clipboard", action: "write", text: "x" },
+      { type: "clipboard", action: "clear" },
+      {
+        type: "checkpoint",
+        action: "restore",
+        checkpoint: {
+          url: "https://example.com/",
+          cookies: [],
+          origins: [],
+          viewport: { width: 1280, height: 720 },
+          scroll: { x: 0, y: 0 },
+          formState: [],
+        },
+      },
+      { type: "navigate", url: "https://example.com", source: "agent" },
+      { type: "reload", source: "agent" },
+      { type: "history", direction: "back" },
+      { type: "stop" },
+      { type: "setViewport", width: 800, height: 600 },
+      { type: "action", action: { type: "click", target: { kind: "testId", value: "button" } } },
+      { type: "wait", condition: { type: "load" } },
+      { type: "evaluate", mode: "readonly", expression: "1" },
+      { type: "emulate", emulation: { colorScheme: "light" } },
+      {
+        type: "upload",
+        target: { kind: "testId", value: "input" },
+        files: [{ name: "a.txt", mimeType: "text/plain", dataBase64: "aGVsbG8=" }],
+      },
+      { type: "dialog.respond", requestId: "dialog-1", accept: false },
+      {
+        type: "filechooser.select",
+        requestId: "chooser-1",
+        files: [{ name: "a.txt", mimeType: "text/plain", dataBase64: "aGVsbG8=" }],
+      },
+      { type: "download.cancel", id: "download-1" },
+    ] as const
+    for (const command of sideEffects) {
+      expect(isSafeBrowserObservation(BrowserBackendCommandSchema.parse(command))).toBe(false)
+    }
+  })
 })

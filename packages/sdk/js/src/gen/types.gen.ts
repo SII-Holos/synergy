@@ -2603,6 +2603,10 @@ export type ProviderConfig = {
      */
     setCacheKey?: boolean
     /**
+     * Merge leading system messages into a single system message for strict OpenAI-compatible endpoints that reject multiple or non-leading system messages (e.g. vLLM Qwen chat templates). Default false.
+     */
+    mergeSystemMessages?: boolean
+    /**
      * Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.
      */
     timeout?: number | false
@@ -7558,12 +7562,32 @@ export type BrowserApiError = {
     name?: string
     id?: string
     class?: string
+    ref?: string
+    visible?: boolean
+    bounds?: {
+      x: number
+      y: number
+      width: number
+      height: number
+    }
+    frame?: string
+    receivesEvents?: boolean
     candidates?: Array<{
       tag?: string
       role?: string | null
       name?: string
       id?: string
       class?: string
+      ref?: string
+      visible?: boolean
+      bounds?: {
+        x: number
+        y: number
+        width: number
+        height: number
+      }
+      frame?: string
+      receivesEvents?: boolean
     }>
   }
   suggestedAction?: string
@@ -7756,11 +7780,11 @@ export type BrowserControlRequest = {
         url: string
         source?: "user"
         /**
-         * Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
          */
         settleMode?: "networkquiet" | "load" | "none"
         /**
-         * Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.
+         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
          */
         settleTimeoutMs?: number
         /**
@@ -7773,11 +7797,11 @@ export type BrowserControlRequest = {
         direction: "back" | "forward"
         source?: "user"
         /**
-         * Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
          */
         settleMode?: "networkquiet" | "load" | "none"
         /**
-         * Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.
+         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
          */
         settleTimeoutMs?: number
         /**
@@ -7790,11 +7814,11 @@ export type BrowserControlRequest = {
         ignoreCache?: boolean
         source?: "user"
         /**
-         * Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
          */
         settleMode?: "networkquiet" | "load" | "none"
         /**
-         * Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.
+         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
          */
         settleTimeoutMs?: number
         /**

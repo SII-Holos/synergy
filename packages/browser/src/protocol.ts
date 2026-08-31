@@ -36,18 +36,20 @@ const browserMessage = z.string().max(100_000)
 const timeoutMs = z.number().int().min(100).max(120_000).optional()
 export const BROWSER_SETTLE_TIMEOUT_MS = 30_000
 export const BROWSER_SETTLE_QUIET_MS = 500
+export const BROWSER_NAVIGATION_SETTLE_TIMEOUT_MS = 15_000
+export const BROWSER_ACTION_SETTLE_TIMEOUT_MS = 10_000
 const settleMode = z.enum(["networkquiet", "load", "none"])
 const settleTimeoutMs = z.number().int().min(1_000).max(BROWSER_SETTLE_TIMEOUT_MS)
 const settleFields = {
   settleMode: settleMode
     .optional()
     .describe(
-      "Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.",
+      "Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.",
     ),
   settleTimeoutMs: settleTimeoutMs
     .optional()
     .describe(
-      "Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.",
+      "Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.",
     ),
 }
 const settleResultFields = {
@@ -917,6 +919,23 @@ export const BrowserBackendCommandSchema = z.discriminatedUnion("type", [
 export type BrowserBackendCommand = z.input<typeof BrowserBackendCommandSchema>
 export type BrowserParsedBackendCommand = z.infer<typeof BrowserBackendCommandSchema>
 
+/**
+ * Commands that only observe page state and never dispatch a side effect.
+ * A failed recovery state must still serve these (plus `resume` and `close`)
+ * so the agent can verify the page before retrying anything with an effect.
+ */
+export function isSafeBrowserObservation(command: BrowserBackendCommand): boolean {
+  if (command.type === "snapshot" || command.type === "read" || command.type === "inspect") return true
+  if (command.type === "screenshot") return true
+  if (command.type === "console" || command.type === "network") return command.action !== "clear"
+  if (command.type === "performance") return command.action === "measure"
+  if (command.type === "audit") return true
+  if (command.type === "dialog") return command.action === "status"
+  if (command.type === "clipboard") return command.action === "read"
+  if (command.type === "checkpoint") return command.action === "capture"
+  return false
+}
+
 export const BrowserSnapshotElementSchema = z
   .object({
     ref: nonEmpty,
@@ -1134,6 +1153,19 @@ const BrowserObstructionCandidateSchema = z
     name: z.string().max(1_000).optional(),
     id: z.string().max(1_000).optional(),
     class: z.string().max(1_000).optional(),
+    ref: nonEmpty.optional(),
+    visible: z.boolean().optional(),
+    bounds: z
+      .object({
+        x: z.number().finite(),
+        y: z.number().finite(),
+        width: z.number().finite().nonnegative(),
+        height: z.number().finite().nonnegative(),
+      })
+      .strict()
+      .optional(),
+    frame: z.string().max(200).optional(),
+    receivesEvents: z.boolean().optional(),
   })
   .strict()
 

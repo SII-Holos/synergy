@@ -23,6 +23,28 @@ describe("createBrowserStore activity", () => {
   })
 })
 
+describe("createBrowserStore browser errors", () => {
+  test("keeps page errors scoped to their page", () => {
+    createRoot((dispose) => {
+      const store = createBrowserStore()
+      store.setSession("page", { id: "page-1", title: "One", url: "https://one.test", isLoading: false })
+
+      store.setBrowserError({ pageId: "page-2", severity: "error", message: "Page two failed" })
+      expect(store.browserError()).toBeNull()
+
+      store.setBrowserError({ pageId: "page-1", severity: "error", message: "Page one failed" })
+      expect(store.browserError()).toMatchObject({ pageId: "page-1", message: "Page one failed" })
+
+      store.setSession("page", { id: "page-2", title: "Two", url: "https://two.test", isLoading: false })
+      expect(store.browserError()).toBeNull()
+
+      store.setBrowserError({ severity: "warning", message: "Shared browser warning" })
+      expect(store.browserError()).toMatchObject({ severity: "warning", message: "Shared browser warning" })
+      dispose()
+    })
+  })
+})
+
 describe("createBrowserStore navigate", () => {
   test("sends navigate without a page id when no page exists", () => {
     createRoot((dispose) => {
