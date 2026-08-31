@@ -130,20 +130,21 @@ export const PluginRoute = new Hono()
       responses: { 200: { description: "Asset" }, ...errors(404) },
     }),
     async (context) => {
-      // The asset route is global (isGlobalRoute): fall back to the
-      // process-wide catalog so assets of plugins enabled in any scope —
-      // including global theme registrations — resolve without a scope hint.
-      // The fallback requires at least one enabled scope because loader
-      // disposal removes the scope id but deliberately caches the catalog
-      // entry; serving those would keep uninstalled plugins addressable. The
-      // generation check still pins the exact requested artifact generation.
-      const plugin =
-        (await Plugin.get(context.req.param("pluginId"))) ?? getCatalogPlugin(context.req.param("pluginId"))
-      if (
-        !plugin ||
-        plugin.enabledScopes.size === 0 ||
-        plugin.manifest.artifacts.generation !== context.req.param("generation")
-      )
+      const pluginId = context.req.param("pluginId")
+      // Primary lookup keeps its existing scope-resolved semantics. The
+      // fallback exists because this route is global (isGlobalRoute): the
+      // process-wide catalog serves plugins enabled in any scope — including
+      // global theme registrations — without a scope hint. The fallback
+      // requires at least one enabled scope because loader disposal removes
+      // the scope id but deliberately caches the catalog entry; serving those
+      // would keep uninstalled plugins addressable. The generation check
+      // still pins the exact requested artifact generation.
+      const catalogFallback = () => {
+        const candidate = getCatalogPlugin(pluginId)
+        return candidate && candidate.enabledScopes.size > 0 ? candidate : undefined
+      }
+      const plugin = (await Plugin.get(pluginId)) ?? catalogFallback()
+      if (!plugin || plugin.manifest.artifacts.generation !== context.req.param("generation"))
         return context.json({ message: "Plugin generation not found" }, 404)
       const relative = context.req.param("asset")
       const file = path.resolve(plugin.pluginDir, relative)
