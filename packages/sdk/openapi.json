@@ -20795,6 +20795,60 @@
         ]
       }
     },
+    "/plugin/ui/contributions/themes": {
+      "get": {
+        "operationId": "plugin.listGlobalThemeContributions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List plugin theme contributions across all enabled scopes",
+        "description": "Themes are a global user preference. This endpoint aggregates ui.theme contributions from the process-wide plugin catalog (any scope), so theme registration survives scope switches.",
+        "responses": {
+          "200": {
+            "description": "Global theme contributions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GlobalThemeContribution"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.listGlobalThemeContributions({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/plugin/ui/contributions": {
       "get": {
         "operationId": "plugin.listUIContributions",
@@ -45449,6 +45503,58 @@
         },
         "required": ["protocolVersion", "command", "commandId"],
         "additionalProperties": false
+      },
+      "GlobalThemeContribution": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "string"
+          },
+          "enabledScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "contributions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "uiArtifact": {
+            "type": "object",
+            "properties": {
+              "entry": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": ["entry", "sha256"]
+          }
+        },
+        "required": ["pluginId", "name", "version", "generation", "enabledScopes", "capabilities", "contributions"]
       },
       "ForbiddenError": {
         "type": "object",

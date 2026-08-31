@@ -440,6 +440,8 @@ import type {
   PluginGetConfigResponses,
   PluginInvokeOperationErrors,
   PluginInvokeOperationResponses,
+  PluginListGlobalThemeContributionsErrors,
+  PluginListGlobalThemeContributionsResponses,
   PluginListUiContributionsErrors,
   PluginListUiContributionsResponses,
   PluginRuntimeLogsErrors,
@@ -10299,6 +10301,40 @@ export class Browser extends HeyApiClient {
 }
 
 export class Plugin extends HeyApiClient {
+  /**
+   * List plugin theme contributions across all enabled scopes
+   *
+   * Themes are a global user preference. This endpoint aggregates ui.theme contributions from the process-wide plugin catalog (any scope), so theme registration survives scope switches.
+   */
+  public listGlobalThemeContributions<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      PluginListGlobalThemeContributionsResponses,
+      PluginListGlobalThemeContributionsErrors,
+      ThrowOnError
+    >({
+      url: "/plugin/ui/contributions/themes",
+      ...options,
+      ...params,
+    })
+  }
+
   /**
    * List enabled plugin UI contributions
    */

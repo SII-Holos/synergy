@@ -398,7 +398,13 @@ export const attachmentWorkbench = {
   preview: { id: "app.attachment.mode.preview", message: "Preview" },
   viewMode: { id: "app.attachment.mode.label", message: "Attachment view mode" },
   viewSourceFile: { id: "app.attachment.action.viewSourceFile", message: "View source in Files" },
-  openInBrowser: { id: "app.attachment.action.openInBrowser", message: "Open in browser" },
+  openInBrowser: { id: "app.attachment.action.openInBrowser", message: "Open in Synergy browser" },
+  openFullPage: { id: "app.attachment.action.openFullPage", message: "Open in your browser" },
+  htmlScriptsDisabled: {
+    id: "app.attachment.preview.htmlScriptsDisabled",
+    message:
+      "Interactive documents do not run scripts in this preview. Open in your browser for the complete rendering.",
+  },
   download: { id: "app.attachment.action.download", message: "Download" },
   unsupported: {
     id: "app.attachment.unsupported",
