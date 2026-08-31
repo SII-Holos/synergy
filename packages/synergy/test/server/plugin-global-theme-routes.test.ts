@@ -79,6 +79,12 @@ describe("GET /plugin/ui/contributions/themes", () => {
     const asset = (await assetRes.json()) as { id: string }
     expect(asset.id).toBe("unused")
 
+    // The catalog fallback serves only the manifest's declared ui.theme
+    // assets: any other file in the plugin directory (e.g. manifests, env
+    // files, source) must not be readable through the scope-less route.
+    const undeclared = await app.request("/plugin/assets/route-theme-plugin/route-theme-plugin-generation/plugin.json")
+    expect(undeclared.status).toBe(404)
+
     // No directory/scopeID on the request: the route must resolve as global,
     // not 400 ScopeRequired, and still surface the project-scope plugin.
     const res = await app.request("/plugin/ui/contributions/themes")

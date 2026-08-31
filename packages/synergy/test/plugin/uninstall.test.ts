@@ -5,7 +5,11 @@ import {
   lifecycleInstall,
   lifecycleUninstall,
 } from "@ericsanchezok/synergy-plugin"
-import { runPluginInstallLifecycle, runPluginUninstallLifecycle } from "../../src/plugin/install"
+import {
+  clearThemePreferenceIfOwned,
+  runPluginInstallLifecycle,
+  runPluginUninstallLifecycle,
+} from "../../src/plugin/install"
 import type { LoadedPlugin } from "../../src/plugin/loader"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
@@ -100,5 +104,34 @@ describe("plugin install lifecycle", () => {
       },
     })
     expect(degraded).toBe("setup:installer launch failed")
+  })
+})
+
+describe("theme preference cleanup on uninstall", () => {
+  test("clears the preference when it names the removed plugin's skin", async () => {
+    let cleared = 0
+    const result = await clearThemePreferenceIfOwned("theme-plugin", {
+      read: async () => ({ theme: "theme-plugin:skin" }),
+      clear: async () => {
+        cleared++
+      },
+    })
+    expect(result).toBe(true)
+    expect(cleared).toBe(1)
+  })
+
+  test("keeps the preference when it belongs to another theme or is unset", async () => {
+    let cleared = 0
+    const io = {
+      clear: async () => {
+        cleared++
+      },
+    }
+    expect(
+      await clearThemePreferenceIfOwned("theme-plugin", { ...io, read: async () => ({ theme: "other:skin" }) }),
+    ).toBe(false)
+    expect(await clearThemePreferenceIfOwned("theme-plugin", { ...io, read: async () => ({ theme: "" }) })).toBe(false)
+    expect(await clearThemePreferenceIfOwned("theme-plugin", { ...io, read: async () => undefined })).toBe(false)
+    expect(cleared).toBe(0)
   })
 })

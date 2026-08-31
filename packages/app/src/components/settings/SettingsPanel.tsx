@@ -111,7 +111,7 @@ import {
   clarusDiagnosticsFilename,
   shouldRefreshChannelStatuses,
 } from "./channel-account-model"
-import { recordThemeSelection } from "@/plugin/theme-selection"
+import { recordThemeSelection, settleThemeSelection } from "@/plugin/theme-selection"
 import { SlotOutlet } from "@/plugin/slot-outlet"
 
 function settingsValues(value: unknown, fallback: Record<string, unknown> = {}): Record<string, unknown> {
@@ -809,13 +809,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
           }
           if (key === "theme") {
             const themeValue = value as string
-            recordThemeSelection(themeValue)
+            recordThemeSelection(globalSDK.url, themeValue)
             theme.setThemeId(themeValue || "synergy")
             setSettings("general", "theme", themeValue)
             // Persist to server independently — fire-and-forget with error toast on failure.
             void globalSDK.client.config.domain
               .update({ domain: "general", configDomainUpdateInput: { config: { theme: themeValue } } })
+              .then(() => settleThemeSelection(globalSDK.url, themeValue, true))
               .catch((error) => {
+                settleThemeSelection(globalSDK.url, themeValue, false)
                 showToast({
                   type: "error",
                   title: _(copy.themeSaveFailed),

@@ -131,22 +131,33 @@ export const PluginRoute = new Hono()
     }),
     async (context) => {
       const pluginId = context.req.param("pluginId")
-      // Primary lookup keeps its existing scope-resolved semantics. The
-      // fallback exists because this route is global (isGlobalRoute): the
-      // process-wide catalog serves plugins enabled in any scope — including
-      // global theme registrations — without a scope hint. The fallback
-      // requires at least one enabled scope because loader disposal removes
-      // the scope id but deliberately caches the catalog entry; serving those
-      // would keep uninstalled plugins addressable. The generation check
-      // still pins the exact requested artifact generation.
-      const catalogFallback = () => {
+      const relative = context.req.param("asset")
+      let plugin = await Plugin.get(pluginId)
+      let catalogThemeAssetOnly = false
+      if (!plugin) {
+        // The catalog fallback exists because this route is global
+        // (isGlobalRoute): the process-wide catalog serves global theme
+        // registrations for plugins enabled in any scope without a scope
+        // hint. It requires at least one enabled scope because loader
+        // disposal removes the scope id but deliberately caches the catalog
+        // entry, and it serves only the manifest's declared ui.theme assets —
+        // the fallback's sole consumer — so the scope-less route cannot be
+        // used to read arbitrary files from a plugin directory. The
+        // generation check still pins the exact requested artifact.
         const candidate = getCatalogPlugin(pluginId)
-        return candidate && candidate.enabledScopes.size > 0 ? candidate : undefined
+        if (candidate && candidate.enabledScopes.size > 0) {
+          plugin = candidate
+          catalogThemeAssetOnly = true
+        }
       }
-      const plugin = (await Plugin.get(pluginId)) ?? catalogFallback()
       if (!plugin || plugin.manifest.artifacts.generation !== context.req.param("generation"))
         return context.json({ message: "Plugin generation not found" }, 404)
-      const relative = context.req.param("asset")
+      if (catalogThemeAssetOnly) {
+        const declaredThemeAsset = plugin.manifest.contributions.some(
+          (item) => item.kind === "ui.theme" && item.path === relative,
+        )
+        if (!declaredThemeAsset) return context.json({ message: "Asset not found" }, 404)
+      }
       const file = path.resolve(plugin.pluginDir, relative)
       if (!relative || !isPathContained(plugin.pluginDir, file))
         return context.json({ message: "Asset not found" }, 404)
