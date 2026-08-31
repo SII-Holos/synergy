@@ -360,6 +360,7 @@ export const fileWorkbench = {
   source: { id: "app.file.mode.source", message: "Source" },
   preview: { id: "app.file.mode.preview", message: "Preview" },
   toggleFileTree: { id: "app.file.toolbar.toggleFileTree", message: "Toggle file tree" },
+  openInBrowser: { id: "app.file.toolbar.openInBrowser", message: "Open in browser" },
   zoomOut: { id: "app.file.image.zoomOut", message: "Zoom out" },
   zoomIn: { id: "app.file.image.zoomIn", message: "Zoom in" },
   fit: { id: "app.file.image.fit", message: "Fit" },

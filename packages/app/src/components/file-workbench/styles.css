@@ -121,6 +121,26 @@
   color: var(--text-strong);
 }
 
+.file-open-in-browser {
+  display: flex;
+  height: 26px;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  padding: 0 8px;
+  color: var(--text-base);
+  font-size: 12px;
+}
+
+.file-open-in-browser:hover {
+  background: var(--surface-raised-base-hover);
+  color: var(--text-strong);
+}
+
+.file-open-in-browser svg {
+  flex-shrink: 0;
+}
+
 .file-add-context span:first-child {
   color: var(--text-weak);
   font-family: var(--font-mono);

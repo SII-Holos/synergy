@@ -12629,7 +12629,7 @@
           }
         ],
         "summary": "Read workspace file bytes",
-        "description": "Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected.",
+        "description": "Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected. For opening HTML in a new browser tab with working relative resources, use GET /workspace/files/raw/{scope}/{path} instead.",
         "responses": {
           "200": {
             "description": "PDF file bytes"
@@ -12683,6 +12683,7 @@
         ]
       }
     },
+    "/workspace/files/raw/{token}/{path}": {},
     "/workspace/files/write": {
       "post": {
         "operationId": "workspace.files.write",
