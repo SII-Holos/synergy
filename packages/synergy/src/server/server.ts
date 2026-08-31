@@ -270,6 +270,7 @@ export namespace Server {
       pathname.startsWith("/channel/") ||
       pathname === "/plugin/assets" ||
       pathname.startsWith("/plugin/assets/") ||
+      pathname === "/plugin/ui/contributions/themes" ||
       pathname === "/api/plugins" ||
       pathname.startsWith("/api/plugins/") ||
       pathname === "/api/registry" ||

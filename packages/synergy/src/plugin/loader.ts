@@ -280,6 +280,11 @@ export function getCatalogPlugin(pluginId: string) {
   return catalog.get(pluginId)
 }
 
+/** Read-only enumeration of the process-wide plugin catalog across all scopes. */
+export function listCatalogPlugins(): LoadedPlugin[] {
+  return [...catalog.values()]
+}
+
 export async function getDisabledPlugin(pluginId: string) {
   return state().then((value) => value.disabled.find((plugin) => plugin.pluginId === pluginId))
 }
