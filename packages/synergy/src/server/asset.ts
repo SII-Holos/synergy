@@ -72,10 +72,13 @@ export const AssetRoute = new Hono()
       }
       c.header("Cache-Control", "public, immutable, max-age=31536000")
       const contentType = file.type || Asset.mimeFromExt(Asset.extFromId(id))
-      // Script-capable assets render in an opaque origin. Attachment content is
-      // untrusted: it must not reach the app localStorage, the unauthenticated
-      // HTTP control plane, the event WebSocket, or the Desktop preload bridge.
-      if (contentType.split(";")[0]!.trim().toLowerCase() === "text/html") {
+      const baseMime = contentType.split(";")[0]!.trim().toLowerCase()
+      // Script-capable assets (HTML, SVG) render in an opaque origin. Attachment
+      // content is untrusted: it must not reach the app localStorage, the
+      // unauthenticated HTTP control plane, the event WebSocket, or the Desktop
+      // preload bridge. SVG is included because the workbench can open it as a
+      // top-level document where its scripts would otherwise run same-origin.
+      if (baseMime === "text/html" || baseMime === "image/svg+xml") {
         c.header("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-popups allow-modals")
       }
       return c.body(file.stream(), { headers: { "Content-Type": contentType } })
