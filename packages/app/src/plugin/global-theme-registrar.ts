@@ -9,6 +9,7 @@ export interface GlobalThemeRegistrarDeps {
   fetchContributions: (serverUrl: string) => Promise<PluginContribution[]>
   loadAssets: (contributions: PluginContribution[], serverUrl: string) => Promise<PluginUIAssets>
   replaceThemes: (themes: Iterable<PluginThemeDefinition>) => void
+  clearThemes: () => void
   retryDelayMs?: number
 }
 
@@ -45,11 +46,23 @@ export function createGlobalThemeRegistrar(deps: GlobalThemeRegistrarDeps): Glob
       const contributions = await deps.fetchContributions(serverUrl)
       const assets = await deps.loadAssets(contributions, serverUrl)
       if (current !== generation) return
+      // loadPluginUIAssets reports per-asset failures through `errors`
+      // instead of rejecting. Publishing a partial generation would silently
+      // unregister themes without entering the retry path, so treat it as a
+      // failed fetch and keep the last published generation.
+      if (assets.errors.length > 0) {
+        scheduleRetry(current, isRetry)
+        return
+      }
       deps.replaceThemes(assets.themes.values())
     } catch {
-      if (current !== generation) return
-      if (!isRetry) retryTimer = setTimeout(() => void refresh(true), retryDelayMs)
+      scheduleRetry(current, isRetry)
     }
+  }
+
+  function scheduleRetry(current: number, isRetry: boolean) {
+    if (current !== generation) return
+    if (!isRetry) retryTimer = setTimeout(() => void refresh(true), retryDelayMs)
   }
 
   return {
@@ -57,6 +70,10 @@ export function createGlobalThemeRegistrar(deps: GlobalThemeRegistrarDeps): Glob
     dispose() {
       generation++
       clearRetry()
+      // The registrar owns the whole registry: dropping ownership (server
+      // change or unmount) must not leave the previous server's themes
+      // registered, so reset to an empty not-ready generation.
+      deps.clearThemes()
     },
   }
 }

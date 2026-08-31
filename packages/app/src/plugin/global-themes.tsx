@@ -22,6 +22,7 @@ export function GlobalPluginThemesRegistrar() {
     fetchContributions: fetchGlobalThemeContributions,
     loadAssets: (contributions, serverUrl) => loadPluginUIAssets(contributions, { serverUrl }),
     replaceThemes: (themes) => replacePluginThemes(themes),
+    clearThemes: () => replacePluginThemes([], { ready: false }),
   })
   createEffect(() => {
     params.dir

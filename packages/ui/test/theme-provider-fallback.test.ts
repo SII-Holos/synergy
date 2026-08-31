@@ -90,6 +90,7 @@ describe("ThemeProvider non-destructive fallback", () => {
     replacePluginThemes([], { ready: true })
     await Bun.sleep(20)
 
+    expect(theme.degraded()).toBe(true)
     expect(theme.themeId()).toBe(PLUGIN_THEME_ID)
     expect(dom!.window.document.documentElement.dataset.theme).toBe(PLUGIN_THEME_ID)
     // Degraded rendering falls back to default tokens without persisting them.
@@ -100,6 +101,7 @@ describe("ThemeProvider non-destructive fallback", () => {
     replacePluginThemes([{ id: PLUGIN_THEME_ID, label: "Fixture Skin", theme: PLUGIN_THEME, pluginId: "scope-a" }])
     await Bun.sleep(20)
 
+    expect(theme.degraded()).toBe(false)
     expect(theme.theme()).toBe(PLUGIN_THEME)
     expect(theme.themeId()).toBe(PLUGIN_THEME_ID)
     expect(storedSnapshot().themeId).toBe(PLUGIN_THEME_ID)

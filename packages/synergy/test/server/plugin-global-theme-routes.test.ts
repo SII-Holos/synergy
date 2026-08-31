@@ -13,7 +13,7 @@ import { tmpdir } from "../fixture/fixture"
 
 Log.init({ print: false })
 
-function createThemePluginFixture(rootDir: string, pluginId: string): string {
+async function createThemePluginFixture(rootDir: string, pluginId: string): Promise<string> {
   const dir = path.join(rootDir, `plugin-${pluginId}`)
   fs.mkdirSync(path.join(dir, "themes"), { recursive: true })
   fs.writeFileSync(
@@ -30,7 +30,7 @@ function createThemePluginFixture(rootDir: string, pluginId: string): string {
     { generation: `${pluginId}-generation` },
   )
   fs.writeFileSync(path.join(dir, "plugin.json"), JSON.stringify(manifest, null, 2))
-  void saveApproval({
+  await saveApproval({
     schemaVersion: 2,
     pluginId,
     source: "local",
@@ -51,7 +51,7 @@ describe("GET /plugin/ui/contributions/themes", () => {
 
   beforeAll(async () => {
     pluginRoot = await tmpdir()
-    const spec = createThemePluginFixture(pluginRoot.path, "route-theme-plugin")
+    const spec = await createThemePluginFixture(pluginRoot.path, "route-theme-plugin")
     projectTmp = await tmpdir({ git: true, config: { plugin: [spec] } })
     app = await Server.App()
   })
@@ -101,10 +101,15 @@ describe("GET /plugin/ui/contributions/themes", () => {
     expect(homeBody.some((item) => item.pluginId === "route-theme-plugin")).toBe(true)
   })
 
-  test("serves an empty list after all scopes are disposed", async () => {
+  test("rejects theme listings and assets after all scopes are disposed", async () => {
     await resetAllPluginState()
     const res = await app.request("/plugin/ui/contributions/themes")
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual([])
+
+    // Loader disposal removes the enabled scope but caches the catalog entry;
+    // the global asset fallback must not keep serving the disposed plugin.
+    const asset = await app.request("/plugin/assets/route-theme-plugin/route-theme-plugin-generation/themes/skin.json")
+    expect(asset.status).toBe(404)
   })
 })

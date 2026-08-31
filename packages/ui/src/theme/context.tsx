@@ -44,6 +44,10 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     const tokens = createMemo(() => {
       return resolveThemeForMode(activeTheme(), store.mode)
     })
+    const degraded = createMemo(() => {
+      themeRegistryVersion()
+      return store.themeId !== synergyTheme.id && !getTheme(store.themeId) && isPluginThemeRegistryReady()
+    })
 
     onMount(() => {
       const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
@@ -93,6 +97,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       mode: () => store.mode,
       theme: activeTheme,
       tokens,
+      degraded,
       themeId: () => store.themeId,
       themes: () => {
         themeRegistryVersion()
