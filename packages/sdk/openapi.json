@@ -31758,6 +31758,10 @@
                 "description": "Enable promptCacheKey for this provider (default false)",
                 "type": "boolean"
               },
+              "mergeSystemMessages": {
+                "description": "Merge leading system messages into a single system message for strict OpenAI-compatible endpoints that reject multiple or non-leading system messages (e.g. vLLM Qwen chat templates). Default false.",
+                "type": "boolean"
+              },
               "timeout": {
                 "description": "Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.",
                 "anyOf": [
@@ -35291,9 +35295,12 @@
           "status": {
             "type": "string",
             "const": "needs_auth"
+          },
+          "error": {
+            "type": "string"
           }
         },
-        "required": ["status"]
+        "required": ["status", "error"]
       },
       "MCPStatusNeedsClientRegistration": {
         "type": "object",

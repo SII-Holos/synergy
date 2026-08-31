@@ -59,6 +59,8 @@ function mcp(status: McpStatus["status"]): McpStatus {
       return { status, attempt: 1, maxAttempts: 3 }
     case "needs_client_registration":
       return { status, error: "register" }
+    case "needs_auth":
+      return { status, error: "auth" }
     default:
       return { status }
   }

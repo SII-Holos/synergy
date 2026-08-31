@@ -116,7 +116,7 @@ export const Status = z
       .meta({ ref: "MCPStatusReconnecting" }),
     z.object({ status: z.literal("failed"), error: z.string() }).meta({ ref: "MCPStatusFailed" }),
     z.object({ status: z.literal("disabled") }).meta({ ref: "MCPStatusDisabled" }),
-    z.object({ status: z.literal("needs_auth") }).meta({ ref: "MCPStatusNeedsAuth" }),
+    z.object({ status: z.literal("needs_auth"), error: z.string() }).meta({ ref: "MCPStatusNeedsAuth" }),
     z
       .object({ status: z.literal("needs_client_registration"), error: z.string() })
       .meta({ ref: "MCPStatusNeedsClientRegistration" }),
@@ -358,7 +358,7 @@ export function mapStatus(handle: McpHandle): Status {
     case HS.Disabled:
       return { status: "disabled" }
     case HS.NeedsAuth:
-      return { status: "needs_auth" }
+      return { status: "needs_auth", error: handle.lastError ?? "" }
     case HS.NeedsClientRegistration:
       return { status: "needs_client_registration", error: handle.lastError ?? "" }
     case HS.Stopping:
@@ -839,7 +839,8 @@ class McpSupervisorImpl {
       // A running interactive OAuth flow owns this server; do not probe or reconnect.
       if (PendingOAuth.get(handle.name)) continue
       const entry = await McpAuth.getForUrl(handle.name, handle.config.url)
-      const valid = entry?.tokens && (!entry.tokens.expiresAt || entry.tokens.expiresAt > Date.now() / 1000)
+      const tokens = entry?.tokens
+      const valid = !!tokens && (!tokens.expiresAt || tokens.expiresAt > Date.now() / 1000 || !!tokens.refreshToken)
       if (!valid) continue
       log.info("oauth credentials found, reconnecting", { key: handle.name })
       this.scheduleStart(handle)

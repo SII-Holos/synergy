@@ -133,7 +133,12 @@ export class McpOAuthProvider implements OAuthClientProvider {
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
-    if (this.mode === "background") return
+    if (this.mode === "background") {
+      // Persist refreshed tokens so later requests send the new access token.
+      // Probe-only connects (no stored entry) still never write shared state.
+      const existing = await McpAuth.getForUrl(this.mcpName, this.serverUrl)
+      if (!existing) return
+    }
     await McpAuth.updateTokens(
       this.mcpName,
       {

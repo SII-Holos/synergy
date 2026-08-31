@@ -98,6 +98,7 @@ export const McpListCommand = cmd({
           } else if (status.status === "needs_auth") {
             statusIcon = "⚠"
             statusText = "needs authentication"
+            hint = "\n    " + status.error
           } else if (status.status === "needs_client_registration") {
             statusIcon = "✗"
             statusText = "needs client registration"

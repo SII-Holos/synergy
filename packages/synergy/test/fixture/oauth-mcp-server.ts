@@ -8,6 +8,8 @@ const RESOURCE_URI = "fixture://figma/design" as const
 const CLIENT_ID = "fixture-client"
 const AUTHORIZATION_CODE = "fixture-authorization-code"
 const ACCESS_TOKEN = "fixture-access-token"
+export const REFRESH_TOKEN = "fixture-refresh-token"
+export const REFRESHED_ACCESS_TOKEN = "fixture-access-token-refreshed"
 
 export interface OAuthRegistrationObservation {
   readonly clientId: string
@@ -123,7 +125,7 @@ export function createOAuthMcpServerFixture(): OAuthMcpServerFixture {
           token_endpoint: `${origin}/token`,
           registration_endpoint: `${origin}/register`,
           response_types_supported: ["code"],
-          grant_types_supported: ["authorization_code"],
+          grant_types_supported: ["authorization_code", "refresh_token"],
           token_endpoint_auth_methods_supported: ["none"],
           code_challenge_methods_supported: ["S256"],
         })
@@ -183,6 +185,19 @@ export function createOAuthMcpServerFixture(): OAuthMcpServerFixture {
       if (request.method === "POST" && url.pathname === "/token") {
         const form = await request.formData()
         const clientId = required(String(form.get("client_id") ?? ""), "client_id")
+        const grantType = String(form.get("grant_type") ?? "")
+        if (grantType === "refresh_token") {
+          const refreshToken = required(String(form.get("refresh_token") ?? ""), "refresh_token")
+          if (clientId !== CLIENT_ID || refreshToken !== REFRESH_TOKEN) {
+            return oauthError("invalid_grant", "Refresh token request failed exact validation")
+          }
+          return json({
+            access_token: REFRESHED_ACCESS_TOKEN,
+            token_type: "Bearer",
+            expires_in: 3600,
+            scope: SCOPE,
+          })
+        }
         const code = required(String(form.get("code") ?? ""), "code")
         const redirectUri = required(String(form.get("redirect_uri") ?? ""), "redirect_uri")
         const resource = required(String(form.get("resource") ?? ""), "resource")
@@ -190,7 +205,7 @@ export function createOAuthMcpServerFixture(): OAuthMcpServerFixture {
         tokenExchanges.push({ clientId, code, redirectUri, resource, codeVerifier })
         const issued = codes.get(code)
         if (
-          form.get("grant_type") !== "authorization_code" ||
+          grantType !== "authorization_code" ||
           clientId !== CLIENT_ID ||
           !issued ||
           issued.redirectUri !== redirectUri ||
@@ -204,7 +219,9 @@ export function createOAuthMcpServerFixture(): OAuthMcpServerFixture {
       }
 
       if (url.pathname === "/mcp") {
-        const authorized = request.headers.get("authorization") === `Bearer ${ACCESS_TOKEN}`
+        const authorized =
+          request.headers.get("authorization") === `Bearer ${ACCESS_TOKEN}` ||
+          request.headers.get("authorization") === `Bearer ${REFRESHED_ACCESS_TOKEN}`
         mcpRequests.push({ method: request.method, authorized })
         if (!authorized) {
           return json({ error: "unauthorized" }, 401, {

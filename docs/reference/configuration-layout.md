@@ -300,7 +300,7 @@ Remote MCP servers (`type: "remote"` in `40-mcp.jsonc`) use OAuth 2.0 authorizat
 
 Authenticate a server with `synergy mcp auth <name>` (or `synergy mcp auth` to pick from a list). The command opens the provider's authorization page in a browser, waits for the local callback, exchanges the code for tokens, and saves them to the auth store. A long-running server process picks up CLI-authenticated credentials automatically within ~30 seconds (the supervisor re-checks servers in the `needs_auth` state on an interval and reconnects when valid tokens appear), so no restart is required after authenticating from the CLI.
 
-Background supervision never writes PKCE state: an unauthenticated server is marked `needs_auth` and left idle (no network probes) until credentials exist. This keeps background auto-connect from interfering with an interactive `mcp auth` flow for the same server.
+Background supervision never writes PKCE state: an unauthenticated server is marked `needs_auth` (with an actionable `synergy mcp auth <name>` error on the status) and left idle (no network probes) until credentials exist. Once credentials exist, the supervisor reconnects within ~30 seconds even if the stored access token already expired, as long as a refresh token is present — refreshed tokens are persisted back to the auth store. This keeps background auto-connect from interfering with an interactive `mcp auth` flow for the same server.
 
 `startup` controls when a server connects: `"eager"` (default) connects at runtime start, `"lazy"` connects on first tool use, and `"manual"` never auto-connects (use `synergy mcp connect <name>`). Set `"manual"` for a server you only authenticate on demand.
 

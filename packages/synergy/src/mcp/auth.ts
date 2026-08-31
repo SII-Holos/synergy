@@ -60,9 +60,6 @@ export namespace McpAuth {
     })
   }
 
-  /** Kept as a no-op for compatibility; reads always go to disk. */
-  export function invalidateCache() {}
-
   export async function all(): Promise<Record<string, Entry>> {
     const file = Bun.file(Global.Path.authMcp)
     const data = (await file.json().catch(() => ({}))) as Record<string, Entry>

@@ -2603,6 +2603,10 @@ export type ProviderConfig = {
      */
     setCacheKey?: boolean
     /**
+     * Merge leading system messages into a single system message for strict OpenAI-compatible endpoints that reject multiple or non-leading system messages (e.g. vLLM Qwen chat templates). Default false.
+     */
+    mergeSystemMessages?: boolean
+    /**
      * Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.
      */
     timeout?: number | false
@@ -4474,6 +4478,7 @@ export type McpStatusDisabled = {
 
 export type McpStatusNeedsAuth = {
   status: "needs_auth"
+  error: string
 }
 
 export type McpStatusNeedsClientRegistration = {

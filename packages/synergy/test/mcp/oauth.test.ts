@@ -11,7 +11,7 @@ import { startForPlugin } from "../../src/plugin/mcp"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 import { Log } from "../../src/util/log"
-import { createOAuthMcpServerFixture } from "../fixture/oauth-mcp-server"
+import { REFRESH_TOKEN, REFRESHED_ACCESS_TOKEN, createOAuthMcpServerFixture } from "../fixture/oauth-mcp-server"
 
 Log.init({ print: false })
 
@@ -54,7 +54,6 @@ describe.serial("McpOAuthProvider", () => {
   let backup: string | undefined
 
   beforeEach(async () => {
-    McpAuth.invalidateCache()
     const file = Bun.file(Global.Path.authMcp)
     const exists = await file.exists()
     backup = exists ? await file.text() : undefined
@@ -68,7 +67,6 @@ describe.serial("McpOAuthProvider", () => {
     } else {
       await Bun.write(Global.Path.authMcp, "{}")
     }
-    McpAuth.invalidateCache()
   })
 
   function createProvider(
@@ -695,7 +693,6 @@ describe.serial("MCP OAuth race and recovery", () => {
   let backup: string | undefined
 
   beforeEach(async () => {
-    McpAuth.invalidateCache()
     const file = Bun.file(Global.Path.authMcp)
     const exists = await file.exists()
     backup = exists ? await file.text() : undefined
@@ -708,7 +705,6 @@ describe.serial("MCP OAuth race and recovery", () => {
     } else {
       await Bun.write(Global.Path.authMcp, "{}")
     }
-    McpAuth.invalidateCache()
     await MCP.stop()
   })
 
@@ -734,7 +730,10 @@ describe.serial("MCP OAuth race and recovery", () => {
         // The background supervisor reconnects while the interactive flow waits for the callback.
         await McpSupervisor.connect(name, handle.identity)
         expect(PendingOAuth.get(name)).toBe(pendingBefore)
-        expect((await MCP.status())[name]).toEqual({ status: "needs_auth" })
+        expect((await MCP.status())[name]).toMatchObject({
+          status: "needs_auth",
+          error: expect.stringContaining("synergy mcp auth"),
+        })
 
         // The interactive flow still completes end-to-end.
         const oauthState = await McpAuth.getOAuthState(name)
@@ -791,6 +790,60 @@ describe.serial("MCP OAuth race and recovery", () => {
     expect(tokens?.access_token).toBe("ext-token")
   })
 
+  test("background provider persists tokens when a stored entry exists", async () => {
+    const provider = new McpOAuthProvider(
+      "bg-persist",
+      "https://mcp.example.com",
+      {},
+      { onRedirect: async () => {} },
+      "background",
+    )
+    await McpAuth.set("bg-persist", { tokens: { accessToken: "old" } }, "https://mcp.example.com")
+    await provider.saveTokens({ access_token: "new", token_type: "Bearer", refresh_token: "rt" })
+    expect((await McpAuth.get("bg-persist"))?.tokens?.accessToken).toBe("new")
+  })
+
+  test("NeedsAuth recovers with expired-but-refreshable credentials", async () => {
+    await using tmp = await tmpdir({ config: {} })
+    await using fixture = createOAuthMcpServerFixture()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const name = "refresh-server"
+        const handle = McpSupervisor.add(name, {
+          type: "remote",
+          url: fixture.url,
+          oauth: { scope: "mcp:connect" },
+          startup: "manual",
+        })
+
+        await McpSupervisor.connect(name, handle.identity)
+        expect((await MCP.status())[name]).toMatchObject({
+          status: "needs_auth",
+          error: expect.stringContaining("synergy mcp auth"),
+        })
+
+        // Expired access token, but a refresh token exists: recovery must reconnect.
+        await McpAuth.set(
+          name,
+          {
+            tokens: {
+              accessToken: "stale-access-token",
+              refreshToken: REFRESH_TOKEN,
+              expiresAt: Date.now() / 1000 - 60,
+            },
+          },
+          fixture.url,
+        )
+        await McpSupervisor.checkNeedsAuthNow()
+        await handle.startPromise
+        expect((await MCP.status())[name]).toEqual({ status: "connected" })
+        // The background provider persisted the refreshed token.
+        expect((await McpAuth.get(name))?.tokens?.accessToken).toBe(REFRESHED_ACCESS_TOKEN)
+      },
+    })
+  })
+
   test("NeedsAuth recovers automatically once credentials appear", async () => {
     await using tmp = await tmpdir({ config: {} })
     await using fixture = createOAuthMcpServerFixture()
@@ -806,11 +859,17 @@ describe.serial("MCP OAuth race and recovery", () => {
         })
 
         await McpSupervisor.connect(name, handle.identity)
-        expect((await MCP.status())[name]).toEqual({ status: "needs_auth" })
+        expect((await MCP.status())[name]).toMatchObject({
+          status: "needs_auth",
+          error: expect.stringContaining("synergy mcp auth"),
+        })
 
         // No credentials yet: a check pass does not reconnect.
         await McpSupervisor.checkNeedsAuthNow()
-        expect((await MCP.status())[name]).toEqual({ status: "needs_auth" })
+        expect((await MCP.status())[name]).toMatchObject({
+          status: "needs_auth",
+          error: expect.stringContaining("synergy mcp auth"),
+        })
 
         // Another process writes credentials; the next check reconnects automatically.
         await McpAuth.set(
