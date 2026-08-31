@@ -1,4 +1,5 @@
 import { formatLocalDateTime } from "../../util/time-format"
+import { Log } from "../../util/log"
 import { cmd } from "./cmd"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
@@ -229,6 +230,7 @@ export const McpAuthCommand = cmd({
             spinner.stop("Authentication successful!")
           } else if (status.status === "needs_client_registration") {
             spinner.stop("Authentication failed", 1)
+            Log.Default.error("mcp auth failed: needs client registration", { serverName, error: status.error })
             prompts.log.error(status.error)
             prompts.log.info("Add clientId to your MCP server config:")
             prompts.log.info(`
@@ -244,12 +246,17 @@ export const McpAuthCommand = cmd({
   }`)
           } else if (status.status === "failed") {
             spinner.stop("Authentication failed", 1)
+            Log.Default.error("mcp auth failed", { serverName, error: status.error })
             prompts.log.error(status.error)
           } else {
             spinner.stop("Unexpected status: " + status.status, 1)
           }
         } catch (error) {
           spinner.stop("Authentication failed", 1)
+          Log.Default.error("mcp auth failed", {
+            serverName,
+            error: error instanceof Error ? error.message : String(error),
+          })
           prompts.log.error(error instanceof Error ? error.message : String(error))
         }
 

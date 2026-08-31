@@ -11,6 +11,7 @@ import { startForPlugin } from "../../src/plugin/mcp"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 import { Log } from "../../src/util/log"
+import { createOAuthMcpServerFixture } from "../fixture/oauth-mcp-server"
 
 Log.init({ print: false })
 
@@ -687,5 +688,151 @@ describe.serial("McpOAuthCallback", () => {
 
     await expect(promise1).rejects.toThrow("OAuth callback server stopped")
     await expect(promise2).rejects.toThrow("OAuth callback server stopped")
+  })
+})
+
+describe.serial("MCP OAuth race and recovery", () => {
+  let backup: string | undefined
+
+  beforeEach(async () => {
+    McpAuth.invalidateCache()
+    const file = Bun.file(Global.Path.authMcp)
+    const exists = await file.exists()
+    backup = exists ? await file.text() : undefined
+    await Bun.write(Global.Path.authMcp, "{}")
+  })
+
+  afterEach(async () => {
+    if (backup !== undefined) {
+      await Bun.write(Global.Path.authMcp, backup)
+    } else {
+      await Bun.write(Global.Path.authMcp, "{}")
+    }
+    McpAuth.invalidateCache()
+    await MCP.stop()
+  })
+
+  test("background 401 during an interactive OAuth flow does not cancel the pending callback", async () => {
+    await using tmp = await tmpdir({ config: {} })
+    await using fixture = createOAuthMcpServerFixture()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const name = "race-server"
+        const handle = McpSupervisor.add(name, {
+          type: "remote",
+          url: fixture.url,
+          oauth: { scope: "mcp:connect" },
+          startup: "manual",
+        })
+
+        const { authorizationUrl } = await MCP.startAuth(name)
+        expect(authorizationUrl).not.toBe("")
+        const pendingBefore = PendingOAuth.get(name)
+        expect(pendingBefore).toBeDefined()
+
+        // The background supervisor reconnects while the interactive flow waits for the callback.
+        await McpSupervisor.connect(name, handle.identity)
+        expect(PendingOAuth.get(name)).toBe(pendingBefore)
+        expect((await MCP.status())[name]).toEqual({ status: "needs_auth" })
+
+        // The interactive flow still completes end-to-end.
+        const oauthState = await McpAuth.getOAuthState(name)
+        expect(oauthState).toBeDefined()
+        const callbackPromise = McpOAuthCallback.waitForCallback(oauthState!, name)
+        const { redirectUrl } = await fixture.followAuthorization(authorizationUrl)
+        const redirect = new URL(redirectUrl)
+        const code = redirect.searchParams.get("code")
+        expect(code).not.toBeNull()
+        const response = McpOAuthCallback.handleRequest(
+          new Request(
+            `http://127.0.0.1:${getOAuthCallbackPort()}${OAUTH_CALLBACK_PATH}?code=${encodeURIComponent(code!)}&state=${encodeURIComponent(redirect.searchParams.get("state")!)}`,
+          ),
+        )
+        expect(response.status).toBe(200)
+        await expect(callbackPromise).resolves.toBe(code!)
+
+        const status = await MCP.finishAuth(name, code!)
+        expect(status.status).toBe("connected")
+      },
+    })
+  })
+
+  test("background provider never persists OAuth state and reads tokens live", async () => {
+    const provider = new McpOAuthProvider(
+      "bg-server",
+      "https://mcp.example.com",
+      {},
+      { onRedirect: async () => {} },
+      "background",
+    )
+
+    await provider.saveState("bg-state")
+    await provider.saveCodeVerifier("bg-verifier")
+    await provider.saveTokens({ access_token: "bg-token", token_type: "Bearer" })
+    await provider.saveClientInformation({
+      client_id: "bg-client",
+      client_secret: undefined,
+      client_id_issued_at: 1,
+      client_secret_expires_at: undefined,
+      redirect_uris: [],
+      grant_types: [],
+      response_types: [],
+      token_endpoint_auth_method: "none",
+    })
+
+    expect(await McpAuth.get("bg-server")).toBeUndefined()
+    expect(await provider.state()).toBe("bg-state")
+    expect(await provider.codeVerifier()).toBe("bg-verifier")
+
+    // A token written by another process (e.g. the CLI) is visible immediately.
+    await McpAuth.set("bg-server", { tokens: { accessToken: "ext-token" } }, "https://mcp.example.com")
+    const tokens = await provider.tokens()
+    expect(tokens?.access_token).toBe("ext-token")
+  })
+
+  test("NeedsAuth recovers automatically once credentials appear", async () => {
+    await using tmp = await tmpdir({ config: {} })
+    await using fixture = createOAuthMcpServerFixture()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const name = "recover-server"
+        const handle = McpSupervisor.add(name, {
+          type: "remote",
+          url: fixture.url,
+          oauth: { scope: "mcp:connect" },
+          startup: "manual",
+        })
+
+        await McpSupervisor.connect(name, handle.identity)
+        expect((await MCP.status())[name]).toEqual({ status: "needs_auth" })
+
+        // No credentials yet: a check pass does not reconnect.
+        await McpSupervisor.checkNeedsAuthNow()
+        expect((await MCP.status())[name]).toEqual({ status: "needs_auth" })
+
+        // Another process writes credentials; the next check reconnects automatically.
+        await McpAuth.set(
+          name,
+          { tokens: { accessToken: "fixture-access-token", expiresAt: Date.now() / 1000 + 3600 } },
+          fixture.url,
+        )
+        await McpSupervisor.checkNeedsAuthNow()
+        await handle.startPromise
+        expect((await MCP.status())[name]).toEqual({ status: "connected" })
+      },
+    })
+  })
+
+  test("callback port conflict produces an actionable error", async () => {
+    await MCP.stop()
+    const port = getOAuthCallbackPort()
+    const blocker = Bun.serve({ port, fetch: () => new Response("occupied") })
+    try {
+      await expect(McpOAuthCallback.ensureRunning()).rejects.toThrow("SYNERGY_OAUTH_CALLBACK_PORT")
+    } finally {
+      blocker.stop(true)
+    }
   })
 })

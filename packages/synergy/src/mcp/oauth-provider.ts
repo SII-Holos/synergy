@@ -25,6 +25,8 @@ function getOAuthCallbackPort(): number {
   return port
 }
 
+export type McpOAuthMode = "interactive" | "background"
+
 export interface McpOAuthConfig {
   clientId?: string
   clientSecret?: string
@@ -37,6 +39,9 @@ export interface McpOAuthCallbacks {
 }
 
 export class McpOAuthProvider implements OAuthClientProvider {
+  private memoryCodeVerifier: string | undefined
+  private memoryState: string | undefined
+
   private get mutationOptions(): McpAuth.MutationOptions {
     return { isCurrent: this.callbacks.isCurrent }
   }
@@ -45,6 +50,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
     private serverUrl: string,
     private config: McpOAuthConfig,
     private callbacks: McpOAuthCallbacks,
+    private mode: McpOAuthMode = "interactive",
   ) {}
 
   get redirectUrl(): string {
@@ -92,6 +98,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
   }
 
   async saveClientInformation(info: OAuthClientInformationFull): Promise<void> {
+    if (this.mode === "background") return
     await McpAuth.updateClientInfo(
       this.mcpName,
       {
@@ -126,6 +133,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
+    if (this.mode === "background") return
     await McpAuth.updateTokens(
       this.mcpName,
       {
@@ -150,10 +158,20 @@ export class McpOAuthProvider implements OAuthClientProvider {
   }
 
   async saveCodeVerifier(codeVerifier: string): Promise<void> {
+    if (this.mode === "background") {
+      this.memoryCodeVerifier = codeVerifier
+      return
+    }
     await McpAuth.updateCodeVerifier(this.mcpName, codeVerifier, this.mutationOptions)
   }
 
   async codeVerifier(): Promise<string> {
+    if (this.mode === "background") {
+      if (!this.memoryCodeVerifier) {
+        throw new Error(`No code verifier saved for MCP server: ${this.mcpName}`)
+      }
+      return this.memoryCodeVerifier
+    }
     const entry = await McpAuth.get(this.mcpName)
     if (!entry?.codeVerifier) {
       throw new Error(`No code verifier saved for MCP server: ${this.mcpName}`)
@@ -162,10 +180,18 @@ export class McpOAuthProvider implements OAuthClientProvider {
   }
 
   async saveState(state: string): Promise<void> {
+    if (this.mode === "background") {
+      this.memoryState = state
+      return
+    }
     await McpAuth.updateOAuthState(this.mcpName, state, this.mutationOptions)
   }
 
   async state(): Promise<string> {
+    if (this.mode === "background") {
+      if (!this.memoryState) this.memoryState = crypto.randomUUID()
+      return this.memoryState
+    }
     const entry = await McpAuth.get(this.mcpName)
     if (entry?.oauthState) return entry.oauthState
     const state = crypto.randomUUID()
