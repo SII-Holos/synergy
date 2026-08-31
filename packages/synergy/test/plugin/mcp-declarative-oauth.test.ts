@@ -149,7 +149,9 @@ export default definePlugin({
 
           await handle!.startPromise
           expect((await MCP.status())[SERVER_NAME]).toEqual({ status: "needs_auth" })
-          expect(PendingOAuth.get(SERVER_NAME)?.identity).toBe(handle!.identity)
+          // Background connects never register a PendingOAuth owner; only the
+          // interactive startAuth flow does, so nothing is pending yet.
+          expect(PendingOAuth.get(SERVER_NAME)).toBeUndefined()
 
           const registration = fixture.snapshot().registrations.at(-1)
           expect(registration).toEqual(
