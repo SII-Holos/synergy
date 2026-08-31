@@ -9,11 +9,14 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useFile } from "@/context/file"
+import { usePlatform } from "@/context/platform"
 import { usePrompt } from "@/context/prompt"
+import { useSDK } from "@/context/sdk"
 import { fileWriteErrorMessage, isFileWriteConflictError, isFileWriteDeniedError } from "@/context/file/errors"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { FileExplorer } from "./explorer"
 import { classifyFilePreview, resolveWorkspaceRelativePath } from "./model"
+import { buildWorkspaceFileBrowserUrl } from "@/utils/workspace-file-url"
 import { AttachmentPdfPreview } from "@/components/attachment-workbench/pdf-preview"
 import { FileSourceView, type FileSourceViewApi } from "./source-view"
 import "./styles.css"
@@ -279,10 +282,13 @@ function FilePdfPreview(props: {
 
 export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
   const file = useFile()
+  const platform = usePlatform()
+  const sdk = useSDK()
   const prompt = usePrompt()
   const { fmt } = useLocale()
   const lingui = useLingui()
   const path = createMemo(() => props.tab.resourceId ?? "")
+  const isHtml = createMemo(() => /\.html?$/i.test(path()))
   const documentState = createMemo(() => file.get(path()))
   const content = createMemo(() => documentState()?.content)
   const textContent = createMemo(() => {
@@ -516,6 +522,20 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
                 <span>{lingui._({ id: F.edit.id, message: F.edit.message })}</span>
               </button>
             </Show>
+          </Show>
+          <Show when={isHtml()}>
+            <button
+              type="button"
+              class="file-open-in-browser"
+              onClick={() =>
+                platform.openLink(
+                  buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, directory: sdk.directory }),
+                )
+              }
+            >
+              <Icon name={getSemanticIcon("action.open")} size="small" />
+              <span>{lingui._({ id: F.openInBrowser.id, message: F.openInBrowser.message })}</span>
+            </button>
           </Show>
           <IconButton
             icon={getSemanticIcon("workspace.files")}

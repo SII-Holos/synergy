@@ -2596,6 +2596,10 @@ msgid "app.file.toolbar.edit"
 msgstr ""
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.openInBrowser"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toolbar.save"
 msgstr ""
 
