@@ -1,5 +1,6 @@
 import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
+import path from "path"
 import z from "zod"
 import { Storage } from "../storage/storage"
 import { WorkspaceFile } from "../workspace-file/types"
@@ -35,6 +36,12 @@ const BoolString = z.enum(["true", "false"]).optional()
 
 function bool(value: "true" | "false" | undefined) {
   return value === "true"
+}
+
+function isUnsafeRawPath(rel: string) {
+  if (!rel || rel.includes("\0")) return true
+  if (rel.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(rel)) return true
+  return rel.split(/[\\/]+/).some((seg) => seg === "..")
 }
 
 function parseRange(input: string | undefined) {
@@ -231,7 +238,8 @@ export const WorkspaceFilesRoute = new Hono()
       summary: "Read workspace file bytes",
       description:
         "Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, " +
-        "and paths escaping the workspace are rejected.",
+        "and paths escaping the workspace are rejected. For opening HTML in a new browser tab with working relative " +
+        "resources, use GET /workspace/files/raw/{scope}/{path} instead.",
       operationId: "workspace.files.content",
       responses: {
         200: {
@@ -270,6 +278,90 @@ export const WorkspaceFilesRoute = new Hono()
           err instanceof WorkspaceFileService.UnsupportedPreviewError ||
           err instanceof WorkspaceFileService.TooLargeError
         ) {
+          return c.json({ name: err.name, data: { message: err.message } }, 400)
+        }
+        throw err
+      }
+    },
+  )
+  .get(
+    "/raw/:token/:path{.+}",
+    describeRoute({
+      summary: "Serve a raw workspace file for a new browser tab",
+      description:
+        "Serve an .html/.htm/.svg/.xml file or a static relative resource it references (images, CSS, scripts, fonts). " +
+        "The first segment selects the scope: the literal home or a base64url-encoded directory. The remaining " +
+        "path is a workspace-relative file that must stay inside the scope. Script-capable document responses " +
+        "(HTML, SVG, XML) carry a sandbox CSP that places the page in an opaque origin.",
+      operationId: "workspace.files.raw",
+      hide: true,
+      responses: {
+        200: { description: "Raw file bytes" },
+        400: {
+          description: "Bad request",
+          content: {
+            "application/json": {
+              schema: resolver(WorkspaceFile.ContentPreviewError),
+            },
+          },
+        },
+        ...AccessDeniedResponse,
+        ...errors(404),
+      },
+    }),
+    async (c) => {
+      const wildcard = c.req.path.match(/^\/workspace\/files\/raw\/[^/]+\/(.+)$/)?.[1]
+      if (wildcard === undefined) {
+        return c.json(
+          {
+            name: "WorkspaceFileAccessDeniedError",
+            data: { message: "Access denied: path traversal is not allowed" },
+          },
+          403,
+        )
+      }
+      let rel: string
+      try {
+        rel = decodeURIComponent(wildcard)
+      } catch {
+        rel = wildcard
+      }
+      if (isUnsafeRawPath(rel)) {
+        return c.json(
+          {
+            name: "WorkspaceFileAccessDeniedError",
+            data: { message: "Access denied: path traversal is not allowed" },
+          },
+          403,
+        )
+      }
+      try {
+        const result = await WorkspaceFileService.serveFile({ path: rel })
+        const ext = path.extname(rel).toLowerCase()
+        // Document types that can execute scripts when opened as a top-level
+        // page: HTML, SVG, and XML (XSLT processing instructions). They are
+        // untrusted — sandbox them into an opaque origin so scripts can run
+        // but cannot reach the app localStorage, the unauthenticated HTTP
+        // control plane, the event WebSocket, or the Desktop preload bridge.
+        // Mirrors packages/synergy/src/server/asset.ts. Static sub-resources
+        // (images, CSS, JS, fonts) keep their real MIME type and no sandbox,
+        // since a sub-resource's CSP header does not apply to the parent page.
+        const scriptableDocument =
+          ext === ".html" || ext === ".htm" || ext === ".svg" || ext === ".xml" || ext === ".xhtml"
+        if (scriptableDocument) {
+          c.header("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-popups allow-modals")
+        }
+        c.header(
+          "Content-Type",
+          ext === ".html" || ext === ".htm" ? "text/html; charset=utf-8" : result.mime || "application/octet-stream",
+        )
+        c.header("Cache-Control", "no-store")
+        return c.body(result.stream)
+      } catch (err) {
+        if (err instanceof WorkspaceFileService.AccessDeniedError) {
+          return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
+        }
+        if (err instanceof WorkspaceFileService.TooLargeError) {
           return c.json({ name: err.name, data: { message: err.message } }, 400)
         }
         throw err

@@ -1,7 +1,9 @@
 import z from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Session } from "@/session"
-import type { ChannelHost } from "@/channel/host"
+import { ManagedProjectOwnership } from "@/channel/managed-project-ownership"
+import { Scope } from "@/scope"
+import { ChannelHost } from "@/channel/host"
 import type { RuntimeTaskAssignedEvent } from "./agent-tunnel-port"
 import { ClarusAssignmentPrompt } from "./assignment-prompt"
 import { ClarusAssignmentStore, type ClarusAssignment } from "./assignment-store"
@@ -35,6 +37,7 @@ export namespace ClarusAssignmentRuntime {
     event: RuntimeTaskAssignedEvent
     agentOverride?: string
     cliRunner?: ClarusCliRunner
+    acceptTask?: (assignment: ClarusAssignment) => Promise<void>
   }): Promise<{ assignment: ClarusAssignment; created: boolean }> {
     const deadlineAt = input.event.deadlineAt
     if (deadlineAt) {
@@ -48,6 +51,69 @@ export namespace ClarusAssignmentRuntime {
       projectID: input.event.projectID,
       taskID: input.event.taskID,
     })
+    const exactReplay =
+      existing !== undefined &&
+      existing.assignment.accountId === input.accountId &&
+      existing.assignment.projectID === input.event.projectID &&
+      existing.assignment.taskID === input.event.taskID &&
+      existing.assignment.runID === input.event.runID &&
+      existing.assignment.subtaskID === input.event.subtaskID &&
+      existing.assignment.attempt === input.event.attempt &&
+      existing.assignment.assignmentMessageID === (input.event.requestID ?? undefined) &&
+      (existing.assignment.acceptRequestID === undefined ||
+        existing.assignment.acceptRequestID === input.event.requestID)
+    if (exactReplay && existing) {
+      const ownership = await ManagedProjectOwnership.find({
+        channelType: "clarus",
+        accountId: input.accountId,
+        externalProjectId: input.event.projectID,
+      })
+      if (!ownership) {
+        throw new ChannelHost.ChannelHostProjectNotOwnedError({
+          externalProjectId: input.event.projectID,
+          channelType: "clarus",
+          accountId: input.accountId,
+        })
+      }
+      if (ownership.remoteState === "archived") {
+        throw new ChannelHost.ChannelHostProjectUnavailableError({
+          externalProjectId: input.event.projectID,
+          channelType: "clarus",
+          accountId: input.accountId,
+        })
+      }
+      const scope = await Scope.fromID(ownership.scopeID)
+      if (!scope || scope.type !== "project") {
+        throw new ChannelHost.ChannelHostProjectUnavailableError({
+          externalProjectId: input.event.projectID,
+          channelType: "clarus",
+          accountId: input.accountId,
+        })
+      }
+      const session = await Session.get(existing.assignment.sessionID)
+      if (session.time.archived) {
+        throw new ClarusAssignmentSessionArchivedError({ sessionID: existing.assignment.sessionID })
+      }
+      if (session.scope.id !== ownership.scopeID) {
+        throw new ChannelHost.ChannelHostProjectUnavailableError({
+          externalProjectId: input.event.projectID,
+          channelType: "clarus",
+          accountId: input.accountId,
+        })
+      }
+      await ClarusDeadlineAgenda.sync({
+        accountId: input.accountId,
+        projectID: input.event.projectID,
+        taskID: input.event.taskID,
+        sessionID: existing.assignment.sessionID,
+        deadlineAt: existing.assignment.deadlineAt,
+        active: existing.assignment.status === "running" && existing.assignment.resultState !== "acknowledged",
+      })
+      if (existing.assignment.acceptState !== "acknowledged") {
+        await input.acceptTask?.(existing.assignment)
+      }
+      return { assignment: existing.assignment, created: false }
+    }
     const title = ClarusAssignmentPrompt.title(input.event)
     const basePrompt = ClarusAssignmentPrompt.userPrompt(input.accountId, input.event)
     const deliveryIdentity = hash(
@@ -94,6 +160,7 @@ export namespace ClarusAssignmentRuntime {
             deadlineAt: input.event.deadlineAt,
             active: assignment.status === "running" && assignment.resultState !== "acknowledged",
           })
+          await input.acceptTask?.(assignment)
         },
       })
       .catch((error) => {

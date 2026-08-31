@@ -13,8 +13,8 @@ import { sha256Content } from "@/util/crypto"
 import { Log } from "@/util/log"
 import { fn } from "@/util/fn"
 import { Agent } from "@/agent/agent"
-import { Plugin } from "@/plugin"
-import { ExperienceEncoder } from "@/library/experience-encoder"
+import { SessionPluginHooks as Plugin } from "./plugin-hooks"
+import { SessionLibraryRecall } from "./library-recall"
 import { ScopeContext } from "@/scope/context"
 import { MessageV2 } from "./message-v2"
 import { Session } from "."
@@ -911,7 +911,7 @@ export namespace SessionInbox {
     for (const part of parts) {
       await Session.updatePart(part)
     }
-    ExperienceEncoder.onComplete(info)
+    SessionLibraryRecall.onAssistantComplete(info)
     await Plugin.trigger(
       "session.turn.after",
       {

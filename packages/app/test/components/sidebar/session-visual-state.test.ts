@@ -187,11 +187,29 @@ describe("resolveSessionVisualState", () => {
     expect(visual.pulse).toBe(true)
   })
 
-  test("shows blueprint running state when a blueprint session has running child tasks", () => {
+  test("shows Running Blueprint when a blueprint session delegates to ordinary subagents", () => {
     const visual = resolveSessionVisualState(
       store({
-        cortex: [{ parentSessionID: "ses_test", status: "running" }],
-        session: [{ id: "ses_test", blueprint: { loopID: "bll_test", loopRole: "execution" } }],
+        cortex: [{ sessionID: "ses_child", parentSessionID: "ses_test", status: "running" }],
+        session: [{ id: "ses_test", blueprint: { loopID: "bll_test", loopRole: "execution" } }, { id: "ses_child" }],
+      }),
+      entry(),
+    )
+
+    expect(visual.icon).toBe(getSemanticIcon("blueprint.main"))
+    expect(msg(visual.label)).toBe("Running Blueprint")
+    expect(visual.tone).toBe("blueprint-running")
+    expect(visual.pulse).toBe(true)
+  })
+
+  test("shows Auditing Blueprint when the running child task is the loop audit session", () => {
+    const visual = resolveSessionVisualState(
+      store({
+        cortex: [{ sessionID: "ses_audit", parentSessionID: "ses_test", status: "running" }],
+        session: [
+          { id: "ses_test", blueprint: { loopID: "bll_test", loopRole: "execution" } },
+          { id: "ses_audit", blueprint: { loopID: "bll_test", loopRole: "audit" } },
+        ],
       }),
       entry(),
     )
@@ -199,6 +217,7 @@ describe("resolveSessionVisualState", () => {
     expect(visual.icon).toBe(getSemanticIcon("command.review"))
     expect(msg(visual.label)).toBe("Auditing Blueprint")
     expect(visual.tone).toBe("blueprint-audit")
+    expect(visual.pulse).toBe(true)
   })
 
   test("combines waiting state with blueprint identity", () => {

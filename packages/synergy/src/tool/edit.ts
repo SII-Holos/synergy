@@ -13,7 +13,9 @@ import { Bus } from "../bus"
 import { FileTime } from "../file/time"
 import { ScopeContext } from "../scope/context"
 import { SnapshotSchema } from "@/session/snapshot-schema"
-import { RuntimeReload } from "../runtime/reload"
+import { RuntimeReloadPath } from "../config/reload-path"
+import { RuntimeReloadExecutor } from "../config/reload-executor"
+import { formatCompactReloadResult } from "../config/reload-schema"
 import { captureWriteDiagnosticsBefore, collectWriteDiagnostics, type WriteDiagnosticsSnapshot } from "./write-quality"
 
 function normalizeLineEndings(text: string): string {
@@ -127,12 +129,12 @@ export const EditTool = Tool.define("edit", {
       },
     })
 
-    const runtimeReloadTargets = RuntimeReload.detectTargetsForFile(filePath)
-    const runtimeReloadScope = RuntimeReload.detectScopeForFile(filePath) ?? "auto"
-    const builtinSourceWarning = RuntimeReload.builtinSourceEditWarning(filePath)
+    const runtimeReloadTargets = RuntimeReloadPath.detectTargetsForFile(filePath)
+    const runtimeReloadScope = RuntimeReloadPath.detectScopeForFile(filePath) ?? "auto"
+    const builtinSourceWarning = RuntimeReloadPath.builtinSourceEditWarning(filePath)
     const runtimeReload =
       runtimeReloadTargets.length > 0
-        ? await RuntimeReload.reload({
+        ? await RuntimeReloadExecutor.reload({
             targets: runtimeReloadTargets,
             scope: runtimeReloadScope,
             reason: `edit:${displayPath}`,
@@ -143,7 +145,7 @@ export const EditTool = Tool.define("edit", {
     let output = diagnostics.output
 
     if (runtimeReload) {
-      output += `\n${RuntimeReload.formatCompactResult(runtimeReload)}\n`
+      output += `\n${formatCompactReloadResult(runtimeReload)}\n`
     }
     if (builtinSourceWarning) {
       output += `\n${builtinSourceWarning}\n`

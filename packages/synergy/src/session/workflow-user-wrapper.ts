@@ -1,6 +1,8 @@
 import type { Info as SessionInfo } from "./types"
 import { MessageV2 } from "./message-v2"
 import { isActiveLightLoopWorkflow } from "./light-loop-state"
+import { WorkflowPromptRegistry } from "./workflow-prompt-registry"
+import { WorkflowKindRegistry } from "./workflow-kind-registry"
 
 /**
  * WorkflowUserWrapper stamps and projects user messages for Plan, Lattice, and
@@ -8,6 +10,7 @@ import { isActiveLightLoopWorkflow } from "./light-loop-state"
  * projection wraps only root user-origin text parts.
  */
 export namespace WorkflowUserWrapper {
+  /** Core workflow kinds kept as a closed literal union for narrowing. */
   export type Mode = "plan" | "lattice" | "lightloop" | "boss"
 
   export const METADATA_MODE = "workflow"
@@ -26,42 +29,34 @@ export namespace WorkflowUserWrapper {
     "boss_report",
   ])
 
-  const VALID_MODES = new Set<Mode>(["plan", "lattice", "lightloop", "boss"])
+  const CORE_MODES = new Set<string>(["plan", "lattice", "lightloop", "boss"])
+
+  /** A mode is known when it is core or registered as an extension kind. */
+  function knownMode(value: string): boolean {
+    return CORE_MODES.has(value) || WorkflowKindRegistry.get(value) !== undefined
+  }
 
   type PromptBuilder = (query: string) => string
-  type ModePromptBuilders = Record<Mode, PromptBuilder>
 
-  const PROMPT_BUILDERS: Record<string, ModePromptBuilders> = {
-    synergy: {
-      plan: synergyPlan,
-      lattice: synergyLattice,
-      lightloop: synergyLightloop,
-      boss: synergyBoss,
-    },
-    "synergy-max": {
-      plan: synergyMaxPlan,
-      lattice: synergyMaxLattice,
-      lightloop: synergyMaxLightloop,
-      boss: synergyMaxBoss,
-    },
+  const PROMPT_BUILDERS: Record<string, PromptBuilder> = {
+    synergy: synergyPlan,
+    "synergy-max": synergyMaxPlan,
   }
 
-  const FALLBACK_BUILDERS: ModePromptBuilders = {
-    plan: genericPlan,
-    lattice: genericLattice,
-    lightloop: genericLightloop,
-    boss: genericBoss,
-  }
+  const FALLBACK_BUILDER: PromptBuilder = genericPlan
 
-  export function activeMode(session?: Pick<SessionInfo, "workflow">): Mode | undefined {
+  /** Effective active workflow kind: core kinds are themselves; extension
+   * envelopes resolve to their registered kind. Terminal Light Loop stops
+   * stamping (legacy behavior). */
+  export function activeMode(session?: Pick<SessionInfo, "workflow">): string | undefined {
     const workflow = session?.workflow
     if (workflow?.kind === "lightloop" && !isActiveLightLoopWorkflow(workflow)) return undefined
-    return workflow?.kind
+    return WorkflowKindRegistry.effectiveKind(workflow)
   }
 
   export function isRequestMetadata(metadata: Record<string, any> | undefined): boolean {
     if (!metadata) return false
-    return typeof metadata[METADATA_MODE] === "string" && VALID_MODES.has(metadata[METADATA_MODE] as Mode)
+    return typeof metadata[METADATA_MODE] === "string" && knownMode(metadata[METADATA_MODE])
   }
 
   export function stripReservedMetadata(metadata: Record<string, any> | undefined): Record<string, any> {
@@ -138,16 +133,23 @@ export namespace WorkflowUserWrapper {
     })
   }
 
-  export function build(agentName: string, mode: Mode, query: string): string {
+  /** Build the wrapper for a workflow kind. Core `plan` keeps its in-module
+   * builders; every registered domain kind (lattice/boss/lightloop and H3
+   * extension kinds) resolves through the prompt registry — without
+   * registration there is no workflow to wrap, so the request passes through
+   * unchanged. */
+  export function build(agentName: string, mode: string, query: string): string {
     const trimmed = query.trim() || "(empty request)"
-    const builders = PROMPT_BUILDERS[agentName] ?? FALLBACK_BUILDERS
-    return builders[mode](trimmed)
+    if (mode === "plan") {
+      return (PROMPT_BUILDERS[agentName] ?? FALLBACK_BUILDER)(trimmed)
+    }
+    return WorkflowPromptRegistry.get(mode)?.projectUserMessage?.(trimmed, agentName) ?? trimmed
   }
 
-  function messageMode(msg: MessageV2.WithParts): Mode | undefined {
+  function messageMode(msg: MessageV2.WithParts): string | undefined {
     const md = msg.info.metadata as Record<string, any> | undefined
     const value = md?.[METADATA_MODE]
-    if (typeof value === "string" && VALID_MODES.has(value as Mode)) return value as Mode
+    if (typeof value === "string" && knownMode(value)) return value
     return undefined
   }
 
@@ -207,116 +209,6 @@ export namespace WorkflowUserWrapper {
       "User request:",
       query,
       "</plan-user-request>",
-    ].join("\n")
-  }
-
-  function genericLattice(query: string): string {
-    return [
-      "<lattice-user-request>",
-      "You are in the Lattice workflow.",
-      "Treat this message as evidence for the current Lattice responsibility; follow the current Lattice system state instead of restarting the workflow.",
-      "While clarifying, investigate and align requirements before proposing a Pathway or Blueprint.",
-      "",
-      "User request:",
-      query,
-      "</lattice-user-request>",
-    ].join("\n")
-  }
-
-  function synergyLattice(query: string): string {
-    return [
-      "<lattice-user-request>",
-      "You are synergy in the Lattice workflow.",
-      "Treat this message as evidence for the current Lattice responsibility; follow the current Lattice system state instead of restarting the workflow.",
-      "While clarifying, investigate and align requirements before proposing a Pathway or Blueprint.",
-      "",
-      "User request:",
-      query,
-      "</lattice-user-request>",
-    ].join("\n")
-  }
-
-  function synergyMaxLattice(query: string): string {
-    return [
-      "<lattice-user-request>",
-      "You are synergy-max in the Lattice workflow.",
-      "Treat this message as evidence for the current Lattice responsibility; follow the current Lattice system state instead of restarting the workflow.",
-      "While clarifying, investigate and align requirements before proposing a Pathway or Blueprint.",
-      "",
-      "User request:",
-      query,
-      "</lattice-user-request>",
-    ].join("\n")
-  }
-
-  function genericLightloop(query: string): string {
-    return [
-      "<lightloop-user-request>",
-      "You are in the Light Loop workflow.",
-      "Complete the work thoroughly. Keep working until the task is fully done, then call loop_stop() to request a completion review.",
-      "",
-      "User request:",
-      query,
-      "</lightloop-user-request>",
-    ].join("\n")
-  }
-
-  function synergyLightloop(query: string): string {
-    return [
-      "<lightloop-user-request>",
-      "You are synergy in the Light Loop workflow.",
-      "Complete the work thoroughly. Keep working and iterating until the task is fully done, then call loop_stop() to request a completion review.",
-      "",
-      "User request:",
-      query,
-      "</lightloop-user-request>",
-    ].join("\n")
-  }
-
-  function synergyMaxLightloop(query: string): string {
-    return [
-      "<lightloop-user-request>",
-      "You are synergy-max in the Light Loop workflow.",
-      "Complete the work thoroughly. Keep working and iterating until the task is fully done, then call loop_stop() to request a completion review.",
-      "",
-      "User request:",
-      query,
-      "</lightloop-user-request>",
-    ].join("\n")
-  }
-  function genericBoss(query: string): string {
-    return [
-      "<boss-user-request>",
-      "You are in the Boss Mode workflow.",
-      "You are the boss: you decide, delegate, monitor, and summarize. Route this request yourself — answer directly or assign it to a worker.",
-      "",
-      "User request:",
-      query,
-      "</boss-user-request>",
-    ].join("\n")
-  }
-
-  function synergyBoss(query: string): string {
-    return [
-      "<boss-user-request>",
-      "You are synergy in the Boss Mode workflow.",
-      "You are the boss of a worker tree. Decide whether to answer directly, delegate to a specialist worker (boss_spawn / boss_assign), monitor progress (boss_status), or cancel work (boss_cancel). Summarize results back to the human.",
-      "",
-      "User request:",
-      query,
-      "</boss-user-request>",
-    ].join("\n")
-  }
-
-  function synergyMaxBoss(query: string): string {
-    return [
-      "<boss-user-request>",
-      "You are synergy-max in the Boss Mode workflow.",
-      "You are the boss of a worker tree. Decide whether to answer directly, delegate to a specialist worker (boss_spawn / boss_assign), monitor progress (boss_status), or cancel work (boss_cancel). Summarize results back to the human.",
-      "",
-      "User request:",
-      query,
-      "</boss-user-request>",
     ].join("\n")
   }
 }

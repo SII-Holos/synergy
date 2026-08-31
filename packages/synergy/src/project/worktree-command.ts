@@ -1,6 +1,13 @@
 import z from "zod"
-import type { Command } from "../command/command"
 import { Worktree } from "./worktree"
+
+/** Structural mirror of Command.Result (command/command.ts); kept local so
+ * project does not import the command domain. */
+interface CommandResult {
+  title: string
+  output: string
+  metadata?: Record<string, unknown>
+}
 
 export namespace WorktreeCommand {
   export const Input = z.discriminatedUnion("action", [
@@ -57,7 +64,7 @@ export namespace WorktreeCommand {
       .join("\n")
   }
 
-  export async function run(input: Input): Promise<Command.Result> {
+  export async function run(input: Input): Promise<CommandResult> {
     switch (input.action) {
       case "list": {
         const items = await Worktree.list()
@@ -128,7 +135,12 @@ export namespace WorktreeCommand {
     }
   }
 
-  export function register(command: { registerAction(action: string, handler: Command.ActionHandler): unknown }) {
+  export function register(command: {
+    registerAction(
+      action: string,
+      handler: (input: { sessionID: string; arguments: string }) => Promise<CommandResult>,
+    ): unknown
+  }) {
     command.registerAction("worktree", async (input) =>
       WorktreeCommand.run(WorktreeCommand.parse(input.sessionID, input.arguments)),
     )

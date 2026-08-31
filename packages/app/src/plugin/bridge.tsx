@@ -9,6 +9,7 @@ import {
 } from "@ericsanchezok/synergy-ui/message-slots"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { readThemeSelection, resetThemeSelection } from "./theme-selection"
 import { getComposerSlotsByName, subscribeComposerSlots } from "./registries/composer-slot-registry"
 import { usePluginHost } from "./host"
 import { SelectionExtensionOutlet } from "./registries/selection-extension-registry"
@@ -58,15 +59,49 @@ export function PluginThemeConfigBridge() {
   const globalSDK = useGlobalSDK()
   const theme = useTheme()
   const host = usePluginHost()
-  const [config] = createResource(async () => {
+  const [config, { refetch: refetchConfig }] = createResource(async () => {
     const result = await globalSDK.client.config.global()
     return result.data
   })
 
+  // Guards the one-shot config refetch used to distinguish a definitively
+  // removed theme from a cold-start gap whose preference still backs the
+  // selection; without it, such a gap would refetch in a loop.
+  let refetchedMissingTheme: string | undefined
+
   createEffect(() => {
     host.plugins()
-    theme.themes()
-    theme.setThemeId(config()?.theme ?? "")
+    const persisted = config()?.theme
+    const availableIds = new Set(theme.themes().map((choice) => choice.id))
+    const serverUrl = globalSDK.url
+    const recorded = readThemeSelection(serverUrl)
+    if (recorded === undefined) {
+      if (persisted === undefined) return
+      theme.setThemeId(persisted || "synergy")
+      return
+    }
+    if (availableIds.has(recorded.id)) {
+      refetchedMissingTheme = undefined
+      theme.setThemeId(recorded.id || "synergy")
+      return
+    }
+    // The recorded selection's theme is not in the ready registry. While its
+    // persistence PATCH has not completed, a differing config value is the
+    // expected stale snapshot — keep replaying the selection. Once the PATCH
+    // completed, the preference was authoritative server-side, so a config
+    // that no longer backs the selection means the theme was definitively
+    // removed (uninstall clears the preference): drop the record and let the
+    // persisted preference take over, which also converges the skin caches.
+    if (recorded.persisted && persisted !== undefined && persisted !== recorded.id) {
+      resetThemeSelection(serverUrl)
+      theme.setThemeId(persisted || "synergy")
+      return
+    }
+    if (recorded.persisted && persisted === recorded.id && refetchedMissingTheme !== recorded.id) {
+      refetchedMissingTheme = recorded.id
+      void refetchConfig()
+    }
+    theme.setThemeId(recorded.id || "synergy")
   })
 
   return null

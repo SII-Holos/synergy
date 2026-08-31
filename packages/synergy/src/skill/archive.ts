@@ -6,7 +6,7 @@ import { z } from "zod"
 import { ConfigMarkdown } from "../config/markdown"
 import { isPathContained } from "../util/path-contain"
 import { SkillManifest } from "./manifest"
-import { SkillSourceProfile } from "./source-profile"
+import { SkillSourceProfile } from "../instruction/source-profile"
 import type { Skill } from "./skill"
 
 export namespace SkillArchive {

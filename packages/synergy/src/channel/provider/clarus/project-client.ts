@@ -1,5 +1,6 @@
 import z from "zod"
 import { validateHolosEndpoint } from "@/holos/security"
+import { HolosEndpoint } from "@/holos/endpoint"
 
 const Project = z
   .object({
@@ -26,23 +27,20 @@ type Credential = {
 }
 
 export class ClarusProjectClient {
-  private readonly origin: URL
+  private readonly baseUrl: URL
 
   constructor(
     apiUrl: string,
     private readonly credentials: () => Promise<Credential | undefined>,
     private readonly signal: AbortSignal,
   ) {
-    this.origin = validateHolosEndpoint(apiUrl, "api")
-    if (this.origin.pathname !== "/" || this.origin.search || this.origin.hash) {
-      throw new Error("Clarus API URL must be an origin")
-    }
+    this.baseUrl = validateHolosEndpoint(apiUrl, "api")
   }
 
   async listProjects(input: { status: "active" | "paused"; cursor?: string; limit?: number }) {
     const query = new URLSearchParams({ status: input.status, limit: String(input.limit ?? 50) })
     if (input.cursor) query.set("cursor", input.cursor)
-    const url = new URL("/api/v1/holos/clarus/projects", this.origin)
+    const url = new URL(HolosEndpoint.url("/api/v1/holos/clarus/projects", this.baseUrl.toString()))
     url.search = query.toString()
     const data = await this.get(url)
     const page = ProjectPage.parse(data)
@@ -73,7 +71,7 @@ export class ClarusProjectClient {
           },
         }),
       )
-      if (response.url && new URL(response.url).origin !== this.origin.origin) {
+      if (response.url && new URL(response.url).origin !== this.baseUrl.origin) {
         throw new Error("Clarus redirect changed origin")
       }
       const body = await response.text()

@@ -3,6 +3,7 @@ import { DagGraph } from "./dag-graph"
 import { DiffPatchGate } from "./diff-patch"
 import type { SpecializedActivityDetail } from "./activity-specialized-detail-model"
 import { ToolDiffPreview } from "./tool/diff-preview"
+import { TaskSubagentDetail } from "./tool/task-subagent-detail"
 
 export function ActivitySpecializedDetail(props: { detail: SpecializedActivityDetail }) {
   return (
@@ -10,8 +11,15 @@ export function ActivitySpecializedDetail(props: { detail: SpecializedActivityDe
       <Show
         when={props.detail.kind === "diff" ? props.detail : undefined}
         fallback={
-          <Show when={props.detail.kind === "dag" ? props.detail : undefined}>
-            {(detail) => <DagGraph nodes={detail().nodes} ready={detail().ready} />}
+          <Show
+            when={props.detail.kind === "subagent" ? props.detail : undefined}
+            fallback={
+              <Show when={props.detail.kind === "dag" ? props.detail : undefined}>
+                {(detail) => <DagGraph nodes={detail().nodes} ready={detail().ready} />}
+              </Show>
+            }
+          >
+            {(detail) => <TaskSubagentDetail info={detail().info} />}
           </Show>
         }
       >

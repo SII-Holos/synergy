@@ -820,6 +820,10 @@ msgid "app.attachment.action.download"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.attachment.action.openFullPage"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.attachment.action.openInBrowser"
 msgstr ""
 
@@ -869,6 +873,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.attachment.preview.error"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.htmlScriptsDisabled"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -2588,6 +2596,10 @@ msgid "app.file.toolbar.edit"
 msgstr ""
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.openInBrowser"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toolbar.save"
 msgstr ""
 
@@ -2641,6 +2653,10 @@ msgstr ""
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileExplorer.loadingMore"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileExplorer.resize"
 msgstr ""
 
 #. ── File explorer ────────────────────────────────────────────────────────────
@@ -7576,6 +7592,10 @@ msgid "app.sidebar.projects"
 msgstr ""
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.resize"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.search"
 msgstr ""
 
@@ -7593,6 +7613,10 @@ msgstr ""
 
 #. Sections
 msgid "app.sidebar.section.recent"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.session.draftBadge"
 msgstr ""
 
 #. Session fallback
@@ -8730,7 +8754,15 @@ msgid "app.workspace.surface.bottom"
 msgstr ""
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.surface.bottom.resize"
+msgstr ""
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.surface.side"
+msgstr ""
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.surface.side.resize"
 msgstr ""
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
@@ -14295,6 +14327,10 @@ msgid "settings.catalog.general.row.interfaceLanguage"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.general.row.newSessionWorkspace"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.general.row.notifications"
 msgstr ""
 
@@ -15464,6 +15500,22 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.general.updates.web.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.main"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.worktree"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -18684,6 +18736,26 @@ msgstr ""
 
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.warnings"
+msgstr ""
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.no-steps"
+msgstr ""
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.open-session"
+msgstr ""
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.running"
+msgstr ""
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.starting"
+msgstr ""
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.waiting-approval"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────

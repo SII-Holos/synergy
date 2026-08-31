@@ -2,7 +2,7 @@ import fs from "fs/promises"
 import path from "path"
 import z from "zod"
 import { Installation } from "../global/installation"
-import { DaemonPaths } from "./paths"
+import { DaemonPaths } from "../util/daemon-paths"
 
 export namespace DaemonState {
   export const Manifest = z

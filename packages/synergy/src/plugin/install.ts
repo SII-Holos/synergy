@@ -19,10 +19,11 @@ import { reload, triggerForPlugin } from "./lifecycle"
 import * as Lockfile from "./lockfile"
 import { PluginInstallationTransaction, withPluginInstallationLock } from "./installation-transaction"
 import { pluginRuntimeManager } from "./runtime"
-import { peekRuntimeEndpointGeneration } from "../server/runtime-endpoint"
+import { peekRuntimeEndpointGeneration } from "../util/runtime-endpoint"
 import { resolvePluginSpec } from "./spec-resolver"
 import type { PluginSource } from "./trust"
-import { resolvePluginRuntimeLimits } from "./runtime-limits"
+import { resolvePluginRuntimeLimits } from "../plugin-runtime/runtime-limits"
+import { Config } from "../config/config"
 
 const log = Log.create({ service: "plugin.install" })
 
@@ -265,7 +266,31 @@ export async function remove(pluginId: string, options: { force?: boolean } = {}
   await pluginRuntimeManager
     .stop(pluginId)
     .catch((error) => log.warn("plugin runtime stop failed during uninstall", { pluginId, error }))
+  await clearThemePreferenceIfOwned(pluginId)
   forgetPlugin(pluginId)
+}
+
+/**
+ * A theme selection is a global preference, but its owning plugin may be
+ * removed while the preference still names one of its skins. Leaving the
+ * preference pointing at an unregistered theme would keep the UI degraded
+ * (and re-apply the dead skin from the bootstrap caches on every launch), so
+ * uninstall clears the preference when it names the removed plugin. The
+ * client-side registry gap stays non-destructive for every other cause.
+ */
+export async function clearThemePreferenceIfOwned(
+  pluginId: string,
+  io: { read?: () => Promise<{ theme?: unknown } | undefined>; clear?: () => Promise<void> } = {},
+) {
+  const read = io.read ?? (() => Config.domainGet("general").catch(() => undefined))
+  const clear = io.clear ?? (() => Config.domainUpdate("general", { theme: "" }))
+  const general = await read().catch(() => undefined)
+  const theme = typeof general?.theme === "string" ? general.theme : ""
+  if (!theme.startsWith(`${pluginId}:`)) return false
+  await clear().catch((error) => {
+    log.warn("failed to clear theme preference for removed plugin", { pluginId, error })
+  })
+  return true
 }
 
 export async function runPluginInstallLifecycle(

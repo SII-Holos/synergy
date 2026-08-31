@@ -4,7 +4,7 @@ import { Scope } from "@/scope"
 import { Provider } from "../../provider/provider"
 import { ModelsDev } from "../../provider/models"
 import { cmd } from "./cmd"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 import { EOL } from "os"
 import { ProviderCatalog } from "@/provider/catalog"
 

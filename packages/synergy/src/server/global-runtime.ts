@@ -1,4 +1,5 @@
-import { Agenda, AgendaBootstrap } from "@/agenda"
+import { Agenda } from "@/agenda"
+import { AgendaBootstrap } from "@/agenda/bootstrap"
 import { ChannelOutbound } from "@/channel/outbound"
 import { registerProviders } from "@/channel/provider"
 import { ResponseCardRuntime } from "@/channel/response-card"
@@ -139,7 +140,7 @@ export namespace GlobalRuntime {
           PluginMarketplaceRegistry.prefetchRegistry()
           await Agenda.start()
           await AgendaBootstrap.seed()
-          const { BossRuntime } = await import("@/session/boss-runtime")
+          const { BossRuntime } = await import("@/boss/boss-runtime")
           await BossRuntime.ensure().catch((error) => {
             log.warn("runtime boss provisioning failed", { error })
           })

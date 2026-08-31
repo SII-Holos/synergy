@@ -72,6 +72,7 @@ beforeAll(async () => {
               emptyLabel: "No recent sessions",
               loadMoreLabel: "Load more",
               untitledLabel: "Untitled",
+              draftLabel: "Draft",
               entries: [entry("ses_recent", "Recent session", true), entry("ses_other", "Other session")],
               currentSessionID: "ses_recent",
               unreadLabel: (value) =>
@@ -90,6 +91,7 @@ beforeAll(async () => {
               emptyLabel: "No recent sessions",
               loadMoreLabel: "Load more",
               untitledLabel: "Untitled",
+              draftLabel: "Draft",
               entries: [],
               unreadLabel: () => undefined,
               hasMore: false,

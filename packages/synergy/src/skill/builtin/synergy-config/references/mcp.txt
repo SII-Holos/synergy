@@ -1,5 +1,7 @@
 # MCP Servers
 
+To design and build an MCP server (tool naming, schemas, evaluation), load the builtin skill `synergy-agent-tooling` reference `mcp-builder`; this reference covers only connecting and configuring MCP servers in Synergy.
+
 ## Local MCP server (stdio process)
 
 ```jsonc

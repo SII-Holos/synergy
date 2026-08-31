@@ -142,12 +142,15 @@ if (action === "refresh") {
       else waiters.push(respond)
     })
   }) as unknown as typeof fetch
-  const [{ ModelsDev }, { Server }, { GlobalBus }, { RuntimeReload }] = await Promise.all([
+  const [{ ModelsDev }, { Server }, { GlobalBus }, { RuntimeReload }, { RuntimeReloadExecutor }] = await Promise.all([
     import("../../../src/provider/models"),
     import("../../../src/server/server"),
     import("../../../src/bus/global"),
     import("../../../src/runtime/reload"),
+    import("../../../src/config/reload-executor"),
   ])
+  RuntimeReloadExecutor.setExecutor((input, options) => RuntimeReload.reload(input, options))
+  RuntimeReloadExecutor.setGlobalExecutor((input, options) => RuntimeReload.reloadGlobal(input, options))
   const runtimeReloads: Array<{ hasDirectory: boolean; executed: string[]; cascaded: string[] }> = []
   GlobalBus.on("event", (event) => {
     if (event.payload?.type !== RuntimeReload.Event.Reloaded.type) return

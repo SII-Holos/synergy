@@ -8,14 +8,15 @@ import { useServer } from "../server"
 import { usePlatform } from "../platform"
 import { Scope, Session } from "@ericsanchezok/synergy-sdk"
 import { Persist, persisted, removePersisted } from "@/utils/persist"
+import { forgetDraftSession } from "@/context/prompt/draft-index"
 import { same } from "@/utils/same"
 import { createScrollPersistence, type SessionScroll } from "./scroll"
 import { retry } from "@ericsanchezok/synergy-util/retry"
-import { computeDefaultWorkspaceWidth } from "./workspace"
+import { computeDefaultWorkspaceWidth, sidebarOccupancy } from "./workspace"
 import type { WorkbenchPanelSurface, WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
 import type { WorkbenchSurfaceState } from "../workbench/panel-model"
 import { migrateWorkbenchLayout } from "../workbench/layout-migration"
-import { createInitialLayoutDefaults } from "./defaults"
+import { clampSidebarWidth, createInitialLayoutDefaults, effectiveSidebarWidth } from "./defaults"
 import { reconcile } from "solid-js/store"
 import {
   applySessionToNavList,
@@ -38,6 +39,7 @@ import {
 } from "./nav"
 import { createDesktopBadgeSync } from "./desktop-badge"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
+import { isEphemeralTestWorktree } from "@/utils/ephemeral-test-worktree"
 import { planMessagePageApply } from "../session-message-page"
 import { internMessages, internParts } from "../string-intern"
 import { findSessionIndex } from "../session-collection"
@@ -188,6 +190,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
           const legacyKey = `${dir}/${entry.legacy}${session ? "/" + session : ""}.${entry.version}`
           void removePersisted({ key: legacyKey })
+          if (session && entry.key === "prompt") forgetDraftSession(session)
         }
       }
     }
@@ -898,7 +901,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     const list = createMemo(() => {
       // Locally-tracked scopes (user-opened, persisted in localStorage).
-      const local = enriched().flatMap(colorize)
+      const local = enriched()
+        .filter((s) => !isEphemeralTestWorktree(s.worktree))
+        .flatMap(colorize)
       const index = scopeIndex()
       const managedScopeIDs = new Set(
         channelProjection().channelAccounts.flatMap((account) => account.projects.map((p) => p.scopeID)),
@@ -930,7 +935,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         })
       }
 
-      const raw = [...local.filter((s) => !s.id || !managedScopeIDs.has(s.id)), ...supplemented.flatMap(colorize)]
+      const raw = [
+        ...local.filter((s) => !s.id || !managedScopeIDs.has(s.id)),
+        ...supplemented.flatMap(colorize).filter((s) => !isEphemeralTestWorktree(s.worktree)),
+      ]
 
       // Stable sort: pinned projects first (most-recently-pinned on top),
       // then by creation time ascending (oldest first), with directory as
@@ -1315,9 +1323,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         toggle() {
           setStore("sidebar", "opened", (x) => !x)
         },
-        width: createMemo(() => store.sidebar.width),
+        width: createMemo(() => effectiveSidebarWidth(store.sidebar)),
         resize(width: number) {
-          setStore("sidebar", "width", width)
+          setStore("sidebar", { width: clampSidebarWidth(width), resized: true })
         },
       },
       review: {
@@ -1334,7 +1342,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         touch(sessionKey)
         const current = () => store.workbenchSurfaces[sessionKey]?.[surface] ?? {}
         const sizeDefault = () =>
-          surface === "side" ? computeDefaultWorkspaceWidth(window.innerWidth) : BOTTOM_SPACE_DEFAULT_HEIGHT
+          surface === "side"
+            ? computeDefaultWorkspaceWidth(
+                window.innerWidth -
+                  sidebarOccupancy(isDesktop(), store.sidebar.opened, effectiveSidebarWidth(store.sidebar)),
+              )
+            : BOTTOM_SPACE_DEFAULT_HEIGHT
 
         function ensureSurface() {
           const session = store.workbenchSurfaces[sessionKey]

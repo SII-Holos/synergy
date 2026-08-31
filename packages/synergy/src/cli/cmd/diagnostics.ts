@@ -1,6 +1,6 @@
 import { cmd } from "./cmd"
 import { Diagnostics } from "@/observability/diagnostics"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 
 export const DiagnosticsCommand = cmd({
   command: "diagnostics",

@@ -4302,6 +4302,132 @@
         ]
       }
     },
+    "/config/export": {
+      "get": {
+        "operationId": "config.export",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "$ref": "#/components/schemas/ConfigImportScope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "only",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "general",
+                    "models",
+                    "providers",
+                    "library",
+                    "mcp",
+                    "plugins",
+                    "skills",
+                    "agents",
+                    "commands",
+                    "permissions",
+                    "channels",
+                    "holos",
+                    "email",
+                    "github",
+                    "runtime"
+                  ]
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "general",
+                      "models",
+                      "providers",
+                      "library",
+                      "mcp",
+                      "plugins",
+                      "skills",
+                      "agents",
+                      "commands",
+                      "permissions",
+                      "channels",
+                      "holos",
+                      "email",
+                      "github",
+                      "runtime"
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeSecrets",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Export config",
+        "description": "Export selected config domains as one merged config object. Secrets are always redacted over HTTP; use `synergy config export --include-secrets` for a plaintext export.",
+        "responses": {
+          "200": {
+            "description": "Exported config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigExportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid export query, missing project scope, or includeSecrets requested over HTTP",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigExportBadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.export({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/config/import/plan": {
       "post": {
         "operationId": "config.import.plan",
@@ -12503,7 +12629,7 @@
           }
         ],
         "summary": "Read workspace file bytes",
-        "description": "Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected.",
+        "description": "Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected. For opening HTML in a new browser tab with working relative resources, use GET /workspace/files/raw/{scope}/{path} instead.",
         "responses": {
           "200": {
             "description": "PDF file bytes"
@@ -12557,6 +12683,7 @@
         ]
       }
     },
+    "/workspace/files/raw/{token}/{path}": {},
     "/workspace/files/write": {
       "post": {
         "operationId": "workspace.files.write",
@@ -19515,7 +19642,10 @@
             "in": "path",
             "name": "agentId",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9._-]+$"
             },
             "required": true
           }
@@ -20661,6 +20791,60 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.control({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/plugin/ui/contributions/themes": {
+      "get": {
+        "operationId": "plugin.listGlobalThemeContributions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List plugin theme contributions across all enabled scopes",
+        "description": "Themes are a global user preference. This endpoint aggregates ui.theme contributions from the process-wide plugin catalog (any scope), so theme registration survives scope switches.",
+        "responses": {
+          "200": {
+            "description": "Global theme contributions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GlobalThemeContribution"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.listGlobalThemeContributions({\n  ...\n})"
           }
         ]
       }
@@ -29268,7 +29452,6 @@
         "required": ["type"]
       },
       "SessionEndpoint": {
-        "description": "Endpoint context if created from a session endpoint",
         "type": "object",
         "properties": {
           "kind": {
@@ -29488,11 +29671,20 @@
           "lastActivityAt": {
             "type": "number"
           },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
           "pinned": {
             "type": "number"
           },
           "archived": {
             "type": "boolean"
+          },
+          "archivedAt": {
+            "type": "number"
           },
           "parentID": {
             "type": "string"
@@ -32650,7 +32842,7 @@
             "type": "boolean"
           },
           "apiUrl": {
-            "description": "Clarus REST API origin override; defaults to the configured Holos API origin",
+            "description": "Clarus REST API base URL override, including an optional path prefix; defaults to the configured Holos API base URL",
             "type": "string"
           },
           "agent": {
@@ -33259,6 +33451,11 @@
             "description": "How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)",
             "type": "string",
             "enum": ["full", "balanced", "minimal"]
+          },
+          "defaultSessionWorkspace": {
+            "description": "Default workspace for new sessions started from the Web composer: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main). Programmatic session creation (API, channels, Cortex) always uses the main checkout.",
+            "type": "string",
+            "enum": ["main", "worktree"]
           },
           "keybinds": {
             "$ref": "#/components/schemas/KeybindsConfig"
@@ -34781,6 +34978,30 @@
         "required": ["type", "path", "scopeID"],
         "additionalProperties": {}
       },
+      "WorkflowExtension": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "payload": {}
+        },
+        "required": ["kind"]
+      },
+      "SessionWorkflowExtension": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "extension"
+          },
+          "extension": {
+            "$ref": "#/components/schemas/WorkflowExtension"
+          }
+        },
+        "required": ["kind", "extension"]
+      },
       "SessionWorkflowInfo": {
         "anyOf": [
           {
@@ -34973,6 +35194,9 @@
               }
             },
             "required": ["kind", "role"]
+          },
+          {
+            "$ref": "#/components/schemas/SessionWorkflowExtension"
           }
         ]
       },
@@ -36056,6 +36280,104 @@
         "type": "string",
         "enum": ["global", "project"]
       },
+      "ConfigExportResult": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/ConfigImportScope"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "secretsIncluded": {
+            "type": "boolean"
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "general",
+                "models",
+                "providers",
+                "library",
+                "mcp",
+                "plugins",
+                "skills",
+                "agents",
+                "commands",
+                "permissions",
+                "channels",
+                "holos",
+                "email",
+                "github",
+                "runtime"
+              ]
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "config": {
+            "$ref": "#/components/schemas/Config"
+          }
+        },
+        "required": ["scope", "scopeID", "secretsIncluded", "domains", "warnings", "config"]
+      },
+      "ConfigImportProjectScopeRequiredError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigImportProjectScopeRequiredError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigExportSecretsRejectedError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigExportSecretsRejectedError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigExportBadRequestError": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/BadRequestError"
+          },
+          {
+            "$ref": "#/components/schemas/ConfigImportProjectScopeRequiredError"
+          },
+          {
+            "$ref": "#/components/schemas/ConfigExportSecretsRejectedError"
+          }
+        ]
+      },
       "ConfigImportDiagnostic": {
         "type": "object",
         "properties": {
@@ -36173,25 +36495,6 @@
           }
         },
         "required": ["scope", "scopeID", "source", "revision", "domains", "conflicts"]
-      },
-      "ConfigImportProjectScopeRequiredError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "ConfigImportProjectScopeRequiredError"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": ["message"]
-          }
-        },
-        "required": ["name", "data"]
       },
       "ConfigImportInvalidConfigError": {
         "type": "object",
@@ -45204,6 +45507,58 @@
         "required": ["protocolVersion", "command", "commandId"],
         "additionalProperties": false
       },
+      "GlobalThemeContribution": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "string"
+          },
+          "enabledScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "contributions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "uiArtifact": {
+            "type": "object",
+            "properties": {
+              "entry": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": ["entry", "sha256"]
+          }
+        },
+        "required": ["pluginId", "name", "version", "generation", "enabledScopes", "capabilities", "contributions"]
+      },
       "ForbiddenError": {
         "type": "object",
         "properties": {
@@ -46830,6 +47185,66 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.agenda.item.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "agenda.item.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "item": {
+                "$ref": "#/components/schemas/AgendaItem"
+              }
+            },
+            "required": ["item"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.agenda.item.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "agenda.item.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "item": {
+                "$ref": "#/components/schemas/AgendaItem"
+              }
+            },
+            "required": ["item"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.agenda.item.deleted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "agenda.item.deleted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "scopeID": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "scopeID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.provider.auth.updated": {
         "type": "object",
         "properties": {
@@ -46845,163 +47260,6 @@
               }
             },
             "required": ["health"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.config.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "config.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "scope": {
-                "type": "string",
-                "enum": ["global", "project"]
-              },
-              "changedFields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["scope", "changedFields"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.installation.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "installation.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "version": {
-                "type": "string"
-              }
-            },
-            "required": ["version"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.installation.update-available": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "installation.update-available"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "version": {
-                "type": "string"
-              }
-            },
-            "required": ["version"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.mcp.tools.changed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "mcp.tools.changed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "server": {
-                "type": "string"
-              }
-            },
-            "required": ["server"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.mcp.prompts.changed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "mcp.prompts.changed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "server": {
-                "type": "string"
-              }
-            },
-            "required": ["server"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.mcp.resources.changed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "mcp.resources.changed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "server": {
-                "type": "string"
-              }
-            },
-            "required": ["server"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.mcp.ready": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "mcp.ready"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {}
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.mcp.failed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "mcp.failed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "server": {
-                "type": "string"
-              },
-              "error": {
-                "type": "string"
-              }
-            },
-            "required": ["server", "error"]
           }
         },
         "required": ["type", "properties"]
@@ -47090,6 +47348,66 @@
               }
             },
             "required": ["sessionID", "messageID", "partID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.config.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "config.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": ["global", "project"]
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["scope", "changedFields"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.runtime.reloaded": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "runtime.reloaded"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "executed": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RuntimeReloadTarget"
+                }
+              },
+              "cascaded": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RuntimeReloadTarget"
+                }
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["executed", "cascaded", "changedFields"]
           }
         },
         "required": ["type", "properties"]
@@ -47336,6 +47654,44 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.installation.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "installation.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": ["version"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.installation.update-available": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "installation.update-available"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": ["version"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.session.inbox.updated": {
         "type": "object",
         "properties": {
@@ -47358,6 +47714,160 @@
               }
             },
             "required": ["sessionID", "items"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.file.edited": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "file.edited"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              }
+            },
+            "required": ["file"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.todo.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "todo.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "todos": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Todo"
+                }
+              }
+            },
+            "required": ["sessionID", "todos"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.dag.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "dag.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "nodes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DagNode"
+                }
+              },
+              "ready": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["sessionID", "nodes", "ready"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.session.compacted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.compacted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.cortex.task.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "cortex.task.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "task": {
+                "$ref": "#/components/schemas/CortexTask"
+              }
+            },
+            "required": ["task"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.cortex.task.completed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "cortex.task.completed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "task": {
+                "$ref": "#/components/schemas/CortexTask"
+              }
+            },
+            "required": ["task"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.cortex.tasks.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "cortex.tasks.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "tasks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CortexTask"
+                }
+              }
+            },
+            "required": ["tasks"]
           }
         },
         "required": ["type", "properties"]
@@ -47642,6 +48152,153 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.plugin.event": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "plugin.event"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "pluginId": {
+                "type": "string"
+              },
+              "pluginVersion": {
+                "type": "string"
+              },
+              "generation": {
+                "type": "string"
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "scopeId": {
+                "type": "string"
+              },
+              "sessionId": {
+                "type": "string"
+              },
+              "sequence": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "timestamp": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "payload": {}
+            },
+            "required": [
+              "pluginId",
+              "pluginVersion",
+              "generation",
+              "eventId",
+              "scopeId",
+              "sequence",
+              "timestamp",
+              "payload"
+            ]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.mcp.tools.changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.tools.changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "server": {
+                "type": "string"
+              }
+            },
+            "required": ["server"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.mcp.prompts.changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.prompts.changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "server": {
+                "type": "string"
+              }
+            },
+            "required": ["server"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.mcp.resources.changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.resources.changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "server": {
+                "type": "string"
+              }
+            },
+            "required": ["server"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.mcp.ready": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.ready"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.mcp.failed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "mcp.failed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "server": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["server", "error"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.lattice.run.created": {
         "type": "object",
         "properties": {
@@ -47698,6 +48355,76 @@
             },
             "required": ["event"],
             "additionalProperties": false
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.file.watcher.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "file.watcher.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "event": {
+                "type": "string",
+                "enum": ["added", "changed", "deleted", "renamed"]
+              },
+              "absolute": {
+                "type": "string"
+              },
+              "oldPath": {
+                "type": "string"
+              },
+              "oldAbsolute": {
+                "type": "string"
+              },
+              "parent": {
+                "type": "string"
+              },
+              "node": {},
+              "resync": {
+                "type": "boolean"
+              }
+            },
+            "required": ["file", "event"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.channel.command.executed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "channel.command.executed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "channelType": {
+                "type": "string"
+              },
+              "accountId": {
+                "type": "string"
+              },
+              "chatId": {
+                "type": "string"
+              },
+              "userId": {
+                "type": "string"
+              }
+            },
+            "required": ["name", "channelType", "accountId", "chatId"]
           }
         },
         "required": ["type", "properties"]
@@ -47787,261 +48514,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.session.compacted": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "session.compacted"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              }
-            },
-            "required": ["sessionID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.file.edited": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "file.edited"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "file": {
-                "type": "string"
-              }
-            },
-            "required": ["file"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.runtime.reloaded": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "runtime.reloaded"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "executed": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/RuntimeReloadTarget"
-                }
-              },
-              "cascaded": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/RuntimeReloadTarget"
-                }
-              },
-              "changedFields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["executed", "cascaded", "changedFields"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.lsp.client.diagnostics": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "lsp.client.diagnostics"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "serverID": {
-                "type": "string"
-              },
-              "path": {
-                "type": "string"
-              }
-            },
-            "required": ["serverID", "path"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.lsp.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "lsp.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {}
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.dag.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "dag.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "nodes": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/DagNode"
-                }
-              },
-              "ready": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["sessionID", "nodes", "ready"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.todo.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "todo.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "todos": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Todo"
-                }
-              }
-            },
-            "required": ["sessionID", "todos"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.agenda.item.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "agenda.item.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "item": {
-                "$ref": "#/components/schemas/AgendaItem"
-              }
-            },
-            "required": ["item"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.agenda.item.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "agenda.item.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "item": {
-                "$ref": "#/components/schemas/AgendaItem"
-              }
-            },
-            "required": ["item"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.agenda.item.deleted": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "agenda.item.deleted"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "scopeID": {
-                "type": "string"
-              }
-            },
-            "required": ["id", "scopeID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.channel.command.executed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "channel.command.executed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string"
-              },
-              "channelType": {
-                "type": "string"
-              },
-              "accountId": {
-                "type": "string"
-              },
-              "chatId": {
-                "type": "string"
-              },
-              "userId": {
-                "type": "string"
-              }
-            },
-            "required": ["name", "channelType", "accountId", "chatId"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.channel.connected": {
         "type": "object",
         "properties": {
@@ -48085,64 +48557,6 @@
               }
             },
             "required": ["channelType", "accountId"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.synergy_link.target.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.target.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "target": {
-                "$ref": "#/components/schemas/SynergyLinkTarget"
-              }
-            },
-            "required": ["target"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.synergy_link.target.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.target.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "target": {
-                "$ref": "#/components/schemas/SynergyLinkTarget"
-              }
-            },
-            "required": ["target"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.synergy_link.target.removed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.target.removed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "pattern": "^target_[0-9a-f-]{36}$"
-              }
-            },
-            "required": ["id"]
           }
         },
         "required": ["type", "properties"]
@@ -48268,116 +48682,114 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.cortex.task.created": {
+      "Event.lsp.client.diagnostics": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "cortex.task.created"
+            "const": "lsp.client.diagnostics"
           },
           "properties": {
             "type": "object",
             "properties": {
-              "task": {
-                "$ref": "#/components/schemas/CortexTask"
+              "serverID": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
               }
             },
-            "required": ["task"]
+            "required": ["serverID", "path"]
           }
         },
         "required": ["type", "properties"]
       },
-      "Event.cortex.task.completed": {
+      "Event.lsp.updated": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "cortex.task.completed"
+            "const": "lsp.updated"
           },
           "properties": {
             "type": "object",
-            "properties": {
-              "task": {
-                "$ref": "#/components/schemas/CortexTask"
-              }
-            },
-            "required": ["task"]
+            "properties": {}
           }
         },
         "required": ["type", "properties"]
       },
-      "Event.cortex.tasks.updated": {
+      "Event.synergy_link.target.created": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "cortex.tasks.updated"
+            "const": "synergy_link.target.created"
           },
           "properties": {
             "type": "object",
             "properties": {
-              "tasks": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/CortexTask"
-                }
+              "target": {
+                "$ref": "#/components/schemas/SynergyLinkTarget"
               }
             },
-            "required": ["tasks"]
+            "required": ["target"]
           }
         },
         "required": ["type", "properties"]
       },
-      "Event.plugin.event": {
+      "Event.synergy_link.target.updated": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "plugin.event"
+            "const": "synergy_link.target.updated"
           },
           "properties": {
             "type": "object",
             "properties": {
-              "pluginId": {
-                "type": "string"
-              },
-              "pluginVersion": {
-                "type": "string"
-              },
-              "generation": {
-                "type": "string"
-              },
-              "eventId": {
-                "type": "string"
-              },
-              "scopeId": {
-                "type": "string"
-              },
-              "sessionId": {
-                "type": "string"
-              },
-              "sequence": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
-              },
-              "timestamp": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
-              },
-              "payload": {}
+              "target": {
+                "$ref": "#/components/schemas/SynergyLinkTarget"
+              }
             },
-            "required": [
-              "pluginId",
-              "pluginVersion",
-              "generation",
-              "eventId",
-              "scopeId",
-              "sequence",
-              "timestamp",
-              "payload"
-            ]
+            "required": ["target"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.synergy_link.target.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^target_[0-9a-f-]{36}$"
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.vcs.branch.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "vcs.branch.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "branch": {
+                "type": "string"
+              }
+            }
           }
         },
         "required": ["type", "properties"]
@@ -48408,63 +48820,6 @@
               }
             },
             "required": ["name", "sessionID", "arguments", "messageID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.file.watcher.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "file.watcher.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "file": {
-                "type": "string"
-              },
-              "event": {
-                "type": "string",
-                "enum": ["added", "changed", "deleted", "renamed"]
-              },
-              "absolute": {
-                "type": "string"
-              },
-              "oldPath": {
-                "type": "string"
-              },
-              "oldAbsolute": {
-                "type": "string"
-              },
-              "parent": {
-                "type": "string"
-              },
-              "node": {},
-              "resync": {
-                "type": "boolean"
-              }
-            },
-            "required": ["file", "event"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.vcs.branch.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "vcs.branch.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "branch": {
-                "type": "string"
-              }
-            }
           }
         },
         "required": ["type", "properties"]
@@ -48590,31 +48945,16 @@
             "$ref": "#/components/schemas/Event.scope.runtime.disposed"
           },
           {
+            "$ref": "#/components/schemas/Event.agenda.item.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.agenda.item.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.agenda.item.deleted"
+          },
+          {
             "$ref": "#/components/schemas/Event.provider.auth.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.config.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.installation.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.installation.update-available"
-          },
-          {
-            "$ref": "#/components/schemas/Event.mcp.tools.changed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.mcp.prompts.changed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.mcp.resources.changed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.mcp.ready"
-          },
-          {
-            "$ref": "#/components/schemas/Event.mcp.failed"
           },
           {
             "$ref": "#/components/schemas/Event.message.updated"
@@ -48627,6 +48967,12 @@
           },
           {
             "$ref": "#/components/schemas/Event.message.part.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.config.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.runtime.reloaded"
           },
           {
             "$ref": "#/components/schemas/Event.permission.asked"
@@ -48662,7 +49008,34 @@
             "$ref": "#/components/schemas/Event.session.turn.end"
           },
           {
+            "$ref": "#/components/schemas/Event.installation.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.installation.update-available"
+          },
+          {
             "$ref": "#/components/schemas/Event.session.inbox.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.file.edited"
+          },
+          {
+            "$ref": "#/components/schemas/Event.todo.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.dag.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.compacted"
+          },
+          {
+            "$ref": "#/components/schemas/Event.cortex.task.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.cortex.task.completed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.cortex.tasks.updated"
           },
           {
             "$ref": "#/components/schemas/Event.blueprint_loop.created"
@@ -48701,6 +49074,24 @@
             "$ref": "#/components/schemas/Event.note.unarchived"
           },
           {
+            "$ref": "#/components/schemas/Event.plugin.event"
+          },
+          {
+            "$ref": "#/components/schemas/Event.mcp.tools.changed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.mcp.prompts.changed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.mcp.resources.changed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.mcp.ready"
+          },
+          {
+            "$ref": "#/components/schemas/Event.mcp.failed"
+          },
+          {
             "$ref": "#/components/schemas/Event.lattice.run.created"
           },
           {
@@ -48708,6 +49099,12 @@
           },
           {
             "$ref": "#/components/schemas/Event.lattice.event.appended"
+          },
+          {
+            "$ref": "#/components/schemas/Event.file.watcher.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.channel.command.executed"
           },
           {
             "$ref": "#/components/schemas/Event.question.asked"
@@ -48722,52 +49119,10 @@
             "$ref": "#/components/schemas/Event.question.timed_out"
           },
           {
-            "$ref": "#/components/schemas/Event.session.compacted"
-          },
-          {
-            "$ref": "#/components/schemas/Event.file.edited"
-          },
-          {
-            "$ref": "#/components/schemas/Event.runtime.reloaded"
-          },
-          {
-            "$ref": "#/components/schemas/Event.lsp.client.diagnostics"
-          },
-          {
-            "$ref": "#/components/schemas/Event.lsp.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.dag.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.todo.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.agenda.item.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.agenda.item.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.agenda.item.deleted"
-          },
-          {
-            "$ref": "#/components/schemas/Event.channel.command.executed"
-          },
-          {
             "$ref": "#/components/schemas/Event.channel.connected"
           },
           {
             "$ref": "#/components/schemas/Event.channel.disconnected"
-          },
-          {
-            "$ref": "#/components/schemas/Event.synergy_link.target.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.synergy_link.target.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.synergy_link.target.removed"
           },
           {
             "$ref": "#/components/schemas/Event.holos.contact.added"
@@ -48788,25 +49143,25 @@
             "$ref": "#/components/schemas/Event.holos.presence"
           },
           {
-            "$ref": "#/components/schemas/Event.cortex.task.created"
+            "$ref": "#/components/schemas/Event.lsp.client.diagnostics"
           },
           {
-            "$ref": "#/components/schemas/Event.cortex.task.completed"
+            "$ref": "#/components/schemas/Event.lsp.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.cortex.tasks.updated"
+            "$ref": "#/components/schemas/Event.synergy_link.target.created"
           },
           {
-            "$ref": "#/components/schemas/Event.plugin.event"
+            "$ref": "#/components/schemas/Event.synergy_link.target.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.command.executed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.file.watcher.updated"
+            "$ref": "#/components/schemas/Event.synergy_link.target.removed"
           },
           {
             "$ref": "#/components/schemas/Event.vcs.branch.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.command.executed"
           },
           {
             "$ref": "#/components/schemas/Event.pty.created"

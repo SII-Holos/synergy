@@ -193,6 +193,7 @@ export const SemanticIconToken = {
   "action.more": "ellipsis",
   "action.rename": "pencil",
   "action.export": "arrow-down-to-line",
+  "action.external": "external-link",
   "action.import": "log-in",
   "action.archive": "file-archive",
   "action.info": "info",

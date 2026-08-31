@@ -1,5 +1,5 @@
 import * as prompts from "@clack/prompts"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 import { Server } from "../../server/server"
 import { isServerReachable } from "../network"
 import * as ChannelTypes from "../../channel/types"

@@ -8,7 +8,9 @@ import { MessageV2 } from "./message-v2"
 import { Log } from "@/util/log"
 import { ScopeContext } from "@/scope/context"
 import { Bus } from "@/bus"
-import type { LSP } from "@/lsp"
+import { SessionInputResources, SessionSymbolLookup } from "./input-source"
+import { SessionPluginHooks } from "./plugin-hooks"
+import type { SymbolRange } from "./symbol-range"
 import { FileTime } from "@/file/time"
 import { Attachment } from "@/attachment"
 import { Asset } from "@/asset/asset"
@@ -262,8 +264,7 @@ export async function createUserMessage(input: CreateUserMessageInput, rootIDOve
           ]
 
           try {
-            const { MCP } = await import("@/mcp")
-            const resourceContent = await MCP.readResource(clientName, uri)
+            const resourceContent = await SessionInputResources.readMcpResource(clientName, uri)
             if (!resourceContent) {
               throw new Error(`Resource not found: ${clientName}/${uri}`)
             }
@@ -448,10 +449,9 @@ export async function createUserMessage(input: CreateUserMessageInput, rootIDOve
                 // workspace/symbol searches, so we'll try to find the
                 // symbol in the document to get the full range
                 if (start === end) {
-                  const { LSP } = await import("@/lsp")
-                  const symbols = await LSP.documentSymbol(filePathURI)
+                  const symbols = await SessionSymbolLookup.documentSymbols(filePathURI)
                   for (const symbol of symbols) {
-                    let range: LSP.Range | undefined
+                    let range: SymbolRange | undefined
                     if ("range" in symbol) {
                       range = symbol.range
                     } else if ("location" in symbol) {
@@ -683,8 +683,7 @@ export async function createUserMessage(input: CreateUserMessageInput, rootIDOve
     }),
   ).then((x) => x.flat())
 
-  const { Plugin } = await import("@/plugin")
-  await Plugin.trigger(
+  await SessionPluginHooks.trigger(
     "chat.message",
     {
       sessionID: input.sessionID,

@@ -338,6 +338,7 @@ a {
     .hover\:bg-surface-raised-base\/98:hover,
     .hover\:bg-surface-raised-base\/60:hover,
     .hover\:bg-surface-inset-base:hover,
+    .hover\:bg-surface-inset-base-hover:hover,
     .hover\:bg-surface-inset-base\/40:hover,
     .hover\:bg-surface-base-hover:hover,
     .hover\:bg-surface-hover-base:hover,
@@ -700,22 +701,18 @@ a {
 .synergy-workbench-canvas .prompt-input-shell {
   container: prompt-input / inline-size;
   border-radius: 16px;
-  background-color: var(--workbench-input-bg);
-  border-color: color-mix(in srgb, var(--text-strong) 12%, transparent);
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--text-strong) 4%, transparent);
+  background-color: var(--surface-raised-base);
+  border-color: var(--border-strong-base);
+  box-shadow:
+    0 1px 3px color-mix(in srgb, var(--surface-overlay) 12%, transparent),
+    0 8px 28px -8px color-mix(in srgb, var(--surface-overlay) 20%, transparent);
   transition:
-    background-color 150ms ease,
     border-color 150ms ease,
     box-shadow 150ms ease;
 }
 
-.synergy-workbench-canvas .prompt-input-shell:hover {
-  background-color: var(--workbench-input-bg-hover);
-}
-
 .synergy-workbench-canvas .prompt-input-shell:focus-within {
-  border-color: color-mix(in srgb, var(--text-strong) 22%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-strong) 10%, transparent);
+  border-color: var(--border-interactive-base);
 }
 
 .synergy-workbench-canvas .prompt-input-shell.prompt-input-shell-dragging {
@@ -723,13 +720,13 @@ a {
 }
 
 .synergy-workbench-canvas .prompt-input-toolbar {
-  padding: 8px 14px 12px;
+  padding: 6px 12px 8px;
 }
 
 .synergy-workbench-canvas .prompt-input-toolbar-button,
 .synergy-workbench-canvas .prompt-input-toolbar-chip,
 .synergy-workbench-canvas .prompt-input-toolbar-icon-button {
-  min-height: 32px;
+  min-height: 28px;
   border: 0;
   border-radius: 8px;
   background-color: transparent;
@@ -749,8 +746,8 @@ a {
 }
 
 .synergy-workbench-canvas .prompt-input-toolbar-icon-button {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
 }
 
 .synergy-workbench-canvas .prompt-input-toolbar-button:hover,
@@ -770,8 +767,8 @@ a {
 
 @container prompt-input (max-width: 560px) {
   .synergy-workbench-canvas .prompt-input-compact-control {
-    width: 32px;
-    flex: 0 0 32px;
+    width: 28px;
+    flex: 0 0 28px;
     justify-content: center;
     gap: 0;
     padding-inline: 0;
@@ -785,7 +782,7 @@ a {
 
 @media (max-width: 767px) {
   .synergy-workbench-canvas .prompt-input-shell {
-    border-color: color-mix(in srgb, var(--text-strong) 18%, transparent);
+    border-color: var(--border-strong-base);
     box-shadow: none;
   }
 }

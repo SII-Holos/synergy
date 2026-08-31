@@ -3,7 +3,7 @@ import fs from "fs/promises"
 import path from "path"
 import { FileIgnore } from "../../src/file/ignore"
 import { FileWatcherEvents } from "../../src/file/watcher-events"
-import { RuntimeReloadPath } from "../../src/runtime/reload-path"
+import { RuntimeReloadPath } from "../../src/config/reload-path"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 

@@ -1,4 +1,4 @@
-import { GitHealth } from "../project/git-health"
+import { SessionProjectHealth } from "./project-health"
 import { LoopJob } from "./loop-job"
 import { Session } from "."
 import { Identifier } from "../id/id"
@@ -321,7 +321,7 @@ LoopJob.register({
     return input.directory
   },
   async execute(input, _signal) {
-    GitHealth.invalidate(input.directory)
+    SessionProjectHealth.invalidateGitHealth(input.directory)
     return "pass"
   },
 })

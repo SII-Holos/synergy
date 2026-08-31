@@ -1,4 +1,5 @@
 import { SessionInvoke } from "./invoke"
+import { SessionCortexRuntime } from "./cortex-runtime"
 type AbortHook = (sessionID: string) => void | Promise<void>
 
 export namespace SessionAbort {
@@ -11,8 +12,7 @@ export namespace SessionAbort {
 
   export async function abort(sessionID: string, options?: { recoverQueuedTasks?: boolean }): Promise<void> {
     SessionInvoke.cancel(sessionID, options)
-    const { Cortex } = await import("../cortex")
-    await Cortex.cancelAll(sessionID)
+    await SessionCortexRuntime.cancelAllForParent(sessionID)
     await SessionInvoke.repairAfterAbort(sessionID)
     await Promise.all([...hooks].map((hook) => hook(sessionID)))
   }
