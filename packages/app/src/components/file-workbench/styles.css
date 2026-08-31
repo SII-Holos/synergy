@@ -252,6 +252,16 @@
   padding: 24px clamp(20px, 5vw, 64px) 80px;
   -webkit-user-select: text;
   user-select: text;
+  scrollbar-gutter: stable;
+  scrollbar-color: color-mix(in srgb, var(--text-strong) 24%, transparent) transparent;
+
+  &::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--text-strong) 24%, transparent);
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--text-strong) 34%, transparent);
+  }
 }
 
 .file-markdown-preview > [data-component="markdown"] {

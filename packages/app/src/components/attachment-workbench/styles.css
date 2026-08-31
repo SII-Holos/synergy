@@ -106,6 +106,16 @@
   flex: 1;
   overflow: auto;
   background: var(--workbench-canvas-bg);
+  scrollbar-gutter: stable;
+  scrollbar-color: color-mix(in srgb, var(--text-strong) 24%, transparent) transparent;
+
+  &::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--text-strong) 24%, transparent);
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--text-strong) 34%, transparent);
+  }
 }
 
 .attachment-workbench-loading,
