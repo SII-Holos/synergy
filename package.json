@@ -22,7 +22,7 @@
     "perf:tools:test": "bun test --config /dev/null test/script/performance-tools.test.ts",
     "release:test": "bun test --config /dev/null test/script/release test/script/install.test.ts",
     "format": "./script/format.ts",
-    "format:check": "prettier --ignore-unknown --check .",
+    "format:check": "prettier --ignore-unknown --cache --cache-strategy content --check .",
     "lint": "oxlint -c oxlintrc.json --deny-warnings",
     "lint:fix": "oxlint -c oxlintrc.json --fix",
     "deadcode": "knip --include dependencies,unlisted,binaries,unresolved,catalog",
