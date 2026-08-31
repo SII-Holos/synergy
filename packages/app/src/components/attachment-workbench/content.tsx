@@ -192,6 +192,14 @@ export function AttachmentWorkbenchContent(props: WorkbenchPanelContentProps) {
                 </Show>
                 <Show when={url()}>
                   {(href) => (
+                    <a class="attachment-workbench-action" href={href()} target="_blank" rel="noopener noreferrer">
+                      <Icon name={getSemanticIcon("action.open")} size="small" />
+                      <span>{lingui._(A.openFullPage)}</span>
+                    </a>
+                  )}
+                </Show>
+                <Show when={url()}>
+                  {(href) => (
                     <a
                       class="attachment-workbench-action"
                       href={href()}
@@ -248,6 +256,7 @@ export function AttachmentWorkbenchContent(props: WorkbenchPanelContentProps) {
                 <Match when={capability()?.kind === "html" ? text() : undefined}>
                   {(content) => (
                     <div class="attachment-html-preview">
+                      <div class="attachment-html-preview-notice">{lingui._(A.htmlScriptsDisabled)}</div>
                       <RenderHtml html={sanitizeAttachmentHtml(content())} />
                     </div>
                   )}
