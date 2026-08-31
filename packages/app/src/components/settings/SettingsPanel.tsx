@@ -111,6 +111,7 @@ import {
   clarusDiagnosticsFilename,
   shouldRefreshChannelStatuses,
 } from "./channel-account-model"
+import { recordThemeSelection } from "@/plugin/theme-selection"
 import { SlotOutlet } from "@/plugin/slot-outlet"
 
 function settingsValues(value: unknown, fallback: Record<string, unknown> = {}): Record<string, unknown> {
@@ -808,6 +809,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
           }
           if (key === "theme") {
             const themeValue = value as string
+            recordThemeSelection(themeValue)
             theme.setThemeId(themeValue || "synergy")
             setSettings("general", "theme", themeValue)
             // Persist to server independently — fire-and-forget with error toast on failure.
