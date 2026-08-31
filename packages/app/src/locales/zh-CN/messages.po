@@ -2588,6 +2588,10 @@ msgid "app.file.toolbar.edit"
 msgstr "编辑"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.openInBrowser"
+msgstr "在浏览器中打开"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toolbar.save"
 msgstr "保存"
 
