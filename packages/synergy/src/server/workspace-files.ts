@@ -287,12 +287,12 @@ export const WorkspaceFilesRoute = new Hono()
   .get(
     "/raw/:token/:path{.+}",
     describeRoute({
-      summary: "Serve a raw workspace HTML file for a new browser tab",
+      summary: "Serve a raw workspace file for a new browser tab",
       description:
-        "Serve an .html/.htm file or a static relative resource it references (images, CSS, scripts, fonts). " +
+        "Serve an .html/.htm/.svg/.xml file or a static relative resource it references (images, CSS, scripts, fonts). " +
         "The first segment selects the scope: the literal home or a base64url-encoded directory. The remaining " +
-        "path is a workspace-relative file that must stay inside the scope. HTML responses carry a sandbox CSP " +
-        "that places the page in an opaque origin.",
+        "path is a workspace-relative file that must stay inside the scope. Script-capable document responses " +
+        "(HTML, SVG, XML) carry a sandbox CSP that places the page in an opaque origin.",
       operationId: "workspace.files.raw",
       hide: true,
       responses: {
@@ -338,15 +338,23 @@ export const WorkspaceFilesRoute = new Hono()
       try {
         const result = await WorkspaceFileService.serveFile({ path: rel })
         const ext = path.extname(rel).toLowerCase()
-        const html = ext === ".html" || ext === ".htm"
-        if (html) {
-          // HTML opened in a new tab is untrusted: sandbox it into an opaque
-          // origin so scripts can run but cannot reach the app localStorage,
-          // the unauthenticated HTTP control plane, the event WebSocket, or
-          // the Desktop preload bridge. Mirrors packages/synergy/src/server/asset.ts.
+        // Document types that can execute scripts when opened as a top-level
+        // page: HTML, SVG, and XML (XSLT processing instructions). They are
+        // untrusted — sandbox them into an opaque origin so scripts can run
+        // but cannot reach the app localStorage, the unauthenticated HTTP
+        // control plane, the event WebSocket, or the Desktop preload bridge.
+        // Mirrors packages/synergy/src/server/asset.ts. Static sub-resources
+        // (images, CSS, JS, fonts) keep their real MIME type and no sandbox,
+        // since a sub-resource's CSP header does not apply to the parent page.
+        const scriptableDocument =
+          ext === ".html" || ext === ".htm" || ext === ".svg" || ext === ".xml" || ext === ".xhtml"
+        if (scriptableDocument) {
           c.header("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-popups allow-modals")
         }
-        c.header("Content-Type", html ? "text/html; charset=utf-8" : result.mime || "application/octet-stream")
+        c.header(
+          "Content-Type",
+          ext === ".html" || ext === ".htm" ? "text/html; charset=utf-8" : result.mime || "application/octet-stream",
+        )
         c.header("Cache-Control", "no-store")
         return c.body(result.stream)
       } catch (err) {

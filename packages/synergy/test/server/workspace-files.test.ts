@@ -565,6 +565,38 @@ describe("GET /workspace/files/content", () => {
     expect(await response.text()).toBe(html)
   })
 
+  test("sandboxes raw SVG documents with scriptable content", async () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>'
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "evil.svg"), svg)
+      },
+    })
+    const response = await Server.App().request(rawUrl(tmp.path, "evil.svg"))
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toContain("image/svg+xml")
+    expect(response.headers.get("content-security-policy")).toBe(
+      "sandbox allow-scripts allow-forms allow-popups allow-modals",
+    )
+  })
+
+  test("sandboxes raw XML documents with XSLT processing instructions", async () => {
+    const xml = '<?xml version="1.0"?><?xml-stylesheet type="text/xsl" href="evil.xsl"?><root/>'
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "evil.xml"), xml)
+      },
+    })
+    const response = await Server.App().request(rawUrl(tmp.path, "evil.xml"))
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toContain("application/xml")
+    expect(response.headers.get("content-security-policy")).toBe(
+      "sandbox allow-scripts allow-forms allow-popups allow-modals",
+    )
+  })
+
   test("serves relative static resources with their real mime type and no sandbox CSP", async () => {
     await using tmp = await tmpdir({
       git: true,
