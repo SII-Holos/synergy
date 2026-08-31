@@ -307,6 +307,20 @@ export namespace Server {
     }
   }
 
+  const RawHtmlScopePattern = /^\/workspace\/files\/raw\/([^/]+)\//
+
+  function rawHtmlScope(c: Context): { scopeID?: string; directory?: string } | undefined {
+    const token = RawHtmlScopePattern.exec(c.req.path)?.[1]
+    if (!token) return undefined
+    if (token === "home") return { scopeID: "home" }
+    try {
+      const directory = Buffer.from(token, "base64url").toString("utf-8").trim()
+      return directory ? { directory } : undefined
+    } catch {
+      return undefined
+    }
+  }
+
   function safeHeaderId(value: string | undefined) {
     if (!value) return undefined
     const trimmed = value.trim()
@@ -367,10 +381,14 @@ export namespace Server {
   async function provideRequestScope(c: Context, next: Next) {
     const directory = requestDirectory(c)
     const scopeID = requestScopeID(c)
+    const rawScope = !directory && !scopeID ? rawHtmlScope(c) : undefined
     const scope =
-      isGlobalRoute(c.req.path) || (!directory && !scopeID && !isScopeRequiredRoute(c.req.path))
+      isGlobalRoute(c.req.path) || (!directory && !scopeID && !rawScope && !isScopeRequiredRoute(c.req.path))
         ? Scope.home()
-        : await resolveScopedRequestScope(c, { scopeID, directory })
+        : await resolveScopedRequestScope(c, {
+            scopeID: scopeID ?? rawScope?.scopeID,
+            directory: directory ?? rawScope?.directory,
+          })
     if (scope instanceof Response) return scope
     return ScopeContext.provide({
       scope,

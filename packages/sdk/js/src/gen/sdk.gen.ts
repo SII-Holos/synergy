@@ -1585,7 +1585,7 @@ export class Files extends HeyApiClient {
   /**
    * Read workspace file bytes
    *
-   * Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected.
+   * Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected. For opening HTML in a new browser tab with working relative resources, use GET /workspace/files/raw/{scope}/{path} instead.
    */
   public content<ThrowOnError extends boolean = false>(
     parameters: {
