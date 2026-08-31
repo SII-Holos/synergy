@@ -4493,6 +4493,7 @@ export type McpStatusDisabled = {
 
 export type McpStatusNeedsAuth = {
   status: "needs_auth"
+  error: string
 }
 
 export type McpStatusNeedsClientRegistration = {

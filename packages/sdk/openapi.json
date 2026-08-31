@@ -35519,9 +35519,12 @@
           "status": {
             "type": "string",
             "const": "needs_auth"
+          },
+          "error": {
+            "type": "string"
           }
         },
-        "required": ["status"]
+        "required": ["status", "error"]
       },
       "MCPStatusNeedsClientRegistration": {
         "type": "object",

@@ -281,6 +281,31 @@ Feishu/Lark account configuration may pair an explicit `model` with `variant`. T
 
 A Feishu/Lark account may also set `projectDir` to bind the account's sessions to a project Scope. Resolution rules and error behavior are documented in the [Channels reference](../product/connections.md).
 
+## MCP Server Authentication
+
+Remote MCP servers (`type: "remote"` in `40-mcp.jsonc`) use OAuth 2.0 authorization-code flows with PKCE and dynamic client registration by default. Credentials (tokens, registered client info, and in-flight PKCE state) live in the auth store, never in `40-mcp.jsonc`; the `oauth` object in the server config only carries a pre-registered `clientId`/`clientSecret`/`scope` when a server does not support dynamic registration.
+
+```jsonc
+{
+  "mcp": {
+    "notion": {
+      "type": "remote",
+      "url": "https://mcp.notion.com/mcp",
+      "oauth": {},
+      "startup": "eager",
+    },
+  },
+}
+```
+
+Authenticate a server with `synergy mcp auth <name>` (or `synergy mcp auth` to pick from a list). The command opens the provider's authorization page in a browser, waits for the local callback, exchanges the code for tokens, and saves them to the auth store. A long-running server process picks up CLI-authenticated credentials automatically within ~30 seconds (the supervisor re-checks servers in the `needs_auth` state on an interval and reconnects when valid tokens appear), so no restart is required after authenticating from the CLI.
+
+Background supervision never writes PKCE state: an unauthenticated server is marked `needs_auth` (with an actionable `synergy mcp auth <name>` error on the status) and left idle (no network probes) until credentials exist. Once credentials exist, the supervisor reconnects within ~30 seconds even if the stored access token already expired, as long as a refresh token is present — refreshed tokens are persisted back to the auth store. This keeps background auto-connect from interfering with an interactive `mcp auth` flow for the same server.
+
+`startup` controls when a server connects: `"eager"` (default) connects at runtime start, `"lazy"` connects on first tool use, and `"manual"` never auto-connects (use `synergy mcp connect <name>`). Set `"manual"` for a server you only authenticate on demand.
+
+The OAuth callback listener runs on `127.0.0.1:19876` by default. If another Synergy process is already running an OAuth flow on that port, `mcp auth` fails with an actionable error; set `SYNERGY_OAUTH_CALLBACK_PORT` to a free port to run a flow in the second process.
+
 ## Feishu/Lark Channel Settings
 
 `90-channels.jsonc` owns the built-in Feishu/Lark Channel provider under `channel.feishu`. A minimal configuration is:
