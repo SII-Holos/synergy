@@ -39,6 +39,8 @@ Tests that exercise the cold-cache path — where no disk or memory cache exists
 
 Use a fake or local boundary only where the external system is not the subject of the test. Do not add Jest/Vitest mocks to the Bun suite without an established package-specific reason.
 
+Playwright DOM-test fixtures that boot a Vite dev server must be hermetic against a no-build checkout (the `ci-coverage` gate runs no build step): alias workspace-package entries whose `import` condition points at gitignored `dist/` output to their source entry; resolve runtime packages that break under dependency pre-bundling (Lingui's `@messageformat/parser` chain) to minimal fixture-local stubs when the suite asserts behavior unrelated to i18n rendering, or add them to `optimizeDeps.include` when the real runtime is the subject; set `optimizeDeps.include` for the Solid runtime/JSX runtime/zod with `noDiscovery: true` so the optimizer never re-runs mid-load and reloads the page; scope `cacheDir` to the fixture temp directory so sibling Playwright servers sharing `node_modules/.vite` cannot invalidate each other; `warmupRequest` the fixture entry before launching the browser and surface page/console/HTTP errors in the failure message instead of a bare 30s selector timeout; and register the suite in the package's `playwrightIsolated` list so bun's worker reaping cannot kill its Chromium process mid-suite. See the [hermetic Vite fixtures decision](../../../docs/decisions/implemented/testing/2026-08-31-hermetic-vite-fixtures-for-playwright-dom-tests.md).
+
 ## Run Core Suites Through the Orchestrators
 
 Run `packages/synergy` tests through the package scripts, never a raw `bun test --coverage --parallel`:

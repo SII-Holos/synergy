@@ -10,6 +10,7 @@ let page: Page
 let server: ViteDevServer
 let fixtureDirectory: string
 let baseUrl: string
+const pageErrors: Error[] = []
 
 const componentPath = path.resolve(import.meta.dir, "../../../src/components/file-workbench/content.tsx")
 const appSrc = path.resolve(import.meta.dir, "../../../src")
@@ -68,9 +69,35 @@ beforeAll(async () => {
     Bun.write(
       localeStubPath,
       `
-        import { setupI18n } from "@lingui/core"
-        const i18n = setupI18n({ locale: "en" })
-        export const useLocale = () => ({ i18n, fmt: { number: (value) => String(value) } })
+        export const useLocale = () => ({ i18n: {}, fmt: { number: (value) => String(value) } })
+      `,
+    ),
+    Bun.write(
+      path.join(fixtureDirectory, "lingui-stub.tsx"),
+      `
+        import type { JSX } from "solid-js"
+        // Minimal Lingui stand-in: this fixture asserts workbench chrome and
+        // click behavior, not i18n rendering. The real @lingui/solid runtime
+        // pulls @messageformat/parser (CJS) through @lingui/message-utils,
+        // whose named import breaks under Vite's dependency pre-bundling in
+        // the Coverage job (no build step, shared .vite cache).
+        export function I18nProvider(props: { children?: JSX.Element }) {
+          return props.children
+        }
+        export function useLingui() {
+          return {
+            _: (descriptor: { id: string; message?: string }) => descriptor.message ?? descriptor.id,
+          }
+        }
+      `,
+    ),
+    Bun.write(
+      path.join(fixtureDirectory, "lingui-core-stub.ts"),
+      `
+        // Minimal @lingui/core stand-in; see lingui-stub.tsx for why.
+        export function setupI18n() {
+          return {}
+        }
       `,
     ),
     Bun.write(
@@ -111,9 +138,34 @@ beforeAll(async () => {
         { find: /^@\/context\/platform$/, replacement: platformStubPath },
         { find: /^@\/context\/sdk$/, replacement: sdkStubPath },
         { find: /^@\/context\/locale$/, replacement: localeStubPath },
+        // The real Lingui runtime pulls @messageformat/parser (CJS) through
+        // @lingui/message-utils; its named `parse` import breaks under Vite's
+        // on-demand dependency optimization in the no-build Coverage job.
+        // The fixture asserts workbench chrome and click behavior, not i18n
+        // rendering, so both Lingui entries resolve to hermetic stubs.
+        { find: "@lingui/solid", replacement: path.join(fixtureDirectory, "lingui-stub.tsx") },
+        { find: "@lingui/core", replacement: path.join(fixtureDirectory, "lingui-core-stub.ts") },
+        // The plugin package's exports map serves "import" from its
+        // gitignored dist/theme/index.js, which a fresh checkout lacks (the
+        // Coverage job runs no build step). Resolve the theme entry to source
+        // so the fixture is hermetic on any checkout.
+        {
+          find: "@ericsanchezok/synergy-plugin/theme",
+          replacement: path.resolve(import.meta.dir, "../../../../..", "packages/plugin/src/theme/index.ts"),
+        },
         { find: "@", replacement: appSrc },
       ],
     },
+    // Pre-bundle the Solid runtime, JSX runtime, and zod at server startup so
+    // the optimizer never re-runs mid-load (which reloads the page and 500s
+    // on slow cold Coverage CI starts). The cache is scoped to this fixture
+    // because sibling Playwright servers share packages/app/node_modules/.vite
+    // and invalidate each other's cache.
+    optimizeDeps: {
+      include: ["solid-js", "solid-js/web", "solid-js/store", "solid-js/jsx-runtime", "zod"],
+      noDiscovery: true,
+    },
+    cacheDir: path.join(fixtureDirectory, ".vite"),
     server: {
       host: "127.0.0.1",
       port: 5216,
@@ -122,6 +174,9 @@ beforeAll(async () => {
     },
   })
   await server.listen()
+  // Transform the whole fixture module graph server-side before the browser
+  // connects so transform errors surface here instead of a browser 500.
+  await server.warmupRequest("/main.tsx")
 
   const resolved = server.resolvedUrls?.local[0]
   if (!resolved) throw new Error("Expected Vite test server URL")
@@ -129,6 +184,23 @@ beforeAll(async () => {
 
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 800, height: 600 } })
+  page.on("pageerror", (error) => pageErrors.push(error))
+  page.on("console", (message) => {
+    if (message.type() === "error") pageErrors.push(new Error(message.text()))
+  })
+  page.on("response", (response) => {
+    if (response.status() >= 400) pageErrors.push(new Error(`HTTP ${response.status()} for ${response.url()}`))
+  })
+  // Smoke the fixture once before the cases run so a broken module graph
+  // fails here with page errors attached instead of three 30s timeouts.
+  try {
+    await page.goto(`${baseUrl}?path=README.md`)
+    await page.waitForSelector(".file-workbench-toolbar", { timeout: 30000 })
+  } catch (error) {
+    const pageError = pageErrors[0]
+    if (pageError) throw new Error(`file workbench fixture page failed to render: ${pageError.stack}`, { cause: error })
+    throw error
+  }
 })
 
 afterAll(async () => {
