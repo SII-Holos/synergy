@@ -356,6 +356,11 @@ export const WorkspaceFilesRoute = new Hono()
           ext === ".html" || ext === ".htm" ? "text/html; charset=utf-8" : result.mime || "application/octet-stream",
         )
         c.header("Cache-Control", "no-store")
+        // The Files workbench embeds raw documents in its preview iframe. The
+        // global CSP middleware otherwise sets X-Frame-Options: DENY, which
+        // blocks same-origin framing too; allow it here. The CSP sandbox above
+        // still confines script-capable documents to an opaque origin.
+        c.header("X-Frame-Options", "SAMEORIGIN")
         return c.body(result.stream)
       } catch (err) {
         if (err instanceof WorkspaceFileService.AccessDeniedError) {

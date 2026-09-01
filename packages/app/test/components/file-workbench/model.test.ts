@@ -36,6 +36,8 @@ describe("file preview classification", () => {
   test("classifies dual, source-only, preview-only and unsupported files", () => {
     expect(classifyFilePreview("README.md", "text")).toEqual({ kind: "markdown", defaultMode: "preview", dual: true })
     expect(classifyFilePreview("logo.svg", "text")).toEqual({ kind: "svg", defaultMode: "preview", dual: true })
+    expect(classifyFilePreview("page.html", "text")).toEqual({ kind: "html", defaultMode: "preview", dual: true })
+    expect(classifyFilePreview("page.htm", "text")).toEqual({ kind: "html", defaultMode: "preview", dual: true })
     expect(classifyFilePreview("src/app.ts", "text")).toEqual({ kind: "source", defaultMode: "source", dual: false })
     expect(classifyFilePreview("photo.png", "image")).toEqual({ kind: "image", defaultMode: "preview", dual: false })
     expect(classifyFilePreview("report.pdf", "binary")).toEqual({ kind: "pdf", defaultMode: "preview", dual: false })
