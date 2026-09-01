@@ -454,7 +454,11 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
         }
         case "page.error": {
           store.setPageLoading(msg.pageId, false)
-          store.setBrowserError({ severity: "error", message: msg.message ?? "Browser page error" })
+          store.setBrowserError({
+            pageId: msg.pageId,
+            severity: "error",
+            message: msg.message ?? "Browser page error",
+          })
           break
         }
         case "agent.activity": {

@@ -298,6 +298,7 @@ function BrowserPanelInner(props: {
                     sessionID={props.sessionID}
                     routeDirectory={props.routeDirectory}
                     ownerKey={ownerKey}
+                    clientPresentation={props.clientPresentation}
                     onRetryNative={retryNative}
                   />
                 </Show>

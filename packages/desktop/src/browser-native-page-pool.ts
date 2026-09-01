@@ -1,6 +1,8 @@
 import { app, WebContentsView, type BrowserWindow, type WebContents } from "electron"
 import {
   BrowserProtocolError,
+  browserNativeRecoveryFailureMessage,
+  isSafeBrowserObservation,
   withCdpCommandTimeout,
   type BrowserBackendCommand,
   type BrowserBackendResult,
@@ -54,6 +56,7 @@ interface Entry extends BrowserNativePageHandle {
   failed: boolean
   closing: boolean
   recoveryBudget: number
+  lastResumeRecoveryAt: number | null
   replacementListeners: Set<(view: WebContentsView, previous: WebContentsView) => void>
 }
 
@@ -61,6 +64,10 @@ const INITIAL_NATIVE_PAGE_VIEWPORT = { width: 1280, height: 720 }
 const DEFAULT_RECOVERY_DELAYS_MS = [0, 500, 2_000] as const
 const MAX_RECOVERY_ROUNDS = 3
 export const MAX_RECOVERY_BUDGET = 5
+// Agent-driven resume retries are rate-limited: a page that keeps failing must
+// not be recovered in a tight loop through the Agent path. The native Retry
+// control is a deliberate human action and is not subject to this cooldown.
+const RESUME_RECOVERY_COOLDOWN_MS = 15_000
 const DEFAULT_UNRESPONSIVE_GRACE_MS = 5_000
 const DEFAULT_NAVIGATION_TIMEOUT_MS = 30_000
 
@@ -74,6 +81,7 @@ export class BrowserNativePagePool {
       recoveryDelaysMs?: readonly number[]
       unresponsiveGraceMs?: number
       navigationTimeoutMs?: number
+      resumeRecoveryCooldownMs?: number
     } = {},
   ) {}
 
@@ -94,6 +102,7 @@ export class BrowserNativePagePool {
         failed: false,
         closing: false,
         recoveryBudget: MAX_RECOVERY_BUDGET,
+        lastResumeRecoveryAt: null,
         replacementListeners: new Set<(view: WebContentsView, previous: WebContentsView) => void>(),
         state: () => entry.generation.state(),
         execute: (command: BrowserBackendCommand) => this.execute(entry, command),
@@ -139,9 +148,7 @@ export class BrowserNativePagePool {
   async retry(ownerKey: string, pageId: string): Promise<void> {
     const entry = this.find(ownerKey, pageId)
     if (!entry) throw new Error("Native Browser page was not found.")
-    entry.failed = false
-    entry.recoveryBudget = MAX_RECOVERY_BUDGET
-    await this.recover(entry, "manual-retry")
+    await this.beginRecovery(entry, "manual-retry")
   }
 
   async destroy(): Promise<void> {
@@ -152,7 +159,16 @@ export class BrowserNativePagePool {
   }
 
   private async execute(entry: Entry, command: BrowserBackendCommand): Promise<BrowserBackendResult> {
-    if (entry.recovery || entry.failed) throw restartingError(entry.state().id, entry.failed ? "failed" : "restarting")
+    if (command.type === "resume") {
+      if (entry.recovery) await entry.recovery
+      else if (entry.failed) await this.beginRecovery(entry, "resume-retry")
+      return { type: "page", page: entry.state() }
+    }
+    if (entry.recovery || entry.failed) {
+      if (command.type !== "close" && !isSafeBrowserObservation(command)) {
+        throw restartingError(entry.state().id, entry.failed ? "failed" : "restarting")
+      }
+    }
     try {
       return await entry.generation.control.execute(command)
     } catch (error) {
@@ -328,7 +344,7 @@ export class BrowserNativePagePool {
     // page can answer probes forever. Bound the healthy-reload path with the
     // shared recovery budget so it cannot reload indefinitely.
     if (!this.consumeRecoveryBudget(entry)) {
-      this.markFailed(entry, "The Desktop native Browser kept becoming unresponsive; automatic recovery stopped.")
+      this.markFailed(entry, browserNativeRecoveryFailureMessage("unresponsive"))
       return
     }
     entry.input.emit({ type: "host.status", pageId: entry.state().id, status: "restarting" })
@@ -358,7 +374,7 @@ export class BrowserNativePagePool {
       // The single automatic retry is also bounded by the shared recovery
       // budget so a navigation loop can never reload the page forever.
       if (!this.consumeRecoveryBudget(entry)) {
-        this.markFailed(entry, "The Desktop native Browser exhausted its automatic recovery budget.")
+        this.markFailed(entry, browserNativeRecoveryFailureMessage("budget"))
         return
       }
       generation.navigationRetries++
@@ -396,11 +412,16 @@ export class BrowserNativePagePool {
 
   private async recoverEntry(entry: Entry, reason: string): Promise<void> {
     const pageId = entry.state().id
-    if (reason !== "manual-retry" && !this.consumeRecoveryBudget(entry)) {
-      this.markFailed(entry, "The Desktop native Browser exhausted its automatic recovery budget.")
+    // Explicit recovery (native Retry or agent resume) resets the transient
+    // budget in beginRecovery and is not itself metered; only automatic
+    // recovery flights consume the shared budget so a failing page cannot
+    // rebuild forever on its own.
+    const explicit = reason === "manual-retry" || reason === "resume-retry"
+    if (!explicit && !this.consumeRecoveryBudget(entry)) {
+      this.markFailed(entry, browserNativeRecoveryFailureMessage("budget"))
       throw new BrowserProtocolError({
         code: "browser_native_recovery_failed",
-        message: "The Desktop native Browser exhausted its automatic recovery budget; retry manually.",
+        message: `${browserNativeRecoveryFailureMessage("budget")}; retry manually.`,
         retryable: true,
         pageId,
         suggestedAction: "Retry native Browser recovery.",
@@ -434,11 +455,11 @@ export class BrowserNativePagePool {
         }
       }
     }
-    this.markFailed(entry, "The Desktop native Browser could not recover after repeated attempts.")
+    this.markFailed(entry, browserNativeRecoveryFailureMessage("repeated"))
     throw new BrowserProtocolError(
       {
         code: "browser_native_recovery_failed",
-        message: "The Desktop native Browser could not recover after repeated attempts.",
+        message: browserNativeRecoveryFailureMessage("repeated"),
         retryable: true,
         pageId,
         suggestedAction: "Retry native Browser recovery.",
@@ -453,11 +474,39 @@ export class BrowserNativePagePool {
     return true
   }
 
+  /**
+   * Starts one explicit recovery flight. Resume-driven recovery is rate-limited
+   * so a page that cannot recover cannot be retried in a tight loop through the
+   * Agent path; the native Retry control remains an unlimited human action.
+   */
+  private async beginRecovery(entry: Entry, reason: "manual-retry" | "resume-retry"): Promise<void> {
+    if (reason === "resume-retry") {
+      const cooldownMs = this.options.resumeRecoveryCooldownMs ?? RESUME_RECOVERY_COOLDOWN_MS
+      const now = Date.now()
+      if (entry.lastResumeRecoveryAt !== null && now - entry.lastResumeRecoveryAt < cooldownMs) {
+        const remainingMs = cooldownMs - (now - entry.lastResumeRecoveryAt)
+        throw new BrowserProtocolError({
+          code: "browser_native_recovery_failed",
+          message: `Native Browser recovery was attempted too recently; resume again in about ${Math.ceil(remainingMs / 1_000)}s.`,
+          retryable: true,
+          pageId: entry.state().id,
+          suggestedAction: "Wait for the recovery cooldown, then resume again or use the native Retry control.",
+        })
+      }
+      entry.lastResumeRecoveryAt = now
+    }
+    entry.failed = false
+    entry.recoveryBudget = MAX_RECOVERY_BUDGET
+    return this.recover(entry, reason)
+  }
+
   private markFailed(entry: Entry, message: string): void {
     entry.failed = true
     const pageId = entry.state().id
-    entry.input.emit({ type: "host.status", pageId, status: "failed" })
+    // page.error first so session-level failure recording can reuse the
+    // concrete recovery reason when host.status "failed" arrives next.
     entry.input.emit({ type: "page.error", pageId, url: entry.state().url, message })
+    entry.input.emit({ type: "host.status", pageId, status: "failed" })
   }
 
   private clearNavigationWatchdog(generation: Generation): void {

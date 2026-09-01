@@ -161,6 +161,29 @@ describe("CdpPageController navigation and lifecycle commands", () => {
       page: { id: "page-1", url: "", title: "" },
     })
   })
+
+  test("treats same-document navigations as immediately settled instead of timing out the load settle", async () => {
+    const transport = new FakeTransport()
+    transport.respond("Page.navigate", { type: "sameDocument" })
+    const controller = controllerFor(transport)
+
+    const result = await controller.execute({
+      type: "navigate",
+      url: "https://example.com/#section",
+      source: "agent",
+    })
+
+    expect(result).toMatchObject({
+      type: "navigation",
+      settled: true,
+      settleReason: "load",
+    })
+    expect(
+      transport.calls.some(
+        (call) => call.method === "Page.navigate" && call.params?.url === "https://example.com/#section",
+      ),
+    ).toBe(true)
+  })
 })
 
 describe("CdpPageController dialog, clipboard, and upload", () => {

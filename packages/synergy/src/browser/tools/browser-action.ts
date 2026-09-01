@@ -1,11 +1,16 @@
 import z from "zod"
 import { BrowserActionSchema, BrowserBackendResultSchema, type BrowserAction } from "@ericsanchezok/synergy-browser"
 import { Tool } from "../../tool/tool"
-import { BrowserToolHelper, formatSettleSummary, formatSnapshotText } from "./browser-shared"
-
+import {
+  BrowserToolHelper,
+  formatActionEvidenceNote,
+  formatSettleSummary,
+  formatSnapshotText,
+  withUnknownOutcomeGuidance,
+} from "./browser-shared"
 export const BrowserActionTool = Tool.define("browser_action", {
   description:
-    'Perform one deterministic browser interaction. The tool first waits for the target to be actionable (visible, stable, enabled), dispatches the input, then settles the page by default (up to 30s, quiet-network strategy) and returns a fresh accessibility snapshot so the next step can act without an extra snapshot call. Do NOT call browser_wait after every action — only when you need a specific business condition (text, locator state, URL change, download, dialog). If the result reports settled:false, the page was still active when the budget ended; prefer a targeted browser_wait or a fresh snapshot over a blind retry. Set includeSnapshot:false when chaining many pure input events and token cost matters. Prefer a fresh snapshot ref; label locators target labelled form controls; use role/name for buttons. For select, strings match HTML option values; use {label: "Visible text"} for displayed labels. Same-page actions are serialized and should be issued sequentially.',
+    "Perform one deterministic browser interaction. The tool waits for the target to be actionable, dispatches the input, then settles with networkquiet for up to 10s by default (hard cap 30s) and returns a fresh accessibility snapshot when available. Agent navigation uses load for up to 15s. Use browser_wait only for a specific business condition; settled:false is a settle outcome, not an action failure, and results never claim business completion.",
   parameters: z.object({ action: BrowserActionSchema }).strict(),
   async execute(params, ctx) {
     const page = await BrowserToolHelper.resolvePage(ctx)
@@ -16,7 +21,12 @@ export const BrowserActionTool = Tool.define("browser_action", {
       "browser_action",
       `Running ${params.action.type}`,
       async () => {
-        const result = await BrowserToolHelper.execute(ctx, { type: "action", action: params.action })
+        let result
+        try {
+          result = await BrowserToolHelper.execute(ctx, { type: "action", action: params.action })
+        } catch (error) {
+          throw withUnknownOutcomeGuidance(error, `browser_action ${params.action.type}`)
+        }
         if (result.type !== "action") throw new Error("Browser action returned an unexpected result.")
         const snapshot = BrowserBackendResultSchema.safeParse(result.snapshot)
         const snapshotResult = snapshot.success && snapshot.data.type === "snapshot" ? snapshot.data : null
@@ -31,12 +41,20 @@ export const BrowserActionTool = Tool.define("browser_action", {
           settled: result.settled,
           settleReason: result.settleReason,
           settleElapsedMs: result.settleElapsedMs,
+          inflightRequests: result.inflightRequests,
+          snapshotAvailable: Boolean(snapshotResult),
+          snapshotUnavailable: !snapshotResult && params.action.includeSnapshot !== false,
+        })
+        const evidenceNote = formatActionEvidenceNote({
+          snapshotAvailable: Boolean(snapshotResult),
+          settleSkipped: result.settleReason === "none",
         })
         return {
           title: `Browser ${params.action.type}`,
           output: [
             summary,
             settleLine,
+            evidenceNote,
             `Page: ${livePage.url}`,
             `Loading: ${livePage.loading ? "yes" : "no"}`,
             snapshotResult ? `snapshotId: ${snapshotResult.snapshotId}` : undefined,
@@ -54,6 +72,7 @@ export const BrowserActionTool = Tool.define("browser_action", {
             ...(result.settled !== undefined ? { settled: result.settled } : {}),
             ...(result.settleReason ? { settleReason: result.settleReason } : {}),
             ...(result.settleElapsedMs !== undefined ? { settleElapsedMs: result.settleElapsedMs } : {}),
+            ...(result.inflightRequests !== undefined ? { inflightRequests: result.inflightRequests } : {}),
             url: livePage.url,
             title: livePage.title,
             isLoading: livePage.loading,
@@ -74,16 +93,20 @@ export const BrowserActionTool = Tool.define("browser_action", {
 
 function actionSummary(action: BrowserAction): string {
   if (action.type === "select") {
-    return `Selected ${action.values.map((value) => (typeof value === "string" ? `value ${JSON.stringify(value)}` : JSON.stringify(value))).join(", ")}.`
+    return `Dispatched select ${action.values
+      .map((value) => (typeof value === "string" ? `value ${JSON.stringify(value)}` : JSON.stringify(value)))
+      .join(", ")} on the target.`
   }
   if (action.type === "scroll") {
-    return `Scrolled ${action.target ? "the target" : "the page"} by (${action.deltaX}, ${action.deltaY}) CSS pixels.`
+    return `Dispatched scroll of ${action.target ? "the target" : "the page"} by (${action.deltaX}, ${action.deltaY}) CSS pixels.`
   }
-  if (action.type === "fill") return `Filled the target with ${action.value.length} characters.`
-  if (action.type === "type") return `Typed ${action.value.length} characters.`
-  if (action.type === "setChecked") return `Set the target checked state to ${action.checked}.`
-  if (action.type === "press") return `Pressed ${JSON.stringify(action.key)}.`
-  return `Completed ${action.type}.`
+  if (action.type === "fill") return `Dispatched fill of ${action.value.length} characters into the target.`
+  if (action.type === "type") return `Dispatched ${action.value.length} characters into the target.`
+  if (action.type === "setChecked") return `Dispatched setChecked(${action.checked}) on the target.`
+  if (action.type === "press") return `Dispatched key ${JSON.stringify(action.key)}.`
+  if (action.type === "click" || action.type === "dblclick")
+    return `Dispatched ${action.type} on the target${action.button && action.button !== "left" ? ` (${action.button} button)` : ""}.`
+  return `Dispatched ${action.type}.`
 }
 
 function targetSummary(action: BrowserAction): {

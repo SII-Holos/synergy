@@ -397,6 +397,133 @@ describe("BrowserSession lazy restore", () => {
     expect(session.status).toBe("empty")
     expect(await BrowserStorage.load(owner)).toMatchObject({ status: "empty", page: null })
   })
+  test("keeps the live failed host page and clears the failure through resume", async () => {
+    const handlers: { onError?: (page: BrowserPageBackend, message: string) => void } = {}
+    let resumed = 0
+    const session = new BrowserSessionImpl(
+      owner,
+      async () => {
+        throw new Error("the injected page factory should be used")
+      },
+      async ({ id, events }) => {
+        handlers.onError = events.onError
+        return {
+          id: id ?? "page-native-failed",
+          backend: "host",
+          url: checkpoint.url,
+          title: "Recoverable",
+          loading: false,
+          lastActiveAt: 1,
+          async execute(command) {
+            if (command.type === "resume") {
+              resumed++
+              return {
+                type: "page",
+                page: {
+                  id: id ?? "page-native-failed",
+                  url: checkpoint.url,
+                  title: "Recoverable",
+                  isLoading: false,
+                  lastActiveAt: 1,
+                },
+              }
+            }
+            return { type: "void" }
+          },
+          async close() {},
+          isAlive() {
+            return true
+          },
+        }
+      },
+      () => "host",
+    )
+    await session.ensurePage(undefined, { resume: false })
+    expect(session.status).toBe("active")
+
+    handlers.onError?.(session.page!, "The Desktop native Browser could not recover after repeated attempts.")
+    await session.save()
+    expect(session.status).toBe("failed")
+    expect(session.error).toMatchObject({
+      type: "error",
+      code: "browser_native_recovery_failed",
+      retryable: true,
+      pageId: "page-native-failed",
+      url: checkpoint.url,
+    })
+    const persisted = await BrowserStorage.load(owner)
+    expect(persisted).toMatchObject({
+      status: "failed",
+      page: { id: "page-native-failed" },
+      error: { code: "browser_native_recovery_failed" },
+    })
+
+    const resumedPage = await session.resumePage()
+    expect(resumedPage.id).toBe("page-native-failed")
+    expect(resumed).toBe(1)
+    expect(session.status).toBe("active")
+    expect(session.error).toBeNull()
+    expect(await BrowserStorage.load(owner)).toMatchObject({ status: "active", page: { id: "page-native-failed" } })
+  })
+
+  test("resume on a healthy live page is idempotent and keeps the same page identity", async () => {
+    const executions: string[] = []
+    let created = 0
+    const session = new BrowserSessionImpl(
+      owner,
+      async () => {
+        throw new Error("the injected page factory should be used")
+      },
+      async ({ id }) => {
+        created++
+        return {
+          id: id ?? "page-healthy-resume",
+          backend: "host",
+          url: checkpoint.url,
+          title: "Healthy",
+          loading: false,
+          lastActiveAt: 1,
+          async execute(command) {
+            executions.push(command.type)
+            if (command.type === "resume") {
+              return {
+                type: "page",
+                page: {
+                  id: id ?? "page-healthy-resume",
+                  url: checkpoint.url,
+                  title: "Healthy",
+                  isLoading: false,
+                  lastActiveAt: 1,
+                },
+              }
+            }
+            return { type: "void" }
+          },
+          async close() {},
+          isAlive() {
+            return true
+          },
+        }
+      },
+      () => "host",
+    )
+    const page = await session.ensurePage(undefined, { resume: false })
+    expect(session.status).toBe("active")
+
+    const first = await session.resumePage()
+    const second = await session.resumePage()
+
+    expect(first).toBe(page)
+    expect(second).toBe(page)
+    expect(created).toBe(1)
+    expect(executions).toEqual(["resume", "resume"])
+    expect(session.status).toBe("active")
+    expect(session.error).toBeNull()
+    expect(await BrowserStorage.load(owner)).toMatchObject({
+      status: "active",
+      page: { id: "page-healthy-resume" },
+    })
+  })
 })
 
 const checkpoint: BrowserCheckpoint = {
