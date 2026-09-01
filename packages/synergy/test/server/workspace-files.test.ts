@@ -546,6 +546,7 @@ describe("GET /workspace/files/content", () => {
       "sandbox allow-scripts allow-forms allow-popups allow-modals",
     )
     expect(response.headers.get("cache-control")).toBe("no-store")
+    expect(response.headers.get("x-frame-options")).toBe("SAMEORIGIN")
     expect(await response.text()).toBe(html)
   })
 

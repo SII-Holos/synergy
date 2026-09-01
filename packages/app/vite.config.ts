@@ -82,6 +82,13 @@ export default defineConfig(async ({ command }) => {
           target: synergyServerUrl,
           changeOrigin: true,
         },
+        // The file workbench HTML preview frames /workspace/files/raw/... from
+        // the app origin (X-Frame-Options: SAMEORIGIN), so bun dev must proxy
+        // these through Vite when the server runs on another port.
+        "/workspace": {
+          target: synergyServerUrl,
+          changeOrigin: true,
+        },
       },
     },
     build: {
