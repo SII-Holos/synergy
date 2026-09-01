@@ -16,6 +16,8 @@ import {
   BrowserCheckpointSchema,
   BrowserProtocolError,
   redactBrowserText,
+  isBrowserNativeRecoveryFailure,
+  redactBrowserURL,
   type BrowserBackendCommand,
   type BrowserCheckpoint,
   type BrowserProtocolErrorData,
@@ -65,7 +67,8 @@ export class BrowserSessionImpl implements BrowserSession {
 
   get status(): BrowserSession["status"] {
     if (this._status === "migrating") return "migrating"
-    return this._page ? "active" : this._status
+    if (this._page) return this._status === "failed" ? "failed" : "active"
+    return this._status
   }
 
   get checkpoint(): BrowserCheckpoint | null {
@@ -107,6 +110,11 @@ export class BrowserSessionImpl implements BrowserSession {
         BrowserEvent.publish(this.owner, { type: "page.updated", page: BrowserControl.pageState(page) })
       },
       onError: (page, message) => {
+        if (this.recordHostFailure(page, message)) {
+          // host.status "failed" is delivered around this event; persist the
+          // structured failure so resume/current stay correct.
+          void this.save().catch(() => undefined)
+        }
         BrowserEvent.publish(this.owner, {
           type: "page.error",
           pageId: page.id,
@@ -257,6 +265,21 @@ export class BrowserSessionImpl implements BrowserSession {
   }
 
   async resumePage(): Promise<BrowserPageBackend> {
+    if (!this._page && this.pendingCleanup) await this.finishSuspension()
+    if (this._page && this._page.isAlive() && this._page.backend === this.desiredBackend()) {
+      try {
+        await this._page.execute({ type: "resume" })
+        if (this._status !== "active") {
+          this._status = "active"
+          this._error = null
+          await this.save()
+        }
+        return this._page
+      } catch (error) {
+        await this.fail(error)
+        throw error
+      }
+    }
     return this.ensurePage()
   }
 
@@ -380,7 +403,15 @@ export class BrowserSessionImpl implements BrowserSession {
       }
     }
     const state: BrowserStorage.SessionState = {
-      status: this._page ? "active" : this._status === "failed" ? "failed" : this._descriptor ? "suspended" : "empty",
+      status: this._page
+        ? this._status === "failed"
+          ? "failed"
+          : "active"
+        : this._status === "failed"
+          ? "failed"
+          : this._descriptor
+            ? "suspended"
+            : "empty",
       page: this._descriptor,
       panelWidth: 400,
       timestamp: Date.now(),
@@ -713,15 +744,34 @@ export class BrowserSessionImpl implements BrowserSession {
 
   private async fail(error: unknown): Promise<void> {
     this._status = "failed"
+    const pageId = this._page?.id ?? this._descriptor?.id
+    const url = (this._page?.url ?? this._descriptor?.url)?.slice(0, 20_000)
     this._error = failureData(error, {
       code: "browser_session_failed",
       message: "The Browser session failed.",
       retryable: true,
-      pageId: this._descriptor?.id,
-      url: this._descriptor?.url,
+      ...(pageId ? { pageId } : {}),
+      ...(url ? { url } : {}),
       suggestedAction: this._descriptor ? "Resume the Browser page to retry recovery." : "Retry the Browser command.",
     })
     await this.save()
+  }
+
+  private recordHostFailure(page: BrowserPageBackend, message: string): boolean {
+    if (page.backend !== "host" || !isBrowserNativeRecoveryFailure(message)) return false
+    const pageId = page.id
+    const url = redactBrowserURL(page.url).slice(0, 20_000)
+    this._status = "failed"
+    this._error = {
+      type: "error",
+      code: "browser_native_recovery_failed",
+      message: redactBrowserText(message).slice(0, 100_000),
+      retryable: true,
+      pageId,
+      url,
+      suggestedAction: "Use browser_navigation with action resume or the native Browser Retry control.",
+    }
+    return true
   }
 
   private publishHostReady(page: BrowserPageBackend): void {

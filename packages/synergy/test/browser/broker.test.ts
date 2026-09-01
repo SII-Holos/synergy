@@ -122,4 +122,55 @@ describe("Browser Host broker authentication", () => {
     unsubscribe()
     BrowserEvent.remove(owner)
   })
+
+  test("disconnect publishes per-page restarting before the error, then an owner-wide restarting status", async () => {
+    const owner: BrowserOwner.Info = {
+      mode: "session",
+      scopeID: "scope-disconnect",
+      sessionID: "session-disconnect",
+      directory: "/tmp",
+    }
+    const host = new (class extends Socket {
+      override send(data: string): void {
+        const message = JSON.parse(data) as BrowserHostMessage
+        this.sent.push(message)
+        if (message.type !== "page.create") return
+        queueMicrotask(() =>
+          BrowserBroker.handle(this, {
+            type: "page.result",
+            protocolVersion: BROWSER_PROTOCOL_VERSION,
+            requestId: message.requestId,
+            result: { type: "page", page: message.page },
+          }),
+        )
+      }
+    })()
+    BrowserBroker.prepare(owner, "home", "native")
+    BrowserBroker.attach(host, {
+      type: "host.register",
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      hostId: "host-disconnect-order",
+      token: BrowserBroker.secret(),
+      capabilities: { native: true, webrtc: false },
+    })
+    await BrowserBroker.createPage({ owner, routeDirectory: "home", presentation: "native", pageId: "page-disconnect" })
+
+    const canonical: string[] = []
+    const pageScoped: string[] = []
+    const unsubscribeCanonical = BrowserEvent.subscribe(owner, (event) => {
+      if (event.type === "host.status") canonical.push(`status:${event.pageId ?? "owner"}:${event.status}`)
+    })
+    const unsubscribePage = BrowserBroker.subscribe(owner, "page-disconnect", (event) => {
+      if (event.type === "host.status") pageScoped.push(`status:${event.pageId}:${event.status}`)
+      if (event.type === "page.error") pageScoped.push(`error:${event.pageId}`)
+    })
+
+    BrowserBroker.detach(host)
+
+    expect(pageScoped).toEqual(["status:page-disconnect:restarting", "error:page-disconnect"])
+    expect(canonical).toEqual(["status:page-disconnect:restarting", "status:owner:restarting"])
+    unsubscribeCanonical()
+    unsubscribePage()
+    BrowserEvent.remove(owner)
+  })
 })

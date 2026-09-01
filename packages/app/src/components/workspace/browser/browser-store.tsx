@@ -58,6 +58,7 @@ export type DialogRequest = Pick<DialogEvent, "pageId" | "requestId" | "message"
 }
 
 export interface BrowserErrorState {
+  pageId?: string
   severity: "warning" | "error" | "critical"
   message: string
   code?: string
@@ -111,7 +112,7 @@ export function createBrowserStore() {
   const [followAgent, setFollowAgentSignal] = createSignal(true)
   const [fileChooserRequest, setFileChooserRequest] = createSignal<FileChooserRequest | null>(null)
   const [dialogRequest, setDialogRequest] = createSignal<DialogRequest | null>(null)
-  const [browserError, setBrowserError] = createSignal<BrowserErrorState | null>(null)
+  const [browserErrorState, setBrowserErrorState] = createSignal<BrowserErrorState | null>(null)
   const [annotationMode, setAnnotationMode] = createSignal(false)
   const [viewportMode, setViewportMode] = createSignal<ViewportMode>("fit")
   const [viewportWidth, setViewportWidth] = createSignal(1280)
@@ -122,6 +123,17 @@ export function createBrowserStore() {
 
   const page = () => session.page
   const pageId = () => session.page?.id ?? null
+
+  function browserError(): BrowserErrorState | null {
+    const error = browserErrorState()
+    const currentPageId = pageId()
+    if (error?.pageId && error.pageId !== currentPageId) return null
+    return error
+  }
+
+  function setBrowserError(error: BrowserErrorState | null) {
+    setBrowserErrorState(error)
+  }
 
   let _sendFn: ((msg: Record<string, unknown>) => void) | undefined
 
