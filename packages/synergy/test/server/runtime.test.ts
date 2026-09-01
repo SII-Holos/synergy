@@ -245,4 +245,63 @@ describe("global event origin allowlist", () => {
   test("rejects cross-origin pages", () => {
     expect(Server.globalEventOriginAllowed("https://evil.example", "ws://localhost:3000/global/event/ws")).toBe(false)
   })
+
+  test("allows the same host behind TLS-terminating reverse proxies", () => {
+    expect(
+      Server.globalEventOriginAllowed(
+        "https://synergy.internal.example",
+        "ws://synergy.internal.example/global/event/ws",
+      ),
+    ).toBe(true)
+  })
+
+  test("rejects cross-origin pages sharing the request host suffix", () => {
+    expect(
+      Server.globalEventOriginAllowed(
+        "https://synergy.internal.example.evil.example",
+        "ws://synergy.internal.example/global/event/ws",
+      ),
+    ).toBe(false)
+  })
+
+  test("allows explicitly allowlisted origins such as reverse-proxy domains", () => {
+    const extras = ["https://synergy.internal.example:8443"]
+    expect(
+      Server.globalEventOriginAllowed(
+        "https://synergy.internal.example:8443",
+        "ws://127.0.0.1:3000/global/event/ws",
+        extras,
+      ),
+    ).toBe(true)
+  })
+
+  test("normalizes configured allowlist origins to the canonical browser form", () => {
+    expect(Server.normalizeCorsOrigin("https://EXAMPLE.com:443")).toBe("https://example.com")
+    expect(Server.normalizeCorsOrigin("http://localhost:80")).toBe("http://localhost")
+    expect(Server.normalizeCorsOrigin("https://synergy.internal.example:8443")).toBe(
+      "https://synergy.internal.example:8443",
+    )
+    expect(Server.normalizeCorsOrigin("not-a-url")).toBeUndefined()
+    expect(Server.normalizeCorsOrigin("ftp://example.com")).toBeUndefined()
+  })
+
+  test("matches allowlisted origins against the normalized origin the browser sends", () => {
+    const configured = ["https://EXAMPLE.com:443"]
+    const extras = configured.flatMap((origin) => {
+      const normalized = Server.normalizeCorsOrigin(origin)
+      return normalized ? [normalized] : []
+    })
+    expect(Server.globalEventOriginAllowed("https://example.com", "ws://127.0.0.1:3000/global/event/ws", extras)).toBe(
+      true,
+    )
+  })
+
+  test("rejects non-http(s) request schemes even when the host matches", () => {
+    expect(
+      Server.globalEventOriginAllowed(
+        "https://synergy.internal.example",
+        "gopher://synergy.internal.example/global/event/ws",
+      ),
+    ).toBe(false)
+  })
 })
