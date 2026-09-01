@@ -116,7 +116,7 @@ export const Status = z
       .meta({ ref: "MCPStatusReconnecting" }),
     z.object({ status: z.literal("failed"), error: z.string() }).meta({ ref: "MCPStatusFailed" }),
     z.object({ status: z.literal("disabled") }).meta({ ref: "MCPStatusDisabled" }),
-    z.object({ status: z.literal("needs_auth") }).meta({ ref: "MCPStatusNeedsAuth" }),
+    z.object({ status: z.literal("needs_auth"), error: z.string() }).meta({ ref: "MCPStatusNeedsAuth" }),
     z
       .object({ status: z.literal("needs_client_registration"), error: z.string() })
       .meta({ ref: "MCPStatusNeedsClientRegistration" }),
@@ -141,6 +141,7 @@ export type ResourceCache = Record<string, ResourceInfo & { client: string }>
 const log = Log.create({ service: "mcp.supervisor" })
 const DEFAULT_TIMEOUT = 30_000
 const MAX_CONCURRENT_STARTS = 3
+const NEEDS_AUTH_CHECK_INTERVAL_MS = 30_000
 
 const SAFE_BASE_ENV_KEYS = new Set(["PATH", "HOME", "USER", "TMPDIR", "SHELL", "LANG", "XDG_CACHE_HOME"])
 
@@ -357,7 +358,7 @@ export function mapStatus(handle: McpHandle): Status {
     case HS.Disabled:
       return { status: "disabled" }
     case HS.NeedsAuth:
-      return { status: "needs_auth" }
+      return { status: "needs_auth", error: handle.lastError ?? "" }
     case HS.NeedsClientRegistration:
       return { status: "needs_client_registration", error: handle.lastError ?? "" }
     case HS.Stopping:
@@ -388,6 +389,7 @@ class McpSupervisorImpl {
   private initPromise?: Promise<void>
   private mutation = Promise.resolve()
   private identityGeneration = 0
+  private needsAuthTimer: ReturnType<typeof setInterval> | undefined
 
   // ── Public ──────────────────────────────────────────────────────────
 
@@ -502,6 +504,7 @@ class McpSupervisorImpl {
     this.activeStarts = 0
     this.pendingStarts = []
     this.initPromise = undefined
+    this.clearNeedsAuthCheck()
     await PendingOAuth.disposeAll("supervisor reset")
 
     await Promise.all(handles.map((handle) => this.disposeHandle(handle, "supervisor reset")))
@@ -810,13 +813,48 @@ class McpSupervisorImpl {
     }
   }
 
+  private scheduleNeedsAuthCheck(): void {
+    if (this.needsAuthTimer) return
+    this.needsAuthTimer = setInterval(() => {
+      void this.checkNeedsAuthHandles()
+    }, NEEDS_AUTH_CHECK_INTERVAL_MS)
+    if (typeof this.needsAuthTimer === "object" && "unref" in this.needsAuthTimer) this.needsAuthTimer.unref()
+  }
+
+  /** Run one NeedsAuth recovery pass immediately. Exposed for tests and manual triggers. */
+  async checkNeedsAuthNow(): Promise<void> {
+    await this.checkNeedsAuthHandles()
+  }
+
+  private clearNeedsAuthCheck(): void {
+    if (this.needsAuthTimer) {
+      clearInterval(this.needsAuthTimer)
+      this.needsAuthTimer = undefined
+    }
+  }
+
+  private async checkNeedsAuthHandles(): Promise<void> {
+    for (const handle of this.handles.values()) {
+      if (handle.state !== HS.NeedsAuth || !this.isCurrent(handle) || handle.config.type !== "remote") continue
+      // A running interactive OAuth flow owns this server; do not probe or reconnect.
+      if (PendingOAuth.get(handle.name)) continue
+      const entry = await McpAuth.getForUrl(handle.name, handle.config.url)
+      const tokens = entry?.tokens
+      const valid = !!tokens && (!tokens.expiresAt || tokens.expiresAt > Date.now() / 1000 || !!tokens.refreshToken)
+      if (!valid) continue
+      log.info("oauth credentials found, reconnecting", { key: handle.name })
+      this.scheduleStart(handle)
+    }
+    const anyNeedsAuth = [...this.handles.values()].some((h) => h.state === HS.NeedsAuth)
+    if (!anyNeedsAuth) this.clearNeedsAuthCheck()
+  }
+
   private async connectPipeline(handle: McpHandle): Promise<void> {
     if (!this.isCurrent(handle)) return
     const gen = ++handle.generation
     handle.state = HS.Connecting
     const config = handle.config
     let client: Client | undefined
-    await PendingOAuth.disposeIfIdentity(handle.name, handle.identity, "connection restarted")
     if (!this.isCurrent(handle, gen)) return
 
     if (config.type === "remote") {
@@ -840,6 +878,7 @@ class McpSupervisorImpl {
             },
             isCurrent: () => this.isCurrent(handle, gen),
           },
+          "background",
         )
       }
 
@@ -896,35 +935,16 @@ class McpSupervisorImpl {
                 "Server does not support dynamic client registration. Please provide clientId in config."
               log.warn("mcp server requires pre-registered client", { key: handle.name, transport: transportName })
             } else {
-              const authEntry = await McpAuth.get(handle.name)
-              const codeVerifier = authEntry?.codeVerifier
-              const oauthState = authEntry?.oauthState
-              const registered = await PendingOAuth.register(
-                handle.name,
-                {
-                  client: candidateClient,
-                  transport,
-                  identity: handle.identity,
-                  onDispose: async () => {
-                    await Promise.all([
-                      codeVerifier === undefined
-                        ? undefined
-                        : McpAuth.clearCodeVerifier(handle.name, codeVerifier).catch(() => undefined),
-                      oauthState === undefined
-                        ? undefined
-                        : McpAuth.clearOAuthState(handle.name, oauthState).catch(() => undefined),
-                    ])
-                  },
-                },
-                { isCurrent: () => this.isCurrent(handle, gen) },
-              )
-              if (!registered) return
+              await closeFailedClient(candidateClient, handle.name, `connect:${transportName}:auth`)
+              if (!this.isCurrent(handle, gen)) return
               handle.state = HS.NeedsAuth
+              handle.lastError = "Server requires OAuth authentication. Run: synergy mcp auth " + handle.name
               log.warn("mcp server requires authentication", {
                 key: handle.name,
                 transport: transportName,
                 command: `synergy mcp auth ${handle.name}`,
               })
+              this.scheduleNeedsAuthCheck()
             }
             return
           }

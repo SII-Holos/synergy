@@ -7,7 +7,7 @@ import { Plugin } from "../plugin"
 import { getPluginConfig } from "../plugin/config-store"
 import { PluginApprovalRequiredError } from "../plugin/install"
 import { invokePluginOperation, PluginOperationError } from "../plugin/operation"
-import { reloadDevelopmentGeneration, getLoadedPlugins } from "../plugin/loader"
+import { reloadDevelopmentGeneration, getLoadedPlugins, getCatalogPlugin } from "../plugin/loader"
 import { PluginStatusSchema } from "../plugin/status"
 import { isPathContained } from "../util/path-contain"
 import { errors } from "./error"
@@ -27,6 +27,7 @@ import { PluginMarketplaceRegistry } from "../plugin/marketplace-registry"
 import { PluginInstallationTransaction } from "../plugin/installation-transaction"
 import { reload } from "../plugin/lifecycle"
 import { readApprovals } from "../plugin/consent/approval-store"
+import { listGlobalThemePlugins } from "../plugin/global-themes"
 
 const JsonValue = z.any()
 const UIContribution = z.object({
@@ -42,6 +43,18 @@ const UIContribution = z.object({
 
 const InvokeBody = z.object({ input: JsonValue.optional(), sessionId: z.string().optional() })
 const PluginConfigUpdate = z.record(z.string(), z.unknown()).meta({ ref: "PluginConfigUpdate" })
+const GlobalThemeContribution = z
+  .object({
+    pluginId: z.string(),
+    name: z.string(),
+    version: z.string(),
+    generation: z.string(),
+    enabledScopes: z.array(z.string()),
+    capabilities: z.array(z.string()),
+    contributions: z.array(z.record(z.string(), z.unknown())),
+    uiArtifact: z.object({ entry: z.string(), sha256: z.string() }).optional(),
+  })
+  .meta({ ref: "GlobalThemeContribution" })
 
 function uiContributions(plugin: Plugin.LoadedPlugin) {
   return {
@@ -80,6 +93,22 @@ const ApprovalReviewErrorSchema = StructuredErrorSchema.extend({
 
 export const PluginRoute = new Hono()
   .get(
+    "/ui/contributions/themes",
+    describeRoute({
+      summary: "List plugin theme contributions across all enabled scopes",
+      description:
+        "Themes are a global user preference. This endpoint aggregates ui.theme contributions from the process-wide plugin catalog (any scope), so theme registration survives scope switches.",
+      operationId: "plugin.listGlobalThemeContributions",
+      responses: {
+        200: {
+          description: "Global theme contributions",
+          content: { "application/json": { schema: resolver(z.array(GlobalThemeContribution)) } },
+        },
+      },
+    }),
+    async (context) => context.json(listGlobalThemePlugins()),
+  )
+  .get(
     "/ui/contributions",
     describeRoute({
       summary: "List enabled plugin UI contributions",
@@ -101,10 +130,34 @@ export const PluginRoute = new Hono()
       responses: { 200: { description: "Asset" }, ...errors(404) },
     }),
     async (context) => {
-      const plugin = await Plugin.get(context.req.param("pluginId"))
+      const pluginId = context.req.param("pluginId")
+      const relative = context.req.param("asset")
+      let plugin = await Plugin.get(pluginId)
+      let catalogThemeAssetOnly = false
+      if (!plugin) {
+        // The catalog fallback exists because this route is global
+        // (isGlobalRoute): the process-wide catalog serves global theme
+        // registrations for plugins enabled in any scope without a scope
+        // hint. It requires at least one enabled scope because loader
+        // disposal removes the scope id but deliberately caches the catalog
+        // entry, and it serves only the manifest's declared ui.theme assets —
+        // the fallback's sole consumer — so the scope-less route cannot be
+        // used to read arbitrary files from a plugin directory. The
+        // generation check still pins the exact requested artifact.
+        const candidate = getCatalogPlugin(pluginId)
+        if (candidate && candidate.enabledScopes.size > 0) {
+          plugin = candidate
+          catalogThemeAssetOnly = true
+        }
+      }
       if (!plugin || plugin.manifest.artifacts.generation !== context.req.param("generation"))
         return context.json({ message: "Plugin generation not found" }, 404)
-      const relative = context.req.param("asset")
+      if (catalogThemeAssetOnly) {
+        const declaredThemeAsset = plugin.manifest.contributions.some(
+          (item) => item.kind === "ui.theme" && item.path === relative,
+        )
+        if (!declaredThemeAsset) return context.json({ message: "Asset not found" }, 404)
+      }
       const file = path.resolve(plugin.pluginDir, relative)
       if (!relative || !isPathContained(plugin.pluginDir, file))
         return context.json({ message: "Asset not found" }, 404)

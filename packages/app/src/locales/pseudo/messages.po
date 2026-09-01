@@ -820,6 +820,10 @@ msgid "app.attachment.action.download"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.attachment.action.openFullPage"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.attachment.action.openInBrowser"
 msgstr ""
 
@@ -869,6 +873,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.attachment.preview.error"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.htmlScriptsDisabled"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -2585,6 +2593,10 @@ msgstr ""
 
 #. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toolbar.edit"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.openInBrowser"
 msgstr ""
 
 #. ── File workbench ───────────────────────────────────────────────────────────

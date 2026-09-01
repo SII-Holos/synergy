@@ -146,6 +146,16 @@
   padding: 16px;
 }
 
+.attachment-html-preview-notice {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--workbench-border);
+  border-radius: 6px;
+  background: var(--workbench-card-bg);
+  color: var(--text-weaker);
+  font-size: 12px;
+}
+
 .attachment-media-preview {
   display: block;
   width: min(100%, 960px);

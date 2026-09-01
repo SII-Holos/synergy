@@ -67,7 +67,7 @@ const platform: Platform = {
       void window.synergyDesktop.shell.openExternal(url)
       return
     }
-    window.open(url, "_blank")
+    window.open(url, "_blank", "noopener,noreferrer")
   },
   restart: async () => {
     window.location.reload()

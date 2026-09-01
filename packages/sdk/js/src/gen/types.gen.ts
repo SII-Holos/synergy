@@ -4493,6 +4493,7 @@ export type McpStatusDisabled = {
 
 export type McpStatusNeedsAuth = {
   status: "needs_auth"
+  error: string
 }
 
 export type McpStatusNeedsClientRegistration = {
@@ -7889,6 +7890,22 @@ export type BrowserControlRequest = {
       }
   commandId: string
   traceId?: string
+}
+
+export type GlobalThemeContribution = {
+  pluginId: string
+  name: string
+  version: string
+  generation: string
+  enabledScopes: Array<string>
+  capabilities: Array<string>
+  contributions: Array<{
+    [key: string]: unknown
+  }>
+  uiArtifact?: {
+    entry: string
+    sha256: string
+  }
 }
 
 export type ForbiddenError = {
@@ -19004,6 +19021,36 @@ export type BrowserControlResponses = {
 }
 
 export type BrowserControlResponse2 = BrowserControlResponses[keyof BrowserControlResponses]
+
+export type PluginListGlobalThemeContributionsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/plugin/ui/contributions/themes"
+}
+
+export type PluginListGlobalThemeContributionsErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PluginListGlobalThemeContributionsError =
+  PluginListGlobalThemeContributionsErrors[keyof PluginListGlobalThemeContributionsErrors]
+
+export type PluginListGlobalThemeContributionsResponses = {
+  /**
+   * Global theme contributions
+   */
+  200: Array<GlobalThemeContribution>
+}
+
+export type PluginListGlobalThemeContributionsResponse =
+  PluginListGlobalThemeContributionsResponses[keyof PluginListGlobalThemeContributionsResponses]
 
 export type PluginListUiContributionsData = {
   body?: never

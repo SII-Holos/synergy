@@ -226,6 +226,30 @@ export namespace Server {
     }
   }
 
+  /**
+   * The global event stream carries full session traffic. Accept only clients
+   * whose Origin matches the server itself (the Synergy SPA on web and
+   * Desktop) or a loopback peer — never opaque origins such as sandboxed
+   * attachment pages (`Origin: null`) or cross-origin web pages. WebSocket is
+   * not covered by CORS, so the check must live here at the route.
+   */
+  export function globalEventOriginAllowed(origin: string | undefined, requestURL: string): boolean {
+    if (!origin) return false
+    try {
+      const parsed = new URL(origin)
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false
+      const request = new URL(requestURL)
+      // WebSocket upgrade request URLs use ws:/wss:; normalize them to
+      // http:/https: so the origin comparison and loopback check match the
+      // http(s) Origin header browsers send.
+      const requestOrigin = request.origin.replace(/^ws:/, "http:").replace(/^wss:/, "https:")
+      if (parsed.origin === requestOrigin) return true
+      return isLoopbackOrigin(parsed.origin) && isLoopbackOrigin(requestOrigin)
+    } catch {
+      return false
+    }
+  }
+
   function isGlobalRoute(pathname: string) {
     return (
       pathname === "/" ||
@@ -246,6 +270,7 @@ export namespace Server {
       pathname.startsWith("/channel/") ||
       pathname === "/plugin/assets" ||
       pathname.startsWith("/plugin/assets/") ||
+      pathname === "/plugin/ui/contributions/themes" ||
       pathname === "/api/plugins" ||
       pathname.startsWith("/api/plugins/") ||
       pathname === "/api/registry" ||
@@ -304,6 +329,20 @@ export namespace Server {
       return decodeURIComponent(scopeID)
     } catch {
       return scopeID
+    }
+  }
+
+  const RawHtmlScopePattern = /^\/workspace\/files\/raw\/([^/]+)\//
+
+  function rawHtmlScope(c: Context): { scopeID?: string; directory?: string } | undefined {
+    const token = RawHtmlScopePattern.exec(c.req.path)?.[1]
+    if (!token) return undefined
+    if (token === "home") return { scopeID: "home" }
+    try {
+      const directory = Buffer.from(token, "base64url").toString("utf-8").trim()
+      return directory ? { directory } : undefined
+    } catch {
+      return undefined
     }
   }
 
@@ -367,10 +406,14 @@ export namespace Server {
   async function provideRequestScope(c: Context, next: Next) {
     const directory = requestDirectory(c)
     const scopeID = requestScopeID(c)
+    const rawScope = !directory && !scopeID ? rawHtmlScope(c) : undefined
     const scope =
-      isGlobalRoute(c.req.path) || (!directory && !scopeID && !isScopeRequiredRoute(c.req.path))
+      isGlobalRoute(c.req.path) || (!directory && !scopeID && !rawScope && !isScopeRequiredRoute(c.req.path))
         ? Scope.home()
-        : await resolveScopedRequestScope(c, { scopeID, directory })
+        : await resolveScopedRequestScope(c, {
+            scopeID: scopeID ?? rawScope?.scopeID,
+            directory: directory ?? rawScope?.directory,
+          })
     if (scope instanceof Response) return scope
     return ScopeContext.provide({
       scope,
@@ -763,6 +806,17 @@ export namespace Server {
             _globalEventHeartbeatInterval = heartbeat
             _globalEventClients = globalEventClients
             return upgradeWebSocket((c) => {
+              if (!globalEventOriginAllowed(c.req.header("origin"), c.req.url)) {
+                log.warn("global event ws rejected", { origin: c.req.header("origin") })
+                return {
+                  onOpen(_event, ws) {
+                    ws.close(1008, "Origin not allowed")
+                  },
+                  onMessage() {},
+                  onClose() {},
+                  onError() {},
+                }
+              }
               const mode: "full" | "delta" = c.req.query("stream") === "delta" ? "delta" : "full"
               return {
                 onOpen(_event, ws) {

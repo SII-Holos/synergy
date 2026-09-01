@@ -21,7 +21,6 @@ import {
   type PluginSurfaceContext,
 } from "@ericsanchezok/synergy-plugin"
 import type { ToolProps } from "@ericsanchezok/synergy-ui/message-part"
-import { replacePluginThemes } from "@ericsanchezok/synergy-ui/theme"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useServer } from "@/context/server"
@@ -216,7 +215,6 @@ function registerPluginSurfaces(input: {
   const disposers: Array<() => void> = []
   const errors: PluginUIError[] = input.assets.errors.map((error) => ({ ...error, timestamp: Date.now() }))
   const fail = (pluginId: string, message: string) => errors.push({ pluginId, message, timestamp: Date.now() })
-  replacePluginThemes(input.assets.themes.values())
 
   for (const plugin of input.contributions) {
     const asset = (file: string) => resolvePluginAssetUrl(input.serverUrl, plugin.pluginId, plugin.generation, file)
@@ -639,7 +637,16 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
     reloadController = controller
     try {
       const next = await fetchUIContributions(server.url, scopeKey())
-      const assets = await loadPluginUIAssets(next, { serverUrl: server.url, signal: controller.signal })
+      // Theme assets are owned by the global registrar; strip them here so the
+      // scope reload does not double-fetch what the aggregate already covers.
+      const nonThemeContributions = next.map((plugin) => ({
+        ...plugin,
+        contributions: plugin.contributions.filter((item) => item.kind !== "ui.theme"),
+      }))
+      const assets = await loadPluginUIAssets(nonThemeContributions, {
+        serverUrl: server.url,
+        signal: controller.signal,
+      })
       if (generation !== reloadGeneration) return
       dispose()
       const registered = registerPluginSurfaces({
@@ -671,7 +678,6 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
   onCleanup(() => {
     reloadController?.abort()
     dispose()
-    replacePluginThemes([], { ready: false })
   })
   return (
     <PluginHostContext.Provider

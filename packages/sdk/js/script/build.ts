@@ -151,7 +151,7 @@ await createClient({
   ],
 })
 
-await $`bun prettier --write src`
+await $`bun prettier --cache --cache-strategy content --write src`
 await $`rm -rf dist`
 await $`bun tsc`
 await $`rm openapi.json`
