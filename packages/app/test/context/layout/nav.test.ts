@@ -16,6 +16,7 @@ import {
   orderNavEntries,
   removeScopeFromIndex,
   removeScopeFromLoadedNavigation,
+  sameScopeIndex,
 } from "../../../src/context/layout/nav"
 
 function entry(input: Partial<NavEntry> & Pick<NavEntry, "id">): NavEntry {
@@ -551,5 +552,38 @@ describe("removeScopeFromLoadedNavigation", () => {
     expect(result.root.background.items).toEqual([])
     expect(result.root.home).toBe(home)
     expect(result.affected).toEqual({ recent: true, root: ["channel", "background"] })
+  })
+})
+describe("sameScopeIndex", () => {
+  test("treats equal entries as unchanged", () => {
+    const a = [scopeEntry({ scopeID: "a", directory: "/repo/a" }), scopeEntry({ scopeID: "b", directory: "/repo/b" })]
+    const b = [scopeEntry({ scopeID: "a", directory: "/repo/a" }), scopeEntry({ scopeID: "b", directory: "/repo/b" })]
+    expect(sameScopeIndex(a, b)).toBe(true)
+  })
+
+  test("detects reordering, field changes, and managed project differences", () => {
+    const a = [scopeEntry({ scopeID: "a", directory: "/repo/a" }), scopeEntry({ scopeID: "b", directory: "/repo/b" })]
+    expect(sameScopeIndex(a, [a[1], a[0]])).toBe(false)
+    expect(
+      sameScopeIndex(a, [
+        scopeEntry({ scopeID: "a", directory: "/repo/a" }),
+        scopeEntry({ scopeID: "b", directory: "/repo/b", sessionCount: 1 }),
+      ]),
+    ).toBe(false)
+
+    const managed = (remoteState: "active" | "paused"): ScopeNavEntry[] => [
+      {
+        ...scopeEntry({ scopeID: "m", directory: "/managed" }),
+        managedProject: { channelType: "clarus", accountId: "agent-1", externalProjectId: "p1", remoteState },
+      },
+    ]
+    expect(sameScopeIndex(managed("active"), managed("active"))).toBe(true)
+    expect(sameScopeIndex(managed("active"), managed("paused"))).toBe(false)
+  })
+
+  test("distinguishes index length differences", () => {
+    const a = [scopeEntry({ scopeID: "a", directory: "/repo/a" })]
+    const b = [scopeEntry({ scopeID: "a", directory: "/repo/a" }), scopeEntry({ scopeID: "b", directory: "/repo/b" })]
+    expect(sameScopeIndex(a, b)).toBe(false)
   })
 })

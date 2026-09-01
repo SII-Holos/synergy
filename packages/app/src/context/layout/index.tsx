@@ -33,6 +33,7 @@ import {
   partitionScopeNavigation,
   removeScopeFromIndex,
   removeScopeFromLoadedNavigation,
+  sameScopeIndex,
   type ChannelNavPage,
   type ChannelNavType,
   type RootNavSectionKey,
@@ -316,7 +317,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       try {
         const res = await globalSdk.client.scope.index()
         if (res.data) {
-          setScopeIndex(res.data as ScopeNavEntry[])
+          const next = res.data as ScopeNavEntry[]
+          if (!sameScopeIndex(scopeIndex(), next)) setScopeIndex(next)
         }
       } catch (err) {
         console.warn("Failed to load scope index", err)
