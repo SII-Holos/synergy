@@ -252,6 +252,14 @@
   padding: 24px clamp(20px, 5vw, 64px) 80px;
   -webkit-user-select: text;
   user-select: text;
+  scrollbar-gutter: stable;
+  /* ::-webkit-scrollbar-* is ignored once scrollbar-color is non-auto, so
+     scrollbar-color is the only effective thumb style here. */
+  scrollbar-color: color-mix(in srgb, var(--text-strong) 34%, transparent) transparent;
+}
+
+[data-color-scheme="dark"] .file-markdown-preview {
+  scrollbar-color: color-mix(in srgb, var(--text-strong) 55%, transparent) transparent;
 }
 
 .file-markdown-preview > [data-component="markdown"] {
