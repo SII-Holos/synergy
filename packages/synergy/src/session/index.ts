@@ -1160,10 +1160,13 @@ export namespace Session {
     const scopeID = asScopeID((session.scope as Scope).id)
     await MessageV2.writeInfo({ scopeID, info: canonical })
     SessionMessageCache.upsertMessage(canonical.sessionID, canonical)
+    // Flip the rollback projection before publishing the replacement root: the
+    // frontend prefix-cut hides everything after the cut while canUnrollback is
+    // true, so the new branch must never arrive ahead of its invalidation.
+    await publishRollbackInvalidation(canonical, session.history)
     Bus.publish(MessageV2.Event.Updated, {
       info: canonical,
     })
-    await publishRollbackInvalidation(canonical, session.history)
     return canonical
   })
 
