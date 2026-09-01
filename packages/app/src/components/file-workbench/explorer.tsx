@@ -64,6 +64,7 @@ export function FileExplorer(props: { onClose: () => void }) {
 
   onMount(() => {
     void file.explorer.loadChildren("")
+    for (const path of file.explorer.expanded()) void file.explorer.loadChildren(path)
   })
 
   createEffect(() => {
