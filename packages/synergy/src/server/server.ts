@@ -227,6 +227,23 @@ export namespace Server {
   }
 
   /**
+   * Normalize a configured CORS/WS allowlist entry to the canonical origin
+   * form browsers send in the Origin header (lowercased host, default port
+   * stripped). Without this, `--cors https://EXAMPLE.com:443` would be stored
+   * verbatim and silently never match the normalized `https://example.com`
+   * the browser sends.
+   */
+  export function normalizeCorsOrigin(input: string): string | undefined {
+    try {
+      const url = new URL(input)
+      if (url.protocol !== "http:" && url.protocol !== "https:") return undefined
+      return url.origin
+    } catch {
+      return undefined
+    }
+  }
+
+  /**
    * The global event stream carries full session traffic. Accept only clients
    * whose Origin matches the server's own scheme+host (the Synergy SPA on web
    * and Desktop), a loopback peer, or an origin on the same allowlist the CORS
@@ -244,6 +261,17 @@ export namespace Server {
       const parsed = new URL(origin)
       if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false
       const request = new URL(requestURL)
+      // The request URL must itself be part of the {http,https,ws,wss} scheme
+      // family; anything else never represents a real upgrade and must not be
+      // accepted by the host comparison below.
+      if (
+        request.protocol !== "http:" &&
+        request.protocol !== "https:" &&
+        request.protocol !== "ws:" &&
+        request.protocol !== "wss:"
+      ) {
+        return false
+      }
       // Behind a TLS-terminating reverse proxy the browser's Origin is https:
       // while the upgrade request arrives as ws:; compare host+port and treat
       // the {http,https,ws,wss} scheme family as equivalent for the same
@@ -813,7 +841,7 @@ export namespace Server {
             _globalEventHeartbeatInterval = heartbeat
             _globalEventClients = globalEventClients
             return upgradeWebSocket((c) => {
-              if (!globalEventOriginAllowed(c.req.header("origin"), c.req.url)) {
+              if (!globalEventOriginAllowed(c.req.header("origin"), c.req.url, [..._corsWhitelist])) {
                 log.warn("global event ws rejected", { origin: c.req.header("origin") })
                 return {
                   onOpen(_event, ws) {
@@ -1747,8 +1775,12 @@ export namespace Server {
 
   export function listen(opts: { port: number; hostname: string; mdns?: boolean; cors?: string[] }) {
     const isExternalHost = opts.hostname !== "127.0.0.1" && opts.hostname !== "localhost" && opts.hostname !== "::1"
-    _corsWhitelist = new Set([...(opts.cors ?? []), ...(isExternalHost ? lanOrigins() : [])])
-    configureBrowserViewerOrigins(opts.cors ?? [])
+    const configuredOrigins = (opts.cors ?? []).flatMap((origin) => {
+      const normalized = normalizeCorsOrigin(origin)
+      return normalized ? [normalized] : []
+    })
+    _corsWhitelist = new Set([...configuredOrigins, ...(isExternalHost ? lanOrigins() : [])])
+    configureBrowserViewerOrigins(configuredOrigins)
 
     const args = {
       hostname: opts.hostname,
