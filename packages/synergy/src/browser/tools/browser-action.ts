@@ -43,7 +43,7 @@ export const BrowserActionTool = Tool.define("browser_action", {
           settleElapsedMs: result.settleElapsedMs,
           inflightRequests: result.inflightRequests,
           snapshotAvailable: Boolean(snapshotResult),
-          snapshotUnavailable: !snapshotResult,
+          snapshotUnavailable: !snapshotResult && params.action.includeSnapshot !== false,
         })
         const evidenceNote = formatActionEvidenceNote({
           snapshotAvailable: Boolean(snapshotResult),

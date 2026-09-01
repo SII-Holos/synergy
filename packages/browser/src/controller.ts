@@ -3,6 +3,7 @@ import { redactBrowserHeaders, redactBrowserText, redactBrowserURL } from "./red
 import { BrowserStagingLeasePool } from "./staging.js"
 import {
   BROWSER_ACTION_SETTLE_TIMEOUT_MS,
+  BROWSER_BEST_EFFORT_SNAPSHOT_TIMEOUT_MS,
   BROWSER_NAVIGATION_SETTLE_TIMEOUT_MS,
   BROWSER_SETTLE_QUIET_MS,
   BROWSER_SETTLE_TIMEOUT_MS,
@@ -221,7 +222,7 @@ const LONG_LIVED_NETWORK_TYPES = new Set(["WebSocket", "EventSource"])
 const SETTLE_ELIGIBLE_ACTIONS = new Set(["click", "dblclick", "fill", "type", "press", "select", "setChecked", "drag"])
 const MAX_AMBIGUOUS_CANDIDATES = 5
 const AMBIGUOUS_CANDIDATE_TIMEOUT_MS = 2_000
-const BEST_EFFORT_SNAPSHOT_TIMEOUT_MS = 4_000
+const BEST_EFFORT_SNAPSHOT_TIMEOUT_MS = BROWSER_BEST_EFFORT_SNAPSHOT_TIMEOUT_MS
 
 function boxesAreStable(previous: ElementState["box"], current: ElementState["box"]): boolean {
   if (!previous || !current) return previous === current
@@ -726,7 +727,9 @@ export class CdpPageController {
     command: Extract<BrowserParsedBackendCommand, { type: "navigate" }>,
   ): Promise<BrowserBackendResult> {
     this.beginLoading()
-    const result = await this.options.transport.send<{ errorText?: string }>("Page.navigate", { url: command.url })
+    const result = await this.options.transport.send<{ errorText?: string; type?: string }>("Page.navigate", {
+      url: command.url,
+    })
     if (result?.errorText) {
       this.loading = false
       throw new BrowserProtocolError({
@@ -737,6 +740,10 @@ export class CdpPageController {
         url: command.url,
       })
     }
+    // Same-document navigations (fragments, history.pushState) never fire frame
+    // loading events; without this the loading flag stays stuck and the load
+    // settle always times out. Treat them as immediately settled.
+    if (result?.type === "sameDocument") this.loading = false
     const settle = await this.settle({
       mode: this.settleModeFor(command.source, command.settleMode),
       timeoutMs: command.settleTimeoutMs ?? BROWSER_NAVIGATION_SETTLE_TIMEOUT_MS,

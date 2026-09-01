@@ -1,6 +1,7 @@
 import { randomBytes, timingSafeEqual } from "node:crypto"
 import {
   BROWSER_ACTION_SETTLE_TIMEOUT_MS,
+  BROWSER_BEST_EFFORT_SNAPSHOT_TIMEOUT_MS,
   BROWSER_NAVIGATION_SETTLE_TIMEOUT_MS,
   BROWSER_PROTOCOL_VERSION,
   BrowserBackendCommandSchema,
@@ -442,7 +443,10 @@ function requestTimeout(
   if (command.type === "wait") return command.timeoutMs + 5_000
   if (command.type === "action") {
     const settleMs = command.action.settleTimeoutMs ?? BROWSER_ACTION_SETTLE_TIMEOUT_MS
-    return (command.action.timeoutMs ?? 5_000) + settleMs + 5_000
+    // Include the post-settle best-effort snapshot budget so the controller's
+    // settle + snapshot work cannot outrun the broker deadline and turn a
+    // successful action into a spurious unknown-outcome timeout.
+    return (command.action.timeoutMs ?? 5_000) + settleMs + BROWSER_BEST_EFFORT_SNAPSHOT_TIMEOUT_MS + 5_000
   }
   if (command.type === "navigate" || command.type === "history" || command.type === "reload") {
     const settleMs = command.settleTimeoutMs ?? BROWSER_NAVIGATION_SETTLE_TIMEOUT_MS

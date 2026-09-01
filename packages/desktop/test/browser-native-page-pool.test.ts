@@ -427,6 +427,44 @@ describe("Browser native page pool", () => {
     await pool.destroy()
   })
 
+  test("rate-limits resume-driven recovery while the native Retry control is not limited", async () => {
+    views.length = 0
+    viewCreationAttempts = 0
+    const events: any[] = []
+    const pool = new BrowserNativePagePool({ recoveryDelaysMs: [0, 0, 0], resumeRecoveryCooldownMs: 60_000 })
+    const handle = await pool.create(input("resume-cooldown", (event) => events.push(event)))
+    failNewViews = true
+    views.at(-1)!.webContents.emit("render-process-gone")
+    await until(() => events.some((event) => event.type === "host.status" && event.status === "failed"))
+
+    // The first resume after a failure starts one recovery flight (no cooldown
+    // recorded yet); view creation still fails, so the page stays failed.
+    const attemptsBeforeFirstResume = viewCreationAttempts
+    await expect(handle.execute({ type: "resume" })).rejects.toMatchObject({
+      code: "browser_native_recovery_failed",
+    })
+    expect(viewCreationAttempts).toBeGreaterThan(attemptsBeforeFirstResume)
+
+    // An immediate second resume is rate-limited: no new recovery flight starts.
+    const attemptsBeforeCooldown = viewCreationAttempts
+    const restartingCount = events.filter(
+      (event) => event.type === "host.status" && event.status === "restarting",
+    ).length
+    await expect(handle.execute({ type: "resume" })).rejects.toMatchObject({
+      code: "browser_native_recovery_failed",
+    })
+    expect(viewCreationAttempts).toBe(attemptsBeforeCooldown)
+    expect(events.filter((event) => event.type === "host.status" && event.status === "restarting")).toHaveLength(
+      restartingCount,
+    )
+
+    // The native Retry control is a deliberate human action: it bypasses the cooldown.
+    failNewViews = false
+    await pool.retry("resume-cooldown", "page-resume-cooldown")
+    expect(events.filter((event) => event.type === "host.status").at(-1)?.status).toBe("ready")
+    await pool.destroy()
+  })
+
   test("does not reset the navigation retry budget on mid-navigation loading events", async () => {
     views.length = 0
     const events: any[] = []

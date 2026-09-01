@@ -361,7 +361,12 @@ async function executeOnce(
   if (command.type === "navigate") {
     const url = normalizeBrowserURL(command.url)
     authorizeNavigation(owner, url)
-    const page = session.page ?? (await session.ensurePage(undefined, { resume: false }))
+    // A page whose Host died is still referenced by the session but no longer
+    // alive; ensurePage closes it and recreates it against the reconnected
+    // Host instead of reusing the dead backend (which would keep rejecting
+    // commands through the restarting gate).
+    const page =
+      session.page && session.page.isAlive() ? session.page : await session.ensurePage(undefined, { resume: false })
     const result = await executePage(page, { ...command, url }, request)
     await session.save({ captureCheckpoint: true })
     await session.notifyPageNavigated(page)

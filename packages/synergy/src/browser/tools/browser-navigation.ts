@@ -171,7 +171,7 @@ export const BrowserNavigationTool = Tool.define<typeof parameters, BrowserNavig
       settleElapsedMs,
       inflightRequests,
       snapshotAvailable: Boolean(snapshotResult),
-      snapshotUnavailable: settled !== undefined && !snapshotResult,
+      snapshotUnavailable: settled !== undefined && !snapshotResult && params.includeSnapshot !== false,
     })
     if (settleLine) lines.push(settleLine)
     if (snapshotResult)

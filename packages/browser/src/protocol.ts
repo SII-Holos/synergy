@@ -38,6 +38,9 @@ export const BROWSER_SETTLE_TIMEOUT_MS = 30_000
 export const BROWSER_SETTLE_QUIET_MS = 500
 export const BROWSER_NAVIGATION_SETTLE_TIMEOUT_MS = 15_000
 export const BROWSER_ACTION_SETTLE_TIMEOUT_MS = 10_000
+// Best-effort snapshot budget after a settle verdict; also used by the broker
+// request deadline so the controller's post-settle snapshot cannot outrun it.
+export const BROWSER_BEST_EFFORT_SNAPSHOT_TIMEOUT_MS = 4_000
 const settleMode = z.enum(["networkquiet", "load", "none"])
 const settleTimeoutMs = z.number().int().min(1_000).max(BROWSER_SETTLE_TIMEOUT_MS)
 const settleFields = {
@@ -933,6 +936,10 @@ export function isSafeBrowserObservation(command: BrowserBackendCommand): boolea
   if (command.type === "dialog") return command.action === "status"
   if (command.type === "clipboard") return command.action === "read"
   if (command.type === "checkpoint") return command.action === "capture"
+  // stop only cancels an in-flight load; it never dispatches a new side effect,
+  // so it stays available while the host is restarting or after a failed
+  // recovery (the abort path also issues it fire-and-forget).
+  if (command.type === "stop") return true
   return false
 }
 

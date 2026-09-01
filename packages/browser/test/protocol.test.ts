@@ -605,6 +605,7 @@ describe("browser safe-observation allowlist", () => {
       { type: "dialog", action: "status" },
       { type: "clipboard", action: "read" },
       { type: "checkpoint", action: "capture" },
+      { type: "stop" },
     ] as const
     for (const command of safe) {
       expect(isSafeBrowserObservation(BrowserBackendCommandSchema.parse(command))).toBe(true)
@@ -634,7 +635,6 @@ describe("browser safe-observation allowlist", () => {
       { type: "navigate", url: "https://example.com", source: "agent" },
       { type: "reload", source: "agent" },
       { type: "history", direction: "back" },
-      { type: "stop" },
       { type: "setViewport", width: 800, height: 600 },
       { type: "action", action: { type: "click", target: { kind: "testId", value: "button" } } },
       { type: "wait", condition: { type: "load" } },
