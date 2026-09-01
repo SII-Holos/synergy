@@ -127,6 +127,17 @@ function SvgPreview(props: { path: string; content: string }) {
   return <Show when={url()}>{(src) => <img class="file-svg-preview" src={src()} alt={props.path} />}</Show>
 }
 
+// Served through the workspace raw-file route: relative resources resolve, and
+// the server puts the document in a CSP-sandboxed opaque origin, so scripts run
+// but cannot reach the app origin, its storage, or the HTTP control plane.
+function HtmlPreview(props: { path: string }) {
+  const sdk = useSDK()
+  const url = createMemo(() =>
+    buildWorkspaceFileBrowserUrl(sdk.url, props.path, { scopeID: sdk.scopeID, directory: sdk.directory }),
+  )
+  return <iframe class="file-html-preview" sandbox="allow-scripts" src={url()} title={props.path} />
+}
+
 function ImagePreview(props: {
   path: string
   mimeType: string
@@ -609,6 +620,9 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
             </Match>
             <Match when={capability().kind === "svg" ? textContent() : undefined}>
               {(value) => <SvgPreview path={path()} content={value().content} />}
+            </Match>
+            <Match when={capability().kind === "html" ? textContent() : undefined}>
+              <HtmlPreview path={path()} />
             </Match>
             <Match when={imageContent()}>
               {(value) => (
