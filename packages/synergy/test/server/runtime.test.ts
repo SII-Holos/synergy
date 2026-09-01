@@ -245,4 +245,33 @@ describe("global event origin allowlist", () => {
   test("rejects cross-origin pages", () => {
     expect(Server.globalEventOriginAllowed("https://evil.example", "ws://localhost:3000/global/event/ws")).toBe(false)
   })
+
+  test("allows the same host behind TLS-terminating reverse proxies", () => {
+    expect(
+      Server.globalEventOriginAllowed(
+        "https://synergy.internal.example",
+        "ws://synergy.internal.example/global/event/ws",
+      ),
+    ).toBe(true)
+  })
+
+  test("rejects cross-origin pages sharing the request host suffix", () => {
+    expect(
+      Server.globalEventOriginAllowed(
+        "https://synergy.internal.example.evil.example",
+        "ws://synergy.internal.example/global/event/ws",
+      ),
+    ).toBe(false)
+  })
+
+  test("allows explicitly allowlisted origins such as reverse-proxy domains", () => {
+    const extras = ["https://synergy.internal.example:8443"]
+    expect(
+      Server.globalEventOriginAllowed(
+        "https://synergy.internal.example:8443",
+        "ws://127.0.0.1:3000/global/event/ws",
+        extras,
+      ),
+    ).toBe(true)
+  })
 })

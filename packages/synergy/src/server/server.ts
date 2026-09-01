@@ -228,22 +228,29 @@ export namespace Server {
 
   /**
    * The global event stream carries full session traffic. Accept only clients
-   * whose Origin matches the server itself (the Synergy SPA on web and
-   * Desktop) or a loopback peer — never opaque origins such as sandboxed
-   * attachment pages (`Origin: null`) or cross-origin web pages. WebSocket is
-   * not covered by CORS, so the check must live here at the route.
+   * whose Origin matches the server's own scheme+host (the Synergy SPA on web
+   * and Desktop), a loopback peer, or an origin on the same allowlist the CORS
+   * middleware enforces — never opaque origins such as sandboxed attachment
+   * pages (`Origin: null`) or cross-origin web pages. WebSocket is not covered
+   * by CORS, so the check must live here at the route.
    */
-  export function globalEventOriginAllowed(origin: string | undefined, requestURL: string): boolean {
+  export function globalEventOriginAllowed(
+    origin: string | undefined,
+    requestURL: string,
+    extraAllows: readonly string[] = [..._corsWhitelist],
+  ): boolean {
     if (!origin) return false
     try {
       const parsed = new URL(origin)
       if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false
       const request = new URL(requestURL)
-      // WebSocket upgrade request URLs use ws:/wss:; normalize them to
-      // http:/https: so the origin comparison and loopback check match the
-      // http(s) Origin header browsers send.
+      // Behind a TLS-terminating reverse proxy the browser's Origin is https:
+      // while the upgrade request arrives as ws:; compare host+port and treat
+      // the {http,https,ws,wss} scheme family as equivalent for the same
+      // origin, per RFC 6455 §4 and RFC 9110 §4.2.2.
+      if (parsed.host === request.host) return true
+      if (extraAllows.includes(parsed.origin)) return true
       const requestOrigin = request.origin.replace(/^ws:/, "http:").replace(/^wss:/, "https:")
-      if (parsed.origin === requestOrigin) return true
       return isLoopbackOrigin(parsed.origin) && isLoopbackOrigin(requestOrigin)
     } catch {
       return false
