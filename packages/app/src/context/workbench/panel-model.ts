@@ -31,18 +31,18 @@ export function isWorkbenchPanelLaunchable(entry: WorkbenchPanelEntry) {
   return entry.launchable !== false
 }
 
-export type WorkbenchEscapeAction = "none" | "close-add-menu" | "close-surface"
+export type WorkbenchEscapeAction = "none" | "close-menu" | "close-surface"
 
 export function resolveWorkbenchEscapeAction(input: {
   key: string
   opened: boolean
-  addOpen: boolean
+  menuOpen: boolean
   dialogActive: boolean
   editableFocus?: boolean
 }): WorkbenchEscapeAction {
   if (input.key !== "Escape" || !input.opened || input.dialogActive) return "none"
   if (input.editableFocus) return "none"
-  return input.addOpen ? "close-add-menu" : "close-surface"
+  return input.menuOpen ? "close-menu" : "close-surface"
 }
 
 interface WorkbenchEscapeTarget {

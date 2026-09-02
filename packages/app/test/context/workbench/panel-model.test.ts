@@ -319,20 +319,20 @@ describe("workbench Escape routing", () => {
       resolveWorkbenchEscapeAction({
         key: "Escape",
         opened: true,
-        addOpen: false,
+        menuOpen: false,
         dialogActive: true,
       }),
     ).toBe("none")
   })
 
-  test("closes the add menu before the workspace and ignores unrelated keys", () => {
-    expect(resolveWorkbenchEscapeAction({ key: "Escape", opened: true, addOpen: true, dialogActive: false })).toBe(
-      "close-add-menu",
+  test("closes any open menu before the workspace and ignores unrelated keys", () => {
+    expect(resolveWorkbenchEscapeAction({ key: "Escape", opened: true, menuOpen: true, dialogActive: false })).toBe(
+      "close-menu",
     )
-    expect(resolveWorkbenchEscapeAction({ key: "Escape", opened: true, addOpen: false, dialogActive: false })).toBe(
+    expect(resolveWorkbenchEscapeAction({ key: "Escape", opened: true, menuOpen: false, dialogActive: false })).toBe(
       "close-surface",
     )
-    expect(resolveWorkbenchEscapeAction({ key: "Enter", opened: true, addOpen: false, dialogActive: false })).toBe(
+    expect(resolveWorkbenchEscapeAction({ key: "Enter", opened: true, menuOpen: false, dialogActive: false })).toBe(
       "none",
     )
   })
@@ -342,7 +342,7 @@ describe("workbench Escape routing", () => {
       resolveWorkbenchEscapeAction({
         key: "Escape",
         opened: true,
-        addOpen: false,
+        menuOpen: false,
         dialogActive: false,
         editableFocus: true,
       }),
@@ -351,7 +351,7 @@ describe("workbench Escape routing", () => {
       resolveWorkbenchEscapeAction({
         key: "Escape",
         opened: true,
-        addOpen: true,
+        menuOpen: true,
         dialogActive: false,
         editableFocus: true,
       }),
