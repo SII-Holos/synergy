@@ -192,14 +192,79 @@ export function closeWorkbenchPanelTab(
   }
 }
 
+/**
+ * Compute the tab list and active tab after a "close other tabs" batch.
+ *
+ * Without `closingIds` the batch removes every tab but `keepTabId` and
+ * activates the kept tab. When `closingIds` is supplied the removal is
+ * bounded to that snapshot set instead: async close-others awaits each
+ * panel's onCloseTab hook, and during that window the store may legitimately
+ * gain new tabs (the user opens another file) that this batch must not
+ * sweep, or lose the kept tab (its own panel reports the resource gone and
+ * routes through closeTab). The kept tab is never removed even if listed.
+ *
+ * Active-tab fallback mirrors closeWorkbenchPanelTab: the kept tab wins when
+ * it survives; otherwise an active tab that survives keeps focus, and an
+ * active tab that was removed falls back to its nearest surviving neighbor.
+ */
 export function closeOtherWorkbenchPanelTabs(
   tabs: WorkbenchPanelTab[],
   active: string | undefined,
   keepTabId: string,
+  closingIds?: ReadonlySet<string>,
 ): { tabs: WorkbenchPanelTab[]; active: string | undefined } {
-  const keep = tabs.find((tab) => tab.id === keepTabId)
-  if (!keep) return { tabs, active }
-  return { tabs: [keep], active: keep.id }
+  const keepExists = tabs.some((tab) => tab.id === keepTabId)
+  if (!keepExists && !closingIds) return { tabs, active }
+
+  const closing = new Set(closingIds ?? tabs.map((tab) => tab.id).filter((id) => id !== keepTabId))
+  closing.delete(keepTabId)
+  const removed = tabs.filter((tab) => closing.has(tab.id))
+  if (removed.length === 0) return { tabs, active }
+
+  const next = tabs.filter((tab) => !closing.has(tab.id))
+  if (next.some((tab) => tab.id === keepTabId)) return { tabs: next, active: keepTabId }
+  if (active && next.some((tab) => tab.id === active)) return { tabs: next, active }
+
+  const anchor = tabs.findIndex((tab) => tab.id === (active ?? keepTabId))
+  return { tabs: next, active: next[anchor - 1]?.id ?? next[anchor]?.id ?? next[0]?.id }
+}
+
+/**
+ * Cross-instance registry of workbench-surface escape-sensitive menus.
+ *
+ * The side and bottom workbench surfaces each mount a capture-phase document
+ * keydown listener for Escape. A listener cannot stop the other surface's
+ * listener with stopPropagation (same node, same phase), so an Escape meant
+ * to dismiss a context menu on one surface also collapsed the other open
+ * surface. Every mounted surface registers a handle here; the keydown
+ * handler then consults the registry so all instances agree on whether any
+ * menu is open before falling through to close-surface.
+ */
+export interface WorkbenchEscapeMenuHandle {
+  isAnyMenuOpen(): boolean
+  closeMenus(): void
+}
+
+const escapeMenuHandles = new Set<WorkbenchEscapeMenuHandle>()
+
+export function registerWorkbenchEscapeMenu(handle: WorkbenchEscapeMenuHandle): () => void {
+  escapeMenuHandles.add(handle)
+  return () => {
+    escapeMenuHandles.delete(handle)
+  }
+}
+
+export function anyWorkbenchEscapeMenuOpen(): boolean {
+  for (const handle of escapeMenuHandles) {
+    if (handle.isAnyMenuOpen()) return true
+  }
+  return false
+}
+
+export function closeAllWorkbenchEscapeMenus(): void {
+  for (const handle of escapeMenuHandles) {
+    handle.closeMenus()
+  }
 }
 
 export function workbenchPanelMountKey(tab?: WorkbenchPanelTab) {

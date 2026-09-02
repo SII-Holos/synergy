@@ -39,6 +39,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     const [registryVersion, setRegistryVersion] = createSignal(0)
     let nextTabIndex = 0
     const closeGuard = createTabCloseGuard()
+    const batchClosingSurfaces = new Set<WorkbenchPanelSurface>()
 
     const unsubscribe = subscribeWorkbenchPanels(() => setRegistryVersion((value) => value + 1))
     onCleanup(unsubscribe)
@@ -143,19 +144,44 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     }
 
     async function closeOtherTabsOnSurface(surfaceName: WorkbenchPanelSurface, keepTabId: string) {
+      if (batchClosingSurfaces.has(surfaceName)) return
       const target = surface(surfaceName)
       const keep = target.tabs().find((item) => item.id === keepTabId)
       if (!keep) return
 
-      for (const tab of target.tabs()) {
-        if (tab.id === keepTabId) continue
-        const entry = getWorkbenchPanel(tab.panelId)
-        await entry?.onCloseTab?.(tab)
-      }
+      batchClosingSurfaces.add(surfaceName)
+      try {
+        // Snapshot the batch at call time. Each onCloseTab hook can take a
+        // network round-trip (terminal pty removal); during that window the
+        // store may legitimately change: tabs the user opens now must not be
+        // swept, and a tab already closed through closeTab must not have its
+        // hook run twice.
+        const closingIds = new Set(target.tabs().map((tab) => tab.id))
+        closingIds.delete(keepTabId)
+        for (const tabId of closingIds) {
+          if (!closeGuard.begin(tabId)) continue
+          try {
+            const tab = target.tabs().find((item) => item.id === tabId)
+            if (!tab) continue
+            const entry = getWorkbenchPanel(tab.panelId)
+            if (!entry?.onCloseTab) continue
+            try {
+              await entry.onCloseTab(tab)
+            } catch (error) {
+              console.error("Workbench close-others onCloseTab failed for", tab.panelId, error)
+            }
+          } finally {
+            closeGuard.end(tabId)
+          }
+        }
 
-      const next = closeOtherWorkbenchPanelTabs(target.tabs(), target.active(), keepTabId)
-      target.setTabs(next.tabs)
-      target.setActive(next.active)
+        const next = closeOtherWorkbenchPanelTabs(target.tabs(), target.active(), keepTabId, closingIds)
+        target.setTabs(next.tabs)
+        target.setActive(next.active)
+        if (next.tabs.length === 0) target.close()
+      } finally {
+        batchClosingSurfaces.delete(surfaceName)
+      }
     }
 
     async function closeOtherTabs(keepTabId: string) {

@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test"
 import type { WorkbenchPanelTab } from "../../../src/plugin/registries/workbench-panel-registry"
 import {
+  anyWorkbenchEscapeMenuOpen,
+  closeAllWorkbenchEscapeMenus,
   closeOtherWorkbenchPanelTabs,
   closeWorkbenchPanelTab,
   isEditableEscapeTarget,
   isWorkbenchPanelLaunchable,
   moveWorkbenchPanelTab,
   openWorkbenchPanelTab,
+  registerWorkbenchEscapeMenu,
   resolveWorkbenchEscapeAction,
   updateWorkbenchPanelTab,
   workbenchPanelMountKey,
@@ -250,6 +253,32 @@ describe("closeOtherWorkbenchPanelTabs", () => {
     expect(result.tabs).toBe(tabs)
     expect(result.active).toBe("b")
   })
+
+  test("bounded closing set removes exactly the snapshot and keeps tabs opened during the window", () => {
+    const tabs = [
+      { id: "a", panelId: "file" },
+      { id: "b", panelId: "file" },
+      { id: "late", panelId: "file" },
+    ]
+    const result = closeOtherWorkbenchPanelTabs(tabs, "late", "b", new Set(["a"]))
+
+    expect(result.tabs.map((tab) => tab.id)).toEqual(["b", "late"])
+    expect(result.active).toBe("b")
+  })
+
+  test("kept tab removed concurrently leaves the bounded result untouched", () => {
+    const result = closeOtherWorkbenchPanelTabs([{ id: "c", panelId: "notes" }], "c", "a", new Set(["a", "b"]))
+
+    expect(result.tabs).toEqual([{ id: "c", panelId: "notes" }])
+    expect(result.active).toBe("c")
+  })
+
+  test("a bounded close of the last tab empties the surface", () => {
+    const result = closeOtherWorkbenchPanelTabs([{ id: "a", panelId: "file" }], "a", "missing", new Set(["a"]))
+
+    expect(result.tabs).toEqual([])
+    expect(result.active).toBeUndefined()
+  })
 })
 
 describe("workbench tab updates", () => {
@@ -357,6 +386,44 @@ describe("workbench Escape routing", () => {
       }),
     ).toBe("none")
   })
+})
+
+test("escape menu registry arbitrates across mounted surfaces", () => {
+  const unregisterIdle = registerWorkbenchEscapeMenu({
+    isAnyMenuOpen: () => false,
+    closeMenus: () => {},
+  })
+  const unregisterOpen = registerWorkbenchEscapeMenu({
+    isAnyMenuOpen: () => true,
+    closeMenus: () => {},
+  })
+  expect(anyWorkbenchEscapeMenuOpen()).toBe(true)
+  unregisterOpen()
+  expect(anyWorkbenchEscapeMenuOpen()).toBe(false)
+  unregisterIdle()
+  expect(anyWorkbenchEscapeMenuOpen()).toBe(false)
+})
+
+test("closeAllWorkbenchEscapeMenus closes every registered menu", () => {
+  let closedFirst = 0
+  let closedSecond = 0
+  const unregisterFirst = registerWorkbenchEscapeMenu({
+    isAnyMenuOpen: () => true,
+    closeMenus: () => {
+      closedFirst += 1
+    },
+  })
+  const unregisterSecond = registerWorkbenchEscapeMenu({
+    isAnyMenuOpen: () => true,
+    closeMenus: () => {
+      closedSecond += 1
+    },
+  })
+  closeAllWorkbenchEscapeMenus()
+  expect(closedFirst).toBe(1)
+  expect(closedSecond).toBe(1)
+  unregisterFirst()
+  unregisterSecond()
 })
 
 describe("isEditableEscapeTarget", () => {

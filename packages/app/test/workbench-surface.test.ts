@@ -216,6 +216,18 @@ describe("workbench surface polarity", () => {
     expect(workbenchSurfaceCss).toContain('[data-slot="popover-trigger"]')
   })
 
+  test("workbench surfaces arbitrate Escape through the shared menu registry", () => {
+    expect(workbenchSurface).toContain("registerWorkbenchEscapeMenu")
+    expect(workbenchSurface).toContain("anyWorkbenchEscapeMenuOpen")
+    expect(workbenchSurface).toContain("closeAllWorkbenchEscapeMenus")
+    expect(workbenchSurface).toContain("stopImmediatePropagation")
+    expect(workbenchPanels).toContain("batchClosingSurfaces")
+    expect(workbenchPanels).toContain("closingIds")
+    expect(workbenchPanels).toContain(
+      "closeOtherWorkbenchPanelTabs(target.tabs(), target.active(), keepTabId, closingIds)",
+    )
+  })
+
   test("raised stronger non-alpha utilities resolve to popover surfaces inside the workbench", () => {
     expect(css).toContain(".bg-surface-raised-stronger-non-alpha")
     expect(css).toContain("background-color: var(--workbench-popover-bg);")

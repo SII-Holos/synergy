@@ -15,6 +15,9 @@ import {
   isEditableEscapeTarget,
   isWorkbenchPanelLaunchable,
   workbenchPanelMountKey,
+  registerWorkbenchEscapeMenu,
+  anyWorkbenchEscapeMenuOpen,
+  closeAllWorkbenchEscapeMenus,
 } from "@/context/workbench/panel-model"
 import {
   computeMaxWorkspaceWidth,
@@ -353,11 +356,20 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
   })
 
   onMount(() => {
+    const menuHandle = {
+      isAnyMenuOpen: () => local.addOpen || local.actionsOpen || local.menuTabId !== undefined,
+      closeMenus: () => {
+        setLocal("addOpen", false)
+        setLocal("actionsOpen", false)
+        setLocal("menuTabId", undefined)
+      },
+    }
+    const unregister = registerWorkbenchEscapeMenu(menuHandle)
     const onKey = (event: KeyboardEvent) => {
       const action = resolveWorkbenchEscapeAction({
         key: event.key,
         opened: state().opened(),
-        menuOpen: local.addOpen || local.actionsOpen || local.menuTabId !== undefined,
+        menuOpen: anyWorkbenchEscapeMenuOpen(),
         dialogActive: Boolean(dialog.active),
         editableFocus: isEditableEscapeTarget(event.target),
       })
@@ -365,15 +377,23 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
       event.preventDefault()
       event.stopPropagation()
       if (action === "close-menu") {
-        setLocal("addOpen", false)
-        setLocal("actionsOpen", false)
-        setLocal("menuTabId", undefined)
+        // With both side and bottom surfaces mounted, the other surface's
+        // capture listener would see the just-closed menus and fall through
+        // to closing its panel. Close every menu here and stop the same-node
+        // capture listeners from re-deciding; without any menu open each
+        // surface keeps its own close-surface path (Escape collapses every
+        // open surface, as before).
+        closeAllWorkbenchEscapeMenus()
+        event.stopImmediatePropagation()
         return
       }
       state().close()
     }
     document.addEventListener("keydown", onKey, { capture: true })
-    onCleanup(() => document.removeEventListener("keydown", onKey, { capture: true }))
+    onCleanup(() => {
+      unregister()
+      document.removeEventListener("keydown", onKey, { capture: true })
+    })
   })
 
   const size = () => state().size()
