@@ -311,6 +311,7 @@ export namespace Scope {
       return { scope, sandbox }
     }
 
+    const existed = !!existing
     if (!existing) {
       existing = {
         id,
@@ -326,6 +327,7 @@ export namespace Scope {
       }
     }
 
+    const previousSandboxes = [...(existing.sandboxes ?? [])]
     if (!existing.sandboxes) existing.sandboxes = []
 
     const project: z.infer<typeof Info> = {
@@ -338,7 +340,19 @@ export namespace Scope {
     }
     if (sandbox !== project.worktree && !project.sandboxes.includes(sandbox)) project.sandboxes.push(sandbox)
     project.sandboxes = project.sandboxes.filter((x) => existsSync(x))
-    if (persist) await writePersisted(project)
+
+    // Persist and broadcast only when the record actually changed. Repeated
+    // lookups of the same directory used to rewrite the scope file and emit
+    // scope.updated on every request, driving frontend scope-index refreshes
+    // and sidebar re-renders on unrelated navigation.
+    const recordChanged =
+      !existed ||
+      project.directory !== existing.directory ||
+      project.worktree !== existing.worktree ||
+      project.vcs !== existing.vcs ||
+      project.sandboxes.length !== previousSandboxes.length ||
+      project.sandboxes.some((entry, index) => entry !== previousSandboxes[index])
+    if (persist && recordChanged) await writePersisted(project)
 
     const scope: Scope.Project = {
       type: "project",
@@ -353,7 +367,7 @@ export namespace Scope {
       time: project.time,
     }
 
-    if (persist) {
+    if (persist && recordChanged) {
       GlobalBus.emit("event", {
         payload: {
           type: Event.Updated.type,
