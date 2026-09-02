@@ -145,15 +145,55 @@ export namespace SynergyLinkLocalService {
 async function readPidStartedAt(pid: number): Promise<number | undefined> {
   if (process.platform === "win32") return undefined
   try {
-    const { stdout } = await execFileAsync("ps", ["-p", String(pid), "-o", "lstart="], {
+    // Derive the start instant from the elapsed runtime instead of parsing
+    // `lstart`: the latter is a local-time string whose timezone handling
+    // differs across JS engines, while `etimes` is a procps/Linux-only
+    // keyword that macOS/BSD ps rejects. `etime` prints the same elapsed
+    // time in the portable `[[dd-]hh:]mm:ss` form on both procps and BSD.
+    const { stdout } = await execFileAsync("ps", ["-p", String(pid), "-o", "etime="], {
       timeout: 1_000,
       maxBuffer: 4_096,
     })
-    const startedAt = Date.parse(stdout.trim())
-    return Number.isNaN(startedAt) ? undefined : startedAt
+    const elapsedSeconds = parsePsEtime(stdout)
+    return elapsedSeconds === undefined ? undefined : Date.now() - elapsedSeconds * 1_000
   } catch {
     return undefined
   }
+}
+
+/**
+ * Parse `ps -o etime=` output into whole elapsed seconds. procps and BSD ps
+ * both print `mm:ss` under an hour, `hh:mm:ss` under a day, and
+ * `dd-hh:mm:ss` beyond a day; busybox prints the same clock forms. Returns
+ * undefined for empty or unparseable output so callers can fall back to
+ * accepting a live pid without a start-time comparison.
+ */
+export function parsePsEtime(value: string): number | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  let rest = trimmed
+  let days = 0
+  const dayDash = rest.indexOf("-")
+  if (dayDash !== -1) {
+    const dayPart = rest.slice(0, dayDash)
+    if (!/^\d+$/.test(dayPart)) return undefined
+    days = Number(dayPart)
+    rest = rest.slice(dayDash + 1)
+  }
+  const rawParts = rest.split(":")
+  if (rawParts.length === 0 || rawParts.length > 3) return undefined
+  const parts: number[] = []
+  for (const part of rawParts) {
+    if (!/^\d+$/.test(part)) return undefined
+    parts.push(Number(part))
+  }
+  const seconds =
+    parts.length === 1
+      ? parts[0]!
+      : parts.length === 2
+        ? parts[0]! * 60 + parts[1]!
+        : parts[0]! * 3_600 + parts[1]! * 60 + parts[2]!
+  return days * 86_400 + seconds
 }
 
 function filterLogContent(content: string, input?: { tailLines?: number; since?: string }) {
