@@ -5,7 +5,10 @@ import { Session } from "../../src/session"
 import { SessionInvoke } from "../../src/session/invoke"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Turn } from "../../src/session/turn"
+import { registerCommandSessionRuntime } from "../../src/command/session-runtime"
 import { tmpdir } from "../fixture/fixture"
+
+registerCommandSessionRuntime()
 
 function userMessage(id: string, text: string, metadata?: Record<string, unknown>): MessageV2.WithParts {
   return {

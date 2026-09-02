@@ -3,7 +3,7 @@ import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { NoteDocument, NoteStore } from "../../src/note"
 import { Session } from "../../src/session"
-import { NoteEditTool } from "../../src/tool/note-edit"
+import { NoteEditTool } from "../../src/note/tools/note-edit"
 import type { Tool } from "../../src/tool/tool"
 import { tmpdir } from "../fixture/fixture"
 

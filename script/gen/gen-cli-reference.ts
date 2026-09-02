@@ -106,26 +106,30 @@ export async function generate(): Promise<string> {
   const topLevel = await commandRegistrations()
   const topNames = new Set(topLevel.map((command) => command.name))
 
-  // Collect every command block reachable from the top-level modules.
+  // Collect every command block reachable from the top-level modules. Blocks
+  // are tracked globally (detail sections) and per top-level module (command
+  // table): a top-level command and a nested subcommand may share a block
+  // name (`export` vs `config export`), so the table resolves through the
+  // command's own module while detail sections keep the merged view.
   const blocks = new Map<string, CommandBlock>()
+  const blocksByModule = new Map<string, Map<string, CommandBlock>>()
   for (const command of topLevel) {
     if (!command.file || command.file === "(unresolved)") continue
+    const own = new Map<string, CommandBlock>()
     const sources = await collectSources(path.join(REPO_ROOT, command.file))
     for (const file of sources) {
       const source = await readFile(file, "utf8").catch(() => "")
       for (const block of parseCommandBlocks(source)) {
-        const isTop = topNames.has(block.name)
-        // Sub-commands registered through `yargs.command(SubCommand)` carry the
-        // module path as their command path; keep both forms deduplicated.
+        own.set(block.name, block)
         blocks.set(block.name, block)
-        if (isTop) continue
       }
     }
+    blocksByModule.set(command.name, own)
   }
 
   const rows: string[] = []
   for (const command of topLevel) {
-    const block = blocks.get(command.name)
+    const block = blocksByModule.get(command.name)?.get(command.name)
     rows.push(`| \`${command.name}\` | ${block?.describe ?? command.describe ?? ""} |`)
   }
 

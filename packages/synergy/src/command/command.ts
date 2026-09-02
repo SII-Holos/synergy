@@ -1,15 +1,14 @@
-import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { Log } from "@/util/log"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import z from "zod"
 import { Config } from "../config/config"
 import { Identifier } from "../id/id"
-import { MCP } from "../mcp"
+import { CommandSourceProviders } from "../instruction/source-provider"
+import { InstructionRegistry } from "../instruction/registry"
 import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
 import { Skill } from "../skill/skill"
-import { SkillRenderer } from "../skill/renderer"
 import PROMPT_COMMIT from "./template/commit.txt"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
 import PROMPT_NOTE from "./template/note.txt"
@@ -18,7 +17,6 @@ import PROMPT_AUDIT from "./template/audit.txt"
 import PROMPT_START from "./template/start.txt"
 import PROMPT_REVIEW from "./template/review.txt"
 import PROMPT_RMSLOP from "./template/rmslop.txt"
-
 export namespace Command {
   const log = Log.create({ service: "command" })
 
@@ -155,9 +153,7 @@ export namespace Command {
         })
       }
 
-      unsubscribers.push(Bus.subscribe(MCP.ToolsChanged, reset))
-      unsubscribers.push(Bus.subscribe(MCP.PromptsChanged, reset))
-      unsubscribers.push(Bus.subscribe(MCP.Ready, reset))
+      unsubscribers.push(CommandSourceProviders.subscribeAll(reset))
 
       return unsubscribers
     },
@@ -259,27 +255,20 @@ export namespace Command {
       })
     }
 
-    for (const [name, prompt] of Object.entries(await MCP.prompts())) {
+    for (const [name, prompt] of Object.entries(await CommandSourceProviders.prompts())) {
       result[name] = promptCommand({
         name,
         mcp: true,
         source: "mcp",
         description: prompt.description,
         get template() {
-          return new Promise<string>(async (resolve, reject) => {
-            const template = await MCP.getPrompt(
-              prompt.client,
-              prompt.name,
-              prompt.arguments
-                ? Object.fromEntries(prompt.arguments?.map((argument, i) => [argument.name, `$${i + 1}`]))
-                : {},
-            ).catch(reject)
-            resolve(
-              template?.messages
-                .map((message) => (message.content.type === "text" ? message.content.text : ""))
-                .join("\n") || "",
-            )
-          })
+          return CommandSourceProviders.getPrompt(
+            prompt.client,
+            prompt.name,
+            prompt.arguments
+              ? Object.fromEntries(prompt.arguments.map((argument, i) => [argument.name, `$${i + 1}`]))
+              : {},
+          ).then((template) => template ?? "")
         },
         hints: prompt.arguments?.map((_, i) => `$${i + 1}`) ?? [],
       })
@@ -294,7 +283,7 @@ export namespace Command {
         get template() {
           return Skill.content(skill)
         },
-        hints: SkillRenderer.hints(),
+        hints: InstructionRegistry.get("skill")?.hints() ?? [],
       })
     }
 

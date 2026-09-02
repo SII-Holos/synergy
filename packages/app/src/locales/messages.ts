@@ -25,8 +25,13 @@ export const workspace = {
   bottomWorkspace: { id: "app.workspace.surface.bottom", message: "Bottom workspace" },
   sideTabs: { id: "app.workspace.tabs.side", message: "Side workspace tabs" },
   bottomTabs: { id: "app.workspace.tabs.bottom", message: "Bottom workspace tabs" },
+  resizeSide: { id: "app.workspace.surface.side.resize", message: "Resize side workspace" },
+  resizeBottom: { id: "app.workspace.surface.bottom.resize", message: "Resize bottom workspace" },
   addSidePanel: { id: "app.workspace.add.sidePanel", message: "Add side panel" },
   addBottomPanel: { id: "app.workspace.add.bottomPanel", message: "Add bottom panel" },
+  tabActionsMenu: { id: "app.workspace.tab.actions", message: "Tab actions" },
+  tabContextMenu: { id: "app.workspace.tab.contextMenu", message: "{title} actions" },
+  closeOtherTabs: { id: "app.workspace.tab.closeOthers", message: "Close other tabs" },
   mobileHeader: { id: "app.workspace.mobileHeader", message: "Workspace" },
   closeWorkspace: { id: "app.workspace.mobileHeader.close", message: "Close workspace" },
 } as const satisfies Record<string, AppMessageDescriptor>
@@ -358,6 +363,7 @@ export const fileWorkbench = {
   source: { id: "app.file.mode.source", message: "Source" },
   preview: { id: "app.file.mode.preview", message: "Preview" },
   toggleFileTree: { id: "app.file.toolbar.toggleFileTree", message: "Toggle file tree" },
+  openInBrowser: { id: "app.file.toolbar.openInBrowser", message: "Open in browser" },
   zoomOut: { id: "app.file.image.zoomOut", message: "Zoom out" },
   zoomIn: { id: "app.file.image.zoomIn", message: "Zoom in" },
   fit: { id: "app.file.image.fit", message: "Fit" },
@@ -395,7 +401,13 @@ export const attachmentWorkbench = {
   preview: { id: "app.attachment.mode.preview", message: "Preview" },
   viewMode: { id: "app.attachment.mode.label", message: "Attachment view mode" },
   viewSourceFile: { id: "app.attachment.action.viewSourceFile", message: "View source in Files" },
-  openInBrowser: { id: "app.attachment.action.openInBrowser", message: "Open in browser" },
+  openInBrowser: { id: "app.attachment.action.openInBrowser", message: "Open in Synergy browser" },
+  openFullPage: { id: "app.attachment.action.openFullPage", message: "Open in your browser" },
+  htmlScriptsDisabled: {
+    id: "app.attachment.preview.htmlScriptsDisabled",
+    message:
+      "Interactive documents do not run scripts in this preview. Open in your browser for the complete rendering.",
+  },
   download: { id: "app.attachment.action.download", message: "Download" },
   unsupported: {
     id: "app.attachment.unsupported",
@@ -418,6 +430,7 @@ export const fileExplorer = {
   refresh: { id: "app.fileExplorer.action.refresh", message: "Refresh files" },
   collapseAll: { id: "app.fileExplorer.action.collapseAll", message: "Collapse all folders" },
   closeTree: { id: "app.fileExplorer.action.closeTree", message: "Close file tree" },
+  resize: { id: "app.fileExplorer.resize", message: "Resize file explorer" },
   searchPlaceholder: { id: "app.fileExplorer.search.placeholder", message: "Search files" },
   searchLabel: { id: "app.fileExplorer.search.label", message: "Search files" },
   hiddenNotice: { id: "app.fileExplorer.hidden.notice", message: "The active file is hidden by Explorer filters." },
@@ -688,6 +701,7 @@ export const sidebar = {
   // Tooltips and aria-labels
   expand: { id: "app.sidebar.expand", message: "Expand sidebar" },
   collapse: { id: "app.sidebar.collapse", message: "Collapse sidebar" },
+  resize: { id: "app.sidebar.resize", message: "Resize sidebar" },
   search: { id: "app.sidebar.search", message: "Search sessions" },
   newSession: { id: "app.sidebar.newSession", message: "New session" },
   newSessionShort: { id: "app.sidebar.newSession.short", message: "New" },
@@ -755,6 +769,7 @@ export const sidebar = {
   orphanGroup: { id: "app.sidebar.channel.orphan", message: "Other" },
   // Session fallback
   untitled: { id: "app.sidebar.session.untitled", message: "Untitled" },
+  draftBadge: { id: "app.sidebar.session.draftBadge", message: "Draft" },
   // Brand / logo
   logoAlt: { id: "app.sidebar.brand.logo", message: "HOLOS" },
   channelFeishu: { id: "app.sidebar.channel.feishu", message: "Feishu" },

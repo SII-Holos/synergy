@@ -13,6 +13,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLingui } from "@lingui/solid"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { sidebar } from "@/locales/messages"
 import { BRAND_ASSETS, brandAssetPath, holosLogoPath } from "@/utils/brand-assets"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
@@ -23,6 +24,7 @@ import { DialogScopeEdit } from "@/components/dialog/dialog-scope-edit"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { archiveProjectConfirm } from "@/components/dialog/confirm-copy"
 import type { LocalScope, NavEntry, ScopeNavEntry } from "@/context/layout"
+import { SIDEBAR_COLLAPSE_THRESHOLD, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN } from "@/context/layout/defaults"
 import type { HolosAccountMeta } from "@ericsanchezok/synergy-sdk/client"
 import { usePlatform } from "@/context/platform"
 import { useProductUpdate } from "@/context/product-update"
@@ -37,6 +39,7 @@ import {
 } from "@/components/sidebar/session-visual-state"
 import { setSessionDragData } from "@/utils/session-drag"
 import { SidebarAttentionNotice } from "./sidebar-attention-notice"
+import { SessionDraftBadge } from "./session-draft-badge"
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import "./sidebar.css"
 import { SlotOutlet } from "@/plugin/slot-outlet"
@@ -94,6 +97,8 @@ export function Sidebar(props: SidebarProps) {
 
   const isExpanded = () => layout.sidebar.opened()
   const isDark = () => theme.mode() === "dark"
+  const sidebarWidth = () => layout.sidebar.width()
+  const [sidebarResizing, setSidebarResizing] = createSignal(false)
   const recentEntries = createMemo(() => layout.nav.recentEntries())
   const hasMoreForProject = (scope: LocalScope) => layout.nav.navEntries()[scope.worktree]?.nextCursor != null
   const hasMoreRecent = createMemo(() => layout.nav.hasMoreRecent())
@@ -342,8 +347,24 @@ export function Sidebar(props: SidebarProps) {
         "sb-root": true,
         "sb-collapsed": !isExpanded(),
         "sb-expanded": isExpanded(),
+        "sb-resizing": sidebarResizing(),
       }}
+      style={isExpanded() ? { width: `${sidebarWidth()}px` } : undefined}
     >
+      <Show when={isExpanded()}>
+        <ResizeHandle
+          direction="horizontal"
+          aria-label={_(sidebar.resize)}
+          size={sidebarWidth()}
+          min={SIDEBAR_WIDTH_MIN}
+          max={SIDEBAR_WIDTH_MAX}
+          collapseThreshold={SIDEBAR_COLLAPSE_THRESHOLD}
+          onResize={layout.sidebar.resize}
+          onResizeStart={() => setSidebarResizing(true)}
+          onResizeEnd={() => setSidebarResizing(false)}
+          onCollapse={() => layout.sidebar.close()}
+        />
+      </Show>
       {/* Header: Logo + expand toggle */}
       <div class="sb-header">
         <Show
@@ -1231,6 +1252,7 @@ function SidebarSessionRow(props: {
           <span class="sb-session-completion-dot" />
         </Show>
       </span>
+      <SessionDraftBadge sessionID={props.entry.id} label={_(sidebar.draftBadge)} />
       <span class={props.flyout ? "sb-flyout-session-title" : "sb-session-title"}>
         {props.entry.title || _(sidebar.untitled)}
       </span>

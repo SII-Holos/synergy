@@ -1,6 +1,6 @@
 import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 import { Config } from "../../config/config"
 import { ConfigDomain } from "../../config/domain"
 import { ScopeContext } from "../../scope/context"

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
 import { ScopeListTool } from "../../src/tool/scope-list"
-import { SessionControlTool } from "../../src/tool/session-control"
+import { SessionControlTool } from "../../src/project/tools/session-control"
 import { Session } from "../../src/session"
 import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"

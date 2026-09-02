@@ -3,7 +3,7 @@ import { appendFile, mkdtemp, rm, stat, writeFile } from "node:fs/promises"
 import { spawn } from "node:child_process"
 import os from "node:os"
 import path from "node:path"
-import { SynergyLinkLocalService } from "../src/service/local"
+import { SynergyLinkLocalService, parsePsEtime } from "../src/service/local"
 
 const tempRoots: string[] = []
 
@@ -39,6 +39,29 @@ describe("synergy-link local service process helpers", () => {
       child.kill("SIGKILL")
       await exited
     }
+  })
+  test("isPidRunningSince rejects a start time from the future or too far in the past", async () => {
+    const child = spawn("sleep", ["30"])
+    const exited = new Promise((resolve) => child.once("exit", resolve))
+    try {
+      const pid = child.pid!
+      if (process.platform === "win32") return
+      expect(await SynergyLinkLocalService.isPidRunningSince(pid, Date.now() + 60_000)).toBe(false)
+      expect(await SynergyLinkLocalService.isPidRunningSince(pid, Date.now() - 86_400_000)).toBe(false)
+    } finally {
+      child.kill("SIGKILL")
+      await exited
+    }
+  })
+
+  test("parsePsEtime parses every ps elapsed-time format", () => {
+    expect(parsePsEtime("05:09")).toBe(5 * 60 + 9)
+    expect(parsePsEtime("1:02:03")).toBe(3_723)
+    expect(parsePsEtime("2-01:02:03")).toBe(2 * 86_400 + 3_723)
+    expect(parsePsEtime("  42:00\n")).toBe(42 * 60)
+    expect(parsePsEtime("")).toBeUndefined()
+    expect(parsePsEtime("bogus")).toBeUndefined()
+    expect(parsePsEtime("1:2:3:4")).toBeUndefined()
   })
 
   test("terminatePid stops a live child and tolerates unknown pids", async () => {

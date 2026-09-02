@@ -1,6 +1,6 @@
 import { ConfigDomain } from "../../config/domain"
 import { cmd } from "./cmd"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 import { withNetworkOptions } from "../network"
 import { Daemon } from "../../daemon"
 import { DaemonOutput } from "../../daemon/output"

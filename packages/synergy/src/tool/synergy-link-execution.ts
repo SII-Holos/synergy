@@ -1,7 +1,7 @@
 import { SynergyLinkIdentity } from "@ericsanchezok/synergy-link-protocol"
 import type { SynergyLinkClient } from "@ericsanchezok/synergy-link-protocol"
-import { SynergyLinkRemoteError, type SynergyLinkTransportFailureReason } from "@/remote/client"
-import { SynergyLinkTargetStore } from "@/synergy-link/target-store"
+import { SynergyLinkRemoteError, type SynergyLinkTransportFailureReason } from "./remote-error"
+import { ToolLinkTargetSource } from "./link-target-source"
 import { withTimeout } from "@/util/timeout"
 import { ToolTimeout } from "./timeout"
 
@@ -204,9 +204,10 @@ export namespace SynergyLinkExecution {
     }
 
     if (input.targetIDSupplied) {
-      const target = await SynergyLinkTargetStore.require(input.targetID ?? "")
+      const target = await ToolLinkTargetSource.get()?.requireTarget(input.targetID ?? "")
+      if (!target) throw new Error(`Synergy Link target not found: ${input.targetID}`)
       if (!target.enabled) throw new Error(`Synergy Link target is disabled: ${target.id}`)
-      SynergyLinkTargetStore.assertAgentAccess(target, input.agent)
+      ToolLinkTargetSource.get()!.assertAgentAccess(target, input.agent)
       return resolveRemoteTarget({
         linkID: target.linkID,
         targetID: target.id,
@@ -225,10 +226,13 @@ export namespace SynergyLinkExecution {
     requireClient(resolution.linkID, input.tool)
     const session = getSession(resolution.linkID)
     if (!session || session.status !== "opened") throw new NoSessionError(resolution.linkID)
-    const registeredTarget = await SynergyLinkTargetStore.findByLocator(resolution.linkID, session.targetAgentID)
+    const registeredTarget = await ToolLinkTargetSource.get()?.findRegisteredTarget(
+      resolution.linkID,
+      session.targetAgentID,
+    )
     if (registeredTarget) {
       if (!registeredTarget.enabled) throw new Error(`Synergy Link target is disabled: ${registeredTarget.id}`)
-      SynergyLinkTargetStore.assertAgentAccess(registeredTarget, input.agent)
+      ToolLinkTargetSource.get()!.assertAgentAccess(registeredTarget, input.agent)
     }
     return resolveRemoteTarget({
       linkID: resolution.linkID,

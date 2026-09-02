@@ -18,7 +18,7 @@ import { CortexConcurrency } from "./concurrency"
 import { fn } from "@/util/fn"
 import { Dag } from "../session/dag"
 import { CortexEvent } from "./event"
-import { Plugin } from "../plugin"
+import { SessionPluginHooks } from "../session/plugin-hooks"
 import { CortexOutput } from "./output"
 import { ScopeContext } from "../scope/context"
 import { Observability } from "../observability"
@@ -747,7 +747,7 @@ export namespace Cortex {
             ScopeContext.provide({
               scope: session.scope,
               fn: () =>
-                Plugin.triggerForPlugin(
+                SessionPluginHooks.triggerForPlugin(
                   pluginSnapshot.owner.pluginId,
                   pluginSnapshot.owner.pluginGeneration,
                   "cortex.task.after",

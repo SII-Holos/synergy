@@ -159,7 +159,9 @@ export namespace McpOAuthCallback {
     const port = getOAuthCallbackPort()
     const portFreed = await waitForPortInUse(false)
     if (!portFreed) {
-      throw new Error(`OAuth callback port ${port} is already in use`)
+      throw new Error(
+        `OAuth callback port ${port} is already in use — another Synergy process is running an OAuth flow. Complete it there or set SYNERGY_OAUTH_CALLBACK_PORT to a free port.`,
+      )
     }
 
     server = Bun.serve({
@@ -171,7 +173,7 @@ export namespace McpOAuthCallback {
   }
 
   export function waitForCallback(oauthState: string, mcpName = oauthState): Promise<string> {
-    cancelPending(mcpName)
+    cancelPending(mcpName, undefined, "superseded by a new OAuth flow")
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         const pending = removePending(oauthState)
@@ -184,11 +186,14 @@ export namespace McpOAuthCallback {
     })
   }
 
-  export function cancelPending(mcpName: string, expectedState?: string): void {
+  export function cancelPending(mcpName: string, expectedState?: string, reason = "cancelled"): void {
     const oauthState = stateByMcpName.get(mcpName)
     if (!oauthState || (expectedState !== undefined && oauthState !== expectedState)) return
     const pending = removePending(oauthState)
-    pending?.reject(new Error("Authorization cancelled"))
+    if (pending) {
+      log.warn("oauth callback cancelled", { mcpName, reason })
+      pending.reject(new Error("Authorization cancelled"))
+    }
   }
 
   export async function isPortInUse(): Promise<boolean> {

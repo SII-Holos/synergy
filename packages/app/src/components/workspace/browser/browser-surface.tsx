@@ -30,6 +30,7 @@ export function BrowserSurface(props: {
   sessionID: string
   routeDirectory?: string
   ownerKey: string
+  clientPresentation: "native" | "webrtc"
   onRetryNative?: () => void
 }) {
   let wrapperRef: HTMLDivElement | undefined
@@ -43,6 +44,7 @@ export function BrowserSurface(props: {
 
   const container = () => wrapperRef
   const nativePresentation = () => browser.presentation()?.kind === "native" && platform.browserNative
+  const nativeRecoveryAvailable = () => props.clientPresentation === "native" && Boolean(platform.browserNative)
   const webrtcPresentation = () => browser.presentation()?.kind === "webrtc"
 
   function fitViewportSize() {
@@ -177,6 +179,11 @@ export function BrowserSurface(props: {
                 <Trans id={B.nativeRecoveryHint.id} message={B.nativeRecoveryHint.message} />
               </Show>
             </div>
+            <Show when={browser.hostStatus() === "failed" && nativeRecoveryAvailable() && props.onRetryNative}>
+              <Button size="small" variant="primary" onClick={() => props.onRetryNative?.()}>
+                <Trans id={B.retry.id} message={B.retry.message} />
+              </Button>
+            </Show>
             <div class="browser-status-pill">{browser.session.connectionStatus}</div>
           </div>
         }
@@ -201,7 +208,14 @@ export function BrowserSurface(props: {
                 {error().severity === "critical" ? lingui._(B.unavailable.id) : lingui._(B.issue.id)}
               </span>
               <span class="min-w-0 flex-1 truncate text-text-weak">{error().message}</span>
-              <Show when={error().code?.startsWith("browser_native_") && props.onRetryNative}>
+              <Show
+                when={
+                  error().code?.startsWith("browser_native_") &&
+                  browser.hostStatus() !== "failed" &&
+                  nativeRecoveryAvailable() &&
+                  props.onRetryNative
+                }
+              >
                 <Button size="small" variant="primary" onClick={() => props.onRetryNative?.()}>
                   <Trans id={B.retry.id} message={B.retry.message} />
                 </Button>

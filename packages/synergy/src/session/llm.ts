@@ -21,6 +21,8 @@ import type { MessageV2 } from "./message-v2"
 import { ObservabilitySpans } from "@/observability/spans"
 import type { LLMTurnMemory } from "./llm-memory"
 import { SessionRootVariant } from "./root-variant"
+import { SessionPluginHooks } from "./plugin-hooks"
+import { reasoningStreamGuardMiddleware } from "./reasoning-stream-guard"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -255,13 +257,13 @@ export namespace LLM {
   export type StreamOutput = StreamTextResult<ToolSet, unknown>
 
   export async function prepare(input: StreamInput): Promise<PreparedTurn> {
-    const [{ Config }, { withPreambleSection }, { SystemPrompt }, { trigger }, { TimeoutConfig }] = await Promise.all([
+    const [{ Config }, { withPreambleSection }, { SystemPrompt }, { TimeoutConfig }] = await Promise.all([
       import("@/config/config"),
       import("@/agent/prompt/preamble"),
       import("./system"),
-      import("@/plugin/lifecycle"),
       import("@/util/timeout-config"),
     ])
+    const trigger = SessionPluginHooks.trigger
     const l = log
       .clone()
       .tag("providerID", input.model.providerID)
@@ -521,6 +523,9 @@ export namespace LLM {
                 return args.params
               },
             },
+            // This must wrap extractReasoningMiddleware so malformed empty
+            // reasoning blocks are repaired before streamText consumes them.
+            reasoningStreamGuardMiddleware(),
             extractReasoningMiddleware({ tagName: "think", startWithReasoning: false }),
           ],
         }),

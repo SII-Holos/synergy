@@ -121,6 +121,26 @@
   color: var(--text-strong);
 }
 
+.file-open-in-browser {
+  display: flex;
+  height: 26px;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  padding: 0 8px;
+  color: var(--text-base);
+  font-size: 12px;
+}
+
+.file-open-in-browser:hover {
+  background: var(--surface-raised-base-hover);
+  color: var(--text-strong);
+}
+
+.file-open-in-browser svg {
+  flex-shrink: 0;
+}
+
 .file-add-context span:first-child {
   color: var(--text-weak);
   font-family: var(--font-mono);
@@ -232,11 +252,41 @@
   padding: 24px clamp(20px, 5vw, 64px) 80px;
   -webkit-user-select: text;
   user-select: text;
+  scrollbar-gutter: stable;
+  /* ::-webkit-scrollbar-* is ignored once scrollbar-color is non-auto, so
+     scrollbar-color is the only effective thumb style here. */
+  scrollbar-color: color-mix(in srgb, var(--text-strong) 34%, transparent) transparent;
+}
+
+[data-color-scheme="dark"] .file-markdown-preview {
+  scrollbar-color: color-mix(in srgb, var(--text-strong) 55%, transparent) transparent;
 }
 
 .file-markdown-preview > [data-component="markdown"] {
   max-width: 960px;
   margin-inline: auto;
+}
+
+.file-html-preview-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.file-html-preview-shell > .file-workbench-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: var(--workbench-card-bg, var(--background-base));
+}
+
+.file-html-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--background-base);
 }
 
 .file-svg-preview {

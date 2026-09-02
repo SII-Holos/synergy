@@ -19,6 +19,7 @@
 ## Skills
 
 Skills extend Synergy with specialized knowledge, workflows, and tool integrations. They are modular markdown files that teach Synergy domain-specific procedures.
+For methodology on designing a high-quality Skill (progressive disclosure, concise trigger descriptions, resource selection), load the builtin skill `synergy-skill-creator`.
 
 ### Skill file format
 

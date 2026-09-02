@@ -45,6 +45,7 @@ import { SessionEndpoint } from "./endpoint"
 import { createDefaultTitle } from "./title"
 import * as SessionWorking from "./working"
 import { SessionMutation } from "./mutation"
+import { SessionProjectHealth } from "./project-health"
 
 export namespace Session {
   export const Info = InfoSchema
@@ -286,8 +287,11 @@ export namespace Session {
       title: session.title,
       category,
       lastActivityAt: session.time.updated,
+      createdAt: session.time.created,
+      updatedAt: session.time.updated,
       pinned: session.pinned ?? 0,
       archived: !!session.time.archived,
+      archivedAt: session.time.archived || undefined,
       parentID: session.parentID,
       endpointKind: channelEndpoint ? "channel" : undefined,
       chatId: channelEndpoint?.chatId,
@@ -483,9 +487,8 @@ export namespace Session {
   ): Promise<Info & { working?: WorkingInfoType }> {
     if (!selection || selection.mode === "current") return get(sessionID)
 
-    const { Worktree } = await import("../project/worktree")
     if (selection.mode === "create") {
-      await Worktree.create({
+      await SessionProjectHealth.createWorktree({
         sessionID,
         name: selection.name,
         baseRef: selection.baseRef ?? "current",
@@ -494,8 +497,7 @@ export namespace Session {
       })
       return get(sessionID)
     }
-
-    await Worktree.enter({
+    await SessionProjectHealth.enterWorktree({
       sessionID,
       target: selection.target,
       force: selection.force ?? false,
@@ -880,8 +882,7 @@ export namespace Session {
     }
 
     if (!before.time.archived && result.time.archived) {
-      const { Worktree } = await import("../project/worktree")
-      await Worktree.detachSession(result.id).catch((error) => {
+      await SessionProjectHealth.detachWorktreeSession(result.id).catch((error) => {
         log.warn("failed to detach worktree during session archive", { sessionID: result.id, error })
       })
     }
@@ -1070,8 +1071,7 @@ export namespace Session {
       for (const child of await children(sessionID)) {
         await removeInternal(child.id, removed)
       }
-      const { Worktree } = await import("../project/worktree")
-      await Worktree.detachSession(sessionID).catch((error) => {
+      await SessionProjectHealth.detachWorktreeSession(sessionID).catch((error) => {
         log.warn("failed to detach worktree during session removal", { sessionID, error })
       })
       SessionManager.unregisterRuntime(sessionID)
@@ -1079,12 +1079,12 @@ export namespace Session {
       SessionMessageCache.disable(sessionID)
       await removeEndpointIndex(session)
       await MessageV2.removeOrderIndex(scopeID, canonicalSessionID)
+      await SessionNav.removeNavEntry(scope.id, sessionID)
       await Storage.removeTree(StoragePath.sessionRoot(scopeID, canonicalSessionID))
       await Storage.remove(StoragePath.sessionIndex(canonicalSessionID))
       await removePageIndexEntry(scope.id, sessionID)
       if (session.parentID) await removeChildIndexEntry(scope.id, session.parentID, sessionID)
       await removeChildIndex(scope.id, sessionID)
-      await SessionNav.removeNavEntry(scope.id, sessionID)
       removed.push(session)
     } catch (e) {
       log.error(e)
@@ -1160,10 +1160,13 @@ export namespace Session {
     const scopeID = asScopeID((session.scope as Scope).id)
     await MessageV2.writeInfo({ scopeID, info: canonical })
     SessionMessageCache.upsertMessage(canonical.sessionID, canonical)
+    // Flip the rollback projection before publishing the replacement root: the
+    // frontend prefix-cut hides everything after the cut while canUnrollback is
+    // true, so the new branch must never arrive ahead of its invalidation.
+    await publishRollbackInvalidation(canonical, session.history)
     Bus.publish(MessageV2.Event.Updated, {
       info: canonical,
     })
-    await publishRollbackInvalidation(canonical, session.history)
     return canonical
   })
 

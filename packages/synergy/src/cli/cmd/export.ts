@@ -2,7 +2,7 @@ import type { Argv } from "yargs"
 import { Session } from "../../session"
 import { cmd } from "./cmd"
 import { withScopeContext } from "../scope"
-import { UI } from "../ui"
+import { UI } from "../../util/ui"
 import * as prompts from "@clack/prompts"
 import { EOL } from "os"
 

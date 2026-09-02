@@ -2,7 +2,7 @@ import fs from "fs"
 import { homedir } from "os"
 import path from "path"
 import { Installation } from "../global/installation"
-import { DaemonPaths } from "./paths"
+import { DaemonPaths } from "../util/daemon-paths"
 
 export namespace DaemonCommand {
   export interface Spec {

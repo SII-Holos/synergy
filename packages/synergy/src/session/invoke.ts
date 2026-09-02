@@ -13,7 +13,7 @@ import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { Bus } from "../bus"
 import { SystemPrompt } from "./system"
 import { SessionEndpoint } from "./endpoint"
-import { Plugin } from "../plugin"
+import { SessionPluginHooks as Plugin } from "./plugin-hooks"
 import MAX_STEPS from "./prompt/max-steps.txt"
 import CORTEX_REMINDER from "./prompt/cortex-reminder.txt"
 import PLANNING_REMINDER from "./prompt/planning-reminder.txt"
@@ -22,17 +22,15 @@ import PLAN_SYNERGY from "./prompt/plan-synergy.txt"
 import PLAN_SYNERGY_MAX from "./prompt/plan-synergy-max.txt"
 import COAUTHOR_REMINDER from "./prompt/coauthor-reminder.txt"
 import { defer } from "../util/defer"
-import type { Command } from "../command/command"
-import { CommandRenderer } from "../command/renderer"
-import { SkillRenderer } from "../skill/renderer"
+import { SessionCommandRuntime } from "./command-runtime"
+import { InstructionRegistry } from "../instruction/registry"
 import "./summary"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
 import { SessionMemoryPressure } from "./memory-pressure"
 import { SessionMemoryIncident } from "./memory-incident"
-import { ExternalAgentProcessor } from "@/external-agent/processor"
-import { ExternalAgent } from "@/external-agent/bridge"
+import { SessionExternalAgents } from "./external-agents"
 import { withPreambleSection } from "@/agent/prompt/preamble"
 import { SessionManager } from "./manager"
 import { SessionMessageCache } from "./message-cache"
@@ -47,7 +45,7 @@ import { PermissionNext } from "@/permission/next"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
 import { buildPermissionContext } from "./permission-context"
 import { Config } from "@/config/config"
-import { pluginTaskSnapshotFromSession } from "@/cortex/plugin-task"
+import { SessionCortexRuntime } from "./cortex-runtime"
 import { Observability } from "@/observability"
 import { withTimeout } from "@/util/timeout"
 import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./input"
@@ -72,26 +70,17 @@ import { Scope } from "@/scope"
 import { LoopJob } from "./loop-job"
 import "./loop-signals"
 import { ContinuationKernel } from "./continuation-kernel"
-import { LatticeBridge } from "../lattice/bridge"
-import { LatticeStore } from "../lattice/store"
-import { LatticePrompt } from "../lattice/prompt"
-import { LatticeModelCalls } from "../lattice/model-calls"
-import "../library/chronicler"
-import { ExperienceEncoder } from "../library/experience-encoder"
-import { GitHealth } from "../project/git-health"
-import { BlueprintLoopStore } from "../blueprint/loop-store"
+import { SessionLibraryRecall } from "./library-recall"
+import { SessionProjectHealth } from "./project-health"
+import { SessionBlueprintState } from "./blueprint-state"
+import { SessionAgendaSignals } from "./agenda-signals"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
-import {
-  buildBossContext,
-  buildBossDeliveryHint,
-  buildRuntimeBossContext,
-  buildWorkerContext,
-  renderBossTree,
-} from "./boss-prompt"
+import { WorkflowPromptRegistry } from "./workflow-prompt-registry"
+import { WorkflowKindRegistry } from "./workflow-kind-registry"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { ObservabilitySpans } from "@/observability/spans"
 import { ObservabilityContext } from "@/observability/context"
-import { SkillSourceProfile } from "@/skill/source-profile"
+import { SkillSourceProfile } from "../instruction/source-profile"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -128,10 +117,6 @@ export namespace SessionInvoke {
       ...(channelReply ? { channelReply: true } : {}),
       ...(channelReply && channelReplyToMessageId && !replyAnchorConflict ? { channelReplyToMessageId } : {}),
     }
-  }
-
-  async function commandRuntime() {
-    return (await import("../command/command")).Command
   }
 
   export function assertIdle(sessionID: string) {
@@ -317,10 +302,11 @@ export namespace SessionInvoke {
       // to the durable failed status unless the loop was aborted (abort takes
       // the explicit cancellation path).
       if (!lease.signal.aborted) {
-        const { LightLoopRuntime } = await import("./light-loop-runtime")
-        await LightLoopRuntime.failActiveLoop(sessionID, error).catch((err) => {
-          log.error("failed to mark Light Loop failed after loop error", { sessionID, error: err })
-        })
+        await WorkflowPromptRegistry.get("lightloop")
+          ?.onLoopError?.(sessionID, error)
+          .catch((err) => {
+            log.error("failed to mark Light Loop failed after loop error", { sessionID, error: err })
+          })
       }
       throw error
     }
@@ -328,7 +314,7 @@ export namespace SessionInvoke {
 
   async function loopBody(sessionID: string, lease: SessionManager.LoopLease): Promise<MessageV2.WithParts> {
     ContinuationKernel.init()
-    LatticeBridge.init()
+    for (const kind of WorkflowPromptRegistry.kinds()) WorkflowPromptRegistry.get(kind)?.init?.()
     const abort = lease.signal
 
     // Open the loop-scoped message cache window (#350 D2): while this loop owns
@@ -338,9 +324,13 @@ export namespace SessionInvoke {
     await using _ = defer(async () => {
       SessionMessageCache.disable(sessionID)
       evictRecallCache(sessionID)
-      if (LatticeModelCalls.peek(sessionID) > 0) {
-        await LatticeModelCalls.flush(scopeID, sessionID).catch(() => undefined)
-      }
+      await Promise.all(
+        WorkflowPromptRegistry.kinds().map((kind) =>
+          WorkflowPromptRegistry.get(kind)
+            ?.finalize?.(sessionID, scopeID)
+            .catch(() => undefined),
+        ),
+      )
     })
 
     const runtime = SessionManager.registerRuntime(sessionID)
@@ -500,7 +490,7 @@ export namespace SessionInvoke {
             sessionID: session?.id,
             agentControlProfile: agent.controlProfile,
           })
-          const adapter = ExternalAgent.getAdapter(agent.external.adapter, sessionID)
+          const adapter = SessionExternalAgents.getAdapter(agent.external.adapter, sessionID)
           if (!adapter) {
             log.error("external adapter not found", { adapter: agent.external.adapter, sessionID })
             break
@@ -540,16 +530,16 @@ export namespace SessionInvoke {
 
           const instructions = [agent.prompt?.trim(), ...instructionParts].filter(Boolean).join("\n\n")
 
-          const context: ExternalAgent.TurnContext = {
+          const context: SessionExternalAgents.TurnContext = {
             sessionID,
             prompt: MessageV2.extractText(RParts!),
             instructions: instructions ? withPreambleSection(instructions) : withPreambleSection(),
             taskContext: taskContext ?? undefined,
           }
 
-          const approvalDelegate: ExternalAgent.ApprovalDelegate = async () => false
+          const approvalDelegate: SessionExternalAgents.ApprovalDelegate = async () => false
 
-          await ExternalAgentProcessor.process({
+          await SessionExternalAgents.process({
             sessionID,
             agent: agent.name,
             adapter,
@@ -737,107 +727,47 @@ export namespace SessionInvoke {
             if (agent.name === "synergy-max") systemParts.push(PLAN_SYNERGY_MAX.trim())
             break
           case "lattice": {
-            const latticeRun = await LatticeStore.getOrUndefined(scopeID, sessionID).catch(() => undefined)
-            if (latticeRun && latticeRun.status === "active") {
-              systemParts.push(LatticePrompt.build(session, latticeRun))
+            const contribution = WorkflowPromptRegistry.get("lattice")
+            if (contribution?.buildSystem) {
+              const parts = await contribution.buildSystem(session, { deliveryMetadata: undefined })
+              systemParts.push(...parts)
             }
             break
           }
-          case "lightloop":
-            systemParts.push(`<light-loop-context>
-You are running in the Light Loop workflow. The user has set a task that you must complete fully before stopping.
-
-Task: ${session.workflow.instructions}
-
-Autonomously advance the task until it is complete. Before calling loop_stop(), carefully assess whether every aspect of the task has been addressed:
-- Have you produced all requested deliverables, artifacts, or changes?
-- Have you verified correctness with appropriate evidence (tests, manual checks, tool output)?
-- Are there any remaining gaps, edge cases, or follow-up work implied by the task?
-
-If the task is NOT fully complete, continue working now.
-If the task IS fully complete and verified, call loop_stop() to request a completion review.
-Do not stop early, do not pretend the task is complete, and do not hide missing verification from the user.
-loop_stop() does not end the Light Loop directly — a reviewer will audit your work first.
-</light-loop-context>`)
+          case "lightloop": {
+            const contribution = WorkflowPromptRegistry.get("lightloop")
+            if (contribution?.buildSystem) {
+              const parts = await contribution.buildSystem(session, { deliveryMetadata: undefined })
+              systemParts.push(...parts)
+            }
             break
+          }
+          case "extension": {
+            // H3 extension kinds: resolve the registered kind from the
+            // envelope and let its contribution build the block.
+            const kind = WorkflowKindRegistry.effectiveKind(session?.workflow)
+            const contribution = kind ? WorkflowPromptRegistry.get(kind) : undefined
+            if (contribution?.buildSystem) {
+              const parts = await contribution.buildSystem(session, { deliveryMetadata: undefined })
+              systemParts.push(...parts)
+            }
+            break
+          }
           case "boss": {
-            const bossWorkflow = session.workflow
-            if (bossWorkflow.role === "boss") {
-              const { BossRuntime } = await import("./boss-runtime")
-              const configuredIdentity = (await Config.current().catch(() => undefined))?.experimental
-                ?.boss_identity_text
-              const identityText = configuredIdentity?.trim() || BossRuntime.DEFAULT_IDENTITY_TEXT
-              systemParts.push(
-                buildRuntimeBossContext(session, {
-                  identityText,
-                  instructions: bossWorkflow.instructions,
-                }),
-              )
-              // Tell the boss whether this turn's reply auto-delivers back to
-              // the originating Feishu message, so it neither duplicates with
-              // channel_push nor misses a receipt.
-              const bossDeliveryMetadata = channelDeliveryMetadata(msgs, lastFinishedIndex)
-              // Treat delivery as automatic only when a single unambiguous
-              // reply anchor exists; conflicting anchors (multiple Feishu
-              // requests in one turn) cannot auto-deliver, so the boss must
-              // use channel_push explicitly per requester.
-              const autoDelivers =
-                bossDeliveryMetadata?.channelPush === true &&
-                typeof bossDeliveryMetadata.channelReplyToMessageId === "string"
-              systemParts.push(
-                buildBossDeliveryHint(
-                  autoDelivers
-                    ? { auto: true, replyToMessageId: bossDeliveryMetadata!.channelReplyToMessageId }
-                    : { auto: false },
-                ),
-              )
-              const { BossService } = await import("./boss")
-              const tree = await BossService.status(sessionID).catch(() => undefined)
-              if (tree) {
-                systemParts.push(`<boss-tree>\n${renderBossTree(tree)}\n</boss-tree>`)
-              }
-            } else {
-              systemParts.push(buildWorkerContext(session))
+            const contribution = WorkflowPromptRegistry.get("boss")
+            if (contribution?.buildSystem) {
+              const deliveryMetadata = channelDeliveryMetadata(msgs, lastFinishedIndex)
+              const parts = await contribution.buildSystem(session, { deliveryMetadata })
+              systemParts.push(...parts)
             }
             break
           }
         }
         if (sessionBlueprint?.loopID) {
-          const loop = await BlueprintLoopStore.get(scopeID, sessionBlueprint.loopID).catch(() => undefined)
+          const loop = await SessionBlueprintState.getLoop(scopeID, sessionBlueprint.loopID)
           if (loop) {
             const isAuditSession = sessionBlueprint.loopRole === "audit" || session?.id === loop.auditSessionID
-            const latticeExecutionBoundary =
-              loop.source === "lattice"
-                ? "This BlueprintLoop owns exactly one current Lattice Step. Future Pathway Steps are context only, not authorization. Earlier messages such as “continue” mean continue the current Blueprint only. Never create, submit, or implement a later Step."
-                : ""
-            const stopBoundary =
-              "After blueprint_loop_stop succeeds, execution is closed. Call no more tools, modify nothing else, and end the assistant turn immediately so the reviewer can start."
-            const loopInstruction = isAuditSession
-              ? `You are auditing this BlueprintLoop. Read the Blueprint note with note_read ids=["${loop.noteID}"] and audit the start user instruction when present. Treat Change Scope, boundaries, and non-goals as requirements; adjacent work is not an acceptable superset. ${loop.source === "lattice" ? "This loop owns one current Lattice Step, and future Pathway Step implementation is unauthorized." : ""} Inspect the execution trajectory after the first successful blueprint_loop_stop and reject if execution called more tools, modified artifacts, assisted review, or began adjacent work after that boundary. If changes are required, call blueprint_loop_reject with sessionID "${loop.sessionID}" and structured reason, completed, remaining, and instructions fields. If and only if the outcome is complete, verified, in scope, and lifecycle-correct, call blueprint_loop_approve with sessionID "${loop.sessionID}" and a verdict summary.`
-              : agent.name === "synergy-max"
-                ? `You are executing this coding BlueprintLoop. Before editing code, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Satisfy both the Blueprint note and any start user instruction before requesting audit. ${latticeExecutionBoundary} Continue until the current Blueprint is fully implemented and verified. When ready for audit, call blueprint_loop_stop with a summary and concrete completion evidence. ${stopBoundary}`
-                : `You are executing this BlueprintLoop. Before carrying out the Blueprint, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Satisfy both the Blueprint note and any start user instruction before requesting audit. ${latticeExecutionBoundary} Continue until the current Blueprint outcome is fully delivered. When ready for audit, call blueprint_loop_stop with a summary and concrete completion evidence. ${stopBoundary}`
-            const startUserInstruction = loop.userPrompt
-              ? [
-                  `Start user instruction: ${loop.userPrompt}`,
-                  `This start user instruction is run-specific contract for execution and audit.`,
-                ]
-              : []
-            systemParts.push(
-              [
-                "<blueprint-loop-context>",
-                `Active BlueprintLoop: ${loop.id}`,
-                `BlueprintLoop role: ${isAuditSession ? "audit" : "execution"}`,
-                `Blueprint Note: ${loop.noteID}`,
-                `Title: ${loop.title}`,
-                `Description: ${loop.description ?? "N/A"}`,
-                `Status: ${loop.status}`,
-                ...startUserInstruction,
-                "",
-                loopInstruction,
-                "</blueprint-loop-context>",
-              ].join("\n"),
-            )
+            systemParts.push(SessionBlueprintState.buildLoopContext({ loop, isAuditSession, agentName: agent.name }))
           }
         }
 
@@ -846,6 +776,11 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           lateSystemParts.push(memoryResult.context)
           if (step === 1) cacheResult(sessionID, memoryResult)
           const { injection } = memoryResult
+          // Commit pull counters only for the turn that actually built the
+          // recall (step 1) and only when experience was injected: cache
+          // replays and the always-memory timeout fallback must neither
+          // re-count nor count pulls the model never received.
+          if (step === 1 && injection.experience) SessionLibraryRecall.commitExperienceRetrieval(sessionID)
           if ((injection.memory || injection.experience) && !R.metadata?.injectedContext) {
             const updated = await Session.mergeMessageMetadata({
               sessionID,
@@ -860,12 +795,20 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         lateSystemParts.push(...envParts)
 
         // Layer 4.5: Dynamic advisory context — git health diagnostics (warns about uncommitted changes, large files, etc.)
-        const gitHealthBlock = GitHealth.injectCached(ScopeContext.current.directory)
+        const gitHealthBlock = SessionProjectHealth.injectCachedGitHealth(ScopeContext.current.directory)
         if (gitHealthBlock) lateSystemParts.push(gitHealthBlock)
 
         // Layer 4.55: Configurable advisory context — git commit coauthor footer reminder
+        // Only meaningful in a git working tree; use the same live probe as the
+        // env block (SessionProjectHealth.isGitRepo) so the reminder never
+        // contradicts "Is directory a git repo" in the environment text.
         if ((await Config.current()).experimental?.coauthor_reminder !== false) {
-          lateSystemParts.push(`<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
+          const inGitRepo =
+            ScopeContext.current.scope.type === "project" &&
+            (await SessionProjectHealth.isGitRepo(ScopeContext.current.directory))
+          if (inGitRepo) {
+            lateSystemParts.push(`<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
+          }
         }
 
         // Layer 5: Dynamic advisory context — upcoming agenda wake-ups
@@ -904,6 +847,15 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         const modelProjection = MessageV2.projectModelMessages(modelSessionMessages, {
           maxHistoryImages: jobCtx.compactionMaxHistoryImages,
         })
+        const { converted, dropped, failed } = modelProjection.sanitization
+        if (converted + dropped + failed > 0) {
+          log.info("model prompt sanitized non-JSON-safe values", {
+            sessionID,
+            converted,
+            dropped,
+            failed,
+          })
+        }
         const projectedHistoryBytes = LLMTurnMemory.estimateBytes(modelProjection.messages)
         memoryTurn.projected({ historyAfterBytes: projectedHistoryBytes })
         let preparedMessages = [
@@ -1090,9 +1042,12 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         }
 
         SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
-        // Count LLM calls for an active Lattice run in memory; flushed to the
-        // run at turn boundaries / policy entry (never written per call).
-        if (session?.workflow?.kind === "lattice") LatticeModelCalls.record(sessionID)
+        // Count LLM calls for registered workflow kinds in memory; flushed to
+        // the durable domain state at turn boundaries / policy entry.
+        const activeKind = WorkflowKindRegistry.effectiveKind(session?.workflow)
+        if (activeKind) {
+          WorkflowPromptRegistry.get(activeKind)?.onModelCall?.(sessionID)
+        }
         const processTimer = log.time("processor.process")
         const timeoutCfg = await TimeoutConfig.resolve()
         const turnDeadline = new AbortController()
@@ -1517,7 +1472,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     Session.updateLastExchange(input.sessionID).catch((error) =>
       log.warn("failed to update lastExchange", { sessionID: input.sessionID, error }),
     )
-    ExperienceEncoder.onComplete(message)
+    SessionLibraryRecall.onAssistantComplete(message)
     await Plugin.trigger(
       "session.turn.after",
       {
@@ -1582,7 +1537,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     Session.updateLastExchange(sessionID).catch((err) =>
       log.warn("failed to update lastExchange", { sessionID, error: err }),
     )
-    ExperienceEncoder.onComplete(assistant)
+    SessionLibraryRecall.onAssistantComplete(assistant)
     await Plugin.trigger(
       "session.turn.after",
       {
@@ -1636,7 +1591,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       error: new MessageV2.AbortedError({ message: "Session ended before producing an assistant message" }).toObject(),
       sessionID,
     })) as MessageV2.Assistant
-    ExperienceEncoder.onComplete(assistantMessage)
+    SessionLibraryRecall.onAssistantComplete(assistantMessage)
     await Plugin.trigger(
       "session.turn.after",
       {
@@ -1715,9 +1670,8 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
   }
 
   async function buildCortexExecutionContext(sessionID: string): Promise<string | undefined> {
-    const { Cortex } = await import("../cortex/manager")
-    const task = Cortex.list().find((task) => task.sessionID === sessionID)
-    if (!task || task.executionRole !== "delegated_subagent") return undefined
+    const task = await SessionCortexRuntime.delegatedTask(sessionID)
+    if (!task) return undefined
 
     const upstreamContext = await buildDagUpstreamContext(sessionID, task.parentSessionID, task.dagNodeId)
 
@@ -1738,20 +1692,14 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
   }
 
   async function buildCortexReminder(sessionID: string): Promise<string | undefined> {
-    const mod = await import("../cortex/manager")
-    const Cortex = mod.Cortex
-    if (!Cortex || typeof Cortex.getRunningTasks !== "function") return undefined
-    const running = Cortex.getRunningTasks().filter((t) => t.parentSessionID === sessionID)
+    const running = await SessionCortexRuntime.runningTaskRows(sessionID)
     if (running.length === 0) return undefined
 
     const taskList = running
       .map((t) => {
         const elapsed = Math.floor((Date.now() - t.startedAt) / 1000)
-        const info = Cortex.describe(t)
-        const lastTool = info.lastTool
-          ? ` | last: ${info.lastTool}${info.lastToolStatus ? ` (${info.lastToolStatus})` : ""}`
-          : ""
-        return `- \`${t.id}\` [${elapsed}s] — @${t.agent} — ${t.description} — ${info.health}${lastTool}`
+        const lastTool = t.lastTool ? ` | last: ${t.lastTool}${t.lastToolStatus ? ` (${t.lastToolStatus})` : ""}` : ""
+        return `- \`${t.id}\` [${elapsed}s] — @${t.agent} — ${t.description} — ${t.health}${lastTool}`
       })
       .join("\n")
 
@@ -1764,8 +1712,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
    * doesn't need to poll or set redundant watches.
    */
   async function buildAgendaReminder(sessionID: string, scopeID: string): Promise<string | undefined> {
-    const { AgendaStore } = await import("../agenda/store")
-    const items = await AgendaStore.listForScope(scopeID)
+    const items = await SessionAgendaSignals.upcomingWakeups(scopeID, sessionID)
     const now = Date.now()
 
     // Filter to items that:
@@ -1776,15 +1723,15 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     const waking = items.filter((item) => {
       if (item.status !== "active" && item.status !== "pending") return false
       if (item.wake === false) return false
-      if (item.origin.sessionID !== sessionID) return false
-      if (item.state.nextRunAt === undefined || item.state.nextRunAt <= now) return false
+      if (item.originSessionID !== sessionID) return false
+      if (item.nextRunAt === undefined || item.nextRunAt <= now) return false
       return true
     })
 
     if (waking.length === 0) return undefined
 
     const lines = waking.map((item) => {
-      const remaining = item.state.nextRunAt! - now
+      const remaining = item.nextRunAt! - now
       const remainingStr = formatElapsed(remaining)
       return `- **\`${item.id}\`** "${item.title}" will wake this session in ~${remainingStr}`
     })
@@ -1970,7 +1917,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       .optional(),
   })
   export type CommandInput = z.infer<typeof CommandInput>
-  function commandMetadata(command: Command.Info) {
+  function commandMetadata(command: SessionCommandRuntime.CommandInfo) {
     return {
       command: {
         name: command.name,
@@ -1985,8 +1932,11 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     }
   }
 
-  async function deterministicCommandResult(input: CommandInput, command: Command.Info, result: Command.Result) {
-    const CommandRuntime = await commandRuntime()
+  async function deterministicCommandResult(
+    input: CommandInput,
+    command: SessionCommandRuntime.CommandInfo,
+    result: SessionCommandRuntime.CommandResult,
+  ) {
     const userID = input.messageID ?? Identifier.ascending("message")
     const agentName = input.agent ?? (await Agent.defaultAgent().catch(() => "system"))
     const parsedModel = input.model
@@ -2051,7 +2001,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       text: result.output,
       metadata: result.metadata,
     })
-    Bus.publish(CommandRuntime.Event.Executed, {
+    void SessionCommandRuntime.publishExecuted({
       name: input.command,
       sessionID: input.sessionID,
       arguments: input.arguments,
@@ -2062,23 +2012,22 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
 
   export async function command(input: CommandInput) {
     log.info("command", input)
-    const CommandRuntime = await commandRuntime()
-    const command = await CommandRuntime.require(input.command)
+    const command = await SessionCommandRuntime.require(input.command)
     if (command.kind === "action") {
-      if (!command.action) throw new CommandRuntime.UnknownActionError({ action: "" })
+      if (!command.action) throw SessionCommandRuntime.unknownActionError("")
       return SessionManager.run(input.sessionID, async () => {
-        const result = await CommandRuntime.runAction({ action: command.action!, input, command })
+        const result = await SessionCommandRuntime.runAction({ action: command.action!, input, command })
         return deterministicCommandResult(input, command, result)
       })
     }
-    if (!command.template) throw new CommandRuntime.NotFoundError({ name: input.command })
+    if (!command.template) throw SessionCommandRuntime.notFoundError(input.command)
     const agentName = command.agent ?? input.agent ?? (await Agent.defaultAgent())
 
     const template = await command.template
-    const renderedTexts =
-      command.source === "skill"
-        ? SkillRenderer.render({ template, arguments: input.arguments })
-        : [await CommandRenderer.render({ template, arguments: input.arguments })]
+    const renderedTexts = await InstructionRegistry.render(command.source ?? "command", {
+      template,
+      arguments: input.arguments,
+    })
 
     const model = await (async () => {
       if (command.model) {
@@ -2139,7 +2088,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       variant: input.variant,
     })) as MessageV2.WithParts
 
-    Bus.publish(CommandRuntime.Event.Executed, {
+    void SessionCommandRuntime.publishExecuted({
       name: input.command,
       sessionID: input.sessionID,
       arguments: input.arguments,
@@ -2157,12 +2106,11 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       messageID: Identifier.schema("message"),
     }),
     async (input) => {
-      const CommandRuntime = await commandRuntime()
       await command({
         sessionID: input.sessionID,
         messageID: input.messageID,
         model: input.providerID + "/" + input.modelID,
-        command: CommandRuntime.Default.INIT,
+        command: SessionCommandRuntime.defaultInitCommand(),
         arguments: "",
       })
     },
@@ -2172,8 +2120,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     await reconcileInterruptedCortexDelegations(input?.scopeID)
     const { SessionRecovery } = await import("./recovery")
     await SessionRecovery.resumePendingStopRequests(input?.scopeID)
-    const { Cortex } = await import("../cortex/manager")
-    await Cortex.reconcileParentNotifications(input?.scopeID)
+    await SessionCortexRuntime.reconcileParentNotifications(input?.scopeID)
 
     // Startup inbox discovery: sessions with a durable queued task are driven
     // through the existing SessionDrive/wake path so the owning loop performs
@@ -2246,7 +2193,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       })
       const updated = await Session.get(sessionID)
       if (!updated?.cortex) continue
-      const snapshot = pluginTaskSnapshotFromSession(
+      const snapshot = SessionCortexRuntime.pluginTaskSnapshot(
         { taskId: updated.cortex.taskID, sessionId: updated.id },
         updated.cortex,
       )

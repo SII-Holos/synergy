@@ -39,6 +39,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     theme: cfg.theme ?? UI_DEFAULTS.theme,
     locale: cfg.locale ?? UI_DEFAULTS.locale,
     activityDisplay: cfg.activityDisplay ?? UI_DEFAULTS.activityDisplay,
+    defaultSessionWorkspace: cfg.defaultSessionWorkspace ?? UI_DEFAULTS.defaultSessionWorkspace,
     mutedToasts: cfg.toast?.muted ?? [],
     toastDurations: formatToastDurations(cfg.toast?.durationOverrides),
     sendShortcut: params.sendShortcut(),

@@ -1,0 +1,30 @@
+# Decision Record: Close other workbench tabs from toolbar and tab context menu
+
+Status: implemented
+
+## Problem
+
+Multi-cardinality workbench panels (Files, Browser, Terminal, plugin panels) accumulate one tab per opened resource in the side and bottom workbench surfaces. Once a dozen file tabs are open, closing them is strictly one-by-one — each close button is hover-only and small, and the middle-click shortcut is not discoverable. There was no bulk-close action anywhere in the tab run.
+
+## Decision
+
+Add a "Close other tabs" action in two entry points, both operating on the workbench tab model:
+
+- `closeOtherWorkbenchPanelTabs(tabs, active, keepTabId, closingIds?)` in `packages/app/src/context/workbench/panel-model.ts` computes the retained tab list and activates the kept tab, mirroring the `(tabs, active, tabId)` signature of `closeWorkbenchPanelTab`. Without `closingIds` a missing kept tab is a no-op returning the input unchanged, so a stale call after an async cleanup window cannot activate a nonexistent id. With `closingIds` the removal is bounded to that snapshot set: tabs the user opens while the batch's async hooks run are never swept, a concurrently removed kept tab leaves the bounded survivors untouched, and removing the last tab empties the surface.
+- `useWorkbenchPanels().closeOtherTabs(keepTabId)` locates the surface owning the kept tab and `closeOtherTabsOnSurface(surfaceName, keepTabId)` awaits every closed tab's `entry.onCloseTab` hook (terminal pty removal, browser page teardown, plugin cleanup) before committing one atomic `setTabs`/`setActive` store update. The batch snapshots its closing ids up front, reuses the single-tab `closeGuard` per tab so an `onCloseTab` hook never runs twice when a `closeTab` races the batch, isolates each hook failure with an error log instead of abandoning the whole batch, guards the surface against re-entrant batch invocations, and closes the surface when the batch empties it.
+- Toolbar entry: an `action.more` (⋯) `IconButton` sits beside the add-panel (+) button in the tab run, visible only when more than one tab is open, opening a Popover with "Close other tabs" for the active tab.
+- Context-menu entry: right-clicking any tab header opens a Popover anchored to that tab (hidden zero-size trigger rendered inside the tab element and overlaid via `position: absolute; inset: 0; visibility: hidden`, so the anchor matches the tab bounds and stays out of the sortable flex layout) with "Close {title}" and "Close other tabs", acting on the right-clicked tab without requiring prior activation. The opened tab gets a `workbench-surface-tab--context` hover-equivalent highlight while its menu is open. Single-tab surfaces render the item disabled rather than hiding it.
+- Escape routing covers every surface menu through a shared registry: each mounted surface registers a `WorkbenchEscapeMenuHandle` (`registerWorkbenchEscapeMenu`) whose `isAnyMenuOpen`/`closeMenus` report and dismiss the add menu, the toolbar more-menu, or a tab context menu. The capture-phase keydown handler asks `anyWorkbenchEscapeMenuOpen()` for its decision, and a `close-menu` action closes every registered menu and stops same-node capture listeners with `stopImmediatePropagation`, so an Escape meant for a context menu on the side surface cannot collapse the bottom surface (or vice versa) — the pre-registry behavior with both surfaces mounted.
+- New copy (`app.workspace.tab.actions`, `app.workspace.tab.contextMenu`, `app.workspace.tab.closeOthers`) ships with zh-CN translations.
+
+## Alternatives considered
+
+- **Toolbar-only entry** — rejected: the user's stated workflow is closing specific clusters of file tabs, and acting on the right-clicked tab directly matches every editor's tab bar convention (VS Code, browsers). Both entries share the same context methods, so the second surface costs almost nothing.
+- **"Close all tabs" item as well** — rejected for now: closing every tab reopens the launcher (the surface auto-closes on zero tabs), which is rarely the intent behind tidying up; "close others" covers the real workflow. The model function generalizes if a close-all item is later wanted.
+- **A generic context-menu UI primitive in `packages/ui`** — rejected: this is the first right-click menu in the product; the existing Popover component covers the interaction, and promoting a primitive from a single use would be speculative abstraction.
+- **Reusing `createTabCloseGuard` for the whole batch at once** — rejected: the guard's contract is per-tab re-entrancy during a single close; holding one guard for the whole batch would let unrelated single closes of batch members slip through during the async window. The shipped design instead reuses the per-tab guard inside the batch loop, so single closes and batch closes serialize per tab.
+- **One shared document-level Escape listener owned by the workbench context** — rejected for this change: it would re-route an existing per-surface interaction through a new coordinator mid-feature. The registry keeps the listener where it was while giving every mounted surface the same answer about whether any menu is open, with `stopImmediatePropagation` as the single-point arbitration when a menu close must not fall through to closing a surface.
+
+## Consequences
+
+Both entries appear on the bottom surface too (Command Output tabs get the same actions for free, since the tab model is shared). Async `onCloseTab` hooks run sequentially for the closed tabs, so closing many terminal tabs takes one network round-trip per pty; the surface stays consistent throughout because the store update is committed once at the end, and hooks that fail are logged and skipped rather than aborting the batch. Right-click on the toolbar buttons still falls through to the browser default menu; only tab headers intercept `contextmenu`. Escape with no menu open keeps the long-standing behavior of closing every open surface, since each surface still runs its own `close-surface` decision.

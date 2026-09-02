@@ -1,0 +1,35 @@
+# MCP Server Builder
+
+## Workflow
+
+Build an MCP server in four phases: research, implementation, testing, and evaluation. Do not skip the research phase — the protocol and the client's expectations are moving targets, and the schema is the contract the agent will live with.
+
+1. **Research**
+   - Confirm the MCP protocol version the target client supports. Check the current official MCP documentation (modelcontextprotocol.io) rather than relying on memory; protocol details change.
+   - Identify the resources, prompts, and tools the server should expose. Start from the agent's job, not from an API inventory.
+2. **Implement**
+   - Choose the SDK matching the target runtime (TypeScript, Python, or the client's supported stack).
+   - Expose tools with strict input and output schemas. Every tool gets: a name, a description answering what/when/inputs/returns, a typed input schema with constraints, and a typed output schema.
+   - Use `outputSchema` (or the SDK's structured-content equivalent) with `structuredContent` so the agent receives typed results, not free-form text.
+   - Use the protocol's annotations to guide the model: `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint` where they apply.
+   - Keep one responsibility per tool; apply the same consolidation rules as any agent-facing tool.
+3. **Test**
+   - Test each tool as a client would call it: valid inputs, invalid inputs, and boundary values.
+   - Test the server lifecycle: initialize, list tools, call a tool, and shutdown.
+   - Run the server against a real MCP client when one is available, not only the SDK's test harness.
+4. **Evaluate**
+   - Generate a small set of realistic questions an agent would ask the server, and for each, determine whether an agent can answer it with the exposed tools and schemas alone.
+   - For each question, verify: the tool exists, its description routes the agent to it, its parameters accept the needed inputs, and its output contains the answer.
+   - Fix gaps by adjusting schemas and descriptions; re-run the evaluation until every question resolves.
+
+## Schema
+
+- Input schemas: name every field, state constraints (types, enums, formats, ranges), mark required fields, and provide examples in descriptions.
+- Output schemas: return stable, structured objects; include identifiers and status so the agent can verify the result.
+- Reject unknown fields and return a validation error naming the field and the accepted format.
+- Do not put credentials, tokens, or internal paths in outputs or error messages.
+
+## Synergy notes
+
+- Connecting an MCP server into Synergy (config file, conversion rules, troubleshooting) belongs to the builtin skill `synergy-config` reference `mcp.txt`. This reference covers building the server itself.
+- If the server is a Synergy custom tool instead of an MCP server, follow the builtin skill `synergy-agent-tooling` reference `tool-design.txt` and the repository `add-tool` skill.

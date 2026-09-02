@@ -9,7 +9,7 @@ import {
   buildBossContext,
   buildBossDeliveryHint,
   buildRuntimeBossContext,
-} from "../../src/session/boss-prompt"
+} from "../../src/boss/boss-prompt"
 import { tmpdir } from "../fixture/fixture"
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {

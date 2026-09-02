@@ -1,7 +1,7 @@
 import z from "zod"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
-import { externalIdentityHash } from "./identity"
+import { externalIdentityHash } from "../util/identity"
 import { Log } from "@/util/log"
 import { Lock } from "@/util/lock"
 

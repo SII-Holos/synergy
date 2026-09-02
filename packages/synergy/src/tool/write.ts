@@ -8,7 +8,9 @@ import { File } from "../file"
 import { FileTime } from "../file/time"
 import { ScopeContext } from "../scope/context"
 import { trimDiff } from "./edit"
-import { RuntimeReload } from "../runtime/reload"
+import { RuntimeReloadPath } from "../config/reload-path"
+import { RuntimeReloadExecutor } from "../config/reload-executor"
+import { formatCompactReloadResult } from "../config/reload-schema"
 import { captureWriteDiagnosticsBefore, collectWriteDiagnostics } from "./write-quality"
 import { SnapshotSchema } from "@/session/snapshot-schema"
 import { diffStats } from "./anchored-file"
@@ -59,12 +61,12 @@ export const WriteTool = Tool.define("write", {
     })
     FileTime.read(ctx.sessionID, filepath)
 
-    const runtimeReloadTargets = RuntimeReload.detectTargetsForFile(filepath)
-    const runtimeReloadScope = RuntimeReload.detectScopeForFile(filepath) ?? "auto"
-    const builtinSourceWarning = RuntimeReload.builtinSourceEditWarning(filepath)
+    const runtimeReloadTargets = RuntimeReloadPath.detectTargetsForFile(filepath)
+    const runtimeReloadScope = RuntimeReloadPath.detectScopeForFile(filepath) ?? "auto"
+    const builtinSourceWarning = RuntimeReloadPath.builtinSourceEditWarning(filepath)
     const runtimeReload =
       runtimeReloadTargets.length > 0
-        ? await RuntimeReload.reload({
+        ? await RuntimeReloadExecutor.reload({
             targets: runtimeReloadTargets,
             scope: runtimeReloadScope,
             reason: `write:${displayPath}`,
@@ -75,7 +77,7 @@ export const WriteTool = Tool.define("write", {
     let output = diagnostics.output
 
     if (runtimeReload) {
-      output += `\n${RuntimeReload.formatCompactResult(runtimeReload)}\n`
+      output += `\n${formatCompactReloadResult(runtimeReload)}\n`
     }
     if (builtinSourceWarning) {
       output += `\n${builtinSourceWarning}\n`

@@ -14,6 +14,7 @@ import { GlobalBus } from "@/bus/global"
 import { BusEvent } from "@/bus/bus-event"
 import { type Home as HomeType, type Project as ProjectType, Info as InfoSchema, type Info as InfoType } from "./types"
 import { ScopeRoots } from "./roots"
+import { isEphemeralTestWorktree } from "./test-artifacts"
 
 export type Scope = Scope.Home | Scope.Project
 
@@ -310,6 +311,7 @@ export namespace Scope {
       return { scope, sandbox }
     }
 
+    const existed = !!existing
     if (!existing) {
       existing = {
         id,
@@ -325,6 +327,7 @@ export namespace Scope {
       }
     }
 
+    const previousSandboxes = [...(existing.sandboxes ?? [])]
     if (!existing.sandboxes) existing.sandboxes = []
 
     const project: z.infer<typeof Info> = {
@@ -337,7 +340,19 @@ export namespace Scope {
     }
     if (sandbox !== project.worktree && !project.sandboxes.includes(sandbox)) project.sandboxes.push(sandbox)
     project.sandboxes = project.sandboxes.filter((x) => existsSync(x))
-    if (persist) await writePersisted(project)
+
+    // Persist and broadcast only when the record actually changed. Repeated
+    // lookups of the same directory used to rewrite the scope file and emit
+    // scope.updated on every request, driving frontend scope-index refreshes
+    // and sidebar re-renders on unrelated navigation.
+    const recordChanged =
+      !existed ||
+      project.directory !== existing.directory ||
+      project.worktree !== existing.worktree ||
+      project.vcs !== existing.vcs ||
+      project.sandboxes.length !== previousSandboxes.length ||
+      project.sandboxes.some((entry, index) => entry !== previousSandboxes[index])
+    if (persist && recordChanged) await writePersisted(project)
 
     const scope: Scope.Project = {
       type: "project",
@@ -352,7 +367,7 @@ export namespace Scope {
       time: project.time,
     }
 
-    if (persist) {
+    if (persist && recordChanged) {
       GlobalBus.emit("event", {
         payload: {
           type: Event.Updated.type,
@@ -385,7 +400,12 @@ export namespace Scope {
       log.info("archived scopes with missing worktrees", { ids: detached })
     }
 
-    return valid.map((data) => ({
+    // Ephemeral test-artifact scopes (worktrees under the OS temp dir with a
+    // synergy-test-*/synergy-orchestrated-* basename) are created by test
+    // scaffolding and must never surface in project lists. See test-artifacts.ts.
+    const visible = valid.filter((data) => !isEphemeralTestWorktree(data.worktree))
+
+    return visible.map((data) => ({
       type: "project" as const,
       id: data.id,
       directory: data.worktree,

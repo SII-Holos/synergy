@@ -260,7 +260,7 @@ export namespace Storage {
   const ATOMIC_WRITE_RETRY_BASE_MS = 50
   const ATOMIC_WRITE_RETRY_MAX_MS = 200
 
-  async function writeJsonAtomic(target: string, serialized: string) {
+  export async function writeJsonAtomic(target: string, serialized: string) {
     await fs.mkdir(path.dirname(target), { recursive: true })
     const tmp = path.join(
       path.dirname(target),

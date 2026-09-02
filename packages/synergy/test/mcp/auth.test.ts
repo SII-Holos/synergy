@@ -10,7 +10,6 @@ describe.serial("McpAuth", () => {
   let backup: string | undefined
 
   beforeEach(async () => {
-    McpAuth.invalidateCache()
     const file = Bun.file(Global.Path.authMcp)
     const exists = await file.exists()
     backup = exists ? await file.text() : undefined

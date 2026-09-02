@@ -820,8 +820,12 @@ msgid "app.attachment.action.download"
 msgstr "下载"
 
 #. js-lingui-explicit-id
+msgid "app.attachment.action.openFullPage"
+msgstr "在你的浏览器中打开"
+
+#. js-lingui-explicit-id
 msgid "app.attachment.action.openInBrowser"
-msgstr "在浏览器中打开"
+msgstr "在 Synergy 浏览器中打开"
 
 #. js-lingui-explicit-id
 msgid "app.attachment.action.viewSourceFile"
@@ -870,6 +874,10 @@ msgstr "缩小"
 #. js-lingui-explicit-id
 msgid "app.attachment.preview.error"
 msgstr "无法预览此附件。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.htmlScriptsDisabled"
+msgstr "交互式文档在预览中不执行脚本。请在你的浏览器中打开查看完整渲染效果。"
 
 #. js-lingui-explicit-id
 msgid "app.attachment.preview.tooLarge"
@@ -2588,6 +2596,10 @@ msgid "app.file.toolbar.edit"
 msgstr "编辑"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.openInBrowser"
+msgstr "在浏览器中打开"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toolbar.save"
 msgstr "保存"
 
@@ -2642,6 +2654,10 @@ msgstr "正在加载…"
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileExplorer.loadingMore"
 msgstr "正在加载更多…"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileExplorer.resize"
+msgstr "调整文件面板宽度"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileExplorer.search.label"
@@ -7576,6 +7592,10 @@ msgid "app.sidebar.projects"
 msgstr "项目"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.resize"
+msgstr "调整侧边栏宽度"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.search"
 msgstr "搜索会话"
 
@@ -7594,6 +7614,10 @@ msgstr "首页"
 #. Sections
 msgid "app.sidebar.section.recent"
 msgstr "最近"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.session.draftBadge"
+msgstr "草稿"
 
 #. Session fallback
 msgid "app.sidebar.session.untitled"
@@ -8730,12 +8754,32 @@ msgid "app.workspace.surface.bottom"
 msgstr "底部工作区"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.surface.bottom.resize"
+msgstr "调整底部工作区宽度"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.surface.side"
 msgstr "侧边工作区"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.surface.side.resize"
+msgstr "调整侧边工作区宽度"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.tab.actions"
+msgstr "标签页操作"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.tab.close"
 msgstr "关闭 {title}"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.tab.closeOthers"
+msgstr "关闭其他标签页"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.tab.contextMenu"
+msgstr "{title} 操作"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.tabs.bottom"
@@ -14295,6 +14339,10 @@ msgid "settings.catalog.general.row.interfaceLanguage"
 msgstr "界面语言"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.general.row.newSessionWorkspace"
+msgstr "新会话工作区"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.general.row.notifications"
 msgstr "通知"
 
@@ -14316,7 +14364,7 @@ msgstr "界面缩放"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.searchTerms"
-msgstr "外观 | 颜色 | 浅色 | 深色 | 自动 | 语言 | 快照 | 活动 | 活动显示 | 产品更新 | 提示 | 通知 | 缩放 | 界面缩放"
+msgstr "外观 | 颜色 | 浅色 | 深色 | 自动 | 语言 | 快照 | 活动 | 活动显示 | 工作区 | worktree | checkout | 主检出 | 产品更新 | 提示 | 通知 | 缩放 | 界面缩放"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.github.description"
@@ -15465,6 +15513,22 @@ msgstr "更新 Synergy 服务"
 #. js-lingui-explicit-id
 msgid "settings.general.updates.web.description"
 msgstr "服务器有更新的 Web 资源时，刷新此浏览器。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.description"
+msgstr "新会话默认在主检出目录还是隔离的 git worktree 中启动"
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.main"
+msgstr "主检出目录"
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.title"
+msgstr "新会话工作区"
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.worktree"
+msgstr "Worktree"
 
 #. js-lingui-explicit-id
 msgid "settings.general.zoom.aria"
@@ -18685,6 +18749,26 @@ msgstr "可见后台任务"
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.warnings"
 msgstr "警告"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.no-steps"
+msgstr "暂无已记录的步骤"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.open-session"
+msgstr "打开子代理会话"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.running"
+msgstr "运行中"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.starting"
+msgstr "正在启动…"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.waiting-approval"
+msgstr "等待批准"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.abort-session"

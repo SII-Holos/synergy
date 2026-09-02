@@ -66,8 +66,10 @@ export { SlotOutlet } from "./slot-outlet"
 export { pluginSlots, type SlotEntry, type SlotRegistry } from "./slot-registry"
 export { PluginRouteScope } from "./route-scope"
 export { resolvePluginScopeKey } from "./scope-key"
-export { fetchUIContributions } from "./api"
+export { fetchUIContributions, fetchGlobalThemeContributions } from "./api"
 export { BuiltinNavigationPage, PluginNavigationPage } from "./pages"
+export { GlobalPluginThemesRegistrar } from "./global-themes"
+export { createGlobalThemeRegistrar, type GlobalThemeRegistrar } from "./global-theme-registrar"
 
 // Consent UI components
 export { PluginConsentDialog } from "./consent"

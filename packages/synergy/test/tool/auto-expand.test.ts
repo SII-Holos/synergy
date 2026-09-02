@@ -1,5 +1,8 @@
 import { afterAll, describe, expect, mock, test } from "bun:test"
 import z from "zod"
+// ToolMcpSource must be mounted: the resolver reads MCP entries through the
+// L1 port (adapters are late-bound to the mocked MCP.toolEntries).
+import "../../src/product-registration"
 import { MCP } from "../../src/mcp"
 import { PermissionNext } from "../../src/permission/next"
 import { ScopeContext } from "../../src/scope/context"

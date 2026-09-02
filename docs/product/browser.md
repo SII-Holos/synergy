@@ -26,7 +26,11 @@ Agents operate the same page with tools for:
 - controlled evaluation
 - assets, clipboard, downloads, and Browser health
 
-Agent actions and navigation settle the page by default (quiet-network strategy, up to 30 seconds) and return a fresh accessibility snapshot, so agents rarely need an explicit wait after an action. `browser_wait` remains available for business conditions the engine cannot infer — a specific text, locator state, URL change, download, or dialog.
+Agent actions and navigation settle the page by default. Agent `goto`, back, forward, and reload use the main-frame `load` lifecycle for up to 15 seconds; settle-eligible actions use `networkquiet` for up to 10 seconds; explicit limits cannot exceed the 30-second hard cap. User navigation remains immediate. A timeout is not an action failure: the result reports `settled: false`, current page state, and a best-effort accessibility snapshot when it can be collected. `browser_wait` remains available for business conditions the engine cannot infer — specific text, locator state, URL change, download, or dialog.
+
+When the Browser Host is restarting or has failed recovery, side-effect commands return a retryable status instead of being replayed. Use `browser_navigation` with action `resume` or the native Browser Retry control; snapshot, read, and `current` remain available for inspection. Native recovery may replace the renderer generation, but it preserves the owner and page identity, profile and storage state, URL, viewport, bounds, visibility, and focus.
+
+Browser action results state what was dispatched and what page state was observed; they do not prove that a business effect was saved, sent, or applied. If a command outcome is unknown, do not run the same call again: inspect the page with `current`, `browser_snapshot`, or `browser_read`, then issue a fresh command only when the observed state supports it. An ambiguous locator returns bounded candidate details and usable snapshot references instead of choosing the first match.
 
 User annotations retain the page, target reference or element, comment, optional style feedback, resolution state, and time. They can be formatted into agent context so visual feedback remains attached to the page work rather than being copied into an unrelated note.
 

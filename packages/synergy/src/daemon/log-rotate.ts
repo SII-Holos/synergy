@@ -1,6 +1,6 @@
 import fs from "fs/promises"
 import path from "path"
-import { DaemonPaths } from "./paths"
+import { DaemonPaths } from "../util/daemon-paths"
 import { Log } from "../util/log"
 
 const log = Log.create({ service: "log-rotate" })

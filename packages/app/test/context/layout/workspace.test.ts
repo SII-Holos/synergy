@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  SIDEBAR_RAIL_WIDTH,
   WORKSPACE_DEFAULT_WIDTH,
   WORKSPACE_MIN_WIDTH,
   WORKSPACE_SESSION_MIN_WIDTH,
@@ -8,6 +9,7 @@ import {
   computeDefaultWorkspaceWidth,
   computeMaxWorkspaceWidth,
   sessionSideWorkspaceMounts,
+  sidebarOccupancy,
 } from "../../../src/context/layout/workspace"
 
 describe("workspace layout constants", () => {
@@ -37,6 +39,21 @@ describe("sessionSideWorkspaceMounts", () => {
   test("mounts the mobile side workspace only while it is open", () => {
     expect(sessionSideWorkspaceMounts(false, true)).toEqual({ desktop: false, mobile: true })
     expect(sessionSideWorkspaceMounts(false, false)).toEqual({ desktop: false, mobile: false })
+  })
+})
+
+describe("sidebarOccupancy", () => {
+  test("uses the persisted width for the expanded desktop sidebar", () => {
+    expect(sidebarOccupancy(true, true, 360)).toBe(360)
+  })
+
+  test("uses the fixed icon rail for the collapsed desktop sidebar", () => {
+    expect(sidebarOccupancy(true, false, 360)).toBe(SIDEBAR_RAIL_WIDTH)
+  })
+
+  test("occupies no main-area space on mobile where navigation is a drawer", () => {
+    expect(sidebarOccupancy(false, true, 360)).toBe(0)
+    expect(sidebarOccupancy(false, false, 360)).toBe(0)
   })
 })
 

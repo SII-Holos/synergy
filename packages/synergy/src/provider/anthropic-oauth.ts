@@ -38,6 +38,9 @@ export namespace AnthropicOAuthProvider {
     return Buffer.from(input instanceof Uint8Array ? input : new Uint8Array(input)).toString("base64url")
   }
 
+  // Provenance: RFC 7636 (PKCE) §4.2 code_challenge derivation ( https://www.rfc-editor.org/rfc/rfc7636#section-4.2 ).
+  // Local adaptation: challenge computed over the ASCII verifier via WebCrypto SHA-256,
+  // base64url-encoded without padding; reuse for any S256 challenge in this flow.
   async function sha256(input: string) {
     return base64URL(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input)))
   }

@@ -9,11 +9,14 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useFile } from "@/context/file"
+import { usePlatform } from "@/context/platform"
 import { usePrompt } from "@/context/prompt"
+import { useSDK } from "@/context/sdk"
 import { fileWriteErrorMessage, isFileWriteConflictError, isFileWriteDeniedError } from "@/context/file/errors"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { FileExplorer } from "./explorer"
 import { classifyFilePreview, resolveWorkspaceRelativePath } from "./model"
+import { buildWorkspaceFileBrowserUrl, buildWorkspaceFilePreviewUrl } from "@/utils/workspace-file-url"
 import { AttachmentPdfPreview } from "@/components/attachment-workbench/pdf-preview"
 import { FileSourceView, type FileSourceViewApi } from "./source-view"
 import "./styles.css"
@@ -122,6 +125,66 @@ function SvgPreview(props: { path: string; content: string }) {
     onCleanup(() => URL.revokeObjectURL(next))
   })
   return <Show when={url()}>{(src) => <img class="file-svg-preview" src={src()} alt={props.path} />}</Show>
+}
+
+// Served through the workspace raw-file route: relative resources resolve, and
+// the server puts the document in a CSP-sandboxed opaque origin, so scripts run
+// but cannot reach the app origin, its storage, or the HTTP control plane.
+// The frame must be same-origin with the app because the route sets
+// X-Frame-Options: SAMEORIGIN: when the SDK base points at another origin (bun
+// dev serves the app from Vite and the server from :4096), fall back to the app
+// origin, which Vite proxies to the server. The version query forces a reload
+// when the file changes on disk (watcher events, edits, focus refresh).
+function HtmlPreview(props: { path: string; version?: { mtime: number; size: number } }) {
+  const sdk = useSDK()
+  const lingui = useLingui()
+  const [loaded, setLoaded] = createSignal(false)
+  const url = createMemo(() =>
+    buildWorkspaceFilePreviewUrl(
+      sdk.url,
+      window.location.origin,
+      props.path,
+      {
+        scopeID: sdk.scopeID,
+        directory: sdk.directory,
+      },
+      props.version,
+    ),
+  )
+  // A new URL (path switch or disk version change) reloads the frame; show the
+  // loading state until its load event fires. Time out so a blocked frame (for
+  // example an X-Frame-Options refusal) never leaves a permanent spinner.
+  let hideTimer: number | undefined
+  createEffect(() => {
+    url()
+    setLoaded(false)
+    window.clearTimeout(hideTimer)
+    hideTimer = window.setTimeout(() => setLoaded(true), 15000)
+    onCleanup(() => window.clearTimeout(hideTimer))
+  })
+  return (
+    <div class="file-html-preview-shell">
+      <Show when={!loaded()}>
+        <div class="file-workbench-loading">
+          <Spinner class="size-5" />
+          <span>
+            {lingui._({
+              id: F.loading.id,
+              message: F.loading.message,
+              values: { path: props.path },
+            })}
+          </span>
+        </div>
+      </Show>
+      <iframe
+        class="file-html-preview"
+        sandbox="allow-scripts"
+        src={url()}
+        title={props.path}
+        onLoad={() => setLoaded(true)}
+      />
+    </div>
+  )
 }
 
 function ImagePreview(props: {
@@ -279,10 +342,13 @@ function FilePdfPreview(props: {
 
 export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
   const file = useFile()
+  const platform = usePlatform()
+  const sdk = useSDK()
   const prompt = usePrompt()
   const { fmt } = useLocale()
   const lingui = useLingui()
   const path = createMemo(() => props.tab.resourceId ?? "")
+  const isHtml = createMemo(() => /\.html?$/i.test(path()))
   const documentState = createMemo(() => file.get(path()))
   const content = createMemo(() => documentState()?.content)
   const textContent = createMemo(() => {
@@ -517,6 +583,20 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
               </button>
             </Show>
           </Show>
+          <Show when={isHtml()}>
+            <button
+              type="button"
+              class="file-open-in-browser"
+              onClick={() =>
+                platform.openLink(
+                  buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, directory: sdk.directory }),
+                )
+              }
+            >
+              <Icon name={getSemanticIcon("action.open")} size="small" />
+              <span>{lingui._({ id: F.openInBrowser.id, message: F.openInBrowser.message })}</span>
+            </button>
+          </Show>
           <IconButton
             icon={getSemanticIcon("workspace.files")}
             variant="ghost"
@@ -589,6 +669,9 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
             </Match>
             <Match when={capability().kind === "svg" ? textContent() : undefined}>
               {(value) => <SvgPreview path={path()} content={value().content} />}
+            </Match>
+            <Match when={capability().kind === "html" ? textContent() : undefined}>
+              <HtmlPreview path={path()} version={documentState()?.version} />
             </Match>
             <Match when={imageContent()}>
               {(value) => (

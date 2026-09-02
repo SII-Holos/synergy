@@ -129,6 +129,7 @@ describe("blueprint migrations", () => {
       id: cancelSessionID,
       scope: { id: scopeID, directory: scope.directory, worktree: scope.worktree },
       blueprint: { loopID: cancelLoopID, loopRole: "execution" },
+      time: { created: now, updated: now },
     })
 
     const migration = migrations.find((entry) => entry.id === "20260703-blueprint-single-active-loop")

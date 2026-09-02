@@ -7,8 +7,9 @@ import {
 } from "@ericsanchezok/synergy-browser"
 import { BrowserOwner } from "./owner.js"
 import { BrowserPolicy } from "./policy.js"
-import { BrowserRuntime } from "./runtime.js"
+import { BrowserRuntime, registerBrowserCommandExecutor } from "./runtime.js"
 import type { BrowserSession } from "./types.js"
+import { ObservabilityBrowserTelemetry } from "../observability/browser-metrics.js"
 import { Log } from "../util/log.js"
 
 interface ExecuteRequest {
@@ -106,13 +107,19 @@ export namespace BrowserCommandService {
           await session.resumePage()
         }
       }
+      const span = ObservabilityBrowserTelemetry.startCommand(owner, command)
+      ObservabilityBrowserTelemetry.recordCommand(owner, command)
       try {
         const result = await executeOnce(owner, command, request)
+        ObservabilityBrowserTelemetry.recordSettle(owner, command, result)
         cache(queue, request.commandId, { fingerprint, result, bytes: encodedBytes(result) })
+        ObservabilityBrowserTelemetry.endCommand(span, undefined, result)
         return result
       } catch (error) {
         const normalized = normalizeCommandError(error, request.commandId)
         cache(queue, request.commandId, { fingerprint, error: normalized, bytes: encodedBytes(normalized) })
+        ObservabilityBrowserTelemetry.endCommand(span, normalized)
+        recordCommandFailureTelemetry(owner, command, normalized)
         throw normalized
       }
     })
@@ -314,6 +321,14 @@ function encodedBytes(value: unknown): number {
   }
 }
 
+function recordCommandFailureTelemetry(owner: BrowserOwner.Info, command: BrowserBackendCommand, error: unknown): void {
+  if (!(error instanceof BrowserProtocolError)) {
+    ObservabilityBrowserTelemetry.recordCommandFailure(owner, command, "browser_command_failed")
+    return
+  }
+  ObservabilityBrowserTelemetry.recordCommandFailure(owner, command, error.code, error.obstruction?.candidates?.length)
+}
+
 function normalizeCommandError(error: unknown, commandId: string): unknown {
   if (error instanceof BrowserProtocolError) {
     if (error.commandId) return error
@@ -330,7 +345,6 @@ function normalizeCommandError(error: unknown, commandId: string): unknown {
     { cause: error },
   )
 }
-
 async function executeOnce(
   owner: BrowserOwner.Info,
   command: BrowserBackendCommand,
@@ -347,7 +361,12 @@ async function executeOnce(
   if (command.type === "navigate") {
     const url = normalizeBrowserURL(command.url)
     authorizeNavigation(owner, url)
-    const page = session.page ?? (await session.ensurePage(undefined, { resume: false }))
+    // A page whose Host died is still referenced by the session but no longer
+    // alive; ensurePage closes it and recreates it against the reconnected
+    // Host instead of reusing the dead backend (which would keep rejecting
+    // commands through the restarting gate).
+    const page =
+      session.page && session.page.isAlive() ? session.page : await session.ensurePage(undefined, { resume: false })
     const result = await executePage(page, { ...command, url }, request)
     await session.save({ captureCheckpoint: true })
     await session.notifyPageNavigated(page)
@@ -452,3 +471,8 @@ function throwIfAborted(signal: AbortSignal | undefined, commandId: string): voi
     commandId,
   })
 }
+
+registerBrowserCommandExecutor({
+  disposeOwner: BrowserCommandService.disposeOwner,
+  clear: BrowserCommandService.clear,
+})

@@ -28,6 +28,18 @@ import { SessionEvent } from "../../src/session/event"
 import { Command } from "../../src/command/command"
 import { SessionDrive } from "../../src/session/drive"
 
+import { registerSkillDomain } from "../../src/skill/register"
+import { registerCommandDomain } from "../../src/command/register"
+import { registerCommandSessionRuntime } from "../../src/command/session-runtime"
+import { registerLibrarySessionRecall } from "../../src/library/session-recall"
+import { registerProjectSessionHealth } from "../../src/project/session-health"
+
+registerSkillDomain()
+registerCommandDomain()
+registerCommandSessionRuntime()
+registerLibrarySessionRecall()
+registerProjectSessionHealth()
+
 const sessionID = "ses_test"
 
 function userMessage(id: string, noReply?: boolean): MessageV2.WithParts {
@@ -1796,6 +1808,38 @@ describe("SessionInvoke coauthor reminder prompt", () => {
 
           expect(systemPrompt).not.toContain("<coauthor-reminder>")
           expect(systemPrompt).not.toContain("Co-authored-by: synergy-agent")
+          expect(lateSystemPrompt).not.toContain("<coauthor-reminder>")
+          expect(lateSystemPrompt).not.toContain("Co-authored-by: synergy-agent")
+        },
+      })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
+  test("omits the coauthor reminder when the working directory is not a git repo", async () => {
+    await using tmp = await tmpdir()
+    let activeSessionID = ""
+    let systemPrompt = ""
+    let lateSystemPrompt = ""
+    const restore = installBasicLoopMocks({
+      onProcess: async (input) => {
+        systemPrompt = input.system.join("\n")
+        lateSystemPrompt = input.lateSystem?.join("\n") ?? ""
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+
+          await SessionInvoke.loop.force(session.id)
+
+          expect(systemPrompt).not.toContain("<coauthor-reminder>")
           expect(lateSystemPrompt).not.toContain("<coauthor-reminder>")
           expect(lateSystemPrompt).not.toContain("Co-authored-by: synergy-agent")
         },

@@ -820,8 +820,12 @@ msgid "app.attachment.action.download"
 msgstr "Download"
 
 #. js-lingui-explicit-id
+msgid "app.attachment.action.openFullPage"
+msgstr "Open in your browser"
+
+#. js-lingui-explicit-id
 msgid "app.attachment.action.openInBrowser"
-msgstr "Open in browser"
+msgstr "Open in Synergy browser"
 
 #. js-lingui-explicit-id
 msgid "app.attachment.action.viewSourceFile"
@@ -870,6 +874,10 @@ msgstr "Zoom out"
 #. js-lingui-explicit-id
 msgid "app.attachment.preview.error"
 msgstr "Unable to preview this attachment."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.htmlScriptsDisabled"
+msgstr "Interactive documents do not run scripts in this preview. Open in your browser for the complete rendering."
 
 #. js-lingui-explicit-id
 msgid "app.attachment.preview.tooLarge"
@@ -2588,6 +2596,10 @@ msgid "app.file.toolbar.edit"
 msgstr "Edit"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.openInBrowser"
+msgstr "Open in browser"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toolbar.save"
 msgstr "Save"
 
@@ -2642,6 +2654,10 @@ msgstr "Loading…"
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileExplorer.loadingMore"
 msgstr "Loading more…"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileExplorer.resize"
+msgstr "Resize file explorer"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileExplorer.search.label"
@@ -7576,6 +7592,10 @@ msgid "app.sidebar.projects"
 msgstr "Projects"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.resize"
+msgstr "Resize sidebar"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.search"
 msgstr "Search sessions"
 
@@ -7594,6 +7614,10 @@ msgstr "Home"
 #. Sections
 msgid "app.sidebar.section.recent"
 msgstr "Recent"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.session.draftBadge"
+msgstr "Draft"
 
 #. Session fallback
 msgid "app.sidebar.session.untitled"
@@ -8730,12 +8754,32 @@ msgid "app.workspace.surface.bottom"
 msgstr "Bottom workspace"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.surface.bottom.resize"
+msgstr "Resize bottom workspace"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.surface.side"
 msgstr "Side workspace"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.surface.side.resize"
+msgstr "Resize side workspace"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.tab.actions"
+msgstr "Tab actions"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.tab.close"
 msgstr "Close {title}"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.tab.closeOthers"
+msgstr "Close other tabs"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.tab.contextMenu"
+msgstr "{title} actions"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.tabs.bottom"
@@ -14295,6 +14339,10 @@ msgid "settings.catalog.general.row.interfaceLanguage"
 msgstr "Interface Language"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.general.row.newSessionWorkspace"
+msgstr "New Session Workspace"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.general.row.notifications"
 msgstr "Notifications"
 
@@ -14316,7 +14364,7 @@ msgstr "Interface Zoom"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.searchTerms"
-msgstr "appearance | color | light | dark | auto | language | snapshot | activity | activity display | product update | toast | notification"
+msgstr "appearance | color | light | dark | auto | language | snapshot | activity | activity display | workspace | worktree | checkout | product update | toast | notification"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.github.description"
@@ -15465,6 +15513,22 @@ msgstr "Update Synergy Service"
 #. js-lingui-explicit-id
 msgid "settings.general.updates.web.description"
 msgstr "Refresh this browser when the server has newer Web assets."
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.description"
+msgstr "Start new sessions in the main checkout or an isolated git worktree"
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.main"
+msgstr "Main checkout"
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.title"
+msgstr "New session workspace"
+
+#. js-lingui-explicit-id
+msgid "settings.general.workspace.worktree"
+msgstr "Worktree"
 
 #. js-lingui-explicit-id
 msgid "settings.general.zoom.aria"
@@ -18685,6 +18749,26 @@ msgstr "Visible background tasks"
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.warnings"
 msgstr "Warnings"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.no-steps"
+msgstr "No steps recorded"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.open-session"
+msgstr "Open subagent session"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.running"
+msgstr "Running"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.starting"
+msgstr "Starting…"
+
+#. ── Task subagent detail ────────────────────────────────────────────
+msgid "tool.task.waiting-approval"
+msgstr "Waiting for approval"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.abort-session"

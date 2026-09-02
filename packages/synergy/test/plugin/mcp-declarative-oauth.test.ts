@@ -116,7 +116,6 @@ export default definePlugin({
     const authBackup = (await authFile.exists()) ? await authFile.text() : undefined
     await fs.mkdir(path.dirname(Global.Path.authMcp), { recursive: true })
     await Bun.write(Global.Path.authMcp, "{}")
-    McpAuth.invalidateCache()
 
     let installed = false
     let uninstalled = false
@@ -148,8 +147,13 @@ export default definePlugin({
           expect((await MCP.status())[SERVER_NAME]).toBeDefined()
 
           await handle!.startPromise
-          expect((await MCP.status())[SERVER_NAME]).toEqual({ status: "needs_auth" })
-          expect(PendingOAuth.get(SERVER_NAME)?.identity).toBe(handle!.identity)
+          expect((await MCP.status())[SERVER_NAME]).toMatchObject({
+            status: "needs_auth",
+            error: expect.stringContaining("synergy mcp auth"),
+          })
+          // Background connects never register a PendingOAuth owner; only the
+          // interactive startAuth flow does, so nothing is pending yet.
+          expect(PendingOAuth.get(SERVER_NAME)).toBeUndefined()
 
           const registration = fixture.snapshot().registrations.at(-1)
           expect(registration).toEqual(
@@ -286,7 +290,6 @@ export default definePlugin({
       await PendingOAuth.disposeAll("declarative plugin OAuth test cleanup")
       if (authBackup === undefined) await Bun.write(Global.Path.authMcp, "{}")
       else await Bun.write(Global.Path.authMcp, authBackup)
-      McpAuth.invalidateCache()
     }
   })
 })

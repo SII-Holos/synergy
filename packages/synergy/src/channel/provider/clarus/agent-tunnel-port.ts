@@ -10,6 +10,13 @@ export type ClarusRequestOptions = {
 
 export type SubscribeProjectInput = ClarusRequestOptions & { projectID: string }
 export type UnsubscribeProjectInput = ClarusRequestOptions & { projectID: string }
+export type AcceptTaskInput = ClarusRequestOptions & {
+  runID: string
+  projectID: string
+  taskID: string
+  subtaskID: string
+  attempt: number
+}
 
 export type ExtendTaskInput = ClarusRequestOptions & {
   runID: string
@@ -98,6 +105,15 @@ export type ProjectUnsubscribedEvent = {
   epoch: number
   generation: number
 }
+export type ProjectMembershipAcceptedEvent = {
+  kind: "known"
+  type: "projectMembershipAccepted"
+  agentID: string
+  requestID: string | null
+  projectID: string
+  epoch: number
+  generation: number
+}
 export type RuntimeTaskAssignedEvent = {
   kind: "known"
   type: "runtimeTaskAssigned"
@@ -117,6 +133,20 @@ export type RuntimeTaskAssignedEvent = {
   input?: Record<string, unknown> | null
   context?: Record<string, unknown> | null
   taskInput?: Record<string, unknown> | null
+  epoch: number
+  generation: number
+}
+export type RuntimeTaskAcceptedEvent = {
+  kind: "known"
+  type: "runtimeTaskAccepted"
+  agentID: string
+  requestID: string | null
+  projectID: string
+  runID: string
+  taskID: string
+  subtaskID: string
+  attempt: number
+  acceptedAt: string
   epoch: number
   generation: number
 }
@@ -145,7 +175,9 @@ export type RuntimeTaskResultRecordedEvent = {
 export type ClarusKnownEvent =
   | ProjectSubscribedEvent
   | ProjectUnsubscribedEvent
+  | ProjectMembershipAcceptedEvent
   | RuntimeTaskAssignedEvent
+  | RuntimeTaskAcceptedEvent
   | RuntimeTaskExtendedEvent
   | RuntimeTaskResultRecordedEvent
 
@@ -176,6 +208,7 @@ export interface ClarusAgentTunnelPort {
   registerConnectionHandler(handler: HolosConnectionHandler): () => void
   subscribeProject(input: SubscribeProjectInput): ClarusRequestResult<ProjectSubscribedEvent>
   unsubscribeProject(input: UnsubscribeProjectInput): ClarusRequestResult<ProjectUnsubscribedEvent>
+  acceptTask(input: AcceptTaskInput): ClarusRequestResult<RuntimeTaskAcceptedEvent>
   extendTask(input: ExtendTaskInput): ClarusRequestResult<RuntimeTaskExtendedEvent>
   recordTaskResult(input: RecordTaskResultInput): ClarusRequestResult<RuntimeTaskResultRecordedEvent>
 }

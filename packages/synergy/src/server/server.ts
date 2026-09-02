@@ -4,8 +4,9 @@ import { GlobalBus } from "@/bus/global"
 import { EventWire } from "./event-wire"
 import { GlobalEventClients } from "./global-event-clients"
 import { Log } from "../util/log"
-import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
+import { describeRoute, generateSpecs, validator, resolver } from "hono-openapi"
 import { Hono, type Context, type MiddlewareHandler, type Next } from "hono"
+import { compress } from "hono/compress"
 import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
 import * as fs from "fs"
@@ -225,6 +226,65 @@ export namespace Server {
     }
   }
 
+  /**
+   * Normalize a configured CORS/WS allowlist entry to the canonical origin
+   * form browsers send in the Origin header (lowercased host, default port
+   * stripped). Without this, `--cors https://EXAMPLE.com:443` would be stored
+   * verbatim and silently never match the normalized `https://example.com`
+   * the browser sends.
+   */
+  export function normalizeCorsOrigin(input: string): string | undefined {
+    try {
+      const url = new URL(input)
+      if (url.protocol !== "http:" && url.protocol !== "https:") return undefined
+      return url.origin
+    } catch {
+      return undefined
+    }
+  }
+
+  /**
+   * The global event stream carries full session traffic. Accept only clients
+   * whose Origin matches the server's own scheme+host (the Synergy SPA on web
+   * and Desktop), a loopback peer, or an origin on the same allowlist the CORS
+   * middleware enforces — never opaque origins such as sandboxed attachment
+   * pages (`Origin: null`) or cross-origin web pages. WebSocket is not covered
+   * by CORS, so the check must live here at the route.
+   */
+  export function globalEventOriginAllowed(
+    origin: string | undefined,
+    requestURL: string,
+    extraAllows: readonly string[] = [..._corsWhitelist],
+  ): boolean {
+    if (!origin) return false
+    try {
+      const parsed = new URL(origin)
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false
+      const request = new URL(requestURL)
+      // The request URL must itself be part of the {http,https,ws,wss} scheme
+      // family; anything else never represents a real upgrade and must not be
+      // accepted by the host comparison below.
+      if (
+        request.protocol !== "http:" &&
+        request.protocol !== "https:" &&
+        request.protocol !== "ws:" &&
+        request.protocol !== "wss:"
+      ) {
+        return false
+      }
+      // Behind a TLS-terminating reverse proxy the browser's Origin is https:
+      // while the upgrade request arrives as ws:; compare host+port and treat
+      // the {http,https,ws,wss} scheme family as equivalent for the same
+      // origin, per RFC 6455 §4 and RFC 9110 §4.2.2.
+      if (parsed.host === request.host) return true
+      if (extraAllows.includes(parsed.origin)) return true
+      const requestOrigin = request.origin.replace(/^ws:/, "http:").replace(/^wss:/, "https:")
+      return isLoopbackOrigin(parsed.origin) && isLoopbackOrigin(requestOrigin)
+    } catch {
+      return false
+    }
+  }
+
   function isGlobalRoute(pathname: string) {
     return (
       pathname === "/" ||
@@ -245,6 +305,7 @@ export namespace Server {
       pathname.startsWith("/channel/") ||
       pathname === "/plugin/assets" ||
       pathname.startsWith("/plugin/assets/") ||
+      pathname === "/plugin/ui/contributions/themes" ||
       pathname === "/api/plugins" ||
       pathname.startsWith("/api/plugins/") ||
       pathname === "/api/registry" ||
@@ -303,6 +364,20 @@ export namespace Server {
       return decodeURIComponent(scopeID)
     } catch {
       return scopeID
+    }
+  }
+
+  const RawHtmlScopePattern = /^\/workspace\/files\/raw\/([^/]+)\//
+
+  function rawHtmlScope(c: Context): { scopeID?: string; directory?: string } | undefined {
+    const token = RawHtmlScopePattern.exec(c.req.path)?.[1]
+    if (!token) return undefined
+    if (token === "home") return { scopeID: "home" }
+    try {
+      const directory = Buffer.from(token, "base64url").toString("utf-8").trim()
+      return directory ? { directory } : undefined
+    } catch {
+      return undefined
     }
   }
 
@@ -366,10 +441,14 @@ export namespace Server {
   async function provideRequestScope(c: Context, next: Next) {
     const directory = requestDirectory(c)
     const scopeID = requestScopeID(c)
+    const rawScope = !directory && !scopeID ? rawHtmlScope(c) : undefined
     const scope =
-      isGlobalRoute(c.req.path) || (!directory && !scopeID && !isScopeRequiredRoute(c.req.path))
+      isGlobalRoute(c.req.path) || (!directory && !scopeID && !rawScope && !isScopeRequiredRoute(c.req.path))
         ? Scope.home()
-        : await resolveScopedRequestScope(c, { scopeID, directory })
+        : await resolveScopedRequestScope(c, {
+            scopeID: scopeID ?? rawScope?.scopeID,
+            directory: directory ?? rawScope?.directory,
+          })
     if (scope instanceof Response) return scope
     return ScopeContext.provide({
       scope,
@@ -578,6 +657,7 @@ export namespace Server {
             maxAge: 600,
           }),
         )
+        .use(compress({ encoding: "gzip" }))
         .use(async (c, next) => {
           if (!_shuttingDown) return next()
           return c.json(
@@ -761,6 +841,17 @@ export namespace Server {
             _globalEventHeartbeatInterval = heartbeat
             _globalEventClients = globalEventClients
             return upgradeWebSocket((c) => {
+              if (!globalEventOriginAllowed(c.req.header("origin"), c.req.url, [..._corsWhitelist])) {
+                log.warn("global event ws rejected", { origin: c.req.header("origin") })
+                return {
+                  onOpen(_event, ws) {
+                    ws.close(1008, "Origin not allowed")
+                  },
+                  onMessage() {},
+                  onClose() {},
+                  onError() {},
+                }
+              }
               const mode: "full" | "delta" = c.req.query("stream") === "delta" ? "delta" : "full"
               return {
                 onOpen(_event, ws) {
@@ -894,19 +985,7 @@ export namespace Server {
             return c.json({ accepted: true })
           },
         )
-        .get(
-          "/doc",
-          openAPIRouteHandler(app, {
-            documentation: {
-              info: {
-                title: "synergy",
-                version: "0.0.3",
-                description: "synergy api",
-              },
-              openapi: "3.1.1",
-            },
-          }),
-        )
+        .get("/doc", async (c) => c.json(await openapi()))
         .use(validator("query", z.object({ directory: z.string().optional(), scopeID: z.string().optional() })))
 
         .route("/scope", ScopeRoute)
@@ -1626,7 +1705,19 @@ export namespace Server {
     _appMounted = true
   }
 
-  export async function openapi() {
+  // Spec generation consumes describeRoute resolvers in one pass (hono-openapi
+  // rewrites each entry in place), so a second generation in the same process
+  // would emit $refs without components. Both /doc and the CLI share this
+  // singleton to make once-per-process the public invariant.
+  type OpenAPISpecs = Awaited<ReturnType<typeof generateSpecs>>
+  let _openapiSpecs: Promise<OpenAPISpecs> | undefined
+
+  export function openapi(): Promise<OpenAPISpecs> {
+    _openapiSpecs ??= buildOpenAPISpecs()
+    return _openapiSpecs
+  }
+
+  async function buildOpenAPISpecs() {
     // Cast to break excessive type recursion from long route chains
     const result = await generateSpecs(App() as Hono, {
       documentation: {
@@ -1684,8 +1775,12 @@ export namespace Server {
 
   export function listen(opts: { port: number; hostname: string; mdns?: boolean; cors?: string[] }) {
     const isExternalHost = opts.hostname !== "127.0.0.1" && opts.hostname !== "localhost" && opts.hostname !== "::1"
-    _corsWhitelist = new Set([...(opts.cors ?? []), ...(isExternalHost ? lanOrigins() : [])])
-    configureBrowserViewerOrigins(opts.cors ?? [])
+    const configuredOrigins = (opts.cors ?? []).flatMap((origin) => {
+      const normalized = normalizeCorsOrigin(origin)
+      return normalized ? [normalized] : []
+    })
+    _corsWhitelist = new Set([...configuredOrigins, ...(isExternalHost ? lanOrigins() : [])])
+    configureBrowserViewerOrigins(configuredOrigins)
 
     const args = {
       hostname: opts.hostname,

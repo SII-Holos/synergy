@@ -2,7 +2,7 @@ import { fileURLToPath } from "url"
 import fuzzysort from "fuzzysort"
 import { ScopeContext } from "../scope/context"
 import { Ripgrep } from "../file/ripgrep"
-import { LSP } from "../lsp"
+import { WorkspaceFileSymbolSource } from "./symbol-source"
 import { WorkspaceFile } from "./types"
 import { WorkspaceFileIndexer } from "./indexer"
 import { WorkspaceFileService } from "./service"
@@ -204,8 +204,11 @@ async function searchSymbols(input: {
   const signal = input.signal
     ? AbortSignal.any([input.signal, AbortSignal.timeout(SEARCH_TIMEOUT_MS)])
     : AbortSignal.timeout(SEARCH_TIMEOUT_MS)
-  const status = await withSearchAbort(LSP.status(), signal).catch(() => [])
-  if (status.length === 0) {
+  const symbolSource = WorkspaceFileSymbolSource.get()
+  const activeClients = symbolSource
+    ? await withSearchAbort(symbolSource.activeClientCount(), signal).catch(() => 0)
+    : 0
+  if (activeClients === 0) {
     return {
       kind: "symbol",
       query: input.query,
@@ -218,7 +221,9 @@ async function searchSymbols(input: {
     }
   }
 
-  const symbols = await withSearchAbort(LSP.workspaceSymbol(input.query), signal).catch(() => [])
+  const symbols = symbolSource
+    ? await withSearchAbort(symbolSource.workspaceSymbol(input.query), signal).catch(() => [])
+    : []
   const offset = parseCursor(input.cursor)
   const page = symbols.slice(offset, offset + input.limit + 1)
   const items = page.slice(0, input.limit).map((symbol): WorkspaceFile.SymbolSearchItem => {

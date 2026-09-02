@@ -311,11 +311,34 @@ describe("Browser native page pool", () => {
     views.at(-1)!.webContents.emit("render-process-gone")
     await until(() => events.some((event) => event.type === "host.status" && event.status === "failed"))
     expect(viewCreationAttempts).toBe(10)
+    const budgetErrorIndex = events.findIndex(
+      (event) => event.type === "page.error" && /could not recover after repeated attempts/.test(event.message),
+    )
+    const failedIndex = events.findIndex((event) => event.type === "host.status" && event.status === "failed")
+    expect(budgetErrorIndex).toBeGreaterThanOrEqual(0)
+    expect(failedIndex).toBeGreaterThan(budgetErrorIndex)
 
     failNewViews = false
     await pool.retry("budget", "page-budget")
 
     expect(events.filter((event) => event.type === "host.status").at(-1)?.status).toBe("ready")
+    await pool.destroy()
+  })
+
+  test("close stays available in the failed state without starting another recovery", async () => {
+    views.length = 0
+    viewCreationAttempts = 0
+    const events: any[] = []
+    const pool = new BrowserNativePagePool({ recoveryDelaysMs: [0, 0, 0] })
+    const handle = await pool.create(input("close-failed", (event) => events.push(event)))
+    failNewViews = true
+    views.at(-1)!.webContents.emit("render-process-gone")
+    await until(() => events.some((event) => event.type === "host.status" && event.status === "failed"))
+    const attemptsAtFailure = viewCreationAttempts
+
+    failNewViews = false
+    await expect(handle.execute({ type: "close" })).resolves.toEqual({ type: "void" })
+    expect(viewCreationAttempts).toBe(attemptsAtFailure)
     await pool.destroy()
   })
   test("bounds the healthy-reload path so a wedged renderer cannot reload forever", async () => {
@@ -342,6 +365,103 @@ describe("Browser native page pool", () => {
     expect(contents.reloads).toBeLessThanOrEqual(MAX_RECOVERY_BUDGET)
     expect(events.filter((event) => event.type === "host.status" && event.status === "failed")).toHaveLength(1)
     expect(events.some((event) => event.type === "page.error" && /unresponsive/.test(event.message))).toBe(true)
+    await pool.destroy()
+  })
+  test("resume on a healthy page returns state without replacing its generation", async () => {
+    views.length = 0
+    const pool = new BrowserNativePagePool({ recoveryDelaysMs: [0] })
+    const handle = await pool.create(input("resume-healthy"))
+    const initialView = views.at(-1)
+
+    await expect(handle.execute({ type: "resume" })).resolves.toMatchObject({
+      type: "page",
+      page: { id: "page-resume-healthy" },
+    })
+    expect(views).toHaveLength(1)
+    expect(views.at(-1)).toBe(initialView)
+    await pool.destroy()
+  })
+
+  test("resume during recovery waits for the single flight and returns ready page state", async () => {
+    views.length = 0
+    const events: any[] = []
+    const pool = new BrowserNativePagePool({ recoveryDelaysMs: [0] })
+    const handle = await pool.create(input("resume-flight", (event) => events.push(event)))
+    views.at(-1)!.webContents.emit("render-process-gone")
+
+    await expect(handle.execute({ type: "resume" })).resolves.toMatchObject({
+      type: "page",
+      page: { id: "page-resume-flight" },
+    })
+    expect(views).toHaveLength(2)
+    expect(events.filter((event) => event.type === "host.status").map((event) => event.status)).toEqual([
+      "restarting",
+      "ready",
+    ])
+    await pool.destroy()
+  })
+
+  test("resume retries a failed page without replaying the failed command", async () => {
+    views.length = 0
+    viewCreationAttempts = 0
+    const events: any[] = []
+    const pool = new BrowserNativePagePool({ recoveryDelaysMs: [0, 0, 0] })
+    const handle = await pool.create(input("resume-failed", (event) => events.push(event)))
+    failNewViews = true
+    views.at(-1)!.webContents.emit("render-process-gone")
+    await until(() => events.some((event) => event.type === "host.status" && event.status === "failed"))
+    expect(viewCreationAttempts).toBe(10)
+
+    failNewViews = false
+    await expect(handle.execute({ type: "reload", source: "agent" })).rejects.toMatchObject({
+      code: "browser_native_recovery_failed",
+    })
+    const attemptsBeforeResume = viewCreationAttempts
+    await expect(handle.execute({ type: "resume" })).resolves.toMatchObject({
+      type: "page",
+      page: { id: "page-resume-failed" },
+    })
+    expect(viewCreationAttempts).toBeGreaterThan(attemptsBeforeResume)
+    expect(handle.state().id).toBe("page-resume-failed")
+    expect(events.filter((event) => event.type === "host.status").at(-1)?.status).toBe("ready")
+    await pool.destroy()
+  })
+
+  test("rate-limits resume-driven recovery while the native Retry control is not limited", async () => {
+    views.length = 0
+    viewCreationAttempts = 0
+    const events: any[] = []
+    const pool = new BrowserNativePagePool({ recoveryDelaysMs: [0, 0, 0], resumeRecoveryCooldownMs: 60_000 })
+    const handle = await pool.create(input("resume-cooldown", (event) => events.push(event)))
+    failNewViews = true
+    views.at(-1)!.webContents.emit("render-process-gone")
+    await until(() => events.some((event) => event.type === "host.status" && event.status === "failed"))
+
+    // The first resume after a failure starts one recovery flight (no cooldown
+    // recorded yet); view creation still fails, so the page stays failed.
+    const attemptsBeforeFirstResume = viewCreationAttempts
+    await expect(handle.execute({ type: "resume" })).rejects.toMatchObject({
+      code: "browser_native_recovery_failed",
+    })
+    expect(viewCreationAttempts).toBeGreaterThan(attemptsBeforeFirstResume)
+
+    // An immediate second resume is rate-limited: no new recovery flight starts.
+    const attemptsBeforeCooldown = viewCreationAttempts
+    const restartingCount = events.filter(
+      (event) => event.type === "host.status" && event.status === "restarting",
+    ).length
+    await expect(handle.execute({ type: "resume" })).rejects.toMatchObject({
+      code: "browser_native_recovery_failed",
+    })
+    expect(viewCreationAttempts).toBe(attemptsBeforeCooldown)
+    expect(events.filter((event) => event.type === "host.status" && event.status === "restarting")).toHaveLength(
+      restartingCount,
+    )
+
+    // The native Retry control is a deliberate human action: it bypasses the cooldown.
+    failNewViews = false
+    await pool.retry("resume-cooldown", "page-resume-cooldown")
+    expect(events.filter((event) => event.type === "host.status").at(-1)?.status).toBe("ready")
     await pool.destroy()
   })
 

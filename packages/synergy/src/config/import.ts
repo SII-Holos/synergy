@@ -4,8 +4,8 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { applyEdits, modify, parse as parseJsonc, printParseErrorCode, type ParseError } from "jsonc-parser"
 import z from "zod"
 import { Global } from "../global"
-import { RuntimeSchema } from "../runtime/schema"
-import { RuntimeReload } from "../runtime/reload"
+import { RuntimeSchema } from "./reload-schema"
+import { RuntimeReloadExecutor } from "./reload-executor"
 import { ScopeContext } from "../scope/context"
 import { Scope as WorkspaceScope } from "../scope"
 import { Config } from "./config"
@@ -301,7 +301,7 @@ export namespace ConfigImport {
   async function reloadAfterCommit(target: Target): Promise<RuntimeSchema.ReloadResult> {
     try {
       return await withTargetScope(target, () =>
-        RuntimeReload.reload({
+        RuntimeReloadExecutor.reload({
           targets: ["config"],
           scope: target.scope,
           reason: "config.import.apply",

@@ -106,6 +106,14 @@
   flex: 1;
   overflow: auto;
   background: var(--workbench-canvas-bg);
+  scrollbar-gutter: stable;
+  /* ::-webkit-scrollbar-* is ignored once scrollbar-color is non-auto, so
+     scrollbar-color is the only effective thumb style here. */
+  scrollbar-color: color-mix(in srgb, var(--text-strong) 34%, transparent) transparent;
+}
+
+[data-color-scheme="dark"] .attachment-workbench-viewer {
+  scrollbar-color: color-mix(in srgb, var(--text-strong) 55%, transparent) transparent;
 }
 
 .attachment-workbench-loading,
@@ -144,6 +152,16 @@
 
 .attachment-html-preview {
   padding: 16px;
+}
+
+.attachment-html-preview-notice {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--workbench-border);
+  border-radius: 6px;
+  background: var(--workbench-card-bg);
+  color: var(--text-weaker);
+  font-size: 12px;
 }
 
 .attachment-media-preview {

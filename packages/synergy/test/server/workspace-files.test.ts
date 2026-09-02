@@ -15,6 +15,11 @@ function workspaceUrl(endpoint: string, directory: string, params?: Record<strin
   return url.pathname + url.search
 }
 
+function rawUrl(directory: string, rel: string): string {
+  const token = Buffer.from(directory, "utf-8").toString("base64url")
+  return `/workspace/files/raw/${token}/${rel}`
+}
+
 describe("GET /workspace/files", () => {
   test("requires a Scope instead of silently using home", async () => {
     const app = Server.App()
@@ -524,5 +529,148 @@ describe("GET /workspace/files/content", () => {
     const body = await response.json()
     expect(body.kind).toBe("binary")
     expect(body.content).toBeUndefined()
+  })
+
+  test("serves raw HTML with a sandboxed opaque-origin CSP", async () => {
+    const html = "<!doctype html><title>doc</title><script>1</script><p>hi</p>"
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "doc.html"), html)
+      },
+    })
+    const response = await Server.App().request(rawUrl(tmp.path, "doc.html"))
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8")
+    expect(response.headers.get("content-security-policy")).toBe(
+      "sandbox allow-scripts allow-forms allow-popups allow-modals",
+    )
+    expect(response.headers.get("cache-control")).toBe("no-store")
+    expect(response.headers.get("x-frame-options")).toBe("SAMEORIGIN")
+    expect(await response.text()).toBe(html)
+  })
+
+  test("accepts a raw .htm file", async () => {
+    const html = "<!doctype html><p>htm</p>"
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "doc.htm"), html)
+      },
+    })
+    const response = await Server.App().request(rawUrl(tmp.path, "doc.htm"))
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-security-policy")).toBe(
+      "sandbox allow-scripts allow-forms allow-popups allow-modals",
+    )
+    expect(await response.text()).toBe(html)
+  })
+
+  test("sandboxes raw SVG documents with scriptable content", async () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>'
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "evil.svg"), svg)
+      },
+    })
+    const response = await Server.App().request(rawUrl(tmp.path, "evil.svg"))
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toContain("image/svg+xml")
+    expect(response.headers.get("content-security-policy")).toBe(
+      "sandbox allow-scripts allow-forms allow-popups allow-modals",
+    )
+  })
+
+  test("sandboxes raw XML documents with XSLT processing instructions", async () => {
+    const xml = '<?xml version="1.0"?><?xml-stylesheet type="text/xsl" href="evil.xsl"?><root/>'
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "evil.xml"), xml)
+      },
+    })
+    const response = await Server.App().request(rawUrl(tmp.path, "evil.xml"))
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type")).toContain("application/xml")
+    expect(response.headers.get("content-security-policy")).toBe(
+      "sandbox allow-scripts allow-forms allow-popups allow-modals",
+    )
+  })
+
+  test("serves relative static resources with their real mime type and no sandbox CSP", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await fs.mkdir(path.join(dir, "assets", "cover"), { recursive: true })
+        await Bun.write(path.join(dir, "assets", "cover", "image1.jpeg"), Uint8Array.from([0xff, 0xd8, 0xff]))
+        await Bun.write(path.join(dir, "assets", "app.js"), "console.log(1)\n")
+      },
+    })
+    const app = Server.App()
+
+    const image = await app.request(rawUrl(tmp.path, "assets/cover/image1.jpeg"))
+    expect(image.status).toBe(200)
+    expect(image.headers.get("content-type")).toContain("image/jpeg")
+    expect(image.headers.get("content-security-policy") ?? "").not.toContain("sandbox")
+    expect(image.headers.get("cache-control")).toBe("no-store")
+    const bytes = await image.arrayBuffer()
+    expect(new Uint8Array(bytes)).toEqual(Uint8Array.from([0xff, 0xd8, 0xff]))
+
+    const script = await app.request(rawUrl(tmp.path, "assets/app.js"))
+    expect(script.status).toBe(200)
+    expect(script.headers.get("content-type")).toContain("javascript")
+    expect(script.headers.get("content-security-policy") ?? "").not.toContain("sandbox")
+  })
+
+  test("serves files from a nested subdirectory under the raw prefix", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await fs.mkdir(path.join(dir, "resources", "templates", "01-cover-main"), { recursive: true })
+        await Bun.write(path.join(dir, "resources", "templates", "01-cover-main", "cover.html"), "<p>cover</p>")
+      },
+    })
+    const response = await Server.App().request(rawUrl(tmp.path, "resources/templates/01-cover-main/cover.html"))
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe("<p>cover</p>")
+  })
+
+  test("rejects raw paths with traversal or absolute segments with 403", async () => {
+    const secret = path.join(os.tmpdir(), `synergy-raw-secret-${Date.now()}.txt`)
+    await Bun.write(secret, "secret")
+    try {
+      await using tmp = await tmpdir({ git: true })
+      const app = Server.App()
+      for (const rel of [
+        `../../../../${path.basename(os.tmpdir())}/${path.basename(secret)}`,
+        "../outside.txt",
+        "nested/../../outside.txt",
+        "..%2F..%2Foutside.txt",
+      ]) {
+        const response = await app.request(rawUrl(tmp.path, rel))
+        // Layers may reject these differently: URL parsing collapses lexical ../
+        // (404), encoded %2F trips malformed-path handling (400), surviving
+        // segments hit the traversal guard (403). All block the escape.
+        expect([400, 403, 404]).toContain(response.status)
+        expect(await response.text()).not.toContain("secret")
+      }
+    } finally {
+      await fs.rm(secret, { force: true }).catch(() => {})
+    }
+  })
+
+  test("rejects a missing raw scope token directory with 404", async () => {
+    const missing = path.join(os.tmpdir(), `synergy-raw-missing-${Date.now()}`)
+    const response = await Server.App().request(rawUrl(missing, "index.html"))
+    expect(response.status).toBe(404)
+  })
+
+  test("returns 404 for a missing raw HTML file", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const response = await Server.App().request(rawUrl(tmp.path, "missing.html"))
+    expect(response.status).toBe(404)
+    const body = await response.json()
+    expect(body.name).toBe("NotFoundError")
   })
 })

@@ -1,7 +1,7 @@
 import path from "path"
 import { z } from "zod"
 import { ConfigMarkdown } from "../config/markdown"
-import type { SkillSourceProfile } from "./source-profile"
+import type { SkillSourceProfile } from "../instruction/source-profile"
 
 export namespace SkillManifest {
   const name = z

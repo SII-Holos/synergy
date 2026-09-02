@@ -431,6 +431,7 @@ describe("Authoritative runtimeTaskResultRecorded reconciliation", () => {
       registerConnectionHandler: () => () => {},
       subscribeProject: () => ({ requestID: "", response: Promise.resolve({} as any) }),
       unsubscribeProject: () => ({ requestID: "", response: Promise.resolve({} as any) }),
+      acceptTask: () => ({ requestID: "", response: Promise.resolve({} as any) }),
       extendTask: () => ({ requestID: "", response: Promise.resolve({} as any) }),
       recordTaskResult: () => ({ requestID: "", response: Promise.resolve({} as any) }),
     }

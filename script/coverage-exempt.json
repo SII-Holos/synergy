@@ -245,7 +245,7 @@
           "reason": "tool implementations require live tool runtime context"
         },
         {
-          "glob": "src/tool/session-control.ts",
+          "glob": "src/project/tools/session-control.ts",
           "reason": "tool implementations require live tool runtime context"
         }
       ]
@@ -982,6 +982,10 @@
         },
         {
           "glob": "src/components/sidebar/flip-list.tsx",
+          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/sidebar/session-draft-badge.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {

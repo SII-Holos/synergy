@@ -1,4 +1,4 @@
-import { Plugin } from "@/plugin"
+import { SessionPluginHooks } from "./plugin-hooks"
 import { Log } from "@/util/log"
 import { MessageV2 } from "./message-v2"
 
@@ -41,7 +41,12 @@ export namespace SessionUserMessageMaterialization {
   export function after(message: MessageV2.WithParts) {
     const input = observerInput(message)
     if (!input) return
-    void Plugin.trigger("session.user-message.after", input, {}, { sessionId: message.info.sessionID }).catch(() => {
+    void SessionPluginHooks.trigger(
+      "session.user-message.after",
+      input,
+      {},
+      { sessionId: message.info.sessionID },
+    ).catch(() => {
       log.error("user message observer dispatch failed", {
         messageID: message.info.id,
         status: "failed",

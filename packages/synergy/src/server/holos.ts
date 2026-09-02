@@ -5,7 +5,7 @@ import { Access } from "../access"
 import { Contact } from "../holos/contact"
 import { Mailbox } from "../holos/mailbox"
 import { HolosAuth } from "../holos/auth"
-import { HOLOS_URL } from "../holos/constants"
+import { HolosEndpoint } from "../holos/endpoint"
 import { HolosLoginFlow } from "../holos/login-flow"
 import { HolosProtocol } from "../holos/protocol"
 import { HolosReadiness } from "../holos/readiness"
@@ -14,7 +14,6 @@ import { HolosRuntime } from "../holos/runtime"
 import { HolosState } from "../holos/state"
 import { HolosAccounts } from "../holos/accounts"
 import { HolosProfile } from "../holos/profile"
-import { Config } from "../config/config"
 import { Log } from "../util/log"
 import { errors } from "./error"
 
@@ -36,8 +35,9 @@ const pendingStates = new Map<
 
 const STATE_TTL_MS = 5 * 60_000
 
-function holosApiUrl(path: string): string {
-  return new URL(path, HOLOS_URL).toString()
+async function holosApiUrl(path: string): Promise<string> {
+  const endpoints = await HolosEndpoint.resolve()
+  return HolosEndpoint.url(path, endpoints.apiUrl)
 }
 
 function cleanupExpiredStates() {
@@ -64,9 +64,8 @@ function returnUrlForClient(input: { callbackOrigin: string; clientSurface: Clie
   return input.clientSurface === "desktop" ? DESKTOP_RETURN_URL : input.callbackOrigin
 }
 
-async function currentHolosApiUrl(): Promise<string | undefined> {
-  const config = await Config.current().catch(() => undefined)
-  return config?.holos?.apiUrl
+async function currentHolosApiUrl(): Promise<string> {
+  return (await HolosEndpoint.resolve()).apiUrl
 }
 
 const LoginResponse = z
@@ -109,6 +108,7 @@ export const HolosRoute = new Hono()
       if (!callbackUrl) return c.json({ message: "callbackUrl must point to this server's /holos/callback" }, 400)
 
       const state = crypto.randomUUID()
+      const url = await HolosLoginFlow.createConfiguredBindUrl({ callbackUrl, state })
       pendingStates.set(state, {
         state,
         createdAt: Date.now(),
@@ -117,7 +117,7 @@ export const HolosRoute = new Hono()
         profile: body.profile,
       })
 
-      return c.json({ url: HolosLoginFlow.createBindUrl({ callbackUrl, state }) })
+      return c.json({ url })
     },
   )
   .get(
@@ -873,7 +873,7 @@ export const HolosDataRoute = new Hono()
         need_active: String(query.need_active),
       })
 
-      const res = await fetch(holosApiUrl(`/api/v1/holos/agent_tunnel/agents/list?${params}`), {
+      const res = await fetch(await holosApiUrl(`/api/v1/holos/agent_tunnel/agents/list?${params}`), {
         headers: { Authorization: `Bearer ${holos.credential.agentSecret}` },
       })
       if (!res.ok) return c.json({ message: `Holos API error: ${res.status}` }, 503)
@@ -897,7 +897,17 @@ export const HolosDataRoute = new Hono()
         ...errors(404, 503),
       },
     }),
-    validator("param", z.object({ agentId: z.string() })),
+    validator(
+      "param",
+      z.object({
+        agentId: z
+          .string()
+          .min(1)
+          .max(256)
+          .regex(/^[A-Za-z0-9._-]+$/, "agentId contains unsupported characters")
+          .refine((id) => id !== "." && id !== "..", "agentId must not be a dot segment"),
+      }),
+    ),
     async (c) => {
       const holos = await HolosReadiness.snapshot()
       if (!holos.credential) {
@@ -908,7 +918,7 @@ export const HolosDataRoute = new Hono()
       }
 
       const agentId = c.req.valid("param").agentId
-      const res = await fetch(holosApiUrl(`/api/v1/holos/agent_tunnel/agents/${agentId}`), {
+      const res = await fetch(await holosApiUrl(`/api/v1/holos/agent_tunnel/agents/${encodeURIComponent(agentId)}`), {
         headers: { Authorization: `Bearer ${holos.credential.agentSecret}` },
       })
       if (!res.ok) return c.json({ message: `Agent not found: ${res.status}` }, 404)

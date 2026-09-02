@@ -1377,9 +1377,6 @@ export type ChannelInfo = {
   createdAt?: number
 }
 
-/**
- * Endpoint context if created from a session endpoint
- */
 export type SessionEndpoint = {
   kind: "channel"
   channel: ChannelInfo
@@ -1507,8 +1504,11 @@ export type SessionNavEntry = {
   title: string
   category: "project" | "home" | "channel" | "background" | "github"
   lastActivityAt: number
+  createdAt?: number
+  updatedAt?: number
   pinned: number
   archived: boolean
+  archivedAt?: number
   parentID?: string
   endpointKind?: "channel"
   chatId?: string
@@ -2603,6 +2603,10 @@ export type ProviderConfig = {
      */
     setCacheKey?: boolean
     /**
+     * Merge leading system messages into a single system message for strict OpenAI-compatible endpoints that reject multiple or non-leading system messages (e.g. vLLM Qwen chat templates). Default false.
+     */
+    mergeSystemMessages?: boolean
+    /**
      * Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.
      */
     timeout?: number | false
@@ -3203,7 +3207,7 @@ export type ChannelFeishuConfig = {
 export type ChannelClarusAccountConfig = {
   enabled?: boolean
   /**
-   * Clarus REST API origin override; defaults to the configured Holos API origin
+   * Clarus REST API base URL override, including an optional path prefix; defaults to the configured Holos API base URL
    */
   apiUrl?: string
   /**
@@ -3635,6 +3639,10 @@ export type Config = {
    * How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)
    */
   activityDisplay?: "full" | "balanced" | "minimal"
+  /**
+   * Default workspace for new sessions started from the Web composer: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main). Programmatic session creation (API, channels, Cortex) always uses the main checkout.
+   */
+  defaultSessionWorkspace?: "main" | "worktree"
   keybinds?: KeybindsConfig
   logLevel?: LogLevel
   server?: ServerConfig
@@ -4301,6 +4309,16 @@ export type SessionWorkspace = {
   [key: string]: unknown | string
 }
 
+export type WorkflowExtension = {
+  kind: string
+  payload?: unknown
+}
+
+export type SessionWorkflowExtension = {
+  kind: "extension"
+  extension: WorkflowExtension
+}
+
 export type SessionWorkflowInfo =
   | {
       kind: "plan"
@@ -4358,6 +4376,7 @@ export type SessionWorkflowInfo =
       rootID?: string
       instructions?: string
     }
+  | SessionWorkflowExtension
 
 export type Session = {
   id: string
@@ -4474,6 +4493,7 @@ export type McpStatusDisabled = {
 
 export type McpStatusNeedsAuth = {
   status: "needs_auth"
+  error: string
 }
 
 export type McpStatusNeedsClientRegistration = {
@@ -4737,6 +4757,50 @@ export type ConfigDomainOpenError = {
 
 export type ConfigImportScope = "global" | "project"
 
+export type ConfigExportResult = {
+  scope: ConfigImportScope
+  scopeID: string
+  secretsIncluded: boolean
+  domains: Array<
+    | "general"
+    | "models"
+    | "providers"
+    | "library"
+    | "mcp"
+    | "plugins"
+    | "skills"
+    | "agents"
+    | "commands"
+    | "permissions"
+    | "channels"
+    | "holos"
+    | "email"
+    | "github"
+    | "runtime"
+  >
+  warnings: Array<string>
+  config: Config
+}
+
+export type ConfigImportProjectScopeRequiredError = {
+  name: "ConfigImportProjectScopeRequiredError"
+  data: {
+    message: string
+  }
+}
+
+export type ConfigExportSecretsRejectedError = {
+  name: "ConfigExportSecretsRejectedError"
+  data: {
+    message: string
+  }
+}
+
+export type ConfigExportBadRequestError =
+  | BadRequestError
+  | ConfigImportProjectScopeRequiredError
+  | ConfigExportSecretsRejectedError
+
 export type ConfigImportDiagnostic = {
   severity: "warning" | "info"
   code: string
@@ -4784,13 +4848,6 @@ export type ConfigDomainImportPlan = {
   revision: string
   domains: Array<ConfigDomainImportDomainPlan>
   conflicts: Array<ConfigDomainImportChange>
-}
-
-export type ConfigImportProjectScopeRequiredError = {
-  name: "ConfigImportProjectScopeRequiredError"
-  data: {
-    message: string
-  }
 }
 
 export type ConfigImportInvalidConfigError = {
@@ -7558,12 +7615,32 @@ export type BrowserApiError = {
     name?: string
     id?: string
     class?: string
+    ref?: string
+    visible?: boolean
+    bounds?: {
+      x: number
+      y: number
+      width: number
+      height: number
+    }
+    frame?: string
+    receivesEvents?: boolean
     candidates?: Array<{
       tag?: string
       role?: string | null
       name?: string
       id?: string
       class?: string
+      ref?: string
+      visible?: boolean
+      bounds?: {
+        x: number
+        y: number
+        width: number
+        height: number
+      }
+      frame?: string
+      receivesEvents?: boolean
     }>
   }
   suggestedAction?: string
@@ -7756,11 +7833,11 @@ export type BrowserControlRequest = {
         url: string
         source?: "user"
         /**
-         * Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
          */
         settleMode?: "networkquiet" | "load" | "none"
         /**
-         * Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.
+         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
          */
         settleTimeoutMs?: number
         /**
@@ -7773,11 +7850,11 @@ export type BrowserControlRequest = {
         direction: "back" | "forward"
         source?: "user"
         /**
-         * Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
          */
         settleMode?: "networkquiet" | "load" | "none"
         /**
-         * Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.
+         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
          */
         settleTimeoutMs?: number
         /**
@@ -7790,11 +7867,11 @@ export type BrowserControlRequest = {
         ignoreCache?: boolean
         source?: "user"
         /**
-         * Settle strategy after dispatch: networkquiet (default) waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
          */
         settleMode?: "networkquiet" | "load" | "none"
         /**
-         * Maximum time to wait for the page to settle (default 30s). A timeout does not fail the action; the result reports settled:false.
+         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
          */
         settleTimeoutMs?: number
         /**
@@ -7833,6 +7910,22 @@ export type BrowserControlRequest = {
       }
   commandId: string
   traceId?: string
+}
+
+export type GlobalThemeContribution = {
+  pluginId: string
+  name: string
+  version: string
+  generation: string
+  enabledScopes: Array<string>
+  capabilities: Array<string>
+  contributions: Array<{
+    [key: string]: unknown
+  }>
+  uiArtifact?: {
+    entry: string
+    sha256: string
+  }
 }
 
 export type ForbiddenError = {
@@ -8363,68 +8456,32 @@ export type EventScopeRuntimeDisposed = {
   }
 }
 
+export type EventAgendaItemCreated = {
+  type: "agenda.item.created"
+  properties: {
+    item: AgendaItem
+  }
+}
+
+export type EventAgendaItemUpdated = {
+  type: "agenda.item.updated"
+  properties: {
+    item: AgendaItem
+  }
+}
+
+export type EventAgendaItemDeleted = {
+  type: "agenda.item.deleted"
+  properties: {
+    id: string
+    scopeID: string
+  }
+}
+
 export type EventProviderAuthUpdated = {
   type: "provider.auth.updated"
   properties: {
     health: ProviderAuthHealth
-  }
-}
-
-export type EventConfigUpdated = {
-  type: "config.updated"
-  properties: {
-    scope: "global" | "project"
-    changedFields: Array<string>
-  }
-}
-
-export type EventInstallationUpdated = {
-  type: "installation.updated"
-  properties: {
-    version: string
-  }
-}
-
-export type EventInstallationUpdateAvailable = {
-  type: "installation.update-available"
-  properties: {
-    version: string
-  }
-}
-
-export type EventMcpToolsChanged = {
-  type: "mcp.tools.changed"
-  properties: {
-    server: string
-  }
-}
-
-export type EventMcpPromptsChanged = {
-  type: "mcp.prompts.changed"
-  properties: {
-    server: string
-  }
-}
-
-export type EventMcpResourcesChanged = {
-  type: "mcp.resources.changed"
-  properties: {
-    server: string
-  }
-}
-
-export type EventMcpReady = {
-  type: "mcp.ready"
-  properties: {
-    [key: string]: unknown
-  }
-}
-
-export type EventMcpFailed = {
-  type: "mcp.failed"
-  properties: {
-    server: string
-    error: string
   }
 }
 
@@ -8457,6 +8514,23 @@ export type EventMessagePartRemoved = {
     sessionID: string
     messageID: string
     partID: string
+  }
+}
+
+export type EventConfigUpdated = {
+  type: "config.updated"
+  properties: {
+    scope: "global" | "project"
+    changedFields: Array<string>
+  }
+}
+
+export type EventRuntimeReloaded = {
+  type: "runtime.reloaded"
+  properties: {
+    executed: Array<RuntimeReloadTarget>
+    cascaded: Array<RuntimeReloadTarget>
+    changedFields: Array<string>
   }
 }
 
@@ -8547,11 +8621,77 @@ export type EventSessionTurnEnd = {
   }
 }
 
+export type EventInstallationUpdated = {
+  type: "installation.updated"
+  properties: {
+    version: string
+  }
+}
+
+export type EventInstallationUpdateAvailable = {
+  type: "installation.update-available"
+  properties: {
+    version: string
+  }
+}
+
 export type EventSessionInboxUpdated = {
   type: "session.inbox.updated"
   properties: {
     sessionID: string
     items: Array<SessionInboxItem>
+  }
+}
+
+export type EventFileEdited = {
+  type: "file.edited"
+  properties: {
+    file: string
+  }
+}
+
+export type EventTodoUpdated = {
+  type: "todo.updated"
+  properties: {
+    sessionID: string
+    todos: Array<Todo>
+  }
+}
+
+export type EventDagUpdated = {
+  type: "dag.updated"
+  properties: {
+    sessionID: string
+    nodes: Array<DagNode>
+    ready: Array<string>
+  }
+}
+
+export type EventSessionCompacted = {
+  type: "session.compacted"
+  properties: {
+    sessionID: string
+  }
+}
+
+export type EventCortexTaskCreated = {
+  type: "cortex.task.created"
+  properties: {
+    task: CortexTask
+  }
+}
+
+export type EventCortexTaskCompleted = {
+  type: "cortex.task.completed"
+  properties: {
+    task: CortexTask
+  }
+}
+
+export type EventCortexTasksUpdated = {
+  type: "cortex.tasks.updated"
+  properties: {
+    tasks: Array<CortexTask>
   }
 }
 
@@ -8651,6 +8791,57 @@ export type EventNoteUnarchived = {
   }
 }
 
+export type EventPluginEvent = {
+  type: "plugin.event"
+  properties: {
+    pluginId: string
+    pluginVersion: string
+    generation: string
+    eventId: string
+    scopeId: string
+    sessionId?: string
+    sequence: number
+    timestamp: number
+    payload: unknown
+  }
+}
+
+export type EventMcpToolsChanged = {
+  type: "mcp.tools.changed"
+  properties: {
+    server: string
+  }
+}
+
+export type EventMcpPromptsChanged = {
+  type: "mcp.prompts.changed"
+  properties: {
+    server: string
+  }
+}
+
+export type EventMcpResourcesChanged = {
+  type: "mcp.resources.changed"
+  properties: {
+    server: string
+  }
+}
+
+export type EventMcpReady = {
+  type: "mcp.ready"
+  properties: {
+    [key: string]: unknown
+  }
+}
+
+export type EventMcpFailed = {
+  type: "mcp.failed"
+  properties: {
+    server: string
+    error: string
+  }
+}
+
 export type EventLatticeRunCreated = {
   type: "lattice.run.created"
   properties: {
@@ -8669,6 +8860,31 @@ export type EventLatticeEventAppended = {
   type: "lattice.event.appended"
   properties: {
     event: LatticeEvent
+  }
+}
+
+export type EventFileWatcherUpdated = {
+  type: "file.watcher.updated"
+  properties: {
+    file: string
+    event: "added" | "changed" | "deleted" | "renamed"
+    absolute?: string
+    oldPath?: string
+    oldAbsolute?: string
+    parent?: string
+    node?: unknown
+    resync?: boolean
+  }
+}
+
+export type EventChannelCommandExecuted = {
+  type: "channel.command.executed"
+  properties: {
+    name: string
+    channelType: string
+    accountId: string
+    chatId: string
+    userId?: string
   }
 }
 
@@ -8702,94 +8918,6 @@ export type EventQuestionTimedOut = {
   }
 }
 
-export type EventSessionCompacted = {
-  type: "session.compacted"
-  properties: {
-    sessionID: string
-  }
-}
-
-export type EventFileEdited = {
-  type: "file.edited"
-  properties: {
-    file: string
-  }
-}
-
-export type EventRuntimeReloaded = {
-  type: "runtime.reloaded"
-  properties: {
-    executed: Array<RuntimeReloadTarget>
-    cascaded: Array<RuntimeReloadTarget>
-    changedFields: Array<string>
-  }
-}
-
-export type EventLspClientDiagnostics = {
-  type: "lsp.client.diagnostics"
-  properties: {
-    serverID: string
-    path: string
-  }
-}
-
-export type EventLspUpdated = {
-  type: "lsp.updated"
-  properties: {
-    [key: string]: unknown
-  }
-}
-
-export type EventDagUpdated = {
-  type: "dag.updated"
-  properties: {
-    sessionID: string
-    nodes: Array<DagNode>
-    ready: Array<string>
-  }
-}
-
-export type EventTodoUpdated = {
-  type: "todo.updated"
-  properties: {
-    sessionID: string
-    todos: Array<Todo>
-  }
-}
-
-export type EventAgendaItemCreated = {
-  type: "agenda.item.created"
-  properties: {
-    item: AgendaItem
-  }
-}
-
-export type EventAgendaItemUpdated = {
-  type: "agenda.item.updated"
-  properties: {
-    item: AgendaItem
-  }
-}
-
-export type EventAgendaItemDeleted = {
-  type: "agenda.item.deleted"
-  properties: {
-    id: string
-    scopeID: string
-  }
-}
-
-export type EventChannelCommandExecuted = {
-  type: "channel.command.executed"
-  properties: {
-    name: string
-    channelType: string
-    accountId: string
-    chatId: string
-    userId?: string
-  }
-}
-
 export type EventChannelConnected = {
   type: "channel.connected"
   properties: {
@@ -8804,27 +8932,6 @@ export type EventChannelDisconnected = {
     channelType: string
     accountId: string
     reason?: string
-  }
-}
-
-export type EventSynergyLinkTargetCreated = {
-  type: "synergy_link.target.created"
-  properties: {
-    target: SynergyLinkTarget
-  }
-}
-
-export type EventSynergyLinkTargetUpdated = {
-  type: "synergy_link.target.updated"
-  properties: {
-    target: SynergyLinkTarget
-  }
-}
-
-export type EventSynergyLinkTargetRemoved = {
-  type: "synergy_link.target.removed"
-  properties: {
-    id: string
   }
 }
 
@@ -8872,39 +8979,46 @@ export type EventHolosPresence = {
   }
 }
 
-export type EventCortexTaskCreated = {
-  type: "cortex.task.created"
+export type EventLspClientDiagnostics = {
+  type: "lsp.client.diagnostics"
   properties: {
-    task: CortexTask
+    serverID: string
+    path: string
   }
 }
 
-export type EventCortexTaskCompleted = {
-  type: "cortex.task.completed"
+export type EventLspUpdated = {
+  type: "lsp.updated"
   properties: {
-    task: CortexTask
+    [key: string]: unknown
   }
 }
 
-export type EventCortexTasksUpdated = {
-  type: "cortex.tasks.updated"
+export type EventSynergyLinkTargetCreated = {
+  type: "synergy_link.target.created"
   properties: {
-    tasks: Array<CortexTask>
+    target: SynergyLinkTarget
   }
 }
 
-export type EventPluginEvent = {
-  type: "plugin.event"
+export type EventSynergyLinkTargetUpdated = {
+  type: "synergy_link.target.updated"
   properties: {
-    pluginId: string
-    pluginVersion: string
-    generation: string
-    eventId: string
-    scopeId: string
-    sessionId?: string
-    sequence: number
-    timestamp: number
-    payload: unknown
+    target: SynergyLinkTarget
+  }
+}
+
+export type EventSynergyLinkTargetRemoved = {
+  type: "synergy_link.target.removed"
+  properties: {
+    id: string
+  }
+}
+
+export type EventVcsBranchUpdated = {
+  type: "vcs.branch.updated"
+  properties: {
+    branch?: string
   }
 }
 
@@ -8915,27 +9029,6 @@ export type EventCommandExecuted = {
     sessionID: string
     arguments: string
     messageID: string
-  }
-}
-
-export type EventFileWatcherUpdated = {
-  type: "file.watcher.updated"
-  properties: {
-    file: string
-    event: "added" | "changed" | "deleted" | "renamed"
-    absolute?: string
-    oldPath?: string
-    oldAbsolute?: string
-    parent?: string
-    node?: unknown
-    resync?: boolean
-  }
-}
-
-export type EventVcsBranchUpdated = {
-  type: "vcs.branch.updated"
-  properties: {
-    branch?: string
   }
 }
 
@@ -8986,19 +9079,16 @@ export type Event =
   | EventScopeUpdated
   | EventScopeRemoved
   | EventScopeRuntimeDisposed
+  | EventAgendaItemCreated
+  | EventAgendaItemUpdated
+  | EventAgendaItemDeleted
   | EventProviderAuthUpdated
-  | EventConfigUpdated
-  | EventInstallationUpdated
-  | EventInstallationUpdateAvailable
-  | EventMcpToolsChanged
-  | EventMcpPromptsChanged
-  | EventMcpResourcesChanged
-  | EventMcpReady
-  | EventMcpFailed
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
+  | EventConfigUpdated
+  | EventRuntimeReloaded
   | EventPermissionAsked
   | EventPermissionReplied
   | EventSessionUpdated
@@ -9010,7 +9100,16 @@ export type Event =
   | EventSessionIdle
   | EventSessionTurnStart
   | EventSessionTurnEnd
+  | EventInstallationUpdated
+  | EventInstallationUpdateAvailable
   | EventSessionInboxUpdated
+  | EventFileEdited
+  | EventTodoUpdated
+  | EventDagUpdated
+  | EventSessionCompacted
+  | EventCortexTaskCreated
+  | EventCortexTaskCompleted
+  | EventCortexTasksUpdated
   | EventBlueprintLoopCreated
   | EventBlueprintLoopUpdated
   | EventBlueprintLoopCompleted
@@ -9023,42 +9122,36 @@ export type Event =
   | EventNoteDeleted
   | EventNoteArchived
   | EventNoteUnarchived
+  | EventPluginEvent
+  | EventMcpToolsChanged
+  | EventMcpPromptsChanged
+  | EventMcpResourcesChanged
+  | EventMcpReady
+  | EventMcpFailed
   | EventLatticeRunCreated
   | EventLatticeRunUpdated
   | EventLatticeEventAppended
+  | EventFileWatcherUpdated
+  | EventChannelCommandExecuted
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
   | EventQuestionTimedOut
-  | EventSessionCompacted
-  | EventFileEdited
-  | EventRuntimeReloaded
-  | EventLspClientDiagnostics
-  | EventLspUpdated
-  | EventDagUpdated
-  | EventTodoUpdated
-  | EventAgendaItemCreated
-  | EventAgendaItemUpdated
-  | EventAgendaItemDeleted
-  | EventChannelCommandExecuted
   | EventChannelConnected
   | EventChannelDisconnected
-  | EventSynergyLinkTargetCreated
-  | EventSynergyLinkTargetUpdated
-  | EventSynergyLinkTargetRemoved
   | EventHolosContactAdded
   | EventHolosContactRemoved
   | EventHolosContactUpdated
   | EventHolosConnected
   | EventHolosConnectionStatusChanged
   | EventHolosPresence
-  | EventCortexTaskCreated
-  | EventCortexTaskCompleted
-  | EventCortexTasksUpdated
-  | EventPluginEvent
-  | EventCommandExecuted
-  | EventFileWatcherUpdated
+  | EventLspClientDiagnostics
+  | EventLspUpdated
+  | EventSynergyLinkTargetCreated
+  | EventSynergyLinkTargetUpdated
+  | EventSynergyLinkTargetRemoved
   | EventVcsBranchUpdated
+  | EventCommandExecuted
   | EventPtyCreated
   | EventPtyUpdated
   | EventPtyExited
@@ -11279,6 +11372,73 @@ export type ConfigDomainOpenResponses = {
 }
 
 export type ConfigDomainOpenResponse2 = ConfigDomainOpenResponses[keyof ConfigDomainOpenResponses]
+
+export type ConfigExportData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+    scope?: ConfigImportScope
+    only?:
+      | "general"
+      | "models"
+      | "providers"
+      | "library"
+      | "mcp"
+      | "plugins"
+      | "skills"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "github"
+      | "runtime"
+      | Array<
+          | "general"
+          | "models"
+          | "providers"
+          | "library"
+          | "mcp"
+          | "plugins"
+          | "skills"
+          | "agents"
+          | "commands"
+          | "permissions"
+          | "channels"
+          | "holos"
+          | "email"
+          | "github"
+          | "runtime"
+        >
+    includeSecrets?: string
+  }
+  url: "/config/export"
+}
+
+export type ConfigExportErrors = {
+  /**
+   * Invalid export query, missing project scope, or includeSecrets requested over HTTP
+   */
+  400: ConfigExportBadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ConfigExportError = ConfigExportErrors[keyof ConfigExportErrors]
+
+export type ConfigExportResponses = {
+  /**
+   * Exported config
+   */
+  200: ConfigExportResult
+}
+
+export type ConfigExportResponse = ConfigExportResponses[keyof ConfigExportResponses]
 
 export type ConfigImportPlanData = {
   body?: ConfigDomainImportPlanInput
@@ -18881,6 +19041,36 @@ export type BrowserControlResponses = {
 }
 
 export type BrowserControlResponse2 = BrowserControlResponses[keyof BrowserControlResponses]
+
+export type PluginListGlobalThemeContributionsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/plugin/ui/contributions/themes"
+}
+
+export type PluginListGlobalThemeContributionsErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PluginListGlobalThemeContributionsError =
+  PluginListGlobalThemeContributionsErrors[keyof PluginListGlobalThemeContributionsErrors]
+
+export type PluginListGlobalThemeContributionsResponses = {
+  /**
+   * Global theme contributions
+   */
+  200: Array<GlobalThemeContribution>
+}
+
+export type PluginListGlobalThemeContributionsResponse =
+  PluginListGlobalThemeContributionsResponses[keyof PluginListGlobalThemeContributionsResponses]
 
 export type PluginListUiContributionsData = {
   body?: never

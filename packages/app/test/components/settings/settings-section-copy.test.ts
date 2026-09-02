@@ -49,6 +49,7 @@ describe("settings section localization", () => {
         "Color Scheme",
         "界面语言",
         "Activity display",
+        "New Session Workspace",
         "Snapshot",
         "Product Updates",
         "Notifications",

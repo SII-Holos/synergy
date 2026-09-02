@@ -5,7 +5,10 @@ import { SystemPrompt } from "../../src/session/system"
 import { ScopeContext } from "../../src/scope/context"
 import { Log } from "../../src/util/log"
 import { tmpdir } from "../fixture/fixture"
+import { registerProjectSessionHealth } from "../../src/project/session-health"
 import { $ } from "bun"
+
+registerProjectSessionHealth()
 
 Log.init({ print: false })
 

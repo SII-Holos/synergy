@@ -1,0 +1,68 @@
+# Tool Design
+
+## Contract
+
+A tool's public surface is its contract. The agent cannot see the implementation, so the contract must carry everything the agent needs to decide, call, and recover.
+
+## Naming
+
+- Use a verb-noun shape that states the action and the object ("create_draft", "list_customers", "resolve_issue").
+- Keep names unique within the tool set the agent sees; the name is the agent's primary identifier for the tool.
+- Reference MCP tools by their fully qualified, server-qualified name in prompts, permissions, and documentation so same-named tools across servers stay unambiguous. Use the exact qualified form the target runtime exposes: Synergy exposes MCP tools as `mcp__<server>__<tool>` and keys permission patterns on the `mcp__` prefix; other clients may use different forms.
+- Keep names stable. Renaming a tool breaks every prompt and workflow that references it; prefer adding parameters or a new versioned tool over renaming.
+
+## Description
+
+A good description is the difference between a tool that gets used correctly and one that gets ignored or misused. Answer four questions:
+
+1. **What** — the concrete action, in the imperative, in one sentence.
+2. **When** — direct triggers and indirect signals that should route to this tool, and explicit when-not-to-use cases.
+3. **Inputs** — types, constraints, defaults, and one format example for non-obvious fields.
+4. **Returns** — the success shape and the error conditions.
+
+Write the description as the agent's decision aid, not as API documentation. The agent should be able to choose this tool over its neighbors without reading the implementation.
+
+## Consolidation
+
+Consolidate overlapping tools into a single tool with clear parameter-based behavior when the decision criteria overlap. A tool set where a human needs a flowchart to pick the right call is a tool set the agent cannot navigate.
+
+- Merge narrow tools that share a decision ("get_user_by_id" and "get_user_by_email" become "get_user" with an identifier parameter) when the merge keeps parameters under roughly 8-10.
+- Do not over-consolidate: keep tools separate when they have distinct authority boundaries, distinct error semantics, or are called in different phases of a workflow.
+- After consolidation, verify every merged behavior still has an unambiguous calling criterion.
+
+## Parameters
+
+- Name parameters consistently across the tool set; the same concept always has the same name and type.
+- Prefer optional parameters with sane defaults over required parameters the agent must guess.
+- Use enums and constrained types instead of free-text where the domain has a closed set.
+- Document constraints in the description ("must be a valid ISO-8601 date") and enforce them in validation with messages that name the field and the accepted format.
+- Do not add parameters speculatively; each parameter should have a caller.
+
+## Response formats
+
+- Return structured data for machine consumption: JSON objects with stable keys, not prose.
+- Keep the response shape stable across calls; add fields without removing existing ones.
+- Return the minimum data the agent needs to act, plus enough context to verify the result (ids, counts, state).
+- Do not embed credentials, tokens, or internal paths in responses.
+
+## Error messages
+
+Error messages are part of the contract. The agent will see them and must recover from them.
+
+- State what went wrong, which input was invalid, and how to correct it (expected format plus an example).
+- Distinguish permanent failures ("invalid parameter") from transient ones ("service unavailable, retry later") so the agent can choose the right recovery.
+- Include the failed identifier or key in the message so the agent can fix or escalate.
+- A generic "failed" message is not acceptable; it leaves the agent with no recovery path.
+
+## Audit checklist
+
+Before shipping a tool, run this checklist:
+
+- [ ] The name states the action and the object, and is unique in the tool set.
+- [ ] The description answers what, when, inputs, and returns.
+- [ ] The description names when NOT to use the tool.
+- [ ] Parameter names and types are consistent with the rest of the tool set.
+- [ ] The tool is not a narrow duplicate of another tool, and does not over-consolidate unrelated behaviors.
+- [ ] The response shape is stable, structured, and contains everything the agent needs to verify the result.
+- [ ] Error messages name the failing input and the correction.
+- [ ] No credentials, tokens, or internal paths leak into responses.

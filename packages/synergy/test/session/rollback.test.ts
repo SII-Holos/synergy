@@ -173,6 +173,45 @@ describe("session rollback history", () => {
     })
   })
 
+  test("rollback invalidation publishes before the replacement root's message.updated", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await writeTurn(session.id, tmp.path, "first", "one")
+        await writeTurn(session.id, tmp.path, "second", "two")
+        await Session.rollback({ sessionID: session.id, numTurns: 1 })
+
+        const order: string[] = []
+        const unsubSession = Bus.subscribe(SessionEvent.Updated, (event) => {
+          const info = event.properties.info
+          if (info.id !== session.id) return
+          if (info.history?.rollback?.canUnrollback === false) order.push("flip")
+        })
+        const unsubMessage = Bus.subscribe(MessageV2.Event.Updated, (event) => {
+          const info = event.properties.info
+          if (info.sessionID !== session.id) return
+          order.push(`message:${info.id}`)
+        })
+        try {
+          await sleep(2)
+          const replacement = await writeUser(session.id, "replacement")
+          const flipIndex = order.indexOf("flip")
+          const messageIndex = order.indexOf(`message:${replacement.info.id}`)
+          expect(flipIndex).toBeGreaterThanOrEqual(0)
+          expect(messageIndex).toBeGreaterThanOrEqual(0)
+          expect(flipIndex).toBeLessThan(messageIndex)
+        } finally {
+          unsubSession()
+          unsubMessage()
+        }
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
   test("later roots do not rederive an invalidated rollback", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

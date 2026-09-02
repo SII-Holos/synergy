@@ -74,7 +74,7 @@ describe("observability", () => {
   })
 
   test("releases server process lock explicitly", async () => {
-    const { ServerProcessLock } = await import("../../src/daemon/server-process-lock")
+    const { ServerProcessLock } = await import("../../src/util/server-process-lock")
     await fs.rm(ServerProcessLock.path(), { force: true })
 
     const acquired = await ServerProcessLock.acquire()
