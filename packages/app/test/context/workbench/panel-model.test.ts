@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { WorkbenchPanelTab } from "../../../src/plugin/registries/workbench-panel-registry"
 import {
+  closeOtherWorkbenchPanelTabs,
   closeWorkbenchPanelTab,
   isEditableEscapeTarget,
   isWorkbenchPanelLaunchable,
@@ -201,6 +202,53 @@ describe("closeWorkbenchPanelTab", () => {
 
     expect(result.tabs).toEqual([])
     expect(result.active).toBeUndefined()
+  })
+})
+
+describe("closeOtherWorkbenchPanelTabs", () => {
+  test("keeps only the requested tab and activates it", () => {
+    const tabs = [
+      { id: "file:a", panelId: "file", resourceId: "src/a.ts", title: "a.ts" },
+      { id: "notes", panelId: "notes" },
+      { id: "file:b", panelId: "file", resourceId: "src/b.ts", title: "b.ts" },
+    ]
+    const result = closeOtherWorkbenchPanelTabs(tabs, "file:a", "notes")
+
+    expect(result.tabs).toEqual([{ id: "notes", panelId: "notes" }])
+    expect(result.active).toBe("notes")
+  })
+
+  test("activates the kept tab even when another tab was active", () => {
+    const tabs = [
+      { id: "a", panelId: "file" },
+      { id: "b", panelId: "file" },
+    ]
+    const result = closeOtherWorkbenchPanelTabs(tabs, "b", "a")
+
+    expect(result.active).toBe("a")
+  })
+
+  test("preserves opaque tab state on the kept tab", () => {
+    const tabs = [
+      { id: "map", panelId: "plugin:research-map", resourceId: "map", state: { view: "map" } },
+      { id: "node", panelId: "plugin:research-map" },
+    ]
+    const result = closeOtherWorkbenchPanelTabs(tabs, "map", "map")
+
+    expect(result.tabs).toEqual([
+      { id: "map", panelId: "plugin:research-map", resourceId: "map", state: { view: "map" } },
+    ])
+  })
+
+  test("is a no-op when the kept tab is missing", () => {
+    const tabs = [
+      { id: "a", panelId: "file" },
+      { id: "b", panelId: "file" },
+    ]
+    const result = closeOtherWorkbenchPanelTabs(tabs, "b", "missing")
+
+    expect(result.tabs).toBe(tabs)
+    expect(result.active).toBe("b")
   })
 })
 

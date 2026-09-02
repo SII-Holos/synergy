@@ -12,6 +12,7 @@ import {
   type WorkbenchPanelTabInit,
 } from "@/plugin/registries/workbench-panel-registry"
 import {
+  closeOtherWorkbenchPanelTabs,
   closeWorkbenchPanelTab,
   createTabCloseGuard,
   isWorkbenchPanelAvailable,
@@ -141,6 +142,35 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       }
     }
 
+    async function closeOtherTabsOnSurface(surfaceName: WorkbenchPanelSurface, keepTabId: string) {
+      const target = surface(surfaceName)
+      const keep = target.tabs().find((item) => item.id === keepTabId)
+      if (!keep) return
+
+      for (const tab of target.tabs()) {
+        if (tab.id === keepTabId) continue
+        const entry = getWorkbenchPanel(tab.panelId)
+        await entry?.onCloseTab?.(tab)
+      }
+
+      const next = closeOtherWorkbenchPanelTabs(target.tabs(), target.active(), keepTabId)
+      target.setTabs(next.tabs)
+      target.setActive(next.active)
+    }
+
+    async function closeOtherTabs(keepTabId: string) {
+      for (const surfaceName of ["side", "bottom"] as const) {
+        if (
+          !surface(surfaceName)
+            .tabs()
+            .some((item) => item.id === keepTabId)
+        )
+          continue
+        await closeOtherTabsOnSurface(surfaceName, keepTabId)
+        return
+      }
+    }
+
     function updateTab(tabId: string, patch: Omit<WorkbenchPanelTabInit, "id">) {
       for (const surfaceName of ["side", "bottom"] as const) {
         const target = surface(surfaceName)
@@ -200,6 +230,8 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       panelTitle,
       openPanel,
       closeTab,
+      closeOtherTabs,
+      closeOtherTabsOnSurface,
       updateTab,
       moveTab,
     }

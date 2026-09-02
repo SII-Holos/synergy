@@ -8766,8 +8766,20 @@ msgid "app.workspace.surface.side.resize"
 msgstr "调整侧边工作区宽度"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.tab.actions"
+msgstr "标签页操作"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.tab.close"
 msgstr "关闭 {title}"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.tab.closeOthers"
+msgstr "关闭其他标签页"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.tab.contextMenu"
+msgstr "{title} 操作"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.tabs.bottom"

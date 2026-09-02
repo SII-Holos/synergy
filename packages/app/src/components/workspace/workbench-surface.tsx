@@ -122,6 +122,10 @@ function WorkbenchSortableTab(props: {
   entry?: WorkbenchPanelEntry
   onActivate: () => void
   onClose: () => void
+  onCloseOthers: () => void
+  onContextMenu: () => void
+  onContextMenuOpenChange: (open: boolean) => void
+  menuOpen: boolean
   onFocusIndex: (index: number) => void
 }) {
   const lingui = useLingui()
@@ -133,62 +137,116 @@ function WorkbenchSortableTab(props: {
   })
   const currentIndex = () => props.tabs.findIndex((tab) => tab.id === props.tab.id)
   return (
-    <div
-      use:sortable
-      class="workbench-surface-tab"
-      classList={{
-        "workbench-surface-tab--active": props.active,
-        "workbench-surface-tab--dragging": sortable.isActiveDraggable,
-      }}
-      title={props.tab.resourceId ?? props.title}
-      onAuxClick={(event) => {
-        if (event.button !== 1) return
-        event.preventDefault()
-        props.onClose()
-      }}
-    >
-      <button
-        ref={main}
-        type="button"
-        role="tab"
-        class="workbench-surface-tab-main"
-        aria-selected={props.active}
-        aria-label={props.tab.resourceId ?? props.title}
-        tabIndex={props.active ? 0 : -1}
-        onClick={props.onActivate}
-        onKeyDown={(event) => {
-          const index = currentIndex()
-          if (event.key === "ArrowLeft") props.onFocusIndex(index - 1)
-          else if (event.key === "ArrowRight") props.onFocusIndex(index + 1)
-          else if (event.key === "Home") props.onFocusIndex(0)
-          else if (event.key === "End") props.onFocusIndex(props.tabs.length - 1)
-          else if (event.key === "Enter" || event.key === " ") props.onActivate()
-          else if (event.key === "Delete") props.onClose()
-          else return
-          event.preventDefault()
+    <>
+      <div
+        use:sortable
+        class="workbench-surface-tab"
+        classList={{
+          "workbench-surface-tab--active": props.active,
+          "workbench-surface-tab--dragging": sortable.isActiveDraggable,
         }}
-      >
-        <Show when={props.entry}>
-          {(entry) => entry().tabIcon?.(props.tab) ?? <Icon name={entry().icon as IconName} size="small" />}
-        </Show>
-        <span>{props.title}</span>
-      </button>
-      <button
-        type="button"
-        class="workbench-surface-tab-close"
-        aria-label={lingui._({
-          id: W.closeTab.id,
-          message: W.closeTab.message,
-          values: { title: props.tab.resourceId ?? props.title },
-        })}
-        onClick={(event) => {
-          event.stopPropagation()
+        title={props.tab.resourceId ?? props.title}
+        onAuxClick={(event) => {
+          if (event.button !== 1) return
+          event.preventDefault()
           props.onClose()
         }}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          props.onContextMenu()
+        }}
       >
-        <Icon name={getSemanticIcon("action.close")} size="small" />
-      </button>
-    </div>
+        <button
+          ref={main}
+          type="button"
+          role="tab"
+          class="workbench-surface-tab-main"
+          aria-selected={props.active}
+          aria-label={props.tab.resourceId ?? props.title}
+          tabIndex={props.active ? 0 : -1}
+          onClick={props.onActivate}
+          onKeyDown={(event) => {
+            const index = currentIndex()
+            if (event.key === "ArrowLeft") props.onFocusIndex(index - 1)
+            else if (event.key === "ArrowRight") props.onFocusIndex(index + 1)
+            else if (event.key === "Home") props.onFocusIndex(0)
+            else if (event.key === "End") props.onFocusIndex(props.tabs.length - 1)
+            else if (event.key === "Enter" || event.key === " ") props.onActivate()
+            else if (event.key === "Delete") props.onClose()
+            else return
+            event.preventDefault()
+          }}
+        >
+          <Show when={props.entry}>
+            {(entry) => entry().tabIcon?.(props.tab) ?? <Icon name={entry().icon as IconName} size="small" />}
+          </Show>
+          <span>{props.title}</span>
+        </button>
+        <button
+          type="button"
+          class="workbench-surface-tab-close"
+          aria-label={lingui._({
+            id: W.closeTab.id,
+            message: W.closeTab.message,
+            values: { title: props.tab.resourceId ?? props.title },
+          })}
+          onClick={(event) => {
+            event.stopPropagation()
+            props.onClose()
+          }}
+        >
+          <Icon name={getSemanticIcon("action.close")} size="small" />
+        </button>
+      </div>
+      <Popover
+        open={props.menuOpen}
+        onOpenChange={(open) => {
+          if (!open) props.onContextMenuOpenChange(false)
+        }}
+        placement="bottom-start"
+        gutter={6}
+        class="workbench-surface-add-menu"
+        trigger={<span class="workbench-surface-context-trigger" aria-hidden="true" />}
+      >
+        <div
+          class="workbench-surface-add-list"
+          role="menu"
+          aria-label={lingui._({
+            id: W.tabContextMenu.id,
+            message: W.tabContextMenu.message,
+            values: { title: props.tab.resourceId ?? props.title },
+          })}
+        >
+          <button
+            type="button"
+            class="workbench-surface-add-row"
+            role="menuitem"
+            onClick={() => {
+              props.onContextMenuOpenChange(false)
+              props.onClose()
+            }}
+          >
+            <Icon name={getSemanticIcon("action.close")} size="small" />
+            <span>{lingui._({ id: W.closeTab.id, message: W.closeTab.message, values: { title: props.title } })}</span>
+          </button>
+          <button
+            type="button"
+            class="workbench-surface-add-row"
+            role="menuitem"
+            disabled={props.tabs.length < 2}
+            onClick={() => {
+              props.onContextMenuOpenChange(false)
+              props.onCloseOthers()
+            }}
+          >
+            <Icon name={getSemanticIcon("action.close")} size="small" />
+            <span>
+              <Trans id={W.closeOtherTabs.id} message={W.closeOtherTabs.message} />
+            </span>
+          </button>
+        </div>
+      </Popover>
+    </>
   )
 }
 function Launcher(props: {
@@ -256,8 +314,21 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
     )
     return panels().filter((panel) => panel.cardinality === "multi" || !openPanelIds.has(panel.id))
   })
+  const showTabActions = createMemo(() => {
+    const tabs = state().tabs()
+    return tabs.length > 1 && activeTab() !== undefined
+  })
+
+  const closeOtherTabs = () => {
+    setLocal("actionsOpen", false)
+    const tab = activeTab()
+    if (!tab) return
+    void workbench.closeOtherTabs(tab.id)
+  }
   const [local, setLocal] = createStore({
     addOpen: false,
+    actionsOpen: false,
+    menuTabId: undefined as string | undefined,
     resizing: false,
   })
   let tabRun: HTMLDivElement | undefined
@@ -271,7 +342,11 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
   }
 
   createEffect(() => {
-    if (!state().opened()) setLocal("addOpen", false)
+    if (!state().opened()) {
+      setLocal("addOpen", false)
+      setLocal("actionsOpen", false)
+      setLocal("menuTabId", undefined)
+    }
   })
 
   createEffect(() => {
@@ -407,11 +482,51 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
                         entry={workbench.panelForTab(tab)}
                         onActivate={() => state().setActive(tab.id)}
                         onClose={() => void workbench.closeTab(tab.id)}
+                        onCloseOthers={() => void workbench.closeOtherTabsOnSurface(props.surface, tab.id)}
+                        onContextMenu={() => setLocal("menuTabId", tab.id)}
+                        onContextMenuOpenChange={(open) => {
+                          if (!open) setLocal("menuTabId", undefined)
+                        }}
+                        menuOpen={local.menuTabId === tab.id}
                         onFocusIndex={focusTab}
                       />
                     )}
                   </For>
                 </SortableProvider>
+                <Show when={showTabActions()}>
+                  <div class="workbench-surface-actions-wrap">
+                    <Popover
+                      open={local.actionsOpen}
+                      onOpenChange={(open) => setLocal("actionsOpen", open)}
+                      placement="bottom-start"
+                      gutter={6}
+                      class="workbench-surface-add-menu"
+                      trigger={
+                        <IconButton
+                          icon={getSemanticIcon("action.more")}
+                          variant="ghost"
+                          aria-label={lingui._({ id: W.tabActionsMenu.id, message: W.tabActionsMenu.message })}
+                          aria-haspopup="menu"
+                          aria-expanded={local.actionsOpen}
+                        />
+                      }
+                    >
+                      <div class="workbench-surface-add-list" role="menu">
+                        <button
+                          type="button"
+                          class="workbench-surface-add-row"
+                          role="menuitem"
+                          onClick={closeOtherTabs}
+                        >
+                          <Icon name={getSemanticIcon("action.close")} size="small" />
+                          <span>
+                            <Trans id={W.closeOtherTabs.id} message={W.closeOtherTabs.message} />
+                          </span>
+                        </button>
+                      </div>
+                    </Popover>
+                  </div>
+                </Show>
                 <Show when={addablePanels().length > 0}>
                   <div class="workbench-surface-add-wrap">
                     <Popover

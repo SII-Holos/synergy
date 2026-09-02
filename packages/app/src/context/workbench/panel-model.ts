@@ -192,6 +192,16 @@ export function closeWorkbenchPanelTab(
   }
 }
 
+export function closeOtherWorkbenchPanelTabs(
+  tabs: WorkbenchPanelTab[],
+  active: string | undefined,
+  keepTabId: string,
+): { tabs: WorkbenchPanelTab[]; active: string | undefined } {
+  const keep = tabs.find((tab) => tab.id === keepTabId)
+  if (!keep) return { tabs, active }
+  return { tabs: [keep], active: keep.id }
+}
+
 export function workbenchPanelMountKey(tab?: WorkbenchPanelTab) {
   return tab?.id
 }

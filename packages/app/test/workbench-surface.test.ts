@@ -202,6 +202,18 @@ describe("workbench surface polarity", () => {
     expect(workbenchPanels).toContain("if (next.tabs.length === 0) target.close()")
   })
 
+  test("workbench tabs offer close-others from toolbar and context menu", () => {
+    expect(workbenchPanels).toContain("closeOtherTabs")
+    expect(workbenchSurface).toContain("closeOtherTabsOnSurface")
+    expect(workbenchSurface).toContain("W.closeOtherTabs.id")
+    expect(workbenchSurface).toContain("W.tabContextMenu.id")
+    expect(workbenchSurface).toContain("onContextMenu")
+    expect(workbenchSurface).toContain("workbench-surface-context-trigger")
+    expect(workbenchSurfaceCss).toContain(".workbench-surface-tab--context")
+    expect(workbenchSurfaceCss).toContain("workbench-surface-add-row:disabled")
+    expect(workbenchSurfaceCss).toContain('[data-slot="popover-trigger"]')
+  })
+
   test("raised stronger non-alpha utilities resolve to popover surfaces inside the workbench", () => {
     expect(css).toContain(".bg-surface-raised-stronger-non-alpha")
     expect(css).toContain("background-color: var(--workbench-popover-bg);")
