@@ -22,6 +22,7 @@ import { ObservabilitySpans } from "@/observability/spans"
 import type { LLMTurnMemory } from "./llm-memory"
 import { SessionRootVariant } from "./root-variant"
 import { SessionPluginHooks } from "./plugin-hooks"
+import { reasoningStreamGuardMiddleware } from "./reasoning-stream-guard"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -522,6 +523,9 @@ export namespace LLM {
                 return args.params
               },
             },
+            // This must wrap extractReasoningMiddleware so malformed empty
+            // reasoning blocks are repaired before streamText consumes them.
+            reasoningStreamGuardMiddleware(),
             extractReasoningMiddleware({ tagName: "think", startWithReasoning: false }),
           ],
         }),
