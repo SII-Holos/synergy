@@ -380,3 +380,53 @@ export function deriveChannelAccountActions(channelType: string): ChannelAccount
   if (!canDownloadDiagnostics) hiddenActions.push("downloadDiagnostics")
   return { canRefreshProjects, canDownloadDiagnostics, hiddenActions }
 }
+/** True when a session nav update belongs to a managed Channel project. */
+export function isManagedChannelNavEntry(
+  navEntry:
+    | {
+        category?: string
+        channelAccountId?: string
+      }
+    | undefined,
+): boolean {
+  return !!navEntry && navEntry.category === "channel" && !!navEntry.channelAccountId
+}
+/** True when a managed Channel project's session activity should refresh the scope index. */
+export function shouldRefreshScopeIndexForSessionUpdate(
+  scopeID: string | undefined,
+  navEntry: NavEntry | undefined,
+  managedScopeIDs: ReadonlySet<string>,
+): boolean {
+  return !!scopeID && scopeID !== "home" && isManagedChannelNavEntry(navEntry) && managedScopeIDs.has(scopeID)
+}
+
+export function sameScopeIndex(previous: readonly ScopeNavEntry[], next: readonly ScopeNavEntry[]): boolean {
+  if (previous === next) return true
+  if (previous.length !== next.length) return false
+  return previous.every((entry, index) => {
+    const candidate = next[index]
+    if (!candidate) return false
+    if (
+      entry.scopeID !== candidate.scopeID ||
+      entry.scopeType !== candidate.scopeType ||
+      entry.name !== candidate.name ||
+      entry.directory !== candidate.directory ||
+      entry.latestActivityAt !== candidate.latestActivityAt ||
+      entry.sessionCount !== candidate.sessionCount ||
+      entry.icon?.url !== candidate.icon?.url ||
+      entry.icon?.color !== candidate.icon?.color
+    ) {
+      return false
+    }
+    const a = entry.managedProject
+    const b = candidate.managedProject
+    if (a === b) return true
+    if (!a || !b) return false
+    return (
+      a.channelType === b.channelType &&
+      a.accountId === b.accountId &&
+      a.externalProjectId === b.externalProjectId &&
+      a.remoteState === b.remoteState
+    )
+  })
+}
