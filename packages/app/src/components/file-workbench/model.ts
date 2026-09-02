@@ -1,5 +1,5 @@
 export type FileViewMode = "source" | "preview"
-export type FilePreviewKind = "source" | "markdown" | "svg" | "image" | "pdf" | "unsupported"
+export type FilePreviewKind = "source" | "markdown" | "html" | "svg" | "image" | "pdf" | "unsupported"
 
 export type FilePreviewCapability = {
   kind: FilePreviewKind
@@ -81,6 +81,9 @@ export function classifyFilePreview(
   }
   if (extension === "md" || extension === "markdown") {
     return { kind: "markdown", defaultMode: "preview", dual: true }
+  }
+  if (extension === "html" || extension === "htm") {
+    return { kind: "html", defaultMode: "preview", dual: true }
   }
   if (extension === "svg") return { kind: "svg", defaultMode: "preview", dual: true }
   return { kind: "source", defaultMode: "source", dual: false }
