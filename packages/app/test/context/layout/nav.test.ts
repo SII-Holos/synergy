@@ -16,7 +16,9 @@ import {
   orderNavEntries,
   removeScopeFromIndex,
   removeScopeFromLoadedNavigation,
+  isManagedChannelNavEntry,
   sameScopeIndex,
+  shouldRefreshScopeIndexForSessionUpdate,
 } from "../../../src/context/layout/nav"
 
 function entry(input: Partial<NavEntry> & Pick<NavEntry, "id">): NavEntry {
@@ -585,5 +587,27 @@ describe("sameScopeIndex", () => {
     const a = [scopeEntry({ scopeID: "a", directory: "/repo/a" })]
     const b = [scopeEntry({ scopeID: "a", directory: "/repo/a" }), scopeEntry({ scopeID: "b", directory: "/repo/b" })]
     expect(sameScopeIndex(a, b)).toBe(false)
+  })
+})
+describe("isManagedChannelNavEntry", () => {
+  test("requires a channel category and an account id", () => {
+    expect(isManagedChannelNavEntry(undefined)).toBe(false)
+    expect(isManagedChannelNavEntry({ category: "project" })).toBe(false)
+    expect(isManagedChannelNavEntry({ category: "channel" })).toBe(false)
+    expect(isManagedChannelNavEntry({ category: "channel", channelAccountId: "agent-1" })).toBe(true)
+  })
+})
+
+describe("shouldRefreshScopeIndexForSessionUpdate", () => {
+  test("refreshes only for managed project channel activity", () => {
+    const managed = new Set(["managed-1"])
+    const navEntry = (category: NavEntry["category"], channelAccountId?: string) =>
+      ({ category, channelAccountId }) as NavEntry
+
+    expect(shouldRefreshScopeIndexForSessionUpdate("home", navEntry("channel", "agent-1"), managed)).toBe(false)
+    expect(shouldRefreshScopeIndexForSessionUpdate("generic-1", navEntry("channel", "agent-1"), managed)).toBe(false)
+    expect(shouldRefreshScopeIndexForSessionUpdate("managed-1", navEntry("channel", "agent-1"), managed)).toBe(true)
+    expect(shouldRefreshScopeIndexForSessionUpdate("managed-1", navEntry("project"), managed)).toBe(false)
+    expect(shouldRefreshScopeIndexForSessionUpdate("managed-1", undefined, managed)).toBe(false)
   })
 })

@@ -380,6 +380,26 @@ export function deriveChannelAccountActions(channelType: string): ChannelAccount
   if (!canDownloadDiagnostics) hiddenActions.push("downloadDiagnostics")
   return { canRefreshProjects, canDownloadDiagnostics, hiddenActions }
 }
+/** True when a session nav update belongs to a managed Channel project. */
+export function isManagedChannelNavEntry(
+  navEntry:
+    | {
+        category?: string
+        channelAccountId?: string
+      }
+    | undefined,
+): boolean {
+  return !!navEntry && navEntry.category === "channel" && !!navEntry.channelAccountId
+}
+/** True when a managed Channel project's session activity should refresh the scope index. */
+export function shouldRefreshScopeIndexForSessionUpdate(
+  scopeID: string | undefined,
+  navEntry: NavEntry | undefined,
+  managedScopeIDs: ReadonlySet<string>,
+): boolean {
+  return !!scopeID && scopeID !== "home" && isManagedChannelNavEntry(navEntry) && managedScopeIDs.has(scopeID)
+}
+
 export function sameScopeIndex(previous: readonly ScopeNavEntry[], next: readonly ScopeNavEntry[]): boolean {
   if (previous === next) return true
   if (previous.length !== next.length) return false

@@ -7,8 +7,8 @@ const MAX_STAGGER = 120
 
 /**
  * Create the FLIP runner owned by a FlipList instance. Returns a function that
- * snapshots row positions on every entries change and animates rows that moved
- * or entered since the previous snapshot.
+ * snapshots row positions and animates rows that moved or entered since the
+ * previous snapshot.
  */
 export function createFlipRunner(options: { selector?: string; dataKey?: string; reduceMotion: boolean }) {
   const selector = options.selector ?? "[data-session-id]"
@@ -16,10 +16,9 @@ export function createFlipRunner(options: { selector?: string; dataKey?: string;
   let previousPositions: Map<string, number> | undefined
 
   return (container: HTMLDivElement | undefined) => {
-    // The owning render effect fires once at mount, before the container ref
-    // is assigned. Skipping that pass keeps previousPositions unset, so the
-    // first real snapshot becomes the baseline instead of an empty map that
-    // would classify every row as "entering" on the next entries change.
+    // An unassigned ref must never store an empty map as the baseline. The
+    // component seeds the real baseline from onMount once the ref and its
+    // rows are in the DOM; this guard is defensive only.
     if (!container) return
 
     const rows = Array.from(container.querySelectorAll<HTMLElement>(selector))

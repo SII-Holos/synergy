@@ -15,8 +15,8 @@ Clicking any project or session under the sidebar Projects section made the enti
 Each layer stops triggering its downstream churn only when its own input changed.
 
 - `Scope.fromDirectory` (packages/synergy) persists and broadcasts `scope.updated` only when the record actually changed: first creation, or a change in `directory`, `worktree`, `vcs`, or the sandboxes list. Unchanged lookups stay read-only.
-- `FlipList` (packages/app) skips the pre-ref pass entirely: when the container ref is not yet assigned it returns without touching `previousPositions`. The first real snapshot becomes the baseline, so later refreshes animate only genuinely new rows and repositioned rows.
-- `loadScopeIndex` (packages/app) compares the freshly fetched index against the current one with a new `sameScopeIndex` helper and skips `setScopeIndex` when the entries are equivalent, preserving the signal identity that downstream memos depend on.
+- `FlipList` (packages/app) keeps the pre-ref pass from storing an empty position map — the runner returns without touching `previousPositions` while the container ref is unassigned — and seeds the real baseline from `onMount` once the ref and its rows are in the DOM. Later refreshes animate only genuinely new rows and repositioned rows, and the first genuine entries change still animates instead of being absorbed as a silent baseline.
+- `loadScopeIndex` (packages/app) compares the freshly fetched index against the current one with a new `sameScopeIndex` helper and skips `setScopeIndex` when the entries are equivalent, preserving the signal identity that downstream memos depend on. Managed Channel projects order within their account by the server's `latestActivityAt`; because the event storm no longer keeps that ordering warm, `session.updated` events for managed project sessions schedule the same debounced index refresh, which the equality guard renders inert when nothing changed.
 
 ## Alternatives considered
 

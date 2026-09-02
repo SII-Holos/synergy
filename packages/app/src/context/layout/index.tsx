@@ -34,6 +34,7 @@ import {
   removeScopeFromIndex,
   removeScopeFromLoadedNavigation,
   sameScopeIndex,
+  shouldRefreshScopeIndexForSessionUpdate,
   type ChannelNavPage,
   type ChannelNavType,
   type RootNavSectionKey,
@@ -786,6 +787,20 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           )
         }
         if (scope.id === "home") return
+        // Managed Channel projects order within their account by the server's
+        // latestActivityAt. The per-request scope event storm is gone, so keep
+        // that ordering fresh by refreshing the scope index for managed project
+        // session activity. loadScopeIndex only writes the signal when the
+        // index actually changed, so this cannot re-trigger generic project
+        // churn; the debounce below bounds the request rate.
+        if (properties?.navEntry?.category === "channel") {
+          const managedScopeIDs = new Set(
+            channelProjection().channelAccounts.flatMap((account) => account.projects.map((p) => p.scopeID)),
+          )
+          if (shouldRefreshScopeIndexForSessionUpdate(scope.id, properties.navEntry, managedScopeIDs)) {
+            scheduleScopeIndexRefresh()
+          }
+        }
         const dir = scope.directory
         if (!dir || !navEntries[dir]) return
         const pending = navRefreshTimers.get(dir)

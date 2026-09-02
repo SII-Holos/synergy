@@ -35,35 +35,38 @@ function animationKinds(row: FakeRow) {
   return row.animated.map(({ options }) => options?.easing)
 }
 
+const ENTER_EASING = "cubic-bezier(0.05, 0.7, 0.1, 1)"
+const MOVE_EASING = "cubic-bezier(0.2, 0, 0, 1)"
+
 describe("createFlipRunner baseline behavior", () => {
-  test("skips the pre-ref pass so the first real snapshot is the baseline", () => {
+  test("a container-less pass never becomes the baseline", () => {
     const runner = createFlipRunner({ reduceMotion: false })
-    const rows = [new FakeRow("a", 0), new FakeRow("b", 40)]
+    const a = new FakeRow("a", 0)
+    const b = new FakeRow("b", 40)
 
     // The owning render effect fires before the container ref is assigned.
     runner(undefined)
 
     // First real snapshot establishes the baseline: nothing animates yet.
-    runner(makeContainer(rows))
-    expect(rows.flatMap(animationKinds)).toEqual([])
+    runner(makeContainer([a, b]))
+    expect(a.animated).toEqual([])
+    expect(b.animated).toEqual([])
 
     // An identical refresh stays inert — rows must not replay the entrance
     // animation like they did when the pre-ref pass polluted the baseline.
-    runner(makeContainer(rows))
-    expect(rows.flatMap(animationKinds)).toEqual([])
+    runner(makeContainer([a, b]))
+    expect(a.animated).toEqual([])
+    expect(b.animated).toEqual([])
   })
 
   test("only rows absent from the baseline play the entrance animation", () => {
     const runner = createFlipRunner({ reduceMotion: false })
     const a = new FakeRow("a", 0)
     const b = new FakeRow("b", 40)
-    runner(undefined)
     runner(makeContainer([a]))
-
-    // The next change adds a genuinely new row.
     runner(makeContainer([a, b]))
 
-    expect(animationKinds(b)).toContain("cubic-bezier(0.05, 0.7, 0.1, 1)")
+    expect(animationKinds(b)).toContain(ENTER_EASING)
     expect(a.animated).toEqual([])
   })
 
@@ -71,20 +74,18 @@ describe("createFlipRunner baseline behavior", () => {
     const runner = createFlipRunner({ reduceMotion: false })
     const a = new FakeRow("a", 0)
     const b = new FakeRow("b", 40)
-    runner(undefined)
     runner(makeContainer([a, b]))
 
     b.top = 100
     runner(makeContainer([a, b]))
 
-    expect(animationKinds(b)).toContain("cubic-bezier(0.2, 0, 0, 1)")
+    expect(animationKinds(b)).toContain(MOVE_EASING)
     expect(a.animated).toEqual([])
   })
 
   test("reduced motion suppresses all animations but keeps tracking positions", () => {
     const runner = createFlipRunner({ reduceMotion: true })
     const a = new FakeRow("a", 0)
-    runner(undefined)
     runner(makeContainer([a]))
     runner(makeContainer([a]))
     expect(a.animated).toEqual([])
