@@ -145,12 +145,16 @@ export namespace SynergyLinkLocalService {
 async function readPidStartedAt(pid: number): Promise<number | undefined> {
   if (process.platform === "win32") return undefined
   try {
-    const { stdout } = await execFileAsync("ps", ["-p", String(pid), "-o", "lstart="], {
+    // Derive the start instant from the elapsed runtime instead of parsing
+    // `lstart`: the latter is a local-time string whose timezone handling
+    // differs across JS engines, while `etimes` is a plain seconds count and
+    // stays in the caller's Date.now() reference frame.
+    const { stdout } = await execFileAsync("ps", ["-p", String(pid), "-o", "etimes="], {
       timeout: 1_000,
       maxBuffer: 4_096,
     })
-    const startedAt = Date.parse(stdout.trim())
-    return Number.isNaN(startedAt) ? undefined : startedAt
+    const etimes = Number.parseInt(stdout.trim(), 10)
+    return Number.isNaN(etimes) ? undefined : Date.now() - etimes * 1_000
   } catch {
     return undefined
   }
