@@ -30,6 +30,11 @@ const packageRoot = path.resolve(import.meta.dir, "..")
  *   local servers or assert network timing and flake under a full shared
  *   process on CI (see postmortem 0001 coverage failures); each passes in
  *   its own process.
+ * - email/imap (mailparser parsing, config error propagation, IMAP truncation)
+ *   and channel host / managed-project-ownership assert module-level email and
+ *   channel state that sibling files can pollute under a full shared process;
+ *   each passes in its own process (verified 2026-09-03 after repeated
+ *   identical CI coverage failures on unrelated branches).
  */
 export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
   "test/vector/embedding-standalone.test.ts",
@@ -47,6 +52,9 @@ export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
   "test/session/retry.test.ts",
   "test/provider/catalog-stability.test.ts",
   "test/plugin/mcp-declarative-oauth.test.ts",
+  "test/email/imap.test.ts",
+  "test/channel/host.test.ts",
+  "test/channel/managed-project-ownership.test.ts",
 ])
 
 export interface CoverageBatches {
