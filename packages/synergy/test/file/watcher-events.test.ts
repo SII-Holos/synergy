@@ -26,10 +26,10 @@ describe("FileWatcherEvents ownership", () => {
     expect(FileWatcherEvents.projectRuntimeSubscriptionIgnores()).toContain("**/worktrees/**")
   })
 
-  test("recognizes terminal Linux inotify failures only", () => {
+  test("recognizes terminal Linux inotify capacity failures only", () => {
     expect(
       FileWatcherEvents.isLinuxInotifyTerminalError(
-        new Error("inotify_add_watch failed: No space left on device"),
+        new Error("inotify_add_watch on '/x' failed: No space left on device"),
         "linux",
       ),
     ).toBe(true)
@@ -39,10 +39,18 @@ describe("FileWatcherEvents ownership", () => {
         "linux",
       ),
     ).toBe(true)
+    // Recoverable failures and non-Linux platforms stay retryable.
     expect(FileWatcherEvents.isLinuxInotifyTerminalError(new Error("Operation timed out after 10000ms"), "linux")).toBe(
-      true,
+      false,
     )
+    expect(
+      FileWatcherEvents.isLinuxInotifyTerminalError(
+        new Error("inotify_add_watch on '/x' failed: Permission denied"),
+        "linux",
+      ),
+    ).toBe(false)
     expect(FileWatcherEvents.isLinuxInotifyTerminalError(new Error("No space left on device"), "darwin")).toBe(false)
+    expect(FileWatcherEvents.isLinuxInotifyTerminalError(new Error("No space left on device"), "win32")).toBe(false)
   })
 
   test("publishes only supported project runtime inputs from .synergy", async () => {
@@ -73,6 +81,32 @@ describe("FileWatcherEvents ownership", () => {
         )
       },
     })
+  })
+})
+
+describe("FileWatcherEvents native subscription policy", () => {
+  test("keeps top-level ignore paths and adds recursive globs", () => {
+    const ignores = FileWatcherEvents.workspaceSubscriptionIgnores([])
+    // Plain folder names become native top-level ignorePaths (FSEvents kernel
+    // exclusions, Windows prefix pruning); recursive globs prune nested
+    // occurrences during the Linux inotify tree walk. Dropping either half
+    // regresses one platform family.
+    expect(ignores).toContain(".synergy")
+    expect(ignores).toContain("**/.synergy/**")
+    expect(ignores).toContain("node_modules")
+    expect(ignores).toContain("**/node_modules/**")
+
+    const runtime = FileWatcherEvents.projectRuntimeSubscriptionIgnores()
+    expect(runtime).toContain("worktrees")
+    expect(runtime).toContain("**/worktrees/**")
+    expect(runtime).toContain("cache")
+    expect(runtime).toContain("**/cache/**")
+  })
+
+  test("Linux waits for the native attempt to settle; other platforms keep the 10s bound", () => {
+    expect(FileWatcherEvents.nativeSubscribeTimeoutMs("linux")).toBeUndefined()
+    expect(FileWatcherEvents.nativeSubscribeTimeoutMs("darwin")).toBe(10_000)
+    expect(FileWatcherEvents.nativeSubscribeTimeoutMs("win32")).toBe(10_000)
   })
 })
 
@@ -376,7 +410,7 @@ describe("FileWatcherEvents subscription recovery", () => {
       retryMs: 0,
       connect: async () => {
         attempts += 1
-        throw new Error("Operation timed out after 10000ms")
+        throw new Error("inotify_add_watch on '/x' failed: No space left on device")
       },
       disconnect: async () => {},
       onError: (error) => {

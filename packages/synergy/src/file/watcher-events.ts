@@ -9,6 +9,14 @@ export namespace FileWatcherEvents {
   export type RawEvent = { type: "create" | "update" | "delete"; path: string }
   export type PathPlatform = "win32" | "posix"
 
+  // Native subscribe timeout by platform. Linux inotify tree scans cannot be
+  // cancelled: abandoning one at a generic timeout lets a retry overlap the
+  // still-running native scan, and a scan that later fails mid-way leaks its
+  // partial watches into the shared backend. Linux therefore waits for the
+  // attempt to settle; the other platforms keep the bounded timeout with
+  // unsubscribe-on-timeout cleanup.
+  const SUBSCRIBE_TIMEOUT_MS = 10_000
+
   const PROJECT_RUNTIME_IGNORES = ["node_modules", "worktrees", "cache", "data", "log", "logs", "state", "tmp", "temp"]
 
   function recursiveDirectoryIgnores(directories: string[]) {
@@ -23,14 +31,20 @@ export namespace FileWatcherEvents {
     return recursiveDirectoryIgnores(PROJECT_RUNTIME_IGNORES)
   }
 
+  /**
+   * Terminal only when Linux inotify watch capacity is exhausted. A full
+   * kernel watch table cannot clear while the process runs, so retrying only
+   * repeats the native allocation that failed. Recoverable inotify failures
+   * (permission changes, subtrees disappearing mid-scan) must stay retryable,
+   * and the 10s subscribe timeout no longer occurs on Linux (the native
+   * attempt is awaited to settle), so neither is classified as terminal.
+   */
   export function isLinuxInotifyTerminalError(error: unknown, platform = process.platform) {
     if (platform !== "linux") return false
     const code =
       typeof error === "object" && error !== null && "code" in error ? String((error as { code?: unknown }).code) : ""
     const message = error instanceof Error ? error.message : String(error)
-    return (
-      code === "ENOSPC" || /inotify_add_watch|no space left on device|operation timed out after \d+ms/i.test(message)
-    )
+    return code === "ENOSPC" || /no space left on device/i.test(message)
   }
 
   export function isProjectRuntimeInput(file: string) {
@@ -196,6 +210,11 @@ export namespace FileWatcherEvents {
         resolveIdle()
       },
     }
+  }
+
+  /** Linux awaits the native attempt to settle; other platforms keep the 10s bound. */
+  export function nativeSubscribeTimeoutMs(platform: NodeJS.Platform = process.platform) {
+    return platform === "linux" ? undefined : SUBSCRIBE_TIMEOUT_MS
   }
 
   export function createSubscriptionRecovery<T>(input: {

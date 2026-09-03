@@ -24,8 +24,6 @@ import { WorkspaceFileStatus } from "../workspace-file/status"
 import { FileWatcherEvents } from "./watcher-events"
 import { FileWatcherBinding } from "./watcher-binding"
 
-const SUBSCRIBE_TIMEOUT_MS = 10_000
-
 export namespace FileWatcher {
   const log = Log.create({ service: "file.watcher" })
   type WorkspaceFileEvent = FileWatcherEvents.WorkspaceEvent
@@ -142,7 +140,16 @@ export namespace FileWatcher {
           }
         }
         const pending = watcher().subscribe(input.directory, callback, input.options)
-        return withTimeout(pending, SUBSCRIBE_TIMEOUT_MS).catch((error) => {
+        const timeoutMs = FileWatcherEvents.nativeSubscribeTimeoutMs()
+        if (timeoutMs === undefined) {
+          // Linux inotify scans cannot be cancelled: abandoning the attempt at
+          // a generic timeout lets a retry overlap the still-running native
+          // scan, and a scan that later fails mid-way leaks its partial
+          // watches into the shared backend. Wait for the attempt to settle so
+          // recovery stays serial and bounded.
+          return pending
+        }
+        return withTimeout(pending, timeoutMs).catch((error) => {
           pending
             .then((subscription) => subscription.unsubscribe())
             .catch((unsubscribeError) => {
@@ -160,11 +167,16 @@ export namespace FileWatcher {
       onError: async (error) => {
         const terminalError = FileWatcherEvents.isLinuxInotifyTerminalError(error)
         log.error(
-          terminalError ? "file watcher disabled after Linux subscription failure" : "file watcher subscription failed",
+          terminalError
+            ? "file watcher disabled after Linux inotify watch capacity exhaustion"
+            : "file watcher subscription failed",
           {
             directory: input.directory,
             label: input.label,
             error,
+            hint: terminalError
+              ? "raise fs.inotify.max_user_watches or open a smaller workspace; file browsing, edits, and sessions remain usable"
+              : undefined,
           },
         )
         if (terminalError) return
