@@ -664,7 +664,12 @@ export namespace ToolResolver {
     // Profile already permits the operation — no need for Smart allow.
     if (decision.action === "allow") {
       await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_allowed"))
-      if (toolName === "bash") markShellSandboxBypass(ctx)
+      // Autonomous runs unattended: profile-auto-allowed bash stays inside the
+      // OS sandbox (workspace_write) instead of bypassing it, so writes that
+      // static classification cannot see (variable redirect targets) are still
+      // contained at execution time. Guarded/full_access keep the historical
+      // bypass for user-approved interactive work.
+      if (toolName === "bash" && profile.profileId !== "autonomous") markShellSandboxBypass(ctx)
       return
     }
 

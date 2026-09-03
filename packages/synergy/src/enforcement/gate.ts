@@ -791,9 +791,13 @@ export namespace EnforcementGate {
     }
     const auditRecords: AuditRecord[] = []
     const pendingCapabilities = new Set<string>()
-    // Accumulated sandbox-approved paths across all evaluate() calls
+    // Accumulated sandbox-approved paths across all evaluate() calls.
+    // The write seed includes the profile's own writable roots (workspace,
+    // trusted roots, and the autonomous controlled temporary root), so the
+    // sandbox permission profile permits the same write set the profile
+    // boundary declares.
     const approvedReadPaths = new Set<string>(trustedRootList)
-    const approvedWritePaths = new Set<string>(trustedRootList)
+    const approvedWritePaths = new Set<string>([...trustedRootList, ...(resolved.filesystem.writeRoots ?? [])])
     const pathOptions = { activeWorkspace, originalCheckout, readRoots, trustedRoots }
     let approvedNetwork = false
     const approvalCache = new ApprovalCache()

@@ -35,6 +35,12 @@ const packageRoot = path.resolve(import.meta.dir, "..")
  *   channel state that sibling files can pollute under a full shared process;
  *   each passes in its own process (verified 2026-09-03 after repeated
  *   identical CI coverage failures on unrelated branches).
+ * - library/database, library/experience-recall, channel/clarus-* and
+ *   daemon/* suites assert module-level SQLite/vec, Clarus project, and
+ *   managed-service env state that sibling files pollute under a full shared
+ *   process; each passes in its own process (verified 2026-09-04 at pristine
+ *   HEAD: the same shard-0 signature fails with or without the enforcement
+ *   sandbox change set, and isolated reruns are green).
  */
 export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
   "test/vector/embedding-standalone.test.ts",
@@ -55,6 +61,12 @@ export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
   "test/email/imap.test.ts",
   "test/channel/host.test.ts",
   "test/channel/managed-project-ownership.test.ts",
+  "test/channel/clarus-assignment.test.ts",
+  "test/channel/clarus-invite-accept.test.ts",
+  "test/daemon/observe.test.ts",
+  "test/daemon/spec.test.ts",
+  "test/library/database.test.ts",
+  "test/library/experience-recall.test.ts",
 ])
 
 export interface CoverageBatches {

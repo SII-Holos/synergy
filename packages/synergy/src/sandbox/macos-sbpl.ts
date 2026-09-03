@@ -12,9 +12,20 @@ export namespace MacOSSbpl {
   // Base policy
   // ------------------------------------------------------------------
 
-  /** (deny default) base policy — the strictest starting point */
+  /**
+   * (deny default) base policy — the strictest starting point.
+   *
+   * `(import "system.sb")` loads Apple's system Seatbelt profile. Probes on
+   * macOS 26.5 showed a hand-rolled deny-default profile without it aborts
+   * every child (SIGABRT) even when platform read roots are enumerated —
+   * dyld/process viability needs the system profile's allowances (shared
+   * cache, cryptex mounts, dyld shared region). With the import, scoped
+   * read/write roots keep working and home reads / host-tmp writes stay
+   * denied; without it the default macOS backend can never execute a command.
+   */
   export const DENY_DEFAULT_BASE = `(version 1)
-(deny default)`
+(deny default)
+(import "system.sb")`
 
   // ------------------------------------------------------------------
   // Platform defaults — essential system access for any process

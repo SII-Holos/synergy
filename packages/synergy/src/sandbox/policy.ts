@@ -51,6 +51,23 @@ export function traversalLiterals(roots: string[]): string[] {
   return uniqueRoots(roots.flatMap((root) => ancestorLiterals(root)))
 }
 
+/**
+ * Controlled temporary write root for sandboxed autonomous execution.
+ *
+ * Reuses the existing controlled-tmp precedent (Linux helper binds
+ * `<workspace>/.synergy/tmp` onto /tmp; the legacy macOS Seatbelt profile
+ * lists it as a writable root). When a session key is supplied the root is
+ * further isolated per session/process (glob-expand naming precedent
+ * `synergy-glob-{pid}-{id}`), so concurrent sandboxed shells cannot peek at
+ * each other's temporary files through TMPDIR.
+ */
+export function controlledTempRoot(workspace: string, sessionKey?: string): string {
+  const base = joinPathLike(workspace, ".synergy", "tmp")
+  if (!sessionKey) return base
+  const safeKey = sessionKey.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24)
+  return joinPathLike(base, `synergy-${process.pid}-${safeKey}`)
+}
+
 // ------------------------------------------------------------------
 // Credential-bearing paths that must ALWAYS be protected inside any sandbox.
 // Each path is read-only mounted (or denied writes on macOS) unconditionally.

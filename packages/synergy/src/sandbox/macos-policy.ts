@@ -31,14 +31,15 @@ function writeParamName(index: number): string {
 // ------------------------------------------------------------------
 
 function paramReadRule(paramName: string): string {
+  // A bare (param) filter is not a legal Seatbelt path filter: sandbox-exec
+  // rejects the resolved value with "illegal argument". Parameters may only
+  // appear nested inside a path filter such as (subpath (param "...")).
   return `(allow file-read*
-  (param "${paramName}")
   (subpath (param "${paramName}")))`
 }
 
 function paramWriteRule(paramName: string): string {
   return `(allow file-read* file-write*
-  (param "${paramName}")
   (subpath (param "${paramName}")))`
 }
 
