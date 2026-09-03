@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-On Linux, opening a large parent workspace can exhaust the kernel inotify watch table (`fs.inotify.max_user_watches`, commonly 65,536). The workspace watcher then entered an unbounded recovery loop: `subscribeWithRecovery` timed out the native subscribe after 10s, retried 1s later, and `createSubscriptionRecovery` classified every failure as transient. In the reported incident (issue #1305, v3.0.22), 50 minutes of retries produced 613 subscription failures, 503 failed cleanups, and 974 "No space left on device" messages while the process went from under 1 GiB to 11.6 GiB private anonymous RSS and the HTTP server stopped responding.
+On Linux, opening a large parent workspace can exhaust the kernel inotify watch table (`fs.inotify.max_user_watches`, commonly 65,536). The workspace watcher's recovery loop turned that capacity error into a process-wide degradation: the native subscribe was raced at a generic 10s timeout, every failure was classified as transient and retried on a short interval, and each retried scan could leak partial native watches and a full directory tree into the process-shared backend. The incident that surfaced this behavior (issue #1305) is recorded in [postmortem 0005](../../../postmortem/0005-linux-inotify-watcher-storm.md); this record covers the design decision.
 
 Three defects combined:
 
@@ -12,17 +12,19 @@ Three defects combined:
 2. **Linux subscribe attempts cannot be cancelled, yet recovery abandoned them.** The native inotify subscribe builds the directory tree and registers watches on an async-work thread; there is no cancellation. The wrapper's 10s `withTimeout` only abandoned the JS promise. Critically, when a scan fails mid-way (watch capacity exhausted), `Backend::watch` throws **before** inserting the watcher into `mSubscriptions`, so the partial watches and the full `DirTree` of that failed attempt are never released — each retry leaks more native memory and more inotify watches into the process-shared backend.
 3. **Capacity errors were retried forever.** `createSubscriptionRecovery` had no terminal-error concept, so an ENOSPC that cannot clear while the process runs was retried every ~11s, each retry re-running the giant scan that exhausted the table.
 
-Every failure also invoked workspace resync, adding a secondary `/workspace/files/children` reload loop (415 requests in the window).
+Every failure also invoked a workspace resync, adding a secondary `/workspace/files/children` reload loop on top of the retry storm.
 
 ## Decision
 
-Four changes, all scoped to the file watcher:
+Five changes, all scoped to the file watcher:
 
 1. **Recursive folder ignores, layered on top of the existing plain names.** `FileIgnore.PATTERNS` and the `.synergy`/project-runtime subscription lists keep the plain top-level folder names **and** add `**/<name>/**` recursive globs. The plain names remain native top-level prefix paths, which on macOS become kernel-level `FSEventStreamSetExclusionPaths` exclusions and on Windows/event filters prune the top-level subtree — behavior that must not regress. The recursive globs prune nested occurrences at any depth during the Linux inotify tree walk and in the event filters of every backend. `**/<name>/**` full-matches both the bare directory node and its contents, so a nested generated tree is excluded as a whole.
 2. **Inotify capacity errors are terminal, and only on Linux.** `FileWatcherEvents.isLinuxInotifyTerminalError()` matches an `ENOSPC` code or a "No space left on device" message, gated to Linux. `createSubscriptionRecovery` gains a `shouldRetry` predicate (already present in this fix series): when it returns false the recovery stops after one `onError` report, and `watcher.ts` logs remediation guidance (raise `fs.inotify.max_user_watches` or open a smaller workspace) instead of resyncing. Recoverable inotify failures — permission errors, subtrees disappearing mid-scan — remain retryable with resync. File APIs, browsing, and sessions remain usable; only live file events for that subscription are lost.
 3. **Linux waits for a native attempt to settle.** `FileWatcherEvents.nativeSubscribeTimeoutMs()` returns `undefined` on Linux, so `subscribeWithRecovery` awaits the raw native subscribe promise without the 10s race; other platforms keep the bounded 10s timeout and the unsubscribe-on-timeout cleanup. Combined with the recovery state machine (retry is scheduled only after the previous connect/`onError` settles), scans cannot overlap, so a failed attempt's partial watches cannot accumulate behind a fresh scan.
 
 4. **A capacity failure trips a process-wide breaker.** The native watcher backend and its kernel watch budget are process-wide: when one subscription exhausts the table, any further native scan can fail before registration and leak its partial tree into the shared backend. The first ENOSPC therefore flips a module-level breaker (`FileWatcherEvents.isLinuxInotifyCapacityTripped()`); every later `subscribeWithRecovery` call skips straight to an inactive stub until `FileWatcher.reload()` resets the breaker (or the process restarts). This stops the same scope's remaining subscriptions — and any other scope's subscriptions — from re-running the doomed scan while the table is still full.
+
+5. **Linux native scans are serialized, and reload re-creates the live subscriptions.** `subscribeWithRecovery` routes every native Linux subscribe through a process-wide serial queue, so concurrent subscriptions (a project's `.synergy` + workspace + VCS, or several scopes starting at once) cannot each exhaust the shared kernel table and retain a partial tree before the breaker trips: the first failure trips the breaker, and queued scans fail fast at the connect guard. `FileWatcher.reload()` resets the breaker and then re-creates the previously live per-scope watcher states, so the documented remediation (raise the limit, then reload watcher state) genuinely restores live file events instead of leaving the watcher disabled until the next scope startup.
 
 ## Alternatives considered
 

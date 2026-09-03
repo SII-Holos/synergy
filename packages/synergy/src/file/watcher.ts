@@ -111,6 +111,20 @@ export namespace FileWatcher {
     return createWrapper(binding) as typeof import("@parcel/watcher")
   })
 
+  // Serializes native Linux subscribe scans process-wide. The kernel watch
+  // budget is shared, so concurrent scans (a project's .synergy + workspace +
+  // VCS subscriptions, or several scopes starting at once) can each hit
+  // ENOSPC and retain a partial native tree before the first failure trips
+  // the breaker. Queuing the scans keeps at most one in flight; the first
+  // failure trips the breaker, and the queued scans then fail fast at the
+  // connect guard instead of scanning again.
+  const nativeSubscribeGate = process.platform === "linux" ? FileWatcherEvents.createSerialQueue() : undefined
+
+  // Scope IDs whose watcher state is live. FileWatcher.reload() tears down and
+  // re-creates exactly these so the advertised remediation actually restores
+  // live file events.
+  const liveWatcherScopeIDs = new Set<string>()
+
   type SubscriptionRecovery = {
     start(): Promise<void>
     fail(error: unknown): Promise<void>
@@ -145,10 +159,7 @@ export namespace FileWatcher {
 
     const recovery = FileWatcherEvents.createSubscriptionRecovery({
       connect: async (context) => {
-        // Guard at the last possible point before a native scan: a trip can
-        // land while this recovery is idle-but-not-yet-connected (e.g. between
-        // state init and the first retry), and refusing here beats letting a
-        // doomed scan leak its partial tree into the shared backend again.
+        // Fast path: refuse before queueing once a trip has already happened.
         if (process.platform === "linux" && FileWatcherEvents.isLinuxInotifyCapacityTripped()) {
           throw FileWatcherEvents.linuxInotifyCapacityError()
         }
@@ -164,28 +175,43 @@ export namespace FileWatcher {
             void context.fail(error)
           }
         }
-        const pending = watcher().subscribe(input.directory, callback, input.options)
-        const timeoutMs = FileWatcherEvents.nativeSubscribeTimeoutMs()
-        if (timeoutMs === undefined) {
-          // Linux inotify scans cannot be cancelled: abandoning the attempt at
-          // a generic timeout lets a retry overlap the still-running native
-          // scan, and a scan that later fails mid-way leaks its partial
-          // watches into the shared backend. Wait for the attempt to settle so
-          // recovery stays serial and bounded.
-          return pending
-        }
-        return withTimeout(pending, timeoutMs).catch((error) => {
-          pending
-            .then((subscription) => subscription.unsubscribe())
-            .catch((unsubscribeError) => {
-              log.error("failed to unsubscribe timed out watcher subscription", {
-                directory: input.directory,
-                label: input.label,
-                error: unsubscribeError,
+        const subscribe = async () => {
+          // Guard again under the gate: a trip can land while this attempt was
+          // queued behind an earlier scan, and refusing here beats letting a
+          // doomed scan leak its partial tree into the shared backend again.
+          if (process.platform === "linux" && FileWatcherEvents.isLinuxInotifyCapacityTripped()) {
+            throw FileWatcherEvents.linuxInotifyCapacityError()
+          }
+          const pending = watcher().subscribe(input.directory, callback, input.options)
+          const timeoutMs = FileWatcherEvents.nativeSubscribeTimeoutMs()
+          if (timeoutMs === undefined) {
+            // Linux inotify scans cannot be cancelled: abandoning the attempt
+            // at a generic timeout lets a retry overlap the still-running
+            // native scan, and a scan that later fails mid-way leaks its
+            // partial watches into the shared backend. Wait for the attempt to
+            // settle so recovery stays serial and bounded.
+            return pending
+          }
+          return withTimeout(pending, timeoutMs).catch((error) => {
+            pending
+              .then((subscription) => subscription.unsubscribe())
+              .catch((unsubscribeError) => {
+                log.error("failed to unsubscribe timed out watcher subscription", {
+                  directory: input.directory,
+                  label: input.label,
+                  error: unsubscribeError,
+                })
               })
-            })
-          throw error
-        })
+            throw error
+          })
+        }
+        // Linux serializes the native scans process-wide so concurrent
+        // subscriptions (a project's .synergy + workspace + VCS, or several
+        // scopes starting at once) cannot each exhaust the shared kernel watch
+        // table and retain a partial tree before the breaker trips. The first
+        // scan that fails trips the breaker; queued scans then fail fast at
+        // the guard instead of scanning.
+        return nativeSubscribeGate ? nativeSubscribeGate(subscribe) : subscribe()
       },
       shouldRetry: (error) => !FileWatcherEvents.isLinuxInotifyTerminalError(error),
       disconnect: (subscription) => subscription.unsubscribe(),
@@ -232,6 +258,7 @@ export namespace FileWatcher {
   const state = ScopedState.create(
     async () => {
       log.info("init", { scopeType: ScopeContext.current.scope.type })
+      liveWatcherScopeIDs.add(ScopeContext.current.scope.id)
       const cfg = await Config.current().catch(() => null)
       const backend = (() => {
         if (process.platform === "win32") return "windows"
@@ -240,7 +267,7 @@ export namespace FileWatcher {
       })()
       if (!backend) {
         log.error("watcher backend not supported", { platform: process.platform })
-        return {}
+        return { subs: [], scopeID: ScopeContext.current.scope.id }
       }
       log.info("watcher backend", { platform: process.platform, backend })
 
@@ -283,7 +310,7 @@ export namespace FileWatcher {
           },
         })
         subs.push(globalRecovery)
-        return { subs }
+        return { subs, scopeID: ScopeContext.current.scope.id }
       }
 
       // Project scopes watch workspace files. Git scopes additionally watch HEAD
@@ -388,10 +415,10 @@ export namespace FileWatcher {
         subs.push(vcsRecovery)
       }
 
-      return { subs, drain }
+      return { subs, drain, scopeID: ScopeContext.current.scope.id }
     },
     async (state) => {
-      if (!state.subs) return
+      liveWatcherScopeIDs.delete(state.scopeID)
       await Promise.all(state.subs.map((sub) => sub.dispose()))
       if ("drain" in state) await state.drain?.dispose()
     },
@@ -404,8 +431,20 @@ export namespace FileWatcher {
     // state (e.g. after raising fs.inotify.max_user_watches) re-arms Linux
     // subscriptions.
     FileWatcherEvents.resetLinuxInotifyCapacity()
+    const scopeIDs = [...liveWatcherScopeIDs]
     await state.resetAll()
-    log.info("file watcher state reloaded")
+    // resetAll() disposed every watcher state; re-create the live ones so the
+    // advertised remediation actually restores live file events instead of
+    // leaving the watcher disabled until the next scope startup.
+    const { Scope } = await import("../scope")
+    for (const scopeID of scopeIDs) {
+      const scope = await Scope.fromID(scopeID).catch(() => undefined)
+      if (!scope) continue
+      await ScopeContext.provide({ scope, fn: () => state() }).catch((error) => {
+        log.error("failed to re-create watcher state after reload", { scopeID, error })
+      })
+    }
+    log.info("file watcher state reloaded", { recreated: scopeIDs.length })
   }
 
   export function init() {

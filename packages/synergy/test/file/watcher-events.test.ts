@@ -119,6 +119,40 @@ describe("FileWatcherEvents native subscription policy", () => {
     FileWatcherEvents.resetLinuxInotifyCapacity()
     expect(FileWatcherEvents.isLinuxInotifyCapacityTripped()).toBe(false)
   })
+
+  test("serializes queued tasks and keeps the queue alive after a failure", async () => {
+    const enqueue = FileWatcherEvents.createSerialQueue()
+    const order: string[] = []
+    let releaseFirst: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+
+    const first = enqueue(async () => {
+      order.push("first:start")
+      await gate
+      order.push("first:done")
+    })
+    const second = enqueue(async () => {
+      order.push("second")
+    })
+    await Bun.sleep(0)
+    expect(order).toEqual(["first:start"])
+
+    releaseFirst?.()
+    await Promise.all([first, second])
+    expect(order).toEqual(["first:start", "first:done", "second"])
+
+    const failing = enqueue(async () => {
+      throw new Error("boom")
+    })
+    const afterFailure = enqueue(async () => {
+      order.push("after-failure")
+    })
+    await expect(failing).rejects.toThrow("boom")
+    await afterFailure
+    expect(order).toContain("after-failure")
+  })
 })
 
 describe("FileWatcherEvents path normalization", () => {

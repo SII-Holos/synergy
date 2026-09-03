@@ -252,6 +252,19 @@ export namespace FileWatcherEvents {
     return platform === "linux" ? undefined : SUBSCRIBE_TIMEOUT_MS
   }
 
+  /** Runs one task at a time, in submission order, regardless of caller concurrency. */
+  export function createSerialQueue() {
+    let tail: Promise<void> = Promise.resolve()
+    return function enqueue<T>(task: () => Promise<T>): Promise<T> {
+      const run = tail.then(task)
+      tail = run.then(
+        () => undefined,
+        () => undefined,
+      )
+      return run
+    }
+  }
+
   export function createSubscriptionRecovery<T>(input: {
     connect: (context: {
       generation: number
