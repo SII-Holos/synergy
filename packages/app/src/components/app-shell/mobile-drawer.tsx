@@ -19,14 +19,18 @@ import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { archiveSessionConfirm } from "@/components/dialog/confirm-copy"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
-import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
 import { appShell, sidebar } from "@/locales/messages"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { SettingsDialog } from "@/components/settings"
 import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
-import { MobileDrawerAddProjectButton, MobileDrawerRecent, MobileDrawerSettingsButton } from "./mobile-drawer-root"
-import { resolveSessionVisualState } from "@/components/sidebar/session-visual-state"
+import {
+  MobileDrawerAddProjectButton,
+  MobileDrawerRecent,
+  MobileDrawerSettingsButton,
+  type MobileDrawerRecentVisual,
+} from "./mobile-drawer-root"
+import { resolveSessionVisualState, scopeKeyForNavEntry } from "@/components/sidebar/session-visual-state"
 import "./mobile-drawer.css"
 
 export function MobileDrawer() {
@@ -203,10 +207,12 @@ function ScopeListView(props: {
     return _(appShell.browser)
   }
 
-  const translateRecentCopy = (descriptor: MessageDescriptor) => _(descriptor)
-  const recentUnreadLabel = (entry: NavEntry) => {
-    if (!entry.completionNotice.unread) return undefined
-    return translateRecentCopy(resolveSessionVisualState(undefined, entry).label)
+  const recentVisualFor = (entry: NavEntry): MobileDrawerRecentVisual => {
+    const scopeKey = scopeKeyForNavEntry(entry, globalSync.data.scope)
+    const store = scopeKey ? globalSync.peekScopeState(scopeKey)?.[0] : undefined
+    const visual = resolveSessionVisualState(store, entry)
+    const meaningful = visual.completionUnread || (visual.tone !== "default" && visual.tone !== "muted")
+    return { visual, label: meaningful ? _(visual.label) : "" }
   }
 
   const resolveEntryRouteDirectory = (entry: NavEntry) => {
@@ -280,7 +286,7 @@ function ScopeListView(props: {
         draftLabel={_(sidebar.draftBadge)}
         entries={layout.nav.recentEntries()}
         currentSessionID={params.id}
-        unreadLabel={recentUnreadLabel}
+        visualFor={recentVisualFor}
         hasMore={layout.nav.hasMoreRecent()}
         onSelect={selectRecentSession}
         onLoadMore={() => void layout.nav.loadMoreNav("__recent__")}
