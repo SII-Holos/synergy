@@ -19,8 +19,24 @@ async function waitUntil(check: () => boolean, timeoutMs = 2000) {
 describe("FileWatcherEvents ownership", () => {
   test("keeps .synergy browsable while excluding it from the root watcher", () => {
     expect(FileIgnore.match(".synergy/worktrees/example/src/index.ts")).toBe(false)
-    expect(FileWatcherEvents.workspaceSubscriptionIgnores([])).toContain(".synergy")
-    expect(FileWatcherEvents.projectRuntimeSubscriptionIgnores()).toContain("worktrees")
+    expect(FileIgnore.match("node_modules/index.js")).toBe(true)
+    expect(FileIgnore.match("nested/node_modules/index.js")).toBe(true)
+    expect(FileWatcherEvents.workspaceSubscriptionIgnores([])).toContain("**/.synergy")
+    expect(FileWatcherEvents.workspaceSubscriptionIgnores([])).toContain("**/node_modules")
+    expect(FileWatcherEvents.workspaceSubscriptionIgnores([])).not.toContain(".synergy")
+    expect(FileWatcherEvents.workspaceSubscriptionIgnores(["custom"])).toContain("custom")
+    expect(FileWatcherEvents.projectRuntimeSubscriptionIgnores()).toContain("**/worktrees")
+  })
+
+  test("native watcher ignores prune nested and dot directories", () => {
+    // @parcel/watcher matches non-glob ignore entries only at the top level
+    // of the subscribed directory; recursive globs prune nested occurrences
+    // (generated worktrees, dependency trees) at any depth.
+    const ignores = FileWatcherEvents.workspaceSubscriptionIgnores([])
+    expect(ignores).toContain("**/.synergy")
+    expect(ignores).toContain("**/dist")
+    expect(ignores).not.toContain("dist")
+    expect(FileWatcherEvents.projectRuntimeSubscriptionIgnores()).toContain("**/node_modules")
   })
 
   test("publishes only supported project runtime inputs from .synergy", async () => {
@@ -572,5 +588,72 @@ describe("FileWatcherEvents subscription recovery", () => {
     await recovery.dispose()
     expect(recovery.active()).toBe(false)
     await Promise.race([starting, Bun.sleep(20)])
+  })
+})
+
+describe("FileWatcherEvents error classification", () => {
+  test("classifies inotify capacity errors", () => {
+    expect(
+      FileWatcherEvents.isInotifyCapacityError(new Error("inotify_add_watch on '/x' failed: No space left on device")),
+    ).toBe(true)
+    expect(FileWatcherEvents.isInotifyCapacityError(new Error("inotify_init1 failed: ENOSPC"))).toBe(true)
+    expect(FileWatcherEvents.isInotifyCapacityError(new Error("watch stream closed"))).toBe(false)
+    expect(FileWatcherEvents.isTerminalWatcherError(new Error("... No space left on device"), "linux")).toBe(true)
+    expect(FileWatcherEvents.isTerminalWatcherError(new Error("... No space left on device"), "darwin")).toBe(false)
+    expect(FileWatcherEvents.isTerminalWatcherError(new Error("backend unavailable"), "linux")).toBe(false)
+  })
+})
+
+describe("FileWatcherEvents subscription timeout policy", () => {
+  test("Linux waits for the native attempt to settle instead of timing it out", () => {
+    expect(FileWatcherEvents.nativeSubscribeTimeoutMs("linux")).toBeUndefined()
+    expect(FileWatcherEvents.nativeSubscribeTimeoutMs("darwin")).toBe(10_000)
+    expect(FileWatcherEvents.nativeSubscribeTimeoutMs("win32")).toBe(10_000)
+  })
+
+  test("a terminal failure stops the recovery instead of retrying", async () => {
+    let attempts = 0
+    const errors: unknown[] = []
+    const recovery = FileWatcherEvents.createSubscriptionRecovery({
+      retryMs: 0,
+      connect: async () => {
+        attempts += 1
+        throw new Error(`inotify_add_watch on '/x' failed: No space left on device`)
+      },
+      disconnect: async () => {},
+      onError: (error) => {
+        errors.push(error)
+      },
+      terminal: (error) => FileWatcherEvents.isTerminalWatcherError(error, "linux"),
+    })
+
+    await recovery.start()
+    await Bun.sleep(30)
+    expect(attempts).toBe(1)
+    expect(errors).toHaveLength(1)
+    expect(recovery.active()).toBe(false)
+
+    await recovery.dispose()
+    expect(attempts).toBe(1)
+  })
+
+  test("a transient failure still retries when terminal is provided", async () => {
+    let attempts = 0
+    const recovery = FileWatcherEvents.createSubscriptionRecovery({
+      retryMs: 0,
+      connect: async () => {
+        attempts += 1
+        if (attempts === 1) throw new Error("backend unavailable")
+        return { id: attempts }
+      },
+      disconnect: async () => {},
+      onError: () => {},
+      terminal: (error) => FileWatcherEvents.isTerminalWatcherError(error, "linux"),
+    })
+
+    await recovery.start()
+    await waitUntil(() => recovery.active() && attempts === 2)
+    expect(attempts).toBe(2)
+    await recovery.dispose()
   })
 })

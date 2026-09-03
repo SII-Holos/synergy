@@ -24,8 +24,6 @@ import { WorkspaceFileStatus } from "../workspace-file/status"
 import { FileWatcherEvents } from "./watcher-events"
 import { FileWatcherBinding } from "./watcher-binding"
 
-const SUBSCRIBE_TIMEOUT_MS = 10_000
-
 export namespace FileWatcher {
   const log = Log.create({ service: "file.watcher" })
   type WorkspaceFileEvent = FileWatcherEvents.WorkspaceEvent
@@ -142,7 +140,16 @@ export namespace FileWatcher {
           }
         }
         const pending = watcher().subscribe(input.directory, callback, input.options)
-        return withTimeout(pending, SUBSCRIBE_TIMEOUT_MS).catch((error) => {
+        const timeoutMs = FileWatcherEvents.nativeSubscribeTimeoutMs()
+        if (timeoutMs === undefined) {
+          // Linux inotify scans cannot be cancelled. Abandoning the attempt
+          // at a generic timeout lets a retry overlap a still-running native
+          // subscribe, and a scan that later fails mid-way leaves its
+          // partial watches in the shared inotify backend. Wait for the
+          // attempt to settle so recovery stays serial and bounded.
+          return pending
+        }
+        return withTimeout(pending, timeoutMs).catch((error) => {
           pending
             .then((subscription) => subscription.unsubscribe())
             .catch((unsubscribeError) => {
@@ -156,7 +163,17 @@ export namespace FileWatcher {
         })
       },
       disconnect: (subscription) => subscription.unsubscribe(),
+      terminal: (error) => FileWatcherEvents.isTerminalWatcherError(error),
       onError: async (error) => {
+        if (FileWatcherEvents.isTerminalWatcherError(error)) {
+          log.error("file watcher subscription stopped after inotify watch capacity exhaustion", {
+            directory: input.directory,
+            label: input.label,
+            error,
+            hint: "raise fs.inotify.max_user_watches or open a smaller workspace; file browsing, edits, and sessions remain usable",
+          })
+          return
+        }
         log.error("file watcher subscription failed", {
           directory: input.directory,
           label: input.label,

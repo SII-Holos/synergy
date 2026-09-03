@@ -54,7 +54,14 @@ export namespace FileIgnore {
 
   const FILE_GLOBS = FILES.map((p) => new Bun.Glob(p))
 
-  export const PATTERNS = [...FILES, ...FOLDERS]
+  /**
+   * Patterns handed to native watcher subscriptions. @parcel/watcher treats a
+   * non-glob entry in `ignore` as one exact top-level path, so folder names
+   * must be recursive globs to prune nested occurrences (for example a
+   * checked-out worktree's node_modules) at any depth of the traversal. File
+   * globs already recurse and are passed through unchanged.
+   */
+  export const WATCH_IGNORES = [...FILES, ...[...FOLDERS].map((folder) => `**/${folder}`)]
 
   export function match(
     filepath: string,

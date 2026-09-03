@@ -4,19 +4,62 @@ import { FileIgnore } from "./ignore"
 import { RuntimeReloadPath } from "../config/reload-path"
 
 export namespace FileWatcherEvents {
+  const SUBSCRIBE_TIMEOUT_MS = 10_000
+
   export type WorkspaceEvent = "added" | "changed" | "deleted" | "renamed"
   export type WorkspaceChange = { path: string; event: WorkspaceEvent; oldPath?: string }
   export type RawEvent = { type: "create" | "update" | "delete"; path: string }
   export type PathPlatform = "win32" | "posix"
 
-  const PROJECT_RUNTIME_IGNORES = ["node_modules", "worktrees", "cache", "data", "log", "logs", "state", "tmp", "temp"]
+  const PROJECT_RUNTIME_IGNORES = [
+    "**/node_modules",
+    "**/worktrees",
+    "**/cache",
+    "**/data",
+    "**/log",
+    "**/logs",
+    "**/state",
+    "**/tmp",
+    "**/temp",
+  ]
 
+  /**
+   * Recursive glob ignores for native watcher subscriptions. @parcel/watcher
+   * resolves a non-glob entry in `ignore` to one exact top-level path, so
+   * nested occurrences (for example a generated worktree's node_modules) are
+   * only pruned when the pattern is a double-star glob relative to the
+   * subscribed directory. User-configured extras are kept verbatim: they may
+   * be top-level folder names or absolute paths, both resolved by the
+   * watcher against the subscription root.
+   */
   export function workspaceSubscriptionIgnores(extra: string[]) {
-    return [...new Set([...FileIgnore.PATTERNS, ".synergy", ...extra])]
+    return [...new Set([...FileIgnore.WATCH_IGNORES, "**/.synergy", ...extra])]
   }
 
   export function projectRuntimeSubscriptionIgnores() {
     return [...PROJECT_RUNTIME_IGNORES]
+  }
+
+  /**
+   * True when the failure reports an inotify watch-capacity condition
+   * ("No space left on device"/ENOSPC). @parcel/watcher surfaces it as a
+   * plain message from `inotify_add_watch`, `inotify_init1`, or the backend
+   * pipe.
+   */
+  export function isInotifyCapacityError(error: unknown) {
+    const message = error instanceof Error ? error.message : String(error)
+    return /no space left on device|enospc/i.test(message)
+  }
+
+  /**
+   * Inotify capacity failures are terminal for the affected subscription:
+   * the kernel watch limit cannot clear while the process runs, and every
+   * retried recursive scan repeats the native allocation that already
+   * consumed the limit. Non-Linux backends keep their existing retry
+   * behavior, so the platform gate is explicit.
+   */
+  export function isTerminalWatcherError(error: unknown, platform: NodeJS.Platform = process.platform) {
+    return platform === "linux" && isInotifyCapacityError(error)
   }
 
   export function isProjectRuntimeInput(file: string) {
@@ -184,6 +227,19 @@ export namespace FileWatcherEvents {
     }
   }
 
+  /**
+   * Timeout applied to a native subscribe promise before the recovery gives
+   * up on the attempt. Linux inotify scans cannot be cancelled: abandoning
+   * one at a generic timeout lets a new attempt start while the previous
+   * native operation is still allocating watches, and a timed-out scan that
+   * later fails leaks its partial watches into the shared inotify backend.
+   * Linux therefore waits for the attempt to settle; the other platforms
+   * keep the bounded timeout.
+   */
+  export function nativeSubscribeTimeoutMs(platform: NodeJS.Platform = process.platform) {
+    return platform === "linux" ? undefined : SUBSCRIBE_TIMEOUT_MS
+  }
+
   export function createSubscriptionRecovery<T>(input: {
     connect: (context: {
       generation: number
@@ -192,6 +248,13 @@ export namespace FileWatcherEvents {
     }) => Promise<T>
     disconnect: (subscription: T) => Promise<void>
     onError: (error: unknown) => void | Promise<void>
+    /**
+     * When true for a failure, the recovery stops instead of retrying: the
+     * error cannot clear while the process runs (for example a full inotify
+     * watch table), and each retry repeats the native allocation that failed.
+     * onError still runs so the caller can log the terminal state.
+     */
+    terminal?: (error: unknown) => boolean
     retryMs?: number
   }) {
     const retryMs = input.retryMs ?? 1_000
@@ -204,6 +267,7 @@ export namespace FileWatcherEvents {
     let generation = 0
     let started = false
     let disposed = false
+    let stopped = false
     const reportContext = new AsyncLocalStorage<symbol>()
 
     const report = async (error: unknown) => {
@@ -218,7 +282,7 @@ export namespace FileWatcherEvents {
     }
 
     const scheduleRetry = () => {
-      if (disposed || retryTimer || current || connecting) return
+      if (disposed || stopped || retryTimer || current || connecting) return
       retryTimer = setTimeout(() => {
         retryTimer = undefined
         void connect()
@@ -242,8 +306,11 @@ export namespace FileWatcherEvents {
     }
 
     const fail = (error: unknown, expectedGeneration?: number) => {
-      if (disposed || (expectedGeneration !== undefined && expectedGeneration !== generation)) return Promise.resolve()
+      if (disposed || stopped || (expectedGeneration !== undefined && expectedGeneration !== generation)) {
+        return Promise.resolve()
+      }
       generation += 1
+      if (input.terminal?.(error)) stopped = true
       if (handlingFailure) return handlingFailure
 
       const task = (async () => {
@@ -251,7 +318,7 @@ export namespace FileWatcherEvents {
         current = undefined
         if (subscription) await disconnect(subscription)
         await report(error)
-        scheduleRetry()
+        if (!stopped) scheduleRetry()
       })()
       let settled: Promise<void>
       settled = task.finally(() => {
@@ -262,13 +329,13 @@ export namespace FileWatcherEvents {
     }
 
     async function connect() {
-      if (disposed || current || connecting) return
+      if (disposed || stopped || current || connecting) return
       const attempt = ++generation
       const task = (async () => {
         try {
           const subscription = await input.connect({
             generation: attempt,
-            isCurrent: () => !disposed && attempt === generation,
+            isCurrent: () => !disposed && !stopped && attempt === generation,
             fail: (error) => fail(error, attempt),
           })
           if (disposed || attempt !== generation) {
@@ -285,7 +352,7 @@ export namespace FileWatcherEvents {
         await task
       } finally {
         if (connecting === task) connecting = undefined
-        if (!disposed && !current && !handlingFailure) scheduleRetry()
+        if (!disposed && !stopped && !current && !handlingFailure) scheduleRetry()
       }
     }
 
@@ -304,6 +371,7 @@ export namespace FileWatcherEvents {
           return
         }
         disposed = true
+        stopped = true
         generation += 1
         if (retryTimer) clearTimeout(retryTimer)
         retryTimer = undefined
