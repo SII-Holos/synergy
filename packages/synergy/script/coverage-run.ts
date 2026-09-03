@@ -41,6 +41,10 @@ const packageRoot = path.resolve(import.meta.dir, "..")
  *   process; each passes in its own process (verified 2026-09-04 at pristine
  *   HEAD: the same shard-0 signature fails with or without the enforcement
  *   sandbox change set, and isolated reruns are green).
+ * - test/cli/daemon-entry mock-modules src/server/runtime.ts; its own header
+ *   documents that under the single-process coverage run the mock leaks into
+ *   sibling files, and the startup assertion itself flakes under full-suite
+ *   load on CI. Passes in its own process with coverage (verified 2026-09-04).
  */
 export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
   "test/vector/embedding-standalone.test.ts",
@@ -62,6 +66,7 @@ export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
   "test/channel/host.test.ts",
   "test/channel/managed-project-ownership.test.ts",
   "test/channel/clarus-assignment.test.ts",
+  "test/cli/daemon-entry.test.ts",
   "test/channel/clarus-invite-accept.test.ts",
   "test/daemon/observe.test.ts",
   "test/daemon/spec.test.ts",

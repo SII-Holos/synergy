@@ -32,6 +32,7 @@ describe("coverage batch splitting", () => {
       "test/channel/host.test.ts",
       "test/channel/managed-project-ownership.test.ts",
       "test/channel/svg-raster-standalone.test.ts",
+      "test/cli/daemon-entry.test.ts",
       "test/config/import.test.ts",
       "test/daemon/observe.test.ts",
       "test/daemon/spec.test.ts",
