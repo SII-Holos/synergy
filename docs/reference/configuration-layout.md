@@ -502,17 +502,20 @@ Runtime Boss Mode is an experimental Runtime-domain feature: when enabled, the r
 {
   "experimental": {
     "boss_mode": true,
-    "boss_identity_text": "...",
+    "boss_persona": { "preset": "ops_assistant" },
     "boss_briefing_interval_days": 7,
   },
 }
 ```
 
-| Key                                        | Type             | Default         | Behavior                                                                                                                                                                                                                                               |
-| ------------------------------------------ | ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `experimental.boss_mode`                   | boolean          | `false`         | Enables Runtime Boss Mode: auto-provisions one home-scope runtime boss session per enabled Feishu account and routes all accepted Feishu group and direct messages to it.                                                                              |
-| `experimental.boss_identity_text`          | string           | default persona | Optional colleague-identity description injected into the runtime boss session briefing and per-turn `<boss-identity>` context; when omitted, a default colleague persona is used and the collaboration discipline block is still injected every turn. |
-| `experimental.boss_briefing_interval_days` | positive integer | disabled        | Periodically delivers a refresh instruction to the runtime boss to re-enumerate sessions, projects, agenda, memory, and experience; omitted or non-positive disables periodic re-injection.                                                            |
+| Key                                        | Type             | Default         | Behavior                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------ | ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `experimental.boss_mode`                   | boolean          | `false`         | Enables Runtime Boss Mode: auto-provisions one home-scope runtime boss session per enabled Feishu account and routes all accepted Feishu group and direct messages to it.                                                                                                                                    |
+| `experimental.boss_persona`                | object           | default persona | Colleague personality: `{ "preset": "project_manager" }`, `{ "preset": "ops_assistant" }`, or `{ "preset": "custom", "formality": 0..1, "conciseness": 0..1, "proactiveness": 0..1, "warmth": 0..1 }`. Deterministically renders the identity text and reporting style injected each turn; `null` clears it. |
+| `experimental.boss_identity_text`          | string           | default persona | Deprecated legacy fallback: optional colleague-identity description injected when `boss_persona` is not set. When both are set, `boss_persona` wins. The Settings UI no longer exposes this field; it remains readable for compatibility.                                                                    |
+| `experimental.boss_briefing_interval_days` | positive integer | disabled        | Periodically delivers a refresh instruction to the runtime boss to re-enumerate sessions, projects, agenda, memory, and experience; omitted or non-positive disables periodic re-injection.                                                                                                                  |
+
+The boss name is not config: it is a runtime-level single value stored in the shared memory library as a `self`-category row titled `boss_name` (written by the Settings UI through the Library HTTP memory create/update APIs). Each turn's persona rendering combines the name with the configured personality.
 
 Disabling `boss_mode` reverts Feishu routing to per-chat sessions; the boss session and its history remain. See [Workflows](../architecture/workflows.md) and [Connections](../product/connections.md) for routing and governance details.
 

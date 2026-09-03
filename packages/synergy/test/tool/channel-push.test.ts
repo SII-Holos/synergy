@@ -147,6 +147,65 @@ describe("channel_push tool", () => {
     })
   })
 
+  test("same-chat reply is exempt from the communication ask (R6 answer path)", async () => {
+    await withScope(async () => {
+      const session = await Session.create({
+        endpoint: SessionEndpoint.fromChannel({
+          type: CHANNEL_TYPE,
+          accountId: "account-1",
+          chatId: "chat-1",
+          chatType: "group",
+          scopeKey: "scope-1",
+        }),
+      })
+      await SessionWorkflowService.enableBoss(session.id)
+      const asks: string[] = []
+      const tool = await ChannelPushTool.init()
+      await tool.execute(
+        { text: "好的", replyToMessageId: "msg-inbound" },
+        {
+          ...ctx(session.id),
+          ask: async (input) => {
+            asks.push(input.patterns.join(","))
+          },
+        },
+      )
+
+      expect(asks).toHaveLength(0)
+      expect(fake.calls.reply).toHaveLength(1)
+      expect(fake.calls.reply[0]).toMatchObject({ chatId: "chat-1", messageId: "msg-inbound" })
+    })
+  })
+
+  test("cross-chat push still requires the communication ask (proactive outbound boundary)", async () => {
+    await withScope(async () => {
+      const session = await Session.create({
+        endpoint: SessionEndpoint.fromChannel({
+          type: CHANNEL_TYPE,
+          accountId: "account-1",
+          chatId: "chat-1",
+          chatType: "group",
+          scopeKey: "scope-1",
+        }),
+      })
+      await SessionWorkflowService.enableBoss(session.id)
+      const asks: string[] = []
+      const tool = await ChannelPushTool.init()
+      await tool.execute(
+        { text: "主动汇报", chatId: "chat-other" },
+        {
+          ...ctx(session.id),
+          ask: async (input) => {
+            asks.push(input.patterns.join(","))
+          },
+        },
+      )
+
+      expect(asks).toEqual(["chat-other"])
+      expect(fake.calls.push.at(-1)).toMatchObject({ chatId: "chat-other" })
+    })
+  })
+
   test("honors explicit accountId and chatId overrides", async () => {
     await withScope(async () => {
       const session = await Session.create({

@@ -546,6 +546,130 @@ describe("settings config patch", () => {
     ).toEqual({ boss_mode: true })
   })
 
+  test("boss persona preset materializes in experimental config when selected", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossMode = "true"
+    state.runtime.bossPersonaPreset = "project_manager"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({
+      boss_mode: true,
+      boss_persona: { preset: "project_manager" },
+    })
+  })
+
+  test("custom boss persona materializes bounded trait numbers", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossPersonaPreset = "custom"
+    state.runtime.bossPersonaFormality = "0.9"
+    state.runtime.bossPersonaConciseness = "0.25"
+    state.runtime.bossPersonaProactiveness = "0.6"
+    state.runtime.bossPersonaWarmth = "0.05"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({
+      boss_persona: {
+        preset: "custom",
+        formality: 0.9,
+        conciseness: 0.25,
+        proactiveness: 0.6,
+        warmth: 0.05,
+      },
+    })
+  })
+
+  test("invalid custom traits fall back to the 0.5 default", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossPersonaPreset = "custom"
+    state.runtime.bossPersonaFormality = "abc"
+    state.runtime.bossPersonaWarmth = "3"
+
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({
+      boss_persona: {
+        preset: "custom",
+        formality: 0.5,
+        conciseness: 0.5,
+        proactiveness: 0.5,
+        warmth: 0.5,
+      },
+    })
+  })
+
+  test("boss persona none clears a stored persona with explicit null", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossPersonaPreset = "none"
+
+    expect(
+      buildPatch({
+        cfg: {
+          experimental: {
+            boss_persona: { preset: "ops_assistant" },
+          },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).experimental,
+    ).toEqual({
+      boss_persona: null,
+    })
+  })
+
+  test("boss persona none does not materialize a null without a stored persona", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossPersonaPreset = "none"
+
+    const patch = buildPatch({
+      cfg: {} as Config,
+      state,
+      originalMcps: {},
+    })
+    expect(patch).not.toHaveProperty("experimental")
+  })
+
+  test("does not re-emit an unchanged boss persona", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossPersonaPreset = "ops_assistant"
+
+    const patch = buildPatch({
+      cfg: {
+        experimental: {
+          boss_persona: { preset: "ops_assistant" },
+        },
+      } as Config,
+      state,
+      originalMcps: {},
+    })
+    expect(patch).not.toHaveProperty("experimental")
+  })
+
+  test("boss name never materializes in the config patch", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.bossName = "Xiaofei"
+    state.runtime.bossPersonaPreset = "custom"
+
+    const patch = buildPatch({
+      cfg: {} as Config,
+      state,
+      originalMcps: {},
+    })
+    expect(patch.experimental).not.toHaveProperty("boss_name")
+  })
   test("does not re-save unchanged sandbox config when enabled is already explicit", () => {
     const state = defaultSettingsState("enter")
     state.safety.sandboxEnabled = "true"

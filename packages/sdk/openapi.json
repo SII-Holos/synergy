@@ -14100,6 +14100,199 @@
         ]
       }
     },
+    "/library/memory": {
+      "post": {
+        "operationId": "library.memory.create",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Create memory",
+        "description": "Create a new active memory row. Generates an embedding from the title and content so the row is immediately retrievable. Requires the embedding API to be configured.",
+        "responses": {
+          "200": {
+            "description": "Created memory",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "description": "Concise memory title (10 words max)",
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "content": {
+                    "description": "Memory content to persist",
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "category": {
+                    "$ref": "#/components/schemas/MemoryCategory"
+                  },
+                  "recallMode": {
+                    "$ref": "#/components/schemas/MemoryRecallMode"
+                  }
+                },
+                "required": ["title", "content", "category", "recallMode"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.memory.create({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/library/memory/update": {
+      "post": {
+        "operationId": "library.memory.update",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Update memory",
+        "description": "Replace the title, content, category, and recall mode of an existing memory row and regenerate its embedding.",
+        "responses": {
+          "200": {
+            "description": "Updated memory",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "description": "Memory ID to update",
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "title": {
+                    "description": "Concise memory title (10 words max)",
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "content": {
+                    "description": "Memory content to persist",
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "category": {
+                    "$ref": "#/components/schemas/MemoryCategory"
+                  },
+                  "recallMode": {
+                    "$ref": "#/components/schemas/MemoryRecallMode"
+                  }
+                },
+                "required": ["id", "title", "content", "category", "recallMode"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.memory.update({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/library/{id}": {
       "get": {
         "operationId": "library.get",
@@ -34248,6 +34441,68 @@
                     "type": "integer",
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "boss_persona": {
+                "description": "Colleague persona preset for the runtime boss: a built-in personality (project_manager or ops_assistant) or a custom blend of four 0..1 traits. Pass null to clear. When unset, boss_identity_text (legacy) or the default colleague identity is used.",
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "preset": {
+                            "type": "string",
+                            "const": "project_manager"
+                          }
+                        },
+                        "required": ["preset"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "preset": {
+                            "type": "string",
+                            "const": "ops_assistant"
+                          }
+                        },
+                        "required": ["preset"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "preset": {
+                            "type": "string",
+                            "const": "custom"
+                          },
+                          "formality": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "conciseness": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "proactiveness": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "warmth": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          }
+                        },
+                        "required": ["preset", "formality", "conciseness", "proactiveness", "warmth"]
+                      }
+                    ]
                   },
                   {
                     "type": "null"

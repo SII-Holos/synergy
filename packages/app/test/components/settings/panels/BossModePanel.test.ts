@@ -14,11 +14,26 @@ beforeAll(async () => {
   fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".boss-mode-panel-fixture-"))
   const panelPath = path.resolve(import.meta.dir, "../../../../src/components/settings/panels/BossModePanel.tsx")
   const typesPath = path.resolve(import.meta.dir, "../../../../src/components/settings/types.ts")
+  const stubPath = path.join(fixtureDirectory, "stubs.tsx")
 
   await Promise.all([
     Bun.write(
       path.join(fixtureDirectory, "index.html"),
       '<div id="root"></div><script type="module" src="/main.ts"></script>',
+    ),
+    // The panel's module graph reaches ui toast, the global SDK context, and
+    // error helpers that pull heavy runtime modules; route them to a hermetic
+    // stub so the fixture exercises the panel without the SDK provider stack.
+    Bun.write(
+      stubPath,
+      `
+        export const showToast = () => 0
+        export const requestErrorMessage = (error: unknown, fallback = "Request failed") =>
+          error instanceof Error ? error.message : fallback
+        export const useGlobalSDK = (): never => {
+          throw new Error("GlobalSDK context is not mounted in this fixture")
+        }
+      `,
     ),
     Bun.write(
       path.join(fixtureDirectory, "main.ts"),
@@ -31,15 +46,29 @@ beforeAll(async () => {
         import { defaultSettingsState } from ${JSON.stringify(`/@fs/${typesPath}`)}
 
         const i18n = setupI18n({ locale: "en" })
+
+        // In-memory self-memory store backing the injected boss name gateway.
+        const rows: Array<Record<string, string>> = []
+        const libraryCalls: Array<Record<string, unknown>> = []
+        const listSelfMemories = async () => [...rows]
+        const createMemory = async (input: Record<string, string>) => {
+          libraryCalls.push({ kind: "create", ...input })
+          rows.push({ id: "mem_" + String(rows.length + 1), ...input })
+        }
+        const updateMemory = async (input: Record<string, string>) => {
+          libraryCalls.push({ kind: "update", ...input })
+          const row = rows.find((candidate) => candidate.id === input.id)
+          if (row) Object.assign(row, input)
+        }
+
         function App() {
           const [runtime, setRuntime] = createSignal<Record<string, string>>({
             ...defaultSettingsState("enter").runtime,
             bossMode: "true",
-            bossIdentityText: "Ops lead",
-            bossBriefingIntervalDays: "7",
           })
           const [changes, setChanges] = createSignal<Array<[string, string]>>([])
           ;(window as any).__bossChanges = () => changes()
+          ;(window as any).__bossLibraryCalls = () => libraryCalls
           return createComponent(BossModePanel, {
             get runtime() {
               return runtime()
@@ -47,6 +76,9 @@ beforeAll(async () => {
             onRuntimeChange: (key: string, value: string) => {
               setChanges((prev) => [...prev, [key, value]])
               setRuntime((prev) => ({ ...prev, [key]: value }))
+            },
+            get bossNameGateway() {
+              return { listSelfMemories, createMemory, updateMemory }
             },
           })
         }
@@ -67,6 +99,13 @@ beforeAll(async () => {
     configFile: false,
     root: fixtureDirectory,
     plugins: [solidPlugin()],
+    resolve: {
+      alias: [
+        { find: "@/context/global-sdk", replacement: stubPath },
+        { find: "@/utils/error", replacement: stubPath },
+        { find: "@ericsanchezok/synergy-ui/toast", replacement: stubPath },
+      ],
+    },
     server: {
       host: "127.0.0.1",
       port: 5203,
@@ -91,50 +130,108 @@ afterAll(async () => {
   if (fixtureDirectory) await rm(fixtureDirectory, { recursive: true, force: true })
 })
 
+async function bossChanges(): Promise<Array<[string, string]>> {
+  return page.evaluate(() => (window as unknown as { __bossChanges: () => Array<[string, string]> }).__bossChanges())
+}
+
+async function bossLibraryCalls(): Promise<Array<Record<string, unknown>>> {
+  return page.evaluate(() =>
+    (window as unknown as { __bossLibraryCalls: () => Array<Record<string, unknown>> }).__bossLibraryCalls(),
+  )
+}
+
 describe("BossModePanel", () => {
-  test("renders the switch and fields, reports changes, and hides the interval when disabled", async () => {
+  test("switches personality, custom traits, and persists the boss name through the library", async () => {
     // The whole contract runs as one browser session: bun test reaps the
     // Playwright browser between tests, so a single sequential test keeps
     // the page alive (same pattern as packages/app menu-field.test.ts).
 
-    // 1. Enabled state renders the switch, identity textarea, and briefing interval.
+    // 1. Enabled state renders the switch, personality pills, and name field;
+    //    the legacy identity textarea and briefing interval are gone.
     const switchInput = page.locator('[data-slot="switch-input"]')
     await expect(switchInput.count()).resolves.toBe(1)
     expect(await switchInput.getAttribute("aria-checked")).toBe("true")
 
-    const identity = page.locator('textarea[data-slot="input-input"]')
-    await expect(identity.count()).resolves.toBe(1)
-    expect(await identity.inputValue()).toBe("Ops lead")
-    expect(await identity.isDisabled()).toBe(false)
+    const personality = page.locator('[role="group"][aria-label="Personality"]')
+    await expect(personality.count()).resolves.toBe(1)
+    expect(await personality.locator("button").count()).toBe(4)
 
-    const interval = page.locator('input[data-slot="input-input"][type="number"]')
-    await expect(interval.count()).resolves.toBe(1)
-    expect(await interval.inputValue()).toBe("7")
+    const nameInput = page.locator('input[data-slot="input-input"]')
+    await expect(nameInput.count()).resolves.toBe(1)
+    expect(await nameInput.inputValue()).toBe("")
+    expect(await nameInput.isDisabled()).toBe(false)
 
-    // 2. Toggling the switch off reports bossMode and hides the interval.
-    await page.locator('[data-slot="switch-control"]').dispatchEvent("click")
-    expect(
-      await page.evaluate(() =>
-        (window as unknown as { __bossChanges: () => Array<[string, string]> }).__bossChanges(),
-      ),
-    ).toEqual([["bossMode", "false"]])
-    await expect(interval.count()).resolves.toBe(0)
-    expect(await identity.isDisabled()).toBe(true)
+    expect(await page.locator('textarea[data-slot="input-input"]').count()).toBe(0)
+    expect(await page.locator('input[data-slot="input-input"][type="number"]').count()).toBe(0)
+    expect(await page.locator('input[type="range"]').count()).toBe(0)
 
-    // 3. Re-enabling restores the interval; edits flow through onRuntimeChange.
-    await page.locator('[data-slot="switch-control"]').dispatchEvent("click")
-    await expect(interval.count()).resolves.toBe(1)
-    await identity.fill("ops lead")
-    await interval.fill("5")
-    expect(
-      await page.evaluate(() =>
-        (window as unknown as { __bossChanges: () => Array<[string, string]> }).__bossChanges(),
-      ),
-    ).toEqual([
-      ["bossMode", "false"],
-      ["bossMode", "true"],
-      ["bossIdentityText", "ops lead"],
-      ["bossBriefingIntervalDays", "5"],
+    // 2. Choosing a built-in preset reports bossPersonaPreset and shows no sliders.
+    await page.getByRole("button", { name: "Project Manager" }).click()
+    expect(await bossChanges()).toEqual([["bossPersonaPreset", "project_manager"]])
+    expect(await page.locator('input[type="range"]').count()).toBe(0)
+
+    // 3. Custom reveals the four trait sliders; moving one reports the value.
+    await page.getByRole("button", { name: "Custom" }).click()
+    expect(await bossChanges()).toEqual([
+      ["bossPersonaPreset", "project_manager"],
+      ["bossPersonaPreset", "custom"],
     ])
+    const sliders = page.locator('input[type="range"]')
+    await expect(sliders.count()).resolves.toBe(4)
+    await page.getByRole("slider", { name: "Formality" }).evaluate((element: HTMLInputElement) => {
+      element.value = "0.75"
+      element.dispatchEvent(new Event("input", { bubbles: true }))
+    })
+    expect(await bossChanges()).toEqual([
+      ["bossPersonaPreset", "project_manager"],
+      ["bossPersonaPreset", "custom"],
+      ["bossPersonaFormality", "0.75"],
+    ])
+
+    // 4. Typing a name reports bossName and debounce-persists via the library
+    //    gateway (create first, then update for a second edit).
+    await nameInput.fill("Xiaofei")
+    expect((await bossChanges()).at(-1)).toEqual(["bossName", "Xiaofei"])
+    await page.waitForTimeout(900)
+    let calls = await bossLibraryCalls()
+    expect(calls).toEqual([
+      {
+        kind: "create",
+        title: "boss_name",
+        content: "Xiaofei",
+        category: "self",
+        recallMode: "search_only",
+      },
+    ])
+
+    await nameInput.fill("Xiaofei Chen")
+    await page.waitForTimeout(900)
+    calls = await bossLibraryCalls()
+    expect(calls).toEqual([
+      {
+        kind: "create",
+        title: "boss_name",
+        content: "Xiaofei",
+        category: "self",
+        recallMode: "search_only",
+      },
+      {
+        kind: "update",
+        id: "mem_1",
+        title: "boss_name",
+        content: "Xiaofei Chen",
+        category: "self",
+        recallMode: "search_only",
+      },
+    ])
+
+    // 5. Disabling boss mode keeps the name field present but disabled and
+    //    leaves the personality row reachable (no legacy rows return).
+    await page.locator('[data-slot="switch-control"]').dispatchEvent("click")
+    expect(await bossChanges()).toContainEqual(["bossMode", "false"])
+    expect(await nameInput.isDisabled()).toBe(true)
+    expect(await page.locator('input[type="range"]').count()).toBe(4)
+    expect(await page.locator('textarea[data-slot="input-input"]').count()).toBe(0)
+    expect(await page.locator('input[data-slot="input-input"][type="number"]').count()).toBe(0)
   })
 })

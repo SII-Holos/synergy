@@ -38,13 +38,19 @@ export const ChannelPushTool = Tool.define("channel_push", {
     if (workflow?.kind !== "boss" || workflow.role !== "boss") {
       throw new Error("channel_push: only boss-role sessions may push to channels")
     }
-    // Sending as the configured bot crosses the user's communication
-    // boundary; require an explicit permission decision for the target chat.
-    await ctx.ask({
-      permission: "communication",
-      patterns: [chatId],
-      metadata: { accountId, chatId, replyToMessageId: params.replyToMessageId },
-    })
+    // Replying inside this session's own channel chat (the chat the human's
+    // message arrived from, anchored via replyToMessageId) is answering the
+    // user — it is the boss's normal reply path under R6 and needs no
+    // permission prompt. Pushing to any other chat crosses the communication
+    // boundary and still requires an explicit permission decision.
+    const sameChat = chatId === channel.chatId
+    if (!sameChat) {
+      await ctx.ask({
+        permission: "communication",
+        patterns: [chatId],
+        metadata: { accountId, chatId, replyToMessageId: params.replyToMessageId },
+      })
+    }
 
     const parts = [{ type: "text" as const, text: params.text }]
     if (params.replyToMessageId) {

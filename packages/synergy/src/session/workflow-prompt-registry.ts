@@ -9,9 +9,16 @@ import type { Info as SessionInfo } from "./types"
  */
 export namespace WorkflowPromptRegistry {
   /** Per-turn delivery facts the loop already computed; domains use them to
-   * build turn-sensitive hint blocks (e.g. boss auto-delivery). */
+   * build turn-sensitive hint blocks (e.g. boss reply target). */
   export interface PromptContext {
-    deliveryMetadata: { channelPush: boolean; channelReplyToMessageId?: string } | undefined
+    deliveryMetadata:
+      | {
+          channelPush: boolean
+          channelReplyToMessageId?: string
+          /** Channel chat the user message arrived from (boss explicit replies). */
+          channelChatId?: string
+        }
+      | undefined
   }
 
   export interface Contribution {

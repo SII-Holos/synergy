@@ -8,6 +8,7 @@ import { ScopeContext } from "@/scope/context"
 import { Log } from "@/util/log"
 import { withTimeout } from "@/util/timeout"
 import { externalIdentityHash } from "../util/identity"
+import { resolveBossPersona } from "./persona"
 import { DEFAULT_IDENTITY_TEXT as DefaultIdentityText } from "./boss-prompt"
 import { Session } from "../session"
 import { SessionEndpoint } from "../session/endpoint"
@@ -117,8 +118,8 @@ export namespace BossRuntime {
    */
   export async function refreshIdentity(options?: { versioned?: boolean }): Promise<void> {
     if (accountBossSessions.size === 0) return
-    const config = await Config.current().catch(() => undefined)
-    const identityText = config?.experimental?.boss_identity_text?.trim() || DEFAULT_IDENTITY_TEXT
+    const persona = await resolveBossPersona().catch(() => undefined)
+    const identityText = persona?.identityText || DEFAULT_IDENTITY_TEXT
     for (const sessionID of accountBossSessions.values()) {
       await deliverBriefing(sessionID, identityText, { versioned: options?.versioned === true })
     }
@@ -184,8 +185,9 @@ export namespace BossRuntime {
 
   /** One-time briefing: fixed deliveryKey dedupes across restarts. */
   async function deliverIdentityBriefing(sessionID: string): Promise<void> {
-    const identityText = (await Config.current().catch(() => undefined))?.experimental?.boss_identity_text?.trim()
-    await deliverBriefing(sessionID, identityText || DEFAULT_IDENTITY_TEXT, { versioned: false })
+    const persona = await resolveBossPersona().catch(() => undefined)
+    const identityText = persona?.identityText || DEFAULT_IDENTITY_TEXT
+    await deliverBriefing(sessionID, identityText, { versioned: false })
   }
 
   async function deliverBriefing(
