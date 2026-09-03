@@ -268,6 +268,12 @@ const SAFE_PSEUDO_PATHS = new Set([
   "/dev/fd/2",
 ])
 
+// Null-device sinks (`2>/dev/null`, `>/dev/null`, `&>/dev/null`, …) are not
+// filesystem write targets. The extractors below must never surface them as
+// external paths, including when a closing `)`/`}` is glued on inside a
+// subshell or loop body (`2>/dev/null)`).
+const NULL_DEVICE_SINK = /^\/dev\/(?:null|zero|random|urandom|stdin|stdout|stderr|fd\/\d)$/
+
 const SESSION_STATE_TOOLS = new Set(["dagwrite", "dagpatch", "todowrite", "task", "task_cancel"])
 const NETWORK_READ_TOOLS = new Set(["webfetch", "websearch", "arxiv_search", "arxiv_download"])
 
@@ -309,7 +315,10 @@ function isDestructive(command: string): string | null {
 
 function extractAbsolutePaths(command: string): string[] {
   const paths: string[] = []
-  const pathPattern = /(?:\s|"|'|>|<|^|\|)(\/[^\s"'|;&]+)/g
+  // Closing shell punctuation (`)`, `}`) terminates a path candidate: a null
+  // device sink glued to a subshell/brace close (`2>/dev/null)`) must never be
+  // extracted as the pseudo path "/dev/null)".
+  const pathPattern = /(?:\s|"|'|>|<|^|\|)(\/[^\s"'|;&)}]+)/g
   // Mask gh api jq expression values before extracting absolute paths:
   // jq syntax such as the null-coalescing operator (//) is not a filesystem
   // path. Masking only jq arguments (--jq/-q) inside gh api invocations keeps
@@ -323,7 +332,9 @@ function extractAbsolutePaths(command: string): string[] {
   }
   let match: RegExpExecArray | null
   while ((match = pathPattern.exec(masked)) !== null) {
-    const candidate = match[1]
+    // Normalize any trailing closing punctuation so a sink glued to a closing
+    // paren/brace still matches SAFE_PSEUDO_PATHS below.
+    const candidate = match[1].replace(/[)}]+$/, "")
     if (candidate.includes("/") && !SAFE_PSEUDO_PATHS.has(candidate)) paths.push(candidate)
   }
   // Post-filter: reject likely non-filesystem paths (URL fragments, commit message artifacts)
@@ -336,6 +347,49 @@ function extractAbsolutePaths(command: string): string[] {
     /:\/\//,
   ]
   return paths.filter((p) => !NON_PATH_PATTERNS.some((pat) => pat.test(p)))
+}
+
+function isNullDeviceSink(candidate: string): boolean {
+  const normalized = candidate.replace(/[)}]+$/, "")
+  return NULL_DEVICE_SINK.test(normalized)
+}
+
+/**
+ * Extract statically resolvable write-redirect targets (`>`, `>>`, `>|`,
+ * `&>`, `&>>`, `N>`, `<>`) from a segment. A redirect target is a genuine
+ * write even when the rest of the segment classifies read-only (e.g.
+ * `git status > /tmp/out`). Heredoc/herestring and `<`-family input
+ * redirects, fd duplication (`2>&1`, `<&1`), fd closing (`3>&-`), dynamic
+ * targets (`$var`, backtick), and null-device sinks are excluded.
+ */
+function writeRedirectTargets(segment: string, cwd: string): string[] {
+  const targets: string[] = []
+  const tokens = segment.split(/\s+/)
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index] ?? ""
+    // fd duplication / closing (`2>&1`, `1>&2`, `3>&-`, `<&1`) has no file target.
+    if (/^\d*[<>]&(?:\d+|-)$/.test(token)) continue
+    const match = /^(\d*)(&>>|&>|>>|>|>\||<>)(.*)$/.exec(token)
+    if (!match) continue
+    let target = match[3] ?? ""
+    if (target === "") {
+      const next = tokens[index + 1]
+      if (next === undefined) break
+      target = next
+      index++
+    }
+    target = target
+      .replace(/^["']/, "")
+      .replace(/["']$/, "")
+      .replace(/[)}]+$/, "")
+    // Dynamic targets cannot be resolved statically; the OS sandbox (when
+    // active) is the boundary for those. Sinks are not file paths.
+    if (!target || target === "-" || /[\$`]/.test(target) || isNullDeviceSink(target)) continue
+    targets.push(
+      target.startsWith("/") || target.startsWith("~") || /^\$(\{?HOME\}?)/.test(target) ? target : `${cwd}/${target}`,
+    )
+  }
+  return targets
 }
 function pathFromHashlinePatch(input: unknown): string | undefined {
   if (typeof input !== "string") return undefined
@@ -468,6 +522,9 @@ function extractShellPathArguments(command: string, cwd: string): string[] {
       }
       if (name === "chmod" && (raw.startsWith("+") || /^\d+$/.test(raw))) continue
       const arg = raw.replace(/^["']/, "").replace(/["']$/, "")
+      // Redirect targets (e.g. `2>/dev/null` after `tee out 2>/dev/null`) are
+      // never plain operands, and null-device sinks are not file paths.
+      if (/[<>]/.test(arg) || isNullDeviceSink(arg)) continue
       paths.push(arg.startsWith("/") || arg.startsWith("~") || /^\$(\{?HOME\}?)/.test(arg) ? arg : `${cwd}/${arg}`)
     }
   }
@@ -1007,17 +1064,25 @@ export namespace EnforcementGate {
           const entrySemantics = segmentTokens !== undefined && PATHNAME_MUTATING_COMMANDS.has(segmentTokens[0]!)
           const containmentOptions = entrySemantics ? ({ followFinalSymlink: false } as const) : {}
           const writeCapable = aggregateWriteCapable || ShellSafety.classifyBashRisk(segment) !== "shell_read"
-          const pathCandidates = [...extractAbsolutePaths(segment), ...extractShellPathArguments(segment, cwd)].filter(
-            (candidate) => !BashVirtualPath.isShellCandidate(candidate),
-          )
+          const segmentWriteTargets = writeRedirectTargets(segment, cwd)
+          const pathCandidates = [
+            ...new Set([
+              ...extractAbsolutePaths(segment),
+              ...extractShellPathArguments(segment, cwd),
+              ...segmentWriteTargets,
+            ]),
+          ].filter((candidate) => !BashVirtualPath.isShellCandidate(candidate) && !isNullDeviceSink(candidate))
           if (!writeCapable || aggregateWriteCapable) {
             for (const candidate of pathCandidates) {
-              classifyProtectedPathCapability(caps, candidate, writeCapable ? "write" : "read", {
+              // A statically resolvable write-redirect target is a genuine
+              // write even when the segment itself is read-only.
+              const write = writeCapable || segmentWriteTargets.includes(candidate)
+              classifyProtectedPathCapability(caps, candidate, write ? "write" : "read", {
                 activeWorkspace,
                 originalCheckout,
                 synergyRoot,
               })
-              classifyPathCapability(caps, candidate, { ...pathOptions, write: writeCapable, ...containmentOptions })
+              classifyPathCapability(caps, candidate, { ...pathOptions, write, ...containmentOptions })
             }
             continue
           }

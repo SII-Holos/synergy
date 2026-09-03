@@ -56,6 +56,8 @@ Risk is not inferred from a tool name alone. Shell commands are split and classi
 
 Unquoted physical newlines are classified as shell-list boundaries equivalent to `;`. Escaped or quoted newlines remain inside their current segment, and a heredoc header, body, and delimiter remain one segment so heredoc data is not reinterpreted as top-level commands.
 
+Absolute-path candidates terminate at closing shell punctuation (`)`, `}`), and null-device sinks (`/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom`, `/dev/stdin`, `/dev/stdout`, `/dev/stderr`, `/dev/fd/N`) are never filesystem paths — including when a redirect such as `2>/dev/null` is glued to a closing paren/brace inside a subshell or loop body (`2>/dev/null)`). A statically resolvable write-redirect target (`>`, `>>`, `>|`, `&>`, `&>>`, `N>`, `<>`) is a genuine write even when the rest of the segment classifies read-only (for example `git status > /tmp/out`); dynamic targets (`$var`, backtick) are left to the execution sandbox boundary when one is active.
+
 This separation lets one profile make consistent decisions across built-in tools, plugins, MCP servers, and future execution surfaces.
 
 ## Control Profiles
@@ -194,6 +196,7 @@ These restrictions are evaluated before the tool implementation. A permissive co
 - Availability, authorization, and sandboxing remain separate decisions.
 - Expanding a deferred group never grants a tool whose effective permission is denied; auto-expansion on a direct tool call is equally visibility-only and respects the `expand_tools` permission.
 - `autonomous` never prompts the user.
+- Write-redirect targets classify by the write they perform, not the read risk of the surrounding command; null-device sinks never classify as paths.
 - `full_access` authorizes capabilities but cannot turn runtime failure into success.
 - Sensitive values are never sent raw to SmartAllow.
 - Worktree isolation protects writes and execution outside the active worktree.
