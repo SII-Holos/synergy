@@ -125,8 +125,33 @@ export namespace FileWatcher {
     onEvents: (events: ParcelWatcher.Event[]) => void
     resync?: () => void | Promise<void>
   }): Promise<SubscriptionRecovery> {
+    // The native inotify backend and its kernel watch budget are process-wide:
+    // once one subscription exhausts the table, any further native scan can
+    // fail before registration and leak its partial tree into the shared
+    // backend. Subsequent subscriptions are skipped until FileWatcher.reload()
+    // (which resets the breaker) or a process restart.
+    if (FileWatcherEvents.isLinuxInotifyCapacityTripped()) {
+      log.warn("skipping watcher subscription after Linux inotify capacity trip", {
+        directory: input.directory,
+        label: input.label,
+      })
+      return {
+        start: async () => {},
+        fail: async () => {},
+        dispose: async () => {},
+        active: () => false,
+      }
+    }
+
     const recovery = FileWatcherEvents.createSubscriptionRecovery({
       connect: async (context) => {
+        // Guard at the last possible point before a native scan: a trip can
+        // land while this recovery is idle-but-not-yet-connected (e.g. between
+        // state init and the first retry), and refusing here beats letting a
+        // doomed scan leak its partial tree into the shared backend again.
+        if (process.platform === "linux" && FileWatcherEvents.isLinuxInotifyCapacityTripped()) {
+          throw FileWatcherEvents.linuxInotifyCapacityError()
+        }
         const callback: ParcelWatcher.SubscribeCallback = (error, events) => {
           if (!context.isCurrent()) return
           if (error) {
@@ -166,6 +191,7 @@ export namespace FileWatcher {
       disconnect: (subscription) => subscription.unsubscribe(),
       onError: async (error) => {
         const terminalError = FileWatcherEvents.isLinuxInotifyTerminalError(error)
+        if (terminalError) FileWatcherEvents.tripLinuxInotifyCapacity()
         log.error(
           terminalError
             ? "file watcher disabled after Linux inotify watch capacity exhaustion"
@@ -175,7 +201,7 @@ export namespace FileWatcher {
             label: input.label,
             error,
             hint: terminalError
-              ? "raise fs.inotify.max_user_watches or open a smaller workspace; file browsing, edits, and sessions remain usable"
+              ? "raise fs.inotify.max_user_watches or open a smaller workspace, then reload watcher state or restart the process to restore live file events"
               : undefined,
           },
         )
@@ -184,7 +210,22 @@ export namespace FileWatcher {
       },
     })
 
-    await recovery.start()
+    const starting = recovery.start()
+    if (process.platform === "linux") {
+      // Never block watcher state initialization on an uncancellable native
+      // settle: recovery.dispose() does not await an in-flight connect, so the
+      // scope state must be published before the first scan completes. Failure
+      // reporting and retry still run inside the recovery.
+      starting.catch((error) => {
+        log.error("file watcher subscription start failed", {
+          directory: input.directory,
+          label: input.label,
+          error,
+        })
+      })
+      return recovery
+    }
+    await starting
     return recovery
   }
 
@@ -359,6 +400,10 @@ export namespace FileWatcher {
   export async function reload() {
     if (!bindingAvailable()) return
     log.info("reloading file watcher state")
+    // A capacity trip is process-wide but operator-fixable: reloading watcher
+    // state (e.g. after raising fs.inotify.max_user_watches) re-arms Linux
+    // subscriptions.
+    FileWatcherEvents.resetLinuxInotifyCapacity()
     await state.resetAll()
     log.info("file watcher state reloaded")
   }

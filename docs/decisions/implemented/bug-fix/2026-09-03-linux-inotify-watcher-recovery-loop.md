@@ -16,11 +16,13 @@ Every failure also invoked workspace resync, adding a secondary `/workspace/file
 
 ## Decision
 
-Three changes, all scoped to the file watcher:
+Four changes, all scoped to the file watcher:
 
 1. **Recursive folder ignores, layered on top of the existing plain names.** `FileIgnore.PATTERNS` and the `.synergy`/project-runtime subscription lists keep the plain top-level folder names **and** add `**/<name>/**` recursive globs. The plain names remain native top-level prefix paths, which on macOS become kernel-level `FSEventStreamSetExclusionPaths` exclusions and on Windows/event filters prune the top-level subtree — behavior that must not regress. The recursive globs prune nested occurrences at any depth during the Linux inotify tree walk and in the event filters of every backend. `**/<name>/**` full-matches both the bare directory node and its contents, so a nested generated tree is excluded as a whole.
 2. **Inotify capacity errors are terminal, and only on Linux.** `FileWatcherEvents.isLinuxInotifyTerminalError()` matches an `ENOSPC` code or a "No space left on device" message, gated to Linux. `createSubscriptionRecovery` gains a `shouldRetry` predicate (already present in this fix series): when it returns false the recovery stops after one `onError` report, and `watcher.ts` logs remediation guidance (raise `fs.inotify.max_user_watches` or open a smaller workspace) instead of resyncing. Recoverable inotify failures — permission errors, subtrees disappearing mid-scan — remain retryable with resync. File APIs, browsing, and sessions remain usable; only live file events for that subscription are lost.
 3. **Linux waits for a native attempt to settle.** `FileWatcherEvents.nativeSubscribeTimeoutMs()` returns `undefined` on Linux, so `subscribeWithRecovery` awaits the raw native subscribe promise without the 10s race; other platforms keep the bounded 10s timeout and the unsubscribe-on-timeout cleanup. Combined with the recovery state machine (retry is scheduled only after the previous connect/`onError` settles), scans cannot overlap, so a failed attempt's partial watches cannot accumulate behind a fresh scan.
+
+4. **A capacity failure trips a process-wide breaker.** The native watcher backend and its kernel watch budget are process-wide: when one subscription exhausts the table, any further native scan can fail before registration and leak its partial tree into the shared backend. The first ENOSPC therefore flips a module-level breaker (`FileWatcherEvents.isLinuxInotifyCapacityTripped()`); every later `subscribeWithRecovery` call skips straight to an inactive stub until `FileWatcher.reload()` resets the breaker (or the process restarts). This stops the same scope's remaining subscriptions — and any other scope's subscriptions — from re-running the doomed scan while the table is still full.
 
 ## Alternatives considered
 

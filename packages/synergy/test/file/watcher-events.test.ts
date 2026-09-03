@@ -108,6 +108,17 @@ describe("FileWatcherEvents native subscription policy", () => {
     expect(FileWatcherEvents.nativeSubscribeTimeoutMs("darwin")).toBe(10_000)
     expect(FileWatcherEvents.nativeSubscribeTimeoutMs("win32")).toBe(10_000)
   })
+
+  test("trips a process-wide breaker on Linux capacity failure until reset", () => {
+    FileWatcherEvents.resetLinuxInotifyCapacity()
+    expect(FileWatcherEvents.isLinuxInotifyCapacityTripped()).toBe(false)
+
+    FileWatcherEvents.tripLinuxInotifyCapacity()
+    expect(FileWatcherEvents.isLinuxInotifyCapacityTripped()).toBe(true)
+
+    FileWatcherEvents.resetLinuxInotifyCapacity()
+    expect(FileWatcherEvents.isLinuxInotifyCapacityTripped()).toBe(false)
+  })
 })
 
 describe("FileWatcherEvents path normalization", () => {

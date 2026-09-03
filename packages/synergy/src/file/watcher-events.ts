@@ -19,6 +19,10 @@ export namespace FileWatcherEvents {
 
   const PROJECT_RUNTIME_IGNORES = ["node_modules", "worktrees", "cache", "data", "log", "logs", "state", "tmp", "temp"]
 
+  // Provenance: @parcel/watcher v2.5.6 wrapper.js / Watcher.cc ignore
+  // semantics; the authoritative cited contract lives beside FileIgnore.PATTERNS.
+  // Local adaptation: emit the same plain-name + `**/<name>/**` pair so nested
+  // runtime directories (.synergy/worktrees, caches) prune at any depth.
   function recursiveDirectoryIgnores(directories: string[]) {
     return directories.flatMap((directory) => [directory, `**/${directory}/**`])
   }
@@ -45,6 +49,37 @@ export namespace FileWatcherEvents {
       typeof error === "object" && error !== null && "code" in error ? String((error as { code?: unknown }).code) : ""
     const message = error instanceof Error ? error.message : String(error)
     return code === "ENOSPC" || /no space left on device/i.test(message)
+  }
+
+  // Process-wide Linux inotify capacity breaker. The kernel watch budget is
+  // shared by every subscription in this process (and by sibling processes of
+  // the same user); once one subscription exhausts it, any further native scan
+  // can fail before registration and leak its partial tree into the shared
+  // backend. A single ENOSPC therefore disables further Linux watcher startup
+  // until an explicit FileWatcher.reload() (which resets the breaker) or a
+  // process restart — see the Linux watcher recovery decision record.
+  let linuxInotifyCapacityTripped = false
+
+  export function isLinuxInotifyCapacityTripped() {
+    return linuxInotifyCapacityTripped
+  }
+
+  export function tripLinuxInotifyCapacity() {
+    linuxInotifyCapacityTripped = true
+  }
+
+  export function resetLinuxInotifyCapacity() {
+    linuxInotifyCapacityTripped = false
+  }
+
+  /** Terminal error shape for refusing a new subscribe after a process-wide trip. */
+  export function linuxInotifyCapacityError() {
+    return Object.assign(
+      new Error("Linux inotify watch capacity exhausted; watcher disabled until reload or restart"),
+      {
+        code: "ENOSPC",
+      },
+    )
   }
 
   export function isProjectRuntimeInput(file: string) {
