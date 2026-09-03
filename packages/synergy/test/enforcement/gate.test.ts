@@ -1392,7 +1392,7 @@ describe("EnforcementGate network classification", () => {
       class: "communication_email",
       nonBypassable: true,
     })
-    expect(gate.classify("arxiv_search", {}).capabilities).toContainEqual({
+    expect(gate.classify("webfetch", {}).capabilities).toContainEqual({
       class: "network_read",
       nonBypassable: false,
     })

@@ -31506,9 +31506,6 @@
               "webfetch": {
                 "$ref": "#/components/schemas/PermissionActionConfig"
               },
-              "websearch": {
-                "$ref": "#/components/schemas/PermissionActionConfig"
-              },
               "download": {
                 "$ref": "#/components/schemas/PermissionActionConfig"
               },

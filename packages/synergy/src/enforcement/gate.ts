@@ -269,7 +269,7 @@ const SAFE_PSEUDO_PATHS = new Set([
 ])
 
 const SESSION_STATE_TOOLS = new Set(["dagwrite", "dagpatch", "todowrite", "task", "task_cancel"])
-const NETWORK_READ_TOOLS = new Set(["webfetch", "websearch", "arxiv_search", "arxiv_download"])
+const NETWORK_READ_TOOLS = new Set(["webfetch"])
 
 const AGENT_ORCHESTRATION_TOOLS = new Set([
   "runtime_reload",

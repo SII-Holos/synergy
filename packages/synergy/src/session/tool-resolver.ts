@@ -257,8 +257,7 @@ export namespace ToolResolver {
     if (className === "shell_read" || className === "shell_remote_publish" || className === "shell_remote_write")
       return "bash"
     if (className === "shell_destructive") return "bash"
-    if (className === "network_request")
-      return toolName === "webfetch" || toolName === "websearch" ? toolName : "network_request"
+    if (className === "network_request") return toolName === "webfetch" ? toolName : "network_request"
     return className
   }
 
@@ -792,7 +791,7 @@ export namespace ToolResolver {
       // richer, tool-specific metadata before crossing the boundary.
       if (toolName === "email_send" && cap.class === "communication_email") return false
       if (toolName === "session_send" && cap.class === "identity_act") return false
-      if ((toolName === "webfetch" || toolName === "websearch") && cap.class === "network_request") return false
+      if (toolName === "webfetch" && cap.class === "network_request") return false
       if (toolName === "email_read" && cap.class === "communication_email") return false
       return true
     })

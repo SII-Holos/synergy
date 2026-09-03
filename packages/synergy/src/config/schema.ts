@@ -589,7 +589,6 @@ export const Permission = z
         dagread: PermissionAction.optional(),
         question: PermissionAction.optional(),
         webfetch: PermissionAction.optional(),
-        websearch: PermissionAction.optional(),
         download: PermissionAction.optional(),
         lsp: PermissionRule.optional(),
         doom_loop: PermissionAction.optional(),

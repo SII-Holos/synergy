@@ -9,8 +9,6 @@ function classicPrimaryPermission(ctx: BuiltinAgentContext): PermissionNext.Rule
     ctx.defaults,
     PermissionNext.fromConfig({
       question: "allow",
-      arxiv_search: "allow",
-      arxiv_download: "allow",
       runtime_reload: "allow",
       dagwrite: "allow",
       dagread: "allow",

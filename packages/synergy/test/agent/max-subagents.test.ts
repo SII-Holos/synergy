@@ -21,21 +21,11 @@ describe("synergy-max subagents", () => {
     expect(agents["workflow-designer"]).toBeUndefined()
   })
 
-  test("all max subagents receive the base utility and research tool bundle", () => {
+  test("all max subagents receive the base utility tool bundle", () => {
     for (const agent of Object.values(agents)) {
-      for (const permission of [
-        "bash",
-        "process",
-        "skill",
-        "websearch",
-        "webfetch",
-        "look_at",
-        "glob",
-        "arxiv_search",
-      ]) {
+      for (const permission of ["bash", "process", "skill", "webfetch", "look_at", "glob", "list"]) {
         expect(action(agent, permission)).toBe("allow")
       }
-      expect(action(agent, "arxiv_download")).toBe("ask")
     }
   })
 

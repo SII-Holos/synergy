@@ -660,8 +660,6 @@ Domain files are the durable configuration contract. Environment variables are p
 
 | Variable                                      | Effect                                                                                                                                                                      |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SYNERGY_ARXIV_API_URL`                       | Replace the built-in arXiv search service base URL                                                                                                                          |
-| `SYNERGY_SEARXNG_URL`                         | Replace the built-in Web search service base URL                                                                                                                            |
 | `SYNERGY_DISABLE_MODELS_FETCH=true` or `1`    | Disable ModelsDev catalog fetches performed by the source macro and runtime refresh; runtime disk cache and the bundled snapshot remain active                              |
 | `MODELS_DEV_API_JSON`                         | Override the models catalog source embedded by the build-time Bun macro; local builds may set this, while the release workflow always forces the repository-pinned snapshot |
 | `SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH=true` | Use the last verified provider catalog cache instead of fetching its signed remote source                                                                                   |

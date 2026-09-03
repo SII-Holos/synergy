@@ -11636,6 +11636,42 @@ msgstr "{running}/{count} 个任务运行中"
 msgid "scopes.working"
 msgstr "处理中…"
 
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.domains"
+msgstr "域名"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.elapsed"
+msgstr "已用时间"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.format"
+msgstr "格式"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.host"
+msgstr "主机"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.papers"
+msgstr "论文"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.results"
+msgstr "结果"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.searching"
+msgstr "正在搜索…"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.strength"
+msgstr "强度"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.total"
+msgstr "总计"
+
 #. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.collapse-all"
 msgstr "全部折叠"
@@ -11803,10 +11839,6 @@ msgstr "正在运行命令"
 #. js-lingui-explicit-id
 msgid "session-status.searching-codebase"
 msgstr "正在搜索代码库"
-
-#. js-lingui-explicit-id
-msgid "session-status.searching-papers"
-msgstr "正在搜索论文"
 
 #. js-lingui-explicit-id
 msgid "session-status.searching-web"
@@ -18795,14 +18827,6 @@ msgid "tool.title.archive-note"
 msgstr "归档笔记"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.arxiv-download"
-msgstr "下载 arXiv 论文"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.arxiv-search"
-msgstr "搜索 arXiv"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.ast-search"
 msgstr "搜索 AST"
 
@@ -19441,10 +19465,6 @@ msgstr "查看图片"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.watch"
 msgstr "监控日程"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.web-search"
-msgstr "搜索网页"
 
 #. Search / web
 msgid "tool.title.webfetch"

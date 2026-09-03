@@ -34,9 +34,6 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
 
   // Search / web
   webfetch: d("tool.title.webfetch", "Read web page"),
-  websearch: d("tool.title.web-search", "Search web"),
-  arxiv_search: d("tool.title.arxiv-search", "Search arXiv"),
-  arxiv_download: d("tool.title.arxiv-download", "Download arXiv paper"),
   context7_resolve_library: d("tool.title.resolve-library", "Resolve Library"),
   context7_query_docs: d("tool.title.query-docs", "Query Docs"),
 
@@ -523,4 +520,17 @@ export const BROWSER_TOOL_DESC = {
   timeout: d("browser.summary.timeout", "Timeout"),
   elapsed: d("browser.summary.elapsed", "Elapsed"),
   milliseconds: d("browser.summary.milliseconds", "{count} ms"),
+} as const
+
+// ── Search tool summaries (anysearch / scholight cards) ────────────
+export const SEARCH_TOOL_DESC = {
+  domains: d("search.summary.domains", "Domains"),
+  results: d("search.summary.results", "Results"),
+  elapsed: d("search.summary.elapsed", "Elapsed"),
+  host: d("search.summary.host", "Host"),
+  format: d("search.summary.format", "Format"),
+  papers: d("search.summary.papers", "Papers"),
+  strength: d("search.summary.strength", "Strength"),
+  total: d("search.summary.total", "Total"),
+  searching: d("search.summary.searching", "Searching…"),
 } as const

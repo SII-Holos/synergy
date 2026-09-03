@@ -2392,7 +2392,6 @@ export type PermissionConfig =
       dagread?: PermissionActionConfig
       question?: PermissionActionConfig
       webfetch?: PermissionActionConfig
-      websearch?: PermissionActionConfig
       download?: PermissionActionConfig
       lsp?: PermissionRuleConfig
       doom_loop?: PermissionActionConfig

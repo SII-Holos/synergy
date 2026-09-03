@@ -61,7 +61,7 @@ export namespace MCP {
   export interface Server {
     name: string
     config: Config.Mcp
-    source: "config" | "plugin" | "runtime"
+    source: "config" | "plugin" | "builtin" | "runtime"
     status: Status
     identity: string
   }

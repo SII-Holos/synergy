@@ -11636,6 +11636,42 @@ msgstr "{running}/{count} tasks running"
 msgid "scopes.working"
 msgstr "Working…"
 
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.domains"
+msgstr "Domains"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.elapsed"
+msgstr "Elapsed"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.format"
+msgstr "Format"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.host"
+msgstr "Host"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.papers"
+msgstr "Papers"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.results"
+msgstr "Results"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.searching"
+msgstr "Searching…"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.strength"
+msgstr "Strength"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.total"
+msgstr "Total"
+
 #. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.collapse-all"
 msgstr "Collapse all"
@@ -11803,10 +11839,6 @@ msgstr "Running commands"
 #. js-lingui-explicit-id
 msgid "session-status.searching-codebase"
 msgstr "Searching the codebase"
-
-#. js-lingui-explicit-id
-msgid "session-status.searching-papers"
-msgstr "Searching papers"
 
 #. js-lingui-explicit-id
 msgid "session-status.searching-web"
@@ -18795,14 +18827,6 @@ msgid "tool.title.archive-note"
 msgstr "Archive Note"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.arxiv-download"
-msgstr "Download arXiv paper"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.arxiv-search"
-msgstr "Search arXiv"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.ast-search"
 msgstr "Search AST"
 
@@ -19441,10 +19465,6 @@ msgstr "View Image"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.watch"
 msgstr "Monitor schedule"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.web-search"
-msgstr "Search web"
 
 #. Search / web
 msgid "tool.title.webfetch"

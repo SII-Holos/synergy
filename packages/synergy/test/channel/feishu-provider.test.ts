@@ -1385,9 +1385,9 @@ describe("Feishu tool progress titles", () => {
     ).renderToolProgress
 
     expect(render).toBeDefined()
-    expect(render?.([{ id: "1", tool: "websearch", status: "running" }])).toContain("**Tools · Working**")
-    expect(render?.([{ id: "1", tool: "websearch", status: "completed" }])).toContain("**Tools · Completed**")
-    expect(render?.([{ id: "1", tool: "websearch", status: "error" }])).toContain("**Tools · Completed with errors**")
+    expect(render?.([{ id: "1", tool: "webfetch", status: "running" }])).toContain("**Tools · Working**")
+    expect(render?.([{ id: "1", tool: "webfetch", status: "completed" }])).toContain("**Tools · Completed**")
+    expect(render?.([{ id: "1", tool: "webfetch", status: "error" }])).toContain("**Tools · Completed with errors**")
   })
 })
 
