@@ -11,12 +11,26 @@ export namespace FileWatcherEvents {
 
   const PROJECT_RUNTIME_IGNORES = ["node_modules", "worktrees", "cache", "data", "log", "logs", "state", "tmp", "temp"]
 
+  function recursiveDirectoryIgnores(directories: string[]) {
+    return directories.flatMap((directory) => [directory, `**/${directory}/**`])
+  }
+
   export function workspaceSubscriptionIgnores(extra: string[]) {
-    return [...new Set([...FileIgnore.PATTERNS, ".synergy", ...extra])]
+    return [...new Set([...FileIgnore.PATTERNS, ...recursiveDirectoryIgnores([".synergy"]), ...extra])]
   }
 
   export function projectRuntimeSubscriptionIgnores() {
-    return [...PROJECT_RUNTIME_IGNORES]
+    return recursiveDirectoryIgnores(PROJECT_RUNTIME_IGNORES)
+  }
+
+  export function isLinuxInotifyTerminalError(error: unknown, platform = process.platform) {
+    if (platform !== "linux") return false
+    const code =
+      typeof error === "object" && error !== null && "code" in error ? String((error as { code?: unknown }).code) : ""
+    const message = error instanceof Error ? error.message : String(error)
+    return (
+      code === "ENOSPC" || /inotify_add_watch|no space left on device|operation timed out after \d+ms/i.test(message)
+    )
   }
 
   export function isProjectRuntimeInput(file: string) {
@@ -192,6 +206,7 @@ export namespace FileWatcherEvents {
     }) => Promise<T>
     disconnect: (subscription: T) => Promise<void>
     onError: (error: unknown) => void | Promise<void>
+    shouldRetry?: (error: unknown) => boolean
     retryMs?: number
   }) {
     const retryMs = input.retryMs ?? 1_000
@@ -204,6 +219,7 @@ export namespace FileWatcherEvents {
     let generation = 0
     let started = false
     let disposed = false
+    let retryBlocked = false
     const reportContext = new AsyncLocalStorage<symbol>()
 
     const report = async (error: unknown) => {
@@ -218,7 +234,7 @@ export namespace FileWatcherEvents {
     }
 
     const scheduleRetry = () => {
-      if (disposed || retryTimer || current || connecting) return
+      if (disposed || retryBlocked || retryTimer || current || connecting) return
       retryTimer = setTimeout(() => {
         retryTimer = undefined
         void connect()
@@ -243,6 +259,7 @@ export namespace FileWatcherEvents {
 
     const fail = (error: unknown, expectedGeneration?: number) => {
       if (disposed || (expectedGeneration !== undefined && expectedGeneration !== generation)) return Promise.resolve()
+      if (input.shouldRetry?.(error) === false) retryBlocked = true
       generation += 1
       if (handlingFailure) return handlingFailure
 
@@ -251,7 +268,7 @@ export namespace FileWatcherEvents {
         current = undefined
         if (subscription) await disconnect(subscription)
         await report(error)
-        scheduleRetry()
+        if (!retryBlocked) scheduleRetry()
       })()
       let settled: Promise<void>
       settled = task.finally(() => {
@@ -285,7 +302,7 @@ export namespace FileWatcherEvents {
         await task
       } finally {
         if (connecting === task) connecting = undefined
-        if (!disposed && !current && !handlingFailure) scheduleRetry()
+        if (!disposed && !retryBlocked && !current && !handlingFailure) scheduleRetry()
       }
     }
 

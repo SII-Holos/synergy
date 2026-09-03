@@ -54,7 +54,9 @@ export namespace FileIgnore {
 
   const FILE_GLOBS = FILES.map((p) => new Bun.Glob(p))
 
-  export const PATTERNS = [...FILES, ...FOLDERS]
+  // @parcel/watcher treats plain directory names as root-relative paths.
+  // Include globs so nested generated trees are skipped by native backends too.
+  export const PATTERNS = [...FILES, ...FOLDERS, ...[...FOLDERS].map((folder) => `**/${folder}/**`)]
 
   export function match(
     filepath: string,

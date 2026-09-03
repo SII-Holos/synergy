@@ -20,7 +20,29 @@ describe("FileWatcherEvents ownership", () => {
   test("keeps .synergy browsable while excluding it from the root watcher", () => {
     expect(FileIgnore.match(".synergy/worktrees/example/src/index.ts")).toBe(false)
     expect(FileWatcherEvents.workspaceSubscriptionIgnores([])).toContain(".synergy")
+    expect(FileWatcherEvents.workspaceSubscriptionIgnores([])).toContain("**/.synergy/**")
+    expect(FileWatcherEvents.workspaceSubscriptionIgnores([])).toContain("**/node_modules/**")
     expect(FileWatcherEvents.projectRuntimeSubscriptionIgnores()).toContain("worktrees")
+    expect(FileWatcherEvents.projectRuntimeSubscriptionIgnores()).toContain("**/worktrees/**")
+  })
+
+  test("recognizes terminal Linux inotify failures only", () => {
+    expect(
+      FileWatcherEvents.isLinuxInotifyTerminalError(
+        new Error("inotify_add_watch failed: No space left on device"),
+        "linux",
+      ),
+    ).toBe(true)
+    expect(
+      FileWatcherEvents.isLinuxInotifyTerminalError(
+        Object.assign(new Error("watch failed"), { code: "ENOSPC" }),
+        "linux",
+      ),
+    ).toBe(true)
+    expect(FileWatcherEvents.isLinuxInotifyTerminalError(new Error("Operation timed out after 10000ms"), "linux")).toBe(
+      true,
+    )
+    expect(FileWatcherEvents.isLinuxInotifyTerminalError(new Error("No space left on device"), "darwin")).toBe(false)
   })
 
   test("publishes only supported project runtime inputs from .synergy", async () => {
@@ -347,6 +369,31 @@ describe("FileWatcherEvents drain", () => {
 })
 
 describe("FileWatcherEvents subscription recovery", () => {
+  test("does not retry a terminal subscription failure", async () => {
+    let attempts = 0
+    const errors: unknown[] = []
+    const recovery = FileWatcherEvents.createSubscriptionRecovery({
+      retryMs: 0,
+      connect: async () => {
+        attempts += 1
+        throw new Error("Operation timed out after 10000ms")
+      },
+      disconnect: async () => {},
+      onError: (error) => {
+        errors.push(error)
+      },
+      shouldRetry: (error) => !FileWatcherEvents.isLinuxInotifyTerminalError(error, "linux"),
+    })
+
+    await recovery.start()
+    await Bun.sleep(20)
+
+    expect(attempts).toBe(1)
+    expect(errors).toHaveLength(1)
+    expect(recovery.active()).toBe(false)
+    await recovery.dispose()
+  })
+
   test("reports failure, resubscribes, and disconnects the failed subscription", async () => {
     let attempts = 0
     let disconnects = 0

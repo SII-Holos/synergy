@@ -155,13 +155,19 @@ export namespace FileWatcher {
           throw error
         })
       },
+      shouldRetry: (error) => !FileWatcherEvents.isLinuxInotifyTerminalError(error),
       disconnect: (subscription) => subscription.unsubscribe(),
       onError: async (error) => {
-        log.error("file watcher subscription failed", {
-          directory: input.directory,
-          label: input.label,
-          error,
-        })
+        const terminalError = FileWatcherEvents.isLinuxInotifyTerminalError(error)
+        log.error(
+          terminalError ? "file watcher disabled after Linux subscription failure" : "file watcher subscription failed",
+          {
+            directory: input.directory,
+            label: input.label,
+            error,
+          },
+        )
+        if (terminalError) return
         await input.resync?.()
       },
     })
