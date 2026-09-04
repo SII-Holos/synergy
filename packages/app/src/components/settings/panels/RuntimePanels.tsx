@@ -63,6 +63,14 @@ const maxImagesRowDesc = {
   message: "Maximum historical images sent as base64 per request",
 }
 const maxImagesAria = { id: "settings.runtime.compaction.maxImagesAria", message: "Maximum history images" }
+const codexRemoteRowTitle = {
+  id: "settings.runtime.compaction.codexRemote.title",
+  message: "Codex Remote Compaction",
+}
+const codexRemoteRowDesc = {
+  id: "settings.runtime.compaction.codexRemote.desc",
+  message: "Ask the Codex backend to compact server-side alongside the local summary (OpenAI Codex sessions only).",
+}
 
 const overflowOpts = [
   { value: "0.70", label: { id: "settings.runtime.compaction.overflow.70", message: "70%" } },

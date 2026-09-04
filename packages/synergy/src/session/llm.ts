@@ -23,8 +23,7 @@ import type { LLMTurnMemory } from "./llm-memory"
 import { SessionRootVariant } from "./root-variant"
 import { SessionPluginHooks } from "./plugin-hooks"
 import { reasoningStreamGuardMiddleware } from "./reasoning-stream-guard"
-import { CodexProvider } from "@/provider/codex"
-import { setReplayPlan, type CodexReplayPlan } from "@/provider/codex-compaction"
+import { CODEX_PROVIDER_ID, setReplayPlan, type CodexReplayPlan } from "@/provider/codex-compaction"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -445,10 +444,18 @@ export namespace LLM {
     )
     const maxOutputTokens = Math.min(providerMaxOutputTokens, input.maxOutputTokens ?? providerMaxOutputTokens)
     // Register the per-turn codex replay plan in the worker-local registry so
-    // the codex fetch body rewrite can splice it (a codex turn without a plan
-    // clears any previous sticky plan for the session).
-    if (input.model.providerID === CodexProvider.PROVIDER_ID) {
-      setReplayPlan(input.sessionID, input.codexReplay)
+    // the codex fetch body rewrite can splice it. Registered under the same
+    // resolved prompt-cache key that the SDK serializes (chat.params or agent
+    // provider options may override the plain sessionID), falling back to the
+    // sessionID when no override is set. A codex turn without a plan clears
+    // any previous entry for the session; the runner releases it when the
+    // turn ends so a long-lived worker never retains per-session artifacts.
+    if (input.model.providerID === CODEX_PROVIDER_ID) {
+      const resolvedCacheKey =
+        typeof params.options?.promptCacheKey === "string" && params.options.promptCacheKey !== ""
+          ? params.options.promptCacheKey
+          : input.sessionID
+      setReplayPlan(input.sessionID, resolvedCacheKey, input.codexReplay)
     }
 
     const tools = input.tools

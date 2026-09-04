@@ -53,6 +53,7 @@ export const UI_DEFAULTS = {
   compactionPrune: "true" as string,
   compactionOverflowThreshold: "0.85" as string,
   compactionMaxHistoryImages: "8" as string,
+  compactionCodexRemote: "false" as string,
   cortexConcurrency: "8" as string,
   agentWorkers: "" as string,
   libraryLearning: "true" as string,
@@ -398,6 +399,7 @@ export type RuntimeStore = {
   compactionPrune: string
   compactionOverflowThreshold: string
   compactionMaxHistoryImages: string
+  compactionCodexRemote: string
   cortexConcurrency: string
   agentWorkers: string
   invokeTimeout: string
@@ -506,6 +508,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
       compactionPrune: UI_DEFAULTS.compactionPrune,
       compactionOverflowThreshold: UI_DEFAULTS.compactionOverflowThreshold,
       compactionMaxHistoryImages: UI_DEFAULTS.compactionMaxHistoryImages,
+      compactionCodexRemote: UI_DEFAULTS.compactionCodexRemote,
       cortexConcurrency: UI_DEFAULTS.cortexConcurrency,
       agentWorkers: UI_DEFAULTS.agentWorkers,
       invokeTimeout: UI_DEFAULTS.invokeTimeout,

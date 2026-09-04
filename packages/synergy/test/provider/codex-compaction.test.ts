@@ -3,11 +3,16 @@ import {
   applyReplaySplice,
   buildRemoteCompactionBody,
   buildReplacementHistory,
+  clearReplayPlan,
+  clearReplayPlanForCacheKey,
   extractRemoteCompactionMetadata,
+  getReplayPlan,
   isCodexResponseItem,
+  modelMessagesToItems,
   parseRemoteCompactionEvents,
-  parseSseData,
+  readSseJsonEvents,
   remoteCompactionHeaders,
+  setReplayPlan,
   type CodexResponseItem,
 } from "../../src/provider/codex-compaction"
 import { Log } from "../../src/util/log"
@@ -39,22 +44,67 @@ function userItem(text: string): CodexResponseItem {
   return { role: "user", content: [{ type: "input_text", text }] }
 }
 
-describe("codex-compaction parseSseData", () => {
-  test("parses data blocks, tolerates CRLF and [DONE]", () => {
-    const sse = [
-      'data: {"type":"response.created"}',
-      "",
-      'data: {"type":"response.output_item.done","item":{"type":"compaction","id":"c1"}}',
-      "",
-      "data: [DONE]",
-      "",
-    ].join("\r\n")
-    const events = parseSseData(sse)
+function sseStream(chunks: string[]): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk))
+      controller.close()
+    },
+  })
+}
+
+async function readSseEvents(stream: ReadableStream<Uint8Array>, opts?: { maxEventBytes?: number }) {
+  const out: unknown[] = []
+  for await (const event of readSseJsonEvents(stream, opts)) out.push(event)
+  return out
+}
+
+describe("codex-compaction readSseJsonEvents", () => {
+  const sse = [
+    'data: {"type":"response.created"}',
+    "",
+    'data: {"type":"response.output_item.done","item":{"type":"compaction","id":"c1"}}',
+    "",
+    "data: [DONE]",
+    "",
+  ].join("\r\n")
+
+  test("parses data blocks across chunk boundaries, tolerates CRLF and [DONE]", async () => {
+    // Split mid-line to exercise the incremental decoder.
+    const midpoint = Math.floor(sse.length / 2)
+    const events = await readSseEvents(sseStream([sse.slice(0, midpoint), sse.slice(midpoint)]))
     expect(events).toHaveLength(2)
+    expect((events[1] as { type: string }).type).toBe("response.output_item.done")
   })
 
-  test("skips malformed JSON blocks", () => {
-    expect(parseSseData('data: {not-json}\n\ndata: {"ok":1}')).toHaveLength(1)
+  test("skips malformed JSON blocks", async () => {
+    const events = await readSseEvents(sseStream(['data: {not-json}\n\ndata: {"ok":1}\n\n']))
+    expect(events).toEqual([{ ok: 1 }])
+  })
+
+  test("parses LF and CRLF boundaries interchangeably", async () => {
+    const mixed = 'data: {"a":1}\n\ndata: {"b":2}\r\n\r\ndata: {"c":3}\n\n'
+    const events = await readSseEvents(sseStream([mixed]))
+    expect(events).toHaveLength(3)
+  })
+
+  test("throws when a single event exceeds the byte bound and cancels the stream", async () => {
+    const stream = sseStream([`data: ${JSON.stringify({ big: "x".repeat(64) })}\n\n`])
+    await expect(readSseEvents(stream, { maxEventBytes: 32 })).rejects.toThrow(/exceeded the 32-byte bound/)
+  })
+
+  test("interrupts a pending read when the signal aborts", async () => {
+    const controller = new AbortController()
+    const stream = new ReadableStream<Uint8Array>({
+      start(streamController) {
+        streamController.enqueue(new TextEncoder().encode('data: {"first":1}\n\n'))
+        // Never close; the abort must interrupt the second read.
+      },
+    })
+    const reader = readSseJsonEvents(stream, { signal: controller.signal })
+    expect(await reader.next()).toEqual({ done: false, value: { first: 1 } })
+    controller.abort(new DOMException("cancelled", "AbortError"))
+    await expect(reader.next()).rejects.toThrow(/cancelled/)
   })
 })
 
@@ -321,5 +371,121 @@ describe("codex-compaction type guard", () => {
     expect(isCodexResponseItem({ type: "nonsense" })).toBe(false)
     expect(isCodexResponseItem(null)).toBe(false)
     expect(isCodexResponseItem("str")).toBe(false)
+  })
+})
+
+describe("codex-compaction replay registry", () => {
+  const plan = { replacementHistory: [COMPACTION_ITEM], summaryText: "SUMMARY" }
+
+  test("registers, reads, and clears a plan by cache key", () => {
+    setReplayPlan("session-a", "cache-a", plan)
+    expect(getReplayPlan("cache-a")).toEqual(plan)
+    expect(getReplayPlan("missing")).toBeUndefined()
+    clearReplayPlan("session-a")
+    expect(getReplayPlan("cache-a")).toBeUndefined()
+  })
+
+  test("re-registering a session replaces the previous plan", () => {
+    setReplayPlan("session-a", "cache-a", plan)
+    setReplayPlan("session-a", "cache-b", { replacementHistory: [COMPACTION_ITEM], summaryText: "NEW" })
+    expect(getReplayPlan("cache-a")).toBeUndefined()
+    expect(getReplayPlan("cache-b")).toBeDefined()
+    clearReplayPlan("session-a")
+  })
+
+  test("clearing by cache key removes the session mapping", () => {
+    setReplayPlan("session-a", "cache-a", plan)
+    clearReplayPlanForCacheKey("cache-a")
+    expect(getReplayPlan("cache-a")).toBeUndefined()
+    // The session mapping is gone too, so a later clear-by-session is a no-op.
+    clearReplayPlan("session-a")
+    expect(getReplayPlan("cache-a")).toBeUndefined()
+  })
+
+  test("registering an undefined plan clears a previous entry", () => {
+    setReplayPlan("session-a", "cache-a", plan)
+    setReplayPlan("session-a", "cache-a", undefined)
+    expect(getReplayPlan("cache-a")).toBeUndefined()
+  })
+})
+
+describe("codex-compaction modelMessagesToItems image URLs", () => {
+  function imagePartsOf(items: CodexResponseItem[]): Array<{ type: string; image_url?: string }> {
+    const message = items.find((item) => "role" in item && item.role === "user")
+    expect(message).toBeDefined()
+    return (message as { content: Array<{ type: string; image_url?: string }> }).content.filter(
+      (part) => part.type === "input_image",
+    )
+  }
+
+  test("does not double-wrap an existing data URL", () => {
+    const dataURL = "data:image/png;base64,AAAA"
+    const items = modelMessagesToItems([
+      { role: "user", content: [{ type: "file", mediaType: "image/png", data: dataURL }] },
+    ])
+    expect(imagePartsOf(items)[0]!.image_url).toBe(dataURL)
+  })
+
+  test("does not wrap an HTTP(S) image URL", () => {
+    const httpURL = "https://example.com/image.png"
+    const items = modelMessagesToItems([
+      { role: "user", content: [{ type: "file", mediaType: "image/png", data: httpURL }] },
+    ])
+    expect(imagePartsOf(items)[0]!.image_url).toBe(httpURL)
+  })
+
+  test("wraps bare base64 payloads with the data-URL prefix", () => {
+    const items = modelMessagesToItems([
+      { role: "user", content: [{ type: "file", mediaType: "image/jpeg", data: "AAAA" }] },
+    ])
+    expect(imagePartsOf(items)[0]!.image_url).toBe("data:image/jpeg;base64,AAAA")
+  })
+})
+
+describe("codex-compaction repeated compaction chaining", () => {
+  test("buildReplacementHistory retains prior opaque compaction items", () => {
+    const priorCompaction: CodexResponseItem = { type: "compaction", encrypted_content: "first-blob" }
+    const newCompaction: CodexResponseItem = { type: "compaction", encrypted_content: "second-blob" }
+    const history = buildReplacementHistory([userItem("fresh user turn"), priorCompaction], newCompaction)
+    const compactionItems = history.filter(
+      (item): item is { type: "compaction"; encrypted_content: string } => "type" in item && item.type === "compaction",
+    )
+    expect(compactionItems.map((item) => item.encrypted_content)).toEqual(["first-blob", "second-blob"])
+    expect(history[history.length - 1]).toEqual(newCompaction)
+  })
+})
+
+describe("codex-compaction metadata apiModelID", () => {
+  test("preserves the resolved API model id when present", () => {
+    const meta = extractRemoteCompactionMetadata({
+      remoteCompaction: {
+        version: 2,
+        provider: "openai-responses-compaction",
+        implementation: "responses_compaction_v2",
+        modelKey: "openai-codex/alias",
+        providerID: "openai-codex",
+        modelID: "alias",
+        apiModelID: "gpt-5.4-codex",
+        replacementHistory: USER_ITEMS,
+      },
+    })
+    expect(meta).toBeDefined()
+    expect(meta!.apiModelID).toBe("gpt-5.4-codex")
+  })
+
+  test("omits apiModelID when absent", () => {
+    const meta = extractRemoteCompactionMetadata({
+      remoteCompaction: {
+        version: 2,
+        provider: "openai-responses-compaction",
+        implementation: "responses_compaction_v2",
+        modelKey: "openai-codex/gpt-5.4-codex",
+        providerID: "openai-codex",
+        modelID: "gpt-5.4-codex",
+        replacementHistory: USER_ITEMS,
+      },
+    })
+    expect(meta).toBeDefined()
+    expect(meta!.apiModelID).toBeUndefined()
   })
 })

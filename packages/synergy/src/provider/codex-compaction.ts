@@ -19,6 +19,15 @@
  * `reasoning`, `compaction`, `compaction_trigger`).
  */
 
+/**
+ * Worker-safe canonical provider identifier for codex remote compaction.
+ * Lives in this dependency-free helper module so the LLM worker graph can
+ * compare provider IDs without value-importing the full Codex provider module
+ * (auth, global filesystem, recovery). The provider module aliases it as its
+ * public `PROVIDER_ID` so the two can never drift.
+ */
+export const CODEX_PROVIDER_ID = "openai-codex"
+
 const REMOTE_COMPACTION_V2_FEATURE = "remote_compaction_v2"
 const RETAINED_MESSAGE_TOKEN_BUDGET = 20_000
 
@@ -76,7 +85,10 @@ export type CodexRemoteCompactionMetadata = {
   implementation: "responses_compaction_v2"
   modelKey: string
   providerID: string
+  /** Conversation-model catalog key that produced the artifact. */
   modelID: string
+  /** Resolved wire model id actually sent to the Responses endpoint. */
+  apiModelID?: string
   summaryText: string
   replacementHistory: CodexResponseItem[]
   usage?: CodexRemoteCompactionUsage
@@ -226,10 +238,11 @@ function truncateItemToBudget(item: CodexResponseItem, remainingTokens: number):
 
 /**
  * Build the persisted replacement history shape used by Codex-style replay:
- * the most recent real user messages (bounded by a token budget) followed by
- * the opaque compaction item. The compaction item is never truncated or
- * rewritten; when the budget does not fit it alone, it still wins and older
- * retained messages are dropped first.
+ * retained conversation items (newest real user messages within the token
+ * budget, plus every prior opaque compaction item — the backend-state anchor
+ * for repeated compactions) followed by the new compaction item. The
+ * compaction items are never truncated or rewritten; when the budget does
+ * not fit them they still win and older retained messages are dropped first.
  */
 export function buildReplacementHistory(
   input: CodexResponseItem[],
@@ -238,22 +251,30 @@ export function buildReplacementHistory(
   if (compactionItem.type !== "compaction") {
     throw new Error("Codex remote compaction v2 did not return a compaction item.")
   }
-  const retainedUserMessages = input.filter((item) => isRealUserMessage(item))
+  // Walk newest-first. Prior opaque compaction items are always retained
+  // (dropping them would make the next compaction/artifact restart from the
+  // lossy local summary); real user messages are retained newest-first within
+  // the budget.
+  const kept: CodexResponseItem[] = []
   let remaining = RETAINED_MESSAGE_TOKEN_BUDGET
-  const retainedReversed: CodexResponseItem[] = []
-  for (const item of [...retainedUserMessages].reverse()) {
+  for (const item of [...input].reverse()) {
+    if (!isCodexMessageItem(item) && "type" in item && item.type === "compaction") {
+      kept.push(cloneItem(item))
+      continue
+    }
+    if (!isRealUserMessage(item)) continue
     if (remaining <= 0) break
     const cost = approximateItemTokens(item)
     if (cost <= remaining) {
-      retainedReversed.push(cloneItem(item))
+      kept.push(cloneItem(item))
       remaining -= cost
       continue
     }
     const truncated = truncateItemToBudget(item, remaining)
-    if (truncated) retainedReversed.push(truncated)
+    if (truncated) kept.push(truncated)
     remaining = 0
   }
-  return [...retainedReversed.reverse(), cloneItem(compactionItem)]
+  return [...kept.reverse(), cloneItem(compactionItem)]
 }
 
 /**
@@ -302,25 +323,111 @@ export function parseRemoteCompactionEvents(events: unknown[]): {
   return { compactionItem: compactionItems[0], usage }
 }
 
-/** Split raw SSE text into JSON event payloads (tolerant of CRLF and [DONE]). */
-export function parseSseData(text: string): unknown[] {
-  return text
-    .replace(/\r\n/g, "\n")
-    .split("\n\n")
-    .flatMap((block) => {
-      const data = block
-        .split("\n")
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice(5).trimStart())
-        .join("\n")
-        .trim()
-      if (!data || data === "[DONE]") return []
-      try {
-        return [JSON.parse(data) as unknown]
-      } catch {
-        return []
-      }
+export const REMOTE_COMPACTION_MAX_EVENT_BYTES = 16 * 1024 * 1024
+
+/**
+ * Pull-based, per-event-bounded reader over an SSE byte stream. Decodes the
+ * stream incrementally, splits on blank-line event boundaries (`\n\n` and
+ * `\r\n\r\n`), and yields one parsed JSON payload per `data:` block (skipping
+ * `[DONE]`). A single event larger than `maxEventBytes` cancels the stream and
+ * throws; the underlying reader is released on every terminal path
+ * (completion, error, caller abort).
+ */
+export async function* readSseJsonEvents(
+  stream: ReadableStream<Uint8Array>,
+  opts?: { signal?: AbortSignal; maxEventBytes?: number },
+): AsyncGenerator<unknown> {
+  const maxEventBytes = opts?.maxEventBytes ?? REMOTE_COMPACTION_MAX_EVENT_BYTES
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+  let readerReleased = false
+  const release = () => {
+    if (readerReleased) return
+    readerReleased = true
+    try {
+      reader.releaseLock()
+    } catch {}
+  }
+  const cancel = async (error?: unknown) => {
+    try {
+      await reader.cancel(error)
+    } catch {
+      // The stream may already be errored or cancelled by the producer.
+    } finally {
+      release()
+    }
+  }
+  // Race the pull against the caller signal so an abort interrupts a read
+  // that never delivers (the same pattern as ProviderStream.readWithAbort).
+  const readWithAbort = async () => {
+    opts?.signal?.throwIfAborted()
+    if (!opts?.signal) return reader.read()
+    let onAbort: (() => void) | undefined
+    const aborted = new Promise<never>((_, reject) => {
+      onAbort = () => reject(opts.signal!.reason ?? new DOMException("Aborted", "AbortError"))
+      opts.signal!.addEventListener("abort", onAbort, { once: true })
     })
+    try {
+      return await Promise.race([reader.read(), aborted])
+    } finally {
+      if (onAbort) opts.signal!.removeEventListener("abort", onAbort)
+    }
+  }
+  const parseBlock = (block: string): unknown | undefined => {
+    if (block.length > maxEventBytes) {
+      void cancel(new Error(`Codex SSE event exceeded the ${maxEventBytes}-byte bound`))
+      throw new Error(`Codex SSE event exceeded the ${maxEventBytes}-byte bound`)
+    }
+    const data = block
+      .split("\n")
+      // Mixed line endings: strip a trailing \r per line so a \n\n boundary
+      // inside a CRLF stream still yields clean data lines.
+      .map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line))
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n")
+      .trim()
+    if (!data || data === "[DONE]") return undefined
+    try {
+      return JSON.parse(data) as unknown
+    } catch {
+      // Tolerate a malformed keep-alive/comment block like the text parser.
+      return undefined
+    }
+  }
+  try {
+    while (true) {
+      const { done, value } = await readWithAbort()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      while (true) {
+        const lf = buffer.indexOf("\n\n")
+        const crlf = buffer.indexOf("\r\n\r\n")
+        if (lf === -1 && crlf === -1) break
+        const isCrlf = crlf !== -1 && (lf === -1 || crlf < lf)
+        const boundary = isCrlf ? crlf : lf
+        const block = buffer.slice(0, boundary)
+        buffer = buffer.slice(boundary + (isCrlf ? 4 : 2))
+        const event = parseBlock(block)
+        if (event !== undefined) yield event
+      }
+      // Every complete event has been consumed, so the remainder is a single
+      // partial event; bound it so a misbehaving upstream cannot grow memory
+      // between boundaries (the per-event bound only fires on full events).
+      if (buffer.length > maxEventBytes) {
+        void cancel(new Error(`Codex SSE event exceeded the ${maxEventBytes}-byte bound`))
+        throw new Error(`Codex SSE event exceeded the ${maxEventBytes}-byte bound`)
+      }
+    }
+    buffer += decoder.decode()
+    if (buffer.trim().length > 0) {
+      const event = parseBlock(buffer)
+      if (event !== undefined) yield event
+    }
+  } finally {
+    release()
+  }
 }
 
 /** Codex identity headers that mirror the Codex CLI for remote compaction v2. */
@@ -371,6 +478,7 @@ export function extractRemoteCompactionMetadata(value: unknown): CodexRemoteComp
     modelKey: typeof remote.modelKey === "string" ? remote.modelKey : "",
     providerID: typeof remote.providerID === "string" ? remote.providerID : "",
     modelID: typeof remote.modelID === "string" ? remote.modelID : "",
+    ...(typeof remote.apiModelID === "string" && remote.apiModelID !== "" ? { apiModelID: remote.apiModelID } : {}),
     summaryText: typeof remote.summaryText === "string" ? remote.summaryText : "",
     replacementHistory,
     ...(isRecord(remote.usage) ? { usage: remote.usage as CodexRemoteCompactionUsage } : {}),
@@ -466,8 +574,17 @@ export function modelMessagesToItems(messages: CodexModelMessageLike[]): CodexRe
         } else if (part.type === "file") {
           const mediaType = typeof part.mediaType === "string" ? part.mediaType : ""
           const data = part.data
-          if (mediaType.startsWith("image/") && typeof data === "string") {
-            parts.push({ type: "input_image", image_url: `data:${mediaType};base64,${data}` })
+          if (mediaType.startsWith("image/") && typeof data === "string" && data.length > 0) {
+            // The model-message projection supplies `data` as the existing
+            // attachment URL (a complete data: URL or an HTTP(S) URL); only a
+            // bare base64 payload needs the prefix. Wrapping an existing URL
+            // again would produce malformed input like
+            // data:image/png;base64,data:image/png;base64,...
+            const imageUrl =
+              data.startsWith("data:") || data.startsWith("http://") || data.startsWith("https://")
+                ? data
+                : `data:${mediaType};base64,${data}`
+            parts.push({ type: "input_image", image_url: imageUrl })
           }
         }
       }
@@ -586,25 +703,47 @@ export function applyReplaySplice(
   return next
 }
 
-// ── Worker-side per-session replay registry ────────────────────────────────
+// ── Worker-side per-turn replay registry ───────────────────────────────────
 // The agent turn runs in a worker process where the codex fetch closure only
-// knows the provider id. The registry is populated per turn from the turn
-// input (sessionID + replay plan) and consumed by the fetch body rewrite,
-// which derives the sessionID from the request body's prompt_cache_key.
-// Plans are session-scoped and sticky for the session: every fetch of the
-// session splices while the plan is set, and a new turn (or a session whose
-// model no longer matches the compaction) simply overwrites or clears the
-// previous plan.
+// knows the resolved prompt-cache key from the serialized request body. The
+// registry is populated per turn by `LLM.stream` (sessionID + resolved cache
+// key + plan) and consumed by the fetch body rewrite, which looks up by the
+// body's `prompt_cache_key`. The sessionID→cacheKey mapping lets the runner
+// release the entry by sessionID when the turn finishes (completion, failure,
+// and cancellation all flow through the runner's terminal path), so a
+// long-lived worker never retains per-session artifacts between turns.
 
 const replayRegistry = new Map<string, CodexReplayPlan>()
+const sessionReplayKeys = new Map<string, string>()
 
-export function setReplayPlan(sessionID: string, plan: CodexReplayPlan | undefined): void {
-  if (plan === undefined) replayRegistry.delete(sessionID)
-  else replayRegistry.set(sessionID, plan)
+export function setReplayPlan(sessionID: string, cacheKey: string, plan: CodexReplayPlan | undefined): void {
+  const previousKey = sessionReplayKeys.get(sessionID)
+  if (previousKey !== undefined) replayRegistry.delete(previousKey)
+  if (plan === undefined) {
+    sessionReplayKeys.delete(sessionID)
+    return
+  }
+  sessionReplayKeys.set(sessionID, cacheKey)
+  replayRegistry.set(cacheKey, plan)
 }
 
-export function getReplayPlan(sessionID: string): CodexReplayPlan | undefined {
-  return replayRegistry.get(sessionID)
+export function getReplayPlan(cacheKey: string): CodexReplayPlan | undefined {
+  return replayRegistry.get(cacheKey)
+}
+
+/** Release the plan registered for a session (called when its turn ends). */
+export function clearReplayPlan(sessionID: string): void {
+  const cacheKey = sessionReplayKeys.get(sessionID)
+  sessionReplayKeys.delete(sessionID)
+  if (cacheKey !== undefined) replayRegistry.delete(cacheKey)
+}
+
+/** Release a plan by its resolved prompt-cache key (replay rejection path). */
+export function clearReplayPlanForCacheKey(cacheKey: string): void {
+  replayRegistry.delete(cacheKey)
+  for (const [sessionID, key] of sessionReplayKeys) {
+    if (key === cacheKey) sessionReplayKeys.delete(sessionID)
+  }
 }
 
 /** Normalize a Responses usage payload into a compact usage snapshot. */

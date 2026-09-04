@@ -16,12 +16,11 @@ import { SessionPluginHooks as Plugin } from "./plugin-hooks"
 import { Config } from "@/config/config"
 import { Turn } from "./turn"
 import { LoopJob } from "./loop-job"
-import { LLM } from "./llm"
-import type { ModelMessage } from "ai"
+import type { LanguageModelUsage, ModelMessage } from "ai"
 import { SessionHistory } from "./history"
+import { ObservabilityMetrics } from "@/observability/metrics"
 import { ObservabilityRedaction } from "@/observability/redaction"
 import { PromptBudgeter } from "./prompt-budgeter"
-import { withTimeout } from "@/util/timeout"
 import { CodexProvider } from "@/provider/codex"
 import {
   buildReplacementHistory,
@@ -29,8 +28,11 @@ import {
   modelKey as codexModelKey,
   modelMessagesToItems,
   type CodexRemoteCompactionMetadata,
+  type CodexRemoteCompactionUsage,
+  type CodexResponseItem,
   type CodexReplayPlan,
 } from "@/provider/codex-compaction"
+import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 
 export namespace SessionCompaction {
   const log = Log.create({ service: "session.compaction" })
@@ -447,6 +449,82 @@ export namespace SessionCompaction {
   const REMOTE_COMPACTION_TIMEOUT_MS = 90_000
 
   /**
+   * Newest fulfilled compaction summary on the session that carries a codex
+   * remote-compaction v2 artifact for the same conversation model. Mirrors
+   * the replay-plan rule: the newest summary decides — when it has no
+   * artifact or was produced by a different model, `undefined` is returned so
+   * a fresh remote request is built from the local history instead of being
+   * chained onto a stale artifact.
+   */
+  function newestSameModelRemoteArtifact(
+    messages: MessageV2.WithParts[],
+    providerID: string,
+    modelID: string,
+  ): { index: number; metadata: CodexRemoteCompactionMetadata } | undefined {
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const message = messages[index]
+      if (message.info.role !== "assistant") continue
+      const assistant = message.info as MessageV2.Assistant
+      if (!(assistant.summary === true && !!assistant.finish)) continue
+      const metadata = extractRemoteCompactionMetadata(assistant.metadata)
+      if (!metadata) return undefined
+      if (metadata.providerID !== providerID || metadata.modelID !== modelID) return undefined
+      return { index, metadata }
+    }
+    return undefined
+  }
+
+  /**
+   * Reconstruct the provider-final prompt history the codex conversation
+   * model actually saw: the same plugin message-transform hook, workflow user
+   * projection, and image cap that `SessionInvoke` applies before every real
+   * turn. When the newest same-model artifact exists, the input is the prior
+   * opaque history plus the post-summary tail (the summary text is replaced
+   * by the artifact, exactly as the replay splice does for real turns);
+   * otherwise the full local history is converted. Returns `undefined` when
+   * the best-effort reconstruction cannot be trusted (transform hook error).
+   */
+  async function buildRemoteCompactionItems(input: {
+    sessionID: string
+    messages: MessageV2.WithParts[]
+    providerID: string
+    modelID: string
+    agentName: string
+    maxHistoryImages: number
+  }): Promise<CodexResponseItem[] | undefined> {
+    const session = await SessionManager.requireSession(input.sessionID)
+    const prior = newestSameModelRemoteArtifact(input.messages, input.providerID, input.modelID)
+    const base = prior ? input.messages.slice(prior.index + 1) : input.messages
+    // Shallow copies isolate the transform hook's mutations (invoke.ts does
+    // the same before triggering the hook).
+    const sessionMessages = base.map((m) => ({ ...m, parts: [...m.parts] }))
+    try {
+      await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
+    } catch (error) {
+      log.warn("codex remote compaction: message transform hook failed; skipping remote track", {
+        sessionID: input.sessionID,
+        error,
+      })
+      return undefined
+    }
+    const projected = WorkflowUserWrapper.projectMessages({
+      messages: sessionMessages,
+      session,
+      agent: { name: input.agentName },
+    })
+    const modelMessages = MessageV2.projectModelMessages(projected, {
+      maxHistoryImages: input.maxHistoryImages,
+    }).messages
+    const items = modelMessagesToItems(modelMessages)
+    if (!prior) return items
+    // Chain the prior opaque artifact (which already ends in a `compaction`
+    // item) ahead of the post-summary tail so repeated compactions preserve
+    // the backend state instead of restarting from the lossy local summary.
+    const priorHistory = JSON.parse(JSON.stringify(prior.metadata.replacementHistory)) as CodexResponseItem[]
+    return [...priorHistory, ...items]
+  }
+
+  /**
    * Codex remote-compaction v2 track (best-effort, config-gated). When the
    * session runs on the `openai-codex` provider and `compaction.codexRemote`
    * is enabled, request an opaque server-side compaction artifact from the
@@ -454,7 +532,10 @@ export namespace SessionCompaction {
    *
    * The conversation model (the root user message's model, not the compaction
    * agent's model) drives the request because the artifact is only replayable
-   * on later turns of that same model.
+   * on later turns of that same model. The logical catalog key is resolved to
+   * the wire API id the endpoint accepts (an alias maps to a different
+   * `Provider.Model.api.id`); the logical key is still persisted so replay
+   * gating stays stable across model-catalog updates.
    *
    * Returns the persisted metadata fragment (without `summaryText`, which is
    * filled from the committed local summary) or `undefined` when disabled,
@@ -466,28 +547,54 @@ export namespace SessionCompaction {
     messages: MessageV2.WithParts[]
     providerID: string
     modelID: string
+    agentName: string
+    cancel: AbortSignal
     abort: AbortSignal
   }): Promise<Omit<CodexRemoteCompactionMetadata, "summaryText"> | undefined> {
     const config = await Config.current()
     if (config.compaction?.codexRemote !== true) return undefined
     if (input.providerID !== CodexProvider.PROVIDER_ID) return undefined
+    const maxHistoryImages = config.compaction?.maxHistoryImages ?? 8
+    const resolvedModel = await Provider.getModel(input.providerID, input.modelID).catch(() => undefined)
+    const apiModelID = resolvedModel?.api.id
+    const requestModelID = apiModelID ?? input.modelID
+    // The remote timeout must abort only the remote request. Reusing the
+    // shared session signal would dispatch "abort" onto the local summary
+    // processor too (the withTimeout implementation dispatches rather than
+    // setting aborted) and could turn compaction into a failed attempt. A
+    // dedicated child controller is linked to the session abort and the
+    // compaction cancellation signal, plus a plain timer for the 90s window.
+    const remoteAbort = new AbortController()
+    const onSessionAbort = () => remoteAbort.abort(input.abort.reason)
+    const onCancelAbort = () => remoteAbort.abort(input.cancel.reason)
+    if (input.abort.aborted) remoteAbort.abort(input.abort.reason)
+    else input.abort.addEventListener("abort", onSessionAbort, { once: true })
+    if (input.cancel.aborted) remoteAbort.abort(input.cancel.reason)
+    else input.cancel.addEventListener("abort", onCancelAbort, { once: true })
+    const timeout = setTimeout(() => {
+      remoteAbort.abort(
+        new DOMException(`Codex remote compaction timed out after ${REMOTE_COMPACTION_TIMEOUT_MS}ms`, "TimeoutError"),
+      )
+    }, REMOTE_COMPACTION_TIMEOUT_MS)
+    timeout.unref?.()
     try {
       input.abort.throwIfAborted()
-      const items = modelMessagesToItems(MessageV2.toModelMessage(input.messages))
-      const result = await withTimeout(
-        CodexProvider.requestRemoteCompactionV2({
-          providerID: input.providerID,
-          modelID: input.modelID,
-          items,
-          sessionID: input.sessionID,
-          signal: input.abort,
-        }),
-        REMOTE_COMPACTION_TIMEOUT_MS,
-        {
-          signal: input.abort,
-          message: `Codex remote compaction v2 timed out after ${REMOTE_COMPACTION_TIMEOUT_MS}ms`,
-        },
-      )
+      const items = await buildRemoteCompactionItems({
+        sessionID: input.sessionID,
+        messages: input.messages,
+        providerID: input.providerID,
+        modelID: input.modelID,
+        agentName: input.agentName,
+        maxHistoryImages,
+      })
+      if (!items || items.length === 0) return undefined
+      const result = await CodexProvider.requestRemoteCompactionV2({
+        providerID: input.providerID,
+        modelID: requestModelID,
+        items,
+        sessionID: input.sessionID,
+        signal: remoteAbort.signal,
+      })
       return {
         version: 2,
         provider: "openai-responses-compaction",
@@ -495,17 +602,102 @@ export namespace SessionCompaction {
         modelKey: codexModelKey(input.providerID, input.modelID),
         providerID: input.providerID,
         modelID: input.modelID,
+        ...(apiModelID ? { apiModelID } : {}),
         replacementHistory: buildReplacementHistory(items, result.compactionItem),
         ...(result.usage ? { usage: result.usage } : {}),
       }
     } catch (error) {
-      if (input.abort.aborted) return undefined
+      if (input.abort.aborted || input.cancel.aborted) return undefined
       log.warn("codex remote compaction v2 failed; local summary remains authoritative", {
         sessionID: input.sessionID,
         error,
       })
       return undefined
+    } finally {
+      clearTimeout(timeout)
+      input.abort.removeEventListener("abort", onSessionAbort)
+      input.cancel.removeEventListener("abort", onCancelAbort)
     }
+  }
+
+  /**
+   * Persist a codex remote-compaction request through the canonical usage
+   * path: a hidden (non-visible, context-excluded, part-less) assistant record
+   * attributed to the conversation model, so Stats and activity totals count
+   * the extra model request under the model that actually served it, plus the
+   * same observability metrics the normal LLM stream records.
+   */
+  async function recordRemoteCompactionUsage(input: {
+    sessionID: string
+    parentID: string
+    rootID: string
+    directory: string
+    providerID: string
+    modelID: string
+    usage: CodexRemoteCompactionUsage
+  }): Promise<void> {
+    const model = await Provider.getModel(input.providerID, input.modelID).catch(() => undefined)
+    const languageModelUsage = {
+      inputTokens: (input.usage.input ?? 0) + (input.usage.cacheRead ?? 0),
+      outputTokens: input.usage.output ?? 0,
+      totalTokens: input.usage.totalTokens,
+      cachedInputTokens: input.usage.cacheRead ?? 0,
+    } satisfies LanguageModelUsage
+    const { cost, tokens } = model
+      ? Session.getUsage({ model, usage: languageModelUsage })
+      : {
+          cost: 0,
+          tokens: {
+            input: input.usage.input ?? 0,
+            output: input.usage.output ?? 0,
+            reasoning: 0,
+            cache: { read: input.usage.cacheRead ?? 0, write: 0 },
+          },
+        }
+    const now = Date.now()
+    const id = Identifier.ascending("message")
+    await Session.updateMessage({
+      id,
+      role: "assistant",
+      parentID: input.parentID,
+      rootID: input.rootID,
+      sessionID: input.sessionID,
+      visible: false,
+      includeInContext: false,
+      mode: "compaction",
+      agent: "compaction",
+      metadata: { codexRemoteCompactionUsage: true },
+      path: { cwd: input.directory, root: input.directory },
+      cost,
+      tokens,
+      modelID: input.modelID,
+      providerID: input.providerID,
+      // No `finish`: a terminal assistant on the conversation root would
+      // satisfy needsModelCall for a later continuation user message and could
+      // suppress the next real turn. This record exists only so Stats and
+      // activity totals see the remote request's tokens/cost.
+      time: { created: now, completed: now },
+    } satisfies MessageV2.Assistant)
+    for (const name of ["llm.tokens.input", "llm.tokens.output"] as const) {
+      ObservabilityMetrics.record({
+        name,
+        value: name === "llm.tokens.input" ? tokens.input : tokens.output,
+        unit: "tokens",
+        module: "llm",
+        sessionID: input.sessionID,
+        messageID: id,
+        labels: { provider: input.providerID, model: input.modelID },
+      })
+    }
+    ObservabilityMetrics.record({
+      name: "llm.request.count",
+      value: 1,
+      unit: "count",
+      module: "llm",
+      sessionID: input.sessionID,
+      messageID: id,
+      labels: { provider: input.providerID, model: input.modelID, finishReason: "stop" },
+    })
   }
 
   /**
@@ -514,7 +706,9 @@ export namespace SessionCompaction {
    * carries the `remoteCompaction` v2 record. Only when the current turn runs
    * on the exact same codex provider/model that produced the artifact is the
    * plan returned; any other model (or a local-only/mechanical summary) falls
-   * back to the normal local-history replay.
+   * back to the normal local-history replay. When the artifact records the
+   * resolved API model id and the current model mapping resolves to a
+   * different wire model, the artifact is stale and replay is rejected.
    */
   export async function codexReplayPlan(input: {
     messages: MessageV2.WithParts[]
@@ -524,17 +718,16 @@ export namespace SessionCompaction {
     if (input.providerID !== CodexProvider.PROVIDER_ID) return undefined
     const config = await Config.current()
     if (config.compaction?.codexRemote !== true) return undefined
-    for (let index = input.messages.length - 1; index >= 0; index--) {
-      const message = input.messages[index]
-      if (message.info.role !== "assistant") continue
-      const assistant = message.info as MessageV2.Assistant
-      if (!(assistant.summary === true && !!assistant.finish)) continue
-      const metadata = extractRemoteCompactionMetadata(assistant.metadata)
-      if (!metadata) return undefined
-      if (metadata.providerID !== input.providerID || metadata.modelID !== input.modelID) return undefined
-      return { replacementHistory: metadata.replacementHistory, summaryText: metadata.summaryText }
+    const artifact = newestSameModelRemoteArtifact(input.messages, input.providerID, input.modelID)
+    if (!artifact) return undefined
+    if (artifact.metadata.apiModelID) {
+      const resolved = await Provider.getModel(input.providerID, input.modelID).catch(() => undefined)
+      if (resolved && resolved.api.id !== artifact.metadata.apiModelID) return undefined
     }
-    return undefined
+    return {
+      replacementHistory: artifact.metadata.replacementHistory,
+      summaryText: artifact.metadata.summaryText,
+    }
   }
 
   export async function process(input: {
@@ -590,11 +783,14 @@ export namespace SessionCompaction {
     // authoritative local summary. The conversation model (the root user
     // message's model) drives the request — the artifact is only replayable
     // on later turns of that same model.
+    const remoteCancellation = new AbortController()
     const remoteCompactionPromise = runRemoteCompaction({
       sessionID: input.sessionID,
       messages: input.messages,
       providerID: userMessage.model.providerID,
       modelID: userMessage.model.modelID,
+      agentName: userMessage.agent,
+      cancel: remoteCancellation.signal,
       abort: input.abort,
     })
     const processor = SessionProcessor.create({
@@ -660,6 +856,7 @@ export namespace SessionCompaction {
       })
     } catch (error) {
       await settleFailedAttempt(msg, error)
+      remoteCancellation.abort()
       throw error
     }
 
@@ -676,6 +873,7 @@ export namespace SessionCompaction {
         usedMechanicalFallback = true
       } else {
         await settleFailedAttempt(msg)
+        remoteCancellation.abort()
         return "stop"
       }
     }
@@ -687,6 +885,7 @@ export namespace SessionCompaction {
       if (!allText.trim()) {
         setAttemptState(msg, "empty")
         await Session.updateMessage(msg)
+        remoteCancellation.abort()
         return "stop"
       }
       committedSummaryText = allText
@@ -709,16 +908,42 @@ export namespace SessionCompaction {
       await Session.updateMessage(msg)
     }
     // Merge the codex remote-compaction v2 artifact into the summary message
-    // metadata when both tracks committed. Best-effort: a failed, disabled,
-    // or model-mismatched remote track leaves the local summary untouched.
-    const remoteCompaction = await remoteCompactionPromise
-    if (remoteCompaction && committedSummaryText) {
-      msg.metadata = {
-        ...msg.metadata,
-        remoteCompaction: { ...remoteCompaction, summaryText: committedSummaryText },
+    // metadata and record its usage through the canonical token/cost path.
+    // The attach is asynchronous on purpose: the remote request may take up
+    // to its 90s window while the committed local summary is authoritative,
+    // so the compaction job must not hold the session busy waiting for it.
+    // Best-effort: a failed, disabled, or model-mismatched remote track
+    // leaves the local summary untouched.
+    if (committedSummaryText) {
+      const attach = async () => {
+        try {
+          const remoteCompaction = await remoteCompactionPromise
+          if (!remoteCompaction || input.abort.aborted) return
+          await Session.mergeMessageMetadata({
+            sessionID: input.sessionID,
+            messageID: msg.id,
+            metadata: { remoteCompaction: { ...remoteCompaction, summaryText: committedSummaryText } },
+          })
+          if (remoteCompaction.usage) {
+            await recordRemoteCompactionUsage({
+              sessionID: input.sessionID,
+              parentID: input.parentID,
+              rootID: input.parentID,
+              directory,
+              providerID: userMessage.model.providerID,
+              modelID: userMessage.model.modelID,
+              usage: remoteCompaction.usage,
+            })
+          }
+          log.info("attached codex remote compaction v2 artifact", { sessionID: input.sessionID })
+        } catch (error) {
+          log.warn("failed to attach codex remote compaction v2 artifact", {
+            sessionID: input.sessionID,
+            error,
+          })
+        }
       }
-      await Session.updateMessage(msg)
-      log.info("attached codex remote compaction v2 artifact", { sessionID: input.sessionID })
+      void attach()
     }
 
     if (input.auto) {
