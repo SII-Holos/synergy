@@ -224,7 +224,8 @@ describe("mobile drawer root navigation", () => {
     await withFixture(async (page) => {
       const section = page.locator("#worktree")
       const row = section.locator('[data-session-id="ses_wt"]')
-      await expect(row.locator('[data-slot="icon-svg"].text-icon-success-base').count()).resolves.toBe(1)
+      await expect(row.locator('[data-slot="icon-svg"]').count()).resolves.toBe(1)
+      await expect(row.locator('[data-slot="icon-svg"].text-icon-success-base').count()).resolves.toBe(0)
       expect(await row.locator("span.text-13-medium").textContent()).toBe("Worktree session")
       await expect(section.locator(".sr-only", { hasText: "Worktree session" }).count()).resolves.toBe(1)
     })

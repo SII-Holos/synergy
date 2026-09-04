@@ -60,7 +60,7 @@ function StatusDot(props: SessionRowProps) {
         when={!props.isWorking && !props.hasPermission && !props.hasError && !props.hasNotification && isWorktree()}
       >
         <span class="sr-only">{i18n._({ id: "session.state.worktree", message: "Worktree session" })}</span>
-        <Icon name={getSemanticIcon("workspace.worktree")} size="small" class="text-icon-success-base" />
+        <Icon name={getSemanticIcon("workspace.worktree")} size="small" class="text-icon-weak-base" />
       </Show>
       <Show
         when={

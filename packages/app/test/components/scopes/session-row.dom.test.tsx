@@ -160,9 +160,7 @@ describe("mobile project session rows", () => {
   test("renders the worktree glyph only for idle git-worktree sessions", async () => {
     await withFixture(async (page) => {
       const worktreeRow = page.locator('[data-row="ses_wt"]')
-      await expect(
-        worktreeRow.locator('[data-icon="workspace.worktree"].text-icon-success-base').count(),
-      ).resolves.toBe(1)
+      await expect(worktreeRow.locator('[data-icon="workspace.worktree"].text-icon-weak-base').count()).resolves.toBe(1)
       await expect(worktreeRow.locator('[data-icon="action.pin"]').count()).resolves.toBe(0)
       await expect(worktreeRow.locator(".sr-only", { hasText: "Worktree session" }).count()).resolves.toBe(1)
 
