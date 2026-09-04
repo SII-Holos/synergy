@@ -228,6 +228,18 @@ pub fn build_bwrap_plan(
                 .join(metadata_name)
                 .to_string_lossy()
                 .into_owned();
+            // Only mount metadata directories that exist: bwrap hard-fails
+            // when a --ro-bind source is missing, and most workspaces have no
+            // .agents/.codex directory at launch. Creation inside the sandbox
+            // stays blocked by the ProtectedCreateMonitor (which removes the
+            // entry), so skipping a missing directory does not weaken the
+            // protection.
+            if !Path::new(&protected).exists() {
+                log::warn!(
+                    "skipping read-only mount for {protected}: path does not exist (create vector covered by ProtectedCreateMonitor)"
+                );
+                continue;
+            }
             push_ro_bind(&mut mounts, &protected, &protected);
         }
     }
@@ -491,6 +503,31 @@ mod tests {
                 matches!(m, MountOp::RoBind { source, target } if source == pp && target == pp)
             }));
         }
+    }
+
+    #[test]
+    fn metadata_ro_bind_skips_missing_and_binds_existing() {
+        let tmp = std::env::temp_dir().join(format!("bwrap_meta_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join(".agents")).unwrap();
+        let ws = tmp.to_string_lossy().into_owned();
+        let mut profile = make_profile(&ws, "full", vec![&ws], vec![], vec![]);
+        profile.file_system.protected_metadata_names = vec![".agents".into(), ".codex".into()];
+        let plan = plan(&profile, &ws);
+        assert!(
+            plan.mounts.iter().any(|m| {
+                matches!(m, MountOp::RoBind { source, target }
+                    if source == &format!("{ws}/.agents") && target == &format!("{ws}/.agents"))
+            }),
+            "existing metadata directory (.agents) must be ro-bound"
+        );
+        assert!(
+            !plan.mounts.iter().any(|m| {
+                matches!(m, MountOp::RoBind { source, target } if source == &format!("{ws}/.codex"))
+            }),
+            "missing metadata directory (.codex) must be skipped — bwrap hard-fails on missing --ro-bind sources"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
