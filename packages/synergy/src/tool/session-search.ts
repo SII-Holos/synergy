@@ -222,9 +222,17 @@ async function collectSessionCandidates(
 }
 
 async function readCandidateSession(candidate: SessionCandidate): Promise<Session.Info | undefined> {
-  const session = await Storage.read<Session.Info>(StoragePath.sessionInfo(candidate.scopeID, candidate.sessionID))
-  if (!session || !session.scope) return undefined
-  return session
+  try {
+    const session = await Storage.read<Session.Info>(StoragePath.sessionInfo(candidate.scopeID, candidate.sessionID))
+    if (!session || !session.scope) return undefined
+    return session
+  } catch (error) {
+    // Page-index entries can outlive their info file after an interrupted
+    // delete; skip orphans like the global search route instead of failing
+    // the whole search.
+    if (error instanceof Storage.NotFoundError) return undefined
+    throw error
+  }
 }
 
 function messageSearchText(parts: MessageV2.Part[], content: "text" | "tool" | "all"): string {
