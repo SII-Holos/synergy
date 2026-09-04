@@ -69,6 +69,10 @@
           "reason": "CLI command surface; exercised through integration flows, not the unit suite"
         },
         {
+          "glob": "src/cli/cmd/library.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
           "glob": "src/cli/cmd/mcp.ts",
           "reason": "CLI command surface; exercised through integration flows, not the unit suite"
         },
