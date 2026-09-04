@@ -190,7 +190,22 @@ export namespace FileWatcher {
             // native scan, and a scan that later fails mid-way leaks its
             // partial watches into the shared backend. Wait for the attempt to
             // settle so recovery stays serial and bounded.
-            return pending
+            return FileWatcherEvents.warnOnStall({
+              task: pending,
+              onStall: (elapsedMs) =>
+                log.warn("native watcher scan stalled; later Linux subscriptions are queued behind it", {
+                  directory: input.directory,
+                  label: input.label,
+                  elapsedMs,
+                  hint: "a hung scan usually indicates a network filesystem (NFS/autofs) subtree; live events are not required for correctness",
+                }),
+              onSettledAfterStall: (elapsedMs) =>
+                log.info("stalled native watcher scan settled", {
+                  directory: input.directory,
+                  label: input.label,
+                  elapsedMs,
+                }),
+            })
           }
           return withTimeout(pending, timeoutMs).catch((error) => {
             pending
@@ -217,22 +232,34 @@ export namespace FileWatcher {
       disconnect: (subscription) => subscription.unsubscribe(),
       onError: async (error) => {
         const terminalError = FileWatcherEvents.isLinuxInotifyTerminalError(error)
-        if (terminalError) FileWatcherEvents.tripLinuxInotifyCapacity()
-        log.error(
-          terminalError
-            ? "file watcher disabled after Linux inotify watch capacity exhaustion"
-            : "file watcher subscription failed",
-          {
+        if (!terminalError) {
+          log.error("file watcher subscription failed", {
             directory: input.directory,
             label: input.label,
             error,
-            hint: terminalError
-              ? "raise fs.inotify.max_user_watches or open a smaller workspace, then reload watcher state or restart the process to restore live file events"
-              : undefined,
-          },
-        )
-        if (terminalError) return
-        await input.resync?.()
+          })
+          await input.resync?.()
+          return
+        }
+        // The breaker is process-wide: only the first capacity failure logs
+        // the full remediation. Subscriptions that hit the guard afterwards
+        // (queued scans, other scopes) report one bounded warn each.
+        const alreadyTripped = FileWatcherEvents.isLinuxInotifyCapacityTripped()
+        FileWatcherEvents.tripLinuxInotifyCapacity()
+        if (alreadyTripped) {
+          log.warn("file watcher subscription skipped: Linux inotify capacity already exhausted", {
+            directory: input.directory,
+            label: input.label,
+            error,
+          })
+          return
+        }
+        log.error("file watcher disabled after Linux inotify watch capacity exhaustion", {
+          directory: input.directory,
+          label: input.label,
+          error,
+          hint: "raise fs.inotify.max_user_watches or open a smaller workspace, then reload watcher state or restart the process to restore live file events",
+        })
       },
     })
 
@@ -431,6 +458,11 @@ export namespace FileWatcher {
     // state (e.g. after raising fs.inotify.max_user_watches) re-arms Linux
     // subscriptions.
     FileWatcherEvents.resetLinuxInotifyCapacity()
+    // Known snapshot race: a scope torn down between this snapshot and the
+    // re-creation below can be re-created here. The orphaned watcher state is
+    // bounded (that scope's subscriptions) and is cleared by the next reload
+    // or process restart; reload is an operator-triggered action, so the
+    // window is accepted.
     const scopeIDs = [...liveWatcherScopeIDs]
     await state.resetAll()
     // resetAll() disposed every watcher state; re-create the live ones so the

@@ -153,6 +153,68 @@ describe("FileWatcherEvents native subscription policy", () => {
     await afterFailure
     expect(order).toContain("after-failure")
   })
+
+  test("classifies synthetic capacity errors by marker, independent of code or message", () => {
+    const synthetic = FileWatcherEvents.linuxInotifyCapacityError() as Error & { code?: string }
+    delete synthetic.code
+    expect(FileWatcherEvents.isLinuxInotifyTerminalError(synthetic, "linux")).toBe(true)
+    expect(FileWatcherEvents.isLinuxInotifyTerminalError(synthetic, "darwin")).toBe(false)
+    expect(FileWatcherEvents.isLinuxInotifyTerminalError(synthetic, "win32")).toBe(false)
+  })
+
+  test("warns once when an uncancellable task stalls, then reports its settle", async () => {
+    const stalls: number[] = []
+    const settled: number[] = []
+    let release: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const task = gate.then(() => "done")
+    const observed = FileWatcherEvents.warnOnStall({
+      task,
+      warnMs: 5,
+      onStall: (elapsedMs) => stalls.push(elapsedMs),
+      onSettledAfterStall: (elapsedMs) => settled.push(elapsedMs),
+    })
+    await Bun.sleep(25)
+    expect(stalls).toHaveLength(1)
+    expect(settled).toHaveLength(0)
+
+    release?.()
+    await expect(observed).resolves.toBe("done")
+    expect(stalls).toHaveLength(1)
+    expect(settled).toHaveLength(1)
+  })
+
+  test("does not warn when the uncancellable task settles before the threshold", async () => {
+    const stalls: number[] = []
+    const value = await FileWatcherEvents.warnOnStall({
+      task: Promise.resolve(42),
+      warnMs: 20,
+      onStall: (elapsedMs) => stalls.push(elapsedMs),
+    })
+    expect(value).toBe(42)
+    await Bun.sleep(40)
+    expect(stalls).toHaveLength(0)
+  })
+
+  test("preserves a stalled task's rejection while still reporting the settle", async () => {
+    const settled: number[] = []
+    let rejectTask: ((error: Error) => void) | undefined
+    const task = new Promise<string>((_, reject) => {
+      rejectTask = reject
+    })
+    const observed = FileWatcherEvents.warnOnStall({
+      task,
+      warnMs: 5,
+      onStall: () => {},
+      onSettledAfterStall: (elapsedMs) => settled.push(elapsedMs),
+    })
+    await Bun.sleep(20)
+    rejectTask?.(new Error("scan failed"))
+    await expect(observed).rejects.toThrow("scan failed")
+    expect(settled).toHaveLength(1)
+  })
 })
 
 describe("FileWatcherEvents path normalization", () => {

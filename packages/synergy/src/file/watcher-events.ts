@@ -17,6 +17,10 @@ export namespace FileWatcherEvents {
   // unsubscribe-on-timeout cleanup.
   const SUBSCRIBE_TIMEOUT_MS = 10_000
 
+  // Linux-only stall observability threshold for uncancellable native scans;
+  // see warnOnStall.
+  const NATIVE_SCAN_STALL_WARN_MS = 60_000
+
   const PROJECT_RUNTIME_IGNORES = ["node_modules", "worktrees", "cache", "data", "log", "logs", "state", "tmp", "temp"]
 
   // Provenance: @parcel/watcher v2.5.6 wrapper.js / Watcher.cc ignore
@@ -42,9 +46,15 @@ export namespace FileWatcherEvents {
    * (permission changes, subtrees disappearing mid-scan) must stay retryable,
    * and the 10s subscribe timeout no longer occurs on Linux (the native
    * attempt is awaited to settle), so neither is classified as terminal.
+   * Synthetic capacity errors carry an explicit marker so their
+   * classification never depends on message text; code/message matching
+   * remains the path for upstream @parcel/watcher errors.
    */
+  const LINUX_INOTIFY_CAPACITY_TERMINAL = "synergy.linuxInotifyCapacityTerminal"
+
   export function isLinuxInotifyTerminalError(error: unknown, platform = process.platform) {
     if (platform !== "linux") return false
+    if (typeof error === "object" && error !== null && LINUX_INOTIFY_CAPACITY_TERMINAL in error) return true
     const code =
       typeof error === "object" && error !== null && "code" in error ? String((error as { code?: unknown }).code) : ""
     const message = error instanceof Error ? error.message : String(error)
@@ -78,6 +88,7 @@ export namespace FileWatcherEvents {
       new Error("Linux inotify watch capacity exhausted; watcher disabled until reload or restart"),
       {
         code: "ENOSPC",
+        [LINUX_INOTIFY_CAPACITY_TERMINAL]: true,
       },
     )
   }
@@ -263,6 +274,44 @@ export namespace FileWatcherEvents {
       )
       return run
     }
+  }
+
+  /**
+   * Observes an uncancellable native task without cancelling or racing it. A
+   * Linux scan over a network filesystem (NFS/autofs) can block in readdir
+   * indefinitely while the process-wide serial gate holds every later Linux
+   * subscription behind it; this emits one stall warning and one
+   * settled-after-stall notice so that gap stays visible in logs while the
+   * await-to-settle semantics stay unchanged.
+   */
+  export function warnOnStall<T>(input: {
+    task: Promise<T>
+    warnMs?: number
+    onStall: (elapsedMs: number) => void
+    onSettledAfterStall?: (elapsedMs: number) => void
+  }): Promise<T> {
+    const warnMs = input.warnMs ?? NATIVE_SCAN_STALL_WARN_MS
+    const startedAt = Date.now()
+    let stalled = false
+    const timer = setTimeout(() => {
+      stalled = true
+      input.onStall(Date.now() - startedAt)
+    }, warnMs)
+    timer.unref()
+    const settle = () => {
+      clearTimeout(timer)
+      if (stalled) input.onSettledAfterStall?.(Date.now() - startedAt)
+    }
+    return input.task.then(
+      (value) => {
+        settle()
+        return value
+      },
+      (error) => {
+        settle()
+        throw error
+      },
+    )
   }
 
   export function createSubscriptionRecovery<T>(input: {
