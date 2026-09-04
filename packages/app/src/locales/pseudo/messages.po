@@ -8766,7 +8766,19 @@ msgid "app.workspace.surface.side.resize"
 msgstr ""
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.tab.actions"
+msgstr ""
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.tab.close"
+msgstr ""
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.tab.closeOthers"
+msgstr ""
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.tab.contextMenu"
 msgstr ""
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
@@ -16684,6 +16696,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.expand"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.card.expandByDefault"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.card.expandByDefault.description"
 msgstr ""
 
 #. js-lingui-explicit-id

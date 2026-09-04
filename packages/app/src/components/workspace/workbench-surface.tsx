@@ -15,6 +15,9 @@ import {
   isEditableEscapeTarget,
   isWorkbenchPanelLaunchable,
   workbenchPanelMountKey,
+  registerWorkbenchEscapeMenu,
+  anyWorkbenchEscapeMenuOpen,
+  closeAllWorkbenchEscapeMenus,
 } from "@/context/workbench/panel-model"
 import {
   computeMaxWorkspaceWidth,
@@ -122,6 +125,10 @@ function WorkbenchSortableTab(props: {
   entry?: WorkbenchPanelEntry
   onActivate: () => void
   onClose: () => void
+  onCloseOthers: () => void
+  onContextMenu: () => void
+  onContextMenuOpenChange: (open: boolean) => void
+  menuOpen: boolean
   onFocusIndex: (index: number) => void
 }) {
   const lingui = useLingui()
@@ -139,12 +146,17 @@ function WorkbenchSortableTab(props: {
       classList={{
         "workbench-surface-tab--active": props.active,
         "workbench-surface-tab--dragging": sortable.isActiveDraggable,
+        "workbench-surface-tab--context": props.menuOpen,
       }}
       title={props.tab.resourceId ?? props.title}
       onAuxClick={(event) => {
         if (event.button !== 1) return
         event.preventDefault()
         props.onClose()
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        props.onContextMenu()
       }}
     >
       <button
@@ -188,6 +200,54 @@ function WorkbenchSortableTab(props: {
       >
         <Icon name={getSemanticIcon("action.close")} size="small" />
       </button>
+      <Popover
+        open={props.menuOpen}
+        onOpenChange={(open) => {
+          if (!open) props.onContextMenuOpenChange(false)
+        }}
+        placement="bottom-start"
+        gutter={6}
+        class="workbench-surface-add-menu"
+        trigger={<span aria-hidden="true" />}
+      >
+        <div
+          class="workbench-surface-add-list"
+          role="menu"
+          aria-label={lingui._({
+            id: W.tabContextMenu.id,
+            message: W.tabContextMenu.message,
+            values: { title: props.tab.resourceId ?? props.title },
+          })}
+        >
+          <button
+            type="button"
+            class="workbench-surface-add-row"
+            role="menuitem"
+            onClick={() => {
+              props.onContextMenuOpenChange(false)
+              props.onClose()
+            }}
+          >
+            <Icon name={getSemanticIcon("action.close")} size="small" />
+            <span>{lingui._({ id: W.closeTab.id, message: W.closeTab.message, values: { title: props.title } })}</span>
+          </button>
+          <button
+            type="button"
+            class="workbench-surface-add-row"
+            role="menuitem"
+            disabled={props.tabs.length < 2}
+            onClick={() => {
+              props.onContextMenuOpenChange(false)
+              props.onCloseOthers()
+            }}
+          >
+            <Icon name={getSemanticIcon("action.close")} size="small" />
+            <span>
+              <Trans id={W.closeOtherTabs.id} message={W.closeOtherTabs.message} />
+            </span>
+          </button>
+        </div>
+      </Popover>
     </div>
   )
 }
@@ -256,8 +316,21 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
     )
     return panels().filter((panel) => panel.cardinality === "multi" || !openPanelIds.has(panel.id))
   })
+  const showTabActions = createMemo(() => {
+    const tabs = state().tabs()
+    return tabs.length > 1 && activeTab() !== undefined
+  })
+
+  const closeOtherTabs = () => {
+    setLocal("actionsOpen", false)
+    const tab = activeTab()
+    if (!tab) return
+    void workbench.closeOtherTabs(tab.id)
+  }
   const [local, setLocal] = createStore({
     addOpen: false,
+    actionsOpen: false,
+    menuTabId: undefined as string | undefined,
     resizing: false,
   })
   let tabRun: HTMLDivElement | undefined
@@ -271,7 +344,11 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
   }
 
   createEffect(() => {
-    if (!state().opened()) setLocal("addOpen", false)
+    if (!state().opened()) {
+      setLocal("addOpen", false)
+      setLocal("actionsOpen", false)
+      setLocal("menuTabId", undefined)
+    }
   })
 
   createEffect(() => {
@@ -279,25 +356,44 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
   })
 
   onMount(() => {
+    const menuHandle = {
+      isAnyMenuOpen: () => local.addOpen || local.actionsOpen || local.menuTabId !== undefined,
+      closeMenus: () => {
+        setLocal("addOpen", false)
+        setLocal("actionsOpen", false)
+        setLocal("menuTabId", undefined)
+      },
+    }
+    const unregister = registerWorkbenchEscapeMenu(menuHandle)
     const onKey = (event: KeyboardEvent) => {
       const action = resolveWorkbenchEscapeAction({
         key: event.key,
         opened: state().opened(),
-        addOpen: local.addOpen,
+        menuOpen: anyWorkbenchEscapeMenuOpen(),
         dialogActive: Boolean(dialog.active),
         editableFocus: isEditableEscapeTarget(event.target),
       })
       if (action === "none") return
       event.preventDefault()
       event.stopPropagation()
-      if (action === "close-add-menu") {
-        setLocal("addOpen", false)
+      if (action === "close-menu") {
+        // With both side and bottom surfaces mounted, the other surface's
+        // capture listener would see the just-closed menus and fall through
+        // to closing its panel. Close every menu here and stop the same-node
+        // capture listeners from re-deciding; without any menu open each
+        // surface keeps its own close-surface path (Escape collapses every
+        // open surface, as before).
+        closeAllWorkbenchEscapeMenus()
+        event.stopImmediatePropagation()
         return
       }
       state().close()
     }
     document.addEventListener("keydown", onKey, { capture: true })
-    onCleanup(() => document.removeEventListener("keydown", onKey, { capture: true }))
+    onCleanup(() => {
+      unregister()
+      document.removeEventListener("keydown", onKey, { capture: true })
+    })
   })
 
   const size = () => state().size()
@@ -407,11 +503,51 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
                         entry={workbench.panelForTab(tab)}
                         onActivate={() => state().setActive(tab.id)}
                         onClose={() => void workbench.closeTab(tab.id)}
+                        onCloseOthers={() => void workbench.closeOtherTabsOnSurface(props.surface, tab.id)}
+                        onContextMenu={() => setLocal("menuTabId", tab.id)}
+                        onContextMenuOpenChange={(open) => {
+                          if (!open) setLocal("menuTabId", undefined)
+                        }}
+                        menuOpen={local.menuTabId === tab.id}
                         onFocusIndex={focusTab}
                       />
                     )}
                   </For>
                 </SortableProvider>
+                <Show when={showTabActions()}>
+                  <div class="workbench-surface-actions-wrap">
+                    <Popover
+                      open={local.actionsOpen}
+                      onOpenChange={(open) => setLocal("actionsOpen", open)}
+                      placement="bottom-start"
+                      gutter={6}
+                      class="workbench-surface-add-menu"
+                      trigger={
+                        <IconButton
+                          icon={getSemanticIcon("action.more")}
+                          variant="ghost"
+                          aria-label={lingui._({ id: W.tabActionsMenu.id, message: W.tabActionsMenu.message })}
+                          aria-haspopup="menu"
+                          aria-expanded={local.actionsOpen}
+                        />
+                      }
+                    >
+                      <div class="workbench-surface-add-list" role="menu">
+                        <button
+                          type="button"
+                          class="workbench-surface-add-row"
+                          role="menuitem"
+                          onClick={closeOtherTabs}
+                        >
+                          <Icon name={getSemanticIcon("action.close")} size="small" />
+                          <span>
+                            <Trans id={W.closeOtherTabs.id} message={W.closeOtherTabs.message} />
+                          </span>
+                        </button>
+                      </div>
+                    </Popover>
+                  </div>
+                </Show>
                 <Show when={addablePanels().length > 0}>
                   <div class="workbench-surface-add-wrap">
                     <Popover

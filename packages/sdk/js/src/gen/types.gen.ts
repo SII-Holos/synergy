@@ -2998,6 +2998,10 @@ export type McpLocalConfig = {
    */
   idleShutdownMs?: number
   toolFilter?: McpToolFilterConfig
+  /**
+   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
+   */
+  expandByDefault?: boolean
   tools?: McpToolsConfig
   toolCache?: McpToolCacheConfig
   /**
@@ -3070,6 +3074,10 @@ export type McpRemoteConfig = {
    */
   idleShutdownMs?: number
   toolFilter?: McpToolFilterConfig
+  /**
+   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
+   */
+  expandByDefault?: boolean
   tools?: McpToolsConfig
   toolCache?: McpToolCacheConfig
   /**
@@ -3108,6 +3116,10 @@ export type McpDefaultsConfig = {
    */
   idleShutdownMs?: number
   toolFilter?: McpToolFilterConfig
+  /**
+   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
+   */
+  expandByDefault?: boolean
   tools?: McpToolsConfig
   toolCache?: McpToolCacheConfig
 }

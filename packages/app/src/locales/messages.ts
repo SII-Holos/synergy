@@ -29,6 +29,9 @@ export const workspace = {
   resizeBottom: { id: "app.workspace.surface.bottom.resize", message: "Resize bottom workspace" },
   addSidePanel: { id: "app.workspace.add.sidePanel", message: "Add side panel" },
   addBottomPanel: { id: "app.workspace.add.bottomPanel", message: "Add bottom panel" },
+  tabActionsMenu: { id: "app.workspace.tab.actions", message: "Tab actions" },
+  tabContextMenu: { id: "app.workspace.tab.contextMenu", message: "{title} actions" },
+  closeOtherTabs: { id: "app.workspace.tab.closeOthers", message: "Close other tabs" },
   mobileHeader: { id: "app.workspace.mobileHeader", message: "Workspace" },
   closeWorkspace: { id: "app.workspace.mobileHeader.close", message: "Close workspace" },
 } as const satisfies Record<string, AppMessageDescriptor>

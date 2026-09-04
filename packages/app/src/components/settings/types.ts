@@ -172,6 +172,7 @@ export type McpEntry = {
   key: string
   type: "local" | "remote"
   enabled: boolean
+  expandByDefault: boolean
   command: string
   url: string
   timeout: string
@@ -276,7 +277,17 @@ export function snapToastDuration(value: number): number {
 }
 
 export function emptyMcp(): McpEntry {
-  return { key: "", type: "local", enabled: true, command: "", url: "", timeout: "", environment: "", headers: "" }
+  return {
+    key: "",
+    type: "local",
+    enabled: true,
+    expandByDefault: false,
+    command: "",
+    url: "",
+    timeout: "",
+    environment: "",
+    headers: "",
+  }
 }
 
 export type DialogSettingsProps = {

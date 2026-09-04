@@ -97,6 +97,9 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
         key,
         type: (isLocal ? "local" : "remote") as "local" | "remote",
         enabled: mcp.enabled !== false,
+        expandByDefault:
+          mcp.expandByDefault === true ||
+          (mcp.expandByDefault === undefined && cfg.mcpDefaults?.expandByDefault === true),
         command: isLocal && Array.isArray(mcp.command) ? (mcp.command as string[]).join(" ") : "",
         url: !isLocal && typeof mcp.url === "string" ? mcp.url : "",
         timeout: mcp.timeout !== undefined ? String(mcp.timeout) : "",

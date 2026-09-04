@@ -8766,8 +8766,20 @@ msgid "app.workspace.surface.side.resize"
 msgstr "Resize side workspace"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.tab.actions"
+msgstr "Tab actions"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.tab.close"
 msgstr "Close {title}"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.tab.closeOthers"
+msgstr "Close other tabs"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.tab.contextMenu"
+msgstr "{title} actions"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.tabs.bottom"
@@ -16685,6 +16697,14 @@ msgstr "KEY=value ANOTHER=value"
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.expand"
 msgstr "Expand server details"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.card.expandByDefault"
+msgstr "Expand by default"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.card.expandByDefault.description"
+msgstr "Keep this server's tools always visible to the model instead of folding them into an expandable MCP group."
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.headers"

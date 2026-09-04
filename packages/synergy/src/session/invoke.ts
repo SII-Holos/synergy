@@ -799,8 +799,16 @@ export namespace SessionInvoke {
         if (gitHealthBlock) lateSystemParts.push(gitHealthBlock)
 
         // Layer 4.55: Configurable advisory context — git commit coauthor footer reminder
+        // Only meaningful in a git working tree; use the same live probe as the
+        // env block (SessionProjectHealth.isGitRepo) so the reminder never
+        // contradicts "Is directory a git repo" in the environment text.
         if ((await Config.current()).experimental?.coauthor_reminder !== false) {
-          lateSystemParts.push(`<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
+          const inGitRepo =
+            ScopeContext.current.scope.type === "project" &&
+            (await SessionProjectHealth.isGitRepo(ScopeContext.current.directory))
+          if (inGitRepo) {
+            lateSystemParts.push(`<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
+          }
         }
 
         // Layer 5: Dynamic advisory context — upcoming agenda wake-ups
