@@ -162,6 +162,7 @@ export namespace Config {
       if (result.toolFilter === undefined) result.toolFilter = defaults.toolFilter
       if (result.tools === undefined) result.tools = defaults.tools
       if (result.toolCache === undefined) result.toolCache = defaults.toolCache
+      if (result.expandByDefault === undefined) result.expandByDefault = defaults.expandByDefault
     }
 
     result.startup ??= "eager"

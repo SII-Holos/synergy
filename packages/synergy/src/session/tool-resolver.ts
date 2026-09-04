@@ -1717,12 +1717,17 @@ export namespace ToolResolver {
 
     if (input.includeMCP !== false) {
       const mcpSource = ToolMcpSource.get()
+      const config = await Config.current()
       const mcpEntries = mcpSource ? await mcpSource.toolEntries() : []
+      const mcpConfig = config.mcp ?? {}
       const mcpToolNames = new Set(mcpEntries.map((entry) => entry.id))
       for (const entry of mcpEntries) {
         const key = entry.id
         const item = entry.tool
-        const exposure = ToolExposure.mcpExposure(mcpEntries.length, entry.serverName)
+        const exposure = ToolExposure.mcpExposure(
+          entry.serverName,
+          ToolExposure.mcpExpandByDefault(mcpConfig[entry.serverName], config.mcpDefaults),
+        )
         const schema = entry.inputSchema
         result.push({
           id: key,

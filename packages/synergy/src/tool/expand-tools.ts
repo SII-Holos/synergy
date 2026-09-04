@@ -5,6 +5,7 @@ import { ToolDiscovery } from "./discovery"
 import { ToolExposure } from "./exposure"
 import { ToolMcpSource } from "./mcp-source"
 import { Tool } from "./tool"
+import { Config } from "@/config/config"
 
 const parameters = z
   .object({
@@ -33,10 +34,12 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => {
       totalTools: 0,
       servers: [],
     }))
+  const config = await Config.current()
+  const foldedServers = mcpCatalog.servers.filter(
+    (server) => !ToolExposure.mcpExpandByDefault(config.mcp?.[server.serverName], config.mcpDefaults),
+  )
   const mcpSection =
-    mcpCatalog.totalTools >= ToolExposure.MCP_DEFER_THRESHOLD
-      ? ["Connected MCP groups:", ToolExposure.mcpGroupTable(mcpCatalog.servers)].join("\n")
-      : ""
+    foldedServers.length > 0 ? ["Connected MCP groups:", ToolExposure.mcpGroupTable(foldedServers)].join("\n") : ""
   return {
     description: [
       "Change tool visibility for the current session by expanding deferred groups or activating search-only tools. The expanded state is stored on the session and remains stable across future turns, session restore, and context compaction until the session ends or the state is explicitly cleared.",

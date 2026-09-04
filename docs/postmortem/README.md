@@ -34,12 +34,13 @@ Each postmortem is a file named `NNNN-kebab-case-title.md`, numbered sequentiall
 
 Entries are added only when an incident qualifies; the table stays empty until then.
 
-| Number | Title                                                            | Status      | Date       |
-| ------ | ---------------------------------------------------------------- | ----------- | ---------- |
-| 0001   | Coverage-mode test run wrote fixtures into the real Synergy home | implemented | 2026-08-18 |
-| 0002   | ToolScheduler singleton leaked across CI shard-process tests     | implemented | 2026-08-20 |
-| 0003   | Leaked module-level fetch stub failed the arXiv suite on CI      | implemented | 2026-08-27 |
-| 0004   | Scope-scoped theme registry flipped the skin on session switches | implemented | 2026-08-30 |
+| Number | Title                                                                      | Status      | Date       |
+| ------ | -------------------------------------------------------------------------- | ----------- | ---------- |
+| 0001   | Coverage-mode test run wrote fixtures into the real Synergy home           | implemented | 2026-08-18 |
+| 0002   | ToolScheduler singleton leaked across CI shard-process tests               | implemented | 2026-08-20 |
+| 0003   | Leaked module-level fetch stub failed the arXiv suite on CI                | implemented | 2026-08-27 |
+| 0004   | Scope-scoped theme registry flipped the skin on session switches           | implemented | 2026-08-30 |
+| 0005   | Linux inotify exhaustion stormed the file watcher and degraded the process | implemented | 2026-09-03 |
 
 ## History rules
 

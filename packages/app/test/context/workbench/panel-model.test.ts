@@ -1,11 +1,15 @@
 import { describe, expect, test } from "bun:test"
 import type { WorkbenchPanelTab } from "../../../src/plugin/registries/workbench-panel-registry"
 import {
+  anyWorkbenchEscapeMenuOpen,
+  closeAllWorkbenchEscapeMenus,
+  closeOtherWorkbenchPanelTabs,
   closeWorkbenchPanelTab,
   isEditableEscapeTarget,
   isWorkbenchPanelLaunchable,
   moveWorkbenchPanelTab,
   openWorkbenchPanelTab,
+  registerWorkbenchEscapeMenu,
   resolveWorkbenchEscapeAction,
   updateWorkbenchPanelTab,
   workbenchPanelMountKey,
@@ -204,6 +208,79 @@ describe("closeWorkbenchPanelTab", () => {
   })
 })
 
+describe("closeOtherWorkbenchPanelTabs", () => {
+  test("keeps only the requested tab and activates it", () => {
+    const tabs = [
+      { id: "file:a", panelId: "file", resourceId: "src/a.ts", title: "a.ts" },
+      { id: "notes", panelId: "notes" },
+      { id: "file:b", panelId: "file", resourceId: "src/b.ts", title: "b.ts" },
+    ]
+    const result = closeOtherWorkbenchPanelTabs(tabs, "file:a", "notes")
+
+    expect(result.tabs).toEqual([{ id: "notes", panelId: "notes" }])
+    expect(result.active).toBe("notes")
+  })
+
+  test("activates the kept tab even when another tab was active", () => {
+    const tabs = [
+      { id: "a", panelId: "file" },
+      { id: "b", panelId: "file" },
+    ]
+    const result = closeOtherWorkbenchPanelTabs(tabs, "b", "a")
+
+    expect(result.active).toBe("a")
+  })
+
+  test("preserves opaque tab state on the kept tab", () => {
+    const tabs = [
+      { id: "map", panelId: "plugin:research-map", resourceId: "map", state: { view: "map" } },
+      { id: "node", panelId: "plugin:research-map" },
+    ]
+    const result = closeOtherWorkbenchPanelTabs(tabs, "map", "map")
+
+    expect(result.tabs).toEqual([
+      { id: "map", panelId: "plugin:research-map", resourceId: "map", state: { view: "map" } },
+    ])
+  })
+
+  test("is a no-op when the kept tab is missing", () => {
+    const tabs = [
+      { id: "a", panelId: "file" },
+      { id: "b", panelId: "file" },
+    ]
+    const result = closeOtherWorkbenchPanelTabs(tabs, "b", "missing")
+
+    expect(result.tabs).toBe(tabs)
+    expect(result.active).toBe("b")
+  })
+
+  test("bounded closing set removes exactly the snapshot and keeps tabs opened during the window", () => {
+    const tabs = [
+      { id: "a", panelId: "file" },
+      { id: "b", panelId: "file" },
+      { id: "late", panelId: "file" },
+    ]
+    const result = closeOtherWorkbenchPanelTabs(tabs, "late", "b", new Set(["a"]))
+
+    expect(result.tabs.map((tab) => tab.id)).toEqual(["b", "late"])
+    expect(result.active).toBe("b")
+  })
+
+  test("kept tab removed concurrently leaves the bounded result untouched", () => {
+    const result = closeOtherWorkbenchPanelTabs([{ id: "c", panelId: "notes" }], "c", "a", new Set(["a", "b"]))
+
+    expect(result.tabs).toEqual([{ id: "c", panelId: "notes" }])
+    expect(result.active).toBe("c")
+  })
+
+  test("a bounded close of the last tab empties the surface", () => {
+    const result = closeOtherWorkbenchPanelTabs([{ id: "a", panelId: "file" }], "a", "missing", new Set(["a"]))
+
+    expect(result.tabs).toEqual([])
+    expect(result.active).toBeUndefined()
+  })
+})
+
 describe("workbench tab updates", () => {
   test("updates a tab in place and preserves its identity", () => {
     const tabs = [{ id: "file:a", panelId: "file", resourceId: "old.ts", title: "old.ts" }]
@@ -271,20 +348,20 @@ describe("workbench Escape routing", () => {
       resolveWorkbenchEscapeAction({
         key: "Escape",
         opened: true,
-        addOpen: false,
+        menuOpen: false,
         dialogActive: true,
       }),
     ).toBe("none")
   })
 
-  test("closes the add menu before the workspace and ignores unrelated keys", () => {
-    expect(resolveWorkbenchEscapeAction({ key: "Escape", opened: true, addOpen: true, dialogActive: false })).toBe(
-      "close-add-menu",
+  test("closes any open menu before the workspace and ignores unrelated keys", () => {
+    expect(resolveWorkbenchEscapeAction({ key: "Escape", opened: true, menuOpen: true, dialogActive: false })).toBe(
+      "close-menu",
     )
-    expect(resolveWorkbenchEscapeAction({ key: "Escape", opened: true, addOpen: false, dialogActive: false })).toBe(
+    expect(resolveWorkbenchEscapeAction({ key: "Escape", opened: true, menuOpen: false, dialogActive: false })).toBe(
       "close-surface",
     )
-    expect(resolveWorkbenchEscapeAction({ key: "Enter", opened: true, addOpen: false, dialogActive: false })).toBe(
+    expect(resolveWorkbenchEscapeAction({ key: "Enter", opened: true, menuOpen: false, dialogActive: false })).toBe(
       "none",
     )
   })
@@ -294,7 +371,7 @@ describe("workbench Escape routing", () => {
       resolveWorkbenchEscapeAction({
         key: "Escape",
         opened: true,
-        addOpen: false,
+        menuOpen: false,
         dialogActive: false,
         editableFocus: true,
       }),
@@ -303,12 +380,50 @@ describe("workbench Escape routing", () => {
       resolveWorkbenchEscapeAction({
         key: "Escape",
         opened: true,
-        addOpen: true,
+        menuOpen: true,
         dialogActive: false,
         editableFocus: true,
       }),
     ).toBe("none")
   })
+})
+
+test("escape menu registry arbitrates across mounted surfaces", () => {
+  const unregisterIdle = registerWorkbenchEscapeMenu({
+    isAnyMenuOpen: () => false,
+    closeMenus: () => {},
+  })
+  const unregisterOpen = registerWorkbenchEscapeMenu({
+    isAnyMenuOpen: () => true,
+    closeMenus: () => {},
+  })
+  expect(anyWorkbenchEscapeMenuOpen()).toBe(true)
+  unregisterOpen()
+  expect(anyWorkbenchEscapeMenuOpen()).toBe(false)
+  unregisterIdle()
+  expect(anyWorkbenchEscapeMenuOpen()).toBe(false)
+})
+
+test("closeAllWorkbenchEscapeMenus closes every registered menu", () => {
+  let closedFirst = 0
+  let closedSecond = 0
+  const unregisterFirst = registerWorkbenchEscapeMenu({
+    isAnyMenuOpen: () => true,
+    closeMenus: () => {
+      closedFirst += 1
+    },
+  })
+  const unregisterSecond = registerWorkbenchEscapeMenu({
+    isAnyMenuOpen: () => true,
+    closeMenus: () => {
+      closedSecond += 1
+    },
+  })
+  closeAllWorkbenchEscapeMenus()
+  expect(closedFirst).toBe(1)
+  expect(closedSecond).toBe(1)
+  unregisterFirst()
+  unregisterSecond()
 })
 
 describe("isEditableEscapeTarget", () => {

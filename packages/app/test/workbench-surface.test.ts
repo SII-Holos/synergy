@@ -202,6 +202,32 @@ describe("workbench surface polarity", () => {
     expect(workbenchPanels).toContain("if (next.tabs.length === 0) target.close()")
   })
 
+  test("workbench tabs offer close-others from toolbar and context menu", () => {
+    expect(workbenchPanels).toContain("closeOtherTabs")
+    expect(workbenchSurface).toContain("closeOtherTabsOnSurface")
+    expect(workbenchSurface).toContain("W.closeOtherTabs.id")
+    expect(workbenchSurface).toContain("W.tabContextMenu.id")
+    expect(workbenchSurface).toContain("onContextMenu")
+    expect(workbenchSurface).not.toContain("workbench-surface-context-trigger")
+    expect(workbenchSurface).toContain('"workbench-surface-tab--context": props.menuOpen')
+    expect(workbenchSurface).toContain("local.actionsOpen || local.menuTabId !== undefined")
+    expect(workbenchSurfaceCss).toContain(".workbench-surface-tab--context")
+    expect(workbenchSurfaceCss).toContain("workbench-surface-add-row:disabled")
+    expect(workbenchSurfaceCss).toContain('[data-slot="popover-trigger"]')
+  })
+
+  test("workbench surfaces arbitrate Escape through the shared menu registry", () => {
+    expect(workbenchSurface).toContain("registerWorkbenchEscapeMenu")
+    expect(workbenchSurface).toContain("anyWorkbenchEscapeMenuOpen")
+    expect(workbenchSurface).toContain("closeAllWorkbenchEscapeMenus")
+    expect(workbenchSurface).toContain("stopImmediatePropagation")
+    expect(workbenchPanels).toContain("batchClosingSurfaces")
+    expect(workbenchPanels).toContain("closingIds")
+    expect(workbenchPanels).toContain(
+      "closeOtherWorkbenchPanelTabs(target.tabs(), target.active(), keepTabId, closingIds)",
+    )
+  })
+
   test("raised stronger non-alpha utilities resolve to popover surfaces inside the workbench", () => {
     expect(css).toContain(".bg-surface-raised-stronger-non-alpha")
     expect(css).toContain("background-color: var(--workbench-popover-bg);")
