@@ -1118,6 +1118,7 @@ export namespace ToolResolver {
     const supportsImageInput = input.model.capabilities.input.image
     const hasImageFormatRestrictions = !!input.model.capabilities.input.supportedImageMediaTypes?.length
     const lookAtAvailable = (!supportsImageInput || hasImageFormatRestrictions) && (await hasAvailableVisionModel())
+    const ttsAvailable = (await Config.current()).voice?.tts?.model !== undefined
 
     for (const def of defs) {
       if (def.diagnostic) {
@@ -1128,6 +1129,7 @@ export namespace ToolResolver {
       const isEphemeral = ephemeralToolIds.has(def.id)
       if (!isEphemeral && def.id === "look_at" && !lookAtAvailable) continue
       if (!isEphemeral && def.id === "view_image" && !supportsImageInput) continue
+      if (!isEphemeral && def.id === "speak" && !ttsAvailable) continue
 
       const modeDiagnostic = isEphemeral
         ? undefined

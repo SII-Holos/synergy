@@ -22,6 +22,7 @@ import { SessionSendTool } from "./session-send"
 
 import { ScopeListTool } from "./scope-list"
 import { AttachTool } from "./attach"
+import { SpeakTool } from "./speak"
 import { OpenAIImageGenTool } from "./openai-image-gen"
 import { OpenAIImageEditTool } from "./openai-image-edit"
 
@@ -279,6 +280,7 @@ export namespace ToolRegistry {
       SessionSendTool,
       ScopeListTool,
       AttachTool,
+      SpeakTool,
       RenderTool,
       RuntimeReloadTool,
     ]
