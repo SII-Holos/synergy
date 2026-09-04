@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test"
-import { activityScopeForTool, isActivityGroupableTool, toolDisplayPolicy } from "../src/activity"
+import {
+  activityFamilyForTool,
+  activityScopeForTool,
+  isActivityGroupableTool,
+  isActivityReceiptTool,
+  toolDisplayPolicy,
+} from "../src/activity"
 
 describe("activityScopeForTool", () => {
   test("groups modified files by package or top-level workspace directory", () => {
@@ -51,5 +57,20 @@ describe("isActivityGroupableTool", () => {
       toolCardHidden: true,
       mediaGeneration: true,
     })
+  })
+})
+
+describe("activity classification for media-generation tools", () => {
+  test("classifies speak as a production communication tool", () => {
+    expect(activityFamilyForTool("speak", { text: "Hello" })).toBe("produce")
+    expect(isActivityReceiptTool("speak", "produce")).toBe(true)
+  })
+
+  test("keeps hidden speak deliveries outside ordinary activity groups", () => {
+    expect(
+      isActivityGroupableTool("speak", {
+        display: { kind: "media-generation", toolCard: "hidden" },
+      }),
+    ).toBe(false)
   })
 })

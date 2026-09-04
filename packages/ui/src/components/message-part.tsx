@@ -595,6 +595,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: TOOL_TITLE_DESC["edit_image"],
         subtitle: input.output_path ? getDirectory(input.output_path) + getFilename(input.output_path) : input.prompt,
       }
+    case "speak":
+      return {
+        icon: "audio-lines",
+        title: TOOL_TITLE_DESC["speak"],
+        subtitle: firstString(input.text, input.voice, input.instructions),
+      }
     case "render":
       return {
         icon: "code",

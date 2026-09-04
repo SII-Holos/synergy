@@ -19383,6 +19383,10 @@ msgid "tool.title.skill"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.speak"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.start-notebook"
 msgstr ""
 

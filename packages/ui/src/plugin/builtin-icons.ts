@@ -15,6 +15,7 @@ const builtinIconNames = [
   "arrow-right",
   "arrow-up",
   "arrow-up-right",
+  "audio-lines",
   "badge-alert",
   "badge-check",
   "badge-x",
