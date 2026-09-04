@@ -1160,6 +1160,12 @@ export namespace Session {
     const canonical = MessageV2.canonicalMessage(msg)
     const session = await SessionManager.requireSession(msg.sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)
+    // Invalidate the search index BEFORE the content write so a crash between
+    // the write and the post-write mark can never leave a clean-but-stale
+    // record trusted; the post-write mark below refreshes the marker for any
+    // scan that races this write (commitRebuild only clears markers older
+    // than its scan start).
+    await SessionSearchIndex.markDirty(scopeID, asSessionID(canonical.sessionID))
     await MessageV2.writeInfo({ scopeID, info: canonical })
     SessionMessageCache.upsertMessage(canonical.sessionID, canonical)
     // Flip the rollback projection before publishing the replacement root: the
@@ -1274,6 +1280,8 @@ export namespace Session {
     async (input) => {
       const session = await SessionManager.requireSession(input.sessionID)
       const scopeID = asScopeID((session.scope as Scope).id)
+      // See updateMessage: invalidate before the content write, refresh after.
+      await SessionSearchIndex.markDirty(scopeID, asSessionID(input.sessionID))
       await MessageV2.removeInfo({
         scopeID,
         sessionID: asSessionID(input.sessionID),
@@ -1299,6 +1307,8 @@ export namespace Session {
     async (input) => {
       const session = await SessionManager.requireSession(input.sessionID)
       const scopeID = asScopeID((session.scope as Scope).id)
+      // See updateMessage: invalidate before the content write, refresh after.
+      await SessionSearchIndex.markDirty(scopeID, asSessionID(input.sessionID))
       await Storage.remove(
         StoragePath.messagePart(
           scopeID,
@@ -1373,6 +1383,20 @@ export namespace Session {
     )
     const searchableDiscreteWrite =
       delta === undefined && (part.type === "text" || part.type === "tool" || part.type === "attachment")
+    // A discrete content-bearing part write is a searchable-content boundary:
+    // user messages persist their parts AFTER Session.updateMessage marks the
+    // session dirty, assistant parts stream before the terminal updateMessage,
+    // and interrupted turns may flush parts with no following message write.
+    // A rebuild that runs in any of those windows must observe the part.
+    //
+    // Invalidate BEFORE the write (crash between write and post-mark cannot
+    // strand a clean-but-stale record) and refresh AFTER it (a scan racing
+    // this write sees a marker newer than its scan start). Streaming deltas
+    // stay unmarked (hot path) because a discrete terminal write always
+    // follows before the message settles.
+    if (searchableDiscreteWrite) {
+      await SessionSearchIndex.markDirty(scopeID, asSessionID(part.sessionID))
+    }
     if (delta !== undefined) {
       partWriteBuffer.defer(part.id, path, part)
     } else {
@@ -1385,13 +1409,6 @@ export namespace Session {
       // do not need to advance the cache — the terminal write for each part does.
       SessionMessageCache.upsertPart(part.sessionID, part)
     }
-    // A discrete content-bearing part write is a searchable-content boundary:
-    // user messages persist their parts AFTER Session.updateMessage marks the
-    // session dirty, assistant parts stream before the terminal updateMessage,
-    // and interrupted turns may flush parts with no following message write. A
-    // rebuild that runs in any of those windows must observe the part, so mark
-    // dirty here too. Streaming deltas stay unmarked (hot path) because a
-    // discrete terminal write always follows before the message settles.
     if (searchableDiscreteWrite) {
       await SessionSearchIndex.markDirty(scopeID, asSessionID(part.sessionID))
     }

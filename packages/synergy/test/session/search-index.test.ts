@@ -314,4 +314,128 @@ describe("session.search-index", () => {
       },
     })
   })
+  test("a stale-version record is treated as missing and rebuilt on the next query", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Version Stale" })
+        await writeMessage(session.id, Identifier.ascending("message"), "versionNeedle content", Date.now())
+
+        const scopeID = scopeIDOf(session)
+        const sessionID = Identifier.asSessionID(session.id)
+
+        // Build a clean v2 record, then overwrite it with a v1 record whose
+        // content no longer reflects the message (simulating a pre-upgrade
+        // cache from an older format).
+        await SessionSearchIndex.rebuildSession(scopeID, sessionID)
+        expect(await SessionSearchIndex.isDirty(scopeID, sessionID)).toBe(false)
+
+        const { Storage } = await import("../../src/storage/storage")
+        const { StoragePath } = await import("../../src/storage/path")
+        await Storage.write(
+          StoragePath.sessionSearchIndex(scopeID, sessionID),
+          {
+            version: 1,
+            tokenizerVersion: 1,
+            scopeID,
+            sessionID,
+            updatedAt: Date.now(),
+            messages: [],
+          },
+          { compact: true },
+        )
+
+        // readRecord ignores the stale version, so the query rescans and finds
+        // the content, then persists a current-version record.
+        const tool = await SessionSearchTool.init()
+        const result = await run(tool, "versionNeedle")
+        expect(result.metadata.matches).toBeGreaterThanOrEqual(1)
+        expect(result.metadata.scanned).toBeGreaterThanOrEqual(1)
+
+        const record = await SessionSearchIndex.readRecord(scopeID, sessionID)
+        expect(record?.version).toBe(SessionSearchIndex.VERSION)
+        expect(record?.messages[0]?.text).toContain("versionNeedle")
+      },
+    })
+  })
+
+  test("oversized data URLs are bounded to a size marker instead of copied into the record", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Data URL Cap" })
+        const messageID = Identifier.ascending("message")
+        await Session.updateMessage(userMessage(session.id, messageID, Date.now()))
+        const payload = "x".repeat(100_000)
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          sessionID: session.id,
+          messageID,
+          type: "attachment",
+          mime: "application/pdf",
+          filename: "bigdata-unique-3f1a.pdf",
+          url: `data:application/pdf;base64,${payload}`,
+          // provider-file attachments keep their data: URL inline (instead of
+          // externalizing to asset://), which is exactly when the indexer must
+          // bound the payload.
+          model: { mode: "provider-file" },
+        } as MessageV2.Part)
+
+        const scopeID = scopeIDOf(session)
+        const record = await SessionSearchIndex.rebuildSession(scopeID, Identifier.asSessionID(session.id))
+        const attachment = record.messages[0]!.attachment!
+
+        // The filename stays searchable, the raw payload does not enter the
+        // cache, and a bounded size marker makes the omission observable.
+        expect(attachment).toContain("bigdata-unique-3f1a.pdf")
+        expect(attachment).not.toContain(payload)
+        expect(attachment).toMatch(/\(\d+-byte inline payload\)/)
+      },
+    })
+  })
+
+  test("attachments nested in completed tool state join the attachment index", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Nested Tool Attachment" })
+        const messageID = Identifier.ascending("message")
+        await Session.updateMessage(userMessage(session.id, messageID, Date.now()))
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          sessionID: session.id,
+          messageID,
+          type: "tool",
+          callID: Identifier.ascending("tool"),
+          tool: "test_tool",
+          state: {
+            status: "completed",
+            input: {},
+            output: "done",
+            title: "T",
+            metadata: {},
+            time: { start: Date.now(), end: Date.now() },
+            attachments: [
+              {
+                id: Identifier.ascending("part"),
+                sessionID: session.id,
+                messageID,
+                type: "attachment",
+                mime: "image/png",
+                filename: "nestedtool-unique-8b2e.png",
+                url: "file:///nestedtool-unique-8b2e.png",
+              } satisfies MessageV2.AttachmentPart,
+            ],
+          },
+        } as MessageV2.Part)
+
+        const scopeID = scopeIDOf(session)
+        const record = await SessionSearchIndex.rebuildSession(scopeID, Identifier.asSessionID(session.id))
+        expect(record.messages[0]!.attachment).toContain("nestedtool-unique-8b2e.png")
+      },
+    })
+  })
 })

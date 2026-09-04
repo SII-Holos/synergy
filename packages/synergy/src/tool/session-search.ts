@@ -121,13 +121,54 @@ function patternTokens(pattern: string): string[] {
 function isPotentiallyCatastrophicPattern(pattern: string): boolean {
   if (pattern.length > MAX_PATTERN_CHARS) return true
   const stripped = pattern.replace(/\\./g, "x")
-  // A quantified group whose body itself ends in a quantifier (e.g. (a+)+,
-  // (a*)*, (?:a+)+, ((a+)+)) allows exponential backtracking. Unwrap nested
-  // groups a bounded number of times to catch deeper nesting.
+  // Scan innermost groups each pass and collapse one nesting level per
+  // iteration, so deeper nesting is still checked within the bounded loop.
   let probe = stripped
   for (let depth = 0; depth < 8; depth++) {
-    if (/\([^()]*[*+?][^()]*\)[*+?]/.test(probe)) return true
+    if (hasDangerousQuantifiedGroup(probe)) return true
     probe = probe.replace(/\([^()]*\)/g, "G")
+  }
+  return false
+}
+
+function unboundedQuantifier(quantifier: string | undefined): boolean {
+  // Only repetition without an upper bound can blow up on long input; `?` and
+  // `{m,n}` apply a bounded number of times.
+  if (quantifier === undefined) return false
+  return quantifier === "*" || quantifier === "+" || /^\{\d+,}$/.test(quantifier)
+}
+
+/**
+ * Whether a quantified innermost group's body is a classic exponential shape:
+ * a trailing quantified atom (`(a+)+`, `((a+)+)`) or an ambiguous alternation
+ * (`(a|aa)+`) whose alternatives can match the same input in different ways.
+ * Innermost groups contain no parentheses, so every `|` is a top-level
+ * alternative. Group prefixes are stripped first (`(?:foo)+` is safe; its `?`
+ * belongs to the prefix, not a nested quantifier). Conservative by design:
+ * ambiguous shapes that cannot be proven linear are rejected, while safe
+ * alternations such as `(?:error|warning)+` are accepted.
+ */
+function hasDangerousQuantifiedGroup(probe: string): boolean {
+  const re = /\(([^()]*)\)([*+?]|\{\d+(,\d*)?\})?/g
+  for (const match of probe.matchAll(re)) {
+    const quantifier = match[2]
+    if (!unboundedQuantifier(quantifier)) continue
+    const body = match[1]!.startsWith("?:") ? match[1]!.slice(2) : match[1]!
+    if (body.length === 0) continue
+    if (/[*+?]$/.test(body) || /\{\d+(,\d*)?\}$/.test(body)) return true
+    if (body.includes("|")) {
+      const alternatives = body.split("|")
+      const nonEmpty = alternatives.filter((alt) => alt.length > 0)
+      // An empty alternative can match without consuming input and overlaps
+      // every other branch.
+      if (nonEmpty.length !== alternatives.length) return true
+      const bare = Array.from(new Set(nonEmpty.map((alt) => alt.replace(/[*+?]$/, "").replace(/\{\d+(,\d*)?\}$/, ""))))
+      for (let i = 0; i < bare.length; i++) {
+        for (let j = i + 1; j < bare.length; j++) {
+          if (bare[i]!.startsWith(bare[j]!) || bare[j]!.startsWith(bare[i]!)) return true
+        }
+      }
+    }
   }
   return false
 }
@@ -290,10 +331,25 @@ async function searchSessions(params: z.infer<typeof parameters>, ctx: Tool.Cont
       title: "Invalid pattern",
       output:
         `"${params.pattern}" was rejected as a potentially catastrophic regular expression. ` +
-        "Nested quantifiers (e.g. `(a+)+`) and other shapes that can cause exponential backtracking are " +
-        "blocked because JavaScript cannot preempt a running regex. " +
-        "Rewrite the pattern with a bounded, non-nested form.",
+        "Nested quantifiers (e.g. `(a+)+`), ambiguous quantified alternations (e.g. `(a|aa)+`), and other " +
+        "shapes that can cause exponential backtracking are blocked because JavaScript cannot preempt a " +
+        "running regex. Rewrite the pattern with a bounded, unambiguous form.",
       metadata: { pattern: params.pattern, rejected: "catastrophic-backtracking" },
+    }
+  }
+
+  // scopeID must name a real project scope. Resolving it through Scope keeps a
+  // pinned "project" search from silently reading Home/channel sessions (whose
+  // id is "home") or a nonexistent/archived scope while still reporting
+  // scopeSearched: ["project"].
+  if (params.scope === "project" && params.scopeID) {
+    const project = await Scope.fromID(params.scopeID)
+    if (!project || project.type !== "project") {
+      return {
+        title: "No project scope found",
+        output: `No project scope found with id "${params.scopeID}". Use scope_list to see available project IDs.`,
+        metadata: { scope: params.scope, scopeID: params.scopeID, rejected: "unknown-scope" },
+      }
     }
   }
 
@@ -320,16 +376,40 @@ async function searchSessions(params: z.infer<typeof parameters>, ctx: Tool.Cont
     filterByMessageTime,
   })
   const clampedLimit = Math.max(0, Math.min(params.limit, MAX_TOTAL_MATCHES))
+  if (clampedLimit === 0) {
+    // Nothing can be returned; do not scan any candidate session.
+    return {
+      title: "No matches",
+      output: `No messages matching "${params.pattern}" found.`,
+      metadata: {
+        sessionsSearched: 0,
+        messagesSearched: 0,
+        sessionsMatched: 0,
+        matches: 0,
+        candidateSessions: candidates.length,
+        candidatesTotal: candidates.length,
+        scopeSearched: scopeSelection.kinds,
+        indexed: 0,
+        scanned: 0,
+        freshness: "fresh",
+      } as Record<string, any>,
+    }
+  }
 
   const results: SessionResult[] = []
-  let totalMatches = 0
   let sessionsSearched = 0
   let messagesSearched = 0
   let indexedSessions = 0
   let scannedSessions = 0
 
+  // Global relevance ranking. Candidates are ordered by session recency, so a
+  // recency-ordered early stop would let recent weak matches suppress an older
+  // session's stronger matches. Every candidate is therefore examined (each
+  // session keeps its top MAX_MATCHES_PER_SESSION matches) and only then is the
+  // global `limit` applied to the highest-ranked matches.
+  const ranked: { match: Match; session: Session.Info }[] = []
+
   for (const candidate of candidates) {
-    if (totalMatches >= clampedLimit) break
     ctx.abort.throwIfAborted()
 
     const session = await readCandidateSession(candidate)
@@ -351,7 +431,6 @@ async function searchSessions(params: z.infer<typeof parameters>, ctx: Tool.Cont
       indexedSessions++
       for (const msg of record.messages) {
         ctx.abort.throwIfAborted()
-        if (totalMatches >= clampedLimit) break
         messagesSearched++
         const match = searchIndexedMessage(msg, regex, tokens, {
           content: params.content,
@@ -366,20 +445,15 @@ async function searchSessions(params: z.infer<typeof parameters>, ctx: Tool.Cont
         })
       }
     } else {
-      // Fallback / write-through path: stream messages exactly as before and
-      // rebuild the index record when the scan is complete (never when the
-      // global limit cut the scan short, which would persist a partial record
-      // and hide the remaining messages on later queries).
+      // Fallback / write-through path: stream every message of the session —
+      // a per-session top-3 is only trustworthy after the whole session has
+      // been seen — then persist the rebuilt record. Because the scan always
+      // covers the full session, the committed record is never partial.
       scannedSessions++
       const startedAt = Date.now()
       const indexEntries: SessionSearchIndex.IndexedMessage[] = []
-      let fullScan = true
       for await (const msg of MessageV2.stream({ scopeID, sessionID })) {
         ctx.abort.throwIfAborted()
-        if (totalMatches >= clampedLimit) {
-          fullScan = false
-          break
-        }
         messagesSearched++
         const match = searchMessage(msg, regex, tokens, {
           content: params.content,
@@ -394,21 +468,31 @@ async function searchSessions(params: z.infer<typeof parameters>, ctx: Tool.Cont
           phase: "tool.session_search.progress",
         })
       }
-      if (fullScan) {
-        await SessionSearchIndex.commitRebuild(scopeID, sessionID, indexEntries, { sinceMs: startedAt })
-      }
+      // Race guard: only clear a dirty marker written before this scan began;
+      // a marker landed mid-scan means content changed under us and must
+      // survive to force another pass.
+      await SessionSearchIndex.commitRebuild(scopeID, sessionID, indexEntries, { sinceMs: startedAt })
     }
 
-    if (matches.length > 0) {
-      // Keep only what remains of the global budget, always highest-ranked.
-      const remaining = clampedLimit - totalMatches
-      const kept = matches.slice(0, Math.max(0, remaining))
-      if (kept.length > 0) {
-        results.push({ session, matches: kept })
-        totalMatches += kept.length
-      }
-    }
+    for (const match of matches) ranked.push({ match, session })
   }
+
+  ranked.sort((a, b) => compareMatches(a.match, b.match))
+
+  // Truncate to the global limit by relevance, then group by session in rank
+  // order (chronological display happens in formatResult).
+  const resultsBySession = new Map<string, SessionResult>()
+  for (const { match, session } of ranked.slice(0, clampedLimit)) {
+    let result = resultsBySession.get(session.id)
+    if (!result) {
+      result = { session, matches: [] }
+      resultsBySession.set(session.id, result)
+      results.push(result)
+    }
+    result.matches.push(match)
+  }
+
+  const totalMatches = results.reduce((sum, result) => sum + result.matches.length, 0)
 
   const baseMetadata: Record<string, unknown> = {
     sessionsSearched,

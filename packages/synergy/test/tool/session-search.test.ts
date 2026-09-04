@@ -76,7 +76,7 @@ async function writeMessage(sessionID: string, messageID: string, text: string, 
 }
 
 describe("session_search", () => {
-  test("stops scanning sessions once the global limit is reached with many sessions", async () => {
+  test("returns at most limit matches across sessions under a tight global limit", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -97,6 +97,139 @@ describe("session_search", () => {
         const lines = result.output.split("\n")
         const sessionLines = lines.filter((l: string) => /^\[ses_/.test(l))
         expect(sessionLines.length).toBe(1)
+      },
+    })
+  })
+
+  test("older session with stronger matches outranks a newer session with weak matches", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        // The old session contains messages carrying BOTH pattern tokens
+        // ("deploy|hotfix" -> overlap 2) but was last touched long ago.
+        const oldSession = await Session.create({ title: "Old Strong" })
+        await writeMessage(oldSession.id, Identifier.ascending("message"), "deploy the hotfix runbook", 5000)
+        // The new session contains only weak single-token matches but was
+        // updated most recently.
+        const newSession = await Session.create({ title: "New Weak" })
+        await writeMessage(newSession.id, Identifier.ascending("message"), "please deploy now", Date.now())
+        await writeMessage(newSession.id, Identifier.ascending("message"), "deploy after lunch", Date.now())
+
+        const tool = await SessionSearchTool.init()
+        const result = await run(tool, "deploy|hotfix", { limit: 1 })
+
+        expect(result.metadata.matches).toBe(1)
+        expect(result.output).toContain(oldSession.id)
+        expect(result.output).not.toContain(newSession.id)
+      },
+    })
+  })
+
+  test("scopeID must resolve to a real project scope, never Home or an unknown id", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const projectScope = await tmp.scope()
+    await ScopeContext.provide({
+      scope: projectScope,
+      fn: async () => {
+        const session = await Session.create({ title: "Pinned" })
+        await writeMessage(session.id, Identifier.ascending("message"), "pin needle", Date.now())
+
+        const tool = await SessionSearchTool.init()
+
+        // Home's scope id is "home"; pinning it as a "project" must not search
+        // Home sessions while reporting scopeSearched: ["project"].
+        const home = await run(tool, "needle", { scope: "project", scopeID: "home", limit: 50 })
+        expect(home.title).toBe("No project scope found")
+        expect(home.metadata.rejected).toBe("unknown-scope")
+
+        // A nonexistent project id is rejected the same way.
+        const missing = await run(tool, "needle", { scope: "project", scopeID: "d_does_not_exist", limit: 50 })
+        expect(missing.title).toBe("No project scope found")
+
+        // A real project id still works.
+        const pinned = await run(tool, "needle", { scope: "project", scopeID: projectScope.id, limit: 50 })
+        expect(pinned.metadata.matches).toBeGreaterThanOrEqual(1)
+        expect(pinned.output).toContain(session.id)
+      },
+    })
+  })
+
+  test("content all matches attachments nested in completed tool state", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Tool Attachment" })
+        const messageID = Identifier.ascending("message")
+        await writeMessage(session.id, messageID, "plain body text", Date.now())
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          sessionID: session.id,
+          messageID,
+          type: "tool",
+          callID: Identifier.ascending("tool"),
+          tool: "test_tool",
+          state: {
+            status: "completed",
+            input: {},
+            output: "tool done",
+            title: "Test Tool",
+            metadata: {},
+            time: { start: Date.now(), end: Date.now() },
+            attachments: [
+              {
+                id: Identifier.ascending("part"),
+                sessionID: session.id,
+                messageID,
+                type: "attachment",
+                mime: "image/png",
+                filename: "toolimage-unique-7c4d.png",
+                url: "file:///toolimage-unique-7c4d.png",
+              } satisfies MessageV2.AttachmentPart,
+            ],
+          },
+        } as MessageV2.Part)
+
+        const tool = await SessionSearchTool.init()
+
+        const byText = await run(tool, "toolimage-unique-7c4d")
+        expect(byText.metadata.matches).toBe(0)
+
+        const byAll = await run(tool, "toolimage-unique-7c4d", { content: "all" })
+        expect(byAll.metadata.matches).toBeGreaterThanOrEqual(1)
+      },
+    })
+  })
+
+  test("regex guard accepts safe alternations and noncapturing groups, rejects ambiguous ones", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Regex Guard" })
+        await writeMessage(session.id, Identifier.ascending("message"), "aaaa".repeat(500), Date.now())
+
+        const tool = await SessionSearchTool.init()
+
+        const rejections: Array<[string, string]> = [
+          ["(a+)+$", "nested quantifier"],
+          ["(a|aa)+$", "ambiguous alternation (prefix overlap)"],
+          ["(a|aab)+$", "ambiguous alternation (prefix overlap)"],
+          ["(|a)+$", "empty alternative overlaps every branch"],
+          ["(?:a+)+$", "nested quantifier inside noncapturing group"],
+        ]
+        for (const [pattern, why] of rejections) {
+          const result = await run(tool, pattern)
+          expect(result.title, `${pattern}: ${why}`).toBe("Invalid pattern")
+        }
+
+        // Safe shapes must not be rejected: disjoint alternatives and plain
+        // quantified noncapturing groups.
+        for (const pattern of ["(?:error|warning)+", "(foo|bar)+", "(?:deploy)+", "(a|b|c)+"]) {
+          const result = await run(tool, pattern)
+          expect(result.title, `${pattern} should be accepted`).not.toBe("Invalid pattern")
+        }
       },
     })
   })

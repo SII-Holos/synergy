@@ -24,9 +24,12 @@ import { Log } from "../util/log"
 export namespace SessionSearchIndex {
   const log = Log.create({ service: "session.search-index" })
 
-  export const VERSION = 1
+  // v2: completed-tool attachments join `attachment`, and `data:` URLs are
+  // bounded to excerpt size (v1 records are treated as absent -> lazy rebuild).
+  export const VERSION = 2
   export const TOKENIZER_VERSION = 1
   const TOOL_TEXT_CAP = 16 * 1024
+  const DATA_URL_CAP = 512
 
   export interface IndexedMessage {
     id: string
@@ -115,12 +118,41 @@ export namespace SessionSearchIndex {
     return { tool: joined.slice(0, TOOL_TEXT_CAP), truncated: true }
   }
 
+  /** One searchable line per attachment: filename plus URL. `data:` URLs carry
+   * whole base64 payloads (provider-file attachments keep them intact by
+   * design), so anything larger than DATA_URL_CAP is replaced by a size marker
+   * instead of being copied into the cache — clean queries never parse
+   * megabytes of inline payload. */
+  function attachmentRefText(filename: string | undefined, url: string | undefined, mime?: string): string[] {
+    const refs: string[] = []
+    if (filename) refs.push(filename)
+    if (!url) return refs
+    if (!url.startsWith("data:") || url.length <= DATA_URL_CAP) {
+      refs.push(url)
+      return refs
+    }
+    refs.push(`data:${mime ?? "application/octet-stream"} (${url.length}-byte inline payload)`)
+    return refs
+  }
+
   function attachmentPartContent(parts: MessageV2.Part[]): string | undefined {
     const chunks: string[] = []
+    const pushAttachment = (filename: string | undefined, url: string | undefined, mime: string | undefined) => {
+      chunks.push(...attachmentRefText(filename, url, mime))
+    }
     for (const part of parts) {
-      if (part.type !== "attachment") continue
-      if (part.filename) chunks.push(part.filename)
-      if (part.url) chunks.push(part.url)
+      if (part.type === "attachment") {
+        pushAttachment(part.filename, part.url, part.mime)
+        continue
+      }
+      // Tool-produced files persist as attachments inside the completed tool
+      // state, not as top-level attachment parts; content mode "all" must
+      // still find their filenames/URLs.
+      if (part.type === "tool" && part.state.status === "completed") {
+        for (const attachment of part.state.attachments ?? []) {
+          pushAttachment(attachment.filename, attachment.url, attachment.mime)
+        }
+      }
     }
     return chunks.length > 0 ? chunks.join("\n") : undefined
   }
@@ -180,9 +212,14 @@ export namespace SessionSearchIndex {
     scopeID: Identifier.ScopeID,
     sessionID: Identifier.SessionID,
   ): Promise<SearchIndexRecord | undefined> {
-    return Storage.read<SearchIndexRecord>(recordKey(scopeID, sessionID), { silentNotFound: true }).catch(
-      () => undefined,
-    )
+    const record = await Storage.read<SearchIndexRecord>(recordKey(scopeID, sessionID), {
+      silentNotFound: true,
+    }).catch(() => undefined)
+    // A record from an older format lacks current semantics (e.g. nested tool
+    // attachments); treat it as absent so the next query rescans and rebuilds
+    // instead of trusting content that no longer matches the scan path.
+    if (!record || record.version !== VERSION || record.tokenizerVersion !== TOKENIZER_VERSION) return undefined
+    return record
   }
 
   export async function isDirty(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID): Promise<boolean> {
@@ -192,15 +229,50 @@ export namespace SessionSearchIndex {
     return marker !== undefined
   }
 
-  /** Record that the session's searchable content changed. Never throws. */
+  /**
+   * Record that the session's searchable content changed. Callers invoke this
+   * BEFORE the content mutation persists (a crash between invalidation and the
+   * write costs only one extra scan) and again AFTER it (a scan that started
+   * before the mutation must see a marker newer than its scan start; see
+   * commitRebuild). When the marker write itself fails, the index record is
+   * dropped instead — under the same lock, so a concurrent commitRebuild
+   * cannot republish a clean record between the failed marker write and this
+   * removal. Never throws.
+   */
   export async function markDirty(scopeID: Identifier.ScopeID, sessionID: Identifier.SessionID): Promise<void> {
     try {
       using _ = await Lock.write(sessionLockKey(scopeID, sessionID))
-      await Storage.write(dirtyKey(scopeID, sessionID), { dirtyAt: Date.now() } satisfies DirtyMarker, {
-        compact: true,
-      })
+      try {
+        await Storage.write(dirtyKey(scopeID, sessionID), { dirtyAt: Date.now() } satisfies DirtyMarker, {
+          compact: true,
+        })
+      } catch (error) {
+        // The marker could not be persisted. A stale-but-clean record must not
+        // survive, so remove it while still holding the lock; if that also
+        // fails, the record is only ever read as absent on a later query when
+        // the session's messages are scanned anyway.
+        try {
+          await Storage.remove(recordKey(scopeID, sessionID))
+          log.warn("marking session search dirty failed; dropped index record", {
+            scopeID,
+            sessionID,
+            error: String(error),
+          })
+        } catch (recordError) {
+          log.warn("failed to mark session search dirty and drop stale record", {
+            scopeID,
+            sessionID,
+            error: String(error),
+            recordError: String(recordError),
+          })
+        }
+      }
     } catch (error) {
-      log.warn("failed to mark session search dirty", { scopeID, sessionID, error: String(error) })
+      log.warn("failed to acquire session search index lock for markDirty", {
+        scopeID,
+        sessionID,
+        error: String(error),
+      })
     }
   }
 
