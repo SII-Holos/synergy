@@ -20,43 +20,36 @@ function bossSession(workflow: Record<string, unknown>): SessionInfo {
   return { id: "s_boss", workflow: { kind: "boss", ...workflow } } as unknown as SessionInfo
 }
 
-describe("boss delivery hint golden (auto-delivery matrix)", () => {
-  test("auto delivery anchored to a single reply target", () => {
-    expect(buildBossDeliveryHint({ auto: true, replyToMessageId: "om_anchor" })).toBe(
-      [
-        "<boss-delivery>",
-        "本轮回复会自动投递回飞书(锚定原消息回复) — 不要调用 channel_push,否则会重复发送。",
-        "自动回复锚定消息: om_anchor",
-        "</boss-delivery>",
-      ].join("\n"),
-    )
-  })
-
-  test("auto delivery without a resolvable anchor", () => {
-    expect(buildBossDeliveryHint({ auto: true })).toBe(
-      [
-        "<boss-delivery>",
-        "本轮回复会自动投递回飞书(锚定原消息回复) — 不要调用 channel_push,否则会重复发送。",
-        "</boss-delivery>",
-      ].join("\n"),
-    )
-  })
-
-  test("manual delivery (conflicting anchors or no channel push)", () => {
-    expect(buildBossDeliveryHint({ auto: false })).toBe(
-      [
-        "<boss-delivery>",
-        "本轮回复不会自动投递回飞书 — 若需要向用户回执,必须调用 channel_push(可带 chatId / replyToMessageId)。",
-        "</boss-delivery>",
-      ].join("\n"),
-    )
+describe("boss delivery hint golden (explicit channel_push only, R6)", () => {
+  test("no requester context still states the explicit-push contract", () => {
     expect(buildBossDeliveryHint(undefined)).toBe(
       [
         "<boss-delivery>",
-        "本轮回复不会自动投递回飞书 — 若需要向用户回执,必须调用 channel_push(可带 chatId / replyToMessageId)。",
+        "本轮回复不会自动投递回渠道 — 用户看不到你的任何输出,除非你显式调用 channel_push 回传。",
+        "需要向用户回执时,必须调用 channel_push(带 text,以及匹配的回执目标)。",
         "</boss-delivery>",
       ].join("\n"),
     )
+  })
+
+  test("a single requester names the chat and anchored message", () => {
+    expect(buildBossDeliveryHint({ chatId: "oc_group_a", replyToMessageId: "om_msg_a" })).toBe(
+      [
+        "<boss-delivery>",
+        "本轮回复不会自动投递回渠道 — 用户看不到你的任何输出,除非你显式调用 channel_push 回传。",
+        "需要向用户回执时,必须调用 channel_push(带 text,以及匹配的回执目标)。",
+        "当前回执目标 chat: oc_group_a; 回复消息: om_msg_a",
+        "</boss-delivery>",
+      ].join("\n"),
+    )
+  })
+
+  test("a chat without an anchored message names only the chat", () => {
+    expect(buildBossDeliveryHint({ chatId: "oc_group_a" })).toContain("当前回执目标 chat: oc_group_a")
+  })
+
+  test("an anchored message without a chat names only the message", () => {
+    expect(buildBossDeliveryHint({ replyToMessageId: "om_msg_a" })).toContain("当前回执目标消息: om_msg_a")
   })
 })
 
@@ -103,6 +96,35 @@ describe("boss runtime context golden", () => {
       ].join("\n"),
     )
     expect(context).not.toContain("Standing instructions")
+  })
+
+  test("report style renders as a dedicated block between persona and instructions", () => {
+    const session = bossSession({ role: "boss" })
+    const context = buildRuntimeBossContext(session, {
+      identityText: "IDENTITY_MARKER",
+      reportStyle: "REPORT_STYLE_MARKER",
+      instructions: "STANDING_INSTRUCTIONS",
+    })
+    expect(context).toBe(
+      [
+        buildBossContext(session),
+        "",
+        BOSS_DISCIPLINE_BLOCK,
+        "",
+        "<boss-persona>\nIDENTITY_MARKER\n</boss-persona>",
+        "",
+        "<boss-report-style>\nREPORT_STYLE_MARKER\n</boss-report-style>",
+        "",
+        "Standing instructions from your coordinator:",
+        "STANDING_INSTRUCTIONS",
+      ].join("\n"),
+    )
+  })
+
+  test("absent report style omits the report-style block entirely", () => {
+    const session = bossSession({ role: "boss" })
+    const context = buildRuntimeBossContext(session, { identityText: "IDENTITY_MARKER" })
+    expect(context).not.toContain("<boss-report-style>")
   })
 
   test("boss context block is byte-exact", () => {

@@ -26,9 +26,6 @@ export namespace ToolTimeout {
     documentExtractMs: 60_000,
     webfetchMs: 30_000,
     webfetchMaxMs: 120_000,
-    websearchMs: 25_000,
-    arxivSearchMs: 30_000,
-    arxivDownloadMs: 60_000,
     browserWaitMs: 10_000,
     browserWaitMaxMs: 60_000,
     browserSettleMs: 30_000,
@@ -148,12 +145,6 @@ export namespace ToolTimeout {
           timeoutMs: Math.min(secondsToMs(args.timeout, DEFAULTS.webfetchMs), DEFAULTS.webfetchMaxMs),
           source: "fetch",
         }
-      case "websearch":
-        return { timeoutMs: DEFAULTS.websearchMs, source: "fetch" }
-      case "arxiv_search":
-        return { timeoutMs: DEFAULTS.arxivSearchMs, source: "fetch" }
-      case "arxiv_download":
-        return { timeoutMs: DEFAULTS.arxivDownloadMs, source: "download" }
       case "browser_wait":
         return {
           timeoutMs: clampMs(args.timeoutMs ?? args.timeout, DEFAULTS.browserWaitMs, 500, DEFAULTS.browserWaitMaxMs),

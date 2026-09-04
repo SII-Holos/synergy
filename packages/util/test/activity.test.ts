@@ -52,4 +52,13 @@ describe("isActivityGroupableTool", () => {
       mediaGeneration: true,
     })
   })
+
+  test("keeps built-in MCP search family tools outside semantic groups", () => {
+    expect(isActivityGroupableTool("mcp__anysearch__search", {})).toBe(false)
+    expect(isActivityGroupableTool("mcp__anysearch__batch_search", {})).toBe(false)
+    expect(isActivityGroupableTool("mcp__scholight__search_papers", {})).toBe(false)
+    expect(isActivityGroupableTool("mcp__scholight__extract_url", {})).toBe(false)
+    // Other MCP servers still fold like ordinary tools.
+    expect(isActivityGroupableTool("mcp__other__search", {})).toBe(true)
+  })
 })

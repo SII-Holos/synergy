@@ -87,7 +87,7 @@ describe("Feishu streaming card snapshots", () => {
       await card.start()
       const textUpdate = card.update("draft")
       const toolUpdate = card.updateToolProgress([
-        { id: "tool_1", tool: "websearch", title: "Shanghai weather", status: "completed" },
+        { id: "tool_1", tool: "webfetch", title: "Shanghai weather", status: "completed" },
       ])
       const close = card.close("final answer")
       await Promise.all([textUpdate, toolUpdate, close])
@@ -223,7 +223,7 @@ describe("Feishu streaming card recovery", () => {
       const card = createCard()
       await card.start()
       await card.update("answer")
-      await card.updateToolProgress([{ id: "tool_1", tool: "websearch", status: "completed" }])
+      await card.updateToolProgress([{ id: "tool_1", tool: "webfetch", status: "completed" }])
       await card.close("answer")
 
       expect(mutationTimes.length).toBeGreaterThanOrEqual(4)

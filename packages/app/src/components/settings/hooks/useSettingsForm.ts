@@ -1,7 +1,7 @@
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
 import type { SetStoreFunction } from "solid-js/store"
 import type { SendShortcut } from "@/context/input"
-import type { QuickSwitcherPreference, SettingsState } from "../types"
+import type { QuickSwitcherPreference, SettingsState, BuiltinMcpInfo } from "../types"
 import {
   MODEL_DEFAULTS,
   TOAST_TYPES,
@@ -22,6 +22,8 @@ export type EnsureInitParams = {
   setSettings: SetStoreFunction<SettingsState>
   setInitialized: (value: boolean) => void
   originalMcpsRef: { current: Record<string, Record<string, unknown>> }
+  /** Built-in MCP servers reported by the server; undefined keeps the defaults. */
+  builtinMcps?: BuiltinMcpInfo[]
 }
 
 export function ensureInit(params: EnsureInitParams): string | undefined {
@@ -77,28 +79,40 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       params.originalMcpsRef.current[key] = { ...(value as Record<string, unknown>) }
     }
   }
+  const userMcpEntries = cfg.mcp
+    ? Object.entries(cfg.mcp).filter(([, value]) => {
+        const mcp = value as Record<string, unknown>
+        // `enabled`-only stubs (builtin opt-out/opt-in markers) are not
+        // user-defined servers and must not render as editable cards.
+        return typeof mcp.type === "string"
+      })
+    : []
   params.setSettings("mcps", {
-    entries: cfg.mcp
-      ? Object.entries(cfg.mcp).map(([key, value]) => {
-          const mcp = value as Record<string, unknown>
-          const isLocal = mcp.type === "local"
-          const env = mcp.environment as Record<string, string> | undefined
-          const headers = mcp.headers as Record<string, string> | undefined
-          return {
-            key,
-            type: (isLocal ? "local" : "remote") as "local" | "remote",
-            enabled: mcp.enabled !== false,
-            expandByDefault:
-              mcp.expandByDefault === true ||
-              (mcp.expandByDefault === undefined && cfg.mcpDefaults?.expandByDefault === true),
-            command: isLocal && Array.isArray(mcp.command) ? (mcp.command as string[]).join(" ") : "",
-            url: !isLocal && typeof mcp.url === "string" ? mcp.url : "",
-            timeout: mcp.timeout !== undefined ? String(mcp.timeout) : "",
-            environment: formatRecord(env, "="),
-            headers: formatRecord(headers, ": "),
-          }
-        })
-      : [],
+    entries: userMcpEntries.map(([key, value]) => {
+      const mcp = value as Record<string, unknown>
+      const isLocal = mcp.type === "local"
+      const env = mcp.environment as Record<string, string> | undefined
+      const headers = mcp.headers as Record<string, string> | undefined
+      return {
+        key,
+        type: (isLocal ? "local" : "remote") as "local" | "remote",
+        enabled: mcp.enabled !== false,
+        expandByDefault:
+          mcp.expandByDefault === true ||
+          (mcp.expandByDefault === undefined && cfg.mcpDefaults?.expandByDefault === true),
+        command: isLocal && Array.isArray(mcp.command) ? (mcp.command as string[]).join(" ") : "",
+        url: !isLocal && typeof mcp.url === "string" ? mcp.url : "",
+        timeout: mcp.timeout !== undefined ? String(mcp.timeout) : "",
+        environment: formatRecord(env, "="),
+        headers: formatRecord(headers, ": "),
+      }
+    }),
+    builtins: (params.builtinMcps ?? []).map((info) => ({
+      ...info,
+      toggle: info.status.status !== "disabled",
+      apiKeyDraft: "",
+      clearApiKey: false,
+    })),
   })
 
   params.setSettings("safety", {
@@ -155,6 +169,25 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     bossIdentityText: cfg.experimental?.boss_identity_text ?? "",
     bossBriefingIntervalDays:
       cfg.experimental?.boss_briefing_interval_days != null ? String(cfg.experimental.boss_briefing_interval_days) : "",
+    bossPersonaPreset: cfg.experimental?.boss_persona
+      ? cfg.experimental.boss_persona.preset
+      : UI_DEFAULTS.bossPersonaPreset,
+    bossPersonaFormality:
+      cfg.experimental?.boss_persona?.preset === "custom"
+        ? String(cfg.experimental.boss_persona.formality)
+        : UI_DEFAULTS.bossPersonaFormality,
+    bossPersonaConciseness:
+      cfg.experimental?.boss_persona?.preset === "custom"
+        ? String(cfg.experimental.boss_persona.conciseness)
+        : UI_DEFAULTS.bossPersonaConciseness,
+    bossPersonaProactiveness:
+      cfg.experimental?.boss_persona?.preset === "custom"
+        ? String(cfg.experimental.boss_persona.proactiveness)
+        : UI_DEFAULTS.bossPersonaProactiveness,
+    bossPersonaWarmth:
+      cfg.experimental?.boss_persona?.preset === "custom"
+        ? String(cfg.experimental.boss_persona.warmth)
+        : UI_DEFAULTS.bossPersonaWarmth,
   })
 
   params.setSettings("email", {

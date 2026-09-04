@@ -540,34 +540,6 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
-  name: "websearch",
-  render(props) {
-    return (
-      <BasicTool
-        {...props}
-        trigger={{
-          icon: "globe",
-          title: TOOL_TITLE_DESC["websearch"],
-          subtitle: props.input.query || "",
-          tags: [
-            ...(props.input.categories ? [{ label: props.input.categories }] : []),
-            ...(props.input.language ? [{ label: props.input.language }] : []),
-          ],
-        }}
-      >
-        <Show when={props.output}>
-          {(output) => (
-            <div data-component="tool-output" data-scrollable>
-              <ToolTextOutput text={output()} />
-            </div>
-          )}
-        </Show>
-      </BasicTool>
-    )
-  },
-})
-
-ToolRegistry.register({
   name: "look_at",
   render(props) {
     const { _ } = useLingui()
@@ -794,55 +766,6 @@ ToolRegistry.register({
         <Show when={props.output}>
           {(output) => (
             <div data-component="tool-output" data-scrollable>
-              <ToolTextOutput text={output()} />
-            </div>
-          )}
-        </Show>
-      </BasicTool>
-    )
-  },
-})
-
-ToolRegistry.register({
-  name: "arxiv_search",
-  render(props) {
-    return (
-      <BasicTool
-        {...props}
-        trigger={{
-          icon: "file-text",
-          title: TOOL_TITLE_DESC["arxiv_search"],
-          subtitle: props.input.query || "",
-        }}
-      >
-        <Show when={props.output}>
-          {(output) => (
-            <div data-component="tool-output" data-scrollable>
-              <ToolTextOutput text={output()} />
-            </div>
-          )}
-        </Show>
-      </BasicTool>
-    )
-  },
-})
-
-ToolRegistry.register({
-  name: "arxiv_download",
-  render(props) {
-    return (
-      <BasicTool
-        {...props}
-        trigger={{
-          icon: "download",
-          title: TOOL_TITLE_DESC["arxiv_download"],
-          subtitle: props.input.arxivId || "",
-          tags: props.input.outputPath ? [{ label: getFilename(props.input.outputPath) }] : undefined,
-        }}
-      >
-        <Show when={props.output}>
-          {(output) => (
-            <div data-component="tool-output">
               <ToolTextOutput text={output()} />
             </div>
           )}

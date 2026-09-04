@@ -1251,6 +1251,7 @@ export namespace Config {
         if (server?.oauth?.clientSecret) server.oauth.clientSecret = REDACTED_SENTINEL
         if (server?.headers) redactSecretShapedRecord(server.headers)
         if (server?.environment) redactSecretShapedRecord(server.environment)
+        if (server?.apiKey) server.apiKey = REDACTED_SENTINEL
       }
     }
     if (result.agent) {
@@ -1312,6 +1313,9 @@ export namespace Config {
         }
         if (server?.headers) mergeSecretShapedRecord(server.headers, storedServer?.headers)
         if (server?.environment) mergeSecretShapedRecord(server.environment, storedServer?.environment)
+        if (server?.apiKey === REDACTED_SENTINEL && storedServer?.apiKey) {
+          server.apiKey = storedServer.apiKey
+        }
       }
     }
     if (result.agent && stored.agent) {

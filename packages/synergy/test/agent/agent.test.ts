@@ -138,9 +138,9 @@ test("scholar agent has correct permissions", async () => {
       expect(scholar).toBeDefined()
       expect(scholar?.mode).toBe("subagent")
       expect(scholar?.native).toBe(true)
-      // Scholar allows arxiv tools
-      expect(PermissionNext.evaluate("arxiv_search", "*", scholar!.permission).action).toBe("allow")
-      expect(PermissionNext.evaluate("arxiv_download", "*", scholar!.permission).action).toBe("ask")
+      // Scholar allows web fetch and MCP research tools
+      expect(PermissionNext.evaluate("webfetch", "*", scholar!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("mcp__search__server__tool", "*", scholar!.permission).action).toBe("allow")
     },
   })
 })

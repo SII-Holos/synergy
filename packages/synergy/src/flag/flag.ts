@@ -20,8 +20,6 @@ export namespace Flag {
   export const SYNERGY_FAKE_VCS = process.env["SYNERGY_FAKE_VCS"]
   export const SYNERGY_CLIENT = process.env["SYNERGY_CLIENT"] ?? "cli"
   export const SYNERGY_CWD = process.env["SYNERGY_CWD"]
-  export const SYNERGY_ARXIV_API_URL = process.env["SYNERGY_ARXIV_API_URL"] ?? "https://arxivsearch.synergy.holosai.io"
-  export const SYNERGY_SEARXNG_URL = process.env["SYNERGY_SEARXNG_URL"] ?? "https://websearch.synergy.holosai.io"
   export const SYNERGY_BUG_REPORT_URL = process.env["SYNERGY_BUG_REPORT_URL"]
   // Experimental
   export const SYNERGY_EXPERIMENTAL = truthy("SYNERGY_EXPERIMENTAL")
