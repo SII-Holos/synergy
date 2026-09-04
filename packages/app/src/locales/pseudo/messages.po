@@ -17875,23 +17875,83 @@ msgid "settings.runtime.boss.enabled.desc"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.identity"
+msgid "settings.runtime.boss.name"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.identity.desc"
+msgid "settings.runtime.boss.name.desc"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.identity.placeholder"
+msgid "settings.runtime.boss.name.placeholder"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.interval"
+msgid "settings.runtime.boss.name.saveFailed"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.interval.desc"
+msgid "settings.runtime.boss.name.saveFailed.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.busy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.conciseness"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.custom"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.customTraits"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.default"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.formality"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.opsAssistant"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.proactiveness"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.projectManager"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.warmth"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.personality"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.personality.desc"
 msgstr ""
 
 #. Boss Mode

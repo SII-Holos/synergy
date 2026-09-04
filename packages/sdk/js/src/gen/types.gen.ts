@@ -4085,6 +4085,24 @@ export type Config = {
      * Re-inject the versioned world-overview briefing every N days (default: disabled)
      */
     boss_briefing_interval_days?: number | null
+    /**
+     * Colleague persona preset for the runtime boss: a built-in personality (project_manager or ops_assistant) or a custom blend of four 0..1 traits. Pass null to clear. When unset, boss_identity_text (legacy) or the default colleague identity is used.
+     */
+    boss_persona?:
+      | {
+          preset: "project_manager"
+        }
+      | {
+          preset: "ops_assistant"
+        }
+      | {
+          preset: "custom"
+          formality: number
+          conciseness: number
+          proactiveness: number
+          warmth: number
+        }
+      | null
   }
   /**
    * Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.
@@ -7463,6 +7481,10 @@ export type BossWorkerCancelInput = {
    * Task ID to cancel; all tasks when omitted
    */
   taskID?: string
+}
+
+export type BossSessionOpenResult = {
+  sessionID: string
 }
 
 export type AssetInfo = {
@@ -15930,6 +15952,100 @@ export type LibraryResetResponses = {
 
 export type LibraryResetResponse = LibraryResetResponses[keyof LibraryResetResponses]
 
+export type LibraryMemoryCreateData = {
+  body?: {
+    /**
+     * Concise memory title (10 words max)
+     */
+    title: string
+    /**
+     * Memory content to persist
+     */
+    content: string
+    category: MemoryCategory
+    recallMode: MemoryRecallMode
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/library/memory"
+}
+
+export type LibraryMemoryCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type LibraryMemoryCreateError = LibraryMemoryCreateErrors[keyof LibraryMemoryCreateErrors]
+
+export type LibraryMemoryCreateResponses = {
+  /**
+   * Created memory
+   */
+  200: MemoryInfo
+}
+
+export type LibraryMemoryCreateResponse = LibraryMemoryCreateResponses[keyof LibraryMemoryCreateResponses]
+
+export type LibraryMemoryUpdateData = {
+  body?: {
+    /**
+     * Memory ID to update
+     */
+    id: string
+    /**
+     * Concise memory title (10 words max)
+     */
+    title: string
+    /**
+     * Memory content to persist
+     */
+    content: string
+    category: MemoryCategory
+    recallMode: MemoryRecallMode
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/library/memory/update"
+}
+
+export type LibraryMemoryUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type LibraryMemoryUpdateError = LibraryMemoryUpdateErrors[keyof LibraryMemoryUpdateErrors]
+
+export type LibraryMemoryUpdateResponses = {
+  /**
+   * Updated memory
+   */
+  200: MemoryInfo
+}
+
+export type LibraryMemoryUpdateResponse = LibraryMemoryUpdateResponses[keyof LibraryMemoryUpdateResponses]
+
 export type LibraryRemoveData = {
   body?: never
   path: {
@@ -18042,6 +18158,50 @@ export type BossSessionWorkerCancelResponses = {
 }
 
 export type BossSessionWorkerCancelResponse = BossSessionWorkerCancelResponses[keyof BossSessionWorkerCancelResponses]
+
+export type BossSessionOpenData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/boss/session/open"
+}
+
+export type BossSessionOpenErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: NoteConflictError
+  /**
+   * Internal server error
+   */
+  500: BossErrorResponse
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BossSessionOpenError = BossSessionOpenErrors[keyof BossSessionOpenErrors]
+
+export type BossSessionOpenResponses = {
+  /**
+   * Opened boss session
+   */
+  200: BossSessionOpenResult
+}
+
+export type BossSessionOpenResponse = BossSessionOpenResponses[keyof BossSessionOpenResponses]
 
 export type AssetUploadData = {
   body?: {

@@ -89,6 +89,8 @@ import type {
   BlueprintLoopStartResponses,
   BlueprintLoopWaitErrors,
   BlueprintLoopWaitResponses,
+  BossSessionOpenErrors,
+  BossSessionOpenResponses,
   BossSessionTreeErrors,
   BossSessionTreeResponses,
   BossSessionWorkerAssignErrors,
@@ -327,6 +329,10 @@ import type {
   LibraryGetResponses,
   LibraryListErrors,
   LibraryListResponses,
+  LibraryMemoryCreateErrors,
+  LibraryMemoryCreateResponses,
+  LibraryMemoryUpdateErrors,
+  LibraryMemoryUpdateResponses,
   LibraryRemoveErrors,
   LibraryRemoveResponses,
   LibraryResetErrors,
@@ -3509,6 +3515,36 @@ export class Session extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<BossSessionTreeResponses, BossSessionTreeErrors, ThrowOnError>({
       url: "/boss/session/{id}/tree",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Open the runtime Boss session
+   *
+   * Returns the runtime boss session for the current config, creating a channel-less local boss session in home scope on first open when no routable Feishu account is enabled.
+   */
+  public open<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BossSessionOpenResponses, BossSessionOpenErrors, ThrowOnError>({
+      url: "/boss/session/open",
       ...options,
       ...params,
     })
@@ -8758,6 +8794,100 @@ export class Experience extends HeyApiClient {
   }
 }
 
+export class Memory extends HeyApiClient {
+  /**
+   * Create memory
+   *
+   * Create a new active memory row. Generates an embedding from the title and content so the row is immediately retrievable. Requires the embedding API to be configured.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      title?: string
+      content?: string
+      category?: MemoryCategory
+      recallMode?: MemoryRecallMode
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "title" },
+            { in: "body", key: "content" },
+            { in: "body", key: "category" },
+            { in: "body", key: "recallMode" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<LibraryMemoryCreateResponses, LibraryMemoryCreateErrors, ThrowOnError>(
+      {
+        url: "/library/memory",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * Update memory
+   *
+   * Replace the title, content, category, and recall mode of an existing memory row and regenerate its embedding.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      id?: string
+      title?: string
+      content?: string
+      category?: MemoryCategory
+      recallMode?: MemoryRecallMode
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "id" },
+            { in: "body", key: "title" },
+            { in: "body", key: "content" },
+            { in: "body", key: "category" },
+            { in: "body", key: "recallMode" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<LibraryMemoryUpdateResponses, LibraryMemoryUpdateErrors, ThrowOnError>(
+      {
+        url: "/library/memory/update",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+}
+
 export class Library extends HeyApiClient {
   /**
    * Get library stats
@@ -8984,6 +9114,8 @@ export class Library extends HeyApiClient {
   embedding = new Embedding({ client: this.client })
 
   experience = new Experience({ client: this.client })
+
+  memory = new Memory({ client: this.client })
 }
 
 export class Note extends HeyApiClient {

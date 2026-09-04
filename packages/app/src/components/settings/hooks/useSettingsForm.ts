@@ -169,6 +169,25 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     bossIdentityText: cfg.experimental?.boss_identity_text ?? "",
     bossBriefingIntervalDays:
       cfg.experimental?.boss_briefing_interval_days != null ? String(cfg.experimental.boss_briefing_interval_days) : "",
+    bossPersonaPreset: cfg.experimental?.boss_persona
+      ? cfg.experimental.boss_persona.preset
+      : UI_DEFAULTS.bossPersonaPreset,
+    bossPersonaFormality:
+      cfg.experimental?.boss_persona?.preset === "custom"
+        ? String(cfg.experimental.boss_persona.formality)
+        : UI_DEFAULTS.bossPersonaFormality,
+    bossPersonaConciseness:
+      cfg.experimental?.boss_persona?.preset === "custom"
+        ? String(cfg.experimental.boss_persona.conciseness)
+        : UI_DEFAULTS.bossPersonaConciseness,
+    bossPersonaProactiveness:
+      cfg.experimental?.boss_persona?.preset === "custom"
+        ? String(cfg.experimental.boss_persona.proactiveness)
+        : UI_DEFAULTS.bossPersonaProactiveness,
+    bossPersonaWarmth:
+      cfg.experimental?.boss_persona?.preset === "custom"
+        ? String(cfg.experimental.boss_persona.warmth)
+        : UI_DEFAULTS.bossPersonaWarmth,
   })
 
   params.setSettings("email", {
