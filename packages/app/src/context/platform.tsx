@@ -163,8 +163,8 @@ export type Platform = {
   /** Restart the app  */
   restart(): Promise<void>
 
-  /** Send a system notification (optional deep link) */
-  notify(title: string, description?: string, href?: string): Promise<void>
+  /** Send a system notification (optional deep link; tag collapses duplicates) */
+  notify(title: string, description?: string, href?: string, tag?: string): Promise<void>
 
   /** Open directory picker dialog */
   openDirectoryPickerDialog?(opts?: { title?: string; multiple?: boolean }): Promise<string | string[] | null>

@@ -9,6 +9,7 @@ import { useProductUpdate } from "@/context/product-update"
 import type { LocalePreference } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import { usePlatform, type DesktopUpdateMode } from "@/context/platform"
+import { DevicePushBlock } from "./DevicePushBlock"
 import { SettingRow } from "../components/SettingRow"
 import { SegmentPill } from "../components/SegmentPill"
 import { ThemePicker } from "../components/ThemePicker"
@@ -371,6 +372,7 @@ export function GeneralPanel(props: {
             )}
           </For>
         </div>
+        <DevicePushBlock />
       </SettingsSection>
     </SettingsPage>
   )

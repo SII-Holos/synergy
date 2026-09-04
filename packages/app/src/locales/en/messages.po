@@ -15299,6 +15299,74 @@ msgid "settings.general.compactReasoning.title"
 msgstr "Compact reasoning"
 
 #. js-lingui-explicit-id
+msgid "settings.general.devicePush.completion"
+msgstr "Completions"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.description"
+msgstr "Receive completion, error, and input-required notifications on this device through the browser."
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enable"
+msgstr "Enable push"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enabled"
+msgstr "Push enabled on this device"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enableFailed"
+msgstr "Could not enable push"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.error"
+msgstr "Errors"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.input"
+msgstr "Needs input"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.insecure"
+msgstr "Push requires a secure (HTTPS) connection"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.iosTab"
+msgstr "On iOS, add this site to your Home Screen and open it as an app to enable push"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.permissionDenied"
+msgstr "Notification permission was denied in browser settings"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.remove"
+msgstr "Remove"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.removed"
+msgstr "Device removed"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.test"
+msgstr "Send test"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.testFailed"
+msgstr "Test notification failed"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.testSent"
+msgstr "Test notification sent"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.title"
+msgstr "Device push"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.unsupported"
+msgstr "Push is not supported in this browser"
+
+#. js-lingui-explicit-id
 msgid "settings.general.font.applied"
 msgstr "Applied"
 

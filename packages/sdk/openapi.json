@@ -1900,6 +1900,359 @@
         ]
       }
     },
+    "/push/vapid-key": {
+      "get": {
+        "operationId": "push.getVapidKey",
+        "summary": "Get the server's public Web Push VAPID key",
+        "description": "Returns the public VAPID key browsers need for PushManager.subscribe. The key pair is generated on first use.",
+        "responses": {
+          "200": {
+            "description": "Public VAPID key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushVapidKey"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.push.getVapidKey({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/push/subscriptions": {
+      "get": {
+        "operationId": "push.list",
+        "summary": "List Web Push subscriptions",
+        "description": "List every registered push subscription. Subscription keys are never returned.",
+        "responses": {
+          "200": {
+            "description": "Registered subscriptions without transport keys",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PushSubscriptionInfo"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.push.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/push/subscribe": {
+      "post": {
+        "operationId": "push.subscribe",
+        "summary": "Register a Web Push subscription",
+        "description": "Register a browser push subscription (endpoint + encryption keys). Re-subscribing with the same endpoint updates it in place.",
+        "responses": {
+          "200": {
+            "description": "Subscription stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushSubscriptionInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "endpoint": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "keys": {
+                    "type": "object",
+                    "properties": {
+                      "p256dh": {
+                        "type": "string"
+                      },
+                      "auth": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["p256dh", "auth"]
+                  },
+                  "deviceLabel": {
+                    "type": "string"
+                  },
+                  "categories": {
+                    "$ref": "#/components/schemas/PushCategories"
+                  }
+                },
+                "required": ["endpoint", "keys"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.push.subscribe({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/push/unsubscribe": {
+      "post": {
+        "operationId": "push.unsubscribe",
+        "summary": "Remove a Web Push subscription",
+        "description": "Remove the subscription matching the given push endpoint.",
+        "responses": {
+          "200": {
+            "description": "Subscription removed (idempotent)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "endpoint": {
+                    "type": "string",
+                    "format": "uri"
+                  }
+                },
+                "required": ["endpoint"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.push.unsubscribe({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/push/test": {
+      "post": {
+        "operationId": "push.test",
+        "summary": "Send a test Web Push notification",
+        "description": "Send one test notification to verify an existing subscription end to end.",
+        "responses": {
+          "200": {
+            "description": "Test notification dispatched",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "endpoint": {
+                    "type": "string",
+                    "format": "uri"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.push.test({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/push/subscriptions/{id}/categories": {
+      "patch": {
+        "operationId": "push.updateCategories",
+        "summary": "Update push category preferences for one subscription",
+        "description": "Enable or disable completion/error/input pushes per subscribed device.",
+        "responses": {
+          "200": {
+            "description": "Categories updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown subscription id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["message"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushCategories"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.push.updateCategories({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/synergy-link/targets": {
       "get": {
         "operationId": "synergyLink.targets",
@@ -28636,6 +28989,51 @@
           }
         },
         "required": ["success"]
+      },
+      "PushVapidKey": {
+        "type": "object",
+        "properties": {
+          "publicKey": {
+            "type": "string"
+          }
+        },
+        "required": ["publicKey"]
+      },
+      "PushCategories": {
+        "type": "object",
+        "properties": {
+          "completion": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "boolean"
+          },
+          "input": {
+            "type": "boolean"
+          }
+        },
+        "required": ["completion", "error", "input"]
+      },
+      "PushSubscriptionInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "deviceLabel": {
+            "type": "string"
+          },
+          "created": {
+            "type": "number"
+          },
+          "categories": {
+            "$ref": "#/components/schemas/PushCategories"
+          }
+        },
+        "required": ["id", "endpoint", "created", "categories"]
       },
       "SynergyLinkHostObservation": {
         "type": "object",

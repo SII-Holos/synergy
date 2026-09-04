@@ -18,6 +18,7 @@ import { SessionRecovery } from "@/session/recovery"
 import { SessionInvoke } from "@/session/invoke"
 import { ActivitySummary } from "@/session/activity-summary"
 import { LatticeRuntime } from "@/lattice/runtime"
+import { PushBridge } from "@/push/bridge"
 import { Embedding } from "@/vector/embedding"
 import { AgentTurn } from "@/session/agent-turn"
 import { DEFAULT_AGENT_WORKER_POOL_OPTIONS } from "@/session/agent-turn/worker-pool"
@@ -134,6 +135,7 @@ export namespace GlobalRuntime {
             log.warn("response-card expired registration cleanup failed", { error })
           })
           await startChannels(config)
+          PushBridge.init()
           await HolosRuntime.init()
           FileWatcher.init()
           MCP.ensureStarted()

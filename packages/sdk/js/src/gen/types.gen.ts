@@ -1056,6 +1056,24 @@ export type HolosReconnectResponse = {
   success: true
 }
 
+export type PushVapidKey = {
+  publicKey: string
+}
+
+export type PushCategories = {
+  completion: boolean
+  error: boolean
+  input: boolean
+}
+
+export type PushSubscriptionInfo = {
+  id: string
+  endpoint: string
+  deviceLabel?: string
+  created: number
+  categories: PushCategories
+}
+
 export type SynergyLinkHostObservation = {
   type: "synergy_link.host.hello"
   /**
@@ -10177,6 +10195,192 @@ export type HolosReconnectResponses = {
 }
 
 export type HolosReconnectResponse2 = HolosReconnectResponses[keyof HolosReconnectResponses]
+
+export type PushGetVapidKeyData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/push/vapid-key"
+}
+
+export type PushGetVapidKeyErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PushGetVapidKeyError = PushGetVapidKeyErrors[keyof PushGetVapidKeyErrors]
+
+export type PushGetVapidKeyResponses = {
+  /**
+   * Public VAPID key
+   */
+  200: PushVapidKey
+}
+
+export type PushGetVapidKeyResponse = PushGetVapidKeyResponses[keyof PushGetVapidKeyResponses]
+
+export type PushListData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/push/subscriptions"
+}
+
+export type PushListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PushListError = PushListErrors[keyof PushListErrors]
+
+export type PushListResponses = {
+  /**
+   * Registered subscriptions without transport keys
+   */
+  200: Array<PushSubscriptionInfo>
+}
+
+export type PushListResponse = PushListResponses[keyof PushListResponses]
+
+export type PushSubscribeData = {
+  body?: {
+    endpoint: string
+    keys: {
+      p256dh: string
+      auth: string
+    }
+    deviceLabel?: string
+    categories?: PushCategories
+  }
+  path?: never
+  query?: never
+  url: "/push/subscribe"
+}
+
+export type PushSubscribeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PushSubscribeError = PushSubscribeErrors[keyof PushSubscribeErrors]
+
+export type PushSubscribeResponses = {
+  /**
+   * Subscription stored
+   */
+  200: PushSubscriptionInfo
+}
+
+export type PushSubscribeResponse = PushSubscribeResponses[keyof PushSubscribeResponses]
+
+export type PushUnsubscribeData = {
+  body?: {
+    endpoint: string
+  }
+  path?: never
+  query?: never
+  url: "/push/unsubscribe"
+}
+
+export type PushUnsubscribeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PushUnsubscribeError = PushUnsubscribeErrors[keyof PushUnsubscribeErrors]
+
+export type PushUnsubscribeResponses = {
+  /**
+   * Subscription removed (idempotent)
+   */
+  200: boolean
+}
+
+export type PushUnsubscribeResponse = PushUnsubscribeResponses[keyof PushUnsubscribeResponses]
+
+export type PushTestData = {
+  body?: {
+    endpoint?: string
+  }
+  path?: never
+  query?: never
+  url: "/push/test"
+}
+
+export type PushTestErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PushTestError = PushTestErrors[keyof PushTestErrors]
+
+export type PushTestResponses = {
+  /**
+   * Test notification dispatched
+   */
+  200: boolean
+}
+
+export type PushTestResponse = PushTestResponses[keyof PushTestResponses]
+
+export type PushUpdateCategoriesData = {
+  body?: PushCategories
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/push/subscriptions/{id}/categories"
+}
+
+export type PushUpdateCategoriesErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Unknown subscription id
+   */
+  404: {
+    message: string
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type PushUpdateCategoriesError = PushUpdateCategoriesErrors[keyof PushUpdateCategoriesErrors]
+
+export type PushUpdateCategoriesResponses = {
+  /**
+   * Categories updated
+   */
+  200: boolean
+}
+
+export type PushUpdateCategoriesResponse = PushUpdateCategoriesResponses[keyof PushUpdateCategoriesResponses]
 
 export type SynergyLinkTargetsData = {
   body?: never

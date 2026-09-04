@@ -72,7 +72,7 @@ const platform: Platform = {
   restart: async () => {
     window.location.reload()
   },
-  notify: async (title, description, href) => {
+  notify: async (title, description, href, tag) => {
     if (!("Notification" in window)) return
 
     const permission =
@@ -90,6 +90,9 @@ const platform: Platform = {
         const notification = new Notification(title, {
           body: description ?? "",
           icon: brandAssetPath(BRAND_ASSETS.synergy.notificationIcon),
+          // Same tag as the service-worker push notification: the desktop
+          // page notification and the Web Push delivery collapse into one.
+          ...(tag ? { tag } : {}),
         })
         notification.onclick = () => {
           window.focus()
@@ -104,6 +107,19 @@ const platform: Platform = {
   },
 }
 
+// Register the push service worker on capable, secure contexts. The worker
+// only handles push/notificationclick; it never intercepts fetch. Failures
+// are silent: browsers without service workers keep working unchanged.
+if ("serviceWorker" in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register("/sw.js").catch(() => undefined)
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    const data = event.data
+    if (!data || data.type !== "push-navigate" || typeof data.href !== "string") return
+    if (!data.href.startsWith("/")) return
+    window.history.pushState(null, "", data.href)
+    window.dispatchEvent(new PopStateEvent("popstate"))
+  })
+}
 window.addEventListener(APP_SURFACE_READY_EVENT, scheduleBootShellRemoval, { once: true })
 
 // Clipboard configuration is module-level init; configureClipboard runs once before
