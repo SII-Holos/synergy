@@ -49,7 +49,7 @@ Generated from the builtin tool registry in `packages/synergy/src/tool/registry.
 | `browser_upload` | `browser.interact` | Upload permission-reviewed workspace files to one uniquely matched file input through isolated staging. |
 | `browser_view` | `browser.inspect` | Control the Browser Side Workspace panel. Show or hide the Browser UI, switch focus to the browser page, or query the Side Workspace open state. This does not affect CDP or the running browser — only  |
 | `browser_wait` | `browser.inspect` | Wait for a specific page condition: load state, URL, title, text, locator state, download, or dialog. The result only reports that the requested condition was observed; it is never evidence of busines |
-| `channel_push` | `orchestration.session` | 把结果或状态显式推送到当前会话绑定的渠道群(或回复某条消息),是 Boss Mode 的显式回执工具。Push a text receipt to the channel chat this session is bound to, or reply to an existing message. accountId and chatId default to the session's chan |
+| `channel_push` | `orchestration.session` | 把结果或状态显式推送到渠道(或回复某条消息),是 Boss Mode 的显式回执工具。Push a text receipt to a channel chat, or reply to an inbound message — the only outbound delivery surface for boss-role sessions. accountId defaults to the  |
 | `clarus_extend_task` | `platform.collaboration` | Extend the current Clarus assignment deadline. The current session supplies assignment identity; never provide project, task, run, subtask, or account IDs. |
 | `clarus_submit_task_result` | `platform.collaboration` | Submit the current Clarus assignment result. The current session supplies assignment identity; never provide project, task, run, subtask, or account IDs. |
 | `connect` | `platform.config` | Discover persisted Synergy Link targets and manage explicit remote sessions. Prefer the stable targetID; linkID + targetAgentID is the bootstrap path for targets not yet persisted. Cached sessions are |
@@ -869,15 +869,16 @@ Wait for a specific page condition: load state, URL, title, text, locator state,
 
 Kind: `orchestration.session`
 
-把结果或状态显式推送到当前会话绑定的渠道群(或回复某条消息),是 Boss Mode 的显式回执工具。Push a text receipt to the channel chat this session is bound to, or reply to an existing message. accountId and chatId default to the session's channel endpoint; pass replyToMessageId to reply to a specific message instead of pushing a new one.
+把结果或状态显式推送到渠道(或回复某条消息),是 Boss Mode 的显式回执工具。Push a text receipt to a channel chat, or reply to an inbound message — the only outbound delivery surface for boss-role sessions. accountId defaults to the session's channel account. chatId defaults to the chat the current inbound message arrived from; when there is no inbound message (a proactive push) you must pass chatId explicitly. Pass replyToMessageId to reply to a specific message (anchored replies in the inbound chat are the normal answer path and need no approval); pushing a new message to a chat, or pushing to a different chat, requires an explicit permission decision.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `sessionID` | ctx.sessionID | yes |  |
+| `messageID` | ctx.messageID | yes |  |
 | `permission` | - | yes |  |
 | `patterns` | - | yes |  |
 | `metadata` | - | yes |  |
 | `messageId` | params.replyToMessageId | yes |  |
-| `chatType` | channel.chatType | yes |  |
 | `scopeKey` | channel.scopeKey | yes |  |
 | `title` | - | yes |  |
 | `metadata` | - | yes |  |

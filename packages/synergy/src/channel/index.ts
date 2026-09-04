@@ -746,6 +746,7 @@ export namespace Channel {
             channelRequesterId: ctx.senderId,
             channelChatId: ctx.chatId,
             channelChatName: ctx.chatName,
+            channelChatType: ctx.chatType,
             channelSenderId: ctx.senderId,
             channelSenderName: ctx.senderName,
           }

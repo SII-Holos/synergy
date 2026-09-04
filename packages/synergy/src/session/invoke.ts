@@ -97,8 +97,10 @@ export namespace SessionInvoke {
     let channelReply = false
     let channelReplyToMessageId: string | undefined
     let channelChatId: string | undefined
+    let channelChatType: "dm" | "group" | undefined
     let replyAnchorConflict = false
     let chatIdConflict = false
+    let chatTypeConflict = false
     for (let index = afterIndex + 1; index < messages.length; index++) {
       const info = messages[index].info
       if (info.role !== "user") continue
@@ -121,6 +123,14 @@ export namespace SessionInvoke {
         if (channelChatId && channelChatId !== chatId) chatIdConflict = true
         else channelChatId = chatId
       }
+      const chatType =
+        metadata?.channelChatType === "dm" || metadata?.channelChatType === "group"
+          ? metadata.channelChatType
+          : undefined
+      if (chatType) {
+        if (channelChatType && channelChatType !== chatType) chatTypeConflict = true
+        else channelChatType = chatType
+      }
     }
     if (!channelPush) return undefined
     return {
@@ -128,6 +138,7 @@ export namespace SessionInvoke {
       ...(channelReply ? { channelReply: true } : {}),
       ...(channelReply && channelReplyToMessageId && !replyAnchorConflict ? { channelReplyToMessageId } : {}),
       ...(channelChatId && !chatIdConflict ? { channelChatId } : {}),
+      ...(channelChatType && !chatTypeConflict ? { channelChatType } : {}),
     }
   }
 

@@ -17,6 +17,8 @@ export namespace WorkflowPromptRegistry {
           channelReplyToMessageId?: string
           /** Channel chat the user message arrived from (boss explicit replies). */
           channelChatId?: string
+          /** Chat type (dm/group) of the inbound message, when unambiguous. */
+          channelChatType?: "dm" | "group"
         }
       | undefined
   }

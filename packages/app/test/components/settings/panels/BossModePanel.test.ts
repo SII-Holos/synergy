@@ -60,6 +60,11 @@ beforeAll(async () => {
           const row = rows.find((candidate) => candidate.id === input.id)
           if (row) Object.assign(row, input)
         }
+        const removeMemory = async (id: string) => {
+          libraryCalls.push({ kind: "remove", id })
+          const index = rows.findIndex((candidate) => candidate.id === id)
+          if (index !== -1) rows.splice(index, 1)
+        }
 
         function App() {
           const [runtime, setRuntime] = createSignal<Record<string, string>>({
@@ -78,7 +83,7 @@ beforeAll(async () => {
               setRuntime((prev) => ({ ...prev, [key]: value }))
             },
             get bossNameGateway() {
-              return { listSelfMemories, createMemory, updateMemory }
+              return { listSelfMemories, createMemory, updateMemory, removeMemory }
             },
           })
         }
@@ -225,7 +230,31 @@ describe("BossModePanel", () => {
       },
     ])
 
-    // 5. Disabling boss mode keeps the name field present but disabled and
+    // 5. Clearing the name field removes the stored boss_name row through
+    //    the library gateway (empty draft reaches the persister).
+    await nameInput.fill("")
+    await page.waitForTimeout(900)
+    expect(await bossLibraryCalls()).toEqual([
+      {
+        kind: "create",
+        title: "boss_name",
+        content: "Xiaofei",
+        category: "self",
+        recallMode: "search_only",
+      },
+      {
+        kind: "update",
+        id: "mem_1",
+        title: "boss_name",
+        content: "Xiaofei Chen",
+        category: "self",
+        recallMode: "search_only",
+      },
+      { kind: "remove", id: "mem_1" },
+    ])
+    expect((await bossChanges()).at(-1)).toEqual(["bossName", ""])
+
+    // 6. Disabling boss mode keeps the name field present but disabled and
     //    leaves the personality row reachable (no legacy rows return).
     await page.locator('[data-slot="switch-control"]').dispatchEvent("click")
     expect(await bossChanges()).toContainEqual(["bossMode", "false"])

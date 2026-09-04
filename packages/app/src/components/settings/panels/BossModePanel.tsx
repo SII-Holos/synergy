@@ -9,7 +9,7 @@ import { SettingRow } from "../components/SettingRow"
 import { SegmentPill } from "../components/SegmentPill"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { RuntimeStore } from "../types"
-import { bossNameFromRows, saveBossName, type BossNameGateway } from "./boss-name-model"
+import { bossNameFromRows, createBossNamePersister, type BossNameGateway } from "./boss-name-model"
 import type { MessageDescriptor } from "@lingui/core"
 
 const NAME_SAVE_DEBOUNCE_MS = 600
@@ -106,12 +106,17 @@ export function BossModePanel(props: {
       listSelfMemories: async () => (await client.library.list({ category: "self" })).data ?? [],
       createMemory: (input) => client.library.memory.create(input),
       updateMemory: (input) => client.library.memory.update(input),
+      removeMemory: (id) => client.library.remove({ id }),
     }
   }
 
   let saveTimer: ReturnType<typeof setTimeout> | undefined
   let pendingName = ""
-  let lastSavedName = ""
+  // True while a user edit has not yet been persisted. Only then may an
+  // unmount persist an empty draft (removing the row); a passive unmount
+  // with no edits must never touch the library.
+  let nameDirty = false
+  let namePersister: ReturnType<typeof createBossNamePersister> | undefined
 
   const reportNameSaveFailure = (error: unknown) => {
     try {
@@ -127,19 +132,30 @@ export function BossModePanel(props: {
     }
   }
 
-  // Persist whatever draft is pending. The captured value (not the live store)
-  // is written so a config-save re-init that resets bossName cannot drop a
-  // draft that was still inside the debounce window.
+  // Persist whatever draft is pending through one serialized persister so a
+  // blur flush and an unmount flush of the same draft cannot race into
+  // duplicate rows. An empty draft reaches the persister too — it removes
+  // the stored row instead of being skipped. The captured value (not the
+  // live store) is written so a config-save re-init that resets bossName
+  // cannot drop a draft that was still inside the debounce window.
+  const ensureNamePersister = () => {
+    if (!namePersister) namePersister = createBossNamePersister(gateway())
+    return namePersister
+  }
   const persistPendingName = async () => {
+    // Only a user edit may reach the library. A blur or unmount without any
+    // edit must never touch the stored row — in particular it must not let an
+    // empty draft delete a previously saved name.
+    if (!nameDirty) return
     const content = pendingName.trim()
-    if (!content || content === lastSavedName) return
     try {
-      await saveBossName(gateway(), content)
-      lastSavedName = content
+      await ensureNamePersister().persist(content)
+      nameDirty = false
       // bossName is not config, so a form re-init may have cleared the field;
-      // re-assert the persisted value so the input stays in sync.
-      if (!props.runtime.bossName.trim()) props.onRuntimeChange("bossName", content)
+      // re-assert a persisted non-empty name so the input stays in sync.
+      if (content && !props.runtime.bossName.trim()) props.onRuntimeChange("bossName", content)
     } catch (error) {
+      // Keep nameDirty so a later flush or unmount retries the write.
       reportNameSaveFailure(error)
     }
   }
@@ -152,6 +168,7 @@ export function BossModePanel(props: {
   }
   const handleNameChange = (value: string) => {
     pendingName = value
+    nameDirty = true
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(flushPendingName, NAME_SAVE_DEBOUNCE_MS)
     props.onRuntimeChange("bossName", value)
@@ -163,7 +180,7 @@ export function BossModePanel(props: {
         const name = bossNameFromRows(await gateway().listSelfMemories())
         if (name && !props.runtime.bossName.trim()) {
           props.onRuntimeChange("bossName", name)
-          lastSavedName = name
+          ensureNamePersister().adoptStoredName(name)
         }
       } catch {
         // Reading the stored name is a convenience; leave the field blank on
@@ -177,9 +194,11 @@ export function BossModePanel(props: {
       clearTimeout(saveTimer)
       saveTimer = undefined
     }
-    // Never drop a debounced draft when the panel unmounts (tab switch, save
-    // re-init): persist whatever was still pending.
-    if (pendingName.trim() && pendingName.trim() !== lastSavedName) void persistPendingName()
+    // Never drop an unpersisted user edit when the panel unmounts (tab
+    // switch, save re-init): persist whatever draft is pending — an empty
+    // draft removes the stored row. A passive unmount without edits leaves
+    // the library untouched; persist() also no-ops when nothing changed.
+    if (nameDirty) void persistPendingName()
   })
 
   return (
