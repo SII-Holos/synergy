@@ -318,7 +318,8 @@ export namespace Server {
 
   function isScopeRequiredRoute(pathname: string) {
     return (
-      pathname === "/scope/current" ||
+      pathname === "/voice" ||
+      pathname.startsWith("/voice/") ||
       pathname === "/git" ||
       pathname.startsWith("/git/") ||
       pathname === "/pty" ||

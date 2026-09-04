@@ -3,6 +3,13 @@ import { Hono } from "hono"
 import { Config } from "../../src/config/config"
 import { Voice } from "../../src/voice"
 import { VoiceRoute } from "../../src/server/voice-route"
+import { Server } from "../../src/server/server"
+import { ScopeContext } from "../../src/scope/context"
+import { Log } from "../../src/util/log"
+import { tmpdir } from "../fixture/fixture"
+import { Scope } from "../../src/scope"
+
+Log.init({ print: false })
 
 const originalConfigCurrent = Config.current
 
@@ -104,6 +111,54 @@ describe("voice transcribe route", () => {
     expect(response.status).toBe(400)
     const body = (await response.json()) as { message: string }
     expect(body.message).toContain("invalid api key")
+    ;(Voice.transcribe as typeof Voice.transcribe) = originalTranscribe
+  })
+})
+
+describe("voice transcribe route scope enforcement", () => {
+  test("returns ScopeRequired through the real server when no scope is supplied", async () => {
+    // The route must never fall through to the home scope and pay for an
+    // external STT call from an unscoped request: exercise the real
+    // Server.App() middleware, not the bare Hono mount above.
+    const originalTranscribe = Voice.transcribe
+    ;(Voice.transcribe as typeof Voice.transcribe) = mock(async () => {
+      throw new Error("transcribe must not be reached without a scope")
+    })
+
+    const app = Server.App()
+    const form = new FormData()
+    form.append("file", audioFile())
+    const response = await app.request("/voice/transcribe", { method: "POST", body: form })
+
+    expect(response.status).toBe(400)
+    const body = (await response.json()) as { name: string }
+    expect(body.name).toBe("ScopeRequired")
+    ;(Voice.transcribe as typeof Voice.transcribe) = originalTranscribe
+  })
+
+  test("reaches the transcribe handler when a valid scope directory is supplied", async () => {
+    await using tmp = await tmpdir()
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+    stubConfig({ stt: { model: "gpt-4o-transcribe", apiKey: "sk-test" } })
+
+    const originalTranscribe = Voice.transcribe
+    ;(Voice.transcribe as typeof Voice.transcribe) = mock(async () => ({ text: "scoped transcription" }))
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const app = Server.App()
+        const form = new FormData()
+        form.append("file", audioFile())
+        const response = await app.request(`/voice/transcribe?directory=${encodeURIComponent(tmp.path)}`, {
+          method: "POST",
+          body: form,
+        })
+
+        expect(response.status).toBe(200)
+        expect(await response.json()).toEqual({ text: "scoped transcription" })
+      },
+    })
     ;(Voice.transcribe as typeof Voice.transcribe) = originalTranscribe
   })
 })
