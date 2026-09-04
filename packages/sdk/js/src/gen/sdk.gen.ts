@@ -5154,7 +5154,7 @@ export class Push extends HeyApiClient {
   /**
    * Send a test Web Push notification
    *
-   * Send one test notification to verify an existing subscription end to end.
+   * Send one test notification to verify an existing subscription end to end. With an endpoint, only that subscription receives it.
    */
   public test<ThrowOnError extends boolean = false>(
     parameters?: {

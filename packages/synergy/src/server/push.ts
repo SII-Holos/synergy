@@ -158,7 +158,8 @@ export const PushRoute = new Hono()
     "/test",
     describeRoute({
       summary: "Send a test Web Push notification",
-      description: "Send one test notification to verify an existing subscription end to end.",
+      description:
+        "Send one test notification to verify an existing subscription end to end. With an endpoint, only that subscription receives it.",
       operationId: "push.test",
       responses: {
         200: {
@@ -166,6 +167,22 @@ export const PushRoute = new Hono()
           content: {
             "application/json": {
               schema: resolver(z.boolean()),
+            },
+          },
+        },
+        404: {
+          description: "Unknown subscription endpoint",
+          content: {
+            "application/json": {
+              schema: resolver(z.object({ message: z.string() })),
+            },
+          },
+        },
+        502: {
+          description: "Delivery to the requested subscription failed",
+          content: {
+            "application/json": {
+              schema: resolver(z.object({ message: z.string() })),
             },
           },
         },
@@ -178,17 +195,29 @@ export const PushRoute = new Hono()
       if (body.endpoint && !PushTypes.isAllowedPushEndpoint(body.endpoint)) {
         return c.json(ForbiddenEndpointError.parse({ message: "Push endpoint is not an allowed push service" }), 400)
       }
-      if (body.endpoint) {
-        const existing = await PushStore.findByEndpoint(body.endpoint)
-        if (!existing) return c.json({ message: "Unknown subscription endpoint" }, 404)
-      }
-      await PushService.send({
+
+      const payload: PushTypes.Payload = {
         title: "Synergy push test",
         body: "If you can read this, device push is working.",
         href: "/",
         tag: "push-test",
         category: "test",
-      })
+      }
+
+      if (body.endpoint) {
+        const existing = await PushStore.findByEndpoint(body.endpoint)
+        if (!existing) return c.json({ message: "Unknown subscription endpoint" }, 404)
+        // Send only to the requested device and surface its delivery failure,
+        // so a rejected endpoint cannot masquerade as a successful test.
+        try {
+          await PushService.sendTo(existing, payload)
+        } catch {
+          return c.json({ message: "Test delivery failed" }, 502)
+        }
+        return c.json(true)
+      }
+
+      await PushService.send(payload)
       return c.json(true)
     },
   )

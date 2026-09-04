@@ -10,7 +10,7 @@ The chain is deliberately additive: it stores data under `data/push/`, adds one 
 
 1. **Event bridge** (`bridge.ts`) — subscribes to four global bus events and turns them into push payloads:
    - `SessionEvent.Completion` → "Response ready", `badge` = unread count.
-   - `SessionEvent.Error` → "Session error"; without a resolvable session it falls back to the scope root `href` (`/` + base64(scope token)) with tag `session-global`.
+   - `SessionEvent.Error` → "Session error"; only an event with no session ID at all falls back to the scope root `href` (`/` + base64(scope token), tag `session-global`). A session-scoped error whose session no longer resolves is skipped silently — it must not leak raw error text as a global push.
    - `Question.Event.Asked` and `PermissionNext.Event.Asked` → "Session needs your input".
 2. **Filtering** (`bridge.ts` `skip()`) — a session whose endpoint is a channel is always skipped: channel sessions already deliver through their own outbound/question-card surface. Completion and error additionally skip child sessions (`parentID` set), mirroring the Web app's `notification-event.ts` rules; input never skips child sessions, because a permission or question prompt on a delegated task still needs the human. A session that cannot be resolved is skipped silently (error events without a session ID are the exception above).
 3. **Per-device fan-out** (`service.ts`) — `PushService.send` loads every subscription, keeps those opted into the payload's category (the `test` category always matches), and delivers to each with `Promise.allSettled`. A 404/410 response prunes that subscription; any other transport error is logged and never propagates, so a broken device cannot block other devices or the event publisher. The send function is injectable (`setSender`/`resetSender`) as a test seam, and `PushBridge.flush()` awaits all in-flight fan-outs so tests and shutdown are deterministic.
@@ -30,10 +30,10 @@ The payload is JSON with `title`, `body`, `href`, `tag`, `category`, and optiona
 
 All state lives under the data home (`Global.Path.data`):
 
-| Path                           | Content                                                                                                                                                                                                                                     |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `push/subscriptions/<id>.json` | One subscription per registered device: `endpoint`, `keys` (`p256dh`/`auth`), optional `deviceLabel`, `created`, per-category toggles. Upserted idempotently by endpoint; re-subscribing refreshes keys instead of duplicating.             |
-| `push/vapid.json`              | VAPID key pair, generated on first use. The private key is a credential: never logged, never exported, never returned by any route. Deleting the file regenerates the pair and invalidates existing subscriptions (devices must re-enable). |
+| Path                           | Content                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `push/subscriptions/<id>.json` | One subscription per registered device: `endpoint`, `keys` (`p256dh`/`auth`), optional `deviceLabel`, `created`, per-category toggles. Upserted idempotently by endpoint; re-subscribing refreshes keys instead of duplicating. Persisted owner-only (0600).                                                                                                      |
+| `push/vapid.json`              | VAPID key pair, generated once on first use behind a memoized in-process promise (concurrent first calls observe the same pair). The private key is a credential: persisted owner-only (0600), never logged, never exported, never returned by any route. Deleting the file regenerates the pair and invalidates existing subscriptions (devices must re-enable). |
 
 ## HTTP routes
 
@@ -45,7 +45,7 @@ All state lives under the data home (`Global.Path.data`):
 | GET    | `/push/subscriptions`                | `push.list`             | Lists registered subscriptions (id, endpoint, optional label, created, categories); transport keys are never returned. |
 | POST   | `/push/subscribe`                    | `push.subscribe`        | Registers a subscription; idempotent per endpoint. Rejects endpoints outside the push-service allowlist.               |
 | POST   | `/push/unsubscribe`                  | `push.unsubscribe`      | Removes a subscription by endpoint; idempotent.                                                                        |
-| POST   | `/push/test`                         | `push.test`             | Sends a test-category notification to one endpoint (404 if unknown) or to every subscription.                          |
+| POST   | `/push/test`                         | `push.test`             | Sends a test-category notification to one endpoint (404 if unknown, 502 if delivery fails) or to every subscription.   |
 | PATCH  | `/push/subscriptions/:id/categories` | `push.updateCategories` | Updates one subscription's completion/error/input toggles; unknown id returns 404.                                     |
 
 **SSRF boundary** — `subscribe`/`unsubscribe`/`test` validate the endpoint against `isAllowedPushEndpoint()` (`packages/synergy/src/push/types.ts`): only `https:` URLs whose host is `*.push.apple.com`, `fcm.googleapis.com`, or `updates.push.services.mozilla.com` are accepted. Push endpoints are attacker-controllable URLs that the server later POSTs to, so this allowlist is the security boundary of the route group.
@@ -54,9 +54,9 @@ All state lives under the data home (`Global.Path.data`):
 
 `packages/app/public/sw.js` is a plain-JavaScript service worker with no build step, registered by `entry.tsx` only in secure contexts with service-worker support (registration failure is silent). It enforces four constraints:
 
-- **A received push must immediately call `showNotification`** — Safari revokes notification permission when a push is handled silently, so even a malformed or missing payload shows a fallback ("Synergy" / "You have a new notification"). There is no notification-dedup or quiet-mode branch in the worker.
+- **A received push must immediately call `showNotification`** — Safari revokes notification permission when a push is handled silently, so even a malformed or missing payload shows a fallback ("Synergy" / "You have a new notification"). Upstream: [Sending web push notifications in web apps and browsers](https://developer.apple.com/documentation/usernotifications/sending-web-push-notifications-in-web-apps-and-browsers) and [Web Push for Web Apps on iPhone and iPad (WebKit)](https://webkit.org/blog/14335/web-push-for-web-apps-on-iphone-and-ipad/). There is no notification-dedup or quiet-mode branch in the worker.
 - **No fetch handler** — the worker never intercepts `fetch`, protecting the app's asset negotiation and release-update mechanism. Payload validation is minimal and defensive (`href` must start with `/`), never a reason to drop a notification.
-- **App badge** — `setAppBadge` on push and `clearAppBadge` on click, both wrapped in try/catch (not every platform exposes `navigator.setAppBadge`).
+- **App badge** — `setAppBadge` on push and `clearAppBadge` on click, both wrapped in try/catch and joined into the event's `waitUntil` work (an untracked badge promise can be dropped when the worker is terminated right after the notification work).
 - **Click navigates through the SPA** — `notificationclick` closes the notification, focuses an existing window if one is found, and posts `{type: "push-navigate", href}`; `entry.tsx` listens and routes via `history.pushState` + `popstate`. `openWindow(href)` is the fallback when no window client exists. The worker also calls `skipWaiting()` on install and `clients.claim()` on activate.
 
 ## Client enablement
@@ -64,9 +64,10 @@ All state lives under the data home (`Global.Path.data`):
 The settings General panel exposes the device-push state and actions; the subscribe flow lives in `packages/app/src/utils/web-push.ts`:
 
 - **Capability probe** (`pushCapability`) — distinguishes insecure context, missing service worker/PushManager, and an iOS Safari _tab_ (iOS exposes the Push API only inside an installed home-screen web app), so the UI can explain why Enable is unavailable.
-- **Enable** (`enableDevicePush`) — must run inside the user-gesture handler: `Notification.requestPermission()`, then `pushManager.subscribe({ userVisibleOnly: true, applicationServerKey })` with the VAPID key fetched from `/push/vapid-key`, then POST the resulting endpoint/keys to `/push/subscribe`. An existing local subscription is reused rather than recreated.
+- **Enable** (`enableDevicePush`) — must run inside the user-gesture handler: `Notification.requestPermission()`, then `pushManager.subscribe({ userVisibleOnly: true, applicationServerKey })` with the VAPID key fetched from `/push/vapid-key`, then POST the resulting endpoint/keys to `/push/subscribe`. An existing local subscription is reused only when its application-server key still matches the fetched VAPID key; after a VAPID rotation the stale subscription is dropped and recreated so deliveries keep validating. Permission denial surfaces as a typed error the panel turns into the "denied" guidance.
+- **Worker registration is prefix-aware** — the worker URL goes through the same reverse-proxy prefix resolver (`assetPath`) as other public assets, so registration works when the app is mounted under a path prefix rather than at the origin root.
 - **Disable** (`disableDevicePush`) — unsubscribes locally and removes the server record by endpoint.
-- The panel lists devices (label, per-category switches, Remove) through `push.list` / `push.updateCategories` / `push.test`, reusing the SDK's generated client.
+- The panel treats **local enablement** as this browser's own `pushManager` subscription (Enable/Test toggle), while the device list from `push.list` is for managing all registered devices: per-category switches (serialized writes), Remove (server-confirmed; a failed unsubscribe keeps the device visible and reports an error), and `push.test` (endpoint-scoped when sent from a specific device row).
 
 Desktop page notifications are unchanged and now pass the same `tag` (`session-${sessionID}`) as push deliveries, so the two surfaces collapse duplicates instead of double-notifying.
 

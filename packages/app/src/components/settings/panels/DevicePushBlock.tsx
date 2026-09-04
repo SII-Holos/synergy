@@ -4,7 +4,7 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
-import { enableDevicePush, pushCapability } from "@/utils/web-push"
+import { enableDevicePush, pushCapability, PushPermissionDeniedError } from "@/utils/web-push"
 import type { PushSubscriptionInfo } from "@ericsanchezok/synergy-sdk"
 import { SettingRow } from "../components/SettingRow"
 
@@ -41,9 +41,20 @@ const copy = {
   testSent: { id: "settings.general.devicePush.testSent", message: "Test notification sent" },
   testFailed: { id: "settings.general.devicePush.testFailed", message: "Test notification failed" },
   removed: { id: "settings.general.devicePush.removed", message: "Device removed" },
+  removeFailed: {
+    id: "settings.general.devicePush.removeFailed",
+    message: "Could not remove device; it is still subscribed to pushes",
+  },
 } as const
 
 const CATEGORY_KEYS = ["completion", "error", "input"] as const
+type CategoryKey = (typeof CATEGORY_KEYS)[number]
+
+async function localSubscription(): Promise<PushSubscription | null> {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return null
+  const registration = await navigator.serviceWorker.getRegistration().catch(() => undefined)
+  return (await registration?.pushManager.getSubscription().catch(() => undefined)) ?? null
+}
 
 export function DevicePushBlock() {
   const { _ } = useLingui()
@@ -56,8 +67,24 @@ export function DevicePushBlock() {
   const [permissionDenied, setPermissionDenied] = createSignal(
     typeof Notification !== "undefined" && Notification.permission === "denied",
   )
+  // Local enablement comes from this browser's own pushManager subscription;
+  // `devices` is the server-wide list used only for device management, so a
+  // second browser must not think push is already enabled here.
+  const [localEnabled, setLocalEnabled] = createSignal(false)
+  // Serialize per-device category writes: concurrent PATCHes built from stale
+  // snapshots could restore each other's old values.
+  const categoryQueues = new Map<string, Promise<void>>()
 
-  async function refresh() {
+  // Reactive translations: recompute on every render path so a live locale
+  // switch updates the category labels (translation calls stay literal).
+  const categoryLabels = () =>
+    ({
+      completion: _(copy.completion),
+      error: _(copy.error),
+      input: _(copy.input),
+    }) as Record<CategoryKey, string>
+
+  async function refreshDevices() {
     try {
       const response = await client.list({ throwOnError: true })
       setDevices(response.data ?? [])
@@ -66,8 +93,16 @@ export function DevicePushBlock() {
     }
   }
 
+  async function refreshLocal() {
+    const subscription = await localSubscription()
+    setLocalEnabled(Boolean(subscription))
+  }
+
   createEffect(() => {
-    if (capability.kind === "supported") void refresh()
+    if (capability.kind === "supported") {
+      void refreshDevices()
+      void refreshLocal()
+    }
   })
 
   async function handleEnable() {
@@ -83,10 +118,13 @@ export function DevicePushBlock() {
         { deviceLabel: platformLabel() },
       )
       setPermissionDenied(false)
+      setLocalEnabled(true)
       showToast({ type: "success", title: _(copy.enabled) })
-      await refresh()
+      await refreshDevices()
     } catch (error) {
-      if ((error as Error)?.name === "NotAllowedError") setPermissionDenied(true)
+      if (error instanceof PushPermissionDeniedError || (error as Error)?.name === "NotAllowedError") {
+        setPermissionDenied(true)
+      }
       showToast({ type: "error", title: _(copy.enableFailed), description: String((error as Error)?.message ?? error) })
     } finally {
       setBusy(false)
@@ -94,11 +132,30 @@ export function DevicePushBlock() {
   }
 
   async function handleRemove(device: PushSubscriptionInfo) {
-    if (device.endpoint) {
-      await client.unsubscribe({ endpoint: device.endpoint }, { throwOnError: true }).catch(() => undefined)
+    setBusy(true)
+    try {
+      if (device.endpoint) {
+        // Surface transport failures: the server record stays active (and the
+        // device keeps receiving pushes) unless deletion is confirmed.
+        await client.unsubscribe({ endpoint: device.endpoint }, { throwOnError: true })
+      }
+      // If this row is the current browser's subscription, drop it locally too.
+      const local = await localSubscription()
+      if (local && device.endpoint) {
+        const json = local.toJSON() as { endpoint?: string }
+        if (json.endpoint === device.endpoint) {
+          await local.unsubscribe().catch(() => undefined)
+          setLocalEnabled(false)
+        }
+      }
+      showToast({ type: "success", title: _(copy.removed) })
+    } catch {
+      showToast({ type: "error", title: _(copy.removeFailed) })
+    } finally {
+      setBusy(false)
+      await refreshDevices()
+      await refreshLocal()
     }
-    showToast({ type: "success", title: _(copy.removed) })
-    await refresh()
   }
 
   async function handleTest() {
@@ -110,18 +167,24 @@ export function DevicePushBlock() {
     }
   }
 
-  async function toggleCategory(device: PushSubscriptionInfo, key: (typeof CATEGORY_KEYS)[number], value: boolean) {
-    const next = { ...device.categories, [key]: value }
-    try {
-      await client.updateCategories({ id: device.id, pushCategories: next }, { throwOnError: true })
-      setDevices((prev) => prev.map((d) => (d.id === device.id ? { ...d, categories: next } : d)))
-    } catch {}
-  }
-
-  const categoryLabels: Record<(typeof CATEGORY_KEYS)[number], string> = {
-    completion: _(copy.completion),
-    error: _(copy.error),
-    input: _(copy.input),
+  function toggleCategory(device: PushSubscriptionInfo, key: CategoryKey, value: boolean) {
+    // Optimistic local flip for immediate feedback; writes are serialized per
+    // device and each request is built from the latest applied state.
+    setDevices((prev) =>
+      prev.map((d) => (d.id === device.id ? { ...d, categories: { ...d.categories, [key]: value } } : d)),
+    )
+    const previous = categoryQueues.get(device.id) ?? Promise.resolve()
+    const next = previous
+      .then(async () => {
+        const latest = devices().find((d) => d.id === device.id)
+        if (!latest) return
+        await client.updateCategories({ id: device.id, pushCategories: latest.categories }, { throwOnError: true })
+      })
+      .catch(() => {
+        // The optimistic state may now disagree with the server; reload.
+        return refreshDevices()
+      })
+    categoryQueues.set(device.id, next)
   }
 
   const status = (): string => {
@@ -129,7 +192,7 @@ export function DevicePushBlock() {
     if (capability.kind === "ios-browser-tab") return _(copy.iosTab)
     if (capability.kind === "no-service-worker" || capability.kind === "no-push-manager") return _(copy.unsupported)
     if (permissionDenied()) return _(copy.permissionDenied)
-    return devices().length > 0 ? _(copy.enabled) : ""
+    return localEnabled() ? _(copy.enabled) : ""
   }
 
   return (
@@ -139,18 +202,18 @@ export function DevicePushBlock() {
         description={_(copy.description)}
         stateLabel={status()}
         trailing={
-          <Show when={capability.kind === "supported" && !permissionDenied()} fallback={<span />}>
+          <Show when={capability.kind === "supported"} fallback={<span />}>
             <Show
-              when={devices().length === 0}
+              when={localEnabled()}
               fallback={
                 <Button
                   type="button"
                   variant="secondary"
                   size="small"
-                  disabled={busy()}
-                  onClick={() => void handleTest()}
+                  disabled={busy() || permissionDenied()}
+                  onClick={() => void handleEnable()}
                 >
-                  {_(copy.test)}
+                  {_(copy.enable)}
                 </Button>
               }
             >
@@ -159,9 +222,9 @@ export function DevicePushBlock() {
                 variant="secondary"
                 size="small"
                 disabled={busy()}
-                onClick={() => void handleEnable()}
+                onClick={() => void handleTest()}
               >
-                {_(copy.enable)}
+                {_(copy.test)}
               </Button>
             </Show>
           </Show>
@@ -176,13 +239,14 @@ export function DevicePushBlock() {
                 <For each={CATEGORY_KEYS}>
                   {(key) => (
                     <div class="settings-device-push-toggle">
-                      <span>{categoryLabels[key]}</span>
+                      <span>{categoryLabels()[key]}</span>
                       <Switch
                         checked={device.categories[key]}
                         hideLabel
-                        onChange={(value) => void toggleCategory(device, key, value)}
+                        disabled={busy()}
+                        onChange={(value) => toggleCategory(device, key, value)}
                       >
-                        {categoryLabels[key]}
+                        {categoryLabels()[key]}
                       </Switch>
                     </div>
                   )}

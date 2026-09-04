@@ -4,6 +4,7 @@ import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface } from "@/app"
 import { Platform, PlatformProvider } from "@/context/platform"
 import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
+import { assetPath } from "@/utils/proxy"
 import { schedulePromptAttachmentImagePipelineWarmup } from "@/utils/prompt-attachment"
 import { configureClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -111,7 +112,10 @@ const platform: Platform = {
 // only handles push/notificationclick; it never intercepts fetch. Failures
 // are silent: browsers without service workers keep working unchanged.
 if ("serviceWorker" in navigator && window.isSecureContext) {
-  navigator.serviceWorker.register("/sw.js").catch(() => undefined)
+  // Register under the reverse-proxy prefix (assetPath) so the worker URL is
+  // served from the same mount as the app; an origin-root /sw.js would 404
+  // when the app is hosted behind a path prefix.
+  navigator.serviceWorker.register(assetPath("/sw.js")).catch(() => undefined)
   navigator.serviceWorker.addEventListener("message", (event) => {
     const data = event.data
     if (!data || data.type !== "push-navigate" || typeof data.href !== "string") return

@@ -15347,6 +15347,10 @@ msgid "settings.general.devicePush.removed"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.general.devicePush.removeFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.general.devicePush.test"
 msgstr ""
 

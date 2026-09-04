@@ -2117,7 +2117,7 @@
       "post": {
         "operationId": "push.test",
         "summary": "Send a test Web Push notification",
-        "description": "Send one test notification to verify an existing subscription end to end.",
+        "description": "Send one test notification to verify an existing subscription end to end. With an endpoint, only that subscription receives it.",
         "responses": {
           "200": {
             "description": "Test notification dispatched",
@@ -2135,6 +2135,38 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown subscription endpoint",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["message"]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Delivery to the requested subscription failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["message"]
                 }
               }
             }

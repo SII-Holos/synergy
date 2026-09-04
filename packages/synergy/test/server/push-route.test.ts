@@ -10,6 +10,7 @@ import { Scope } from "../../src/scope"
 import { tmpdir } from "../fixture/fixture"
 
 const APPLE = "https://web.push.apple.com/push/v1/device-a"
+const FCM = "https://fcm.googleapis.com/fcm/send/device-b"
 
 function app() {
   return new Hono().route("/push", PushRoute)
@@ -136,6 +137,67 @@ describe("PushRoute", () => {
       expect(calls).toHaveLength(1)
       expect(calls[0]!.category).toBe("test")
       expect(calls[0]!.tag).toBe("push-test")
+    })
+  })
+
+  test("test with an endpoint targets only that subscription", async () => {
+    await withIsolatedHome(async () => {
+      await app().request("/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: APPLE, keys: { p256dh: "a", auth: "b" } }),
+      })
+      await app().request("/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: FCM, keys: { p256dh: "c", auth: "d" } }),
+      })
+
+      const calls: any[] = []
+      PushService.setSender(((_sub: any, payload: any) => {
+        calls.push({ sub: _sub, payload: JSON.parse(payload) })
+        return Promise.resolve({ statusCode: 201 } as any)
+      }) as any)
+
+      const response = await app().request("/push/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: APPLE }),
+      })
+      expect(response.status).toBe(200)
+      expect(calls).toHaveLength(1)
+      expect(calls[0]!.sub.endpoint).toBe(APPLE)
+      expect(calls[0]!.payload.category).toBe("test")
+    })
+  })
+
+  test("test with an unknown endpoint 404s and a rejected delivery 502s", async () => {
+    await withIsolatedHome(async () => {
+      await app().request("/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: APPLE, keys: { p256dh: "a", auth: "b" } }),
+      })
+
+      const unknown = await app().request("/push/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: "https://fcm.googleapis.com/fcm/send/nope" }),
+      })
+      expect(unknown.status).toBe(404)
+
+      PushService.setSender((() => {
+        const error = new Error("endpoint rejected") as any
+        error.statusCode = 500
+        return Promise.reject(error)
+      }) as any)
+
+      const failed = await app().request("/push/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: APPLE }),
+      })
+      expect(failed.status).toBe(502)
     })
   })
 

@@ -15347,6 +15347,10 @@ msgid "settings.general.devicePush.removed"
 msgstr "Device removed"
 
 #. js-lingui-explicit-id
+msgid "settings.general.devicePush.removeFailed"
+msgstr "Could not remove device; it is still subscribed to pushes"
+
+#. js-lingui-explicit-id
 msgid "settings.general.devicePush.test"
 msgstr "Send test"
 

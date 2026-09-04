@@ -200,6 +200,24 @@ describe("PushBridge", () => {
     })
   })
 
+  test("unresolved session-scoped errors stay silent (no global fallback)", async () => {
+    await withIsolatedHome(async () => {
+      await setupSubscriber()
+      disposeBridge = PushBridge.init()
+      const { calls, send } = recordingSender()
+      PushService.setSender(send)
+
+      // A sessionID that no longer resolves must not emit a misleading
+      // global push containing the raw error text.
+      await Bus.publish(SessionEvent.Error, {
+        sessionID: Identifier.ascending("session"),
+        error: "boom for a deleted session",
+      })
+      await PushBridge.flush()
+      expect(calls).toHaveLength(0)
+    })
+  })
+
   test("long titles are truncated to the body limit", async () => {
     await withIsolatedHome(async () => {
       await setupSubscriber()

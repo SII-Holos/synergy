@@ -75,26 +75,30 @@ export namespace PushBridge {
       }),
       Bus.subscribeGlobal(SessionEvent.Error, (event) => {
         const task = (async () => {
-          const session = await resolveSession(event.properties.sessionID)
-          if (session) {
-            if (skip(session, "error")) return
-            const error = event.properties.error
+          const sessionID = event.properties.sessionID
+          if (!sessionID) {
+            // Truly global errors (no session context) fall back to the
+            // current scope root; unresolved session-scoped errors stay
+            // silent instead of leaking raw error text as a global push.
+            const scope = ScopeContext.current.scope
+            const directory = scope.type === "home" ? "home" : (scope.directory ?? "home")
             publish({
               title: "Session error",
-              body: truncate(session.title ?? (typeof error === "string" ? error : "Session error")),
-              href: sessionHref(session),
-              tag: `session-${session.id}`,
+              body: truncate(typeof event.properties.error === "string" ? event.properties.error : "Session error"),
+              href: `/${base64Encode(directory)}`,
+              tag: "session-global",
               category: "error",
             })
             return
           }
-          const scope = ScopeContext.current.scope
-          const directory = scope.type === "home" ? "home" : (scope.directory ?? "home")
+          const session = await resolveSession(sessionID)
+          if (!session || skip(session, "error")) return
+          const error = event.properties.error
           publish({
             title: "Session error",
-            body: truncate(typeof event.properties.error === "string" ? event.properties.error : "Session error"),
-            href: `/${base64Encode(directory)}`,
-            tag: "session-global",
+            body: truncate(session.title ?? (typeof error === "string" ? error : "Session error")),
+            href: sessionHref(session),
+            tag: `session-${session.id}`,
             category: "error",
           })
         })().catch((error) => log.warn("error push failed", { error }))

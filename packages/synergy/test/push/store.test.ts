@@ -7,6 +7,7 @@ import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
+import { Global } from "../../src/global"
 import { tmpdir } from "../fixture/fixture"
 
 const VALID_ENDPOINT = "https://web.push.apple.com/push/v1/abc123"
@@ -85,6 +86,36 @@ describe("PushStore", () => {
       expect(persisted).toEqual(first)
       const second = await PushStore.vapidKeys()
       expect(second).toEqual(first)
+    })
+  })
+
+  test("concurrent first-use VAPID requests resolve to the same key pair", async () => {
+    await withIsolatedHome(async () => {
+      const [first, second, third] = await Promise.all([
+        PushStore.vapidKeys(),
+        PushStore.vapidKeys(),
+        PushStore.vapidKeys(),
+      ])
+      expect(first).toEqual(second)
+      expect(second).toEqual(third)
+    })
+  })
+
+  test("VAPID key and subscription records are persisted owner-only (0600)", async () => {
+    await withIsolatedHome(async () => {
+      // Stat through Global.Path.data (the same resolution the store uses) —
+      // the root getter caches the first resolved home for the process.
+      const dataRoot = path.dirname(path.join(Global.Path.data, "x"))
+      await PushStore.vapidKeys()
+      const sub = await PushStore.upsert({ endpoint: VALID_ENDPOINT, keys: { p256dh: "a", auth: "b" } })
+      expect(await PushStore.list()).toHaveLength(1)
+
+      if (process.platform !== "win32") {
+        const vapidMode = (await fs.stat(path.join(dataRoot, "push/vapid.json"))).mode
+        expect(vapidMode & 0o777).toBe(0o600)
+        const subMode = (await fs.stat(path.join(dataRoot, `push/subscriptions/${sub.id}.json`))).mode
+        expect(subMode & 0o777).toBe(0o600)
+      }
     })
   })
 })

@@ -15347,6 +15347,10 @@ msgid "settings.general.devicePush.removed"
 msgstr "设备已移除"
 
 #. js-lingui-explicit-id
+msgid "settings.general.devicePush.removeFailed"
+msgstr "无法移除设备，它仍在接收推送"
+
+#. js-lingui-explicit-id
 msgid "settings.general.devicePush.test"
 msgstr "发送测试"
 

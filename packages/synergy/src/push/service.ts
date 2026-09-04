@@ -52,28 +52,45 @@ export namespace PushService {
     const vapid = await PushStore.vapidKeys()
     const serialized = JSON.stringify(payload)
 
-    await Promise.allSettled(
-      targets.map(async (sub) => {
-        try {
-          await sendFn({ endpoint: sub.endpoint, keys: sub.keys }, serialized, {
-            TTL: TTL_BY_CATEGORY[payload.category],
-            urgency: URGENCY_BY_CATEGORY[payload.category],
-            vapidDetails: {
-              subject: "mailto:synergy@localhost",
-              publicKey: vapid.publicKey,
-              privateKey: vapid.privateKey,
-            },
-          })
-        } catch (error: unknown) {
-          const statusCode = (error as { statusCode?: number })?.statusCode
-          if (statusCode === 404 || statusCode === 410) {
-            await PushStore.removeById(sub.id).catch(() => undefined)
-            log.info("pruned expired push subscription", { subscriptionID: sub.id })
-            return
-          }
-          log.warn("push delivery failed", { subscriptionID: sub.id, error })
-        }
-      }),
-    )
+    await Promise.allSettled(targets.map((sub) => deliver(sub, serialized, payload.category, vapid)))
+  }
+
+  /**
+   * Deliver one payload to a single subscription (the settings "test" flow).
+   * Rejects on transport failure so the caller can surface why the test did
+   * not arrive; 404/410 still prunes the dead subscription before rejecting.
+   */
+  export async function sendTo(subscription: PushTypes.Subscription, payload: PushTypes.Payload): Promise<void> {
+    const vapid = await PushStore.vapidKeys()
+    await deliver(subscription, JSON.stringify(payload), payload.category, vapid, { propagate: true })
+  }
+
+  async function deliver(
+    sub: PushTypes.Subscription,
+    serialized: string,
+    category: PushTypes.Payload["category"],
+    vapid: { publicKey: string; privateKey: string },
+    options?: { propagate?: boolean },
+  ) {
+    try {
+      await sendFn({ endpoint: sub.endpoint, keys: sub.keys }, serialized, {
+        TTL: TTL_BY_CATEGORY[category],
+        urgency: URGENCY_BY_CATEGORY[category],
+        vapidDetails: {
+          subject: "mailto:synergy@localhost",
+          publicKey: vapid.publicKey,
+          privateKey: vapid.privateKey,
+        },
+      })
+    } catch (error: unknown) {
+      const statusCode = (error as { statusCode?: number })?.statusCode
+      if (statusCode === 404 || statusCode === 410) {
+        await PushStore.removeById(sub.id).catch(() => undefined)
+        log.info("pruned expired push subscription", { subscriptionID: sub.id })
+      } else {
+        log.warn("push delivery failed", { subscriptionID: sub.id, error })
+      }
+      if (options?.propagate) throw error
+    }
   }
 }

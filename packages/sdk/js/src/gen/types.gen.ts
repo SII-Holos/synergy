@@ -10329,6 +10329,18 @@ export type PushTestErrors = {
    */
   400: BadRequestError
   /**
+   * Unknown subscription endpoint
+   */
+  404: {
+    message: string
+  }
+  /**
+   * Delivery to the requested subscription failed
+   */
+  502: {
+    message: string
+  }
+  /**
    * Runtime shutting down
    */
   503: RuntimeShuttingDownError
