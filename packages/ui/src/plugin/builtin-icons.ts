@@ -131,6 +131,7 @@ const builtinIconNames = [
   "message-circle",
   "message-square",
   "message-square-more",
+  "mic",
   "microscope",
   "minimize",
   "minimize-2",

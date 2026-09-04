@@ -167,6 +167,7 @@ export const SemanticIconToken = {
   "prompt.submitArrow": "arrow-up",
   "prompt.blueprintStart": "circle-play",
   "prompt.blueprintEquip": "clipboard-check",
+  "prompt.voice": "mic",
 
   // Quick actions and runtime commands
   "command.undo": "undo-2",
