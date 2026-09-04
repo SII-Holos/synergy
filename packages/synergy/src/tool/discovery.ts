@@ -6,6 +6,7 @@ import type { Info as SessionInfo } from "@/session/types"
 import type { ToolDiagnostic } from "./diagnostic"
 import { ToolExposure } from "./exposure"
 import { ToolMcpSource } from "./mcp-source"
+import { Config } from "@/config/config"
 
 export namespace ToolDiscovery {
   export interface Entry {
@@ -57,11 +58,11 @@ export namespace ToolDiscovery {
     }
 
     if (input.includeMCP !== false) {
+      const config = await Config.current()
       const entries = (await ToolMcpSource.get()?.toolEntries()) ?? []
-      const deferMCP = entries.length >= ToolExposure.MCP_DEFER_THRESHOLD
       const toolsByServer = new Map<string, string[]>()
       for (const entry of entries) {
-        if (deferMCP) {
+        if (!ToolExposure.mcpExpandByDefault(config.mcp?.[entry.serverName], config.mcpDefaults)) {
           const existing = toolsByServer.get(entry.serverName) ?? []
           existing.push(entry.id)
           toolsByServer.set(entry.serverName, existing)
@@ -72,7 +73,10 @@ export namespace ToolDiscovery {
       }
 
       for (const entry of entries) {
-        const exposure = ToolExposure.mcpExposure(entries.length, entry.serverName)
+        const exposure = ToolExposure.mcpExposure(
+          entry.serverName,
+          ToolExposure.mcpExpandByDefault(config.mcp?.[entry.serverName], config.mcpDefaults),
+        )
         const group = ToolExposure.groupInfoFromExposure(entry.id, exposure)
         tools.push({
           id: entry.id,

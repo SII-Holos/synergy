@@ -16643,6 +16643,14 @@ msgid "settings.mcp.card.expand"
 msgstr "Expand server details"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.card.expandByDefault"
+msgstr "Expand by default"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.card.expandByDefault.description"
+msgstr "Keep this server's tools always visible to the model instead of folding them into an expandable MCP group."
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.card.headers"
 msgstr "Headers"
 

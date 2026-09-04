@@ -32525,6 +32525,10 @@
           "toolFilter": {
             "$ref": "#/components/schemas/McpToolFilterConfig"
           },
+          "expandByDefault": {
+            "description": "Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.",
+            "type": "boolean"
+          },
           "tools": {
             "$ref": "#/components/schemas/McpToolsConfig"
           },
@@ -32637,6 +32641,10 @@
           "toolFilter": {
             "$ref": "#/components/schemas/McpToolFilterConfig"
           },
+          "expandByDefault": {
+            "description": "Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.",
+            "type": "boolean"
+          },
           "tools": {
             "$ref": "#/components/schemas/McpToolsConfig"
           },
@@ -32693,6 +32701,10 @@
           },
           "toolFilter": {
             "$ref": "#/components/schemas/McpToolFilterConfig"
+          },
+          "expandByDefault": {
+            "description": "Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.",
+            "type": "boolean"
           },
           "tools": {
             "$ref": "#/components/schemas/McpToolsConfig"
