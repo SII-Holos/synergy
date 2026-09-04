@@ -15331,6 +15331,78 @@ msgid "settings.general.compactReasoning.title"
 msgstr "紧凑推理"
 
 #. js-lingui-explicit-id
+msgid "settings.general.devicePush.completion"
+msgstr "任务完成"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.description"
+msgstr "通过浏览器在本设备接收任务完成、出错和需要输入的通知。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enable"
+msgstr "启用推送"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enabled"
+msgstr "已在本设备启用推送"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enableFailed"
+msgstr "无法启用推送"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.error"
+msgstr "错误"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.input"
+msgstr "需要输入"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.insecure"
+msgstr "推送需要安全（HTTPS）连接"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.iosTab"
+msgstr "在 iOS 上，请先将此网站添加到主屏幕并作为应用打开，以启用推送"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.permissionDenied"
+msgstr "浏览器设置中已拒绝通知权限"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.remove"
+msgstr "移除"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.removed"
+msgstr "设备已移除"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.removeFailed"
+msgstr "无法移除设备，它仍在接收推送"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.test"
+msgstr "发送测试"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.testFailed"
+msgstr "测试通知发送失败"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.testSent"
+msgstr "测试通知已发送"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.title"
+msgstr "设备推送"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.unsupported"
+msgstr "此浏览器不支持推送"
+
+#. js-lingui-explicit-id
 msgid "settings.general.font.applied"
 msgstr "已应用"
 
@@ -17875,24 +17947,84 @@ msgid "settings.runtime.boss.enabled.desc"
 msgstr "把所有飞书消息路由到运行时 boss 会话"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.identity"
-msgstr "同事身份描述"
+msgid "settings.runtime.boss.name"
+msgstr "名字"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.identity.desc"
-msgstr "可选的同事身份说明，会注入 boss 会话。"
+msgid "settings.runtime.boss.name.desc"
+msgstr "你的 Boss 同事将使用的名字。"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.identity.placeholder"
-msgstr "例如：具备产品思维的运营人员，负责分拣飞书请求"
+msgid "settings.runtime.boss.name.placeholder"
+msgstr "例如：小飞"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.interval"
-msgstr "世界概况刷新间隔（天）"
+msgid "settings.runtime.boss.name.saveFailed"
+msgstr "无法保存 Boss 名字"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.interval.desc"
-msgstr "按天重新投递世界概况简报，留空关闭。"
+msgid "settings.runtime.boss.name.saveFailed.desc"
+msgstr "Boss 名字保存失败，请重试。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession"
+msgstr "打开 Boss 会话"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.busy"
+msgstr "正在打开…"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.desc"
+msgstr "打开运行时 boss 聊天会话，首次使用时会自动创建。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.failed"
+msgstr "无法打开 Boss 会话"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.conciseness"
+msgstr "简洁度"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.custom"
+msgstr "自定义"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.customTraits"
+msgstr "自定义性格特征"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.default"
+msgstr "默认"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.formality"
+msgstr "正式度"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.opsAssistant"
+msgstr "运营助理"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.proactiveness"
+msgstr "主动性"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.projectManager"
+msgstr "项目经理"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.warmth"
+msgstr "亲和度"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.personality"
+msgstr "性格"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.personality.desc"
+msgstr "你的 Boss 同事的行为与沟通方式。"
 
 #. Boss Mode
 msgid "settings.runtime.boss.title"

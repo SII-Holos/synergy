@@ -746,6 +746,7 @@ export namespace Channel {
             channelRequesterId: ctx.senderId,
             channelChatId: ctx.chatId,
             channelChatName: ctx.chatName,
+            channelChatType: ctx.chatType,
             channelSenderId: ctx.senderId,
             channelSenderName: ctx.senderName,
           }
@@ -782,26 +783,35 @@ export namespace Channel {
               })
               void reactionController.setQueued()
 
-              let streaming = createStreamingSession({
-                accountId: ctx.accountId,
-                chatId: ctx.chatId,
-                chatType: ctx.chatType,
-                replyToMessageId,
-                sessionID,
-                scopeKey: ctx.scopeKey,
-              })
-              try {
-                await streaming.start()
-              } catch (error) {
-                log.warn("streaming session startup failed; using text fallback", { sessionID, error })
-                streaming = createTextFallbackSession({
-                  replyMessage,
-                  accountId: ctx.accountId,
-                  chatId: ctx.chatId,
-                  chatType: ctx.chatType,
-                  messageId: replyToMessageId,
-                  scopeKey: ctx.scopeKey,
-                })
+              // Runtime Boss Mode (R6): boss-routed messages never auto-deliver.
+              // The boss replies through an explicit channel_push tool call, so
+              // no Feishu streaming card is created and no terminal is posted.
+              // Reactions still give the human lightweight progress feedback.
+              const isBossRoute = bossSessionID !== undefined
+              let streaming: StreamingSession = isBossRoute
+                ? createSilentSession()
+                : createStreamingSession({
+                    accountId: ctx.accountId,
+                    chatId: ctx.chatId,
+                    chatType: ctx.chatType,
+                    replyToMessageId,
+                    sessionID,
+                    scopeKey: ctx.scopeKey,
+                  })
+              if (!isBossRoute) {
+                try {
+                  await streaming.start()
+                } catch (error) {
+                  log.warn("streaming session startup failed; using text fallback", { sessionID, error })
+                  streaming = createTextFallbackSession({
+                    replyMessage,
+                    accountId: ctx.accountId,
+                    chatId: ctx.chatId,
+                    chatType: ctx.chatType,
+                    messageId: replyToMessageId,
+                    scopeKey: ctx.scopeKey,
+                  })
+                }
               }
 
               // A foreground streaming session that owns the terminal delivery
@@ -937,26 +947,31 @@ export namespace Channel {
                 }
                 const rootID =
                   result.info.role === "assistant" ? (result.info.rootID ?? result.info.parentID) : result.info.id
-                const taskMessages = await loadChannelTaskMessages({ sessionID, rootID, terminal: result })
-                await ResponseCardRuntime.deliverTaskCards({
-                  provider,
-                  accountId: ctx.accountId,
-                  chatId: ctx.chatId,
-                  chatType: ctx.chatType,
-                  scopeKey: ctx.scopeKey,
-                  replyToMessageId,
-                  sessionID,
-                  terminal: result,
-                  messages: taskMessages,
-                }).catch((err) => log.warn("response card delivery failed", { sessionID, error: err }))
-                await replyChannelTaskAttachments({
-                  provider,
-                  accountId: ctx.accountId,
-                  messageId: replyToMessageId,
-                  sessionID,
-                  terminal: result,
-                  messages: taskMessages,
-                }).catch((err) => log.warn("channel task attachments delivery failed", { sessionID, error: err }))
+                // Boss-route (R6): no response cards, no attachment delivery, no
+                // terminal posting — the boss decides what reaches the user and
+                // sends it through an explicit channel_push tool call.
+                if (!isBossRoute) {
+                  const taskMessages = await loadChannelTaskMessages({ sessionID, rootID, terminal: result })
+                  await ResponseCardRuntime.deliverTaskCards({
+                    provider,
+                    accountId: ctx.accountId,
+                    chatId: ctx.chatId,
+                    chatType: ctx.chatType,
+                    scopeKey: ctx.scopeKey,
+                    replyToMessageId,
+                    sessionID,
+                    terminal: result,
+                    messages: taskMessages,
+                  }).catch((err) => log.warn("response card delivery failed", { sessionID, error: err }))
+                  await replyChannelTaskAttachments({
+                    provider,
+                    accountId: ctx.accountId,
+                    messageId: replyToMessageId,
+                    sessionID,
+                    terminal: result,
+                    messages: taskMessages,
+                  }).catch((err) => log.warn("channel task attachments delivery failed", { sessionID, error: err }))
+                }
                 await reactionController.setDone()
               } catch (err) {
                 // A busy Session must not surface a generation failure: persist the
@@ -1038,6 +1053,25 @@ export namespace Channel {
       },
       isActive: () => false,
       ownsTerminalDelivery: () => true,
+    }
+  }
+
+  /**
+   * Silent streaming session used by Runtime Boss Mode (R6): boss-role
+   * sessions never auto-deliver — the boss decides what reaches the user and
+   * sends it through an explicit channel_push tool call. Every streaming
+   * method is a no-op and the session does not own terminal delivery, so the
+   * outbound bridge stays the delivery path for non-boss sessions while the
+   * boss-role skip in ChannelOutbound keeps boss terminals silent.
+   */
+  function createSilentSession(): StreamingSession {
+    return {
+      async start() {},
+      async update() {},
+      async updateToolProgress() {},
+      async close() {},
+      isActive: () => false,
+      ownsTerminalDelivery: () => false,
     }
   }
 

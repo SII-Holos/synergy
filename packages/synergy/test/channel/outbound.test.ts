@@ -13,6 +13,7 @@ import type { OutboundPart, Provider, ResponseCard } from "../../src/channel/typ
 import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
+import { SessionWorkflowService } from "../../src/session/workflow"
 import { SessionEndpoint } from "../../src/session/endpoint"
 import { MessageV2 } from "../../src/session/message-v2"
 import { tmpdir } from "../fixture/fixture"
@@ -1003,6 +1004,76 @@ test("does not re-deliver a terminal already present before the invoke", async (
         }),
       ).toBe(false)
       expect(calls.replies).toEqual([])
+    },
+  })
+})
+
+test("never auto-delivers boss-role session terminals through the bridge (R6 explicit channel_push only)", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const type = `outbound-boss-skip-${crypto.randomUUID()}`
+      const calls: ProviderCalls = { replies: [], pushes: [] }
+      Channel.registerProvider(provider(type, calls))
+      const dispose = initOutbound()
+      try {
+        const session = await Session.create({
+          endpoint: SessionEndpoint.fromChannel({
+            type,
+            accountId: "acct_test",
+            chatId: "chat_test",
+          }),
+        })
+        await SessionWorkflowService.enableBoss(session.id)
+
+        // A terminal assistant reply with full channel delivery metadata would
+        // be auto-delivered for a normal channel session; boss-role sessions
+        // must never reach the provider — the boss replies via channel_push.
+        await completedAssistant(session.id, "Boss terminal reply", "stop", {
+          channelPush: true,
+          channelReply: true,
+          channelReplyToMessageId: "msg_topic_root",
+        })
+        await Bun.sleep(100)
+        expect(calls.replies).toEqual([])
+        expect(calls.pushes).toEqual([])
+      } finally {
+        dispose()
+      }
+    },
+  })
+})
+
+test("non-boss channel sessions keep the automatic bridge reply (R6 regression guard)", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const type = `outbound-nonboss-${crypto.randomUUID()}`
+      const calls: ProviderCalls = { replies: [], pushes: [] }
+      Channel.registerProvider(provider(type, calls))
+      const dispose = initOutbound()
+      try {
+        const session = await Session.create({
+          endpoint: SessionEndpoint.fromChannel({
+            type,
+            accountId: "acct_test",
+            chatId: "chat_test",
+          }),
+        })
+
+        await completedAssistant(session.id, "Ordinary reply", "stop", {
+          channelPush: true,
+          channelReply: true,
+          channelReplyToMessageId: "msg_topic_root",
+        })
+        await waitFor(() => calls.replies.length > 0)
+        expect(calls.replies).toEqual(["msg_topic_root"])
+        expect(calls.pushes).toEqual([])
+      } finally {
+        dispose()
+      }
     },
   })
 })

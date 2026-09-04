@@ -5,12 +5,21 @@ import { Session } from "../../src/session"
 import { SessionEndpoint } from "../../src/session/endpoint"
 import { SessionInbox } from "../../src/session/inbox"
 import { BossRuntime } from "../../src/boss/boss-runtime"
+import { Provider } from "../../src/provider/provider"
+import { SessionManager } from "../../src/session/manager"
 import { Config } from "../../src/config/config"
 
 const originalConfigCurrent = Config.current
 
+const originalProviderDefaultModel = Provider.defaultModel
+const originalScheduleWake = SessionManager.scheduleWake
+const originalLatestRootID = SessionInbox.latestRootID
+
 afterEach(() => {
   Config.current = originalConfigCurrent
+  Provider.defaultModel = originalProviderDefaultModel
+  SessionManager.scheduleWake = originalScheduleWake
+  SessionInbox.latestRootID = originalLatestRootID
   BossRuntime.sync(false).catch(() => {})
 })
 
@@ -23,7 +32,7 @@ beforeEach(async () => {
       const sessions: Session.Info[] = []
       for await (const s of Session.listAll()) sessions.push(s)
       for (const s of sessions) {
-        if (s.workflow?.kind === "boss" && s.workflow.role === "boss" && s.endpoint?.kind === "channel") {
+        if (s.workflow?.kind === "boss" && s.workflow.role === "boss") {
           await Session.remove(s.id).catch(() => {})
         }
       }
@@ -222,6 +231,111 @@ describe("BossRuntime", () => {
       expect(after).toBeDefined()
       expect(after!.triggers).toContainEqual({ type: "every", interval: "3d" })
       expect(after!.triggers).not.toContainEqual({ type: "every", interval: "7d" })
+    })
+  })
+
+  test("openSession() throws BossSessionOpenError when boss_mode is disabled", async () => {
+    await withHomeScope(async () => {
+      stubConfig({})
+      await expect(BossRuntime.openSession()).rejects.toThrow("Boss Mode is disabled")
+    })
+  })
+
+  test("openSession() creates a channel-less local boss session when no routable account exists", async () => {
+    await withHomeScope(async () => {
+      stubConfig({ experimental: { boss_mode: true } })
+      const sessionID = await BossRuntime.openSession()
+      const session = await Session.get(sessionID)
+      expect(session).toBeDefined()
+      expect(session!.workflow).toEqual({ kind: "boss", role: "boss" })
+      expect(session!.agentOverride).toBe("boss-synergy")
+      expect(session!.endpoint?.kind).not.toBe("channel")
+      expect((session!.scope as Scope).id).toBe("home")
+      expect(session!.title).toBe(BossRuntime.LOCAL_BOSS_SESSION_TITLE)
+
+      // Second open reuses the same local session (idempotent).
+      expect(await BossRuntime.openSession()).toBe(sessionID)
+    })
+  })
+
+  test("openSession() prefers the channel-routed boss session when one exists", async () => {
+    await withHomeScope(async () => {
+      stubConfig(FEISHU_ONE)
+      await BossRuntime.ensure()
+      const routed = BossRuntime.bossSessionForAccount("acct1")!
+      expect(await BossRuntime.openSession()).toBe(routed)
+    })
+  })
+
+  test("openSession() skips the greeting kickoff when no model is available", async () => {
+    await withHomeScope(async () => {
+      stubConfig({ experimental: { boss_mode: true } })
+      Provider.defaultModel = mock(async () => {
+        throw new Error("no model")
+      }) as typeof Provider.defaultModel
+      const wakes: Array<[string, string]> = []
+      SessionManager.scheduleWake = mock((sessionID: string, reason: string) => {
+        wakes.push([sessionID, reason])
+      }) as typeof SessionManager.scheduleWake
+
+      const sessionID = await BossRuntime.openSession()
+      const items = await SessionInbox.list(sessionID)
+      // Only the one-time identity briefing steer is present; no task kickoff.
+      expect(items.filter((item) => item.mode === "task")).toHaveLength(0)
+      expect(items.some((item) => item.message?.origin?.detail === "boss_identity")).toBe(true)
+      expect(wakes).toEqual([])
+    })
+  })
+
+  test("openSession() queues one greeting kickoff task and wakes the session when a model is available", async () => {
+    await withHomeScope(async () => {
+      stubConfig({ experimental: { boss_mode: true } })
+      Provider.defaultModel = mock(async () => ({
+        providerID: "test",
+        modelID: "model",
+      })) as typeof Provider.defaultModel
+      const wakes: Array<[string, string]> = []
+      SessionManager.scheduleWake = mock((sessionID: string, reason: string) => {
+        wakes.push([sessionID, reason])
+      }) as typeof SessionManager.scheduleWake
+
+      const sessionID = await BossRuntime.openSession()
+      const kickoffItems = (await SessionInbox.list(sessionID)).filter(
+        (item) => item.mode === "task" && item.deliveryKey === `boss-open:${sessionID}`,
+      )
+      expect(kickoffItems).toHaveLength(1)
+      expect(kickoffItems[0].message?.origin?.detail).toBe("boss_open")
+      expect(kickoffItems[0].message?.parts?.[0]?.type).toBe("text")
+      expect((kickoffItems[0].message?.parts?.[0] as { text: string }).text).toBe(BossRuntime.LOCAL_BOSS_KICKOFF_TEXT)
+      expect(wakes).toEqual([[sessionID, "boss_open"]])
+
+      // Second open reuses the same session and does not queue a duplicate.
+      expect(await BossRuntime.openSession()).toBe(sessionID)
+      const after = (await SessionInbox.list(sessionID)).filter(
+        (item) => item.mode === "task" && item.deliveryKey === `boss-open:${sessionID}`,
+      )
+      expect(after).toHaveLength(1)
+      expect(wakes).toEqual([[sessionID, "boss_open"]])
+    })
+  })
+
+  test("openSession() does not kick off a session that already has a conversation root", async () => {
+    await withHomeScope(async () => {
+      stubConfig({ experimental: { boss_mode: true } })
+      Provider.defaultModel = mock(async () => ({
+        providerID: "test",
+        modelID: "model",
+      })) as typeof Provider.defaultModel
+      const wakes: Array<[string, string]> = []
+      SessionManager.scheduleWake = mock((sessionID: string, reason: string) => {
+        wakes.push([sessionID, reason])
+      }) as typeof SessionManager.scheduleWake
+      SessionInbox.latestRootID = mock(async () => "msg_existing") as typeof SessionInbox.latestRootID
+
+      const sessionID = await BossRuntime.openSession()
+      const items = await SessionInbox.list(sessionID)
+      expect(items.some((item) => item.deliveryKey?.startsWith("boss-open:"))).toBe(false)
+      expect(wakes).toEqual([])
     })
   })
 })

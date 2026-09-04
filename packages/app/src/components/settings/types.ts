@@ -79,6 +79,12 @@ export const UI_DEFAULTS = {
   bossMode: "false" as "true" | "false",
   bossIdentityText: "" as string,
   bossBriefingIntervalDays: "" as string,
+  bossPersonaPreset: "none" as string,
+  bossPersonaFormality: "0.5" as string,
+  bossPersonaConciseness: "0.5" as string,
+  bossPersonaProactiveness: "0.5" as string,
+  bossPersonaWarmth: "0.5" as string,
+  bossName: "" as string,
   lspWriteDiagnostics: "true" as string,
   lspDiagnosticsSeverity: "error" as string,
   lspDiagnosticsScope: "project" as string,
@@ -413,6 +419,12 @@ export type RuntimeStore = {
   bossMode: "true" | "false"
   bossIdentityText: string
   bossBriefingIntervalDays: string
+  bossPersonaPreset: string
+  bossPersonaFormality: string
+  bossPersonaConciseness: string
+  bossPersonaProactiveness: string
+  bossPersonaWarmth: string
+  bossName: string
   lspWriteDiagnostics: string
   lspDiagnosticsSeverity: string
   lspDiagnosticsScope: string
@@ -521,6 +533,12 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
       bossMode: UI_DEFAULTS.bossMode,
       bossIdentityText: UI_DEFAULTS.bossIdentityText,
       bossBriefingIntervalDays: UI_DEFAULTS.bossBriefingIntervalDays,
+      bossPersonaPreset: UI_DEFAULTS.bossPersonaPreset,
+      bossPersonaFormality: UI_DEFAULTS.bossPersonaFormality,
+      bossPersonaConciseness: UI_DEFAULTS.bossPersonaConciseness,
+      bossPersonaProactiveness: UI_DEFAULTS.bossPersonaProactiveness,
+      bossPersonaWarmth: UI_DEFAULTS.bossPersonaWarmth,
+      bossName: UI_DEFAULTS.bossName,
       lspWriteDiagnostics: UI_DEFAULTS.lspWriteDiagnostics,
       lspDiagnosticsSeverity: UI_DEFAULTS.lspDiagnosticsSeverity,
       lspDiagnosticsScope: UI_DEFAULTS.lspDiagnosticsScope,
