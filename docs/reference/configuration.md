@@ -23,6 +23,7 @@ Generated from the config domain definitions in `packages/synergy/src/config/dom
 | `email` | `110-email.jsonc` | merge |
 | `github` | `115-github.jsonc` | merge |
 | `runtime` | `120-runtime.jsonc` | merge |
+| `voice` | `125-voice.jsonc` | merge |
 
 ## General
 
@@ -195,3 +196,11 @@ File: `120-runtime.jsonc` · Merge: merge
 | `compaction` | object (optional) | Maximum number of historical images to send as base64 per request (older images replaced with text placeholders). Default: 8. |
 | `experimental` | object (optional) | Enable Runtime Boss Mode: auto-provision a home-scope runtime boss session and route all Feishu messages to it |
 | `observability` | ObservabilityConfig.optional (optional) | Local logs, indexed telemetry, and diagnostics settings |
+
+## Voice
+
+File: `125-voice.jsonc` · Merge: merge
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `voice` | VoiceConfig |  |

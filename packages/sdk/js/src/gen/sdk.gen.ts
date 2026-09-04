@@ -655,6 +655,8 @@ import type {
   ToolListResponses,
   VcsGetErrors,
   VcsGetResponses,
+  VoiceTranscribeErrors,
+  VoiceTranscribeResponses,
   WorkflowSessionCancelLightloopErrors,
   WorkflowSessionCancelLightloopResponses,
   WorkflowSessionGetLightloopTerminalErrors,
@@ -5940,6 +5942,7 @@ export class Domain extends HeyApiClient {
         | "holos"
         | "email"
         | "github"
+        | "voice"
         | "runtime"
       directory?: string
       scopeID?: string
@@ -5987,6 +5990,7 @@ export class Domain extends HeyApiClient {
         | "holos"
         | "email"
         | "github"
+        | "voice"
         | "runtime"
       directory?: string
       scopeID?: string
@@ -6041,6 +6045,7 @@ export class Domain extends HeyApiClient {
         | "holos"
         | "email"
         | "github"
+        | "voice"
         | "runtime"
       directory?: string
       scopeID?: string
@@ -6296,6 +6301,7 @@ export class Config extends HeyApiClient {
         | "holos"
         | "email"
         | "github"
+        | "voice"
         | "runtime"
         | Array<
             | "general"
@@ -6312,6 +6318,7 @@ export class Config extends HeyApiClient {
             | "holos"
             | "email"
             | "github"
+            | "voice"
             | "runtime"
           >
       includeSecrets?: string
@@ -9992,6 +9999,50 @@ export class Asset extends HeyApiClient {
   }
 }
 
+export class Voice extends HeyApiClient {
+  /**
+   * Transcribe audio
+   *
+   * Transcribe a short audio recording to text for composer voice dictation. Audio is processed in memory and never persisted.
+   */
+  public transcribe<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      file?: unknown
+      context?: string
+      language?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "file" },
+            { in: "body", key: "context" },
+            { in: "body", key: "language" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<VoiceTranscribeResponses, VoiceTranscribeErrors, ThrowOnError>({
+      ...formDataBodySerializer,
+      url: "/voice/transcribe",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": null,
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Browser extends HeyApiClient {
   /**
    * Create a Browser viewer ticket
@@ -11989,6 +12040,8 @@ export class SynergyClient extends HeyApiClient {
   boss = new Boss({ client: this.client })
 
   asset = new Asset({ client: this.client })
+
+  voice = new Voice({ client: this.client })
 
   browser = new Browser({ client: this.client })
 

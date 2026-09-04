@@ -29,6 +29,7 @@ test("config domain filenames are stable and ordered", () => {
     "110-email.jsonc",
     "115-github.jsonc",
     "120-runtime.jsonc",
+    "125-voice.jsonc",
   ])
 })
 
@@ -107,8 +108,28 @@ test("locale belongs to the general domain", () => {
   expect(ConfigDomain.domainForKey("locale")?.id).toBe("general")
 })
 
-test("activity display preference belongs to the general domain", () => {
-  expect(ConfigDomain.domainForKey("activityDisplay")?.id).toBe("general")
+test("voice configuration belongs to the voice domain", () => {
+  expect(ConfigDomain.domainForKey("voice")?.id).toBe("voice")
+  expect(ConfigDomain.filepath("voice")).toMatch(/125-voice\.jsonc$/)
+  expect(ConfigDomain.extract({ voice: { stt: { model: "whisper-1" } } }, "voice")).toEqual({
+    voice: { stt: { model: "whisper-1" } },
+  })
+})
+
+test("voice schema is absent by default and rejects unknown keys", () => {
+  expect(Config.Info.parse({}).voice).toBeUndefined()
+  expect(Config.Info.parse({ voice: {} }).voice).toEqual({})
+  expect(
+    Config.Info.safeParse({
+      voice: {
+        stt: { model: "gpt-4o-transcribe", apiKey: "sk-test", baseURL: "https://api.openai.com/v1", language: "zh" },
+        tts: { model: "gpt-4o-mini-tts", voice: "alloy", instructions: "Speak calmly" },
+      },
+    }).success,
+  ).toBe(true)
+  expect(Config.Info.safeParse({ voice: { stt: { unknown: true } } }).success).toBe(false)
+  expect(Config.Info.safeParse({ voice: { tts: { unknown: true } } }).success).toBe(false)
+  expect(Config.Info.safeParse({ voice: { unknown: true } }).success).toBe(false)
 })
 
 test("activity display schema accepts only full, balanced, and minimal", () => {

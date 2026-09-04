@@ -20,6 +20,7 @@ export namespace ConfigDomain {
     "holos",
     "email",
     "github",
+    "voice",
     "runtime",
   ])
   export type Id = z.infer<typeof Id>
@@ -129,6 +130,7 @@ export namespace ConfigDomain {
       "experimental",
       "observability",
     ]),
+    def("voice", "125-voice.jsonc", "Voice", ["voice"]),
   ] as const satisfies Definition[]
 
   function def(
