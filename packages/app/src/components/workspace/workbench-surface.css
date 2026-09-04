@@ -175,7 +175,8 @@
   min-width: 8px;
 }
 
-.workbench-surface-add-wrap {
+.workbench-surface-add-wrap,
+.workbench-surface-actions-wrap {
   position: relative;
   display: flex;
   margin-left: 2px;
@@ -214,6 +215,28 @@
 .workbench-surface-add-row:hover {
   background: var(--workbench-control-bg-hover, var(--surface-raised-base-hover));
   color: var(--text-strong);
+}
+
+.workbench-surface-add-row:disabled {
+  color: var(--text-weaker);
+  cursor: default;
+}
+
+.workbench-surface-add-row:disabled:hover {
+  background: transparent;
+  color: var(--text-weaker);
+}
+
+.workbench-surface-tab > [data-slot="popover-trigger"] {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+}
+
+.workbench-surface-tab--context {
+  --workbench-tab-bg: var(--workbench-control-bg-hover, var(--surface-raised-base-hover));
+  background: var(--workbench-tab-bg);
+  color: var(--text-base);
 }
 
 .workbench-surface-body {

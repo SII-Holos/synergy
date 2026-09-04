@@ -9,14 +9,88 @@ export namespace FileWatcherEvents {
   export type RawEvent = { type: "create" | "update" | "delete"; path: string }
   export type PathPlatform = "win32" | "posix"
 
+  // Native subscribe timeout by platform. Linux inotify tree scans cannot be
+  // cancelled: abandoning one at a generic timeout lets a retry overlap the
+  // still-running native scan, and a scan that later fails mid-way leaks its
+  // partial watches into the shared backend. Linux therefore waits for the
+  // attempt to settle; the other platforms keep the bounded timeout with
+  // unsubscribe-on-timeout cleanup.
+  const SUBSCRIBE_TIMEOUT_MS = 10_000
+
+  // Linux-only stall observability threshold for uncancellable native scans;
+  // see warnOnStall.
+  const NATIVE_SCAN_STALL_WARN_MS = 60_000
+
   const PROJECT_RUNTIME_IGNORES = ["node_modules", "worktrees", "cache", "data", "log", "logs", "state", "tmp", "temp"]
 
+  // Provenance: @parcel/watcher v2.5.6 wrapper.js / Watcher.cc ignore
+  // semantics; the authoritative cited contract lives beside FileIgnore.PATTERNS.
+  // Local adaptation: emit the same plain-name + `**/<name>/**` pair so nested
+  // runtime directories (.synergy/worktrees, caches) prune at any depth.
+  function recursiveDirectoryIgnores(directories: string[]) {
+    return directories.flatMap((directory) => [directory, `**/${directory}/**`])
+  }
+
   export function workspaceSubscriptionIgnores(extra: string[]) {
-    return [...new Set([...FileIgnore.PATTERNS, ".synergy", ...extra])]
+    return [...new Set([...FileIgnore.PATTERNS, ...recursiveDirectoryIgnores([".synergy"]), ...extra])]
   }
 
   export function projectRuntimeSubscriptionIgnores() {
-    return [...PROJECT_RUNTIME_IGNORES]
+    return recursiveDirectoryIgnores(PROJECT_RUNTIME_IGNORES)
+  }
+
+  /**
+   * Terminal only when Linux inotify watch capacity is exhausted. A full
+   * kernel watch table cannot clear while the process runs, so retrying only
+   * repeats the native allocation that failed. Recoverable inotify failures
+   * (permission changes, subtrees disappearing mid-scan) must stay retryable,
+   * and the 10s subscribe timeout no longer occurs on Linux (the native
+   * attempt is awaited to settle), so neither is classified as terminal.
+   * Synthetic capacity errors carry an explicit marker so their
+   * classification never depends on message text; code/message matching
+   * remains the path for upstream @parcel/watcher errors.
+   */
+  const LINUX_INOTIFY_CAPACITY_TERMINAL = "synergy.linuxInotifyCapacityTerminal"
+
+  export function isLinuxInotifyTerminalError(error: unknown, platform = process.platform) {
+    if (platform !== "linux") return false
+    if (typeof error === "object" && error !== null && LINUX_INOTIFY_CAPACITY_TERMINAL in error) return true
+    const code =
+      typeof error === "object" && error !== null && "code" in error ? String((error as { code?: unknown }).code) : ""
+    const message = error instanceof Error ? error.message : String(error)
+    return code === "ENOSPC" || /no space left on device/i.test(message)
+  }
+
+  // Process-wide Linux inotify capacity breaker. The kernel watch budget is
+  // shared by every subscription in this process (and by sibling processes of
+  // the same user); once one subscription exhausts it, any further native scan
+  // can fail before registration and leak its partial tree into the shared
+  // backend. A single ENOSPC therefore disables further Linux watcher startup
+  // until an explicit FileWatcher.reload() (which resets the breaker) or a
+  // process restart — see the Linux watcher recovery decision record.
+  let linuxInotifyCapacityTripped = false
+
+  export function isLinuxInotifyCapacityTripped() {
+    return linuxInotifyCapacityTripped
+  }
+
+  export function tripLinuxInotifyCapacity() {
+    linuxInotifyCapacityTripped = true
+  }
+
+  export function resetLinuxInotifyCapacity() {
+    linuxInotifyCapacityTripped = false
+  }
+
+  /** Terminal error shape for refusing a new subscribe after a process-wide trip. */
+  export function linuxInotifyCapacityError() {
+    return Object.assign(
+      new Error("Linux inotify watch capacity exhausted; watcher disabled until reload or restart"),
+      {
+        code: "ENOSPC",
+        [LINUX_INOTIFY_CAPACITY_TERMINAL]: true,
+      },
+    )
   }
 
   export function isProjectRuntimeInput(file: string) {
@@ -184,6 +258,62 @@ export namespace FileWatcherEvents {
     }
   }
 
+  /** Linux awaits the native attempt to settle; other platforms keep the 10s bound. */
+  export function nativeSubscribeTimeoutMs(platform: NodeJS.Platform = process.platform) {
+    return platform === "linux" ? undefined : SUBSCRIBE_TIMEOUT_MS
+  }
+
+  /** Runs one task at a time, in submission order, regardless of caller concurrency. */
+  export function createSerialQueue() {
+    let tail: Promise<void> = Promise.resolve()
+    return function enqueue<T>(task: () => Promise<T>): Promise<T> {
+      const run = tail.then(task)
+      tail = run.then(
+        () => undefined,
+        () => undefined,
+      )
+      return run
+    }
+  }
+
+  /**
+   * Observes an uncancellable native task without cancelling or racing it. A
+   * Linux scan over a network filesystem (NFS/autofs) can block in readdir
+   * indefinitely while the process-wide serial gate holds every later Linux
+   * subscription behind it; this emits one stall warning and one
+   * settled-after-stall notice so that gap stays visible in logs while the
+   * await-to-settle semantics stay unchanged.
+   */
+  export function warnOnStall<T>(input: {
+    task: Promise<T>
+    warnMs?: number
+    onStall: (elapsedMs: number) => void
+    onSettledAfterStall?: (elapsedMs: number) => void
+  }): Promise<T> {
+    const warnMs = input.warnMs ?? NATIVE_SCAN_STALL_WARN_MS
+    const startedAt = Date.now()
+    let stalled = false
+    const timer = setTimeout(() => {
+      stalled = true
+      input.onStall(Date.now() - startedAt)
+    }, warnMs)
+    timer.unref()
+    const settle = () => {
+      clearTimeout(timer)
+      if (stalled) input.onSettledAfterStall?.(Date.now() - startedAt)
+    }
+    return input.task.then(
+      (value) => {
+        settle()
+        return value
+      },
+      (error) => {
+        settle()
+        throw error
+      },
+    )
+  }
+
   export function createSubscriptionRecovery<T>(input: {
     connect: (context: {
       generation: number
@@ -192,6 +322,7 @@ export namespace FileWatcherEvents {
     }) => Promise<T>
     disconnect: (subscription: T) => Promise<void>
     onError: (error: unknown) => void | Promise<void>
+    shouldRetry?: (error: unknown) => boolean
     retryMs?: number
   }) {
     const retryMs = input.retryMs ?? 1_000
@@ -204,6 +335,7 @@ export namespace FileWatcherEvents {
     let generation = 0
     let started = false
     let disposed = false
+    let retryBlocked = false
     const reportContext = new AsyncLocalStorage<symbol>()
 
     const report = async (error: unknown) => {
@@ -218,7 +350,7 @@ export namespace FileWatcherEvents {
     }
 
     const scheduleRetry = () => {
-      if (disposed || retryTimer || current || connecting) return
+      if (disposed || retryBlocked || retryTimer || current || connecting) return
       retryTimer = setTimeout(() => {
         retryTimer = undefined
         void connect()
@@ -243,6 +375,7 @@ export namespace FileWatcherEvents {
 
     const fail = (error: unknown, expectedGeneration?: number) => {
       if (disposed || (expectedGeneration !== undefined && expectedGeneration !== generation)) return Promise.resolve()
+      if (input.shouldRetry?.(error) === false) retryBlocked = true
       generation += 1
       if (handlingFailure) return handlingFailure
 
@@ -251,7 +384,7 @@ export namespace FileWatcherEvents {
         current = undefined
         if (subscription) await disconnect(subscription)
         await report(error)
-        scheduleRetry()
+        if (!retryBlocked) scheduleRetry()
       })()
       let settled: Promise<void>
       settled = task.finally(() => {
@@ -285,7 +418,7 @@ export namespace FileWatcherEvents {
         await task
       } finally {
         if (connecting === task) connecting = undefined
-        if (!disposed && !current && !handlingFailure) scheduleRetry()
+        if (!disposed && !retryBlocked && !current && !handlingFailure) scheduleRetry()
       }
     }
 
