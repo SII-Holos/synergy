@@ -11,6 +11,7 @@ import { detect } from "../library/experience-detect"
 import { Config } from "../config/config"
 import { Log } from "../util/log"
 import { Global } from "../global"
+import { Identifier } from "../id/id"
 import { LibraryStatsEngine } from "../library"
 import { Embedding } from "../vector/embedding"
 
@@ -1018,6 +1019,102 @@ export const LibraryRoute = new Hono()
 
       log.info("reset", { type, scopeID, deletedMemory, deletedExperience })
       return c.json({ deleted: { memory: deletedMemory, experience: deletedExperience } })
+    },
+  )
+
+  .post(
+    "/memory",
+    describeRoute({
+      summary: "Create memory",
+      description:
+        "Create a new active memory row. Generates an embedding from the title and content so the row is immediately retrievable. Requires the embedding API to be configured.",
+      operationId: "library.memory.create",
+      responses: {
+        200: {
+          description: "Created memory",
+          content: { "application/json": { schema: resolver(MemoryInfo) } },
+        },
+        ...errors(400),
+      },
+    }),
+    validator(
+      "json",
+      z.object({
+        title: z.string().min(1).meta({ description: "Concise memory title (10 words max)" }),
+        content: z.string().min(1).meta({ description: "Memory content to persist" }),
+        category: MemoryCategory.meta({ description: "Memory category" }),
+        recallMode: MemoryRecallMode.meta({ description: "Memory recall mode" }),
+      }),
+    ),
+    async (c) => {
+      const input = c.req.valid("json")
+      const id = Identifier.ascending("memory")
+      try {
+        const embedding = await Embedding.generate({ id, text: `${input.title}\n${input.content}` })
+        const row = LibraryDB.Memory.insert({ id, ...input }, embedding)
+        log.info("memory.create", { id, category: input.category })
+        return c.json(toMemoryInfo(row))
+      } catch (err: any) {
+        log.error("memory create failed", { error: err })
+        return c.json(
+          { message: `Memory create failed: ${err?.message ?? String(err)}. Is the embedding API configured?` },
+          400,
+        )
+      }
+    },
+  )
+
+  .post(
+    "/memory/update",
+    describeRoute({
+      summary: "Update memory",
+      description:
+        "Replace the title, content, category, and recall mode of an existing memory row and regenerate its embedding.",
+      operationId: "library.memory.update",
+      responses: {
+        200: {
+          description: "Updated memory",
+          content: { "application/json": { schema: resolver(MemoryInfo) } },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator(
+      "json",
+      z.object({
+        id: z.string().min(1).meta({ description: "Memory ID to update" }),
+        title: z.string().min(1).meta({ description: "Concise memory title (10 words max)" }),
+        content: z.string().min(1).meta({ description: "Memory content to persist" }),
+        category: MemoryCategory.meta({ description: "Memory category" }),
+        recallMode: MemoryRecallMode.meta({ description: "Memory recall mode" }),
+      }),
+    ),
+    async (c) => {
+      const input = c.req.valid("json")
+      const existing = LibraryDB.Memory.get(input.id)
+      if (!existing) return c.json({ message: `Memory not found: ${input.id}` }, 404)
+      try {
+        const embedding = await Embedding.generate({ id: input.id, text: `${input.title}\n${input.content}` })
+        const row = LibraryDB.Memory.update(
+          {
+            id: input.id,
+            title: input.title,
+            content: input.content,
+            category: input.category,
+            recallMode: input.recallMode,
+          },
+          embedding,
+        )
+        if (!row) return c.json({ message: `Memory not found: ${input.id}` }, 404)
+        log.info("memory.update", { id: input.id, category: input.category })
+        return c.json(toMemoryInfo(row))
+      } catch (err: any) {
+        log.error("memory update failed", { error: err })
+        return c.json(
+          { message: `Memory update failed: ${err?.message ?? String(err)}. Is the embedding API configured?` },
+          400,
+        )
+      }
     },
   )
 

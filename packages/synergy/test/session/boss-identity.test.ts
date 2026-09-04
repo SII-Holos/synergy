@@ -85,23 +85,24 @@ describe("boss identity prompt", () => {
 })
 
 describe("boss delivery hint", () => {
-  test("auto delivery hint warns against duplicate channel_push", () => {
-    const hint = buildBossDeliveryHint({ auto: true, replyToMessageId: "om_123" })
+  test("delivery hint always instructs explicit channel_push with the reply target", () => {
+    const hint = buildBossDeliveryHint({ chatId: "oc_abc", replyToMessageId: "om_123" })
     expect(hint).toContain("<boss-delivery>")
-    expect(hint).toContain("自动投递回飞书")
-    expect(hint).toContain("不要调用 channel_push")
+    expect(hint).toContain("不会自动投递回渠道")
+    expect(hint).toContain("必须调用 channel_push")
+    expect(hint).toContain("oc_abc")
     expect(hint).toContain("om_123")
   })
 
-  test("manual delivery hint instructs channel_push when not auto-bound", () => {
-    const hint = buildBossDeliveryHint({ auto: false })
-    expect(hint).toContain("<boss-delivery>")
-    expect(hint).toContain("不会自动投递回飞书")
-    expect(hint).toContain("channel_push")
+  test("delivery hint carries a bare message target when only replyToMessageId is known", () => {
+    const hint = buildBossDeliveryHint({ replyToMessageId: "om_123" })
+    expect(hint).toContain("当前回执目标消息: om_123")
   })
 
-  test("undefined delivery falls back to manual hint", () => {
+  test("undefined delivery falls back to explicit hint without a target", () => {
     const hint = buildBossDeliveryHint(undefined)
-    expect(hint).toContain("不会自动投递回飞书")
+    expect(hint).toContain("<boss-delivery>")
+    expect(hint).toContain("不会自动投递回渠道")
+    expect(hint).toContain("channel_push")
   })
 })

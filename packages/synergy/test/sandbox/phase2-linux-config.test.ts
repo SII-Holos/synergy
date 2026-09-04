@@ -23,7 +23,11 @@
 
 import { describe, test, expect } from "bun:test"
 import { buildPermissionProfile } from "../../src/sandbox/policy-engine"
-import { DEFAULT_PROTECTED_PATHS, protectedMetadataUnderWritableRoot } from "../../src/sandbox/policy"
+import {
+  DEFAULT_PROTECTED_PATHS,
+  expandGitProtectedSubpaths,
+  protectedMetadataUnderWritableRoot,
+} from "../../src/sandbox/policy"
 import * as os from "os"
 import * as path from "path"
 
@@ -238,7 +242,7 @@ describe("Phase 2: fileSystem.readOnlySubpaths", () => {
   test("includes workspace-protected paths as readOnlySubpaths when workspace is writable", () => {
     const homedir = os.homedir()
     const workspace = "/home/user/project"
-    const protectedPaths = DEFAULT_PROTECTED_PATHS(homedir, workspace)
+    const protectedPaths = expandGitProtectedSubpaths(DEFAULT_PROTECTED_PATHS(homedir, workspace))
 
     const profile = buildPermissionProfile({
       workspace,
@@ -260,7 +264,7 @@ describe("Phase 2: fileSystem.readOnlySubpaths", () => {
     }
   })
 
-  test("workspace .git is in readOnlySubpaths while .synergy remains writable", () => {
+  test("workspace .git hooks/config are in readOnlySubpaths while .synergy remains writable", () => {
     const workspace = "/home/user/project"
 
     const profile = buildPermissionProfile({
@@ -273,7 +277,9 @@ describe("Phase 2: fileSystem.readOnlySubpaths", () => {
       approvedUnixSockets: [],
     })
 
-    expect(profile.fileSystem.readOnlySubpaths).toContain(`${workspace}/.git`)
+    expect(profile.fileSystem.readOnlySubpaths).toContain(`${workspace}/.git/hooks`)
+    expect(profile.fileSystem.readOnlySubpaths).toContain(`${workspace}/.git/config`)
+    expect(profile.fileSystem.readOnlySubpaths).not.toContain(`${workspace}/.git`)
     expect(profile.fileSystem.readOnlySubpaths).not.toContain(`${workspace}/.synergy`)
   })
 
@@ -304,7 +310,7 @@ describe("Phase 2: fileSystem.protectedPaths", () => {
   test("contains credential and workspace paths", () => {
     const homedir = os.homedir()
     const workspace = "/home/user/project"
-    const expected = DEFAULT_PROTECTED_PATHS(homedir, workspace)
+    const expected = expandGitProtectedSubpaths(DEFAULT_PROTECTED_PATHS(homedir, workspace))
 
     const profile = buildPermissionProfile({
       workspace,
@@ -691,7 +697,7 @@ describe("Phase 2: metadata write intercept in buildPermissionProfile", () => {
     expect(profile.fileSystem.writableRoots.length).toBe(0)
   })
 
-  test("protectedMetadataNames includes all four default names", () => {
+  test("protectedMetadataNames drops the .git blanket and keeps .agents/.codex", () => {
     const workspace = "/home/user/project"
 
     const profile = buildPermissionProfile({
@@ -704,10 +710,10 @@ describe("Phase 2: metadata write intercept in buildPermissionProfile", () => {
       approvedUnixSockets: [],
     })
 
-    expect(profile.fileSystem.protectedMetadataNames).toContain(".git")
+    expect(profile.fileSystem.protectedMetadataNames).not.toContain(".git")
     expect(profile.fileSystem.protectedMetadataNames).toContain(".agents")
     expect(profile.fileSystem.protectedMetadataNames).toContain(".codex")
     expect(profile.fileSystem.protectedMetadataNames).not.toContain(".synergy")
-    expect(profile.fileSystem.protectedMetadataNames.length).toBe(3)
+    expect(profile.fileSystem.protectedMetadataNames.length).toBe(2)
   })
 })

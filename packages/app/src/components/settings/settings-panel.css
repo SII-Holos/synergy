@@ -999,6 +999,38 @@
   gap: 18px;
 }
 
+.settings-device-push {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid color-mix(in srgb, var(--border-base) 34%, transparent);
+  margin-top: 4px;
+}
+
+.settings-device-push-device {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid color-mix(in srgb, var(--border-base) 24%, transparent);
+}
+
+.settings-device-push-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
+.settings-device-push-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-weak);
+  font-size: var(--settings-type-control-size);
+  line-height: var(--settings-type-control-line-height);
+  white-space: nowrap;
+}
+
 .settings-muted-toggle {
   display: inline-flex;
   align-items: center;

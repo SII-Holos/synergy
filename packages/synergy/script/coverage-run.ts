@@ -50,6 +50,21 @@ const packageRoot = path.resolve(import.meta.dir, "..")
  *   local servers or assert network timing and flake under a full shared
  *   process on CI (see postmortem 0001 coverage failures); each passes in
  *   its own process.
+ * - email/imap (mailparser parsing, config error propagation, IMAP truncation)
+ *   and channel host / managed-project-ownership assert module-level email and
+ *   channel state that sibling files can pollute under a full shared process;
+ *   each passes in its own process (verified 2026-09-03 after repeated
+ *   identical CI coverage failures on unrelated branches).
+ * - library/database, library/experience-recall, channel/clarus-* and
+ *   daemon/* suites assert module-level SQLite/vec, Clarus project, and
+ *   managed-service env state that sibling files pollute under a full shared
+ *   process; each passes in its own process (verified 2026-09-04 at pristine
+ *   HEAD: the same shard-0 signature fails with or without the enforcement
+ *   sandbox change set, and isolated reruns are green).
+ * - test/cli/daemon-entry mock-modules src/server/runtime.ts; its own header
+ *   documents that under the single-process coverage run the mock leaks into
+ *   sibling files, and the startup assertion itself flakes under full-suite
+ *   load on CI. Passes in its own process with coverage (verified 2026-09-04).
  */
 export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
   "test/channel/clarus-invite-accept.test.ts",
@@ -73,6 +88,10 @@ export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
   "test/server/plugin-registry-routes.test.ts",
   "test/server/skill-route.test.ts",
   "test/session/retry.test.ts",
+  "test/channel/clarus-assignment.test.ts",
+  "test/cli/daemon-entry.test.ts",
+  "test/daemon/observe.test.ts",
+  "test/daemon/spec.test.ts",
   "test/storage/storage-retry.test.ts",
   "test/storage/storage-silent-not-found.test.ts",
   "test/tool/auto-expand.test.ts",

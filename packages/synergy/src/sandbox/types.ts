@@ -29,6 +29,8 @@ export interface PrepareWrapperOpts {
   protectedPaths?: string[]
   dataDenyRoots?: string[]
   stripDefaultHomeDenyRoot?: boolean
+  /** Network mode for the compiled sandbox profile. Defaults to "restricted". */
+  networkMode?: SandboxNetworkMode
   /** Test-only helper override for backend unit tests; production callers should not set this. */
   forceHelperPath?: string
   /** Test-only helper verification override paired with forceHelperPath. */
@@ -47,6 +49,8 @@ export interface PrepareLinuxWrapperOpts {
   forcePlatform?: string
   /** Explicit sandbox backend selection (e.g. "bwrap-inline-debug") */
   backend?: string
+  /** Network mode for the compiled sandbox profile. Defaults to "restricted". */
+  networkMode?: SandboxNetworkMode
   /** Test-only helper override for backend unit tests; production callers should not set this. */
   forceHelperPath?: string
   /** Test-only helper verification override paired with forceHelperPath. */

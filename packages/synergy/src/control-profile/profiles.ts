@@ -6,6 +6,7 @@ import {
   capabilityRisk,
 } from "@ericsanchezok/synergy-util/capability"
 import { PROFILE_IDS } from "./ids"
+import { controlledTempRoot } from "../sandbox/policy"
 import type { ProfileSandbox } from "./types"
 import type {
   ControlProfile,
@@ -96,22 +97,26 @@ function workspaceFs(workspace: string, trustedRoots: string[] = []) {
   }
 }
 
-function autonomousFs(workspace: string, trustedRoots: string[] = []) {
+function autonomousFs(workspace: string, trustedRoots: string[] = [], sessionKey?: string) {
+  // The controlled temporary root (workspace/.synergy/tmp, session-scoped when
+  // a session key is available) is a first-class autonomous write root:
+  // sandboxed shells are pointed at it through TMPDIR so their temporary
+  // files land inside the workspace boundary instead of the host's shared
+  // temporary directory.
   return {
     readRoots: ["/"],
-    writeRoots: uniqueRoots([workspace, ...trustedRoots]),
+    writeRoots: uniqueRoots([workspace, controlledTempRoot(workspace, sessionKey), ...trustedRoots]),
     protectedPaths: [],
   }
 }
 
-function autonomousPolicy(workspace: string, trustedRoots: string[] = []) {
+function autonomousPolicy(workspace: string, trustedRoots: string[] = [], sessionKey?: string) {
   return {
-    filesystem: autonomousFs(workspace, trustedRoots),
+    filesystem: autonomousFs(workspace, trustedRoots, sessionKey),
     network: { mode: "restricted" as const },
-    sandbox: { mode: "workspace_write" as const, fallback: "warn" as const },
+    sandbox: { mode: "workspace_write" as const, fallback: "deny" as const },
   }
 }
-
 function workspacePolicy(workspace: string, trustedRoots: string[] = []) {
   return {
     filesystem: workspaceFs(workspace, trustedRoots),
@@ -166,7 +171,11 @@ const LOG = Log.create({ service: "control-profile" })
 export async function resolveEffectiveSandbox(profileId: ProfileId): Promise<ProfileSandbox> {
   const defaults: Record<ProfileId, ProfileSandbox> = {
     guarded: { mode: "workspace_write", fallback: "warn" },
-    autonomous: { mode: "workspace_write", fallback: "warn" },
+    // Autonomous never prompts and runs unattended: when the OS sandbox cannot
+    // be prepared, the operation is denied (fail-closed) instead of running
+    // unsandboxed. Operators can override through sandbox.fallbackPolicy or
+    // sandbox.enabled=false, or switch to guarded/full_access.
+    autonomous: { mode: "workspace_write", fallback: "deny" },
     full_access: { mode: "none", fallback: "allow" },
   }
   const profile = { ...defaults[profileId] }
@@ -233,7 +242,7 @@ export async function resolveEffectiveSandbox(profileId: ProfileId): Promise<Pro
 
 export async function buildProfile(idInput: ProfileIdInput | string, ctx: ResolutionContext): Promise<ResolvedProfile> {
   const id = normalizeProfileId(idInput)
-  const { workspace } = ctx
+  const { workspace, sessionKey } = ctx
   const trustedRoots = ctx.trustedRoots ?? []
   const effectiveSandbox = await resolveEffectiveSandbox(id)
 
@@ -254,7 +263,7 @@ export async function buildProfile(idInput: ProfileIdInput | string, ctx: Resolu
     }
 
     case "autonomous": {
-      const policy = autonomousPolicy(workspace, trustedRoots)
+      const policy = autonomousPolicy(workspace, trustedRoots, sessionKey)
       const profile = {
         valid: true,
         label: "Autonomous",

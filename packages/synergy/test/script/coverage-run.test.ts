@@ -33,12 +33,16 @@ describe("coverage batch splitting", () => {
 
   test("isolated set is pinned to the known load- and state-sensitive files", () => {
     expect([...ISOLATED_COVERAGE_FILES].toSorted()).toEqual([
+      "test/channel/clarus-assignment.test.ts",
       "test/channel/clarus-invite-accept.test.ts",
       "test/channel/feishu-provider.test.ts",
       "test/channel/host.test.ts",
       "test/channel/managed-project-ownership.test.ts",
       "test/channel/svg-raster-standalone.test.ts",
+      "test/cli/daemon-entry.test.ts",
       "test/config/import.test.ts",
+      "test/daemon/observe.test.ts",
+      "test/daemon/spec.test.ts",
       "test/email/imap.test.ts",
       "test/global/test-home-guard.test.ts",
       "test/holos/runtime.test.ts",

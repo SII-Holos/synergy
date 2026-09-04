@@ -331,7 +331,7 @@ export namespace WindowsBackend {
         opts.sandboxMode === "workspace_write"
           ? [...(opts.writableRoots ?? []), ...(opts.extraWritableRoots ?? [])]
           : [],
-      approvedNetwork: false,
+      approvedNetwork: opts.networkMode === "full",
       approvedUnixSockets: [],
       protectedPaths: opts.protectedPaths,
       dataDenyRoots,

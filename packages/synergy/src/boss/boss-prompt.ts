@@ -39,6 +39,8 @@ export const BOSS_DISCIPLINE_BLOCK = [
   "",
   "Memory discipline:",
   "- Persist important facts (project ownership, in-flight tasks, decisions, constraints) with memory_write. Compaction only folds message history; memory, experience, and the <boss-tree> are recomputed every turn from durable stores and survive compaction.",
+  "- Continuously accumulate your identity through conversation: when a stable fact about the user (user), your relationship with them (relationship), or your own role and positioning (self) emerges, record it with memory_write — your sense of who you are grows from these exchanges, not from static config.",
+  "- Update instead of duplicating: when a memory already covers a fact, use memory_edit to refine it (never append near-duplicate rows). Keep each identity category lean (roughly 3-5 entries each) so the always-injected memory stays focused; the morning routine consolidates and prunes.",
   "",
   "Feishu source headers:",
   "- Inbound messages carry a prefix `[群: {chatName} | 发送者: {senderName} | {时间}]` plus metadata (channelChatId/channelChatName/channelSenderId/channelSenderName). Use it to attribute requests and route them.",
@@ -56,25 +58,27 @@ export const DEFAULT_IDENTITY_TEXT = [
 ].join(" ")
 
 /**
- * Per-turn delivery hint for the runtime boss: tells it whether the current
- * turn's reply is automatically delivered back to the originating Feishu
- * message (outbound bridge), so it neither duplicates with channel_push nor
- * misses a receipt.
+ * Per-turn delivery hint for the runtime boss (R6). Boss-role sessions never
+ * auto-deliver: the human sees nothing unless the boss explicitly calls
+ * channel_push. The hint states that contract and, when the current turn has a
+ * single unambiguous channel requester, tells the boss exactly which chat /
+ * message to reply to so it neither guesses nor pushes to the wrong place.
  */
-export function buildBossDeliveryHint(delivery: { auto: boolean; replyToMessageId?: string } | undefined): string {
-  if (delivery?.auto) {
-    return [
-      "<boss-delivery>",
-      "本轮回复会自动投递回飞书(锚定原消息回复) — 不要调用 channel_push,否则会重复发送。",
-      ...(delivery.replyToMessageId ? [`自动回复锚定消息: ${delivery.replyToMessageId}`] : []),
-      "</boss-delivery>",
-    ].join("\n")
-  }
-  return [
+export function buildBossDeliveryHint(delivery: { replyToMessageId?: string; chatId?: string } | undefined): string {
+  const lines = [
     "<boss-delivery>",
-    "本轮回复不会自动投递回飞书 — 若需要向用户回执,必须调用 channel_push(可带 chatId / replyToMessageId)。",
-    "</boss-delivery>",
-  ].join("\n")
+    "本轮回复不会自动投递回渠道 — 用户看不到你的任何输出,除非你显式调用 channel_push 回传。",
+    "需要向用户回执时,必须调用 channel_push(带 text,以及匹配的回执目标)。",
+  ]
+  if (delivery?.chatId) {
+    lines.push(
+      `当前回执目标 chat: ${delivery.chatId}${delivery.replyToMessageId ? `; 回复消息: ${delivery.replyToMessageId}` : ""}`,
+    )
+  } else if (delivery?.replyToMessageId) {
+    lines.push(`当前回执目标消息: ${delivery.replyToMessageId}`)
+  }
+  lines.push("</boss-delivery>")
+  return lines.join("\n")
 }
 
 /**
@@ -88,11 +92,15 @@ export function buildBossDeliveryHint(delivery: { auto: boolean; replyToMessageI
  */
 export function buildRuntimeBossContext(
   session: SessionInfo,
-  options: { identityText?: string; instructions?: string },
+  options: { identityText?: string; instructions?: string; reportStyle?: string },
 ): string {
   const lines = [buildBossContext(session)]
   const identity = options.identityText?.trim() || DEFAULT_IDENTITY_TEXT
   lines.push("", BOSS_DISCIPLINE_BLOCK, "", `<boss-persona>\n${identity}\n</boss-persona>`)
+  const reportStyle = options.reportStyle?.trim()
+  if (reportStyle) {
+    lines.push("", `<boss-report-style>\n${reportStyle}\n</boss-report-style>`)
+  }
   const instructions = options.instructions?.trim()
   if (instructions) {
     lines.push("", "Standing instructions from your coordinator:", instructions)

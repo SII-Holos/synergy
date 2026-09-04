@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { controlledTempRoot } from "../../src/sandbox/policy"
 import { ControlProfileCompiler } from "../../src/control-profile/compiler"
 import type { ResolvedProfile } from "../../src/control-profile/types"
 
@@ -67,13 +68,24 @@ describe("autonomous profile policy", () => {
     expect(rule(profile, "shell_hardline")?.action).toBe("deny")
   })
 
-  test("shares network and sandbox boundaries with guarded while allowing full read", async () => {
+  test("shares network boundaries with guarded while keeping full read and a fail-closed sandbox fallback", async () => {
     const guarded = await ControlProfileCompiler.resolve("guarded", context)
     const autonomous = await ControlProfileCompiler.resolve("autonomous", context)
     expect(autonomous.filesystem.readRoots).toEqual(["/"])
-    expect(autonomous.filesystem.writeRoots).toEqual(guarded.filesystem.writeRoots)
+    // Autonomous adds the controlled temporary root (workspace/.synergy/tmp)
+    // as a first-class write root on top of the guarded workspace roots.
+    expect(autonomous.filesystem.writeRoots).toContain(context.workspace)
+    expect(autonomous.filesystem.writeRoots).toContain(controlledTempRoot(context.workspace))
+    for (const root of guarded.filesystem.writeRoots) {
+      expect(autonomous.filesystem.writeRoots).toContain(root)
+    }
     expect(autonomous.network).toEqual(guarded.network)
-    expect(autonomous.sandbox).toEqual(guarded.sandbox)
+    // Autonomous never prompts and runs unattended: when the OS sandbox cannot
+    // be prepared the operation is denied (fail-closed) instead of running
+    // unsandboxed, so its fallback diverges from guarded's warn.
+    expect(autonomous.sandbox.mode).toBe("workspace_write")
+    expect(autonomous.sandbox.fallback).toBe("deny")
+    expect(guarded.sandbox.fallback).toBe("warn")
   })
 })
 
