@@ -71,32 +71,56 @@ describe("ToolExposure.mcpGroupTable", () => {
 })
 
 describe("ExpandToolsTool description with MCP group catalog", () => {
-  test("includes the connected MCP groups section when total tools reach the defer threshold", async () => {
-    mockDeferredGroupCatalog({
-      totalTools: ToolExposure.MCP_DEFER_THRESHOLD,
-      servers: [{ serverName: "anysearch", toolNames: ["search", "batch_search", "extract", "get_sub_domains"] }],
+  test("includes connected MCP groups when servers are folded by default", async () => {
+    await using tmp = await tmpdir({ config: {} })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        mockDeferredGroupCatalog({
+          totalTools: 4,
+          servers: [{ serverName: "anysearch", toolNames: ["search", "batch_search", "extract", "get_sub_domains"] }],
+        })
+        const expand = await ExpandToolsTool.init({ agent: allowAllAgent })
+        expect(expand.description).toContain("Connected MCP groups:")
+        expect(expand.description).toContain("mcp:anysearch")
+        expect(expand.description).toContain('expand_tools({groups:["mcp:anysearch"]})')
+        expect(expand.description).toContain("anysearch (4 tools):")
+      },
     })
-    const expand = await ExpandToolsTool.init({ agent: allowAllAgent })
-    expect(expand.description).toContain("Connected MCP groups:")
-    expect(expand.description).toContain("mcp:anysearch")
-    expect(expand.description).toContain('expand_tools({groups:["mcp:anysearch"]})')
-    expect(expand.description).toContain("anysearch (4 tools):")
   })
 
-  test("omits the MCP section when total tools stay below the defer threshold", async () => {
-    mockDeferredGroupCatalog({
-      totalTools: ToolExposure.MCP_DEFER_THRESHOLD - 1,
-      servers: [{ serverName: "anysearch", toolNames: ["search"] }],
+  test("omits expandByDefault servers from the folded MCP groups section", async () => {
+    await using tmp = await tmpdir({
+      config: {
+        mcp: {
+          anysearch: { type: "remote", url: "http://127.0.0.1:9/mcp", expandByDefault: true },
+        },
+      },
     })
-    const expand = await ExpandToolsTool.init({ agent: allowAllAgent })
-    expect(expand.description).not.toContain("Connected MCP groups:")
-    expect(expand.description).not.toContain("mcp:anysearch")
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        mockDeferredGroupCatalog({
+          totalTools: 4,
+          servers: [{ serverName: "anysearch", toolNames: ["search", "batch_search", "extract", "get_sub_domains"] }],
+        })
+        const expand = await ExpandToolsTool.init({ agent: allowAllAgent })
+        expect(expand.description).not.toContain("Connected MCP groups:")
+        expect(expand.description).not.toContain("mcp:anysearch")
+      },
+    })
   })
 
   test("omits the MCP section when no servers are connected", async () => {
-    mockDeferredGroupCatalog({ totalTools: 0, servers: [] })
-    const expand = await ExpandToolsTool.init({ agent: allowAllAgent })
-    expect(expand.description).not.toContain("Connected MCP groups:")
+    await using tmp = await tmpdir({ config: {} })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        mockDeferredGroupCatalog({ totalTools: 0, servers: [] })
+        const expand = await ExpandToolsTool.init({ agent: allowAllAgent })
+        expect(expand.description).not.toContain("Connected MCP groups:")
+      },
+    })
   })
 
   test("initialization does not throw with an empty supervisor catalog", async () => {

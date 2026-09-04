@@ -176,6 +176,9 @@ function buildMcpPatch(
     if (timeout !== undefined) base.timeout = timeout
     else delete base.timeout
 
+    if (entry.expandByDefault === true) base.expandByDefault = true
+    else delete base.expandByDefault
+
     newMcp[key] = base
   }
 

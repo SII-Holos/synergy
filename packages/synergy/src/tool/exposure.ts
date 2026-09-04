@@ -45,8 +45,6 @@ export namespace ToolExposure {
     score?: number
   }
 
-  export const MCP_DEFER_THRESHOLD = 100
-
   export const RESIDENT: Info = { mode: "resident" }
 
   export const BUILTIN_GROUPS: GroupInfo[] = [
@@ -174,8 +172,8 @@ export namespace ToolExposure {
     }
   }
 
-  export function mcpExposure(totalVisibleMcpTools: number, serverName: string): Info {
-    if (totalVisibleMcpTools < MCP_DEFER_THRESHOLD) return RESIDENT
+  export function mcpExposure(serverName: string, expandByDefault?: boolean): Info {
+    if (expandByDefault === true) return RESIDENT
     return {
       mode: "group",
       group: mcpGroupID(serverName),
@@ -184,6 +182,17 @@ export namespace ToolExposure {
       whenToExpand:
         "Expand when a task specifically needs this MCP server or search_tools returns one of its tools as the best match.",
     }
+  }
+
+  /**
+   * Resolve whether an MCP server's tools stay resident (always visible) by
+   * default. Per-server `expandByDefault` wins; `mcpDefaults` supplies the
+   * fallback; the default is folded (false).
+   */
+  export function mcpExpandByDefault(server: unknown, defaults?: unknown): boolean {
+    const resolvedServer = (server ?? {}) as { expandByDefault?: boolean }
+    const resolvedDefaults = (defaults ?? {}) as { expandByDefault?: boolean }
+    return resolvedServer.expandByDefault ?? resolvedDefaults.expandByDefault ?? false
   }
 
   export function builtinGroup(id: string): GroupInfo | undefined {

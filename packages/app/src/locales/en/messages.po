@@ -16631,6 +16631,10 @@ msgid "settings.mcp.card.expand"
 msgstr "Expand server details"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.card.expandByDefault"
+msgstr "Expand by default"
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.card.headers"
 msgstr "Headers"
 

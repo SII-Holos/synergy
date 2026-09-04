@@ -261,13 +261,11 @@ describe("ToolResolver auto-expand eligibility", () => {
     })
   })
 
-  test("deferred MCP server group tools are auto-expandable when ≥ threshold", async () => {
+  test("deferred MCP server group tools are auto-expandable by default", async () => {
     await using tmp = await tmpdir({ git: true })
     const originalToolEntries = MCP.toolEntries
     const serverName = "auto-mcp"
-    const toolIDs = Array.from({ length: ToolExposure.MCP_DEFER_THRESHOLD }, (_, index) =>
-      ToolExposure.mcpToolID(serverName, `tool_${index}`),
-    )
+    const toolIDs = Array.from({ length: 3 }, (_, index) => ToolExposure.mcpToolID(serverName, `tool_${index}`))
     ;(MCP as any).toolEntries = async () =>
       toolIDs.map((id, index) => ({
         id,
@@ -808,9 +806,7 @@ describe("SessionProcessor auto-expand interception", () => {
     await using tmp = await tmpdir({ git: true })
     const originalToolEntries = MCP.toolEntries
     const serverName = "auto-validate-mcp"
-    const toolIDs = Array.from({ length: ToolExposure.MCP_DEFER_THRESHOLD }, (_, index) =>
-      ToolExposure.mcpToolID(serverName, `tool_${index}`),
-    )
+    const toolIDs = Array.from({ length: 3 }, (_, index) => ToolExposure.mcpToolID(serverName, `tool_${index}`))
     const executeCalls = { value: 0 }
     ;(MCP as any).toolEntries = async () =>
       toolIDs.map((id, index) => ({

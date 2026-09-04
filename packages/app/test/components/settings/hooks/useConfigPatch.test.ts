@@ -914,3 +914,65 @@ describe("settings config patch github integration", () => {
     ).not.toHaveProperty("github")
   })
 })
+
+describe("settings config patch mcp expand-by-default", () => {
+  const localServer = {
+    key: "filesystem",
+    type: "local" as const,
+    enabled: true,
+    expandByDefault: false,
+    command: "npx foo",
+    url: "",
+    timeout: "",
+    environment: "",
+    headers: "",
+  }
+
+  test("omits expandByDefault when false so saving does not materialize the key", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [{ ...localServer }]
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect(patch.mcp).toEqual({
+      filesystem: { type: "local", enabled: true, command: ["npx", "foo"] },
+    })
+    expect((patch.mcp as Record<string, Record<string, unknown>>).filesystem).not.toHaveProperty("expandByDefault")
+  })
+
+  test("writes expandByDefault: true when enabled", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [{ ...localServer, expandByDefault: true }]
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect((patch.mcp as Record<string, Record<string, unknown>>).filesystem).toMatchObject({
+      type: "local",
+      enabled: true,
+      command: ["npx", "foo"],
+      expandByDefault: true,
+    })
+  })
+
+  test("clears a stored expandByDefault while preserving unknown server fields", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [{ ...localServer }]
+    const original = {
+      type: "local",
+      enabled: true,
+      command: ["npx", "foo"],
+      expandByDefault: true,
+      toolBlacklist: ["editor"],
+    }
+    const cfg = { mcp: { filesystem: original } } as Config
+
+    const patch = buildPatch({ cfg, state, originalMcps: { filesystem: { ...original } } })
+
+    expect((patch.mcp as Record<string, Record<string, unknown>>).filesystem).toEqual({
+      type: "local",
+      enabled: true,
+      command: ["npx", "foo"],
+      toolBlacklist: ["editor"],
+    })
+  })
+})
