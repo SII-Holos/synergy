@@ -1,8 +1,23 @@
-import { createUniqueId, For, Show } from "solid-js"
+import { createMemo, createUniqueId, For, Show } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { NavEntry } from "@/context/layout"
 import { SessionDraftBadge } from "../sidebar/session-draft-badge"
+import type { SessionVisualState } from "../sidebar/session-visual-state"
+
+const RECENT_ICON_TONE_CLASS: Partial<Record<SessionVisualState["tone"], string>> = {
+  active: "text-icon-base",
+  waiting: "text-icon-critical-base",
+  blueprint: "text-icon-info-base",
+  "blueprint-running": "text-icon-success-base",
+  "blueprint-waiting": "text-icon-warning-base",
+  "blueprint-audit": "text-icon-info-base",
+  muted: "text-text-weaker",
+}
+
+function recentIconClass(visual: SessionVisualState): string | undefined {
+  return RECENT_ICON_TONE_CLASS[visual.tone]
+}
 
 function MobileDrawerActionButton(props: { label: string; icon: SemanticIconTokenName; onClick: () => void }) {
   return (
@@ -26,6 +41,12 @@ export function MobileDrawerSettingsButton(props: { label: string; onClick: () =
   return <MobileDrawerActionButton label={props.label} icon="settings.general" onClick={props.onClick} />
 }
 
+export interface MobileDrawerRecentVisual {
+  visual: SessionVisualState
+  /** Localized accessibility label; empty while the session is resting. */
+  label: string
+}
+
 export function MobileDrawerRecent(props: {
   label: string
   emptyLabel: string
@@ -34,7 +55,7 @@ export function MobileDrawerRecent(props: {
   draftLabel: string
   entries: NavEntry[]
   currentSessionID?: string
-  unreadLabel: (entry: NavEntry) => string | undefined
+  visualFor: (entry: NavEntry) => MobileDrawerRecentVisual
   hasMore: boolean
   onSelect: (entry: NavEntry) => void
   onLoadMore: () => void
@@ -55,6 +76,7 @@ export function MobileDrawerRecent(props: {
           <For each={props.entries}>
             {(entry) => {
               const active = () => entry.id === props.currentSessionID
+              const resolved = createMemo(() => props.visualFor(entry))
               return (
                 <button
                   type="button"
@@ -67,9 +89,14 @@ export function MobileDrawerRecent(props: {
                   }}
                   onClick={() => props.onSelect(entry)}
                 >
-                  <span class="relative flex size-4 shrink-0 items-center justify-center text-icon-weak-base">
-                    <Icon name={getSemanticIcon("session.default")} size="small" />
-                    <Show when={entry.completionNotice?.unread}>
+                  <span
+                    classList={{
+                      "relative flex size-4 shrink-0 items-center justify-center text-icon-weak-base": true,
+                      "sb-session-icon-pulse": !!resolved().visual.pulse,
+                    }}
+                  >
+                    <Icon name={resolved().visual.icon} size="small" class={recentIconClass(resolved().visual)} />
+                    <Show when={resolved().visual.completionUnread}>
                       <span class="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-icon-critical-base" />
                     </Show>
                   </span>
@@ -79,7 +106,7 @@ export function MobileDrawerRecent(props: {
                     class="shrink-0 translate-y-px text-10-medium text-text-error"
                   />
                   <span class="min-w-0 flex-1 truncate text-13-medium">{entry.title || props.untitledLabel}</span>
-                  <Show when={props.unreadLabel(entry)}>{(label) => <span class="sr-only">{label()}</span>}</Show>
+                  <Show when={resolved().label}>{(label) => <span class="sr-only">{label()}</span>}</Show>
                 </button>
               )
             }}

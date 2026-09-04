@@ -17,7 +17,7 @@ beforeAll(async () => {
   await Promise.all([
     Bun.write(
       path.join(fixtureDirectory, "index.html"),
-      '<div id="actions"></div><div id="recent"></div><div id="empty"></div><script type="module" src="/main.ts"></script>',
+      '<div id="actions"></div><div id="recent"></div><div id="worktree"></div><div id="empty"></div><script type="module" src="/main.ts"></script>',
     ),
     Bun.write(
       path.join(fixtureDirectory, "main.ts"),
@@ -65,6 +65,35 @@ beforeAll(async () => {
           completionNotice: { unread, unreadCount: unread ? 1 : 0 },
         })
 
+        const homeVisual = (label: string, icon: string) => ({
+          visual: {
+            icon,
+            label: { id: "session.state.home.unread", message: label },
+            tone: "default",
+            completionUnread: label === "Home session; response ready" ? true : undefined,
+          },
+          label,
+        })
+
+        const runningVisual = (label: string) => ({
+          visual: {
+            icon: "loader-circle",
+            label: { id: "session.state.running", message: label },
+            tone: "active",
+            pulse: true,
+          },
+          label,
+        })
+
+        const worktreeVisual = (label: string) => ({
+          visual: {
+            icon: "git-fork",
+            label: { id: "session.state.worktree", message: label },
+            tone: "worktree",
+          },
+          label,
+        })
+
         render(
           () =>
             createComponent(MobileDrawerRecent, {
@@ -75,13 +104,30 @@ beforeAll(async () => {
               draftLabel: "Draft",
               entries: [entry("ses_recent", "Recent session", true), entry("ses_other", "Other session")],
               currentSessionID: "ses_recent",
-              unreadLabel: (value) =>
-                value.completionNotice.unread ? "Home session; response ready" : undefined,
+              visualFor: (value) =>
+                value.id === "ses_recent" ? homeVisual("Home session; response ready", "home") : runningVisual("Running session"),
               hasMore: true,
               onSelect: (value) => selected.push(value.id),
               onLoadMore: () => loadMoreCalls++,
             }),
           document.querySelector("#recent")!,
+        )
+
+        render(
+          () =>
+            createComponent(MobileDrawerRecent, {
+              label: "Worktree",
+              emptyLabel: "No recent sessions",
+              loadMoreLabel: "Load more",
+              untitledLabel: "Untitled",
+              draftLabel: "Draft",
+              entries: [entry("ses_wt", "Worktree session")],
+              visualFor: () => worktreeVisual("Worktree session"),
+              hasMore: false,
+              onSelect: () => {},
+              onLoadMore: () => {},
+            }),
+          document.querySelector("#worktree")!,
         )
 
         render(
@@ -93,7 +139,7 @@ beforeAll(async () => {
               untitledLabel: "Untitled",
               draftLabel: "Draft",
               entries: [],
-              unreadLabel: () => undefined,
+              visualFor: () => worktreeVisual(""),
               hasMore: false,
               onSelect: () => {},
               onLoadMore: () => {},
@@ -163,6 +209,25 @@ describe("mobile drawer root navigation", () => {
         loadMoreCalls: (window as any).__mobileDrawerState.loadMoreCalls(),
       }))
       expect(state).toEqual({ selected: ["ses_other"], loadMoreCalls: 1 })
+    })
+  })
+
+  test("renders a live spinner icon for running recent sessions", async () => {
+    await withFixture(async (page) => {
+      const row = page.locator('#recent [data-session-id="ses_other"]')
+      await expect(row.locator("span.sb-session-icon-pulse").count()).resolves.toBe(1)
+      await expect(row.getByText("Running session").count()).resolves.toBe(1)
+    })
+  })
+
+  test("renders the worktree glyph and label for worktree sessions", async () => {
+    await withFixture(async (page) => {
+      const section = page.locator("#worktree")
+      const row = section.locator('[data-session-id="ses_wt"]')
+      await expect(row.locator('[data-slot="icon-svg"]').count()).resolves.toBe(1)
+      await expect(row.locator('[data-slot="icon-svg"].text-icon-success-base').count()).resolves.toBe(0)
+      expect(await row.locator("span.text-13-medium").textContent()).toBe("Worktree session")
+      await expect(section.locator(".sr-only", { hasText: "Worktree session" }).count()).resolves.toBe(1)
     })
   })
 
