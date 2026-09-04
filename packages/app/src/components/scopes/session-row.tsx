@@ -38,6 +38,7 @@ function statusBarColor(props: SessionRowProps) {
 }
 
 function StatusDot(props: SessionRowProps) {
+  const { i18n } = useLocale()
   const isPinned = () => props.session.pinned && props.session.pinned > 0
   const isWorktree = () => props.session.workspace?.type === "git_worktree"
 
@@ -58,6 +59,7 @@ function StatusDot(props: SessionRowProps) {
       <Show
         when={!props.isWorking && !props.hasPermission && !props.hasError && !props.hasNotification && isWorktree()}
       >
+        <span class="sr-only">{i18n._({ id: "session.state.worktree", message: "Worktree session" })}</span>
         <Icon name={getSemanticIcon("workspace.worktree")} size="small" class="text-icon-success-base" />
       </Show>
       <Show

@@ -19,6 +19,7 @@ import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { archiveSessionConfirm } from "@/components/dialog/confirm-copy"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
+import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
 import { appShell, sidebar } from "@/locales/messages"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -207,12 +208,15 @@ function ScopeListView(props: {
     return _(appShell.browser)
   }
 
+  // The typed wrapper keeps the dynamic descriptor call statically resolvable
+  // for the localization contract (see script/localization-check.ts).
+  const translateSessionState = (descriptor: MessageDescriptor) => _(descriptor)
   const recentVisualFor = (entry: NavEntry): MobileDrawerRecentVisual => {
     const scopeKey = scopeKeyForNavEntry(entry, globalSync.data.scope)
     const store = scopeKey ? globalSync.peekScopeState(scopeKey)?.[0] : undefined
     const visual = resolveSessionVisualState(store, entry)
-    const meaningful = visual.completionUnread || (visual.tone !== "default" && visual.tone !== "muted")
-    return { visual, label: meaningful ? _(visual.label) : "" }
+    const meaningful = visual.completionUnread || visual.tone !== "default"
+    return { visual, label: meaningful ? translateSessionState(visual.label) : "" }
   }
 
   const resolveEntryRouteDirectory = (entry: NavEntry) => {

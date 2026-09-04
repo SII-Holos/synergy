@@ -215,7 +215,7 @@ describe("mobile drawer root navigation", () => {
   test("renders a live spinner icon for running recent sessions", async () => {
     await withFixture(async (page) => {
       const row = page.locator('#recent [data-session-id="ses_other"]')
-      await expect(row.locator('[data-slot="icon-svg"].animate-spin').count()).resolves.toBe(1)
+      await expect(row.locator("span.sb-session-icon-pulse").count()).resolves.toBe(1)
       await expect(row.getByText("Running session").count()).resolves.toBe(1)
     })
   })

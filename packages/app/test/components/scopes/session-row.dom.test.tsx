@@ -164,10 +164,12 @@ describe("mobile project session rows", () => {
         worktreeRow.locator('[data-icon="workspace.worktree"].text-icon-success-base').count(),
       ).resolves.toBe(1)
       await expect(worktreeRow.locator('[data-icon="action.pin"]').count()).resolves.toBe(0)
+      await expect(worktreeRow.locator(".sr-only", { hasText: "Worktree session" }).count()).resolves.toBe(1)
 
       const idleRow = page.locator('[data-row="ses_idle"]')
       await expect(idleRow.locator('[data-icon="workspace.worktree"]').count()).resolves.toBe(0)
       await expect(idleRow.locator('[data-icon="action.pin"]').count()).resolves.toBe(0)
+      await expect(idleRow.locator(".sr-only", { hasText: "Worktree session" }).count()).resolves.toBe(0)
     })
   })
 

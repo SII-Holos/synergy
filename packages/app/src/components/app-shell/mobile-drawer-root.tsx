@@ -13,11 +13,11 @@ const RECENT_ICON_TONE_CLASS: Partial<Record<SessionVisualState["tone"], string>
   "blueprint-running": "text-icon-success-base",
   "blueprint-waiting": "text-icon-warning-base",
   "blueprint-audit": "text-icon-info-base",
+  muted: "text-text-weaker",
 }
 
 function recentIconClass(visual: SessionVisualState): string | undefined {
-  const classes = [RECENT_ICON_TONE_CLASS[visual.tone], visual.pulse ? "animate-spin" : ""].filter(Boolean)
-  return classes.length > 0 ? classes.join(" ") : undefined
+  return RECENT_ICON_TONE_CLASS[visual.tone]
 }
 
 function MobileDrawerActionButton(props: { label: string; icon: SemanticIconTokenName; onClick: () => void }) {
@@ -90,7 +90,12 @@ export function MobileDrawerRecent(props: {
                   }}
                   onClick={() => props.onSelect(entry)}
                 >
-                  <span class="relative flex size-4 shrink-0 items-center justify-center text-icon-weak-base">
+                  <span
+                    classList={{
+                      "relative flex size-4 shrink-0 items-center justify-center text-icon-weak-base": true,
+                      "sb-session-icon-pulse": !!resolved().visual.pulse,
+                    }}
+                  >
                     <Icon name={resolved().visual.icon} size="small" class={recentIconClass(resolved().visual)} />
                     <Show when={resolved().visual.completionUnread}>
                       <span class="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-icon-critical-base" />
