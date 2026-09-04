@@ -2,7 +2,12 @@ import { createSignal } from "solid-js"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 
-export function PasswordField(props: { label: string; value: string; onChange: (value: string) => void }) {
+export function PasswordField(props: {
+  label: string
+  value: string
+  placeholder?: string
+  onChange: (value: string) => void
+}) {
   const [show, setShow] = createSignal(false)
 
   return (
@@ -10,6 +15,7 @@ export function PasswordField(props: { label: string; value: string; onChange: (
       <TextField
         label={props.label}
         type={show() ? "text" : "password"}
+        placeholder={props.placeholder}
         value={props.value}
         onChange={(value) => props.onChange(value)}
       />

@@ -24,6 +24,7 @@ export const BUILTIN_SETTINGS_IDS = [
   "personalize",
   "general",
   "models",
+  "voice",
   "providers",
   "usage",
   "github",
@@ -146,6 +147,22 @@ const BUILTIN_SETTINGS_COPY = {
       { id: "settings.catalog.models.row.mini", message: "Mini Model" },
       { id: "settings.catalog.models.row.vision", message: "Vision Model" },
       { id: "settings.catalog.models.row.thinking", message: "Thinking Model" },
+    ],
+  },
+  voice: {
+    label: { id: "settings.catalog.voice.label", message: "Voice" },
+    description: {
+      id: "settings.catalog.voice.description",
+      message: "Speech recognition and synthesis endpoints for voice input and output.",
+    },
+    searchTerms: {
+      id: "settings.catalog.voice.searchTerms",
+      message: "voice | stt | tts | speech | dictation | recognition | synthesis",
+      comment: SEARCH_TERMS_COMMENT,
+    },
+    rowLabels: [
+      { id: "settings.catalog.voice.row.speechRecognition", message: "Speech Recognition" },
+      { id: "settings.catalog.voice.row.speechSynthesis", message: "Speech Synthesis" },
     ],
   },
   providers: {
@@ -503,6 +520,7 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
   section("personalize", "personal", 20, "settings.personalize"),
   section("general", "core", 10, "settings.general", ["general"]),
   section("models", "core", 20, "settings.models", ["models"]),
+  section("voice", "core", 25, "settings.voice", ["voice"]),
   section("providers", "core", 50, "providers.main", ["providers"]),
   section("usage", "core", 60, "settings.usage", ["providers"]),
   section("github", "integrations", 5, "github.main", ["providers", "github"]),

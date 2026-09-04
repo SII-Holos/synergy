@@ -123,6 +123,7 @@ export const SemanticIconToken = {
   "settings.import": "upload",
   "settings.configFiles": "folder-cog",
   "settings.personalize": "scroll-text",
+  "settings.voice": "audio-lines",
 
   // Permission modes and prompts
   "permission.required": "octagon-alert",
