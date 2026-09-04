@@ -27,7 +27,11 @@ beforeAll(async () => {
     Bun.write(
       stubPath,
       `
-        export const showToast = () => 0
+        const toasts: Array<Record<string, unknown>> = []
+        export const showToast = (options: Record<string, unknown>) => {
+          toasts.push(options)
+        }
+        ;(globalThis as unknown as { __bossToasts: Array<Record<string, unknown>> }).__bossToasts = toasts
         export const requestErrorMessage = (error: unknown, fallback = "Request failed") =>
           error instanceof Error ? error.message : fallback
         export const useGlobalSDK = (): never => {
@@ -46,6 +50,30 @@ beforeAll(async () => {
         import { defaultSettingsState } from ${JSON.stringify(`/@fs/${typesPath}`)}
 
         const i18n = setupI18n({ locale: "en" })
+        // Open-session seam: the host handler is stubbed with a controllable
+        // promise so the test can observe busy, release, and failure paths.
+        let bossOpenCalls = 0
+        let bossOpenMode: "hold" | "reject" | "resolve" = "hold"
+        let bossOpenResolve: (() => void) | undefined
+        const bossOpenStats = () => ({ calls: bossOpenCalls, mode: bossOpenMode })
+        ;(window as any).__bossOpenStats = bossOpenStats
+        ;(window as any).__bossSetOpenMode = (mode: "hold" | "reject" | "resolve") => {
+          bossOpenMode = mode
+        }
+        ;(window as any).__bossReleaseOpen = () => bossOpenResolve?.()
+        const openBossSession = () =>
+          new Promise<void>((resolve, reject) => {
+            bossOpenCalls += 1
+            if (bossOpenMode === "reject") {
+              reject(new Error("boom"))
+              return
+            }
+            if (bossOpenMode === "resolve") {
+              resolve()
+              return
+            }
+            bossOpenResolve = resolve
+          })
 
         // In-memory self-memory store backing the injected boss name gateway.
         const rows: Array<Record<string, string>> = []
@@ -84,6 +112,9 @@ beforeAll(async () => {
             },
             get bossNameGateway() {
               return { listSelfMemories, createMemory, updateMemory, removeMemory }
+            },
+            get onOpenBossSession() {
+              return openBossSession
             },
           })
         }
@@ -143,6 +174,16 @@ async function bossLibraryCalls(): Promise<Array<Record<string, unknown>>> {
   return page.evaluate(() =>
     (window as unknown as { __bossLibraryCalls: () => Array<Record<string, unknown>> }).__bossLibraryCalls(),
   )
+}
+
+async function bossOpenStats(): Promise<{ calls: number; mode: string }> {
+  return page.evaluate(() =>
+    (window as unknown as { __bossOpenStats: () => { calls: number; mode: string } }).__bossOpenStats(),
+  )
+}
+
+async function bossToasts(): Promise<Array<Record<string, unknown>>> {
+  return page.evaluate(() => (window as unknown as { __bossToasts: Array<Record<string, unknown>> }).__bossToasts)
 }
 
 describe("BossModePanel", () => {
@@ -253,6 +294,37 @@ describe("BossModePanel", () => {
       { kind: "remove", id: "mem_1" },
     ])
     expect((await bossChanges()).at(-1)).toEqual(["bossName", ""])
+
+    // 5b. The Open boss session button invokes the injected host handler,
+    //     disables while the open is pending, and surfaces failures as a toast.
+    const openButton = page.getByRole("button", { name: "Open boss session" })
+    await expect(openButton.count()).resolves.toBe(1)
+    expect(await openButton.isDisabled()).toBe(false)
+    await openButton.click()
+    expect(await bossOpenStats()).toEqual({ calls: 1, mode: "hold" })
+    const busyButton = page.getByRole("button", { name: "Opening…" })
+    await expect(busyButton.count()).resolves.toBe(1)
+    expect(await busyButton.isDisabled()).toBe(true)
+    // Releasing the host promise returns the button to its idle label.
+    await page.evaluate(() => (window as unknown as { __bossReleaseOpen: () => void }).__bossReleaseOpen())
+    await expect(busyButton.count()).resolves.toBe(0)
+    expect(await openButton.isDisabled()).toBe(false)
+    expect(await bossOpenStats()).toEqual({ calls: 1, mode: "hold" })
+    // A rejected host open reports through the error toast and re-enables.
+    await page.evaluate(() =>
+      (window as unknown as { __bossSetOpenMode: (mode: string) => void }).__bossSetOpenMode("reject"),
+    )
+    await openButton.click()
+    await page.waitForFunction(() => (window as unknown as { __bossToasts: Array<unknown> }).__bossToasts.length >= 1)
+    expect(await bossOpenStats()).toEqual({ calls: 2, mode: "reject" })
+    expect(await bossToasts()).toEqual([
+      { type: "error", title: "Could not open the boss session", description: "boom" },
+    ])
+    await expect(busyButton.count()).resolves.toBe(0)
+    expect(await openButton.isDisabled()).toBe(false)
+    await page.evaluate(() =>
+      (window as unknown as { __bossSetOpenMode: (mode: string) => void }).__bossSetOpenMode("hold"),
+    )
 
     // 6. Disabling boss mode keeps the name field present but disabled and
     //    leaves the personality row reachable (no legacy rows return).

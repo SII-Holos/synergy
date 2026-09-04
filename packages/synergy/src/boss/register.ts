@@ -41,22 +41,24 @@ export function registerBossDomain(): void {
           instructions: workflow.instructions,
         }),
       ]
-
-      // Boss-role sessions never auto-deliver (R6): the human sees nothing
-      // unless the boss calls channel_push. The hint states that contract and,
-      // when a single unambiguous channel requester exists for this turn, names
-      // the chat / message the boss should reply to.
-      const bossDeliveryMetadata = ctx.deliveryMetadata
-      parts.push(
-        buildBossDeliveryHint(
-          bossDeliveryMetadata?.channelPush === true
-            ? {
-                chatId: bossDeliveryMetadata.channelChatId,
-                replyToMessageId: bossDeliveryMetadata.channelReplyToMessageId,
-              }
-            : undefined,
-        ),
-      )
+      // R6 explicit delivery applies only to channel-routed boss sessions:
+      // those never auto-deliver — the human sees nothing unless the boss
+      // calls channel_push. Channel-less local boss sessions (opened from
+      // Settings) and project bosses reply inside their own interactive
+      // session, so the channel-push contract is omitted for them.
+      if (session.endpoint?.kind === "channel") {
+        const bossDeliveryMetadata = ctx.deliveryMetadata
+        parts.push(
+          buildBossDeliveryHint(
+            bossDeliveryMetadata?.channelPush === true
+              ? {
+                  chatId: bossDeliveryMetadata.channelChatId,
+                  replyToMessageId: bossDeliveryMetadata.channelReplyToMessageId,
+                }
+              : undefined,
+          ),
+        )
+      }
 
       const tree = await BossService.status(session.id).catch(() => undefined)
       if (tree) {

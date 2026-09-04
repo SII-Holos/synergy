@@ -89,6 +89,8 @@ import type {
   BlueprintLoopStartResponses,
   BlueprintLoopWaitErrors,
   BlueprintLoopWaitResponses,
+  BossSessionOpenErrors,
+  BossSessionOpenResponses,
   BossSessionTreeErrors,
   BossSessionTreeResponses,
   BossSessionWorkerAssignErrors,
@@ -3511,6 +3513,36 @@ export class Session extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<BossSessionTreeResponses, BossSessionTreeErrors, ThrowOnError>({
       url: "/boss/session/{id}/tree",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Open the runtime Boss session
+   *
+   * Returns the runtime boss session for the current config, creating a channel-less local boss session in home scope on first open when no routable Feishu account is enabled.
+   */
+  public open<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BossSessionOpenResponses, BossSessionOpenErrors, ThrowOnError>({
+      url: "/boss/session/open",
       ...options,
       ...params,
     })

@@ -17803,6 +17803,22 @@ msgid "settings.runtime.boss.name.saveFailed.desc"
 msgstr "The boss name could not be saved. Please try again."
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession"
+msgstr "Open boss session"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.busy"
+msgstr "Opening…"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.desc"
+msgstr "Open the runtime boss chat. Creates the session on first use."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.failed"
+msgstr "Could not open the boss session"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.boss.persona.conciseness"
 msgstr "Conciseness"
 

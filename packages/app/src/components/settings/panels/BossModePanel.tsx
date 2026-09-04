@@ -1,5 +1,6 @@
 import { useLingui } from "@lingui/solid"
-import { For, Show, onCleanup, onMount } from "solid-js"
+import { createSignal, For, Show, onCleanup, onMount } from "solid-js"
+import { Button } from "@ericsanchezok/synergy-ui/button"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -49,6 +50,13 @@ const nameSaveFailedDesc = {
   id: "settings.runtime.boss.name.saveFailed.desc",
   message: "The boss name could not be saved. Please try again.",
 }
+const openSessionRowTitle = { id: "settings.runtime.boss.openSession", message: "Open boss session" }
+const openSessionRowDesc = {
+  id: "settings.runtime.boss.openSession.desc",
+  message: "Open the runtime boss chat. Creates the session on first use.",
+}
+const openSessionBusy = { id: "settings.runtime.boss.openSession.busy", message: "Opening…" }
+const openSessionFailed = { id: "settings.runtime.boss.openSession.failed", message: "Could not open the boss session" }
 
 type BossPersonaPresetOption = { value: string; label: MessageDescriptor }
 
@@ -90,10 +98,14 @@ export function BossModePanel(props: {
   onRuntimeChange: (key: keyof RuntimeStore, value: string) => void
   /** Test seam: fixtures inject a stub so they do not need the GlobalSDK provider stack. */
   bossNameGateway?: BossNameGateway
+  /** Persist the settings draft, open (or create) the runtime boss session,
+   *  then navigate to it. Provided by the Settings panel host. */
+  onOpenBossSession?: () => Promise<void>
 }) {
   const { _ } = useLingui()
   const enabled = () => props.runtime.bossMode === "true"
   const preset = () => props.runtime.bossPersonaPreset
+  const [opening, setOpening] = createSignal(false)
 
   // Production callers mount under GlobalSDKProvider; the read happens during
   // render so the context owner is available. Fixtures pass a gateway stub.
@@ -129,6 +141,18 @@ export function BossModePanel(props: {
       // The toast host may be absent in embedded test harnesses; keep the
       // failure visible in the console instead of swallowing it silently.
       console.warn(_(nameSaveFailed), error)
+    }
+  }
+
+  const reportOpenSessionFailure = (error: unknown) => {
+    try {
+      showToast({
+        type: "error",
+        title: _(openSessionFailed),
+        description: requestErrorMessage(error, _(openSessionFailed)),
+      })
+    } catch {
+      console.warn(_(openSessionFailed), error)
     }
   }
 
@@ -174,6 +198,18 @@ export function BossModePanel(props: {
     props.onRuntimeChange("bossName", value)
   }
 
+  const handleOpenSession = async () => {
+    if (opening() || !props.onOpenBossSession) return
+    setOpening(true)
+    try {
+      await props.onOpenBossSession()
+    } catch (error) {
+      reportOpenSessionFailure(error)
+    } finally {
+      setOpening(false)
+    }
+  }
+
   onMount(() => {
     void (async () => {
       try {
@@ -212,6 +248,21 @@ export function BossModePanel(props: {
               checked={enabled()}
               onChange={(value) => props.onRuntimeChange("bossMode", value ? "true" : "false")}
             />
+          }
+        />
+        <SettingRow
+          title={_(openSessionRowTitle)}
+          description={_(openSessionRowDesc)}
+          trailing={
+            <Button
+              type="button"
+              variant="secondary"
+              size="small"
+              disabled={!enabled() || opening()}
+              onClick={() => void handleOpenSession()}
+            >
+              {opening() ? _(openSessionBusy) : _(openSessionRowTitle)}
+            </Button>
           }
         />
         <SettingRow

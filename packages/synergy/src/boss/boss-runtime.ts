@@ -61,8 +61,22 @@ export namespace BossRuntime {
   /** Default colleague identity used when `boss_identity_text` is not set (owned by boss-prompt). */
   export const DEFAULT_IDENTITY_TEXT = DefaultIdentityText
 
+  /** Title of the channel-less local runtime boss session (created on demand from Settings). */
+  export const LOCAL_BOSS_SESSION_TITLE = "Runtime Boss (本地)"
+
   export function bossSessionForAccount(accountId: string): string | undefined {
     return accountBossSessions.get(accountId)
+  }
+
+  /**
+   * Raised when the runtime boss session cannot be opened because Boss Mode
+   * is disabled (server route maps it to 409 boss_disabled).
+   */
+  export class BossSessionOpenError extends Error {
+    constructor(message: string) {
+      super(message)
+      this.name = "BossSessionOpenError"
+    }
   }
 
   /**
@@ -128,6 +142,79 @@ export namespace BossRuntime {
   /** Re-register the periodic briefing Agenda item from current config (interval changes). */
   export async function rescheduleBriefing(): Promise<void> {
     await syncBriefingSchedule()
+  }
+
+  /**
+   * Open the runtime boss session from the Settings UI ("Open boss session").
+   *
+   * Prefers an existing channel-routed boss session (per enabled Feishu
+   * account). When none exists — no enabled routable account, or the mode
+   * was toggled after server start before `ensure()` ran — idempotently
+   * creates (or reuses) a channel-less local boss session in home scope so
+   * the user can talk to the boss colleague directly from the App. The local
+   * session is a normal interactive session: replies are visible in the App
+   * and `channel_push` is unavailable to it.
+   *
+   * @throws BossSessionOpenError when `boss_mode` is not enabled.
+   */
+  export async function openSession(): Promise<string> {
+    const config = await Config.current().catch(() => undefined)
+    if (config?.experimental?.boss_mode !== true) {
+      throw new BossSessionOpenError("Boss Mode is disabled")
+    }
+    // Only provision routable sessions when none are registered yet and the
+    // config has an enabled routable account (startup/reload already ran
+    // ensure()); skipping a redundant ensure() avoids re-delivering the
+    // world-overview briefing on every "Open boss session" click.
+    if (accountBossSessions.size === 0) {
+      const feishu = config?.channel?.feishu
+      const hasRoutableAccount = Object.entries(feishu?.accounts ?? {}).some(
+        ([, account]) => account.enabled !== false && !account.projectDir,
+      )
+      if (hasRoutableAccount) await ensure()
+    }
+    return ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        // 1. Prefer an account-routed boss session already registered.
+        for (const sessionID of accountBossSessions.values()) {
+          const session = await Session.get(sessionID)
+          if (session?.endpoint?.kind === "channel" && !session.time?.archived) return sessionID
+        }
+        // 2. Fall back to any existing channel-routed boss session in home
+        //    (covers an account map not yet provisioned this process).
+        const routed = await findBossSession(true)
+        if (routed) return routed
+        // 3. Reuse the channel-less local boss session when present.
+        const local = await findBossSession(false)
+        if (local) return local
+        // 4. Create the channel-less local boss session on first open.
+        const session = await Session.create({
+          scope: Scope.home(),
+          interaction: SessionInteraction.interactive("boss"),
+          title: LOCAL_BOSS_SESSION_TITLE,
+          agentOverride: "boss-synergy",
+          workflow: { kind: "boss", role: "boss" },
+        })
+        log.info("local runtime boss session created from settings", { sessionID: session.id })
+        await deliverIdentityBriefing(session.id)
+        return session.id
+      },
+    })
+  }
+
+  /**
+   * Scan home-scope boss sessions for the first non-archived runtime boss.
+   * `routed` selects sessions with a channel endpoint (Feishu account-bound)
+   * versus channel-less local sessions.
+   */
+  async function findBossSession(routed: boolean): Promise<string | undefined> {
+    for await (const session of Session.listAll()) {
+      if (session.time?.archived) continue
+      if (session.workflow?.kind !== "boss" || session.workflow.role !== "boss") continue
+      if ((session.endpoint?.kind === "channel") === routed) return session.id
+    }
+    return undefined
   }
 
   // ---------------------------------------------------------------------------

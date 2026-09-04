@@ -17803,6 +17803,22 @@ msgid "settings.runtime.boss.name.saveFailed.desc"
 msgstr "Boss 名字保存失败，请重试。"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession"
+msgstr "打开 Boss 会话"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.busy"
+msgstr "正在打开…"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.desc"
+msgstr "打开运行时 boss 聊天会话，首次使用时会自动创建。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.failed"
+msgstr "无法打开 Boss 会话"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.boss.persona.conciseness"
 msgstr "简洁度"
 

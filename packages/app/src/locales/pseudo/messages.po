@@ -17803,6 +17803,22 @@ msgid "settings.runtime.boss.name.saveFailed.desc"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.busy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.boss.persona.conciseness"
 msgstr ""
 

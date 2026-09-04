@@ -23,7 +23,7 @@ beforeEach(async () => {
       const sessions: Session.Info[] = []
       for await (const s of Session.listAll()) sessions.push(s)
       for (const s of sessions) {
-        if (s.workflow?.kind === "boss" && s.workflow.role === "boss" && s.endpoint?.kind === "channel") {
+        if (s.workflow?.kind === "boss" && s.workflow.role === "boss") {
           await Session.remove(s.id).catch(() => {})
         }
       }
@@ -222,6 +222,39 @@ describe("BossRuntime", () => {
       expect(after).toBeDefined()
       expect(after!.triggers).toContainEqual({ type: "every", interval: "3d" })
       expect(after!.triggers).not.toContainEqual({ type: "every", interval: "7d" })
+    })
+  })
+
+  test("openSession() throws BossSessionOpenError when boss_mode is disabled", async () => {
+    await withHomeScope(async () => {
+      stubConfig({})
+      await expect(BossRuntime.openSession()).rejects.toThrow("Boss Mode is disabled")
+    })
+  })
+
+  test("openSession() creates a channel-less local boss session when no routable account exists", async () => {
+    await withHomeScope(async () => {
+      stubConfig({ experimental: { boss_mode: true } })
+      const sessionID = await BossRuntime.openSession()
+      const session = await Session.get(sessionID)
+      expect(session).toBeDefined()
+      expect(session!.workflow).toEqual({ kind: "boss", role: "boss" })
+      expect(session!.agentOverride).toBe("boss-synergy")
+      expect(session!.endpoint?.kind).not.toBe("channel")
+      expect((session!.scope as Scope).id).toBe("home")
+      expect(session!.title).toBe(BossRuntime.LOCAL_BOSS_SESSION_TITLE)
+
+      // Second open reuses the same local session (idempotent).
+      expect(await BossRuntime.openSession()).toBe(sessionID)
+    })
+  })
+
+  test("openSession() prefers the channel-routed boss session when one exists", async () => {
+    await withHomeScope(async () => {
+      stubConfig(FEISHU_ONE)
+      await BossRuntime.ensure()
+      const routed = BossRuntime.bossSessionForAccount("acct1")!
+      expect(await BossRuntime.openSession()).toBe(routed)
     })
   })
 })

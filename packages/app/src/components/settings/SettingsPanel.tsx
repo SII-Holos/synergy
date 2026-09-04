@@ -13,6 +13,9 @@ import {
 import { createStore, produce, reconcile } from "solid-js/store"
 import { Dynamic } from "solid-js/web"
 import { createMediaQuery } from "@solid-primitives/media"
+import { useNavigate } from "@solidjs/router"
+import { base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { HOME_SCOPE_KEY } from "@/utils/scope"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
@@ -245,6 +248,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const theme = useTheme()
   const font = useFontPreference()
   const holos = useHolos()
+  const navigate = useNavigate()
   const personalizeController = createPersonalizeController({
     get: async () => (await globalSDK.client.config.instructions.get()).data!,
     update: async (content) =>
@@ -595,6 +599,22 @@ export function SettingsPanel(props: SettingsPanelProps) {
     closeDialog: () => props.onClose?.() ?? dialog.close(),
     showConfirm,
   })
+
+  async function openBossSession() {
+    // /boss/session/open refuses to run while boss_mode is disabled, so flush
+    // any pending runtime draft (the enable toggle / persona) first.
+    const saved = await save.saveServerChanges()
+    if (!saved) {
+      throw new Error("Could not save the Boss Mode settings before opening the session.")
+    }
+    const result = await globalSDK.client.boss.session.open()
+    const sessionID = result.data?.sessionID
+    if (!sessionID) {
+      throw new Error("The runtime did not return a boss session.")
+    }
+    ;(props.onClose ?? (() => dialog.close()))()
+    navigate(`/${base64Encode(HOME_SCOPE_KEY)}/session/${sessionID}`)
+  }
 
   async function savePersonalizeChanges() {
     const saved = await personalizeController.save()
@@ -1007,7 +1027,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
       />
     ),
     boss: () => (
-      <BossModePanel runtime={settings.runtime} onRuntimeChange={(key, value) => setSettings("runtime", key, value)} />
+      <BossModePanel
+        runtime={settings.runtime}
+        onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
+        onOpenBossSession={openBossSession}
+      />
     ),
     import: () => (
       <ImportPanel

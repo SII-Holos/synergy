@@ -7471,6 +7471,10 @@ export type BossWorkerCancelInput = {
   taskID?: string
 }
 
+export type BossSessionOpenResult = {
+  sessionID: string
+}
+
 export type AssetInfo = {
   id: string
   url: string
@@ -18142,6 +18146,50 @@ export type BossSessionWorkerCancelResponses = {
 }
 
 export type BossSessionWorkerCancelResponse = BossSessionWorkerCancelResponses[keyof BossSessionWorkerCancelResponses]
+
+export type BossSessionOpenData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/boss/session/open"
+}
+
+export type BossSessionOpenErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: NoteConflictError
+  /**
+   * Internal server error
+   */
+  500: BossErrorResponse
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BossSessionOpenError = BossSessionOpenErrors[keyof BossSessionOpenErrors]
+
+export type BossSessionOpenResponses = {
+  /**
+   * Opened boss session
+   */
+  200: BossSessionOpenResult
+}
+
+export type BossSessionOpenResponse = BossSessionOpenResponses[keyof BossSessionOpenResponses]
 
 export type AssetUploadData = {
   body?: {

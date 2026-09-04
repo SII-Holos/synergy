@@ -54,6 +54,8 @@ Inbound user messages carry a source prefix of `[群: {chatName} | 发送者: {s
 
 Accounts configured with `projectDir` are not routed: the account keeps its existing per-chat behavior, and the runtime warns instead of using the boss session for Feishu ingress. Disabling `experimental.boss_mode` reverts routing to the per-chat sessions used before; the boss session and its history remain.
 
+The Boss Mode settings panel also offers **Open boss session**. The runtime flushes the pending Runtime-domain draft, then `POST /boss/session/open` returns the account-routed boss session when an enabled routable account exists, or idempotently creates a channel-less local boss session (home scope, `workflow` kind `boss` with role `boss`, running the `boss-synergy` primary agent) when none does, and the App navigates to it. The R6 explicit `channel_push` contract and its prompt hint apply only to account-routed sessions; a channel-less local boss session has no channel, so replies are read directly in the App. Requesting an open while `boss_mode` is disabled fails with `409 boss_disabled`.
+
 ### Channel Commands
 
 Channel commands are handled before ordinary agent invocation. Commands that accept trailing text can switch or reset the conversation and immediately continue that text as the next user request.
