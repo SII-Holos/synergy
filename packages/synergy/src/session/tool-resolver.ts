@@ -663,7 +663,12 @@ export namespace ToolResolver {
     // Profile already permits the operation — no need for Smart allow.
     if (decision.action === "allow") {
       await setApprovalMetadata(ctx, ApprovalPolicy.metadata(approval, decision, "auto_allowed"))
-      if (toolName === "bash") markShellSandboxBypass(ctx)
+      // Autonomous runs unattended: profile-auto-allowed bash stays inside the
+      // OS sandbox (workspace_write) instead of bypassing it, so writes that
+      // static classification cannot see (variable redirect targets) are still
+      // contained at execution time. Guarded/full_access keep the historical
+      // bypass for user-approved interactive work.
+      if (toolName === "bash" && profile.profileId !== "autonomous") markShellSandboxBypass(ctx)
       return
     }
 
@@ -1523,6 +1528,7 @@ export namespace ToolResolver {
                     readRoots: [synergyRoot, ...trustedRoots],
                     trustedRoots,
                     synergyRoot,
+                    sessionKey: runtimeInput.session?.id,
                   }),
                 )
                 await toolTrace.phase("tool.resolver.ready", "resolver ready", {
@@ -1583,11 +1589,20 @@ export namespace ToolResolver {
                         args: ["-c", input.command],
                         workspace,
                         sandboxMode: sandbox.mode,
-                        extraReadRoots: [synergyRoot, ...trustedRoots, ...extRoots, ...input.extraReadRoots],
+                        extraReadRoots: [
+                          ...new Set([
+                            ...(sandboxPolicy?.fileSystem.readableRoots ?? []),
+                            synergyRoot,
+                            ...trustedRoots,
+                            ...extRoots,
+                            ...input.extraReadRoots,
+                          ]),
+                        ],
                         extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
                         protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
                         dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
                         stripDefaultHomeDenyRoot: true,
+                        networkMode: sandboxPolicy?.network.mode,
                         backend: sandbox.backend,
                       })
                       if (wrapper.skipReason && sandbox.fallback !== "deny") {
@@ -1788,6 +1803,7 @@ export namespace ToolResolver {
                       readRoots: [Global.Path.root, ...trustedRoots],
                       synergyRoot: Global.Path.root,
                       trustedRoots,
+                      sessionKey: runtimeInput.session?.id,
                     }),
                   )
                   await toolTrace.phase("tool.resolver.ready", "resolver ready", {

@@ -37,29 +37,38 @@ function prepareLinuxMultiRoot(input: { workspace: string; extraRoots: string[];
 }
 
 describe("Linux helper profile multi-root protected paths", () => {
-  test("aggregates gate protected paths including additional-root .git", async () => {
+  test("aggregates gate protected paths including additional-root .git hooks/config", async () => {
     await using tmp = await tmpdir({ git: true })
     const folderA = path.join(tmp.path, "folder-a")
-    await $`mkdir -p ${path.join(folderA, ".git")}`.quiet()
-    const folderAGit = path.join(folderA, ".git")
+    await $`mkdir -p ${path.join(folderA, ".git", "hooks")}`.quiet()
+    await Bun.write(path.join(folderA, ".git", "config"), "[core]\n")
 
     const wrapper = prepareLinuxMultiRoot({
       workspace: tmp.path,
       extraRoots: [folderA],
-      protectedPaths: [path.join(tmp.path, ".git"), folderAGit],
+      protectedPaths: [path.join(tmp.path, ".git"), path.join(folderA, ".git")],
     })
 
     expect(wrapper.sandboxed).toBe(true)
     const profile = JSON.parse(fs.readFileSync(wrapper.tempPath!, "utf8"))
 
-    // Every existing protected path — including the additional root's .git —
-    // lands in protectedPaths and readOnlySubpaths of the helper profile.
-    expect(profile.fileSystem.protectedPaths).toContain(path.join(tmp.path, ".git"))
-    expect(profile.fileSystem.protectedPaths).toContain(folderAGit)
-    expect(profile.fileSystem.readOnlySubpaths).toContain(folderAGit)
+    // Bare `.git` entries are expanded into the granular tamper surface:
+    // hooks + config land in protectedPaths and readOnlySubpaths of the
+    // helper profile, while the rest of `.git` stays writable for git.
+    expect(profile.fileSystem.protectedPaths).toContain(path.join(tmp.path, ".git", "hooks"))
+    expect(profile.fileSystem.protectedPaths).toContain(path.join(tmp.path, ".git", "config"))
+    expect(profile.fileSystem.protectedPaths).toContain(path.join(folderA, ".git", "hooks"))
+    expect(profile.fileSystem.protectedPaths).toContain(path.join(folderA, ".git", "config"))
+    expect(profile.fileSystem.protectedPaths).not.toContain(path.join(folderA, ".git"))
+    expect(profile.fileSystem.readOnlySubpaths).toContain(path.join(folderA, ".git", "hooks"))
+    expect(profile.fileSystem.readOnlySubpaths).toContain(path.join(folderA, ".git", "config"))
+    expect(profile.fileSystem.readOnlySubpaths).not.toContain(path.join(folderA, ".git"))
 
-    // The additional root is writable (bind), but its .git stays read-only.
+    // The additional root is writable (bind), but its git tamper surface
+    // stays read-only. The helper no longer blanket-protects `.git` dirs.
     expect(profile.fileSystem.writableRoots).toContain(folderA)
+    expect(profile.fileSystem.protectedMetadataNames).not.toContain(".git")
+    expect(profile.fileSystem.protectedMetadataNames).toContain(".agents")
 
     fs.rmSync(wrapper.tempPath!, { force: true })
   })
@@ -68,7 +77,7 @@ describe("Linux helper profile multi-root protected paths", () => {
     await using tmp = await tmpdir()
     const folderA = path.join(tmp.path, "folder-a")
     await $`mkdir -p ${folderA}`.quiet()
-    // .git does NOT exist under folderA.
+    // .git does NOT exist under folderA, so neither do its granular subpaths.
     const missingGit = path.join(folderA, ".git")
 
     const wrapper = prepareLinuxMultiRoot({
@@ -81,7 +90,11 @@ describe("Linux helper profile multi-root protected paths", () => {
     const profile = JSON.parse(fs.readFileSync(wrapper.tempPath!, "utf8"))
 
     expect(profile.fileSystem.protectedPaths).not.toContain(missingGit)
+    expect(profile.fileSystem.protectedPaths).not.toContain(path.join(folderA, ".git", "hooks"))
+    expect(profile.fileSystem.protectedPaths).not.toContain(path.join(folderA, ".git", "config"))
     expect(profile.fileSystem.readOnlySubpaths).not.toContain(missingGit)
+    expect(profile.fileSystem.readOnlySubpaths).not.toContain(path.join(folderA, ".git", "hooks"))
+    expect(profile.fileSystem.readOnlySubpaths).not.toContain(path.join(folderA, ".git", "config"))
     // The writable root itself is still present.
     expect(profile.fileSystem.writableRoots).toContain(folderA)
 

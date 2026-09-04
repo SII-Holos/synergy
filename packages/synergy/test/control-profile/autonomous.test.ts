@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { controlledTempRoot } from "../../src/sandbox/policy"
 import { ApprovalPolicy } from "../../src/control-profile/approval"
 import { buildProfile } from "../../src/control-profile/profiles"
 import { ScopeContext } from "../../src/scope/context"
@@ -144,13 +145,14 @@ describe("autonomous profile filesystem", () => {
     })
   })
 
-  test("autonomous filesystem has workspace as writeRoots", async () => {
+  test("autonomous filesystem has workspace and controlled temp root as writeRoots", async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
-        expect(profile.filesystem.writeRoots).toEqual([workspace])
+        expect(profile.filesystem.writeRoots).toContain(workspace)
+        expect(profile.filesystem.writeRoots).toContain(controlledTempRoot(workspace))
       },
     })
   })
@@ -163,7 +165,9 @@ describe("autonomous profile filesystem", () => {
         const trustedRoots = ["/tmp/test/.codex/skills", "/tmp/test/.claude/skills"]
         const profile = await buildProfile("autonomous", { workspace, workspaceType: "main", trustedRoots })
 
-        expect(profile.filesystem.writeRoots).toEqual([workspace, ...trustedRoots])
+        for (const root of [workspace, controlledTempRoot(workspace), ...trustedRoots]) {
+          expect(profile.filesystem.writeRoots).toContain(root)
+        }
       },
     })
   })

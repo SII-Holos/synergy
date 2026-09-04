@@ -8,6 +8,7 @@ import {
   traversalLiterals,
   defaultRuntimeReadRoots,
   joinPathLike,
+  macosPlatformReadRoots,
 } from "./policy"
 import { detectPlatform } from "./detect"
 import { getTempDir } from "./platform"
@@ -117,9 +118,9 @@ export namespace MacBackend {
         workspace,
         executionCwd: opts.executionCwd ?? workspace,
         sandboxMode,
-        approvedReadPaths: runtimeReadRoots,
+        approvedReadPaths: [...runtimeReadRoots, ...macosPlatformReadRoots()],
         approvedWritePaths: writableRoots,
-        approvedNetwork: false,
+        approvedNetwork: opts.networkMode === "full",
         approvedUnixSockets: [],
       })
       const sbplContent = MacOSPolicy.compileProfile(policyProfile)
