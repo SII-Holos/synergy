@@ -628,6 +628,107 @@ async function expectAttachmentToolbarFitsNarrowPanel(css: string) {
   }
 }
 
+type PromptDockLayoutTokens = {
+  bandClass: string
+  clearanceClass: string
+  floatLayerClass: string
+}
+
+async function readPromptDockLayoutTokens(): Promise<PromptDockLayoutTokens> {
+  const sessionDir = new URL("../src/components/session/", import.meta.url)
+  const promptDock = await Bun.file(new URL("prompt-dock.tsx", sessionDir)).text()
+  const bandLine = promptDock.split("\n").find((line) => line.includes("pt-12") && line.includes("isNewSession()"))
+  const bandMatch = bandLine?.match(/"((?:md:)?pt-12)"/)
+  if (!bandMatch) throw new Error("prompt-dock.tsx must scope its top band class to !props.isNewSession()")
+
+  const conversation = await Bun.file(new URL("conversation.tsx", sessionDir)).text()
+  const clearanceLine = conversation
+    .split("\n")
+    .find((line) => line.includes("md:pb-[calc(var(--prompt-height,10rem)+96px)]"))
+  const clearanceMatch = clearanceLine?.match(/"([^"]+)"/)
+  if (!clearanceMatch || !clearanceMatch[1]!.includes("pb-6")) {
+    throw new Error("conversation.tsx must keep the mobile pb-6 prompt clearance")
+  }
+
+  const floatLayer = await Bun.file(new URL("prompt-dock-float-layer.tsx", sessionDir)).text()
+  const floatLine = floatLayer.split("\n").find((line) => line.includes('class="prompt-dock-float-layer'))
+  const floatMatch = floatLine?.match(/class="([^"]+)"/)
+  const floatLayerClass = floatMatch?.[1]
+  if (
+    !floatLayerClass ||
+    !floatLayerClass.includes("relative") ||
+    !floatLayerClass.includes("md:absolute") ||
+    !floatLayerClass.includes("md:bottom-full")
+  ) {
+    throw new Error("prompt-dock-float-layer.tsx must flow in normal mode on mobile and overlay on desktop")
+  }
+
+  return { bandClass: bandMatch[1]!, clearanceClass: clearanceMatch[1]!, floatLayerClass }
+}
+
+async function expectPromptDockBandAndMobileFloatFlow(css: string) {
+  const { bandClass, clearanceClass, floatLayerClass } = await readPromptDockLayoutTokens()
+  const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
+  const browser = await browserType.launch({ headless: true })
+  try {
+    const page = await browser.newPage({ viewport: { width: 1200, height: 400 } })
+    await page.setContent(`
+      <style>*, ::before, ::after { box-sizing: border-box; } ${css}</style>
+      <div data-dock class="${bandClass}" style="width: 100%; display: flex; flex-direction: column; background: #111;">
+        <div data-float class="${floatLayerClass}">
+          <div data-busy style="height: 40px; width: 100%;"></div>
+        </div>
+        <div data-composer style="height: 80px; background: #1b1b1d;"></div>
+      </div>
+      <div data-content class="${clearanceClass}" style="width: 100%;"></div>
+    `)
+
+    const measure = () =>
+      page.evaluate(() => {
+        const dock = document.querySelector<HTMLElement>("[data-dock]")
+        const float = document.querySelector<HTMLElement>("[data-float]")
+        const composer = document.querySelector<HTMLElement>("[data-composer]")
+        const content = document.querySelector<HTMLElement>("[data-content]")
+        if (!dock || !float || !composer || !content) throw new Error("Missing prompt dock layout fixture")
+        const dockRect = dock.getBoundingClientRect()
+        const composerRect = composer.getBoundingClientRect()
+        return {
+          dockPaddingTop: getComputedStyle(dock).paddingTop,
+          floatPosition: getComputedStyle(float).position,
+          composerOffset: composerRect.top - dockRect.top,
+          contentPaddingBottom: getComputedStyle(content).paddingBottom,
+        }
+      })
+
+    // Desktop (>= 48rem): the dock keeps its 48 px reserved band and the float
+    // layer overlays above the composer (bottom-full), so a busy island never
+    // changes the composer height.
+    const desktop = await measure()
+    expect(desktop.dockPaddingTop).toBe("48px")
+    expect(desktop.floatPosition).toBe("absolute")
+    expect(desktop.composerOffset).toBe(48)
+    expect(desktop.contentPaddingBottom).toBe("256px")
+
+    // Mobile: the band collapses to zero, the float layer flows in normal
+    // document order, so a busy control pushes the composer down instead of
+    // covering the last messages.
+    await page.setViewportSize({ width: 390, height: 400 })
+    const mobileBusy = await measure()
+    expect(mobileBusy.dockPaddingTop).toBe("0px")
+    expect(mobileBusy.floatPosition).toBe("relative")
+    expect(mobileBusy.composerOffset).toBe(40)
+    expect(mobileBusy.contentPaddingBottom).toBe("24px")
+
+    // Idle mobile: the float layer collapses to zero height - no residual
+    // empty band above the composer.
+    await page.evaluate(() => document.querySelector("[data-busy]")?.remove())
+    const mobileIdle = await measure()
+    expect(mobileIdle.composerOffset).toBe(0)
+  } finally {
+    await browser.close()
+  }
+}
+
 async function runAppBuild(outDir: string) {
   const proc = Bun.spawn({
     cmd: [process.execPath, "run", "build", "--outDir", outDir, "--emptyOutDir", "--manifest"],
@@ -762,6 +863,7 @@ describe("app production build contract", () => {
       await expectSessionWorkbenchPaneTracksBottomSurface(css)
       await expectSessionInboxBadgePreservesIconCenter(css)
       await expectPromptDockKeepsReadableWidth(css)
+      await expectPromptDockBandAndMobileFloatFlow(css)
       await expectStatusbarSubsessionContentFillsBody(css)
       await expectFileWorkbenchExplorerResizeMatchesMode(css)
       await expectAttachmentToolbarFitsNarrowPanel(attachmentWorkbenchCss)
