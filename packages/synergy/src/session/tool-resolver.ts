@@ -1118,7 +1118,8 @@ export namespace ToolResolver {
     const supportsImageInput = input.model.capabilities.input.image
     const hasImageFormatRestrictions = !!input.model.capabilities.input.supportedImageMediaTypes?.length
     const lookAtAvailable = (!supportsImageInput || hasImageFormatRestrictions) && (await hasAvailableVisionModel())
-    const ttsAvailable = (await Config.current()).voice?.tts?.model !== undefined
+    const voiceConfig = (await Config.current()).voice
+    const ttsAvailable = Boolean(voiceConfig?.tts?.model)
 
     for (const def of defs) {
       if (def.diagnostic) {
