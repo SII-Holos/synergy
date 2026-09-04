@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  collectDictationContext,
   createVoiceDictationEngine,
   isMicrophonePermissionError,
   isSttConfigured,
@@ -353,5 +354,38 @@ describe("voice dictation core", () => {
     h.engine.start()
     await flush()
     expect(h.recorder!.started).toBe(1)
+  })
+  test("collectDictationContext takes the most recent user turns oldest-first", () => {
+    const messages = [
+      { role: "user", parts: [{ type: "text", text: "first question" }] },
+      { role: "assistant", parts: [{ type: "text", text: "first answer" }] },
+      { role: "user", parts: [{ type: "text", text: "second question" }] },
+      { role: "assistant", parts: [{ type: "text", text: "second answer" }] },
+      { role: "user", parts: [{ type: "text", text: "third question" }] },
+    ]
+    expect(collectDictationContext(messages)).toBe("first question\nsecond question\nthird question")
+    expect(collectDictationContext(messages, 2)).toBe("second question\nthird question")
+  })
+
+  test("collectDictationContext skips empty and non-text parts and caps the turn count", () => {
+    const messages = [
+      { role: "user", parts: [{ type: "text", text: "one" }] },
+      { role: "user", parts: [] },
+      {
+        role: "user",
+        parts: [
+          { type: "text", text: "two" },
+          { type: "attachment", text: undefined },
+        ],
+      },
+      { role: "user", parts: [{ type: "text", text: "   " }] },
+      { role: "user", parts: [{ type: "text", text: "three" }] },
+    ]
+    expect(collectDictationContext(messages, 2)).toBe("two\nthree")
+  })
+
+  test("collectDictationContext returns empty for no user text", () => {
+    expect(collectDictationContext([])).toBe("")
+    expect(collectDictationContext([{ role: "assistant", parts: [{ type: "text", text: "hi" }] }])).toBe("")
   })
 })

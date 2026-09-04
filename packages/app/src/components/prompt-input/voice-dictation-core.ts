@@ -3,6 +3,31 @@ export type VoiceDictationPhase = "idle" | "recording" | "transcribing"
 export const MIN_DICTATION_DURATION_MS = 500
 export const MAX_DICTATION_CONTEXT_CHARS = 500
 
+/** A minimal structural view of a session message for context collection. */
+export interface DictationContextMessage {
+  role: string
+  parts?: Array<{ type: string; text?: string }>
+}
+
+/**
+ * Collect the most recent user message texts for STT context conditioning.
+ * Walks the session transcript newest-first (the store keeps newest-last),
+ * takes up to maxMessages user turns, and returns them oldest-first joined
+ * by newlines. Assistant turns and non-text parts are skipped.
+ */
+export function collectDictationContext(messages: readonly DictationContextMessage[], maxMessages = 3): string {
+  const collected: string[] = []
+  for (let i = messages.length - 1; i >= 0 && collected.length < maxMessages; i--) {
+    const message = messages[i]
+    if (message.role !== "user") continue
+    const text = (message.parts ?? [])
+      .filter((part) => part.type === "text" && typeof part.text === "string")
+      .map((part) => part.text as string)
+      .join("")
+    if (text.trim()) collected.unshift(text)
+  }
+  return collected.join("\n")
+}
 const RECORDING_MIME_CANDIDATES = ["audio/webm;codecs=opus", "audio/mp4"]
 
 /** Pick the first MediaRecorder mimeType the environment supports; "" means "let the browser choose". */

@@ -102,6 +102,7 @@ import { ComposerDocumentController } from "./composer-document"
 import { createAbortRequestController } from "./abort-request"
 import { ComposerExtensionOutlet } from "@/plugin/registries/composer-extension-registry"
 import { VoiceDictationButton } from "./use-voice-dictation"
+import { collectDictationContext } from "./voice-dictation-core"
 
 function sanitizePromptHistory(value: unknown) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value
@@ -2145,6 +2146,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             />
             <ComposerSlotOutlet slot="composer.toolbar.right" sessionId={params.id} class="contents" />
             <VoiceDictationButton
+              getContext={() => collectDictationContext(view().messagesFor(params.id ?? ""))}
               insertText={insertDictationText}
               focusEditor={() => {
                 // Restores the caret the applyEdits insert left behind.

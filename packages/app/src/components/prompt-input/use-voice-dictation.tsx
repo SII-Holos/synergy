@@ -8,11 +8,9 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useSDK } from "@/context/sdk"
 import { useGlobalSync } from "@/context/global-sync"
-import { usePrompt } from "@/context/prompt"
 import { useLocale } from "@/context/locale"
 import { SettingsDialog } from "@/components/settings"
 import { requestErrorMessage } from "@/utils/error"
-import { inlineText } from "./content"
 import { PI } from "./prompt-input-i18n"
 import {
   createVoiceDictationEngine,
@@ -24,10 +22,13 @@ import {
   type VoiceDictationStream,
 } from "./voice-dictation-core"
 
-export function useVoiceDictation(options: { insertText: (text: string) => void; focusEditor?: () => void }) {
+export function useVoiceDictation(options: {
+  getContext: () => string
+  insertText: (text: string) => void
+  focusEditor?: () => void
+}) {
   const sdk = useSDK()
   const globalSync = useGlobalSync()
-  const prompt = usePrompt()
   const dialog = useDialog()
   const { i18n } = useLocale()
   const [phase, setPhase] = createSignal<VoiceDictationPhase>("idle")
@@ -89,7 +90,7 @@ export function useVoiceDictation(options: { insertText: (text: string) => void;
   const deps: VoiceDictationDependencies = {
     isConfigured: () => isSttConfigured(globalSync.data.config),
     openSettings: () => dialog.show(() => <SettingsDialog initialTab="voice" />),
-    getContext: () => inlineText(prompt.current()),
+    getContext: options.getContext,
     insertText: options.insertText,
     hasGetUserMedia: () => typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia),
     requestMicrophone: () => navigator.mediaDevices!.getUserMedia({ audio: true }),
@@ -144,7 +145,11 @@ export function useVoiceDictation(options: { insertText: (text: string) => void;
   }
 }
 
-export function VoiceDictationButton(props: { insertText: (text: string) => void; focusEditor?: () => void }) {
+export function VoiceDictationButton(props: {
+  getContext: () => string
+  insertText: (text: string) => void
+  focusEditor?: () => void
+}) {
   const dictation = useVoiceDictation(props)
   const { i18n } = useLocale()
 
