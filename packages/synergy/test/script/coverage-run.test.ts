@@ -41,6 +41,7 @@ describe("coverage batch splitting", () => {
       "test/config/import.test.ts",
       "test/email/imap.test.ts",
       "test/holos/runtime.test.ts",
+      "test/library/database.test.ts",
       "test/library/embedding-local.test.ts",
       "test/library/embedding.test.ts",
       "test/library/experience-recall.test.ts",

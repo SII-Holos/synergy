@@ -34,9 +34,10 @@ const packageRoot = path.resolve(import.meta.dir, "..")
  *   channel registries that a prior sibling's stale Config.current override
  *   or late rejection poisons (whole-file sub-millisecond failures on CI,
  *   2026-09-04), so they get their own process;
- * - experience-recall asserts UCB1 math against the LibraryDB singleton that
- *   sibling library suites repopulate (intermittent zero-candidate failures
- *   in shared batches);
+ * - experience-recall and database assert against the LibraryDB singleton
+ *   that sibling library suites repopulate or leave stale handles across
+ *   (intermittent zero-candidate, stale reopen, and dimension-drift
+ *   failures in shared batches);
  * - storage-retry spies global fs rename/unlink, clarus-invite-accept reads
  *   shared channel/Clarus state, and feishu-provider races SVG raster
  *   fallbacks, so each also runs alone;
@@ -54,6 +55,7 @@ export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
   "test/config/import.test.ts",
   "test/email/imap.test.ts",
   "test/holos/runtime.test.ts",
+  "test/library/database.test.ts",
   "test/library/embedding.test.ts",
   "test/library/embedding-local.test.ts",
   "test/library/experience-recall.test.ts",
