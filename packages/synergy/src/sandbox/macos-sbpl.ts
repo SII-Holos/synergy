@@ -212,7 +212,12 @@ export namespace MacOSSbpl {
   export function networkingPolicy(mode: "full" | "restricted" | "proxy_only"): string {
     switch (mode) {
       case "full":
-        return `(allow network*)`
+        // system.sb's (system-network) supplies the DNS/SystemConfiguration
+        // mach lookups required for outbound resolution under (deny default);
+        // a bare (allow network*) fails DNS. Validated with sandbox-exec on
+        // macOS 26.5.
+        return `(allow network*)
+(system-network)`
       case "restricted":
         return `(allow network-inbound)`
       case "proxy_only":

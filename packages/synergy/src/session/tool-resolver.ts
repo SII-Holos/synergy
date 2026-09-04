@@ -1594,6 +1594,7 @@ export namespace ToolResolver {
                         protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
                         dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
                         stripDefaultHomeDenyRoot: true,
+                        networkMode: sandboxPolicy?.network.mode,
                         backend: sandbox.backend,
                       })
                       if (wrapper.skipReason && sandbox.fallback !== "deny") {

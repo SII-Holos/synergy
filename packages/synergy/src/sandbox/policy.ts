@@ -9,6 +9,25 @@ import * as path from "path"
 
 export const DEFAULT_SYSTEM_RUNTIME_READ_ROOTS = ["/usr/lib", "/System/Library", "/bin", "/usr/bin"]
 
+/**
+ * Developer-toolchain read roots for macOS sandbox profiles. Homebrew
+ * (`/opt/homebrew` on Apple Silicon, `/usr/local` on Intel) hosts the git,
+ * language runtimes, and package managers a developer shell actually uses;
+ * `/Library/Developer/CommandLineTools` and `/private/etc` cover CLT tools and
+ * TLS/ssl configuration. Only meaningful on darwin; other platforms ignore it.
+ */
+export const MACOS_DEVELOPER_READ_ROOTS = [
+  "/opt/homebrew",
+  "/usr/local",
+  "/Library/Developer/CommandLineTools",
+  "/etc",
+  "/private/etc",
+]
+
+export function macosPlatformReadRoots(): string[] {
+  return [...MACOS_DEVELOPER_READ_ROOTS]
+}
+
 export function pathFlavor(root: string): typeof path.posix | typeof path.win32 {
   return /^[A-Za-z]:[\\/]/.test(root) || root.startsWith("\\\\") ? path.win32 : path.posix
 }
@@ -32,6 +51,24 @@ export function defaultRuntimeReadRoots(homedir: string): string[] {
 
 export function uniqueRoots(roots: string[]): string[] {
   return [...new Set(roots.filter(Boolean))]
+}
+
+export function gitProtectedSubpaths(root: string): string[] {
+  return [joinPathLike(root, ".git", "hooks"), joinPathLike(root, ".git", "config")]
+}
+
+/**
+ * Expand bare `<root>/.git` entries into the granular read-only subpaths
+ * (hooks + config) so git index/object/ref writes keep working under a
+ * writable root while the tamper/code-execution surface stays protected.
+ */
+export function expandGitProtectedSubpaths(paths: string[]): string[] {
+  return uniqueRoots(
+    paths.flatMap((p) => {
+      const flavor = pathFlavor(p)
+      return flavor.basename(p) === ".git" ? gitProtectedSubpaths(flavor.dirname(p)) : [p]
+    }),
+  )
 }
 
 export function ancestorLiterals(root: string): string[] {

@@ -204,24 +204,32 @@ function canonicalize(p: string): string {
  * Seatbelt SBPL enforces "deny always wins" regardless of rule order.
  * A broad (deny (subpath /Users/eric)) would block workspace access even if
  * the workspace is later allowed. Instead, we enumerate each sibling directory
- * of the homedir and deny only those that are NOT the workspace or its ancestors.
+ * of the homedir and deny only those that are NOT the workspace, its ancestors,
+ * or an explicitly allowed readable root (or an ancestor of one).
  *
- * This achieves the goal: workspace access is permitted, but other user data
- * directories under $HOME are blocked.
+ * This achieves the goal: workspace access is permitted, other user data
+ * directories under $HOME are blocked, and explicitly allowed user runtime
+ * read roots (e.g. ~/.gitconfig, ~/.config/git, ~/.bun) stay readable.
  */
-function buildSiblingDenyRules(workspace: string, homedir: string): string[] {
+function buildSiblingDenyRules(workspace: string, homedir: string, readableRoots: string[]): string[] {
   const results: string[] = []
   const ancestors = new Set(ancestorLiterals(workspace).map((p) => canonicalize(p)))
+  const canonicalReadRoots = readableRoots.map((r) => canonicalize(r)).filter((r) => r !== canonicalize("/"))
+  const isReadRootPath = (full: string): boolean =>
+    canonicalReadRoots.some((r) => full === r || r.startsWith(full + "/"))
 
   try {
     const entries = fs_node.readdirSync(homedir)
     for (const entry of entries) {
       const full = canonicalize(path.join(homedir, entry))
-      if (!ancestors.has(full) && !full.startsWith(workspace + "/") && full !== workspace) {
-        const r = escapeSbpl(full)
-        results.push(`(deny file-read* (subpath "${r}"))`)
-        results.push(`(deny file-write* (subpath "${r}"))`)
-      }
+      if (ancestors.has(full) || full.startsWith(workspace + "/") || full === workspace) continue
+      // Skip a sibling that is an explicitly allowed read root or an ancestor
+      // of one: a sibling deny would otherwise defeat the (allow file-read*)
+      // granted for user runtime roots under the homedir (deny wins in Seatbelt).
+      if (isReadRootPath(full)) continue
+      const r = escapeSbpl(full)
+      results.push(`(deny file-read* (subpath "${r}"))`)
+      results.push(`(deny file-write* (subpath "${r}"))`)
     }
   } catch {
     // can't read homedir — skip sibling blocking
@@ -271,7 +279,7 @@ export namespace MacOSPolicy {
     //    Uses canonicalized paths for APFS firmlink correctness.
     const homedir = canonicalize(os.homedir())
     const workspace = canonicalize(fs.workspace)
-    for (const rule of buildSiblingDenyRules(workspace, homedir)) {
+    for (const rule of buildSiblingDenyRules(workspace, homedir, fs.readableRoots)) {
       lines.push(rule)
     }
 
