@@ -105,7 +105,7 @@ export function SessionConversation(props: {
       contentClassList={{
         "max-w-full": true,
         "md:max-w-[60rem]": true,
-        "pb-4 md:pb-[calc(var(--prompt-height,10rem)+96px)]": true,
+        "pb-6 md:pb-[calc(var(--prompt-height,10rem)+96px)]": true,
       }}
     >
       <MessageSlotOutlet slot="message.above-conversation" sessionId={props.sessionID} />

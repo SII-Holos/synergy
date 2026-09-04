@@ -84,7 +84,7 @@ describe("boss-synergy primary agent", () => {
 
   test("denies unknown tools via the wildcard deny", () => {
     const agent = agents["boss-synergy"]
-    expect(action(agent, "websearch")).toBe("deny")
+    expect(action(agent, "webfetch")).toBe("deny")
     expect(action(agent, "todowrite")).toBe("deny")
   })
 })

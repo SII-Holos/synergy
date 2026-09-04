@@ -898,6 +898,7 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .sb-session-icon-pulse [data-slot="icon-svg"],
   .plugin-text-action-spinner {
     animation: none;
   }

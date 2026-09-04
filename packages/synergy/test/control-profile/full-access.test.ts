@@ -57,7 +57,6 @@ test("full_access profile — decidePermission returns allow for all low-risk to
         "glob",
         "read",
         "webfetch",
-        "websearch",
         "file_search",
       ]
       for (const tool of lowRiskTools) {

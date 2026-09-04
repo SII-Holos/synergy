@@ -34,9 +34,10 @@ data/session_index/
 data/sessions_page_index/
 data/session_child_index/
 data/session_nav_v2/
+data/session_search_v1/<scope>/<session>/
+data/session_search_dirty_v1/<scope>/<session>/
 data/sessions/<scope>/<session>/
 data/session_message_order_v1/<scope>/<session>/
-data/endpoint_session/
 data/channel/managed_ownership/
 data/embedding/models/
 data/channel/managed_ownership_reverse/
@@ -83,7 +84,7 @@ The standalone Synergy Link host keeps its own per-instance state root at `SYNER
 
 Inside a session, `info.json`, `summary.json`, `summary_cursor.json`, `todo.json`, `dag.json`, `lightloop_terminal.json`, `inbox/`, `messages/`, and `history/` are separate records. `lightloop_terminal.json` preserves a plugin-owned Light Loop result and its `lightloop.after` delivery acknowledgement after the interactive workflow is cleared. The summary cursor is derived, discardable state used to extend cumulative diff ranges from bounded loop messages; missing cursors rebuild from session history, and rollback or unrollback invalidates them. Message info and each part are independently addressable, which supports streaming writes and narrow reads.
 
-The session index, paged-session index, child-session index, navigation index, and message-order index are derived but operationally important. `session_message_order_v1` contains sortable per-message markers and a readiness/count record for bounded newest-first reads; missing or interrupted state rebuilds from canonical message info. Do not hand-move one session directory without its Scope/session indexes; use export/import, data, migration, or repair workflows.
+The session index, paged-session index, child-session index, navigation index, message-order index, and session-search index are derived but operationally important. `session_message_order_v1` contains sortable per-message markers and a readiness/count record for bounded newest-first reads; missing or interrupted state rebuilds from canonical message info. `session_search_v1` caches per-session searchable text excerpts (with `session_search_dirty_v1` dirty markers); both are discardable — deleting them only forces a lazy rebuild on the next `session_search` query. Do not hand-move one session directory without its Scope/session indexes; use export/import, data, migration, or repair workflows.
 
 Lattice stores every v2 run by immutable run ID. A session's `lattice/current` record selects the run shown as current without overwriting older terminal runs; it is a repairable index over canonical Run records. Per-run event files are idempotent, best-effort audit records, not an event-sourced reconstruction of the Run. Run, Step, Blueprint binding, and BlueprintLoop records remain the recovery facts.
 

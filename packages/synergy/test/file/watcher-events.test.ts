@@ -20,7 +20,37 @@ describe("FileWatcherEvents ownership", () => {
   test("keeps .synergy browsable while excluding it from the root watcher", () => {
     expect(FileIgnore.match(".synergy/worktrees/example/src/index.ts")).toBe(false)
     expect(FileWatcherEvents.workspaceSubscriptionIgnores([])).toContain(".synergy")
+    expect(FileWatcherEvents.workspaceSubscriptionIgnores([])).toContain("**/.synergy/**")
+    expect(FileWatcherEvents.workspaceSubscriptionIgnores([])).toContain("**/node_modules/**")
     expect(FileWatcherEvents.projectRuntimeSubscriptionIgnores()).toContain("worktrees")
+    expect(FileWatcherEvents.projectRuntimeSubscriptionIgnores()).toContain("**/worktrees/**")
+  })
+
+  test("recognizes terminal Linux inotify capacity failures only", () => {
+    expect(
+      FileWatcherEvents.isLinuxInotifyTerminalError(
+        new Error("inotify_add_watch on '/x' failed: No space left on device"),
+        "linux",
+      ),
+    ).toBe(true)
+    expect(
+      FileWatcherEvents.isLinuxInotifyTerminalError(
+        Object.assign(new Error("watch failed"), { code: "ENOSPC" }),
+        "linux",
+      ),
+    ).toBe(true)
+    // Recoverable failures and non-Linux platforms stay retryable.
+    expect(FileWatcherEvents.isLinuxInotifyTerminalError(new Error("Operation timed out after 10000ms"), "linux")).toBe(
+      false,
+    )
+    expect(
+      FileWatcherEvents.isLinuxInotifyTerminalError(
+        new Error("inotify_add_watch on '/x' failed: Permission denied"),
+        "linux",
+      ),
+    ).toBe(false)
+    expect(FileWatcherEvents.isLinuxInotifyTerminalError(new Error("No space left on device"), "darwin")).toBe(false)
+    expect(FileWatcherEvents.isLinuxInotifyTerminalError(new Error("No space left on device"), "win32")).toBe(false)
   })
 
   test("publishes only supported project runtime inputs from .synergy", async () => {
@@ -51,6 +81,139 @@ describe("FileWatcherEvents ownership", () => {
         )
       },
     })
+  })
+})
+
+describe("FileWatcherEvents native subscription policy", () => {
+  test("keeps top-level ignore paths and adds recursive globs", () => {
+    const ignores = FileWatcherEvents.workspaceSubscriptionIgnores([])
+    // Plain folder names become native top-level ignorePaths (FSEvents kernel
+    // exclusions, Windows prefix pruning); recursive globs prune nested
+    // occurrences during the Linux inotify tree walk. Dropping either half
+    // regresses one platform family.
+    expect(ignores).toContain(".synergy")
+    expect(ignores).toContain("**/.synergy/**")
+    expect(ignores).toContain("node_modules")
+    expect(ignores).toContain("**/node_modules/**")
+
+    const runtime = FileWatcherEvents.projectRuntimeSubscriptionIgnores()
+    expect(runtime).toContain("worktrees")
+    expect(runtime).toContain("**/worktrees/**")
+    expect(runtime).toContain("cache")
+    expect(runtime).toContain("**/cache/**")
+  })
+
+  test("Linux waits for the native attempt to settle; other platforms keep the 10s bound", () => {
+    expect(FileWatcherEvents.nativeSubscribeTimeoutMs("linux")).toBeUndefined()
+    expect(FileWatcherEvents.nativeSubscribeTimeoutMs("darwin")).toBe(10_000)
+    expect(FileWatcherEvents.nativeSubscribeTimeoutMs("win32")).toBe(10_000)
+  })
+
+  test("trips a process-wide breaker on Linux capacity failure until reset", () => {
+    FileWatcherEvents.resetLinuxInotifyCapacity()
+    expect(FileWatcherEvents.isLinuxInotifyCapacityTripped()).toBe(false)
+
+    FileWatcherEvents.tripLinuxInotifyCapacity()
+    expect(FileWatcherEvents.isLinuxInotifyCapacityTripped()).toBe(true)
+
+    FileWatcherEvents.resetLinuxInotifyCapacity()
+    expect(FileWatcherEvents.isLinuxInotifyCapacityTripped()).toBe(false)
+  })
+
+  test("serializes queued tasks and keeps the queue alive after a failure", async () => {
+    const enqueue = FileWatcherEvents.createSerialQueue()
+    const order: string[] = []
+    let releaseFirst: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+
+    const first = enqueue(async () => {
+      order.push("first:start")
+      await gate
+      order.push("first:done")
+    })
+    const second = enqueue(async () => {
+      order.push("second")
+    })
+    await Bun.sleep(0)
+    expect(order).toEqual(["first:start"])
+
+    releaseFirst?.()
+    await Promise.all([first, second])
+    expect(order).toEqual(["first:start", "first:done", "second"])
+
+    const failing = enqueue(async () => {
+      throw new Error("boom")
+    })
+    const afterFailure = enqueue(async () => {
+      order.push("after-failure")
+    })
+    await expect(failing).rejects.toThrow("boom")
+    await afterFailure
+    expect(order).toContain("after-failure")
+  })
+
+  test("classifies synthetic capacity errors by marker, independent of code or message", () => {
+    const synthetic = FileWatcherEvents.linuxInotifyCapacityError() as Error & { code?: string }
+    delete synthetic.code
+    expect(FileWatcherEvents.isLinuxInotifyTerminalError(synthetic, "linux")).toBe(true)
+    expect(FileWatcherEvents.isLinuxInotifyTerminalError(synthetic, "darwin")).toBe(false)
+    expect(FileWatcherEvents.isLinuxInotifyTerminalError(synthetic, "win32")).toBe(false)
+  })
+
+  test("warns once when an uncancellable task stalls, then reports its settle", async () => {
+    const stalls: number[] = []
+    const settled: number[] = []
+    let release: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const task = gate.then(() => "done")
+    const observed = FileWatcherEvents.warnOnStall({
+      task,
+      warnMs: 5,
+      onStall: (elapsedMs) => stalls.push(elapsedMs),
+      onSettledAfterStall: (elapsedMs) => settled.push(elapsedMs),
+    })
+    await Bun.sleep(25)
+    expect(stalls).toHaveLength(1)
+    expect(settled).toHaveLength(0)
+
+    release?.()
+    await expect(observed).resolves.toBe("done")
+    expect(stalls).toHaveLength(1)
+    expect(settled).toHaveLength(1)
+  })
+
+  test("does not warn when the uncancellable task settles before the threshold", async () => {
+    const stalls: number[] = []
+    const value = await FileWatcherEvents.warnOnStall({
+      task: Promise.resolve(42),
+      warnMs: 20,
+      onStall: (elapsedMs) => stalls.push(elapsedMs),
+    })
+    expect(value).toBe(42)
+    await Bun.sleep(40)
+    expect(stalls).toHaveLength(0)
+  })
+
+  test("preserves a stalled task's rejection while still reporting the settle", async () => {
+    const settled: number[] = []
+    let rejectTask: ((error: Error) => void) | undefined
+    const task = new Promise<string>((_, reject) => {
+      rejectTask = reject
+    })
+    const observed = FileWatcherEvents.warnOnStall({
+      task,
+      warnMs: 5,
+      onStall: () => {},
+      onSettledAfterStall: (elapsedMs) => settled.push(elapsedMs),
+    })
+    await Bun.sleep(20)
+    rejectTask?.(new Error("scan failed"))
+    await expect(observed).rejects.toThrow("scan failed")
+    expect(settled).toHaveLength(1)
   })
 })
 
@@ -347,6 +510,31 @@ describe("FileWatcherEvents drain", () => {
 })
 
 describe("FileWatcherEvents subscription recovery", () => {
+  test("does not retry a terminal subscription failure", async () => {
+    let attempts = 0
+    const errors: unknown[] = []
+    const recovery = FileWatcherEvents.createSubscriptionRecovery({
+      retryMs: 0,
+      connect: async () => {
+        attempts += 1
+        throw new Error("inotify_add_watch on '/x' failed: No space left on device")
+      },
+      disconnect: async () => {},
+      onError: (error) => {
+        errors.push(error)
+      },
+      shouldRetry: (error) => !FileWatcherEvents.isLinuxInotifyTerminalError(error, "linux"),
+    })
+
+    await recovery.start()
+    await Bun.sleep(20)
+
+    expect(attempts).toBe(1)
+    expect(errors).toHaveLength(1)
+    expect(recovery.active()).toBe(false)
+    await recovery.dispose()
+  })
+
   test("reports failure, resubscribes, and disconnects the failed subscription", async () => {
     let attempts = 0
     let disconnects = 0

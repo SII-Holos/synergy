@@ -914,3 +914,234 @@ describe("settings config patch github integration", () => {
     ).not.toHaveProperty("github")
   })
 })
+
+describe("settings config patch mcp expand-by-default", () => {
+  const localServer = {
+    key: "filesystem",
+    type: "local" as const,
+    enabled: true,
+    expandByDefault: false,
+    command: "npx foo",
+    url: "",
+    timeout: "",
+    environment: "",
+    headers: "",
+  }
+
+  test("omits expandByDefault when false so saving does not materialize the key", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [{ ...localServer }]
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect(patch.mcp).toEqual({
+      filesystem: { type: "local", enabled: true, command: ["npx", "foo"] },
+    })
+    expect((patch.mcp as Record<string, Record<string, unknown>>).filesystem).not.toHaveProperty("expandByDefault")
+  })
+
+  test("writes expandByDefault: true when enabled", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [{ ...localServer, expandByDefault: true }]
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect((patch.mcp as Record<string, Record<string, unknown>>).filesystem).toMatchObject({
+      type: "local",
+      enabled: true,
+      command: ["npx", "foo"],
+      expandByDefault: true,
+    })
+  })
+
+  test("clears a stored expandByDefault while preserving unknown server fields", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [{ ...localServer }]
+    const original = {
+      type: "local",
+      enabled: true,
+      command: ["npx", "foo"],
+      expandByDefault: true,
+      toolBlacklist: ["editor"],
+    }
+    const cfg = { mcp: { filesystem: original } } as Config
+
+    const patch = buildPatch({ cfg, state, originalMcps: { filesystem: { ...original } } })
+
+    expect((patch.mcp as Record<string, Record<string, unknown>>).filesystem).toEqual({
+      type: "local",
+      enabled: true,
+      command: ["npx", "foo"],
+      toolBlacklist: ["editor"],
+    })
+  })
+
+  test("writes expandByDefault: false when it overrides a global true default", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [{ ...localServer }]
+
+    const patch = buildPatch({
+      cfg: { mcpDefaults: { expandByDefault: true } } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect((patch.mcp as Record<string, Record<string, unknown>>).filesystem).toMatchObject({
+      type: "local",
+      enabled: true,
+      command: ["npx", "foo"],
+      expandByDefault: false,
+    })
+  })
+
+  test("keeps an explicit stored false while saving other fields under a global true default", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [{ ...localServer, command: "npx bar" }]
+    const original = {
+      type: "local",
+      enabled: true,
+      command: ["npx", "foo"],
+      expandByDefault: false,
+      toolBlacklist: ["editor"],
+    }
+    const cfg = { mcpDefaults: { expandByDefault: true }, mcp: { filesystem: original } } as Config
+
+    const patch = buildPatch({ cfg, state, originalMcps: { filesystem: { ...original } } })
+
+    expect((patch.mcp as Record<string, Record<string, unknown>>).filesystem).toEqual({
+      type: "local",
+      enabled: true,
+      command: ["npx", "bar"],
+      expandByDefault: false,
+      toolBlacklist: ["editor"],
+    })
+  })
+
+  test("omits expandByDefault when the server inherits the global true default untouched", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.entries = [{ ...localServer, expandByDefault: true }]
+
+    const patch = buildPatch({
+      cfg: { mcpDefaults: { expandByDefault: true } } as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect((patch.mcp as Record<string, Record<string, unknown>>).filesystem).not.toHaveProperty("expandByDefault")
+  })
+})
+
+describe("settings config patch builtin mcp", () => {
+  const builtin = (overrides: Partial<Record<string, unknown>>) => ({
+    name: "anysearch",
+    url: "https://api.anysearch.com/mcp",
+    status: { status: "connected" } as const,
+    keyConfigured: false,
+    toggle: true,
+    apiKeyDraft: "",
+    clearApiKey: false,
+    ...overrides,
+  })
+
+  test("toggling a built-in MCP server off writes the opt-out stub", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [builtin({ toggle: false })]
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect(patch.mcp).toEqual({ anysearch: { enabled: false } })
+  })
+
+  test("re-enabling an opted-out built-in writes a bare enabled stub", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [
+      builtin({
+        name: "scholight",
+        url: "https://scholight.sanchezcloud.net/api/mcp",
+        status: { status: "disabled" } as const,
+        toggle: true,
+      }),
+    ]
+
+    const patch = buildPatch({
+      cfg: { mcp: { scholight: { enabled: false } } } as unknown as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.mcp).toEqual({ scholight: { enabled: true } })
+  })
+
+  test("built-in toggles matching stored state emit no mcp patch", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [
+      builtin({}),
+      builtin({
+        name: "scholight",
+        url: "https://scholight.sanchezcloud.net/api/mcp",
+        status: { status: "disabled" } as const,
+        toggle: false,
+      }),
+    ]
+
+    const patch = buildPatch({
+      cfg: { mcp: { scholight: { enabled: false } } } as unknown as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("mcp")
+  })
+
+  test("existing opt-out stubs are carried forward unchanged", () => {
+    const state = defaultSettingsState("enter")
+
+    const patch = buildPatch({
+      cfg: { mcp: { anysearch: { enabled: false } } } as unknown as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("mcp")
+  })
+
+  test("typing an API key writes the key onto the stub", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [builtin({ apiKeyDraft: "as_sk_new" })]
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect(patch.mcp).toEqual({ anysearch: { apiKey: "as_sk_new" } })
+  })
+
+  test("clearing a stored key writes the empty-string marker", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [builtin({ keyConfigured: true, clearApiKey: true })]
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect(patch.mcp).toEqual({ anysearch: { apiKey: "" } })
+  })
+
+  test("key and toggle-off merge onto the same stub and keep stored fields", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [builtin({ keyConfigured: true, toggle: false, apiKeyDraft: "as_sk_rotated" })]
+
+    const patch = buildPatch({
+      cfg: { mcp: { anysearch: { apiKey: "__REDACTED__" } } } as unknown as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.mcp).toEqual({ anysearch: { apiKey: "as_sk_rotated", enabled: false } })
+  })
+
+  test("a key draft matching nothing stored with no clear emits no mcp patch", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [builtin({ apiKeyDraft: "   " })]
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect(patch).not.toHaveProperty("mcp")
+  })
+})
