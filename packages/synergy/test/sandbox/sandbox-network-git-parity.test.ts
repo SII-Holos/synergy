@@ -92,6 +92,38 @@ describe("sandbox network parity (PR #1308 follow-up)", () => {
     expect(helperProfile.network.mode).toBe("full")
     fs.unlinkSync(wrapper.tempPath!)
   })
+
+  test("linux helper profile binds /etc read-only only when networkMode is full", () => {
+    const full = LinuxBackend.prepare({
+      command: "/bin/sh",
+      args: ["-c", "true"],
+      workspace: WORKSPACE,
+      sandboxMode: "workspace_write",
+      forcePlatform: "linux",
+      forceHelperPath: "/bin/true",
+      forceHelperVerified: true,
+      networkMode: "full",
+    })
+    const restricted = LinuxBackend.prepare({
+      command: "/bin/sh",
+      args: ["-c", "true"],
+      workspace: WORKSPACE,
+      sandboxMode: "workspace_write",
+      forcePlatform: "linux",
+      forceHelperPath: "/bin/true",
+      forceHelperVerified: true,
+      networkMode: "restricted",
+    })
+    expect(full.sandboxed).toBe(true)
+    expect(restricted.sandboxed).toBe(true)
+    const fullProfile = JSON.parse(fs.readFileSync(full.tempPath!, "utf8"))
+    const restrictedProfile = JSON.parse(fs.readFileSync(restricted.tempPath!, "utf8"))
+    // /etc always exists on Linux; the remaining paths are existence-filtered.
+    expect(fullProfile.fileSystem.readableRoots).toContain("/etc")
+    expect(restrictedProfile.fileSystem.readableRoots).not.toContain("/etc")
+    fs.unlinkSync(full.tempPath!)
+    fs.unlinkSync(restricted.tempPath!)
+  })
 })
 
 describe("sandbox git write parity (PR #1308 follow-up)", () => {

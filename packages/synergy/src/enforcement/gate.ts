@@ -115,6 +115,8 @@ export interface GateOptions {
   pluginToolCapabilities?: Record<string, PluginToolCapabilityMap>
   /** Pre-loaded approval records keyed by plugin ID. If absent, no approval check is performed. */
   pluginApprovals?: Record<string, PluginApprovalCapabilities>
+  /** Session-scoped isolation key for the controlled temporary root (autonomous profile). */
+  sessionKey?: string
   originalCheckout?: string
   /** Additional directories where read-only access is treated as inside-workspace.
    *  Write operations are never allowed through readRoots. */
@@ -905,6 +907,7 @@ export namespace EnforcementGate {
       trustedRoots,
       execPolicy,
       synergyRoot,
+      sessionKey,
     } = options
     const profileId = ControlProfileCompiler.normalize(rawProfileId)
     const trustedRootList = trustedRoots ?? []
@@ -913,6 +916,7 @@ export namespace EnforcementGate {
       workspace: activeWorkspace,
       workspaceType,
       trustedRoots: trustedRootList,
+      sessionKey,
     })
 
     if (!resolved.valid) {

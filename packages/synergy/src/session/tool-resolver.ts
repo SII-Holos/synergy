@@ -1528,6 +1528,7 @@ export namespace ToolResolver {
                     readRoots: [synergyRoot, ...trustedRoots],
                     trustedRoots,
                     synergyRoot,
+                    sessionKey: runtimeInput.session?.id,
                   }),
                 )
                 await toolTrace.phase("tool.resolver.ready", "resolver ready", {
@@ -1588,7 +1589,15 @@ export namespace ToolResolver {
                         args: ["-c", input.command],
                         workspace,
                         sandboxMode: sandbox.mode,
-                        extraReadRoots: [synergyRoot, ...trustedRoots, ...extRoots, ...input.extraReadRoots],
+                        extraReadRoots: [
+                          ...new Set([
+                            ...(sandboxPolicy?.fileSystem.readableRoots ?? []),
+                            synergyRoot,
+                            ...trustedRoots,
+                            ...extRoots,
+                            ...input.extraReadRoots,
+                          ]),
+                        ],
                         extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
                         protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
                         dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
@@ -1794,6 +1803,7 @@ export namespace ToolResolver {
                       readRoots: [Global.Path.root, ...trustedRoots],
                       synergyRoot: Global.Path.root,
                       trustedRoots,
+                      sessionKey: runtimeInput.session?.id,
                     }),
                   )
                   await toolTrace.phase("tool.resolver.ready", "resolver ready", {

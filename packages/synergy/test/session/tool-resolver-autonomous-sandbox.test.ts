@@ -129,6 +129,53 @@ test("autonomous profile-auto-allowed bash installs the sandbox wrapper and runs
     },
   })
 })
+test("autonomous gate-approved external read is forwarded into the sandbox wrapper read roots", async () => {
+  if (!fs.existsSync("/etc/hosts")) return
+  await using tmp = await tmpdir({ git: true, config: { controlProfile: "autonomous" } })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const originalRegistryTools = ToolRegistry.tools
+      ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool()])
+      const prepare = spyOn(SandboxBackend, "prepareWrapper").mockImplementation((input) => ({
+        command: input.command,
+        args: input.args,
+        sandboxed: true,
+      }))
+      const session = await Session.create({ controlProfile: "autonomous" })
+      try {
+        const { processor, bash } = await resolveBashTool(session.id)
+        try {
+          const result = await bash.execute(
+            { command: "cat /etc/hosts", description: "probe" },
+            { toolCallId: "call_bash_autonomous_ext_read" },
+          )
+          // The gate auto-allowed the external read and the wrapper was
+          // prepared (auto-allow never bypasses the sandbox under autonomous).
+          expect(result.metadata.exit).toBe(0)
+          expect(prepare.mock.calls.length).toBeGreaterThan(0)
+          const lastInput = prepare.mock.calls[prepare.mock.calls.length - 1][0]
+          // The gate-approved external read reaches the wrapper's read roots.
+          expect(lastInput.extraReadRoots).toContain("/etc/hosts")
+          // The workspace stays readable.
+          expect(lastInput.extraReadRoots).toContain(tmp.path)
+          // The session-scoped controlled temp root is a writable root.
+          expect(
+            (lastInput.extraWritableRoots ?? []).some((root: string) =>
+              root.startsWith(`${tmp.path}/.synergy/tmp/synergy-${process.pid}-`),
+            ),
+          ).toBe(true)
+        } finally {
+          processor.dispose("test")
+        }
+      } finally {
+        await Session.remove(session.id)
+        ;(ToolRegistry.tools as any) = originalRegistryTools
+        prepare.mockRestore()
+      }
+    },
+  })
+})
 
 test("full_access keeps the historical sandbox bypass for bash", async () => {
   await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })

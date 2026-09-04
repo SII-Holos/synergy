@@ -595,6 +595,16 @@ export namespace LinuxBackend {
 
     const homedir = os.homedir()
     const workspace = opts.workspace
+    // Full-network children share the host network namespace but start from a
+    // --tmpfs root, so resolv.conf and CA stores would be invisible. Bind the
+    // network config paths read-only when full networking is approved; every
+    // entry is existence-filtered because bwrap hard-fails on missing sources.
+    const networkConfigRoots =
+      opts.networkMode === "full"
+        ? ["/etc", "/etc/resolv.conf", "/run/systemd/resolve", "/var/run/systemd/resolve"].filter((p) =>
+            fs.existsSync(p),
+          )
+        : []
 
     // Aggregate protected paths: the platform defaults plus every protected
     // path accumulated by the enforcement gate — which includes `<root>/.git`
@@ -618,6 +628,7 @@ export namespace LinuxBackend {
           workspace,
           ...(opts.runtimeReadRoots ?? defaultRuntimeReadRoots(homedir)),
           ...(opts.extraReadRoots ?? []),
+          ...networkConfigRoots,
         ],
         writableRoots: opts.sandboxMode === "workspace_write" ? [workspace, ...(opts.extraWritableRoots ?? [])] : [],
         readOnlySubpaths: protectedPaths,

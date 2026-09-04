@@ -633,6 +633,7 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
     readRoots: [Global.Path.root, ...trustedRoots],
     trustedRoots,
     synergyRoot: Global.Path.root,
+    sessionKey: input.invocation.sessionId,
   })
   const envelope = await gate.evaluateIsolated(
     "bash",
@@ -659,7 +660,9 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
     workspace: input.invocation.directory,
     executionCwd: input.invocation.directory,
     sandboxMode: sandbox.mode,
-    extraReadRoots: [Global.Path.root, ...trustedRoots],
+    extraReadRoots: [
+      ...new Set([...(sandboxPolicy?.fileSystem.readableRoots ?? []), Global.Path.root, ...trustedRoots]),
+    ],
     extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
     protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
     dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
