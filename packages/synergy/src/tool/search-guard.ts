@@ -4,7 +4,7 @@ export namespace SearchGuard {
   export const REFLECTION_MARKER = "[Search failure reflection]"
   export const EARLY_STOP_MARKER = "[Search early stop]"
 
-  export const SEARCH_TOOLS = new Set(["websearch", "arxiv_search", "webfetch", "arxiv_download"])
+  export const SEARCH_TOOLS = new Set(["webfetch"])
 
   export type FailureType =
     | "no_results"
@@ -49,15 +49,7 @@ export namespace SearchGuard {
 
   export function extractQuery(tool: string, input: any): string | undefined {
     if (!input || typeof input !== "object") return undefined
-    if (tool === "websearch" && typeof input.query === "string") return input.query
     if (tool === "webfetch" && typeof input.url === "string") return input.url
-    if (tool === "arxiv_download" && typeof input.arxivId === "string") return input.arxivId
-    if (tool === "arxiv_search") {
-      if (typeof input.query === "string" && input.query.trim()) return input.query
-      if (Array.isArray(input.titleKeywords) && input.titleKeywords.length) return input.titleKeywords.join(" ")
-      if (Array.isArray(input.authors) && input.authors.length) return input.authors.join(" ")
-      if (Array.isArray(input.categories) && input.categories.length) return input.categories.join(" ")
-    }
     return undefined
   }
 

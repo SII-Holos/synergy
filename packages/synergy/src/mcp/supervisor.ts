@@ -26,6 +26,7 @@ import { PluginId } from "@ericsanchezok/synergy-plugin/ids"
 import { PendingOAuth } from "./pending-oauth"
 import { McpAuth } from "./auth"
 import { ProcessInspection } from "../process/inspection"
+import { collectBuiltinMcpServers } from "./builtin-catalog"
 
 // ---------------------------------------------------------------------------
 // Bus events — defined here, re-exported by index.ts for back-compat
@@ -258,7 +259,7 @@ export const InvalidPluginServer = NamedError.create(
   }),
 )
 
-export type McpServerSource = "config" | "plugin" | "runtime"
+export type McpServerSource = "config" | "plugin" | "builtin" | "runtime"
 
 function stable(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stable)
@@ -777,12 +778,27 @@ class McpSupervisorImpl {
     const cfg = await Config.current()
     for (const [key, mcp] of Object.entries(cfg.mcp ?? {})) {
       if (typeof mcp !== "object" || mcp === null || !("type" in mcp)) {
-        if (mcp?.enabled !== false) log.error("Ignoring MCP config entry without type", { key })
+        // An `enabled`/`apiKey`-only stub is the documented opt-out/opt-in and
+        // credential marker for built-in servers and is schema-valid; only
+        // warn for malformed values.
+        if (typeof mcp !== "object" || mcp === null || !("enabled" in mcp || "apiKey" in mcp)) {
+          log.error("Ignoring MCP config entry without type", { key })
+        }
         continue
       }
       const config = Config.normalizeMcp(mcp as Config.Mcp, cfg.mcpDefaults, cfg.experimental?.mcp_timeout)
       const handle = this.createHandle(key, config, "config")
       this.handles.set(key, handle)
+      this.applyStartupPolicy(handle)
+    }
+    // Built-in search servers (anysearch/scholight) stage below user config:
+    // a user entry that is a full typed server or an explicit `enabled: false`
+    // stub owns the name and suppresses the builtin.
+    const staged = collectBuiltinMcpServers(cfg.mcp as Record<string, unknown> | undefined)
+    for (const { name, config } of staged) {
+      const normalized = Config.normalizeMcp(config, cfg.mcpDefaults, cfg.experimental?.mcp_timeout)
+      const handle = this.createHandle(name, normalized, "builtin")
+      this.handles.set(name, handle)
       this.applyStartupPolicy(handle)
     }
     Bus.publish(Ready, {})

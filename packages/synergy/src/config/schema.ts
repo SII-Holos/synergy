@@ -589,7 +589,6 @@ export const Permission = z
         dagread: PermissionAction.optional(),
         question: PermissionAction.optional(),
         webfetch: PermissionAction.optional(),
-        websearch: PermissionAction.optional(),
         download: PermissionAction.optional(),
         lsp: PermissionRule.optional(),
         doom_loop: PermissionAction.optional(),
@@ -1896,9 +1895,16 @@ export const Info = z
           Mcp,
           z
             .object({
-              enabled: z.boolean(),
+              enabled: z.boolean().optional(),
+              // Built-in server credential stub: raising rate limits for a
+              // built-in MCP server without taking ownership of its config.
+              // Injected as a Bearer header at staging; empty string clears.
+              apiKey: z.string().optional(),
             })
-            .strict(),
+            .strict()
+            .refine((stub) => "enabled" in stub || "apiKey" in stub, {
+              error: "Built-in server stubs must set at least one field",
+            }),
         ]),
       )
       .optional()

@@ -28,6 +28,8 @@ await runBatchedTests({
     "test/components/tool/task-subagent-detail.test.tsx",
     "test/components/tool/renders/standard.test.tsx",
     "test/components/tool/renders/file-ops.test.tsx",
+    "test/components/tool/search-tool-renders.test.tsx",
+    "test/components/tool/search-tool-bodies.test.tsx",
     "test/components/tooltip.test.ts",
     "test/components/tooltip-focus.test.ts",
     "test/components/provider-icon.test.ts",

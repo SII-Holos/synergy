@@ -1779,7 +1779,6 @@ export namespace SessionInvoke {
     "scan_document",
     "edit",
     "write",
-    "websearch",
     "webfetch",
   ])
   const CLEARING_TOOLS = new Set(["dagwrite", "dagread", "dagpatch", "task", "task_list", "task_output", "task_cancel"])

@@ -2385,6 +2385,23 @@
   background: color-mix(in oklch, var(--settings-card-secondary-bg) 54%, transparent);
 }
 
+.settings-mcp-builtin-key {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid color-mix(in oklch, var(--border-base) 20%, transparent);
+}
+
+.settings-mcp-builtin-key [data-component="input"] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-mcp-builtin-key [data-slot="input-description"] {
+  white-space: normal;
+}
+
 @media (max-width: 840px) {
   .settings-integration-shell {
     width: 100%;

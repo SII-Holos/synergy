@@ -39,6 +39,18 @@ export namespace StoragePath {
   ]
   export const sessionNavIndexRoot = () => ["session_nav_v2"]
   export const sessionNavIndex = (scopeID: ScopeID) => ["session_nav_v2", scopeID as string]
+  export const sessionSearchIndexRoot = () => ["session_search_v1"]
+  export const sessionSearchIndex = (scopeID: ScopeID, sessionID: SessionID) => [
+    "session_search_v1",
+    scopeID as string,
+    sessionID as string,
+  ]
+  export const sessionSearchDirtyRoot = () => ["session_search_dirty_v1"]
+  export const sessionSearchDirty = (scopeID: ScopeID, sessionID: SessionID) => [
+    "session_search_dirty_v1",
+    scopeID as string,
+    sessionID as string,
+  ]
   export const sessionMessageOrderRoot = (scopeID: ScopeID, sessionID: SessionID) => [
     "session_message_order_v1",
     scopeID as string,

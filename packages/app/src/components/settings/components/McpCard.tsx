@@ -19,6 +19,11 @@ const localPillLabel = { id: "settings.mcp.card.pill.local", message: "Local" }
 const remotePillLabel = { id: "settings.mcp.card.pill.remote", message: "Remote" }
 const enabledLabel = { id: "settings.mcp.card.enabled", message: "Enabled" }
 const pausedLabel = { id: "settings.mcp.card.paused", message: "Paused" }
+const expandByDefaultLabel = { id: "settings.mcp.card.expandByDefault", message: "Expand by default" }
+const expandByDefaultDesc = {
+  id: "settings.mcp.card.expandByDefault.description",
+  message: "Keep this server's tools always visible to the model instead of folding them into an expandable MCP group.",
+}
 const collapseLabel = { id: "settings.mcp.card.collapse", message: "Collapse server details" }
 const expandLabel = { id: "settings.mcp.card.expand", message: "Expand server details" }
 const serverNameLabel = { id: "settings.mcp.card.serverName", message: "Server name" }
@@ -130,6 +135,20 @@ export function McpCard(props: {
             description={_(serverNameDesc)}
             value={props.entry.key}
             onChange={(value) => props.onChange("key", value)}
+          />
+
+          <SettingRow
+            title={_(expandByDefaultLabel)}
+            description={_(expandByDefaultDesc)}
+            trailing={
+              <Switch
+                checked={props.entry.expandByDefault}
+                hideLabel
+                onChange={(value) => props.onChange("expandByDefault", value)}
+              >
+                {_(expandByDefaultLabel)}
+              </Switch>
+            }
           />
 
           <SettingRow

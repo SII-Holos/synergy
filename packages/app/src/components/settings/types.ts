@@ -1,5 +1,5 @@
 import type { MessageDescriptor } from "@lingui/core"
-
+import type { McpStatus } from "@ericsanchezok/synergy-sdk/client"
 import type { LocalePreference } from "@/context/locale/types"
 import type { ColorScheme } from "@ericsanchezok/synergy-ui/theme"
 import type { SendShortcut } from "@/context/input"
@@ -178,11 +178,28 @@ export type McpEntry = {
   key: string
   type: "local" | "remote"
   enabled: boolean
+  expandByDefault: boolean
   command: string
   url: string
   timeout: string
   environment: string
   headers: string
+}
+
+export type BuiltinMcpInfo = {
+  name: string
+  url: string
+  status: McpStatus
+  keyConfigured: boolean
+}
+
+export type BuiltinMcpDraft = BuiltinMcpInfo & {
+  /** Draft toggle state; false means the builtin is opted out. */
+  toggle: boolean
+  /** Non-empty when the user typed a replacement key to save. */
+  apiKeyDraft: string
+  /** True when the user explicitly requested key removal. */
+  clearApiKey: boolean
 }
 export type SkillsSettings = {
   agents: boolean
@@ -271,7 +288,17 @@ export function snapToastDuration(value: number): number {
 }
 
 export function emptyMcp(): McpEntry {
-  return { key: "", type: "local", enabled: true, command: "", url: "", timeout: "", environment: "", headers: "" }
+  return {
+    key: "",
+    type: "local",
+    enabled: true,
+    expandByDefault: false,
+    command: "",
+    url: "",
+    timeout: "",
+    environment: "",
+    headers: "",
+  }
 }
 
 export type DialogSettingsProps = {
@@ -340,6 +367,7 @@ export type PluginsStore = {
 
 export type McpsStore = {
   entries: McpEntry[]
+  builtins: BuiltinMcpDraft[]
 }
 
 export type LocalEmbeddingSource = "huggingface" | "hf-mirror" | "custom"
@@ -457,6 +485,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
     },
     mcps: {
       entries: [],
+      builtins: [],
     },
     library: {
       learning: UI_DEFAULTS.libraryLearning,

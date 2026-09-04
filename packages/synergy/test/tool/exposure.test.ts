@@ -647,7 +647,12 @@ describe("tool exposure", () => {
   })
 
   test("MCP definitions keep transport-safe JSON schemas for Agent workers", async () => {
-    await using tmp = await tmpdir({ git: true })
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        mcp: { search: { type: "remote", url: "http://127.0.0.1:9/mcp", expandByDefault: true } },
+      },
+    })
     const originalToolEntries = MCP.toolEntries
     const inputSchema = {
       type: "object" as const,
@@ -719,9 +724,7 @@ describe("tool exposure", () => {
     const originalToolEntries = MCP.toolEntries
     const serverName = "private-server"
     const groupID = ToolExposure.mcpGroupID(serverName)
-    const toolIDs = Array.from({ length: ToolExposure.MCP_DEFER_THRESHOLD }, (_, index) =>
-      ToolExposure.mcpToolID(serverName, `secret_${index}`),
-    )
+    const toolIDs = Array.from({ length: 3 }, (_, index) => ToolExposure.mcpToolID(serverName, `secret_${index}`))
     ;(MCP as any).toolEntries = async () =>
       toolIDs.map((id, index) => ({
         id,
@@ -1198,12 +1201,14 @@ describe("tool exposure", () => {
     })
   })
 
-  test("MCP deferral threshold uses the total visible MCP tool count", () => {
-    expect(ToolExposure.mcpExposure(ToolExposure.MCP_DEFER_THRESHOLD - 1, "github")).toEqual({ mode: "resident" })
-    expect(ToolExposure.mcpExposure(ToolExposure.MCP_DEFER_THRESHOLD, "github")).toMatchObject({
-      mode: "group",
-      group: "mcp:github",
-    })
+  test("MCP exposure defers servers by default and keeps expandByDefault servers resident", () => {
+    expect(ToolExposure.mcpExposure("github")).toMatchObject({ mode: "group", group: "mcp:github" })
+    expect(ToolExposure.mcpExposure("github", false)).toMatchObject({ mode: "group", group: "mcp:github" })
+    expect(ToolExposure.mcpExposure("github", true)).toEqual({ mode: "resident" })
+    expect(ToolExposure.mcpExpandByDefault(undefined, undefined)).toBe(false)
+    expect(ToolExposure.mcpExpandByDefault({ expandByDefault: true }, {})).toBe(true)
+    expect(ToolExposure.mcpExpandByDefault({}, { expandByDefault: true })).toBe(true)
+    expect(ToolExposure.mcpExpandByDefault({ expandByDefault: false }, { expandByDefault: true })).toBe(false)
     expect(ToolExposure.mcpToolID("github server", "list/repos")).toBe("mcp__github_server__list_repos")
   })
 

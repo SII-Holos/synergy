@@ -149,7 +149,7 @@ permission:
   edit: "deny"
   write: "deny"
   bash: "deny"
-  websearch: "allow"
+  webfetch: "allow"
 ---
 
 You are a senior code reviewer with deep expertise in security and software quality.

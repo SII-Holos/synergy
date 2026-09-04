@@ -11648,6 +11648,42 @@ msgstr ""
 msgid "scopes.working"
 msgstr ""
 
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.domains"
+msgstr ""
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.elapsed"
+msgstr ""
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.format"
+msgstr ""
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.host"
+msgstr ""
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.papers"
+msgstr ""
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.results"
+msgstr ""
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.searching"
+msgstr ""
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.strength"
+msgstr ""
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.total"
+msgstr ""
+
 #. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.collapse-all"
 msgstr ""
@@ -11814,10 +11850,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session-status.searching-codebase"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session-status.searching-papers"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -16611,6 +16643,58 @@ msgid "settings.mcp.addServer"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clear"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clearPending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clearUndo"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.configured"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.badge"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.section.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.section.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.connected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.disabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.other"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.card.collapse"
 msgstr ""
 
@@ -16640,6 +16724,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.mcp.card.expand"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.card.expandByDefault"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.card.expandByDefault.description"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -18867,14 +18959,6 @@ msgid "tool.title.archive-note"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.arxiv-download"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.arxiv-search"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.ast-search"
 msgstr ""
 
@@ -19512,10 +19596,6 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.watch"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.web-search"
 msgstr ""
 
 #. Search / web

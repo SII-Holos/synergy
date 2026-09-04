@@ -257,8 +257,7 @@ export namespace ToolResolver {
     if (className === "shell_read" || className === "shell_remote_publish" || className === "shell_remote_write")
       return "bash"
     if (className === "shell_destructive") return "bash"
-    if (className === "network_request")
-      return toolName === "webfetch" || toolName === "websearch" ? toolName : "network_request"
+    if (className === "network_request") return toolName === "webfetch" ? toolName : "network_request"
     return className
   }
 
@@ -792,7 +791,7 @@ export namespace ToolResolver {
       // richer, tool-specific metadata before crossing the boundary.
       if (toolName === "email_send" && cap.class === "communication_email") return false
       if (toolName === "session_send" && cap.class === "identity_act") return false
-      if ((toolName === "webfetch" || toolName === "websearch") && cap.class === "network_request") return false
+      if (toolName === "webfetch" && cap.class === "network_request") return false
       if (toolName === "email_read" && cap.class === "communication_email") return false
       return true
     })
@@ -1717,12 +1716,17 @@ export namespace ToolResolver {
 
     if (input.includeMCP !== false) {
       const mcpSource = ToolMcpSource.get()
+      const config = await Config.current()
       const mcpEntries = mcpSource ? await mcpSource.toolEntries() : []
+      const mcpConfig = config.mcp ?? {}
       const mcpToolNames = new Set(mcpEntries.map((entry) => entry.id))
       for (const entry of mcpEntries) {
         const key = entry.id
         const item = entry.tool
-        const exposure = ToolExposure.mcpExposure(mcpEntries.length, entry.serverName)
+        const exposure = ToolExposure.mcpExposure(
+          entry.serverName,
+          ToolExposure.mcpExpandByDefault(mcpConfig[entry.serverName], config.mcpDefaults),
+        )
         const schema = entry.inputSchema
         result.push({
           id: key,

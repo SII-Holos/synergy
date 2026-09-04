@@ -51,7 +51,7 @@ describe("performance routes", () => {
         value: 1,
         unit: "count",
         module: "tool",
-        tool: "websearch",
+        tool: "webfetch",
       })
     }
     for (let index = 0; index < 2; index++) {
@@ -60,7 +60,7 @@ describe("performance routes", () => {
         value: 1,
         unit: "count",
         module: "tool",
-        tool: "websearch",
+        tool: "webfetch",
         labels: { errorName: "TimeoutError" },
       })
     }
@@ -86,7 +86,7 @@ describe("performance routes", () => {
     const body = await response.json()
     expect(body.top.toolFailures).toEqual([
       {
-        tool: "websearch",
+        tool: "webfetch",
         callCount: 4,
         errorCount: 2,
         errorRate: 0.5,
@@ -109,10 +109,10 @@ describe("performance routes", () => {
       severity: "error",
       module: "tool",
       title: "Tool execution failed",
-      message: "websearch failed during execute",
+      message: "webfetch failed during execute",
       scopeID: "scope-a",
-      fingerprint: "tool-failure:scope-a:websearch:TimeoutError:execute:builtin",
-      evidence: { tool: "websearch", errorClass: "TimeoutError" },
+      fingerprint: "tool-failure:scope-a:webfetch:TimeoutError:execute:builtin",
+      evidence: { tool: "webfetch", errorClass: "TimeoutError" },
     })
     ObservabilityIssues.raise({
       code: "PERF_TOOL_EXECUTION_FAILED",
@@ -127,15 +127,15 @@ describe("performance routes", () => {
     ObservabilityStore.flush()
 
     const response = await Server.App().request(
-      `/global/performance/issues?module=tool&tool=websearch&scopeID=scope-a&since=${now - 1000}&until=${now + 1000}`,
+      `/global/performance/issues?module=tool&tool=webfetch&scopeID=scope-a&since=${now - 1000}&until=${now + 1000}`,
     )
     expect(response.status).toBe(200)
     const body = await response.json()
     expect(body.issues).toHaveLength(1)
-    expect(body.issues[0].evidence).toMatchObject({ tool: "websearch", errorClass: "TimeoutError" })
+    expect(body.issues[0].evidence).toMatchObject({ tool: "webfetch", errorClass: "TimeoutError" })
 
     const outsideWindow = await Server.App().request(
-      `/global/performance/issues?module=tool&tool=websearch&scopeID=scope-a&since=${now + 1000}`,
+      `/global/performance/issues?module=tool&tool=webfetch&scopeID=scope-a&since=${now + 1000}`,
     )
     expect(outsideWindow.status).toBe(200)
     expect((await outsideWindow.json()).issues).toEqual([])

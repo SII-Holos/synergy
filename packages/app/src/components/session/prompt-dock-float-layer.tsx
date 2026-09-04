@@ -20,7 +20,7 @@ export function PromptDockControlSlot(props: { priorityControl?: JSX.Element; fa
 
 export function PromptDockFloatLayer(props: { sessionID: string; priorityControl?: JSX.Element }) {
   return (
-    <div class="prompt-dock-float-layer absolute inset-x-0 bottom-full flex flex-col items-center">
+    <div class="prompt-dock-float-layer relative w-full md:absolute md:inset-x-0 md:bottom-full flex flex-col items-center">
       <SubagentDock sessionID={props.sessionID} />
       <PromptDockControlSlot
         priorityControl={props.priorityControl}
