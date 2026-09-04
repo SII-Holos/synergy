@@ -901,6 +901,10 @@
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
+          "glob": "src/components/settings/panels/DevicePushBlock.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
           "glob": "src/components/settings/panels/EmailPanel.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },

@@ -40,6 +40,7 @@ describe("coverage batch splitting", () => {
       "test/channel/svg-raster-standalone.test.ts",
       "test/config/import.test.ts",
       "test/email/imap.test.ts",
+      "test/global/test-home-guard.test.ts",
       "test/holos/runtime.test.ts",
       "test/library/database.test.ts",
       "test/library/embedding-local.test.ts",
@@ -54,8 +55,10 @@ describe("coverage batch splitting", () => {
       "test/server/skill-route.test.ts",
       "test/session/retry.test.ts",
       "test/storage/storage-retry.test.ts",
+      "test/storage/storage-silent-not-found.test.ts",
       "test/tool/auto-expand.test.ts",
       "test/tool/openai-image-gen.test.ts",
+      "test/tool/session-search.test.ts",
       "test/vector/embedding-standalone.test.ts",
     ])
   })
@@ -70,15 +73,25 @@ describe("main batch sharding", () => {
     expect(coverageShardCount({ SYNERGY_COVERAGE_SHARDS: "0" })).toBe(4)
   })
 
-  test("shardMainFiles deals files round-robin so adjacent files never share a shard", () => {
-    expect(shardMainFiles(["a.test.ts", "b.test.ts", "c.test.ts", "d.test.ts", "e.test.ts"], 2)).toEqual([
-      ["a.test.ts", "c.test.ts", "e.test.ts"],
-      ["b.test.ts", "d.test.ts"],
-    ])
+  test("shardMainFiles assigns shards by file-name hash, not batch position", () => {
+    const full = shardMainFiles(["test/a.test.ts", "test/b.test.ts", "test/c.test.ts"], 4)
+    const withoutFirst = shardMainFiles(["test/b.test.ts", "test/c.test.ts"], 4)
+    const shardOf = (shards: string[][], file: string) => shards.findIndex((shard) => shard.includes(file))
+    expect(shardOf(withoutFirst, "test/b.test.ts")).toBe(shardOf(full, "test/b.test.ts"))
+    expect(shardOf(withoutFirst, "test/c.test.ts")).toBe(shardOf(full, "test/c.test.ts"))
+  })
+
+  test("shardMainFiles keeps every file exactly once across shards, deterministically", () => {
+    const files = ["test/a.test.ts", "test/b.test.ts", "test/c.test.ts", "test/d.test.ts", "test/e.test.ts"]
+    const shards = shardMainFiles(files, 2)
+    expect(shards.flat().toSorted()).toEqual(files.toSorted())
+    expect(shardMainFiles(files, 2)).toEqual(shards)
   })
 
   test("shardMainFiles tolerates more shards than files", () => {
-    expect(shardMainFiles(["a.test.ts"], 3)).toEqual([["a.test.ts"], [], []])
+    const shards = shardMainFiles(["a.test.ts"], 3)
+    expect(shards).toHaveLength(3)
+    expect(shards.flat()).toEqual(["a.test.ts"])
   })
 })
 

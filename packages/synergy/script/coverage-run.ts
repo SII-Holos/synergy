@@ -2,11 +2,13 @@
 
 /**
  * Synergy coverage runner. Mirrors the packages/app and packages/ui
- * orchestrators: the main batch is dealt round-robin into a few sequential
- * single-process shards (default 4, SYNERGY_COVERAGE_SHARDS) so one file's
- * leaked module state can never poison the whole suite, while a small set of
- * files that stay flaky even in a small shard execute in their own isolated
- * processes. Every batch writes lcov under coverage/shards/<n>/, which
+ * orchestrators: the main batch is split into a few sequential
+ * single-process shards by stable file-name hash (default 4,
+ * SYNERGY_COVERAGE_SHARDS) so one file's leaked module state can never
+ * poison the whole suite and editing the isolation list never reshuffles
+ * the remaining files' shard assignments, while a small set of files that
+ * stay flaky even in a small shard execute in their own isolated processes.
+ * Every batch writes lcov under coverage/shards/<n>/, which
  * script/coverage-check.ts merges with union semantics.
  */
 
@@ -38,9 +40,12 @@ const packageRoot = path.resolve(import.meta.dir, "..")
  *   that sibling library suites repopulate or leave stale handles across
  *   (intermittent zero-candidate, stale reopen, and dimension-drift
  *   failures in shared batches);
- * - storage-retry spies global fs rename/unlink, clarus-invite-accept reads
- *   shared channel/Clarus state, and feishu-provider races SVG raster
- *   fallbacks, so each also runs alone;
+ * - storage-retry spies global fs rename/unlink, storage-silent-not-found
+ *   asserts metrics on a shared observability store, clarus-invite-accept
+ *   reads shared channel/Clarus state, feishu-provider races SVG raster
+ *   fallbacks, session-search scans live session stores under the shared
+ *   home, and test-home-guard runs the subprocess contract around the
+ *   real-home guard, so each also runs alone;
  * - holos/proxy/registry/retry/import/catalog/MCP-OAuth suites start
  *   local servers or assert network timing and flake under a full shared
  *   process on CI (see postmortem 0001 coverage failures); each passes in
@@ -54,6 +59,7 @@ export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
   "test/channel/svg-raster-standalone.test.ts",
   "test/config/import.test.ts",
   "test/email/imap.test.ts",
+  "test/global/test-home-guard.test.ts",
   "test/holos/runtime.test.ts",
   "test/library/database.test.ts",
   "test/library/embedding.test.ts",
@@ -68,8 +74,10 @@ export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
   "test/server/skill-route.test.ts",
   "test/session/retry.test.ts",
   "test/storage/storage-retry.test.ts",
+  "test/storage/storage-silent-not-found.test.ts",
   "test/tool/auto-expand.test.ts",
   "test/tool/openai-image-gen.test.ts",
+  "test/tool/session-search.test.ts",
   "test/vector/embedding-standalone.test.ts",
 ])
 
@@ -93,8 +101,24 @@ export function coverageShardCount(env: Record<string, string | undefined>): num
 
 export function shardMainFiles(files: string[], shardCount: number): string[][] {
   const shards: string[][] = Array.from({ length: shardCount }, () => [])
-  files.forEach((file, index) => shards[index % shardCount]!.push(file))
+  for (const file of files) shards[shardIndexOf(file, shardCount)]!.push(file)
   return shards
+}
+
+/**
+ * FNV-1a over the file path. A file's shard depends only on its own name, so
+ * editing the isolation list or adding suites never reshuffles the shard
+ * assignments of the files that remain — position-based dealing turned every
+ * list edit into a full recombination that kept exposing new order-dependent
+ * victims (boss-workflow, 2026-09-05).
+ */
+function shardIndexOf(file: string, shardCount: number): number {
+  let hash = 0x811c9dc5
+  for (let index = 0; index < file.length; index++) {
+    hash ^= file.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return (hash >>> 0) % shardCount
 }
 
 async function collectTests(directory: string): Promise<string[]> {
