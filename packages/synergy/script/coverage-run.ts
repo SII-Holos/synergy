@@ -1,14 +1,14 @@
 #!/usr/bin/env bun
 
 /**
- * Synergy coverage runner. Mirrors the packages/app and packages/ui
- * orchestrators: the main batch is split into a few sequential
+ * Synergy batch planner. The main test batch is split into a few sequential
  * single-process shards by stable file-name hash (default 4,
- * SYNERGY_COVERAGE_SHARDS) so one file's leaked module state can never
- * poison the whole suite and editing the isolation list never reshuffles
- * the remaining files' shard assignments, while a small set of files that
- * stay flaky even in a small shard execute in their own isolated processes.
- * Every batch writes lcov under coverage/shards/<n>/, which
+ * SYNERGY_BATCH_SHARDS) so one file's leaked module state can never poison
+ * the whole suite and editing the isolation list never reshuffles the
+ * remaining files' shard assignments, while a small set of files that stay
+ * flaky even in a small shard execute in their own isolated processes. Both
+ * the coverage runner (this file) and script/test-ci.ts consume the same
+ * split, and every batch writes lcov under coverage/shards/<n>/, which
  * script/coverage-check.ts merges with union semantics.
  */
 
@@ -36,10 +36,11 @@ const packageRoot = path.resolve(import.meta.dir, "..")
  *   channel registries that a prior sibling's stale Config.current override
  *   or late rejection poisons (whole-file sub-millisecond failures on CI,
  *   2026-09-04), so they get their own process;
- * - experience-recall and database assert against the LibraryDB singleton
- *   that sibling library suites repopulate or leave stale handles across
- *   (intermittent zero-candidate, stale reopen, and dimension-drift
- *   failures in shared batches);
+ * - experience-recall, experience-reencode, and database assert against the
+ *   LibraryDB singleton that sibling library suites repopulate, clean, or
+ *   leave stale handles across (intermittent zero-candidate, stale reopen
+ *   returning an empty current job, and dimension-drift failures in shared
+ *   batches);
  * - storage-retry spies global fs rename/unlink, storage-silent-not-found
  *   asserts metrics on a shared observability store, clarus-invite-accept
  *   reads shared channel/Clarus state, feishu-provider races SVG raster
@@ -66,7 +67,7 @@ const packageRoot = path.resolve(import.meta.dir, "..")
  *   sibling files, and the startup assertion itself flakes under full-suite
  *   load on CI. Passes in its own process with coverage (verified 2026-09-04).
  */
-export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
+export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "test/channel/clarus-invite-accept.test.ts",
   "test/channel/feishu-provider.test.ts",
   "test/channel/host.test.ts",
@@ -80,6 +81,7 @@ export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
   "test/library/embedding.test.ts",
   "test/library/embedding-local.test.ts",
   "test/library/experience-recall.test.ts",
+  "test/library/experience-reencode.test.ts",
   "test/plugin/mcp-declarative-oauth.test.ts",
   "test/provider/catalog-stability.test.ts",
   "test/provider/proxy.test.ts",
@@ -105,15 +107,15 @@ export interface CoverageBatches {
   isolated: string[]
 }
 
-export function splitCoverageBatches(files: string[]): CoverageBatches {
+export function splitBatchFiles(files: string[]): CoverageBatches {
   return {
-    main: files.filter((file) => !ISOLATED_COVERAGE_FILES.has(file)),
-    isolated: files.filter((file) => ISOLATED_COVERAGE_FILES.has(file)),
+    main: files.filter((file) => !ISOLATED_BATCH_FILES.has(file)),
+    isolated: files.filter((file) => ISOLATED_BATCH_FILES.has(file)),
   }
 }
 
-export function coverageShardCount(env: Record<string, string | undefined>): number {
-  const parsed = Number.parseInt(env["SYNERGY_COVERAGE_SHARDS"] ?? "", 10)
+export function batchShardCount(env: Record<string, string | undefined>): number {
+  const parsed = Number.parseInt(env["SYNERGY_BATCH_SHARDS"] ?? "", 10)
   if (!Number.isInteger(parsed) || parsed < 1) return 4
   return parsed
 }
@@ -140,7 +142,7 @@ function shardIndexOf(file: string, shardCount: number): number {
   return (hash >>> 0) % shardCount
 }
 
-async function collectTests(directory: string): Promise<string[]> {
+export async function collectTests(directory: string): Promise<string[]> {
   const entries = await readdir(path.join(packageRoot, directory), { withFileTypes: true })
   const nested = await Promise.all(
     entries.map(async (entry) => {
@@ -182,10 +184,10 @@ export async function runBatches(
   env: Record<string, string | undefined>,
   runBatch: (files: string[], shard: number, env: Record<string, string | undefined>) => Promise<number>,
 ): Promise<number> {
-  const { main, isolated } = splitCoverageBatches(files)
+  const { main, isolated } = splitBatchFiles(files)
   const failed: Array<{ shard: number; exitCode: number }> = []
   let shard = 0
-  for (const shardFiles of shardMainFiles(main, coverageShardCount(env))) {
+  for (const shardFiles of shardMainFiles(main, batchShardCount(env))) {
     if (shardFiles.length === 0) continue
     const exitCode = await runBatch(shardFiles, shard, env)
     if (exitCode !== 0) failed.push({ shard, exitCode })

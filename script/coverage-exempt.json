@@ -197,6 +197,10 @@
           "reason": "compile-time Bun macro (import ... with { type: 'macro' }); inlined during bundling, never executed under the runtime coverage instrument"
         },
         {
+          "glob": "src/push/index.ts",
+          "reason": "barrel re-export"
+        },
+        {
           "glob": "src/remote/index.ts",
           "reason": "barrel re-export"
         },

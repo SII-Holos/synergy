@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import {
-  coverageShardCount,
-  ISOLATED_COVERAGE_FILES,
+  batchShardCount,
+  ISOLATED_BATCH_FILES,
   runBatches,
   shardMainFiles,
-  splitCoverageBatches,
+  splitBatchFiles,
 } from "../../script/coverage-run"
 
 describe("coverage batch splitting", () => {
@@ -17,12 +17,12 @@ describe("coverage batch splitting", () => {
       "test/tool/openai-image-gen.test.ts",
       "test/channel/svg-raster-standalone.test.ts",
     ]
-    const { main, isolated } = splitCoverageBatches(files)
+    const { main, isolated } = splitBatchFiles(files)
     expect([...main, ...isolated].toSorted()).toEqual([...files].toSorted())
   })
 
   test("moves isolated files out of the main batch in canonical order", () => {
-    const { main, isolated } = splitCoverageBatches([
+    const { main, isolated } = splitBatchFiles([
       "test/a.test.ts",
       "test/vector/embedding-standalone.test.ts",
       "test/server/nav-global-routes.test.ts",
@@ -32,7 +32,7 @@ describe("coverage batch splitting", () => {
   })
 
   test("isolated set is pinned to the known load- and state-sensitive files", () => {
-    expect([...ISOLATED_COVERAGE_FILES].toSorted()).toEqual([
+    expect([...ISOLATED_BATCH_FILES].toSorted()).toEqual([
       "test/channel/clarus-assignment.test.ts",
       "test/channel/clarus-invite-accept.test.ts",
       "test/channel/feishu-provider.test.ts",
@@ -50,6 +50,7 @@ describe("coverage batch splitting", () => {
       "test/library/embedding-local.test.ts",
       "test/library/embedding.test.ts",
       "test/library/experience-recall.test.ts",
+      "test/library/experience-reencode.test.ts",
       "test/plugin/mcp-declarative-oauth.test.ts",
       "test/provider/catalog-stability.test.ts",
       "test/provider/proxy.test.ts",
@@ -69,12 +70,12 @@ describe("coverage batch splitting", () => {
 })
 
 describe("main batch sharding", () => {
-  test("coverageShardCount reads SYNERGY_COVERAGE_SHARDS and defaults to 4", () => {
-    expect(coverageShardCount({})).toBe(4)
-    expect(coverageShardCount({ SYNERGY_COVERAGE_SHARDS: "6" })).toBe(6)
-    expect(coverageShardCount({ SYNERGY_COVERAGE_SHARDS: "" })).toBe(4)
-    expect(coverageShardCount({ SYNERGY_COVERAGE_SHARDS: "nope" })).toBe(4)
-    expect(coverageShardCount({ SYNERGY_COVERAGE_SHARDS: "0" })).toBe(4)
+  test("batchShardCount reads SYNERGY_BATCH_SHARDS and defaults to 4", () => {
+    expect(batchShardCount({})).toBe(4)
+    expect(batchShardCount({ SYNERGY_BATCH_SHARDS: "6" })).toBe(6)
+    expect(batchShardCount({ SYNERGY_BATCH_SHARDS: "" })).toBe(4)
+    expect(batchShardCount({ SYNERGY_BATCH_SHARDS: "nope" })).toBe(4)
+    expect(batchShardCount({ SYNERGY_BATCH_SHARDS: "0" })).toBe(4)
   })
 
   test("shardMainFiles assigns shards by file-name hash, not batch position", () => {
@@ -120,7 +121,7 @@ describe("runBatches failure reporting", () => {
       expect(
         await runBatches(
           ["test/a.test.ts", "test/vector/embedding-standalone.test.ts"],
-          { SYNERGY_COVERAGE_SHARDS: "1" },
+          { SYNERGY_BATCH_SHARDS: "1" },
           fail,
         ),
       ).toBe(1)
@@ -144,7 +145,7 @@ describe("runBatches failure reporting", () => {
     }
     await runBatches(
       ["test/a.test.ts", "test/b.test.ts", "test/vector/embedding-standalone.test.ts"],
-      { SYNERGY_COVERAGE_SHARDS: "2" },
+      { SYNERGY_BATCH_SHARDS: "2" },
       recording,
     )
     expect(calls).toEqual([
@@ -164,7 +165,7 @@ describe("runBatches failure reporting", () => {
       shards.push(shard)
       return 0
     }
-    await runBatches(["test/a.test.ts", "test/b.test.ts"], { SYNERGY_COVERAGE_SHARDS: "4" }, recording)
+    await runBatches(["test/a.test.ts", "test/b.test.ts"], { SYNERGY_BATCH_SHARDS: "4" }, recording)
     expect(shards).toEqual([0, 1])
   })
 })
