@@ -11,6 +11,17 @@ import type { ProviderProfile } from "./profile"
 import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin/auth"
 import { AccountUsage } from "./usage"
 import { ProviderAuthRecovery } from "./auth-recovery"
+import {
+  applyReplaySplice,
+  buildRemoteCompactionBody,
+  getReplayPlan,
+  normalizeUsage,
+  parseRemoteCompactionEvents,
+  parseSseData,
+  remoteCompactionHeaders,
+  type CodexRemoteCompactionUsage,
+  type CodexResponseItem,
+} from "./codex-compaction"
 
 export namespace CodexProvider {
   const log = Log.create({ service: "provider.codex" })
@@ -711,9 +722,25 @@ export namespace CodexProvider {
     try {
       const parsed = JSON.parse(body)
       const promptCacheKey = extractPromptCacheKey(parsed)
-      if (parsed && typeof parsed === "object" && "max_output_tokens" in parsed) {
-        delete parsed.max_output_tokens
-        return { body: JSON.stringify(parsed), promptCacheKey }
+      if (!parsed || typeof parsed !== "object") return { body, promptCacheKey }
+      const record = parsed as Record<string, unknown>
+      // Codex remote-compaction replay: when a replay plan is registered for
+      // this session (prompt_cache_key) and the serialized body is a normal
+      // turn, splice the persisted replacement history over the compacted
+      // region. The splice is conservative — when the body shape does not
+      // match, applyReplaySplice returns undefined and the request proceeds
+      // unchanged (local-history replay).
+      const plan = promptCacheKey ? getReplayPlan(promptCacheKey) : undefined
+      if (plan) {
+        const spliced = applyReplaySplice(record, plan)
+        if (spliced) {
+          if ("max_output_tokens" in spliced) delete spliced.max_output_tokens
+          return { body: JSON.stringify(spliced), promptCacheKey }
+        }
+      }
+      if ("max_output_tokens" in record) {
+        delete record.max_output_tokens
+        return { body: JSON.stringify(record), promptCacheKey }
       }
       return { body, promptCacheKey }
     } catch {
@@ -772,6 +799,75 @@ export namespace CodexProvider {
   }
 
   export const codexFetch = codexFetchFor(PROVIDER_ID)
+
+  export type RemoteCompactionV2Result = {
+    compactionItem: CodexResponseItem
+    usage?: CodexRemoteCompactionUsage
+  }
+
+  /**
+   * Request server-side compaction from the codex Responses endpoint (Codex
+   * private protocol v2): a normal streaming `/responses` request whose input
+   * ends with `compaction_trigger` and whose headers carry
+   * `x-codex-beta-features: remote_compaction_v2`. Returns exactly one opaque
+   * `compaction` output item. Any non-2xx response or malformed stream throws
+   * so the caller can fall back to the local text-summary track.
+   */
+  export async function requestRemoteCompactionV2(input: {
+    providerID?: string
+    modelID: string
+    items: CodexResponseItem[]
+    sessionID?: string
+    signal?: AbortSignal
+    fetchFn?: FetchLike
+  }): Promise<RemoteCompactionV2Result> {
+    const providerID = input.providerID ?? PROVIDER_ID
+    const fetchFn = input.fetchFn ?? fetch
+    const response = await ProviderAuthRecovery.execute({
+      providerID,
+      request: async () => {
+        const access = await resolveToken({ providerID, refreshIfExpiring: true, fetch: fetchFn })
+        if (!access) {
+          throw new AuthError({
+            providerID,
+            code: "codex_auth_missing",
+            message: "No Codex credentials stored. Run `synergy auth login` and choose OpenAI Codex.",
+            reloginRequired: true,
+          })
+        }
+        const headers = remoteCompactionHeaders({
+          accessToken: access,
+          accountID: chatGPTAccountID(access),
+          originator: "codex_cli_rs",
+        })
+        return fetchFn(`${baseURL()}/responses`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(
+            buildRemoteCompactionBody({
+              modelID: input.modelID,
+              items: input.items,
+              sessionID: input.sessionID,
+            }),
+          ),
+          signal: input.signal,
+        })
+      },
+      refresh: async (auth) => {
+        return refreshAuth(auth, fetchFn, providerID)
+      },
+      classify: classifyError,
+      throwOnActionRequired: false,
+    })
+    if (!response.ok) {
+      const payload = await safeJson(response.clone()).catch(() => ({}))
+      const message = errorMessage(payload, `Codex remote compaction request failed with status ${response.status}.`)
+      throw new Error(`Codex remote compaction v2 failed: ${message}`)
+    }
+    const events = parseSseData(await response.text())
+    const parsed = parseRemoteCompactionEvents(events)
+    return { compactionItem: parsed.compactionItem, usage: normalizeUsage(parsed.usage) }
+  }
 
   export function classifyError(input: {
     status?: number

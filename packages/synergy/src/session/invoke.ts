@@ -1081,6 +1081,14 @@ export namespace SessionInvoke {
         })
         let turnSpanEnded = false
         let result: Awaited<ReturnType<typeof processor.process>> = "stop"
+        // Codex remote-compaction replay plan for this root's model call,
+        // computed from the newest compaction summary message's persisted
+        // metadata (config- and same-model-gated; undefined otherwise).
+        const codexReplay = await SessionCompaction.codexReplayPlan({
+          messages: msgs,
+          providerID: model.providerID,
+          modelID: model.id,
+        })
         streamInput = {
           user: R,
           agent,
@@ -1094,6 +1102,7 @@ export namespace SessionInvoke {
           executionTools: resolvedTools.executionTools,
           executorKinds: resolvedTools.executorKinds,
           activeToolIDs: resolvedTools.activeToolIDs,
+          codexReplay,
           autoExpandable: resolvedTools.autoExpandable,
           resolverInput: {
             agent,

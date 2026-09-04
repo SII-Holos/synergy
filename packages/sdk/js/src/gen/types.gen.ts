@@ -4047,6 +4047,10 @@ export type Config = {
      * Maximum number of historical images to send as base64 per request (older images replaced with text placeholders). Default: 8.
      */
     maxHistoryImages?: number
+    /**
+     * Enable Codex Remote Compaction V2 for openai-codex sessions: request an opaque server-side compaction artifact alongside the local text summary and replay it on later same-model turns (default: false).
+     */
+    codexRemote?: boolean
   }
   experimental?: {
     /**

@@ -23,6 +23,8 @@ import type { LLMTurnMemory } from "./llm-memory"
 import { SessionRootVariant } from "./root-variant"
 import { SessionPluginHooks } from "./plugin-hooks"
 import { reasoningStreamGuardMiddleware } from "./reasoning-stream-guard"
+import { CodexProvider } from "@/provider/codex"
+import { setReplayPlan, type CodexReplayPlan } from "@/provider/codex-compaction"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -175,6 +177,8 @@ export namespace LLM {
     activeToolIDs?: string[]
     retries?: number
     maxOutputTokens?: number
+    /** Codex remote-compaction replay plan for this turn (fetch-layer splice). */
+    codexReplay?: CodexReplayPlan
     memoryTurn?: LLMTurnMemory.Handle
     prepared?: PreparedTurn
   }
@@ -440,6 +444,12 @@ export namespace LLM {
       input.model.limit.context,
     )
     const maxOutputTokens = Math.min(providerMaxOutputTokens, input.maxOutputTokens ?? providerMaxOutputTokens)
+    // Register the per-turn codex replay plan in the worker-local registry so
+    // the codex fetch body rewrite can splice it (a codex turn without a plan
+    // clears any previous sticky plan for the session).
+    if (input.model.providerID === CodexProvider.PROVIDER_ID) {
+      setReplayPlan(input.sessionID, input.codexReplay)
+    }
 
     const tools = input.tools
     const llmSpan = ObservabilitySpans.start({
