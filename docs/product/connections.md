@@ -56,6 +56,8 @@ Accounts configured with `projectDir` are not routed: the account keeps its exis
 
 The Boss Mode settings panel also offers **Open boss session**. The runtime flushes the pending Runtime-domain draft, then `POST /boss/session/open` returns the account-routed boss session when an enabled routable account exists, or idempotently creates a channel-less local boss session (home scope, `workflow` kind `boss` with role `boss`, running the `boss-synergy` primary agent) when none does, and the App navigates to it. The R6 explicit `channel_push` contract and its prompt hint apply only to account-routed sessions; a channel-less local boss session has no channel, so replies are read directly in the App. Requesting an open while `boss_mode` is disabled fails with `409 boss_disabled`.
 
+Opening a channel-less local boss session that has no conversation yet also starts a one-time greeting kickoff when a model is available: the runtime delivers a system-origin task root and wakes the session so the boss's short opening message appears immediately and the App lands on a formed chat; the world-overview steer is consumed in the same turn. Channel-routed boss sessions are never given a synthetic greeting — they form from real Feishu messages.
+
 ### Channel Commands
 
 Channel commands are handled before ordinary agent invocation. Commands that accept trailing text can switch or reset the conversation and immediately continue that text as the next user request.

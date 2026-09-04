@@ -7,6 +7,7 @@ import { Scope } from "@/scope"
 import { ScopeContext } from "@/scope/context"
 import { Log } from "@/util/log"
 import { withTimeout } from "@/util/timeout"
+import { Agent } from "../agent/agent"
 import { externalIdentityHash } from "../util/identity"
 import { resolveBossPersona } from "./persona"
 import { DEFAULT_IDENTITY_TEXT as DefaultIdentityText } from "./boss-prompt"
@@ -63,6 +64,13 @@ export namespace BossRuntime {
 
   /** Title of the channel-less local runtime boss session (created on demand from Settings). */
   export const LOCAL_BOSS_SESSION_TITLE = "Runtime Boss (本地)"
+
+  /** One-time kickoff text delivered as the first root of an empty boss session. */
+  export const LOCAL_BOSS_KICKOFF_TEXT =
+    "本地 Boss 会话已就绪。请以你的同事身份,结合你的身份与世界概况,用一两句话向用户作简短开场问候,确认你已在岗、可以开始协作。贴合你的人格与汇报风格,不要展开项目或任务清单。"
+
+  /** Fixed delivery-key prefix for the one-time kickoff (deduped per session). */
+  const LOCAL_BOSS_KICKOFF_KEY_PREFIX = "boss-open:"
 
   export function bossSessionForAccount(accountId: string): string | undefined {
     return accountBossSessions.get(accountId)
@@ -154,6 +162,10 @@ export namespace BossRuntime {
    * the user can talk to the boss colleague directly from the App. The local
    * session is a normal interactive session: replies are visible in the App
    * and `channel_push` is unavailable to it.
+   * When the opened session has no conversation yet, a one-time greeting
+   * kickoff (a system-origin task root) starts the first turn so the App
+   * lands on a formed chat instead of a bare new-session screen; it is
+   * skipped silently when no model can be resolved for the boss agent.
    *
    * @throws BossSessionOpenError when `boss_mode` is not enabled.
    */
@@ -177,28 +189,36 @@ export namespace BossRuntime {
       scope: Scope.home(),
       fn: async () => {
         // 1. Prefer an account-routed boss session already registered.
-        for (const sessionID of accountBossSessions.values()) {
-          const session = await Session.get(sessionID)
-          if (session?.endpoint?.kind === "channel" && !session.time?.archived) return sessionID
+        let sessionID: string | undefined
+        for (const id of accountBossSessions.values()) {
+          const session = await Session.get(id)
+          if (session?.endpoint?.kind === "channel" && !session.time?.archived) {
+            sessionID = id
+            break
+          }
         }
         // 2. Fall back to any existing channel-routed boss session in home
         //    (covers an account map not yet provisioned this process).
-        const routed = await findBossSession(true)
-        if (routed) return routed
+        sessionID ??= await findBossSession(true)
         // 3. Reuse the channel-less local boss session when present.
-        const local = await findBossSession(false)
-        if (local) return local
+        sessionID ??= await findBossSession(false)
         // 4. Create the channel-less local boss session on first open.
-        const session = await Session.create({
-          scope: Scope.home(),
-          interaction: SessionInteraction.interactive("boss"),
-          title: LOCAL_BOSS_SESSION_TITLE,
-          agentOverride: "boss-synergy",
-          workflow: { kind: "boss", role: "boss" },
-        })
-        log.info("local runtime boss session created from settings", { sessionID: session.id })
-        await deliverIdentityBriefing(session.id)
-        return session.id
+        if (!sessionID) {
+          const session = await Session.create({
+            scope: Scope.home(),
+            interaction: SessionInteraction.interactive("boss"),
+            title: LOCAL_BOSS_SESSION_TITLE,
+            agentOverride: "boss-synergy",
+            workflow: { kind: "boss", role: "boss" },
+          })
+          log.info("local runtime boss session created from settings", { sessionID: session.id })
+          await deliverIdentityBriefing(session.id)
+          sessionID = session.id
+        }
+        // 5. A returned session with no conversation yet gets a one-time
+        //    greeting kickoff so the UI shows a formed chat immediately.
+        await kickoffEmptyBossSession(sessionID)
+        return sessionID
       },
     })
   }
@@ -215,6 +235,60 @@ export namespace BossRuntime {
       if ((session.endpoint?.kind === "channel") === routed) return session.id
     }
     return undefined
+  }
+
+  /**
+   * Start the first-turn greeting on an empty boss session (the "Open boss
+   * session" path). The kickoff is a system-origin task root: a task item is
+   * materialized as the conversation root even when the session has no
+   * messages (same mechanism boss worker assignments use), so the loop wakes,
+   * drains the pending identity briefing steer, and produces the boss's
+   * opening message — the App lands on a formed chat instead of a bare
+   * new-session screen. Idempotent per session: the fixed delivery key plus
+   * the no-root/no-queued-task guards make repeated opens (and races with
+   * the user's own first message) safe.
+   */
+  async function kickoffEmptyBossSession(sessionID: string): Promise<void> {
+    // Channel-routed boss sessions form from real Feishu ingress; only the
+    // channel-less local session (driven from the App) gets a synthetic
+    // greeting root.
+    const session = await Session.get(sessionID).catch(() => undefined)
+    if (!session || session.time?.archived || session.endpoint?.kind === "channel") return
+    const hasRoot = !!(await SessionInbox.latestRootID(sessionID).catch(() => undefined))
+    if (hasRoot) return
+    const queuedTask = await SessionInbox.peekTask(sessionID).catch(() => undefined)
+    if (queuedTask) return
+    const model = await resolveBossModel()
+    if (!model) {
+      log.info("skipping empty boss session kickoff: no model available", { sessionID })
+      return
+    }
+    const result = await SessionInbox.deliverUnique({
+      sessionID,
+      deliveryKey: `${LOCAL_BOSS_KICKOFF_KEY_PREFIX}${sessionID}`,
+      mode: "task",
+      message: {
+        role: "user",
+        origin: { type: "system", detail: "boss_open" },
+        visible: true,
+        parts: [{ type: "text", text: LOCAL_BOSS_KICKOFF_TEXT }],
+        summary: { title: "Boss session opened" },
+      },
+    })
+    if (result.created) {
+      log.info("kicked off empty boss session greeting", { sessionID, itemID: result.itemID })
+      SessionManager.scheduleWake(sessionID, "boss_open")
+    }
+  }
+
+  async function resolveBossModel(): Promise<{ providerID: string; modelID: string } | undefined> {
+    const agent = await Agent.get("boss-synergy").catch(() => undefined)
+    if (agent) {
+      const model = await Agent.getAvailableModel(agent).catch(() => undefined)
+      if (model) return model
+    }
+    const { Provider } = await import("@/provider/provider")
+    return Provider.defaultModel().catch(() => undefined)
   }
 
   // ---------------------------------------------------------------------------

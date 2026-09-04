@@ -23,6 +23,8 @@ Boss 同事化(见 [2026-09-03 boss-colleague-persona-explicit-delivery](2026-09
 
 **R6 渠道范围界定**:显式 `channel_push` 契约的 delivery hint 只注入 `endpoint.kind === "channel"` 的 boss 会话。channel-less 本地 boss 会话没有渠道,回复在 App 内自然可见,不注入渠道契约、不产生任何自动外发面。原"boss-role 会话恒注入 hint"的表述以本次为准。
 
+**自动开场白(kickoff)**:打开返回的本地 boss 会话若尚无任何根消息且模型可解析(agent override → `Agent.getAvailableModel` → `Provider.defaultModel` 兜底),投递一次性 greeting kickoff——`mode: "task"` 的 system-origin 根消息(`origin.type: "system"`,固定 deliveryKey `boss-open:<sessionID>`,文本 `LOCAL_BOSS_KICKOFF_TEXT`),随后 `scheduleWake` 让 boss-synergy 跑出简短开场问候;待排入的 world-overview steer 在同一轮被物化消费,App 直接落在成型聊天而非新会话欢迎屏。kickoff 幂等:固定 deliveryKey + "无根消息且无排队 task"守卫保证重复点击/与用户首条消息竞争安全;模型不可解析时静默跳过,会话保持为空、等用户首条消息。渠道路由 boss 会话由真实 Feishu 入站成型,不做合成开场。
+
 ## Alternatives considered
 
 - **仅返回已有账号路由会话,无渠道就不提供入口** — 否决:用户明确要求"一开始没有就自动 create",本地/无 Feishu 环境也必须能用 boss 同事。
