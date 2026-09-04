@@ -206,8 +206,6 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
           edit: "allow",
           write: "allow",
           external_directory: { "*": "allow" },
-          arxiv_search: "allow",
-          arxiv_download: "allow",
           // Safety gates
           question: "deny",
           todowrite: "deny",

@@ -63,6 +63,9 @@ process.env["SYNERGY_DISABLE_DEFAULT_PLUGINS"] = "true"
 process.env["SYNERGY_DISABLE_LSP_DOWNLOAD"] = "true"
 // Disable file watcher to avoid native module / inotify hangs in CI
 process.env["SYNERGY_DISABLE_FILEWATCHER"] = "true"
+// Disable built-in remote MCP search servers (anysearch/scholight) so no
+// test ever connects to external endpoints during config-driven MCP init.
+process.env["SYNERGY_DISABLE_BUILTIN_MCP"] = "true"
 
 // Clear provider env vars to ensure clean test state
 delete process.env["ANTHROPIC_API_KEY"]

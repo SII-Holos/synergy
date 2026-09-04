@@ -195,9 +195,6 @@ export namespace Agent {
     const defaults = PermissionNext.fromConfig({
       "*": "allow",
 
-      arxiv_search: "deny",
-      arxiv_download: "ask",
-
       read: {
         "*.env": "ask",
         "*.env.*": "ask",

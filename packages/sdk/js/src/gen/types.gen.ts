@@ -2392,7 +2392,6 @@ export type PermissionConfig =
       dagread?: PermissionActionConfig
       question?: PermissionActionConfig
       webfetch?: PermissionActionConfig
-      websearch?: PermissionActionConfig
       download?: PermissionActionConfig
       lsp?: PermissionRuleConfig
       doom_loop?: PermissionActionConfig
@@ -3939,7 +3938,8 @@ export type Config = {
       | McpLocalConfig
       | McpRemoteConfig
       | {
-          enabled: boolean
+          enabled?: boolean
+          apiKey?: string
         }
   }
   mcpDefaults?: McpDefaultsConfig
@@ -20189,6 +20189,39 @@ export type McpAddResponses = {
 }
 
 export type McpAddResponse = McpAddResponses[keyof McpAddResponses]
+
+export type McpBuiltinsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/mcp/builtins"
+}
+
+export type McpBuiltinsErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type McpBuiltinsError = McpBuiltinsErrors[keyof McpBuiltinsErrors]
+
+export type McpBuiltinsResponses = {
+  /**
+   * Built-in MCP server list
+   */
+  200: Array<{
+    name: string
+    url: string
+    status: McpStatus
+    keyConfigured: boolean
+  }>
+}
+
+export type McpBuiltinsResponse = McpBuiltinsResponses[keyof McpBuiltinsResponses]
 
 export type McpAuthRemoveData = {
   body?: never

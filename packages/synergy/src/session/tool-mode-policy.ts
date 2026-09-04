@@ -39,7 +39,6 @@ export namespace SessionModePolicy {
     "skill",
     "search_tools",
     "expand_tools",
-    "websearch",
     "webfetch",
     "agenda_list",
     "agenda_logs",

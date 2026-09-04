@@ -11648,6 +11648,42 @@ msgstr "{running}/{count} 个任务运行中"
 msgid "scopes.working"
 msgstr "处理中…"
 
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.domains"
+msgstr "域名"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.elapsed"
+msgstr "已用时间"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.format"
+msgstr "格式"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.host"
+msgstr "主机"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.papers"
+msgstr "论文"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.results"
+msgstr "结果"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.searching"
+msgstr "正在搜索…"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.strength"
+msgstr "强度"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.total"
+msgstr "总计"
+
 #. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.collapse-all"
 msgstr "全部折叠"
@@ -11815,10 +11851,6 @@ msgstr "正在运行命令"
 #. js-lingui-explicit-id
 msgid "session-status.searching-codebase"
 msgstr "正在搜索代码库"
-
-#. js-lingui-explicit-id
-msgid "session-status.searching-papers"
-msgstr "正在搜索论文"
 
 #. js-lingui-explicit-id
 msgid "session-status.searching-web"
@@ -16611,6 +16643,58 @@ msgid "settings.mcp.addServer"
 msgstr "添加服务器"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clear"
+msgstr "清除已存储的密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clearPending"
+msgstr "保存后将移除密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clearUndo"
+msgstr "保留已存储的密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.configured"
+msgstr "已设置密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.description"
+msgstr "可选。将作为 Bearer 令牌发送，用于提升匿名额度之外的速率限制。"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.label"
+msgstr "API 密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.placeholder"
+msgstr "粘贴密钥以提升速率限制"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.badge"
+msgstr "内置"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.section.description"
+msgstr "随 Synergy 内置,无需 API Key 即可使用。关闭后将禁用其工具。"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.section.title"
+msgstr "内置服务器"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.connected"
+msgstr "已连接"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.disabled"
+msgstr "已关闭"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.other"
+msgstr "不可用"
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.card.collapse"
 msgstr "收起服务器详情"
 
@@ -18815,14 +18899,6 @@ msgid "tool.title.archive-note"
 msgstr "归档笔记"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.arxiv-download"
-msgstr "下载 arXiv 论文"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.arxiv-search"
-msgstr "搜索 arXiv"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.ast-search"
 msgstr "搜索 AST"
 
@@ -19461,10 +19537,6 @@ msgstr "查看图片"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.watch"
 msgstr "监控日程"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.web-search"
-msgstr "搜索网页"
 
 #. Search / web
 msgid "tool.title.webfetch"

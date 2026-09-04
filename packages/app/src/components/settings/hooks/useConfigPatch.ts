@@ -144,6 +144,14 @@ function buildMcpPatch(
   patch: Record<string, unknown>,
 ) {
   const newMcp: Record<string, Record<string, unknown>> = {}
+  // Carry `enabled`-only stubs forward: they are opt-out/opt-in markers for
+  // built-in servers, not editable server cards, and the mcp config domain
+  // merges deep, so an omitted stub would survive every save and keep the
+  // patch permanently dirty.
+  for (const [key, value] of Object.entries(cfg.mcp ?? {})) {
+    const mcp = value as Record<string, unknown>
+    if (typeof mcp.type !== "string") newMcp[key] = { ...mcp }
+  }
   for (const entry of state.mcps.entries) {
     if (!entry.key.trim()) continue
     const key = entry.key.trim()
@@ -188,6 +196,28 @@ function buildMcpPatch(
     }
 
     newMcp[key] = base
+  }
+
+  // Built-in server toggles + API keys ride on the same stub: switching off
+  // writes the opt-out marker, switching back on writes a bare `enabled:
+  // true` stub, a non-empty key draft writes the key, and an explicit clear
+  // writes the empty-string marker. Unchanged fields stay out of the stub so
+  // the deep merge preserves whatever is already stored.
+  for (const builtin of state.mcps.builtins) {
+    const configured = cfg.mcp?.[builtin.name]
+    const stubConfigured =
+      configured && typeof configured === "object" ? (configured as Record<string, unknown>) : undefined
+    const enabled = !stubConfigured || stubConfigured.enabled !== false
+    const trimmedKey = builtin.apiKeyDraft.trim()
+    const keyChanged = trimmedKey !== "" || (builtin.clearApiKey && builtin.keyConfigured)
+    if (builtin.toggle === enabled && !keyChanged) continue
+    // Merge onto the carried-forward stub so untouched stored fields (an
+    // existing key alongside an opt-out marker, for example) survive.
+    const stub: Record<string, unknown> = { ...(newMcp[builtin.name] ?? {}) }
+    if (builtin.toggle !== enabled) stub.enabled = builtin.toggle
+    if (trimmedKey !== "") stub.apiKey = trimmedKey
+    else if (builtin.clearApiKey && builtin.keyConfigured) stub.apiKey = ""
+    newMcp[builtin.name] = stub
   }
 
   if (JSON.stringify(newMcp) !== JSON.stringify(cfg.mcp ?? {})) patch.mcp = newMcp

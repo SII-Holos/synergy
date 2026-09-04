@@ -19,7 +19,7 @@ describe("activity summary agent", () => {
     expect(agent?.modelRole).toBe("nano")
     expect(agent?.temperature).toBe(0)
     expect(PermissionNext.evaluate("bash", "*", agent?.permission ?? []).action).toBe("deny")
-    expect(PermissionNext.evaluate("websearch", "*", agent?.permission ?? []).action).toBe("deny")
+    expect(PermissionNext.evaluate("webfetch", "*", agent?.permission ?? []).action).toBe("deny")
     expect(PermissionNext.evaluate("task", "*", agent?.permission ?? []).action).toBe("deny")
     expect(agent?.prompt).toContain("Never reveal chain-of-thought")
     expect(agent?.prompt).toContain("untrusted data")

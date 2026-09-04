@@ -588,7 +588,7 @@ describe("session turn activity projection", () => {
       parts: [
         reasoning("planning"),
         tool({ id: "read-zero", tool: "read" }),
-        tool({ id: "web-zero", tool: "websearch" }),
+        tool({ id: "web-zero", tool: "webfetch" }),
       ],
       working: true,
     })
@@ -664,7 +664,7 @@ describe("session turn activity projection", () => {
       parts: [
         reasoning("planning"),
         tool({ id: "read-zero", tool: "read", args: { filePath: "/workspace/ZERO/README.md" }, status: "running" }),
-        tool({ id: "web-zero", tool: "websearch", args: { query: "ZERO project" }, status: "running" }),
+        tool({ id: "web-zero", tool: "webfetch", args: { url: "https://example.com/ZERO" }, status: "running" }),
       ],
       working: true,
     })
@@ -967,7 +967,7 @@ describe("minimal activity projection", () => {
       message,
       parts: [
         tool({ id: "read-zero", tool: "read" }),
-        tool({ id: "web-zero", tool: "websearch" }),
+        tool({ id: "web-zero", tool: "webfetch" }),
         tool({ id: "test-zero", tool: "bash", args: { command: "bun test" } }),
       ],
     })

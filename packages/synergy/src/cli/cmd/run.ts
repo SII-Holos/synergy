@@ -28,7 +28,6 @@ const TOOL: Record<string, [string, string]> = {
   list: ["List", UI.Style.TEXT_INFO_BOLD],
   read: ["Read", UI.Style.TEXT_HIGHLIGHT_BOLD],
   write: ["Write", UI.Style.TEXT_SUCCESS_BOLD],
-  websearch: ["Search", UI.Style.TEXT_DIM_BOLD],
 }
 
 function isControlProfileId(value: string | undefined): value is ControlProfileId {

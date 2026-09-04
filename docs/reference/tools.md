@@ -15,8 +15,6 @@ Generated from the builtin tool registry in `packages/synergy/src/tool/registry.
 | `agenda_trigger` | `orchestration.agenda` | Manually trigger an agenda item to execute immediately, regardless of its configured schedule. If the item is pending or paused, it will be activated first. This does NOT change the item's regular sch |
 | `agenda_update` | `orchestration.agenda` | Update an existing agenda item. Only provided fields are changed — omitted fields remain unchanged. Use agenda_list to find the item ID first. Common actions: - Pause: agenda_update(id="agd_xxx", stat |
 | `agenda_watch` | `orchestration.agenda` | Set a one-time wake-up in THIS session. The primary use case is **recursive adaptive monitoring**: - Start with a short delay (3–5min) to check an external process, experiment, or pipeline. - Assess h |
-| `arxiv_download` | `search.academic` | Download an arXiv paper as a PDF file. Use this tool to download a paper from arXiv given its ID. The paper will be saved as a PDF file to the specified path. Examples of valid arXiv IDs: - 2401.12345 |
-| `arxiv_search` | `search.academic` | Search the arXiv database for academic papers using semantic search and filters. Use this tool to find research papers on arXiv. You can search using: - Natural language queries for semantic search -  |
 | `ast_grep` | `search.codebase` | Search code using AST-aware pattern matching. Unlike regex-based grep, ast_grep understands code structure and finds patterns based on syntax, not just text. Supports 25 languages: bash, c, cpp, cshar |
 | `attach` | `communication.deliver` | Deliver files to the user by making them available as conversation attachments. Use this after generating or obtaining user-facing artifacts such as PDFs, images, documents, archives, exports, plots,  |
 | `bash` | `code.execute` | Executes a bash command in a persistent shell session. All commands run in ${directory} by default. Use the `workdir` parameter to run in a different directory. AVOID using `cd <directory> && <command |
@@ -114,7 +112,6 @@ Generated from the builtin tool registry in `packages/synergy/src/tool/registry.
 | `view_file` | `code.read` | Read a file through the anchored coding harness. Use this instead of `read` when the content may feed `revise_file` or `resolve_conflicts`. The output starts with a real `[path#TAG]` header followed b |
 | `view_image` | `code.analyze` | Load a local image file into the current model context for direct visual inspection. Use this when the active model supports the image's format and you need to inspect it yourself, such as a generated |
 | `webfetch` | `search.web` | - Fetches content from a specified URL - Takes a URL and optional format as input - Fetches the URL content, converts to requested format (markdown by default) - Returns the content in the specified f |
-| `websearch` | `search.web` | - Search the web using real-time web search - Provides up-to-date information for current events and recent data - Supports configurable result counts and returns the content from the most relevant we |
 | `worktree_enter` | `platform.config` | Create or enter a git worktree for the current session.  |
 | `worktree_leave` | `platform.config` | Leave the current git worktree and return to the main checkout. Unbinds the session from the worktree,  |
 | `worktree_list` | `platform.config` | List all git worktrees in the current repository. Returns each worktree's path, branch, state, and a cleanup recommendation for non-main managed worktrees. The currently active worktree is marked. |
@@ -275,34 +272,6 @@ Set a one-time wake-up in THIS session. The primary use case is **recursive adap
 | `metadata` | - | yes |  |
 | `id` | item.id | yes |  |
 | `status` | item.status | yes |  |
-
-## arxiv_download
-
-Kind: `search.academic`
-
-Download an arXiv paper as a PDF file. Use this tool to download a paper from arXiv given its ID. The paper will be saved as a PDF file to the specified path. Examples of valid arXiv IDs: - 2401.12345 - 2401.12345v1 - hep-th/9901001
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `arxivId` | string | yes | The arXiv paper ID (e.g., '2401.12345' or '2401.12345v1') |
-| `outputPath` | string | yes | The output file path (must end with .pdf) |
-| `overwrite` | boolean |  | Whether to overwrite if file exists |
-
-## arxiv_search
-
-Kind: `search.academic`
-
-Search the arXiv database for academic papers using semantic search and filters. Use this tool to find research papers on arXiv. You can search using: - Natural language queries for semantic search - Author names (OR logic between multiple authors) - arXiv categories like 'cs.AI', 'hep-ph', 'math.AG' (OR logic) - Date ranges (YYYY-MM-DD format) - Title keywords (AND logic between keywords) Returns paper metadata including title, authors, abstract, categories, and arXiv ID.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `query` | string |  | Natural language search query for semantic search |
-| `authors` | string |  | Filter by author names (OR logic) |
-| `categories` | string |  | Filter by arXiv categories like 'cs.AI', 'hep-ph' (OR logic) |
-| `startDate` | string |  | Start date (YYYY-MM-DD, inclusive) |
-| `endDate` | string |  | End date (YYYY-MM-DD, inclusive) |
-| `titleKeywords` | string |  | Keywords in title (AND logic) |
-| `topK` | z.coerce.number |  | Number of results (1-100, default: 10) |
 
 ## ast_grep
 
@@ -2343,20 +2312,6 @@ Kind: `search.web`
 | `url` | string | yes | The URL to fetch content from |
 | `format` | "text" \| "markdown" \| "html" |  | The format to return the content in (text, markdown, or html). Defaults to markdown. |
 | `timeout` | number |  | Optional timeout in seconds (max 120) |
-
-## websearch
-
-Kind: `search.web`
-
-- Search the web using real-time web search - Provides up-to-date information for current events and recent data - Supports configurable result counts and returns the content from the most relevant websites - Use this tool for accessing information beyond knowledge cutoff Usage notes: - Supports multiple search categories: general, images, videos, news, it (tech), science - Language filtering available (e.g., 'en', 'zh', 'de') - Time range filtering: day, month, year - Returns titles, URLs, snippets, and related search suggestions
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `query` | string | yes | Websearch query |
-| `numResults` | number |  | Number of search results to return (default: 10) |
-| `language` | string |  | Search language code (e.g., 'en', 'zh', 'de'). Default: 'auto' |
-| `categories` | "general" \| "images" \| "videos" \| "news" \| "it" \| "science" \| "files" \| "social media" |  | Search category (default: 'general') |
-| `timeRange` | "day" \| "month" \| "year" |  | Filter results by time range |
 
 ## worktree_enter
 
