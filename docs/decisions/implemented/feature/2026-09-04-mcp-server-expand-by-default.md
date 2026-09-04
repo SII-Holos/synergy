@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-MCP tool schemas are the largest fixed prompt-injection cost in Synergy sessions. Every MCP server's tools were kept resident in the model-visible tool list whenever the total visible MCP tool count stayed below a global threshold (`MCP_DEFER_THRESHOLD = 100`, exposure.ts). A typical setup with a few large MCP servers (~90 tools) never crossed the threshold, so 60-70K tokens of tool schemas were re-sent on every cold request (new session, every Cortex subagent first turn, cache-miss turns). First-turn attribution showed 114K tokens of tool schema across 143 tools, two thirds from MCP.
+This record supersedes the archived decision [MCP group directory in the expand_tools description](../../archived/feature/2026-08-18-mcp-group-catalog-in-expand-tools.md), which defined the global defer-threshold behavior retired here. MCP tool schemas are the largest fixed prompt-injection cost in Synergy sessions. Every MCP server's tools were kept resident in the model-visible tool list whenever the total visible MCP tool count stayed below a global threshold (`MCP_DEFER_THRESHOLD = 100`, exposure.ts). A typical setup with a few large MCP servers (~90 tools) never crossed the threshold, so 60-70K tokens of tool schemas were re-sent on every cold request (new session, every Cortex subagent first turn, cache-miss turns). First-turn attribution showed 114K tokens of tool schema across 143 tools, two thirds from MCP.
 
 ## Decision
 
@@ -19,7 +19,7 @@ The global tool-count threshold is retired. `ToolExposure.mcpExposure(serverName
 - `ToolDiscovery` (tool/discovery.ts): folded servers always merge into the group catalog (previously gated on the total count), so small folded servers remain expandable.
 - `expand_tools` description (tool/expand-tools.ts): the "Connected MCP groups" section renders whenever folded servers exist, filtering out resident servers.
 
-The Web settings MCP page exposes the flag as an "Expand by default" switch per server card (default off), persisted omit-when-false.
+The Web settings MCP page exposes the flag as an "Expand by default" switch per server card (default off), persisted omit-when-false except when the effective global default is `true` — an explicit per-server `false` must survive so it overrides `mcpDefaults`.
 
 ## Alternatives considered
 

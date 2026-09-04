@@ -55,6 +55,7 @@ These fields control connection behavior, tool discovery, and server lifecycle o
 | `toolFilter` | (none) | Filter tools: `{ include: [...], exclude: [...] }` |
 | `tools` | (none) | Tool execution behavior: `{ approval: "auto" / "always" / "per_session", maxOutputBytes: ... }` |
 | `toolCache` | (none) | Tool list cache: `{ mode: "disabled" / "session" / "persistent", ttlMs: ... }` |
+| `expandByDefault` | `false` | Keep this server's tools always visible to the model instead of folding them into an expandable `mcp:<server>` group. Defaults to `false` (folded); tools stay discoverable via `expand_tools`/`search_tools` and auto-expand when called by name. |
 
 Local-only:
 | Field | Default | Description |

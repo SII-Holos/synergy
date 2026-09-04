@@ -176,8 +176,16 @@ function buildMcpPatch(
     if (timeout !== undefined) base.timeout = timeout
     else delete base.timeout
 
-    if (entry.expandByDefault === true) base.expandByDefault = true
-    else delete base.expandByDefault
+    const globalExpandByDefault = cfg.mcpDefaults?.expandByDefault === true
+    if (entry.expandByDefault) {
+      if (!(globalExpandByDefault && base.expandByDefault === undefined)) base.expandByDefault = true
+    } else if (globalExpandByDefault) {
+      // The runtime resolves an absent per-server value back to the global
+      // default; an explicit false must be persisted to override it.
+      base.expandByDefault = false
+    } else {
+      delete base.expandByDefault
+    }
 
     newMcp[key] = base
   }

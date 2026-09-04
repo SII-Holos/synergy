@@ -1,6 +1,7 @@
 # Decision Record: MCP group directory in the expand_tools description
 
 Status: implemented
+Archived: 2026-09-04
 
 ## Problem
 

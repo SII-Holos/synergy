@@ -16635,6 +16635,10 @@ msgid "settings.mcp.card.expandByDefault"
 msgstr "默认展开"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.card.expandByDefault.description"
+msgstr "让该服务器的工具始终对模型可见，而不是折叠进可展开的 MCP 组。"
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.card.headers"
 msgstr "请求头"
 
