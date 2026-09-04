@@ -3938,7 +3938,8 @@ export type Config = {
       | McpLocalConfig
       | McpRemoteConfig
       | {
-          enabled: boolean
+          enabled?: boolean
+          apiKey?: string
         }
   }
   mcpDefaults?: McpDefaultsConfig
@@ -20216,6 +20217,7 @@ export type McpBuiltinsResponses = {
     name: string
     url: string
     status: McpStatus
+    keyConfigured: boolean
   }>
 }
 

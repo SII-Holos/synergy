@@ -75,6 +75,42 @@ describe("collectBuiltinMcpServers", () => {
     expect(names(servers)).toEqual(["anysearch", "scholight"])
   })
 
+  test("an apiKey stub does not own the name and injects a Bearer header", () => {
+    delete process.env[DISABLE_BUILTIN_MCP_ENV]
+    const servers = collectBuiltinMcpServers({
+      anysearch: { apiKey: "as_sk_test" },
+    })
+    expect(names(servers)).toEqual(["anysearch", "scholight"])
+
+    const anysearch = find(servers, "anysearch")!
+    expect(anysearch.config.type).toBe("remote")
+    if (anysearch.config.type === "remote") {
+      expect(anysearch.config.headers).toEqual({ Authorization: "Bearer as_sk_test" })
+    }
+  })
+
+  test("an empty apiKey string behaves like an absent key", () => {
+    delete process.env[DISABLE_BUILTIN_MCP_ENV]
+    const servers = collectBuiltinMcpServers({
+      anysearch: { apiKey: "" },
+    })
+    const anysearch = find(servers, "anysearch")!
+    expect(anysearch.config.type).toBe("remote")
+    if (anysearch.config.type === "remote") {
+      expect(anysearch.config.headers).toBeUndefined()
+    }
+  })
+
+  test("an apiKey stub combines with an explicit opt-out marker", () => {
+    delete process.env[DISABLE_BUILTIN_MCP_ENV]
+    const servers = collectBuiltinMcpServers({
+      scholight: { enabled: false, apiKey: "sk_live_test" },
+    })
+    // enabled:false owns the name: the builtin is suppressed entirely, key
+    // or not.
+    expect(names(servers)).toEqual(["anysearch"])
+  })
+
   test("a malformed user value owns the name (no builtin shadowing)", () => {
     delete process.env[DISABLE_BUILTIN_MCP_ENV]
     const servers = collectBuiltinMcpServers({

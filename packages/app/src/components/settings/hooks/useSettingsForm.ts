@@ -110,6 +110,8 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     builtins: (params.builtinMcps ?? []).map((info) => ({
       ...info,
       toggle: info.status.status !== "disabled",
+      apiKeyDraft: "",
+      clearApiKey: false,
     })),
   })
 

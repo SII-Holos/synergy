@@ -1032,11 +1032,20 @@ describe("settings config patch mcp expand-by-default", () => {
 })
 
 describe("settings config patch builtin mcp", () => {
+  const builtin = (overrides: Partial<Record<string, unknown>>) => ({
+    name: "anysearch",
+    url: "https://api.anysearch.com/mcp",
+    status: { status: "connected" } as const,
+    keyConfigured: false,
+    toggle: true,
+    apiKeyDraft: "",
+    clearApiKey: false,
+    ...overrides,
+  })
+
   test("toggling a built-in MCP server off writes the opt-out stub", () => {
     const state = defaultSettingsState("enter")
-    state.mcps.builtins = [
-      { name: "anysearch", url: "https://api.anysearch.com/mcp", status: { status: "connected" }, toggle: false },
-    ]
+    state.mcps.builtins = [builtin({ toggle: false })]
 
     const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
 
@@ -1046,12 +1055,12 @@ describe("settings config patch builtin mcp", () => {
   test("re-enabling an opted-out built-in writes a bare enabled stub", () => {
     const state = defaultSettingsState("enter")
     state.mcps.builtins = [
-      {
+      builtin({
         name: "scholight",
         url: "https://scholight.sanchezcloud.net/api/mcp",
-        status: { status: "disabled" },
+        status: { status: "disabled" } as const,
         toggle: true,
-      },
+      }),
     ]
 
     const patch = buildPatch({
@@ -1066,13 +1075,13 @@ describe("settings config patch builtin mcp", () => {
   test("built-in toggles matching stored state emit no mcp patch", () => {
     const state = defaultSettingsState("enter")
     state.mcps.builtins = [
-      { name: "anysearch", url: "https://api.anysearch.com/mcp", status: { status: "connected" }, toggle: true },
-      {
+      builtin({}),
+      builtin({
         name: "scholight",
         url: "https://scholight.sanchezcloud.net/api/mcp",
-        status: { status: "disabled" },
+        status: { status: "disabled" } as const,
         toggle: false,
-      },
+      }),
     ]
 
     const patch = buildPatch({
@@ -1092,6 +1101,46 @@ describe("settings config patch builtin mcp", () => {
       state,
       originalMcps: {},
     })
+
+    expect(patch).not.toHaveProperty("mcp")
+  })
+
+  test("typing an API key writes the key onto the stub", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [builtin({ apiKeyDraft: "as_sk_new" })]
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect(patch.mcp).toEqual({ anysearch: { apiKey: "as_sk_new" } })
+  })
+
+  test("clearing a stored key writes the empty-string marker", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [builtin({ keyConfigured: true, clearApiKey: true })]
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect(patch.mcp).toEqual({ anysearch: { apiKey: "" } })
+  })
+
+  test("key and toggle-off merge onto the same stub and keep stored fields", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [builtin({ keyConfigured: true, toggle: false, apiKeyDraft: "as_sk_rotated" })]
+
+    const patch = buildPatch({
+      cfg: { mcp: { anysearch: { apiKey: "__REDACTED__" } } } as unknown as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.mcp).toEqual({ anysearch: { apiKey: "as_sk_rotated", enabled: false } })
+  })
+
+  test("a key draft matching nothing stored with no clear emits no mcp patch", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [builtin({ apiKeyDraft: "   " })]
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
 
     expect(patch).not.toHaveProperty("mcp")
   })

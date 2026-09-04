@@ -16643,6 +16643,34 @@ msgid "settings.mcp.addServer"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clear"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clearPending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clearUndo"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.configured"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.builtins.badge"
 msgstr ""
 

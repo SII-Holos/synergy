@@ -3,6 +3,8 @@ import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
+import { TextField } from "@ericsanchezok/synergy-ui/text-field"
+import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { BuiltinMcpDraft, McpEntry } from "../types"
 import { McpCard } from "../components/McpCard"
@@ -30,6 +32,19 @@ const builtinBadgeLabel = { id: "settings.mcp.builtins.badge", message: "Built-i
 const builtinStatusConnected = { id: "settings.mcp.builtins.status.connected", message: "Connected" }
 const builtinStatusDisabled = { id: "settings.mcp.builtins.status.disabled", message: "Off" }
 const builtinStatusOther = { id: "settings.mcp.builtins.status.other", message: "Unavailable" }
+const apiKeyLabel = { id: "settings.mcp.builtins.apiKey.label", message: "API key" }
+const apiKeyDescription = {
+  id: "settings.mcp.builtins.apiKey.description",
+  message: "Optional. Sent as a Bearer token to raise rate limits beyond the anonymous quota.",
+}
+const apiKeyPlaceholder = { id: "settings.mcp.builtins.apiKey.placeholder", message: "Paste key to raise rate limits" }
+const apiKeyConfiguredLabel = { id: "settings.mcp.builtins.apiKey.configured", message: "Key set" }
+const apiKeyClearLabel = { id: "settings.mcp.builtins.apiKey.clear", message: "Clear stored key" }
+const apiKeyClearPendingLabel = {
+  id: "settings.mcp.builtins.apiKey.clearPending",
+  message: "Key will be removed on save",
+}
+const apiKeyClearUndoLabel = { id: "settings.mcp.builtins.apiKey.clearUndo", message: "Keep stored key" }
 
 export function McpPanel(props: {
   entries: McpEntry[]
@@ -38,6 +53,8 @@ export function McpPanel(props: {
   onChange: (index: number, field: string, value: string | boolean) => void
   onRemove: (index: number) => void
   onBuiltinToggle?: (name: string, value: boolean) => void
+  onBuiltinApiKeyChange?: (name: string, value: string) => void
+  onBuiltinClearKey?: (name: string, cleared: boolean) => void
 }) {
   const { _ } = useLingui()
   return (
@@ -89,6 +106,7 @@ export function McpPanel(props: {
             <For each={props.builtins ?? []}>
               {(builtin) => {
                 const displayName = () => builtin.name.charAt(0).toUpperCase() + builtin.name.slice(1)
+                const keyPendingClear = () => builtin.clearApiKey && builtin.keyConfigured
                 return (
                   <section class="settings-mcp-card">
                     <div class="settings-mcp-card-header">
@@ -122,6 +140,33 @@ export function McpPanel(props: {
                           </Switch>
                         </Show>
                       </div>
+                    </div>
+                    <div class="settings-mcp-builtin-key">
+                      <TextField
+                        type="password"
+                        autocomplete="off"
+                        label={`${_(apiKeyLabel)} — ${displayName()}`}
+                        hideLabel
+                        description={_(apiKeyDescription)}
+                        placeholder={
+                          keyPendingClear()
+                            ? _(apiKeyClearPendingLabel)
+                            : builtin.keyConfigured
+                              ? `${_(apiKeyConfiguredLabel)} — ${_(apiKeyPlaceholder)}`
+                              : _(apiKeyPlaceholder)
+                        }
+                        value={builtin.apiKeyDraft}
+                        onChange={(value) => props.onBuiltinApiKeyChange?.(builtin.name, String(value))}
+                      />
+                      <Show when={builtin.keyConfigured && props.onBuiltinClearKey && !builtin.apiKeyDraft}>
+                        <IconButton
+                          type="button"
+                          variant="ghost"
+                          icon={getSemanticIcon(keyPendingClear() ? "action.add" : "action.remove")}
+                          aria-label={keyPendingClear() ? _(apiKeyClearUndoLabel) : _(apiKeyClearLabel)}
+                          onClick={() => props.onBuiltinClearKey?.(builtin.name, !builtin.clearApiKey)}
+                        />
+                      </Show>
                     </div>
                   </section>
                 )

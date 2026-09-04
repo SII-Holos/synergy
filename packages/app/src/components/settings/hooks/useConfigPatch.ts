@@ -198,16 +198,26 @@ function buildMcpPatch(
     newMcp[key] = base
   }
 
-  // Built-in server toggles: switching off writes the opt-out stub; switching
-  // back on over a stored opt-out writes a bare `enabled: true` stub (the only
-  // merge-safe re-enable — it is schema-valid and does not own the name, so
-  // the builtin stages again on reload).
+  // Built-in server toggles + API keys ride on the same stub: switching off
+  // writes the opt-out marker, switching back on writes a bare `enabled:
+  // true` stub, a non-empty key draft writes the key, and an explicit clear
+  // writes the empty-string marker. Unchanged fields stay out of the stub so
+  // the deep merge preserves whatever is already stored.
   for (const builtin of state.mcps.builtins) {
     const configured = cfg.mcp?.[builtin.name]
-    const enabled =
-      !configured || typeof configured !== "object" || (configured as Record<string, unknown>).enabled !== false
-    if (builtin.toggle === enabled) continue
-    newMcp[builtin.name] = { enabled: builtin.toggle }
+    const stubConfigured =
+      configured && typeof configured === "object" ? (configured as Record<string, unknown>) : undefined
+    const enabled = !stubConfigured || stubConfigured.enabled !== false
+    const trimmedKey = builtin.apiKeyDraft.trim()
+    const keyChanged = trimmedKey !== "" || (builtin.clearApiKey && builtin.keyConfigured)
+    if (builtin.toggle === enabled && !keyChanged) continue
+    // Merge onto the carried-forward stub so untouched stored fields (an
+    // existing key alongside an opt-out marker, for example) survive.
+    const stub: Record<string, unknown> = { ...(newMcp[builtin.name] ?? {}) }
+    if (builtin.toggle !== enabled) stub.enabled = builtin.toggle
+    if (trimmedKey !== "") stub.apiKey = trimmedKey
+    else if (builtin.clearApiKey && builtin.keyConfigured) stub.apiKey = ""
+    newMcp[builtin.name] = stub
   }
 
   if (JSON.stringify(newMcp) !== JSON.stringify(cfg.mcp ?? {})) patch.mcp = newMcp

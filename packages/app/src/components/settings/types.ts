@@ -184,11 +184,16 @@ export type BuiltinMcpInfo = {
   name: string
   url: string
   status: McpStatus
+  keyConfigured: boolean
 }
 
 export type BuiltinMcpDraft = BuiltinMcpInfo & {
   /** Draft toggle state; false means the builtin is opted out. */
   toggle: boolean
+  /** Non-empty when the user typed a replacement key to save. */
+  apiKeyDraft: string
+  /** True when the user explicitly requested key removal. */
+  clearApiKey: boolean
 }
 export type SkillsSettings = {
   agents: boolean

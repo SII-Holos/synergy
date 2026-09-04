@@ -16643,6 +16643,34 @@ msgid "settings.mcp.addServer"
 msgstr "添加服务器"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clear"
+msgstr "清除已存储的密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clearPending"
+msgstr "保存后将移除密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clearUndo"
+msgstr "保留已存储的密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.configured"
+msgstr "已设置密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.description"
+msgstr "可选。将作为 Bearer 令牌发送，用于提升匿名额度之外的速率限制。"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.label"
+msgstr "API 密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.placeholder"
+msgstr "粘贴密钥以提升速率限制"
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.builtins.badge"
 msgstr "内置"
 

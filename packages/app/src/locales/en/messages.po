@@ -16643,6 +16643,34 @@ msgid "settings.mcp.addServer"
 msgstr "Add server"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clear"
+msgstr "Clear stored key"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clearPending"
+msgstr "Key will be removed on save"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clearUndo"
+msgstr "Keep stored key"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.configured"
+msgstr "Key set"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.description"
+msgstr "Optional. Sent as a Bearer token to raise rate limits beyond the anonymous quota."
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.label"
+msgstr "API key"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.placeholder"
+msgstr "Paste key to raise rate limits"
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.builtins.badge"
 msgstr "Built-in"
 

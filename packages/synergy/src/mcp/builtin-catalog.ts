@@ -71,7 +71,8 @@ export function builtinMcpDisabled(): boolean {
 /**
  * A user-configured entry shadows the builtin when it is a full typed server
  * (override) or an explicit `enabled: false` stub (opt-out). A bare
- * `enabled: true` stub does not own the name, so the builtin stays active.
+ * `enabled: true` stub or a credential-only `apiKey` stub does not own the
+ * name, so the builtin stays active.
  */
 function userOwnsServer(entry: unknown): boolean {
   if (entry === null || entry === undefined) return false
@@ -90,9 +91,31 @@ export function builtinMcpServerInfos(): Array<{ name: string; url: string }> {
   }))
 }
 
+/**
+ * Non-empty API key stored on a built-in server stub. An empty string is the
+ * clear marker and behaves like an absent key.
+ */
+export function builtinApiKeyOf(entry: unknown): string | undefined {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return undefined
+  const apiKey = (entry as Record<string, unknown>).apiKey
+  return typeof apiKey === "string" && apiKey.trim() !== "" ? apiKey : undefined
+}
+
 /** Builtin entries to stage for the given merged user config (may be empty). */
 export function collectBuiltinMcpServers(userMcp: Record<string, unknown> | undefined): BuiltinMcpServer[] {
   if (builtinMcpDisabled()) return []
   const user = userMcp ?? {}
-  return catalog().filter(({ name }) => !userOwnsServer(user[name]))
+  return catalog()
+    .filter(({ name }) => !userOwnsServer(user[name]))
+    .map(({ name, config }) => {
+      const apiKey = builtinApiKeyOf(user[name])
+      if (!apiKey || config.type !== "remote") return { name, config }
+      return {
+        name,
+        config: {
+          ...config,
+          headers: { ...(config.headers ?? {}), Authorization: `Bearer ${apiKey}` },
+        },
+      }
+    })
 }

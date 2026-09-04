@@ -495,7 +495,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
     setSettings(
       "mcps",
       "builtins",
-      list.map((info) => ({ ...info, toggle: info.status.status !== "disabled" })),
+      list.map((info) => ({
+        ...info,
+        toggle: info.status.status !== "disabled",
+        apiKeyDraft: "",
+        clearApiKey: false,
+      })),
     )
   })
 
@@ -964,6 +969,29 @@ export function SettingsPanel(props: SettingsPanelProps) {
             produce((draft) => {
               const entry = draft.find((item) => item.name === name)
               if (entry) entry.toggle = value
+            }),
+          )
+        }
+        onBuiltinApiKeyChange={(name, value) =>
+          setSettings(
+            "mcps",
+            "builtins",
+            produce((draft) => {
+              const entry = draft.find((item) => item.name === name)
+              if (entry) {
+                entry.apiKeyDraft = value
+                if (value.trim() !== "") entry.clearApiKey = false
+              }
+            }),
+          )
+        }
+        onBuiltinClearKey={(name, cleared) =>
+          setSettings(
+            "mcps",
+            "builtins",
+            produce((draft) => {
+              const entry = draft.find((item) => item.name === name)
+              if (entry) entry.clearApiKey = cleared
             }),
           )
         }

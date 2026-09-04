@@ -23317,9 +23317,12 @@
                       },
                       "status": {
                         "$ref": "#/components/schemas/MCPStatus"
+                      },
+                      "keyConfigured": {
+                        "type": "boolean"
                       }
                     },
-                    "required": ["name", "url", "status"]
+                    "required": ["name", "url", "status", "keyConfigured"]
                   }
                 }
               }
@@ -34011,9 +34014,11 @@
                   "properties": {
                     "enabled": {
                       "type": "boolean"
+                    },
+                    "apiKey": {
+                      "type": "string"
                     }
                   },
-                  "required": ["enabled"],
                   "additionalProperties": false
                 }
               ]

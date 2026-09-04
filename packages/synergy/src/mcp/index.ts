@@ -16,7 +16,7 @@ import open from "open"
 import { McpSupervisor, mapStatus } from "./supervisor"
 import type { PromptCache, ResourceCache } from "./supervisor"
 import { ToolExposure } from "@/tool/exposure"
-import { builtinMcpServerInfos } from "./builtin-catalog"
+import { builtinApiKeyOf, builtinMcpServerInfos } from "./builtin-catalog"
 import { PendingOAuth } from "./pending-oauth"
 
 // Re-export supervisor symbols so downstream imports from "@/mcp" still work.
@@ -209,14 +209,16 @@ export namespace MCP {
     return statuses
   }
 
-  export async function builtins(): Promise<Array<{ name: string; url: string; status: Status }>> {
+  export async function builtins(): Promise<
+    Array<{ name: string; url: string; status: Status; keyConfigured: boolean }>
+  > {
     await McpSupervisor.ready()
     const cfg = await Config.current()
-    const result: Array<{ name: string; url: string; status: Status }> = []
+    const result: Array<{ name: string; url: string; status: Status; keyConfigured: boolean }> = []
     for (const info of builtinMcpServerInfos()) {
       // A full typed user entry owns the name and is shown through the
-      // normal server list; only unprefixed stubs and bare config remain
-      // builtin-owned here.
+      // normal server list; only stubs and bare config remain builtin-owned
+      // here.
       const configured = cfg.mcp?.[info.name]
       if (configured && typeof configured === "object" && "type" in configured) continue
       const handle = McpSupervisor.get(info.name)
@@ -226,7 +228,7 @@ export namespace MCP {
           : handle
             ? mapStatus(handle)
             : ({ status: "uninitialized" } as const)
-      result.push({ name: info.name, url: info.url, status })
+      result.push({ name: info.name, url: info.url, status, keyConfigured: builtinApiKeyOf(configured) !== undefined })
     }
     return result
   }
