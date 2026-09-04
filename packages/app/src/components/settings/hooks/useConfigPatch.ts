@@ -144,6 +144,14 @@ function buildMcpPatch(
   patch: Record<string, unknown>,
 ) {
   const newMcp: Record<string, Record<string, unknown>> = {}
+  // Carry `enabled`-only stubs forward: they are opt-out/opt-in markers for
+  // built-in servers, not editable server cards, and the mcp config domain
+  // merges deep, so an omitted stub would survive every save and keep the
+  // patch permanently dirty.
+  for (const [key, value] of Object.entries(cfg.mcp ?? {})) {
+    const mcp = value as Record<string, unknown>
+    if (typeof mcp.type !== "string") newMcp[key] = { ...mcp }
+  }
   for (const entry of state.mcps.entries) {
     if (!entry.key.trim()) continue
     const key = entry.key.trim()
@@ -177,6 +185,18 @@ function buildMcpPatch(
     else delete base.timeout
 
     newMcp[key] = base
+  }
+
+  // Built-in server toggles: switching off writes the opt-out stub; switching
+  // back on over a stored opt-out writes a bare `enabled: true` stub (the only
+  // merge-safe re-enable — it is schema-valid and does not own the name, so
+  // the builtin stages again on reload).
+  for (const builtin of state.mcps.builtins) {
+    const configured = cfg.mcp?.[builtin.name]
+    const enabled =
+      !configured || typeof configured !== "object" || (configured as Record<string, unknown>).enabled !== false
+    if (builtin.toggle === enabled) continue
+    newMcp[builtin.name] = { enabled: builtin.toggle }
   }
 
   if (JSON.stringify(newMcp) !== JSON.stringify(cfg.mcp ?? {})) patch.mcp = newMcp

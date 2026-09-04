@@ -50,7 +50,15 @@ import { AppPanel } from "@/components/app-panel"
 import { translateDescriptor } from "@/locales/translate"
 import { requestErrorMessage } from "@/utils/error"
 import "./settings-panel.css"
-import type { DialogSettingsProps, McpEntry, ModelsStore, ProviderGroup, ProviderModel, SettingsState } from "./types"
+import type {
+  BuiltinMcpInfo,
+  DialogSettingsProps,
+  McpEntry,
+  ModelsStore,
+  ProviderGroup,
+  ProviderModel,
+  SettingsState,
+} from "./types"
 import { defaultSettingsState, emptyMcp, groupByProvider } from "./types"
 import { isBuiltinSettingsId, settingsGroupOrder } from "./catalog"
 import { ensureInit } from "./hooks/useSettingsForm"
@@ -444,6 +452,14 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return res.data as SandboxStatus | undefined
   })
 
+  const [builtinMcps, { refetch: refetchBuiltinMcps }] = createResource(async () => {
+    try {
+      const res = await globalSDK.client.mcp.builtins()
+      return (res.data ?? []) as BuiltinMcpInfo[]
+    } catch {
+      return [] as BuiltinMcpInfo[]
+    }
+  })
   const originalMcpsRef = { current: {} as Record<string, Record<string, unknown>> }
   let initializedForSet: string | undefined
 
@@ -459,6 +475,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       setSettings,
       setInitialized,
       originalMcpsRef,
+      builtinMcps: builtinMcps(),
     })
     if (result !== undefined) initializedForSet = result
   }
@@ -466,6 +483,20 @@ export function SettingsPanel(props: SettingsPanelProps) {
   createEffect(() => {
     config()
     doEnsureInit()
+  })
+
+  // The builtin list loads independently of config; re-seed the toggles
+  // whenever it (re)loads so late resolution and post-save refetches both
+  // converge. User draft toggles live in the same slice and are only
+  // replaced when the resource itself changes.
+  createEffect(() => {
+    const list = builtinMcps()
+    if (!list) return
+    setSettings(
+      "mcps",
+      "builtins",
+      list.map((info) => ({ ...info, toggle: info.status.status !== "disabled" })),
+    )
   })
 
   // Include agents() — the Agents page requires the agent list for the Default Agent dropdown.
@@ -503,6 +534,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       ...(agentFields.some((field) => changed.has(field)) ? [refetchAgents()] : []),
       ...(changed.has("cortex") ? [refetchCortexConcurrencyStatus()] : []),
       ...(changed.has("channel") ? [refetchChannelStatuses()] : []),
+      ...(changed.has("mcp") ? [refetchBuiltinMcps()] : []),
       ...(changed.has("skills") ? [refetchSkillSources()] : []),
     ])
     const currentDraft = submittedDraft ? snapshotSettingsDraft(settings) : undefined
@@ -911,6 +943,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     mcp: () => (
       <McpPanel
         entries={settings.mcps.entries}
+        builtins={settings.mcps.builtins}
         onAdd={() => setSettings("mcps", "entries", (prev) => [...prev, emptyMcp()])}
         onChange={(index, field, value) =>
           setSettings("mcps", "entries", index, field as keyof McpEntry, value as never)
@@ -921,6 +954,16 @@ export function SettingsPanel(props: SettingsPanelProps) {
             "entries",
             produce((draft) => {
               draft.splice(index, 1)
+            }),
+          )
+        }
+        onBuiltinToggle={(name, value) =>
+          setSettings(
+            "mcps",
+            "builtins",
+            produce((draft) => {
+              const entry = draft.find((item) => item.name === name)
+              if (entry) entry.toggle = value
             }),
           )
         }

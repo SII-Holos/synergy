@@ -23278,6 +23278,72 @@
         ]
       }
     },
+    "/mcp/builtins": {
+      "get": {
+        "operationId": "mcp.builtins",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List built-in MCP servers",
+        "description": "List the built-in MCP servers shipped with Synergy and their current status.",
+        "responses": {
+          "200": {
+            "description": "Built-in MCP server list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "$ref": "#/components/schemas/MCPStatus"
+                      }
+                    },
+                    "required": ["name", "url", "status"]
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.mcp.builtins({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/mcp/{name}/auth": {
       "post": {
         "operationId": "mcp.auth.start",

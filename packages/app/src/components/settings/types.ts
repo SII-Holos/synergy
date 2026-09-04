@@ -1,5 +1,5 @@
 import type { MessageDescriptor } from "@lingui/core"
-
+import type { McpStatus } from "@ericsanchezok/synergy-sdk/client"
 import type { LocalePreference } from "@/context/locale/types"
 import type { ColorScheme } from "@ericsanchezok/synergy-ui/theme"
 import type { SendShortcut } from "@/context/input"
@@ -178,6 +178,17 @@ export type McpEntry = {
   environment: string
   headers: string
 }
+
+export type BuiltinMcpInfo = {
+  name: string
+  url: string
+  status: McpStatus
+}
+
+export type BuiltinMcpDraft = BuiltinMcpInfo & {
+  /** Draft toggle state; false means the builtin is opted out. */
+  toggle: boolean
+}
 export type SkillsSettings = {
   agents: boolean
   claude: boolean
@@ -334,6 +345,7 @@ export type PluginsStore = {
 
 export type McpsStore = {
   entries: McpEntry[]
+  builtins: BuiltinMcpDraft[]
 }
 
 export type LocalEmbeddingSource = "huggingface" | "hf-mirror" | "custom"
@@ -445,6 +457,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
     },
     mcps: {
       entries: [],
+      builtins: [],
     },
     library: {
       learning: UI_DEFAULTS.libraryLearning,

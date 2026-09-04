@@ -914,3 +914,69 @@ describe("settings config patch github integration", () => {
     ).not.toHaveProperty("github")
   })
 })
+
+describe("settings config patch builtin mcp", () => {
+  test("toggling a built-in MCP server off writes the opt-out stub", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [
+      { name: "anysearch", url: "https://api.anysearch.com/mcp", status: { status: "connected" }, toggle: false },
+    ]
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect(patch.mcp).toEqual({ anysearch: { enabled: false } })
+  })
+
+  test("re-enabling an opted-out built-in writes a bare enabled stub", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [
+      {
+        name: "scholight",
+        url: "https://scholight.sanchezcloud.net/api/mcp",
+        status: { status: "disabled" },
+        toggle: true,
+      },
+    ]
+
+    const patch = buildPatch({
+      cfg: { mcp: { scholight: { enabled: false } } } as unknown as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.mcp).toEqual({ scholight: { enabled: true } })
+  })
+
+  test("built-in toggles matching stored state emit no mcp patch", () => {
+    const state = defaultSettingsState("enter")
+    state.mcps.builtins = [
+      { name: "anysearch", url: "https://api.anysearch.com/mcp", status: { status: "connected" }, toggle: true },
+      {
+        name: "scholight",
+        url: "https://scholight.sanchezcloud.net/api/mcp",
+        status: { status: "disabled" },
+        toggle: false,
+      },
+    ]
+
+    const patch = buildPatch({
+      cfg: { mcp: { scholight: { enabled: false } } } as unknown as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("mcp")
+  })
+
+  test("existing opt-out stubs are carried forward unchanged", () => {
+    const state = defaultSettingsState("enter")
+
+    const patch = buildPatch({
+      cfg: { mcp: { anysearch: { enabled: false } } } as unknown as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("mcp")
+  })
+})

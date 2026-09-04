@@ -16631,6 +16631,30 @@ msgid "settings.mcp.addServer"
 msgstr "Add server"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.builtins.badge"
+msgstr "Built-in"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.section.description"
+msgstr "Shipped with Synergy and usable without an API key. Turning one off disables its tools."
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.section.title"
+msgstr "Built-in servers"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.connected"
+msgstr "Connected"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.disabled"
+msgstr "Off"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.other"
+msgstr "Unavailable"
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.card.collapse"
 msgstr "Collapse server details"
 

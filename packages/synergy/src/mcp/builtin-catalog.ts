@@ -81,6 +81,15 @@ function userOwnsServer(entry: unknown): boolean {
   return typeof record.type === "string"
 }
 
+/** Catalog names and URLs, for surfaces that list builtins without staging them. */
+export function builtinMcpServerInfos(): Array<{ name: string; url: string }> {
+  if (builtinMcpDisabled()) return []
+  return catalog().map(({ name, config }) => ({
+    name,
+    url: config.type === "remote" ? config.url : "",
+  }))
+}
+
 /** Builtin entries to stage for the given merged user config (may be empty). */
 export function collectBuiltinMcpServers(userMcp: Record<string, unknown> | undefined): BuiltinMcpServer[] {
   if (builtinMcpDisabled()) return []

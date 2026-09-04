@@ -16631,6 +16631,30 @@ msgid "settings.mcp.addServer"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.builtins.badge"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.section.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.section.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.connected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.disabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.other"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.card.collapse"
 msgstr ""
 

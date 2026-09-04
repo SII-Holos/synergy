@@ -348,6 +348,8 @@ import type {
   McpAuthRemoveResponses,
   McpAuthStartErrors,
   McpAuthStartResponses,
+  McpBuiltinsErrors,
+  McpBuiltinsResponses,
   McpConnectErrors,
   McpConnectResponses,
   McpDisconnectErrors,
@@ -11244,6 +11246,36 @@ export class Mcp extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * List built-in MCP servers
+   *
+   * List the built-in MCP servers shipped with Synergy and their current status.
+   */
+  public builtins<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<McpBuiltinsResponses, McpBuiltinsErrors, ThrowOnError>({
+      url: "/mcp/builtins",
+      ...options,
+      ...params,
     })
   }
 

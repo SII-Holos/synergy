@@ -778,7 +778,11 @@ class McpSupervisorImpl {
     const cfg = await Config.current()
     for (const [key, mcp] of Object.entries(cfg.mcp ?? {})) {
       if (typeof mcp !== "object" || mcp === null || !("type" in mcp)) {
-        if (mcp?.enabled !== false) log.error("Ignoring MCP config entry without type", { key })
+        // An `enabled`-only stub is the documented opt-out/opt-in marker for
+        // built-in servers and is schema-valid; only warn for malformed values.
+        if (typeof mcp !== "object" || mcp === null || !("enabled" in mcp)) {
+          log.error("Ignoring MCP config entry without type", { key })
+        }
         continue
       }
       const config = Config.normalizeMcp(mcp as Config.Mcp, cfg.mcpDefaults, cfg.experimental?.mcp_timeout)

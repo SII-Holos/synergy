@@ -20177,6 +20177,38 @@ export type McpAddResponses = {
 
 export type McpAddResponse = McpAddResponses[keyof McpAddResponses]
 
+export type McpBuiltinsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/mcp/builtins"
+}
+
+export type McpBuiltinsErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type McpBuiltinsError = McpBuiltinsErrors[keyof McpBuiltinsErrors]
+
+export type McpBuiltinsResponses = {
+  /**
+   * Built-in MCP server list
+   */
+  200: Array<{
+    name: string
+    url: string
+    status: McpStatus
+  }>
+}
+
+export type McpBuiltinsResponse = McpBuiltinsResponses[keyof McpBuiltinsResponses]
+
 export type McpAuthRemoveData = {
   body?: never
   path: {

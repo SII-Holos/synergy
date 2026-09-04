@@ -16631,6 +16631,30 @@ msgid "settings.mcp.addServer"
 msgstr "添加服务器"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.builtins.badge"
+msgstr "内置"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.section.description"
+msgstr "随 Synergy 内置,无需 API Key 即可使用。关闭后将禁用其工具。"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.section.title"
+msgstr "内置服务器"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.connected"
+msgstr "已连接"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.disabled"
+msgstr "已关闭"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.other"
+msgstr "不可用"
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.card.collapse"
 msgstr "收起服务器详情"
 
