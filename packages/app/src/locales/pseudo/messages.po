@@ -15331,6 +15331,78 @@ msgid "settings.general.compactReasoning.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.general.devicePush.completion"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enableFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.error"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.input"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.insecure"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.iosTab"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.permissionDenied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.removed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.removeFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.test"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.testFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.testSent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.unsupported"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.general.font.applied"
 msgstr ""
 

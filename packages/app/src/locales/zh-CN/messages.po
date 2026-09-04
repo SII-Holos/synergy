@@ -15331,6 +15331,78 @@ msgid "settings.general.compactReasoning.title"
 msgstr "紧凑推理"
 
 #. js-lingui-explicit-id
+msgid "settings.general.devicePush.completion"
+msgstr "任务完成"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.description"
+msgstr "通过浏览器在本设备接收任务完成、出错和需要输入的通知。"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enable"
+msgstr "启用推送"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enabled"
+msgstr "已在本设备启用推送"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enableFailed"
+msgstr "无法启用推送"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.error"
+msgstr "错误"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.input"
+msgstr "需要输入"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.insecure"
+msgstr "推送需要安全（HTTPS）连接"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.iosTab"
+msgstr "在 iOS 上，请先将此网站添加到主屏幕并作为应用打开，以启用推送"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.permissionDenied"
+msgstr "浏览器设置中已拒绝通知权限"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.remove"
+msgstr "移除"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.removed"
+msgstr "设备已移除"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.removeFailed"
+msgstr "无法移除设备，它仍在接收推送"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.test"
+msgstr "发送测试"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.testFailed"
+msgstr "测试通知发送失败"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.testSent"
+msgstr "测试通知已发送"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.title"
+msgstr "设备推送"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.unsupported"
+msgstr "此浏览器不支持推送"
+
+#. js-lingui-explicit-id
 msgid "settings.general.font.applied"
 msgstr "已应用"
 

@@ -113,7 +113,7 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
             type: "turn-complete",
             session: notification.sessionID,
           })
-          void platform.notify(notification.title, notification.description, notification.href)
+          void platform.notify(notification.title, notification.description, notification.href, `session-${sessionID}`)
           break
         }
         case "session.error": {
@@ -140,7 +140,12 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
             session: notification.sessionID,
             error: notification.error,
           })
-          void platform.notify(notification.title, notification.description, notification.href)
+          void platform.notify(
+            notification.title,
+            notification.description,
+            notification.href,
+            `session-${notification.sessionID}`,
+          )
           break
         }
       }
