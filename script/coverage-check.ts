@@ -276,7 +276,8 @@ export async function validateManifest(manifest: CoverageManifest, root: string 
 
 async function collectLcovFiles(packageRoot: string, relPath: string): Promise<string[]> {
   const base = path.join(packageRoot, path.dirname(relPath))
-  // Sharded orchestrators (app, ui) write coverage/shards/<n>/lcov.info.
+  // Sharded orchestrators (app, ui, synergy coverage-run) write
+  // coverage/shards/<n>/lcov.info.
   // Only numeric shard directories count as shards so stray probe or cache
   // directories can never masquerade as coverage batches.
   const shardRoot = path.join(base, "shards")
@@ -378,9 +379,9 @@ async function runPackage(
     const prefix = signals.length > 0 ? `\n--- failure signals ---\n${signals.join("\n")}\n` : ""
     throw new Error(`${name}: coverage command exited ${output.exitCode}${prefix}\n${shown}`)
   }
-  // Sharded orchestrators (app, ui) write one lcov per batch under
-  // coverage/shards/; merge them when present, otherwise read the single
-  // canonical file.
+  // Sharded orchestrators (app, ui, synergy coverage-run) write one lcov per
+  // batch under coverage/shards/; merge them when present, otherwise read the
+  // single canonical file.
   const lcovFiles = (await collectLcovFiles(packageRoot, config.lcov)).sort()
   if (lcovFiles.length === 0) {
     const direct = path.join(packageRoot, config.lcov)

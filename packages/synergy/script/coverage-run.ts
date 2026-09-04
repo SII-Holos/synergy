@@ -2,11 +2,12 @@
 
 /**
  * Synergy coverage runner. Mirrors the packages/app and packages/ui
- * orchestrators: one main batch runs the whole suite (single-process
- * semantics, so per-file lcov totals stay consistent) while a small set of
- * files that are flaky only under a full shared-process run execute in their
- * own isolated processes. Each batch writes lcov under coverage/shards/<n>/,
- * which script/coverage-check.ts merges with union semantics.
+ * orchestrators: the main batch is dealt round-robin into a few sequential
+ * single-process shards (default 4, SYNERGY_COVERAGE_SHARDS) so one file's
+ * leaked module state can never poison the whole suite, while a small set of
+ * files that stay flaky even in a small shard execute in their own isolated
+ * processes. Every batch writes lcov under coverage/shards/<n>/, which
+ * script/coverage-check.ts merges with union semantics.
  */
 
 import { mkdir, readdir, rm } from "node:fs/promises"
@@ -16,36 +17,58 @@ import { createIsolatedTestEnv } from "./test-env"
 const packageRoot = path.resolve(import.meta.dir, "..")
 
 /**
- * Test files that fail only when the full suite shares one run. Each passes
- * in isolation; the failure modes are load- or state-sensitive:
- * - standalone Bun.build fixtures (embedding, svg-raster) hit
+ * Test files that fail even inside a small coverage shard. Each passes in
+ * isolation; the failure modes are load- or state-sensitive:
+ * - standalone Bun.build fixtures (embedding-standalone, svg-raster) hit
  *   "Unexpected reading file" on the transformers runtime under a full run;
+ * - embedding and embedding-local drive the real transformers/ONNX runtime
+ *   and exceed the run timeout under batch load (35s+), so they need their
+ *   own process;
  * - nav-global-routes asserts home-scope completion counters that sibling
  *   files can mutate;
  * - openai-image-gen's global fetch mock races with sibling fetch mocks;
  * - auto-expand mocks 15 module functions and drives the real tool scheduler
- *   and session store, so a single shared-process run with failing sibling
- *   fixtures (plugin registry, network) settles its parts as errors.
+ *   and session store, so a shared run with failing sibling fixtures (plugin
+ *   registry, network) settles its parts as errors;
+ * - host/managed-project-ownership/imap assert against global config and
+ *   channel registries that a prior sibling's stale Config.current override
+ *   or late rejection poisons (whole-file sub-millisecond failures on CI,
+ *   2026-09-04), so they get their own process;
+ * - experience-recall asserts UCB1 math against the LibraryDB singleton that
+ *   sibling library suites repopulate (intermittent zero-candidate failures
+ *   in shared batches);
+ * - storage-retry spies global fs rename/unlink, clarus-invite-accept reads
+ *   shared channel/Clarus state, and feishu-provider races SVG raster
+ *   fallbacks, so each also runs alone;
  * - holos/proxy/registry/retry/import/catalog/MCP-OAuth suites start
  *   local servers or assert network timing and flake under a full shared
  *   process on CI (see postmortem 0001 coverage failures); each passes in
  *   its own process.
  */
 export const ISOLATED_COVERAGE_FILES: ReadonlySet<string> = new Set([
-  "test/vector/embedding-standalone.test.ts",
+  "test/channel/clarus-invite-accept.test.ts",
+  "test/channel/feishu-provider.test.ts",
+  "test/channel/host.test.ts",
+  "test/channel/managed-project-ownership.test.ts",
   "test/channel/svg-raster-standalone.test.ts",
-  "test/server/nav-global-routes.test.ts",
-  "test/tool/openai-image-gen.test.ts",
-  "test/tool/auto-expand.test.ts",
+  "test/config/import.test.ts",
+  "test/email/imap.test.ts",
   "test/holos/runtime.test.ts",
+  "test/library/embedding.test.ts",
+  "test/library/embedding-local.test.ts",
+  "test/library/experience-recall.test.ts",
+  "test/plugin/mcp-declarative-oauth.test.ts",
+  "test/provider/catalog-stability.test.ts",
+  "test/provider/proxy.test.ts",
+  "test/server/nav-global-routes.test.ts",
   "test/server/plugin-official-install.test.ts",
   "test/server/plugin-registry-routes.test.ts",
   "test/server/skill-route.test.ts",
-  "test/config/import.test.ts",
-  "test/provider/proxy.test.ts",
   "test/session/retry.test.ts",
-  "test/provider/catalog-stability.test.ts",
-  "test/plugin/mcp-declarative-oauth.test.ts",
+  "test/storage/storage-retry.test.ts",
+  "test/tool/auto-expand.test.ts",
+  "test/tool/openai-image-gen.test.ts",
+  "test/vector/embedding-standalone.test.ts",
 ])
 
 export interface CoverageBatches {
@@ -58,6 +81,18 @@ export function splitCoverageBatches(files: string[]): CoverageBatches {
     main: files.filter((file) => !ISOLATED_COVERAGE_FILES.has(file)),
     isolated: files.filter((file) => ISOLATED_COVERAGE_FILES.has(file)),
   }
+}
+
+export function coverageShardCount(env: Record<string, string | undefined>): number {
+  const parsed = Number.parseInt(env["SYNERGY_COVERAGE_SHARDS"] ?? "", 10)
+  if (!Number.isInteger(parsed) || parsed < 1) return 4
+  return parsed
+}
+
+export function shardMainFiles(files: string[], shardCount: number): string[][] {
+  const shards: string[][] = Array.from({ length: shardCount }, () => [])
+  files.forEach((file, index) => shards[index % shardCount]!.push(file))
+  return shards
 }
 
 async function collectTests(directory: string): Promise<string[]> {
@@ -104,9 +139,13 @@ export async function runBatches(
 ): Promise<number> {
   const { main, isolated } = splitCoverageBatches(files)
   const failed: Array<{ shard: number; exitCode: number }> = []
-  const mainExit = await runBatch(main, 0, env)
-  if (mainExit !== 0) failed.push({ shard: 0, exitCode: mainExit })
-  let shard = 1
+  let shard = 0
+  for (const shardFiles of shardMainFiles(main, coverageShardCount(env))) {
+    if (shardFiles.length === 0) continue
+    const exitCode = await runBatch(shardFiles, shard, env)
+    if (exitCode !== 0) failed.push({ shard, exitCode })
+    shard++
+  }
   for (const file of isolated) {
     const exitCode = await runBatch([file], shard++, env)
     if (exitCode !== 0) failed.push({ shard: shard - 1, exitCode })
