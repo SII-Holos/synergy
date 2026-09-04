@@ -1,11 +1,17 @@
-Search across session message content using regex patterns. Searches text in all messages across sessions, returning matching sessions with context around each match.
+Search across session message content using regex patterns. Searches messages in sessions across the selected scopes, returning matching sessions with context around each match.
 
 Use this to find past conversations about specific topics. For browsing sessions by time or scope, use `session_list` instead. To read full context around a match, use `session_read` with the `around` parameter.
 
-The search pattern is a regular expression applied to each message's text content. Results are grouped by session and sorted by most recently updated session first.
+The search pattern is a regular expression applied to each message's content. Results are grouped by session; within each session matches are shown in chronological order, and sessions with more relevant matches (more distinct pattern words present) rank higher.
 
 The `scope` parameter controls which sessions are searched:
-- "all" (default): Search across all project scopes
-- "current": Only search sessions in the current project scope
+- "all" (default): Search across all project scopes plus the Home scope (channel/Feishu and other Home sessions)
+- "project": Search all project scopes, or one project selected with `scopeID`
+- "home": Search Home scope sessions only (channel/Feishu and other Home sessions)
+- "current": Only search sessions in the current scope
 
-Use `since` and `before` to filter sessions by last updated time (ISO 8601 dates). Combine with pattern matching to find e.g. "sessions from last week mentioning X".
+Home scope sessions may contain messages from other participants. Searching them is an explicit capability granted to agents that already have `session_list`/`session_read` access.
+
+By default only top-level sessions are searched. Set `includeChildren` to also search child sessions (delegated/Cortex/background sessions with a parent session). By default only message text parts are searched; set `content` to "tool" to also match tool-call inputs and completed tool outputs, or "all" to also match attachment filenames and URLs. Tool and attachment content is matched at excerpt level.
+
+Use `since` and `before` to filter sessions by last updated time (ISO 8601 dates), or by message creation time when `timeField` is "message". Combine with pattern matching to find e.g. "sessions from last week mentioning X".

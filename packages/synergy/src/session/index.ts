@@ -46,6 +46,7 @@ import { createDefaultTitle } from "./title"
 import * as SessionWorking from "./working"
 import { SessionMutation } from "./mutation"
 import { SessionProjectHealth } from "./project-health"
+import { SessionSearchIndex } from "./search-index"
 
 export namespace Session {
   export const Info = InfoSchema
@@ -1084,6 +1085,7 @@ export namespace Session {
       await Storage.remove(StoragePath.sessionIndex(canonicalSessionID))
       await removePageIndexEntry(scope.id, sessionID)
       if (session.parentID) await removeChildIndexEntry(scope.id, session.parentID, sessionID)
+      await SessionSearchIndex.removeRecords(scopeID, canonicalSessionID)
       await removeChildIndex(scope.id, sessionID)
       removed.push(session)
     } catch (e) {
@@ -1167,6 +1169,7 @@ export namespace Session {
     Bus.publish(MessageV2.Event.Updated, {
       info: canonical,
     })
+    await SessionSearchIndex.markDirty(scopeID, asSessionID(canonical.sessionID))
     return canonical
   })
 
@@ -1282,6 +1285,7 @@ export namespace Session {
         sessionID: input.sessionID,
         messageID: input.messageID,
       })
+      await SessionSearchIndex.markDirty(scopeID, asSessionID(input.sessionID))
       return input.messageID
     },
   )
@@ -1309,6 +1313,7 @@ export namespace Session {
         messageID: input.messageID,
         partID: input.partID,
       })
+      await SessionSearchIndex.markDirty(scopeID, asSessionID(input.sessionID))
       return input.partID
     },
   )
@@ -1366,6 +1371,8 @@ export namespace Session {
       asMessageID(part.messageID),
       asPartID(part.id),
     )
+    const searchableDiscreteWrite =
+      delta === undefined && (part.type === "text" || part.type === "tool" || part.type === "attachment")
     if (delta !== undefined) {
       partWriteBuffer.defer(part.id, path, part)
     } else {
@@ -1377,6 +1384,16 @@ export namespace Session {
       // per-delta streamed updates are coalesced by the write-behind buffer and
       // do not need to advance the cache — the terminal write for each part does.
       SessionMessageCache.upsertPart(part.sessionID, part)
+    }
+    // A discrete content-bearing part write is a searchable-content boundary:
+    // user messages persist their parts AFTER Session.updateMessage marks the
+    // session dirty, assistant parts stream before the terminal updateMessage,
+    // and interrupted turns may flush parts with no following message write. A
+    // rebuild that runs in any of those windows must observe the part, so mark
+    // dirty here too. Streaming deltas stay unmarked (hot path) because a
+    // discrete terminal write always follows before the message settles.
+    if (searchableDiscreteWrite) {
+      await SessionSearchIndex.markDirty(scopeID, asSessionID(part.sessionID))
     }
     if (part.type === "tool") {
       // Tool parts are published as unsequenced streaming events. Keep a
