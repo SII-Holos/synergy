@@ -607,7 +607,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
     if (!saved) {
       throw new Error("Could not save the Boss Mode settings before opening the session.")
     }
-    const result = await globalSDK.client.boss.session.open()
+    // The runtime boss session lives in home scope; the open route requires
+    // an explicit scope (it refuses to guess from the request context).
+    const result = await globalSDK.client.boss.session.open({ scopeID: HOME_SCOPE_KEY })
     const sessionID = result.data?.sessionID
     if (!sessionID) {
       throw new Error("The runtime did not return a boss session.")
