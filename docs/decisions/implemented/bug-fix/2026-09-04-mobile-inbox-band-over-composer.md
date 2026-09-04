@@ -12,12 +12,13 @@ On mobile session views, the inbox trigger row sat in a full-width band above th
 
 ## Decision
 
-Scope the reserved dock padding to desktop only and let the trigger ride the composer on mobile:
+Scope the reserved dock padding to desktop only and keep the trigger in its original mobile position above the composer:
 
 - `PromptDock` applies `md:pt-12` instead of `pt-12`, so the mobile dock contributes no empty band above the composer. Desktop (>= 48rem) keeps the overlay dock and its 48 px padding unchanged.
-- The mobile inbox anchor moves from the middle of the former band to the composer's top-right edge (`top: -1rem`): the 36 px trigger now hugs the shell, with its lower 20 px overlapping the composer's top border area rather than floating over message content.
+- The mobile inbox anchor keeps its original position (`top: -2.875rem`), floating fully above the composer instead of overlapping it. A brief experiment moved it down to the composer's top edge (`top: -1rem`), but on a real 390 px viewport that dipped the trigger's lower 20 px over the composer shell and covered its top-right corner, so the original offset was kept.
 - The conversation content bottom padding grows from `pb-4` to `pb-6` (16 px -> 24 px) on mobile so the last full-width message clears the floating trigger.
 - `PromptDockFloatLayer` (progress island, subagent rows, workflow offers) keeps its absolute `bottom-full` overlay only at >= 48rem (`md:absolute md:inset-x-0 md:bottom-full`). Below 48rem the wrapper joins the dock's normal flow (`relative w-full`), so active controls reserve exactly their own height above the composer — instead of overlaying the last message — and idle controls collapse to zero height, so no fixed band returns.
+- The mobile scroll-to-bottom button raises from `bottom-4` to `bottom-16` (16 px -> 64 px above the viewport bottom). Removing the dock band moved the conversation scroller's bottom edge down by 48 px, which dragged the button into the inbox trigger's vertical band (trigger top is up to 46 px above the composer, button is 40 px tall); 64 px clears it with an ~18 px gap. The desktop offset (`md:bottom-[calc(var(--prompt-height,8rem)+16px)]`) and the kanban pane override (`bottom-3`) are unchanged.
 
 The >= 48rem media-query placement (vertically centered, outboard right of the composer) is unchanged.
 
@@ -34,5 +35,5 @@ The >= 48rem media-query placement (vertically centered, outboard right of the c
 ## Consequences
 
 - Mobile sessions no longer show an empty near-black strip between the conversation and the composer; the message scroller gains the full 48 px it lost to the padding, and the last message keeps clear of the floating trigger.
-- The inbox trigger sits partially over the composer's top-right edge on mobile, matching the floating-control language already used for progress islands; the popover and desktop anchoring behavior are untouched.
+- The inbox trigger floats fully above the composer's top edge on mobile at its original offset, so the composer's top-right corner stays unobstructed, and the scroll-to-bottom button sits raised above it at `bottom-16`; the popover, desktop anchoring, and kanban pane behavior are untouched.
 - Two regression nets pin the layout: the standalone Chromium suite (`session-inbox-anchor-layout.test.ts`, registered in `script/test.ts`'s `playwrightIsolated`) derives the dock band and conversation clearance classes from the component sources and measures trigger geometry at both breakpoints; the production-build contract test (`app-build-css-contract.test.ts`) rebuilds the app and asserts the emitted classes resolve to the intended geometry — desktop keeps the 48 px band with an absolute float overlay, mobile collapses the band and flows the float layer (a busy control pushes the composer down; idle collapses to zero). Reverting `md:pt-12`, `pb-6`, or the float-layer class change fails the suites.
