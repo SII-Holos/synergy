@@ -22,74 +22,84 @@ Usage notes:
 - Keep text conversational; long monologues are better summarized first.
 - The audio is delivered as an attachment the user can play; it is not fed back to the model as speech.`
 
-export const SpeakTool = Tool.define("speak", {
-  description: DESCRIPTION,
-  parameters: z.object({
-    text: z.string().max(MAX_TEXT_CHARS).describe("The exact text to synthesize into speech"),
-    voice: z.string().optional().describe("Provider-specific voice name. Defaults to the configured voice.tts.voice."),
-    instructions: z
-      .string()
-      .optional()
-      .describe("Natural-language delivery instructions for the speech, e.g. tone and pacing"),
-  }),
-  async execute(params, ctx) {
-    const text = params.text.trim()
-    if (text.length === 0) throw new Error("speak requires non-empty text")
-
-    const result = await Voice.speak({
-      text,
-      voice: params.voice,
-      instructions: params.instructions,
-      abortSignal: ctx.abort,
-    })
-
-    const filename = `speech-${Identifier.ascending("part")}.mp3`
-    const assetId = await Asset.write(Buffer.from(result.data), result.mimeType, filename)
-    const bytes = result.data.byteLength
-
-    const attachments: MessageV2.AttachmentPart[] = [
-      {
-        id: Identifier.ascending("part"),
-        sessionID: ctx.sessionID,
-        messageID: ctx.messageID,
-        type: "attachment",
-        mime: result.mimeType,
-        filename,
-        url: `asset://${assetId}`,
-        presentation: { renderer: "audio", size: "medium" },
-        model: { mode: "none" },
-        metadata: {
-          kind: "attachment",
-          attachment: {
-            originTool: "speak",
-            size: bytes,
-            deliverable: true,
-          },
-        },
-      },
-    ]
-
-    return {
-      title: "Speech",
-      output: `Speech delivered (${formatSize(bytes)}). The user can play it in the conversation.`,
-      metadata: {
-        bytes,
-        voice: params.voice,
-        truncated: false,
-        display: {
-          kind: "media-generation",
-          toolCard: "hidden",
-          media: {
-            type: "audio",
-            actionLabel: "Generating speech",
-            pendingTitle: "Generating speech",
-          },
-        },
-      },
-      attachments,
-    }
+export const speakDisplay = {
+  kind: "media-generation",
+  toolCard: "hidden",
+  media: {
+    type: "audio",
+    actionLabel: "Generating speech",
+    pendingTitle: "Generating speech",
   },
-})
+} as const
+export const SpeakTool = Tool.define(
+  "speak",
+  {
+    description: DESCRIPTION,
+    parameters: z.object({
+      text: z.string().max(MAX_TEXT_CHARS).describe("The exact text to synthesize into speech"),
+      voice: z
+        .string()
+        .optional()
+        .describe("Provider-specific voice name. Defaults to the configured voice.tts.voice."),
+      instructions: z
+        .string()
+        .optional()
+        .describe("Natural-language delivery instructions for the speech, e.g. tone and pacing"),
+    }),
+    async execute(params, ctx) {
+      const text = params.text.trim()
+      if (text.length === 0) throw new Error("speak requires non-empty text")
+
+      const result = await Voice.speak({
+        text,
+        voice: params.voice,
+        instructions: params.instructions,
+        abortSignal: ctx.abort,
+      })
+
+      const filename = `speech-${Identifier.ascending("part")}.mp3`
+      const assetId = await Asset.write(Buffer.from(result.data), result.mimeType, filename)
+      const bytes = result.data.byteLength
+
+      const attachments: MessageV2.AttachmentPart[] = [
+        {
+          id: Identifier.ascending("part"),
+          sessionID: ctx.sessionID,
+          messageID: ctx.messageID,
+          type: "attachment",
+          mime: result.mimeType,
+          filename,
+          url: `asset://${assetId}`,
+          presentation: { renderer: "audio", size: "medium" },
+          model: { mode: "none" },
+          metadata: {
+            kind: "attachment",
+            attachment: {
+              originTool: "speak",
+              size: bytes,
+              deliverable: true,
+            },
+          },
+        },
+      ]
+
+      return {
+        title: "Speech",
+        output: `Speech delivered (${formatSize(bytes)}). The user can play it in the conversation.`,
+        metadata: {
+          bytes,
+          voice: params.voice,
+          truncated: false,
+          display: speakDisplay,
+        },
+        attachments,
+      }
+    },
+  },
+  {
+    display: speakDisplay,
+  },
+)
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
