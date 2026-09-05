@@ -474,7 +474,6 @@ function PluginRow(props: {
             {props.plugin.author?.name ??
               _({ id: "app.plugin.marketplace.row.unknownAuthor", message: "Unknown author" })}
           </span>
-          <span aria-hidden="true">·</span>
           <span>
             {_({
               id: "app.plugin.marketplace.row.tools",
@@ -482,7 +481,6 @@ function PluginRow(props: {
               values: { count: props.plugin.tools.length },
             })}
           </span>
-          <span aria-hidden="true">·</span>
           {/* plugin.runtimeMode is catalog data — pass through */}
           <span>{props.plugin.runtimeMode}</span>
           <Show when={props.plugin.compatibility?.synergy}>
@@ -572,24 +570,19 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boole
         <span class="plugin-marketplace-row-meta">
           {/* plugin.id is catalog identifier — pass through */}
           <span>{props.plugin.id}</span>
-          <span aria-hidden="true">·</span>
           <span>{localizedInstallationLabel()}</span>
           <Show when={props.plugin.apiVersion}>
-            <span aria-hidden="true">·</span>
             <span>{_(pluginMarketplace.apiVersionLabel.id, { version: props.plugin.apiVersion })}</span>
           </Show>
           <Show when={props.plugin.generation}>
             {(generation) => (
-              <>
-                <span aria-hidden="true">·</span>
-                <span>
-                  {_({
-                    id: "app.plugin.marketplace.build.label",
-                    message: "Build {id}",
-                    values: { id: formatPluginBuildId(generation()) },
-                  })}
-                </span>
-              </>
+              <span>
+                {_({
+                  id: "app.plugin.marketplace.build.label",
+                  message: "Build {id}",
+                  values: { id: formatPluginBuildId(generation()) },
+                })}
+              </span>
             )}
           </Show>
         </span>
