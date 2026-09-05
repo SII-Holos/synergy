@@ -5,6 +5,7 @@ import { Skill } from "../../src/skill"
 import { BUILTIN_SKILLS } from "../../src/skill/builtin"
 import { SkillTool } from "../../src/tool/skill"
 import { tmpdir } from "../fixture/fixture"
+import "../../src/product-registration"
 
 const toolCtx = {
   sessionID: "test",

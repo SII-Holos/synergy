@@ -57,6 +57,10 @@
           "reason": "channel providers require live external services"
         },
         {
+          "glob": "src/cli/cmd/agent.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
           "glob": "src/cli/cmd/auth.ts",
           "reason": "CLI command surface; exercised through integration flows, not the unit suite"
         },
@@ -69,6 +73,22 @@
           "reason": "CLI command surface; exercised through integration flows, not the unit suite"
         },
         {
+          "glob": "src/cli/cmd/data/move.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/holos.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/library.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/logs.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
           "glob": "src/cli/cmd/mcp.ts",
           "reason": "CLI command surface; exercised through integration flows, not the unit suite"
         },
@@ -78,6 +98,10 @@
         },
         {
           "glob": "src/cli/cmd/run.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/session.ts",
           "reason": "CLI command surface; exercised through integration flows, not the unit suite"
         },
         {
@@ -195,6 +219,10 @@
         {
           "glob": "src/provider/models-macro.ts",
           "reason": "compile-time Bun macro (import ... with { type: 'macro' }); inlined during bundling, never executed under the runtime coverage instrument"
+        },
+        {
+          "glob": "src/push/index.ts",
+          "reason": "barrel re-export"
         },
         {
           "glob": "src/remote/index.ts",
@@ -898,6 +926,10 @@
         },
         {
           "glob": "src/components/settings/panels/ConfigFilesPanel.tsx",
+          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+        },
+        {
+          "glob": "src/components/settings/panels/DevicePushBlock.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
