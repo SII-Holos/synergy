@@ -71,7 +71,6 @@ function isolatedEnv(home: string): Record<string, string | undefined> {
     ...process.env,
     SYNERGY_HOME: home,
     SYNERGY_DISABLE_MODELS_FETCH: "1",
-    SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH: "true",
     SYNERGY_DISABLE_DEFAULT_PLUGINS: "1",
     SYNERGY_DISABLE_LSP_DOWNLOAD: "1",
     SYNERGY_DISABLE_FILEWATCHER: "1",

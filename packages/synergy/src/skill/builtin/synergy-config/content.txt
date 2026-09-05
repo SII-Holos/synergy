@@ -38,7 +38,7 @@ Web Settings shows each canonical domain path with a Copy Path action. Managed-l
 |---|---|
 | `00-general.jsonc` | `$schema`, `theme`, `keybinds`, `toast`, `logLevel`, `snapshot`, `username`, `layout`, `embedding`, `rerank` |
 | `10-models.jsonc` | `model`, `nano_model`, `mini_model`, `mid_model`, `thinking_model`, `long_context_model`, `creative_model`, `vision_model`, `role_variant`, `quick_switcher` |
-| `20-providers.jsonc` | `provider`, `providerCatalog`, `enabled_providers`, `disabled_providers` |
+| `20-providers.jsonc` | `provider`, `enabled_providers`, `disabled_providers` |
 | `30-library.jsonc` | `library` |
 | `40-mcp.jsonc` | `mcp`, `mcpDefaults` |
 | `50-plugins.jsonc` | `plugin`, `pluginConfig`, `pluginRuntimePolicy`, `pluginMarketplace` |
