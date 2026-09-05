@@ -9,6 +9,9 @@ import { Flag } from "../flag/flag"
 import { Log } from "../util/log"
 import { MEMORY_CATEGORIES } from "./schema"
 import { ConfigDomain } from "./domain"
+import { Storage } from "../storage/storage"
+import { StoragePath } from "../storage/path"
+import { Identifier } from "../id/id"
 import { Auth } from "../provider/api-key"
 import { registerBuiltinProviderProfiles } from "../provider/builtin"
 import { ProviderProfile } from "../provider/profile"
@@ -787,6 +790,16 @@ async function removeDeprecatedProviderCatalogConfig(): Promise<number> {
 
   for (const dir of await findConfigDomainDirs()) {
     const providersFile = path.join(dir, "20-providers.jsonc")
+    if (await removeTopLevelConfigKeys(providersFile, ["providerCatalog"])) changed++
+  }
+
+  for (const scopeID of await Storage.scan(StoragePath.scopeRoot())) {
+    const record = await Storage.read<{ worktree?: string }>(StoragePath.scope(Identifier.asScopeID(scopeID)), {
+      silentNotFound: true,
+    }).catch(() => undefined)
+    const worktree = record?.worktree
+    if (!worktree) continue
+    const providersFile = path.join(ConfigDomain.directory(path.join(worktree, ".synergy")), "20-providers.jsonc")
     if (await removeTopLevelConfigKeys(providersFile, ["providerCatalog"])) changed++
   }
 

@@ -354,13 +354,12 @@ export namespace ProviderCatalog {
     const source = modelsDev[sourceID]
     const metadataSource = profile.sourceModelProviderID ? modelsDev[profile.sourceModelProviderID] : undefined
     const sourceModelIDs = Object.keys(source?.models ?? {})
+    const fallbackModelIDs = profile.fallbackModels ?? []
     const mappedProvider = sourceID !== profile.id
     const modelIDs =
-      mappedProvider && profile.fallbackModels && profile.fallbackModels.length > 0
-        ? profile.fallbackModels
-        : sourceModelIDs.length > 0
-          ? sourceModelIDs
-          : (profile.fallbackModels ?? [])
+      mappedProvider && fallbackModelIDs.length > 0
+        ? fallbackModelIDs
+        : [...new Set([...sourceModelIDs, ...fallbackModelIDs])]
     const inheritsSourceEnv = profile.authKind === undefined || profile.authKind === "api_key"
     const provider: ModelsDev.Provider = {
       id: profile.id,

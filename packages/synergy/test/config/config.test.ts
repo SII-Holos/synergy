@@ -1562,6 +1562,37 @@ test("removes deprecated providerCatalog from monolithic and domain configs", as
   }
 })
 
+test("removes deprecated providerCatalog from persisted project scopes", async () => {
+  const home = path.join(os.tmpdir(), `synergy-config-provider-catalog-scope-${Math.random().toString(36).slice(2)}`)
+  const projectA = path.join(home, "project-a")
+  const projectB = path.join(home, "project-b")
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  const origCwd = process.cwd()
+  try {
+    process.env["SYNERGY_TEST_HOME"] = home
+    const providersFile = path.join(projectA, ".synergy", "synergy.d", "20-providers.jsonc")
+    await fs.mkdir(path.dirname(providersFile), { recursive: true })
+    await Bun.write(providersFile, `{"providerCatalog": {"enabled": true}, "enabled_providers": ["legacy"]}`)
+    await fs.mkdir(path.join(projectB, ".synergy", "synergy.d"), { recursive: true })
+
+    const dataDir = path.join(home, ".synergy", "data", "projects")
+    await fs.mkdir(dataDir, { recursive: true })
+    await Bun.write(path.join(dataDir, "scope-record.json"), JSON.stringify({ worktree: projectA }))
+
+    process.chdir(projectB)
+    resetMigrations()
+    await runMigrations({ targetDomain: "config" })
+
+    const migrated = parseJsonc(await Bun.file(providersFile).text()) as Record<string, unknown>
+    expect(migrated.providerCatalog).toBeUndefined()
+    expect(migrated.enabled_providers).toEqual(["legacy"])
+  } finally {
+    process.chdir(origCwd)
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
 test("migrates legacy identity config to valid library config", async () => {
   const home = path.join(os.tmpdir(), `synergy-config-identity-migration-${Math.random().toString(36).slice(2)}`)
   const origHome = process.env["SYNERGY_TEST_HOME"]

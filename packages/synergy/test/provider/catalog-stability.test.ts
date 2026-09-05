@@ -92,6 +92,15 @@ ProviderProfile.register({
   ],
 })
 
+const unionProviderID = `catalog-fallback-union-${Math.random().toString(36).slice(2)}`
+ProviderProfile.register({
+  id: unionProviderID,
+  name: "Fallback Union Provider",
+  authKind: "none",
+  modelsDevProviderID: unionProviderID,
+  fallbackModels: ["declared-fallback"],
+})
+
 async function reset() {
   identity = "account-a"
   fetchCatalog = async () => []
@@ -625,6 +634,33 @@ test("reconnecting a provider does not reuse the previous credential's catalog",
 test("retry delays are deterministic and honor Retry-After", () => {
   expect(ProviderCatalog.retryDelay({ failure: "network" })).toBe(60_000)
   expect(ProviderCatalog.retryDelay({ failure: "rate_limited", retryAfterMs: 125_000 })).toBe(125_000)
+})
+
+test("bundled projection unions models.dev source models with declared fallbacks", () => {
+  const bundled = ProviderCatalog.bundledSnapshot({
+    [unionProviderID]: {
+      id: unionProviderID,
+      name: "Fallback Union Provider",
+      env: [],
+      models: {
+        "source-model": {
+          id: "source-model",
+          name: "Source Model",
+          release_date: "2026-01-01",
+          attachment: false,
+          reasoning: false,
+          temperature: false,
+          tool_call: true,
+          options: {},
+          limit: { context: 4096, output: 1024 },
+        },
+      },
+    },
+  })
+  const models = bundled[unionProviderID].models
+  expect(models["source-model"]).toBeDefined()
+  expect(models["declared-fallback"]).toBeDefined()
+  expect(models["declared-fallback"].provider?.npm).toBeDefined()
 })
 
 test("snapshot timestamps use the current attempt time", async () => {

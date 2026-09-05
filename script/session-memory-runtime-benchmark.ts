@@ -475,7 +475,6 @@ function benchmarkConfig(mockUrl: string, mcpPath: string) {
   const payloadPermission = { [PAYLOAD_TOOL]: "allow" }
   return {
     enabled_providers: ["benchmark"],
-    providerCatalog: { enabled: false },
     model,
     nano_model: model,
     mini_model: model,
