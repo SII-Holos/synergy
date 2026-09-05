@@ -5,6 +5,12 @@ import { Global } from "../../src/global"
 import { Auth } from "../../src/provider/api-key"
 import { ProviderAuth } from "../../src/provider/auth"
 import { CodexProvider } from "../../src/provider/codex"
+import {
+  clearReplayPlanForCacheKey,
+  getReplayPlan,
+  setReplayPlan,
+  type CodexResponseItem,
+} from "../../src/provider/codex-compaction"
 import { ModelsDev } from "../../src/provider/models"
 import { Provider } from "../../src/provider/provider"
 import { ProviderCatalog } from "../../src/provider/catalog"
@@ -400,6 +406,103 @@ test("codexFetch marks credentials dead when invalidated access cannot refresh",
     data: { providerID: CodexProvider.PROVIDER_ID, actionRequired: true },
   })
   expect(await Auth.get(CodexProvider.PROVIDER_ID)).toBeUndefined()
+})
+
+test("codexFetch retries once with the local body when the backend rejects a replay splice", async () => {
+  const token = accessToken({ accountID: "acct_replay_reject" })
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-replay",
+    expires: nowSeconds() + 60 * 60,
+  })
+  const plan = {
+    replacementHistory: [
+      { role: "user", content: [{ type: "input_text", text: "retained" }] } as CodexResponseItem,
+      { type: "compaction", encrypted_content: "encrypted-blob" } as CodexResponseItem,
+    ],
+    summaryText: "SUMMARY TEXT HERE",
+  }
+  setReplayPlan("session-replay", "cache-replay", plan)
+
+  const calls: Array<{ body: string; status: number }> = []
+  globalThis.fetch = asFetch(async (_input, init) => {
+    const body = String(init?.body)
+    if (body.includes("retained")) {
+      // Spliced body: backend rejects the opaque artifact.
+      calls.push({ body, status: 400 })
+      return jsonResponse({ error: { message: "artifact expired" } }, { status: 400 })
+    }
+    // Original local-summary body: succeeds.
+    calls.push({ body, status: 200 })
+    return jsonResponse({ ok: true })
+  })
+
+  const response = await CodexProvider.codexFetch("https://chatgpt.com/backend-api/codex/responses", {
+    method: "POST",
+    body: JSON.stringify({
+      model: "gpt-5.4-codex",
+      prompt_cache_key: "cache-replay",
+      input: [
+        { role: "developer", content: "sys" },
+        { role: "user", content: [{ type: "input_text", text: "root" }] },
+        { role: "assistant", content: [{ type: "output_text", text: "SUMMARY TEXT HERE" }] },
+        { role: "user", content: [{ type: "input_text", text: "tail" }] },
+      ],
+    }),
+  })
+
+  expect(response.status).toBe(200)
+  expect(calls).toHaveLength(2)
+  expect(calls[0]!.status).toBe(400)
+  expect(calls[0]!.body).toContain("retained")
+  expect(calls[1]!.body).toContain("SUMMARY TEXT HERE")
+  expect(calls[1]!.body).not.toContain("retained")
+  // The rejected plan is dropped so later turns stop splicing.
+  expect(getReplayPlan("cache-replay")).toBeUndefined()
+})
+
+test("codexFetch does not retry a rejected splice on rate-limit or auth responses", async () => {
+  const token = accessToken({ accountID: "acct_replay_429" })
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-replay-429",
+    expires: nowSeconds() + 60 * 60,
+  })
+  setReplayPlan("session-replay-429", "cache-replay-429", {
+    replacementHistory: [
+      { role: "user", content: [{ type: "input_text", text: "retained" }] } as CodexResponseItem,
+      { type: "compaction", encrypted_content: "encrypted-blob" } as CodexResponseItem,
+    ],
+    summaryText: "SUMMARY TEXT HERE",
+  })
+
+  let calls = 0
+  globalThis.fetch = asFetch(async (_input, init) => {
+    calls++
+    if (String(init?.body).includes("retained")) {
+      return jsonResponse({ error: "rate_limited" }, { status: 429 })
+    }
+    return jsonResponse({ ok: true })
+  })
+
+  const response = await CodexProvider.codexFetch("https://chatgpt.com/backend-api/codex/responses", {
+    method: "POST",
+    body: JSON.stringify({
+      model: "gpt-5.4-codex",
+      prompt_cache_key: "cache-replay-429",
+      input: [
+        { role: "developer", content: "sys" },
+        { role: "user", content: [{ type: "input_text", text: "root" }] },
+        { role: "assistant", content: [{ type: "output_text", text: "SUMMARY TEXT HERE" }] },
+      ],
+    }),
+  })
+
+  expect(response.status).toBe(429)
+  expect(calls).toBe(1)
+  clearReplayPlanForCacheKey("cache-replay-429")
 })
 
 test("fetchModelIDs sorts visible Codex models and sends Codex headers", async () => {

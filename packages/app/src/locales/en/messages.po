@@ -18182,6 +18182,14 @@ msgid "settings.runtime.compaction.autoCompact.title"
 msgstr "Auto Compact"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.compaction.codexRemote.desc"
+msgstr "Ask the Codex backend to compact server-side alongside the local summary (OpenAI Codex sessions only)."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.compaction.codexRemote.title"
+msgstr "Codex Remote Compaction"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.compaction.ctx.title"
 msgstr "Context Management"
 

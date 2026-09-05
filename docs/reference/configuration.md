@@ -193,7 +193,7 @@ File: `120-runtime.jsonc` · Merge: merge
 | `lspWriteDiagnostics` | boolean (optional) | Include LSP diagnostics after file-writing tools complete (default: true) |
 | `lspDiagnostics` | "error" \| "warning" (optional) | Severity and scope policy for diagnostics returned after file-writing tools |
 | `question` | object (optional) | Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h) |
-| `compaction` | object (optional) | Maximum number of historical images to send as base64 per request (older images replaced with text placeholders). Default: 8. |
+| `compaction` | object (optional) | Enable Codex Remote Compaction V2 for openai-codex sessions: request an opaque server-side compaction artifact alongside the local text summary and replay it on later same-model turns (default: false). |
 | `experimental` | object (optional) | Enable Runtime Boss Mode: auto-provision a home-scope runtime boss session and route all Feishu messages to it |
 | `observability` | ObservabilityConfig.optional (optional) | Local logs, indexed telemetry, and diagnostics settings |
 

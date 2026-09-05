@@ -18182,6 +18182,14 @@ msgid "settings.runtime.compaction.autoCompact.title"
 msgstr "自动整理上下文"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.compaction.codexRemote.desc"
+msgstr "让 Codex 后端在本地摘要之外额外进行服务端压缩（仅 OpenAI Codex 会话生效）。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.compaction.codexRemote.title"
+msgstr "Codex 远端压缩"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.compaction.ctx.title"
 msgstr "上下文管理"
 
