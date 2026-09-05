@@ -1539,6 +1539,13 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
+      // speak calls the configured TTS provider (network side effect, no
+      // workspace mutation) — same class as image generation.
+      if (toolName === "speak") {
+        caps.push({ class: "network_request", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
       // Blueprint loop management tools — session state coordination
       if (
         toolName === "blueprint_loop_stop" ||

@@ -1516,6 +1516,82 @@ test("removes deprecated autoupdate from monolithic and domain configs", async (
     await fs.rm(home, { recursive: true, force: true }).catch(() => {})
   }
 })
+test("removes deprecated providerCatalog from monolithic and domain configs", async () => {
+  const home = path.join(
+    os.tmpdir(),
+    `synergy-config-provider-catalog-migration-${Math.random().toString(36).slice(2)}`,
+  )
+  const project = path.join(home, "project")
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  const origCwd = process.cwd()
+  try {
+    process.env["SYNERGY_TEST_HOME"] = home
+    await fs.mkdir(path.join(home, ".synergy", "config", "synergy.d"), { recursive: true })
+    await fs.mkdir(path.join(project, ".synergy", "synergy.d"), { recursive: true })
+
+    const monolithic = path.join(home, ".synergy", "config", "synergy.jsonc")
+    const globalProviders = path.join(home, ".synergy", "config", "synergy.d", "20-providers.jsonc")
+    const projectProviders = path.join(project, ".synergy", "synergy.d", "20-providers.jsonc")
+
+    await Bun.write(monolithic, `{"providerCatalog": {"enabled": true}, "username": "old"}`)
+    await Bun.write(
+      globalProviders,
+      `{"providerCatalog": {"enabled": true}, "provider": {"legacy": {"api": "https://legacy.invalid/v1"}}}`,
+    )
+    await Bun.write(projectProviders, `{"providerCatalog": {"enabled": false}, "enabled_providers": ["legacy"]}`)
+
+    process.chdir(project)
+    resetMigrations()
+    await runMigrations({ targetDomain: "config" })
+
+    expect((parseJsonc(await Bun.file(monolithic).text()) as Record<string, unknown>).providerCatalog).toBeUndefined()
+    expect(
+      (parseJsonc(await Bun.file(globalProviders).text()) as Record<string, unknown>).providerCatalog,
+    ).toBeUndefined()
+    expect(
+      (parseJsonc(await Bun.file(projectProviders).text()) as Record<string, unknown>).providerCatalog,
+    ).toBeUndefined()
+    expect((parseJsonc(await Bun.file(globalProviders).text()) as Record<string, unknown>).provider).toBeDefined()
+    expect(
+      (parseJsonc(await Bun.file(projectProviders).text()) as Record<string, unknown>).enabled_providers,
+    ).toBeDefined()
+  } finally {
+    process.chdir(origCwd)
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
+test("removes deprecated providerCatalog from persisted project scopes", async () => {
+  const home = path.join(os.tmpdir(), `synergy-config-provider-catalog-scope-${Math.random().toString(36).slice(2)}`)
+  const projectA = path.join(home, "project-a")
+  const projectB = path.join(home, "project-b")
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  const origCwd = process.cwd()
+  try {
+    process.env["SYNERGY_TEST_HOME"] = home
+    const providersFile = path.join(projectA, ".synergy", "synergy.d", "20-providers.jsonc")
+    await fs.mkdir(path.dirname(providersFile), { recursive: true })
+    await Bun.write(providersFile, `{"providerCatalog": {"enabled": true}, "enabled_providers": ["legacy"]}`)
+    await fs.mkdir(path.join(projectB, ".synergy", "synergy.d"), { recursive: true })
+
+    const dataDir = path.join(home, ".synergy", "data", "projects")
+    await fs.mkdir(dataDir, { recursive: true })
+    await Bun.write(path.join(dataDir, "scope-record.json"), JSON.stringify({ worktree: projectA }))
+
+    process.chdir(projectB)
+    resetMigrations()
+    await runMigrations({ targetDomain: "config" })
+
+    const migrated = parseJsonc(await Bun.file(providersFile).text()) as Record<string, unknown>
+    expect(migrated.providerCatalog).toBeUndefined()
+    expect(migrated.enabled_providers).toEqual(["legacy"])
+  } finally {
+    process.chdir(origCwd)
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
+})
 
 test("migrates legacy identity config to valid library config", async () => {
   const home = path.join(os.tmpdir(), `synergy-config-identity-migration-${Math.random().toString(36).slice(2)}`)

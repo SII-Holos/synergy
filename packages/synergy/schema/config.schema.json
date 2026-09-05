@@ -564,37 +564,6 @@
         "type": "string"
       }
     },
-    "providerCatalog": {
-      "description": "Signed remote provider catalog configuration",
-      "ref": "ProviderCatalogConfig",
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "description": "Enable signed remote provider catalog updates",
-          "type": "boolean"
-        },
-        "registryUrl": {
-          "description": "Signed provider catalog URL. The signature is fetched from the same URL plus .sig.",
-          "type": "string",
-          "format": "uri"
-        },
-        "publicKey": {
-          "description": "Base64 Ed25519 public key used to verify provider catalog signatures",
-          "type": "string"
-        },
-        "cacheTtlMs": {
-          "description": "Provider catalog cache TTL in milliseconds",
-          "type": "integer",
-          "exclusiveMinimum": 0,
-          "maximum": 9007199254740991
-        },
-        "offlineCache": {
-          "description": "Use the last verified provider catalog when offline",
-          "type": "boolean"
-        }
-      },
-      "additionalProperties": false
-    },
     "model": {
       "description": "Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5",
       "type": "string"
@@ -1150,6 +1119,66 @@
       },
       "additionalProperties": false
     },
+    "voice": {
+      "ref": "VoiceConfig",
+      "description": "Voice input (dictation) and output (speech synthesis) configuration.",
+      "type": "object",
+      "properties": {
+        "stt": {
+          "description": "Speech-to-text service configuration",
+          "ref": "VoiceSttConfig",
+          "type": "object",
+          "properties": {
+            "baseURL": {
+              "description": "Base URL for the speech-to-text API (OpenAI-compatible)",
+              "type": "string"
+            },
+            "apiKey": {
+              "description": "API key for the speech-to-text service",
+              "type": "string"
+            },
+            "model": {
+              "description": "Speech-to-text model name. Voice input is disabled when not set.",
+              "type": "string"
+            },
+            "language": {
+              "description": "BCP-47 language hint for transcription, e.g. zh, en. Auto-detected when not set.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "tts": {
+          "description": "Text-to-speech service configuration",
+          "ref": "VoiceTtsConfig",
+          "type": "object",
+          "properties": {
+            "baseURL": {
+              "description": "Base URL for the text-to-speech API (OpenAI-compatible)",
+              "type": "string"
+            },
+            "apiKey": {
+              "description": "API key for the text-to-speech service",
+              "type": "string"
+            },
+            "model": {
+              "description": "Text-to-speech model name. The speak tool is disabled when not set.",
+              "type": "string"
+            },
+            "voice": {
+              "description": "Voice name for synthesis (provider-specific, e.g. alloy)",
+              "type": "string"
+            },
+            "instructions": {
+              "description": "Natural-language delivery instructions applied to synthesized speech, e.g. tone and pace",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "library": {
       "ref": "LibraryConfig",
       "type": "object",
@@ -1600,6 +1629,10 @@
                     },
                     "additionalProperties": false
                   },
+                  "expandByDefault": {
+                    "description": "Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.",
+                    "type": "boolean"
+                  },
                   "tools": {
                     "description": "Tool execution behavior config",
                     "ref": "McpToolsConfig",
@@ -1790,6 +1823,10 @@
                     },
                     "additionalProperties": false
                   },
+                  "expandByDefault": {
+                    "description": "Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.",
+                    "type": "boolean"
+                  },
                   "tools": {
                     "description": "Tool execution behavior config",
                     "ref": "McpToolsConfig",
@@ -1843,9 +1880,11 @@
             "properties": {
               "enabled": {
                 "type": "boolean"
+              },
+              "apiKey": {
+                "type": "string"
               }
             },
-            "required": ["enabled"],
             "additionalProperties": false
           }
         ]
@@ -1941,6 +1980,10 @@
             }
           },
           "additionalProperties": false
+        },
+        "expandByDefault": {
+          "description": "Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.",
+          "type": "boolean"
         },
         "tools": {
           "description": "Tool execution behavior config",
@@ -2930,6 +2973,10 @@
           "type": "integer",
           "minimum": -9007199254740991,
           "maximum": 9007199254740991
+        },
+        "codexRemote": {
+          "description": "Enable Codex Remote Compaction V2 for openai-codex sessions: request an opaque server-side compaction artifact alongside the local text summary and replay it on later same-model turns (default: false).",
+          "type": "boolean"
         }
       },
       "additionalProperties": false

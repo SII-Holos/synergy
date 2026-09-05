@@ -23,6 +23,7 @@ Generated from the config domain definitions in `packages/synergy/src/config/dom
 | `email` | `110-email.jsonc` | merge |
 | `github` | `115-github.jsonc` | merge |
 | `runtime` | `120-runtime.jsonc` | merge |
+| `voice` | `125-voice.jsonc` | merge |
 
 ## General
 
@@ -69,7 +70,6 @@ File: `20-providers.jsonc` · Merge: merge
 | Key | Type | Description |
 | --- | --- | --- |
 | `provider` | string (optional) | Custom provider configurations and model overrides |
-| `providerCatalog` | ProviderCatalog.optional (optional) | Signed remote provider catalog configuration |
 | `enabled_providers` | string (optional) | When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters |
 | `disabled_providers` | string (optional) | Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters |
 
@@ -195,3 +195,11 @@ File: `120-runtime.jsonc` · Merge: merge
 | `compaction` | object (optional) | Enable Codex Remote Compaction V2 for openai-codex sessions: request an opaque server-side compaction artifact alongside the local text summary and replay it on later same-model turns (default: false). |
 | `experimental` | object (optional) | Enable Runtime Boss Mode: auto-provision a home-scope runtime boss session and route all Feishu messages to it |
 | `observability` | ObservabilityConfig.optional (optional) | Local logs, indexed telemetry, and diagnostics settings |
+
+## Voice
+
+File: `125-voice.jsonc` · Merge: merge
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `voice` | VoiceConfig |  |

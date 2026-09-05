@@ -4,7 +4,14 @@ import { canOpenExternal, isAllowedAppNavigation } from "./navigation-policy.js"
 export { canOpenExternal, isAllowedAppNavigation } from "./navigation-policy.js"
 
 export function installSessionSecurity(): void {
-  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback, details) => {
+    // Camera and combined audio+video capture stay denied; only microphone-only requests pass.
+    const mediaTypes = details && "mediaTypes" in details ? details.mediaTypes : undefined
+    const isMicrophoneOnly = mediaTypes !== undefined && mediaTypes.includes("audio") && !mediaTypes.includes("video")
+    if (permission === "media" && isMicrophoneOnly) {
+      callback(true)
+      return
+    }
     callback(false)
   })
 }

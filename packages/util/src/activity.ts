@@ -226,6 +226,7 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   github_deliver_fix: "communication",
   openai_image_gen: "communication",
   openai_image_edit: "communication",
+  speak: "communication",
   render: "analyze",
   attach: "communication",
   response_card: "communication",
@@ -300,6 +301,7 @@ const PRODUCTION_COMMUNICATION_TOOLS = new Set([
   "response_card",
   "openai_image_gen",
   "openai_image_edit",
+  "speak",
   "generate_image",
   "edit_image",
 ])

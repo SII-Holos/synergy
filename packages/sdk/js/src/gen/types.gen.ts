@@ -2334,32 +2334,6 @@ export type PluginMarketplaceConfig = {
   cliRequestTimeoutMs?: number
 }
 
-/**
- * Signed remote provider catalog configuration
- */
-export type ProviderCatalogConfig = {
-  /**
-   * Enable signed remote provider catalog updates
-   */
-  enabled?: boolean
-  /**
-   * Signed provider catalog URL. The signature is fetched from the same URL plus .sig.
-   */
-  registryUrl?: string
-  /**
-   * Base64 Ed25519 public key used to verify provider catalog signatures
-   */
-  publicKey?: string
-  /**
-   * Provider catalog cache TTL in milliseconds
-   */
-  cacheTtlMs?: number
-  /**
-   * Use the last verified provider catalog when offline
-   */
-  offlineCache?: boolean
-}
-
 export type QuickSwitcherModelConfig = {
   /**
    * Provider id for the quick switcher model preference
@@ -2684,6 +2658,62 @@ export type RerankConfig = {
    * Rerank model name
    */
   model?: string
+}
+
+/**
+ * Speech-to-text service configuration
+ */
+export type VoiceSttConfig = {
+  /**
+   * Base URL for the speech-to-text API (OpenAI-compatible)
+   */
+  baseURL?: string
+  /**
+   * API key for the speech-to-text service
+   */
+  apiKey?: string
+  /**
+   * Speech-to-text model name. Voice input is disabled when not set.
+   */
+  model?: string
+  /**
+   * BCP-47 language hint for transcription, e.g. zh, en. Auto-detected when not set.
+   */
+  language?: string
+}
+
+/**
+ * Text-to-speech service configuration
+ */
+export type VoiceTtsConfig = {
+  /**
+   * Base URL for the text-to-speech API (OpenAI-compatible)
+   */
+  baseURL?: string
+  /**
+   * API key for the text-to-speech service
+   */
+  apiKey?: string
+  /**
+   * Text-to-speech model name. The speak tool is disabled when not set.
+   */
+  model?: string
+  /**
+   * Voice name for synthesis (provider-specific, e.g. alloy)
+   */
+  voice?: string
+  /**
+   * Natural-language delivery instructions applied to synthesized speech, e.g. tone and pace
+   */
+  instructions?: string
+}
+
+/**
+ * Voice input (dictation) and output (speech synthesis) configuration.
+ */
+export type VoiceConfig = {
+  stt?: VoiceSttConfig
+  tts?: VoiceTtsConfig
 }
 
 export type MemoryConfig = {
@@ -3870,7 +3900,6 @@ export type Config = {
    * When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters
    */
   enabled_providers?: Array<string>
-  providerCatalog?: ProviderCatalogConfig
   /**
    * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5
    */
@@ -3946,6 +3975,7 @@ export type Config = {
   }
   embedding?: EmbeddingConfig
   rerank?: RerankConfig
+  voice?: VoiceConfig
   library?: LibraryConfig
   skills?: SkillsConfig
   /**
@@ -4773,6 +4803,7 @@ export type ConfigDomainSummary = {
     | "holos"
     | "email"
     | "github"
+    | "voice"
     | "runtime"
   filename: string
   label: string
@@ -4828,6 +4859,7 @@ export type ConfigExportResult = {
     | "holos"
     | "email"
     | "github"
+    | "voice"
     | "runtime"
   >
   warnings: Array<string>
@@ -4885,6 +4917,7 @@ export type ConfigDomainImportDomainPlan = {
     | "holos"
     | "email"
     | "github"
+    | "voice"
     | "runtime"
   filename: string
   path: string
@@ -4937,6 +4970,7 @@ export type ConfigDomainImportPlanInput = {
     | "holos"
     | "email"
     | "github"
+    | "voice"
     | "runtime"
   >
   mode?: "merge" | "replace-domain" | "append"
@@ -5019,6 +5053,7 @@ export type ConfigImportRevisionConflictError = {
       | "holos"
       | "email"
       | "github"
+      | "voice"
       | "runtime"
     >
   }
@@ -5049,6 +5084,7 @@ export type ConfigDomainImportApplyInput = {
     | "holos"
     | "email"
     | "github"
+    | "voice"
     | "runtime"
   >
   mode?: "merge" | "replace-domain" | "append"
@@ -7514,6 +7550,10 @@ export type AssetInfo = {
   url: string
   mime: string
   size: number
+}
+
+export type VoiceTranscriptionResult = {
+  text: string
 }
 
 export type HolosCredentialsStatusResponse = {
@@ -11494,6 +11534,7 @@ export type ConfigDomainGetData = {
       | "holos"
       | "email"
       | "github"
+      | "voice"
       | "runtime"
   }
   query?: {
@@ -11543,6 +11584,7 @@ export type ConfigDomainUpdateData = {
       | "holos"
       | "email"
       | "github"
+      | "voice"
       | "runtime"
   }
   query?: {
@@ -11592,6 +11634,7 @@ export type ConfigDomainOpenData = {
       | "holos"
       | "email"
       | "github"
+      | "voice"
       | "runtime"
   }
   query?: {
@@ -11649,6 +11692,7 @@ export type ConfigExportData = {
       | "holos"
       | "email"
       | "github"
+      | "voice"
       | "runtime"
       | Array<
           | "general"
@@ -11665,6 +11709,7 @@ export type ConfigExportData = {
           | "holos"
           | "email"
           | "github"
+          | "voice"
           | "runtime"
         >
     includeSecrets?: string
@@ -18488,6 +18533,42 @@ export type AssetGetResponses = {
    */
   200: unknown
 }
+
+export type VoiceTranscribeData = {
+  body?: {
+    file: unknown
+    context?: string
+    language?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/voice/transcribe"
+}
+
+export type VoiceTranscribeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type VoiceTranscribeError = VoiceTranscribeErrors[keyof VoiceTranscribeErrors]
+
+export type VoiceTranscribeResponses = {
+  /**
+   * Transcribed text
+   */
+  200: VoiceTranscriptionResult
+}
+
+export type VoiceTranscribeResponse = VoiceTranscribeResponses[keyof VoiceTranscribeResponses]
 
 export type HolosCredentialsStatusData = {
   body?: never

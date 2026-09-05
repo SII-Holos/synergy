@@ -16,6 +16,7 @@ import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
 import { ProviderTransform } from "@/provider/transform"
 import { PromptCachePolicy } from "@/provider/prompt-cache-policy"
+import { ProviderSessionHeader } from "@/provider/session-header"
 import type { Agent } from "@/agent/agent"
 import type { MessageV2 } from "./message-v2"
 import { ObservabilitySpans } from "@/observability/spans"
@@ -507,7 +508,11 @@ export namespace LLM {
         stopWhen: stepCountIs(1),
         maxOutputTokens,
         abortSignal: input.abort,
-        headers: input.model.headers,
+        headers: ProviderSessionHeader.forRequest({
+          model: input.model,
+          providerOptions: prepared.provider.options,
+          sessionID: input.sessionID,
+        }),
         maxRetries: input.retries ?? 0,
         messages: promptMessages({
           model: input.model,

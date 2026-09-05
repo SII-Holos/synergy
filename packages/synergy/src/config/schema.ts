@@ -1156,6 +1156,47 @@ export const RerankConfig = z
   .meta({ ref: "RerankConfig" })
   .describe("Rerank model for memory retrieval refinement. Disabled when not configured.")
 export type RerankConfig = z.infer<typeof RerankConfig>
+export const VoiceSttConfig = z
+  .object({
+    baseURL: z.string().optional().describe("Base URL for the speech-to-text API (OpenAI-compatible)"),
+    apiKey: z.string().optional().describe("API key for the speech-to-text service"),
+    model: z.string().optional().describe("Speech-to-text model name. Voice input is disabled when not set."),
+    language: z
+      .string()
+      .optional()
+      .describe("BCP-47 language hint for transcription, e.g. zh, en. Auto-detected when not set."),
+  })
+  .strict()
+  .meta({ ref: "VoiceSttConfig" })
+  .describe("Speech-to-text service for composer voice dictation. Disabled when model is not set.")
+export type VoiceSttConfig = z.infer<typeof VoiceSttConfig>
+
+export const VoiceTtsConfig = z
+  .object({
+    baseURL: z.string().optional().describe("Base URL for the text-to-speech API (OpenAI-compatible)"),
+    apiKey: z.string().optional().describe("API key for the text-to-speech service"),
+    model: z.string().optional().describe("Text-to-speech model name. The speak tool is disabled when not set."),
+    voice: z.string().optional().describe("Voice name for synthesis (provider-specific, e.g. alloy)"),
+    instructions: z
+      .string()
+      .optional()
+      .describe("Natural-language delivery instructions applied to synthesized speech, e.g. tone and pace"),
+  })
+  .strict()
+  .meta({ ref: "VoiceTtsConfig" })
+  .describe("Text-to-speech service backing the speak tool. Disabled when model is not set.")
+export type VoiceTtsConfig = z.infer<typeof VoiceTtsConfig>
+
+export const VoiceConfig = z
+  .object({
+    stt: VoiceSttConfig.optional().describe("Speech-to-text service configuration"),
+    tts: VoiceTtsConfig.optional().describe("Text-to-speech service configuration"),
+  })
+  .strict()
+  .optional()
+  .meta({ ref: "VoiceConfig" })
+  .describe("Voice input (dictation) and output (speech synthesis) configuration.")
+export type VoiceConfig = z.infer<typeof VoiceConfig>
 
 export const MemoryConfig = z
   .object({
@@ -1310,22 +1351,6 @@ export const Provider = ModelsDev.Provider.partial()
     ref: "ProviderConfig",
   })
 export type Provider = z.infer<typeof Provider>
-
-export const ProviderCatalog = z
-  .object({
-    enabled: z.boolean().optional().describe("Enable signed remote provider catalog updates"),
-    registryUrl: z
-      .string()
-      .url()
-      .optional()
-      .describe("Signed provider catalog URL. The signature is fetched from the same URL plus .sig."),
-    publicKey: z.string().optional().describe("Base64 Ed25519 public key used to verify provider catalog signatures"),
-    cacheTtlMs: z.number().int().positive().optional().describe("Provider catalog cache TTL in milliseconds"),
-    offlineCache: z.boolean().optional().describe("Use the last verified provider catalog when offline"),
-  })
-  .strict()
-  .meta({ ref: "ProviderCatalogConfig" })
-export type ProviderCatalog = z.infer<typeof ProviderCatalog>
 
 export const PluginRuntimeLimits = z
   .object({
@@ -1800,7 +1825,6 @@ export const Info = z
       .describe(
         "When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters",
       ),
-    providerCatalog: ProviderCatalog.optional().describe("Signed remote provider catalog configuration"),
     model: z
       .string()
       .describe("Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5")
@@ -1886,6 +1910,7 @@ export const Info = z
     provider: z.record(z.string(), Provider).optional().describe("Custom provider configurations and model overrides"),
     embedding: EmbeddingConfig,
     rerank: RerankConfig,
+    voice: VoiceConfig,
     library: LibraryConfig,
     skills: SkillsConfig,
     mcp: z

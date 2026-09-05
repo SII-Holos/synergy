@@ -20,6 +20,7 @@ export namespace ConfigDomain {
     "holos",
     "email",
     "github",
+    "voice",
     "runtime",
   ])
   export type Id = z.infer<typeof Id>
@@ -69,12 +70,7 @@ export namespace ConfigDomain {
       "role_variant",
       "quick_switcher",
     ]),
-    def("providers", "20-providers.jsonc", "Providers", [
-      "provider",
-      "providerCatalog",
-      "enabled_providers",
-      "disabled_providers",
-    ]),
+    def("providers", "20-providers.jsonc", "Providers", ["provider", "enabled_providers", "disabled_providers"]),
     def("library", "30-library.jsonc", "Library", ["library"]),
     def("mcp", "40-mcp.jsonc", "MCP", ["mcp", "mcpDefaults"]),
     def("plugins", "50-plugins.jsonc", "Plugins", [
@@ -129,6 +125,7 @@ export namespace ConfigDomain {
       "experimental",
       "observability",
     ]),
+    def("voice", "125-voice.jsonc", "Voice", ["voice"]),
   ] as const satisfies Definition[]
 
   function def(

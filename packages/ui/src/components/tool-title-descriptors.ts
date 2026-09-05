@@ -126,6 +126,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   edit_image: d("tool.title.edit-image", "Edit Image"),
   attach: d("tool.title.attach", "Add attachment"),
   response_card: d("tool.title.response-card", "Prepare response card"),
+  speak: d("tool.title.speak", "Speak"),
 
   // Platform
   runtime_reload: d("tool.title.runtime-reload", "Reload runtime"),

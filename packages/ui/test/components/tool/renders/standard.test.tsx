@@ -154,3 +154,18 @@ describe("attach card gallery routing", () => {
     expect(lastGalleryFiles()).toEqual([{ assetId: "abc", filename: "report.html", mime: "text/html", size: 10 }])
   })
 })
+
+describe("speak card trigger", () => {
+  test("renders an audio icon with the text subtitle", () => {
+    const trigger = renderTrigger("speak", {
+      status: "running",
+      input: { text: "Report ready" },
+    })
+
+    expect(trigger).toMatchObject({
+      icon: "audio-lines",
+      title: { id: "tool.title.speak", message: "Speak" },
+      subtitle: "Report ready",
+    })
+  })
+})

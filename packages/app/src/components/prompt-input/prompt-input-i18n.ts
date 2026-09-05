@@ -469,4 +469,54 @@ export const PI = {
   placeholderGlobal8: { id: "prompt.placeholder.global8", message: "Draft a blog post about..." },
   placeholderGlobal9: { id: "prompt.placeholder.global9", message: "Compare pros and cons of..." },
   placeholderGlobal10: { id: "prompt.placeholder.global10", message: "Translate this to French" },
+
+  // use-voice-dictation.tsx
+  voiceStart: { id: "prompt.voice.start", message: "Voice input" },
+  voiceStop: { id: "prompt.voice.stop", message: "Stop recording" },
+  voiceTranscribing: { id: "prompt.voice.transcribing", message: "Transcribing audio..." },
+  voiceNotConfigured: {
+    id: "prompt.voice.notConfigured",
+    message: "Voice recognition is not configured",
+  },
+  voiceOpenSettings: {
+    id: "prompt.voice.openSettings",
+    message: "Configure a speech recognition model in Settings → Voice to enable dictation.",
+  },
+  voiceUnsupported: {
+    id: "prompt.voice.unsupported",
+    message: "Voice dictation is not supported in this browser.",
+  },
+  voicePermissionTitle: {
+    id: "prompt.voice.permission.title",
+    message: "Microphone access needed",
+  },
+  voicePermissionDescription: {
+    id: "prompt.voice.permission.description",
+    message: "Allow microphone access (and enable it in your browser/desktop settings) to use voice input.",
+  },
+  voiceMicErrorTitle: { id: "prompt.voice.micError.title", message: "Microphone unavailable" },
+  voiceMicErrorDescription: {
+    id: "prompt.voice.micError.description",
+    message: "The microphone could not be started.",
+  },
+  voiceFailedTitle: { id: "prompt.voice.failed.title", message: "Transcription failed" },
+  voiceFailedDescription: {
+    id: "prompt.voice.failed.description",
+    message: "The recording could not be transcribed.",
+  },
+  voiceMicSilenceTitle: { id: "prompt.voice.micSilence.title", message: "No sound captured" },
+  voiceMicSilenceDescription: {
+    id: "prompt.voice.micSilence.description",
+    message: "The microphone captured no sound. Check the mic, its system permission, and the selected input device.",
+  },
+  voiceNoSpeechTitle: { id: "prompt.voice.noSpeech.title", message: "No speech detected" },
+  voiceNoSpeechDescription: {
+    id: "prompt.voice.noSpeech.description",
+    message: "No speech was heard. Move closer to the microphone and try again.",
+  },
+  voiceInsertFailedTitle: { id: "prompt.voice.insertFailed.title", message: "Could not insert dictation" },
+  voiceInsertFailedDescription: {
+    id: "prompt.voice.insertFailed.description",
+    message: "The transcript could not be inserted into the composer.",
+  },
 }

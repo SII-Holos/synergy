@@ -1905,3 +1905,27 @@ ToolRegistry.register({
     )
   },
 })
+
+ToolRegistry.register({
+  name: "speak",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "audio-lines",
+          title: TOOL_TITLE_DESC["speak"],
+          subtitle: props.input.text,
+        }}
+      >
+        <Show keyed when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})

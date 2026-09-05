@@ -49,6 +49,7 @@ export type ToolKind =
   | "communication.question"
   | "communication.email"
   | "communication.visual"
+  | "communication.audio"
   | "communication.deliver"
   | "browser.navigate"
   | "browser.interact"
@@ -208,6 +209,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   render: entry("communication.visual"),
   attach: entry("communication.deliver"),
   response_card: entry("communication.deliver", { stateful: true, externalIO: true }),
+  speak: entry("communication.audio", { externalIO: true }),
   // browser
   browser_navigation: entry("browser.navigate", { externalIO: true, stateful: true }),
   browser_snapshot: entry("browser.inspect"),
@@ -334,6 +336,7 @@ export namespace ToolTaxonomy {
     "communication.email": "Email",
     "communication.visual": "Visual",
     "communication.deliver": "Deliver",
+    "communication.audio": "Audio",
     "browser.navigate": "Navigate",
     "browser.interact": "Interact",
     "browser.inspect": "Inspect",

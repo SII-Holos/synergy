@@ -37,6 +37,14 @@ describe("tool classifier localization", () => {
     expect(classified.subtitle).toBe("Choose a release path")
   })
 
+  test("classifies speak as localized communication", () => {
+    const classified = classifyTool("speak", { text: "Hello" })
+
+    expect(classified.category).toBe("communication")
+    expect(classified.titleDescriptor).toBe(TOOL_TITLE_DESC.speak)
+    expect(classified.title).toBe("Speak")
+  })
+
   test("preserves Boss tool categories from the shared classifier", () => {
     for (const tool of ["boss_spawn", "boss_assign", "boss_report", "boss_status", "boss_project"]) {
       expect(classifyTool(tool).category).toBe("session")
