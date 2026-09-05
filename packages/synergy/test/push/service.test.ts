@@ -10,7 +10,7 @@ import { tmpdir } from "../fixture/fixture"
 type SentCall = {
   subscription: { endpoint: string; keys: { p256dh: string; auth: string } }
   payload: string
-  options: { TTL?: number; urgency?: string; vapidDetails?: { publicKey: string; privateKey: string } }
+  options: { TTL?: number; urgency?: string; vapidDetails?: { publicKey: string; privateKey: string; subject: string } }
 }
 
 const APPLE = "https://web.push.apple.com/push/v1/device-a"
@@ -88,6 +88,7 @@ describe("PushService.send", () => {
         expect(payload.title).toBe("Session needs your input")
         expect(call.options.vapidDetails!.publicKey).toBeTruthy()
         expect(call.options.vapidDetails!.privateKey).toBeTruthy()
+        expect(call.options.vapidDetails!.subject).toBe("https://github.com/SII-Holos/synergy")
       }
 
       await PushService.send({
