@@ -38,10 +38,10 @@ describe("ServerProcessLock", () => {
     }
 
     try {
-      // Spawn every worker before waiting: the sequential spawn-and-wait let
-      // slow CI runners accumulate worker N's startup behind 1..N-1 and blow
-      // the whole-test budget (three dev/PR failures on 2026-09-05). Workers
-      // park on startPath, so concurrent spawning is race-free.
+      // Workers park on startPath until the start file appears, so every
+      // worker can be spawned and readied before the competition begins;
+      // readiness is bounded as one phase deadline, not a sum of per-worker
+      // waits (see docs/postmortem/0006).
       for (let index = 0; index < count; index++) {
         children.push(
           Bun.spawn([process.execPath, "run", workerPath], {
