@@ -3,6 +3,7 @@ import { ModelsDev } from "../provider/models"
 import { ProviderCatalog } from "../provider/catalog"
 import { Provider } from "../provider/provider"
 import { ProviderTransform } from "../provider/transform"
+import { ProviderSessionHeader } from "../provider/session-header"
 import { Config } from "./config"
 import { ConfigImport } from "./import"
 import { ConfigDomain } from "./domain"
@@ -1041,6 +1042,7 @@ export namespace ConfigSetup {
         maxOutputTokens: 8,
         temperature: 0,
         providerOptions,
+        headers: ProviderSessionHeader.forRequest({ model, providerOptions: target.provider?.options }),
         abortSignal: AbortSignal.timeout(options?.requireImageInput ? 60_000 : 12_000),
       })
 
