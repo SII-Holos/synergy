@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Match, onMount, Show, Switch, type JSX } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { useDialog } from "../context/dialog"
 import { useResourceOpen } from "../context/resource-open"
@@ -37,10 +37,27 @@ export {
 const previewImageDescriptor = { id: "ui.attachment.previewImage", message: "Preview {filename}" }
 const openAttachmentDescriptor = { id: "ui.attachment.openAttachment", message: "Open {filename}" }
 
+// Autoplay is honored once per attachment per page session: re-rendering an
+// already played card (scroll reconciliation, activity-mode projection
+// switches) must not make it speak again.
+const autoplayedByKey = new Map<string, number>()
+const AUTOPLAY_MEMORY_LIMIT = 500
+
+function markAutoplayDone(key: string) {
+  if (autoplayedByKey.size >= AUTOPLAY_MEMORY_LIMIT) autoplayedByKey.clear()
+  autoplayedByKey.set(key, Date.now())
+}
+
+function wasAutoplayDone(key: string): boolean {
+  return autoplayedByKey.has(key)
+}
+
 export function AttachmentCard(props: {
   file: AttachmentFile
   serverUrl: string
   imagePreview?: { images: ImagePreviewImage[]; index: number }
+  autoplay?: boolean
+  autoplayKey?: string
 }) {
   const { _ } = useLingui()
   const dialog = useDialog()
@@ -51,6 +68,30 @@ export function AttachmentCard(props: {
   const presentation = createMemo(() => resolveAttachmentPresentation(props.file))
   const filename = createMemo(() => props.file.filename ?? (isPdfAttachment(props.file) ? "file.pdf" : "file"))
   const meta = createMemo(() => attachmentMeta(props.file))
+  const [mounted, setMounted] = createSignal(false)
+  let audioRef: HTMLAudioElement | undefined
+  let autoplayStarted = false
+
+  onMount(() => setMounted(true))
+
+  // Speech the agent decided to announce (speak tool) plays once when its
+  // freshly generated card renders. The audio element is only assigned after
+  // mount, so gate on mounted() and re-check autoplay flips later. Browsers
+  // may reject play() without a user gesture — controls remain for manual
+  // playback in that case.
+  createEffect(() => {
+    if (!props.autoplay || !mounted()) return
+    if (props.autoplayKey !== undefined && wasAutoplayDone(props.autoplayKey)) return
+    const renderer = presentation().renderer
+    const audioUrl = url()
+    if (renderer !== "audio" || !audioUrl) return
+    const element = audioRef
+    if (!element) return
+    autoplayStarted = true
+    if (props.autoplayKey !== undefined) markAutoplayDone(props.autoplayKey)
+    void element.play().catch(() => {})
+  })
+
   const openAttachment = () => {
     const preview = props.imagePreview
     if (preview) {
@@ -119,7 +160,7 @@ export function AttachmentCard(props: {
           <span data-slot="attachment-card-body">
             <span data-slot="attachment-card-filename">{filename()}</span>
             <span data-slot="attachment-card-meta">{meta()}</span>
-            <audio src={url()} controls preload="metadata" />
+            <audio ref={audioRef} src={url()} controls preload="metadata" />
           </span>
           <button
             type="button"
@@ -243,7 +284,13 @@ interface AttachmentGalleryEntry {
   imagePreviewIndex?: number
 }
 
-export function AttachmentGallery(props: { files: AttachmentFile[]; serverUrl: string; align?: "start" | "end" }) {
+export function AttachmentGallery(props: {
+  files: AttachmentFile[]
+  serverUrl: string
+  align?: "start" | "end"
+  autoplay?: boolean
+  autoplayKey?: string
+}) {
   const visibleFiles = createMemo(() => props.files.filter((file) => !resolveAttachmentPresentation(file).hidden))
   const entries = createMemo<AttachmentGalleryEntry[]>(() => {
     let previewIndex = 0
@@ -271,6 +318,8 @@ export function AttachmentGallery(props: { files: AttachmentFile[]; serverUrl: s
                     <AttachmentCard
                       file={entry.file}
                       serverUrl={props.serverUrl}
+                      autoplay={props.autoplay}
+                      autoplayKey={props.autoplay ? props.autoplayKey : undefined}
                       imagePreview={
                         entry.imagePreviewIndex !== undefined
                           ? { images: previewImages(), index: entry.imagePreviewIndex }

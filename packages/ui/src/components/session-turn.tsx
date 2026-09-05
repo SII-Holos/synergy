@@ -48,6 +48,7 @@ import {
   isMediaGenerationToolPart,
   isToolCardHidden,
 } from "./tool-result-presentation"
+import { claimSpeakAutoplay, isSpeakTool, noteSpeakPartActive } from "./session-turn-speak-autoplay"
 import "./session-turn.css"
 import "./tool-renders"
 import { Icon } from "./icon"
@@ -532,9 +533,32 @@ function TimelineItemDisplay(props: {
   if (props.item.kind === "part" || props.item.kind === "reasoning") {
     return <Part part={props.item.part} message={props.item.message} />
   }
-  if (props.item.kind === "media-pending") return <MediaGenerationCard part={props.item.part} />
+  if (props.item.kind === "media-pending") {
+    // Watch speak parts stream in: when the same part later completes, its
+    // audio autoplays once. Non-speak media (images/video) stays silent.
+    const pendingPart = props.item.part
+    if (pendingPart.type === "tool" && isSpeakTool(pendingPart.tool)) {
+      noteSpeakPartActive(pendingPart.id)
+    }
+    return <MediaGenerationCard part={pendingPart} />
+  }
   if (isMediaGenerationToolPart(props.item.part)) {
-    return <AttachmentGallery files={props.item.files} serverUrl={props.serverUrl} />
+    // Completed media-generation tool part. speak delivers speech the agent
+    // decided to announce: autoplay exactly when this card is the completion
+    // of a part this SessionTurn watched stream (see SessionTurn's active
+    // speak tracking). The claim is one-shot per part, so history replay and
+    // re-renders stay silent.
+    const part = props.item.part
+    const tool = part.type === "tool" ? part.tool : ""
+    const autoplay = isSpeakTool(tool) && claimSpeakAutoplay(part.id)
+    return (
+      <AttachmentGallery
+        files={props.item.files}
+        serverUrl={props.serverUrl}
+        autoplay={autoplay}
+        autoplayKey={autoplay ? `speak:${part.id}` : undefined}
+      />
+    )
   }
   return <DeliveredAttachmentsCard item={props.item} serverUrl={props.serverUrl} />
 }
