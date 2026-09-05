@@ -92,7 +92,6 @@ export const ActivityDerivedMetadataSchema = z.object({
 export type ActivityDerivedMetadata = z.infer<typeof ActivityDerivedMetadataSchema>
 
 const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
-  websearch: "web",
   webfetch: "web",
   browser_navigation: "browser",
   browser_snapshot: "browser",
@@ -114,8 +113,6 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   browser_assets: "browser",
   browser_annotate: "browser",
   browser_view: "browser",
-  arxiv_search: "search",
-  arxiv_download: "search",
   grep: "search",
   file_search: "search",
   scan_files: "search",
@@ -324,6 +321,18 @@ const COORDINATION_RECEIPT_TOOLS = new Set([
 
 const ACTIVITY_PRESENTATION_BOUNDARY_TOOLS = new Set(["render"])
 
+// Built-in remote MCP search families stay visible as individual cards in
+// the activity timeline instead of being folded into grouped summary rows.
+// Their renderers are presentation boundaries with per-query structure the
+// user should be able to inspect after the turn (the same reason `render`
+// is a boundary above).
+const ACTIVITY_PRESENTATION_BOUNDARY_PREFIXES = ["mcp__anysearch__", "mcp__scholight__"]
+
+function isPresentationBoundaryTool(tool: string): boolean {
+  if (ACTIVITY_PRESENTATION_BOUNDARY_TOOLS.has(tool)) return true
+  return ACTIVITY_PRESENTATION_BOUNDARY_PREFIXES.some((prefix) => tool.startsWith(prefix))
+}
+
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {}
   return value as Record<string, unknown>
@@ -351,7 +360,7 @@ function firstString(...values: unknown[]): string | undefined {
 }
 
 export function isActivityGroupableTool(tool: string, metadata: Record<string, unknown> = {}): boolean {
-  if (ACTIVITY_PRESENTATION_BOUNDARY_TOOLS.has(tool)) return false
+  if (isPresentationBoundaryTool(tool)) return false
   const policy = toolDisplayPolicy(metadata)
   return !policy.toolCardHidden && !policy.mediaGeneration
 }

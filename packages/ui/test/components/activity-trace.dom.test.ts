@@ -110,8 +110,8 @@ beforeAll(async () => {
           {
             part: {
               id: "p2",
-              tool: "websearch",
-              state: { status: "completed", input: { query: "activity topic grouping" }, output: "found", metadata: {} },
+              tool: "webfetch",
+              state: { status: "completed", input: { url: "https://example.com/activity-topic" }, output: "found", metadata: {} },
             },
             family: "research-web",
             scopeKey: "activity-topic",

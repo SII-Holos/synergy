@@ -4,9 +4,11 @@
   --session-progress-island-collapsed-padding-inline: 12px;
   --session-progress-island-collapsed-max-width: min(620px, calc(100vw - 24px));
   --session-progress-island-expanded-width: min(900px, calc(100vw - 24px));
-  /* Now a normal-flow flex child inside the shared absolute wrapper at
-     prompt-dock.tsx:67 (absolute inset-x-0 bottom-full). The wrapper
-     guarantees that expanding the island never changes --prompt-height.
+  /* A normal-flow child inside the shared prompt-dock-float-layer wrapper.
+     Desktop: the wrapper is an absolute overlay (bottom-full) above the
+     composer, so expanding the island never changes --prompt-height.
+     Mobile: the wrapper is in normal flow, so a busy island reserves space
+     above the composer instead of covering the last messages.
      SubagentDock sits above, island below. */
   display: flex;
   width: 100%;

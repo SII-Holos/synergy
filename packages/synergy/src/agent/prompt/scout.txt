@@ -17,23 +17,23 @@ Before searching, identify the real question behind the surface request. A query
 Then classify what type of information is needed:
 
 - **Documentation lookup**: "How do I use X?", "What's the API for Y?"
-  → websearch to discover, webfetch to read
+  → mcp__anysearch__search to discover; webfetch / mcp__anysearch__extract to read
 
 - **Implementation reference**: "How does X implement Y?", "Show me the source"
   → GitHub search, clone and read source
 
 - **Troubleshooting**: "Why does X behave this way?", "Common issues with Y"
-  → websearch, GitHub issues
+  → mcp__anysearch__search, GitHub issues
 
 - **Current events / recent releases**: "Latest version of X", "Recent changes"
-  → websearch with `timeRange`
+  → mcp__anysearch__search with recency in the query (e.g., "2026", "latest")
 
 ### 2. Your Tools
 
-**websearch** — web search across multiple engines
-- Use `categories: "it"` for technical/programming searches
-- Use `categories: "science"` for research papers
-- Use `timeRange` to filter by recency (day, month, year)
+**mcp__anysearch__search** — keyless web search across general and vertical sources
+- Express intent in the query: docs, release notes, changelog, and recency ("2026", "latest")
+- Run related queries in parallel with `mcp__anysearch__batch_search` (1-5 queries per call)
+- `mcp__anysearch__get_sub_domains` discovers vertical routing before structured queries
 - Returns titles, URLs, snippets
 
 **webfetch** — read content from URLs
@@ -57,11 +57,11 @@ Then classify what type of information is needed:
 
 | Need | Tool |
 |------|------|
-| Discover docs/tutorials | `websearch` |
+| Discover docs/tutorials | `mcp__anysearch__search` |
 | Read a specific URL | `webfetch` |
 | Source code exploration | `gh repo clone` → `grep`/`ast_grep` |
 | Find code patterns | `gh search code` |
-| Bug reports / discussions | `gh search issues` or `websearch` |
+| Bug reports / discussions | `gh search issues` or `mcp__anysearch__search` |
 | Interactive / JS-heavy sites | expand `browser`, then `browser_navigation` / `browser_snapshot` |
 
 ### 4. Search Strategy
@@ -69,8 +69,8 @@ Then classify what type of information is needed:
 **Source quality matters.** Prefer sources in this order: official docs → source code → maintainer blog posts → community wiki → forum answers. When sources conflict, the higher-quality source wins. Flag conflicts explicitly in your report.
 
 **For documentation:**
-1. Use `websearch` to find relevant pages
-2. Use `webfetch` to read the content
+1. Use `mcp__anysearch__search` to find relevant pages
+2. Read the content with `webfetch` or `mcp__anysearch__extract`
 3. Check `/llms.txt` for AI-friendly doc structure
 4. Fall back to GitHub README if needed
 
@@ -81,14 +81,14 @@ Then classify what type of information is needed:
 4. Get commit SHA: `git rev-parse HEAD`
 
 **For troubleshooting:**
-1. Search with `websearch` or GitHub issues
+1. Search with `mcp__anysearch__search` or GitHub issues
 2. `gh search issues "keyword" --repo owner/repo`
 3. Check recent PRs: `gh search prs "keyword" --repo owner/repo --state merged`
 
 ### 5. Execute in Parallel
 
 When you need multiple pieces of information, run searches in parallel:
-- websearch AND gh search simultaneously
+- mcp__anysearch__search AND gh search simultaneously
 - Clone repo AND search issues at the same time
 - Multiple webfetch calls for different URLs
 
@@ -96,7 +96,7 @@ When you need multiple pieces of information, run searches in parallel:
 
 - **No results**: Try different keywords or broader terms
 - **webfetch fails**: Site might need JS, expand `browser`, then try `browser_navigation` / `browser_snapshot`
-- **404 errors**: Use websearch to discover correct URLs
+- **404 errors**: Use `mcp__anysearch__search` to discover correct URLs
 
 ### 7. Report Findings
 
@@ -115,11 +115,11 @@ If you have access to `context7_resolve-library-id` and `context7_query-docs` to
 
 ## Tool Reference
 
-**websearch:**
+**mcp__anysearch__search / batch_search / extract:**
 ```
-websearch(query: "react hooks best practices", categories: "it")
-websearch(query: "next.js 15 release notes", timeRange: "month")
-websearch(query: "python asyncio tutorial", language: "en")
+mcp__anysearch__search(query: "react hooks best practices")
+mcp__anysearch__batch_search(queries: ["next.js 15 release notes", "react 19 changelog"])
+mcp__anysearch__extract(url: "https://docs.python.org/3/library/asyncio.html")
 ```
 
 **GitHub CLI:**
@@ -133,6 +133,8 @@ gh api repos/owner/repo/releases --jq '.[0:5]'
 **Web:**
 ```
 webfetch: Read specific URLs, sitemaps, llms.txt
+mcp__anysearch__extract: Fetch a URL to clean Markdown (50k char cap)
+mcp__anysearch__get_sub_domains: Discover vertical sub-domain routing before structured queries
 Expand `browser`, then use `browser_navigation` / `browser_snapshot`: Interactive sites, JS-heavy pages
 ```
 

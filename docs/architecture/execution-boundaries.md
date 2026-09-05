@@ -56,6 +56,8 @@ Risk is not inferred from a tool name alone. Shell commands are split and classi
 
 Unquoted physical newlines are classified as shell-list boundaries equivalent to `;`. Escaped or quoted newlines remain inside their current segment, and a heredoc header, body, and delimiter remain one segment so heredoc data is not reinterpreted as top-level commands.
 
+Absolute-path candidates terminate at closing shell punctuation (`)`, `}`), and null-device sinks (`/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom`, `/dev/stdin`, `/dev/stdout`, `/dev/stderr`, `/dev/fd/N`) are never filesystem paths — including when a redirect such as `2>/dev/null` is glued to a closing paren/brace inside a subshell or loop body (`2>/dev/null)`). A statically resolvable write-redirect target (`>`, `>>`, `>|`, `&>`, `&>>`, `N>`, `<>`) is a genuine write even when the rest of the segment classifies read-only (for example `git status > /tmp/out`); dynamic targets (`$var`, backtick) are left to the execution sandbox boundary when one is active.
+
 This separation lets one profile make consistent decisions across built-in tools, plugins, MCP servers, and future execution surfaces.
 
 ## Control Profiles
@@ -157,11 +159,15 @@ The permission gate decides whether an operation is authorized; the sandbox cons
 
 Network policy is represented separately as full or restricted access. Restricted sandboxes still support the local bindings and runtime channels explicitly required by the execution environment.
 
-Synergy compiles the policy into platform-specific wrappers: Seatbelt on macOS, a Linux sandbox helper, and Windows/WSL-specific restricted execution paths. The configured fallback (`deny`, `warn`, or `allow`) determines what happens when the requested sandbox cannot be enforced on the current platform.
+Synergy compiles the policy into platform-specific wrappers: Seatbelt on macOS, a Linux sandbox helper, and Windows/WSL-specific restricted execution paths. The configured fallback (`deny`, `warn`, or `allow`) determines what happens when the requested sandbox cannot be enforced on the current platform. The macOS deny-default Seatbelt profile imports Apple's `system.sb` before applying scoped read/write roots: probes on current macOS releases show a hand-rolled deny-default profile aborts every child (SIGABRT) without it, while the import keeps processes viable and scoped allows/denies effective.
 
 Stable Linux and Windows runtimes package an architecture- and ABI-matched helper. The runtime embeds that helper's SHA-256 during compilation and verifies it before execution; a Stable build fails when the required helper asset is absent. Linux uses either a verified optional bundled Bubblewrap binary or the system `bubblewrap` package. The Debian installer declares Bubblewrap as a dependency. When the interactive CLI installer detects `apt-get`, `dnf`, or `pacman`, it offers to install a missing package after explicit confirmation; non-interactive runs, declined or failed installation, unsupported package managers, and portable archives leave Bubblewrap as an external prerequisite.
 
-An explicit policy authorization can mark a shell operation as sandbox-bypassed. Otherwise, Bash receives the resolved sandbox wrapper when its profile mode is not `none`.
+An explicit policy authorization can mark a shell operation as sandbox-bypassed. Otherwise, Bash receives the resolved sandbox wrapper when its profile mode is not `none`. Profile auto-allow under `autonomous` never bypasses the sandbox: unattended profile-permitted Bash runs inside the `workspace_write` wrapper so writes that static classification cannot see (variable redirect targets such as `out=/tmp/…`) are contained at execution time instead of landing on the host. `guarded` user-rule/SmartAllow/approved operations and `full_access` keep the historical bypass behavior. The sandbox wrapper forwards the gate's approved readable roots so gate-allowed external reads execute inside the sandbox; the Linux full-network profile read-only binds /etc (plus resolv.conf and systemd-resolve paths when present); and the session key scopes the controlled temp root so concurrent sessions cannot see each other's sandbox temp files.
+
+The `autonomous` profile's writable roots include a controlled temporary root at `<workspace>/.synergy/tmp` (session-scoped as `synergy-<pid>-<session>` when a session key is available), reusing the Linux controlled-tmp precedent. Sandboxed Bash points `TMPDIR`/`TMP`/`TEMP` at that root, so tools that honor `TMPDIR` write inside the workspace boundary; literal writes to the root classify as ordinary workspace `file_write`, while the host's shared temporary directory remains an external write. Because `autonomous` never prompts, its sandbox fallback defaults to `deny` (fail-closed): when the OS sandbox cannot be prepared, the operation is refused rather than run unsandboxed. Operators can override through `sandbox.fallbackPolicy`, `sandbox.enabled=false`, or switching to `guarded`/`full_access`; `guarded` keeps `warn`.
+
+The sandbox network mode follows the gate-approved network capability: when the gate approves a network command (`git fetch`, `curl`, `npm install`) the compiled profile uses full networking, otherwise it stays restricted; macOS full networking pairs `(allow network*)` with system.sb's `(system-network)` helper so DNS/SystemConfiguration lookups resolve under `(deny default)`. macOS profiles read the developer toolchain roots (`/opt/homebrew`, `/usr/local`, the Command Line Tools, `/etc`/`/private/etc`) and skip sibling denies for explicitly allowed user runtime read roots (`~/.gitconfig`, `~/.config/git`, `~/.bun`), so git and language toolchains do not fatal-error in-sandbox. Writable-root `.git` protection is granular: only `.git/hooks` and `.git/config` stay read-only, leaving objects/refs/HEAD/index writable so `git commit`/`git branch` keep working while the tamper/code-execution surface remains protected; `.agents`/`.codex` stay blanket-protected.
 
 ## OOM Victim Preference
 
@@ -194,6 +200,7 @@ These restrictions are evaluated before the tool implementation. A permissive co
 - Availability, authorization, and sandboxing remain separate decisions.
 - Expanding a deferred group never grants a tool whose effective permission is denied; auto-expansion on a direct tool call is equally visibility-only and respects the `expand_tools` permission.
 - `autonomous` never prompts the user.
+- Write-redirect targets classify by the write they perform, not the read risk of the surrounding command; null-device sinks never classify as paths.
 - `full_access` authorizes capabilities but cannot turn runtime failure into success.
 - Sensitive values are never sent raw to SmartAllow.
 - Worktree isolation protects writes and execution outside the active worktree.

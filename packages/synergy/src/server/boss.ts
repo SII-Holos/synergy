@@ -2,6 +2,7 @@ import { Hono, type Context } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
 import { Session } from "../session"
+import { BossRuntime } from "../boss/boss-runtime"
 import { BossService } from "../boss/boss"
 import { errors } from "./error"
 
@@ -52,6 +53,9 @@ function routeErrors(...codes: Array<400 | 404 | 409>) {
 }
 
 function handleError(c: Context, error: unknown): Response {
+  if (error instanceof BossRuntime.BossSessionOpenError) {
+    return c.json({ message: error.message, code: "boss_disabled" }, 409)
+  }
   if (error instanceof BossService.BossError) {
     if (error.code === "not_found") return c.json({ message: error.message, code: error.code }, 404)
     return c.json({ message: error.message, code: error.code }, 409)
@@ -171,6 +175,34 @@ export const BossRoute = new Hono()
       try {
         const callerID = c.req.valid("param").id
         return c.json(await BossService.cancel(callerID, c.req.valid("json")))
+      } catch (error) {
+        return handleError(c, error)
+      }
+    },
+  )
+  .post(
+    "/session/open",
+    describeRoute({
+      summary: "Open the runtime Boss session",
+      description:
+        "Returns the runtime boss session for the current config, creating a channel-less local boss session in home scope on first open when no routable Feishu account is enabled.",
+      operationId: "boss.session.open",
+      responses: {
+        200: {
+          description: "Opened boss session",
+          content: {
+            "application/json": {
+              schema: resolver(z.object({ sessionID: z.string() }).strict().meta({ ref: "BossSessionOpenResult" })),
+            },
+          },
+        },
+        ...routeErrors(400, 404, 409),
+      },
+    }),
+    async (c) => {
+      try {
+        const sessionID = await BossRuntime.openSession()
+        return c.json({ sessionID })
       } catch (error) {
         return handleError(c, error)
       }

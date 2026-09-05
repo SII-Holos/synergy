@@ -15,8 +15,6 @@ Generated from the builtin tool registry in `packages/synergy/src/tool/registry.
 | `agenda_trigger` | `orchestration.agenda` | Manually trigger an agenda item to execute immediately, regardless of its configured schedule. If the item is pending or paused, it will be activated first. This does NOT change the item's regular sch |
 | `agenda_update` | `orchestration.agenda` | Update an existing agenda item. Only provided fields are changed — omitted fields remain unchanged. Use agenda_list to find the item ID first. Common actions: - Pause: agenda_update(id="agd_xxx", stat |
 | `agenda_watch` | `orchestration.agenda` | Set a one-time wake-up in THIS session. The primary use case is **recursive adaptive monitoring**: - Start with a short delay (3–5min) to check an external process, experiment, or pipeline. - Assess h |
-| `arxiv_download` | `search.academic` | Download an arXiv paper as a PDF file. Use this tool to download a paper from arXiv given its ID. The paper will be saved as a PDF file to the specified path. Examples of valid arXiv IDs: - 2401.12345 |
-| `arxiv_search` | `search.academic` | Search the arXiv database for academic papers using semantic search and filters. Use this tool to find research papers on arXiv. You can search using: - Natural language queries for semantic search -  |
 | `ast_grep` | `search.codebase` | Search code using AST-aware pattern matching. Unlike regex-based grep, ast_grep understands code structure and finds patterns based on syntax, not just text. Supports 25 languages: bash, c, cpp, cshar |
 | `attach` | `communication.deliver` | Deliver files to the user by making them available as conversation attachments. Use this after generating or obtaining user-facing artifacts such as PDFs, images, documents, archives, exports, plots,  |
 | `bash` | `code.execute` | Executes a bash command in a persistent shell session. All commands run in ${directory} by default. Use the `workdir` parameter to run in a different directory. AVOID using `cd <directory> && <command |
@@ -49,7 +47,7 @@ Generated from the builtin tool registry in `packages/synergy/src/tool/registry.
 | `browser_upload` | `browser.interact` | Upload permission-reviewed workspace files to one uniquely matched file input through isolated staging. |
 | `browser_view` | `browser.inspect` | Control the Browser Side Workspace panel. Show or hide the Browser UI, switch focus to the browser page, or query the Side Workspace open state. This does not affect CDP or the running browser — only  |
 | `browser_wait` | `browser.inspect` | Wait for a specific page condition: load state, URL, title, text, locator state, download, or dialog. The result only reports that the requested condition was observed; it is never evidence of busines |
-| `channel_push` | `orchestration.session` | 把结果或状态显式推送到当前会话绑定的渠道群(或回复某条消息),是 Boss Mode 的显式回执工具。Push a text receipt to the channel chat this session is bound to, or reply to an existing message. accountId and chatId default to the session's chan |
+| `channel_push` | `orchestration.session` | 把结果或状态显式推送到渠道(或回复某条消息),是 Boss Mode 的显式回执工具。Push a text receipt to a channel chat, or reply to an inbound message — the only outbound delivery surface for boss-role sessions. accountId defaults to the  |
 | `clarus_extend_task` | `platform.collaboration` | Extend the current Clarus assignment deadline. The current session supplies assignment identity; never provide project, task, run, subtask, or account IDs. |
 | `clarus_submit_task_result` | `platform.collaboration` | Submit the current Clarus assignment result. The current session supplies assignment identity; never provide project, task, run, subtask, or account IDs. |
 | `connect` | `platform.config` | Discover persisted Synergy Link targets and manage explicit remote sessions. Prefer the stable targetID; linkID + targetAgentID is the bootstrap path for targets not yet persisted. Cached sessions are |
@@ -102,7 +100,7 @@ Generated from the builtin tool registry in `packages/synergy/src/tool/registry.
 | `session_control` | `orchestration.session_control` | Control a target session remotely — inspect its state and perform actions as if you were the user in that session. The `target` parameter identifies which session to control: - A session ID (e.g. "ses |
 | `session_list` | `orchestration.session` | List sessions by scope. Returns session metadata, scope info, and the latest message exchange for each session. The `scope` parameter selects which sessions to list: - "project": Ordinary sessions acr |
 | `session_read` | `orchestration.session` | Read messages from a session. Returns session metadata and a paginated list of messages. The `target` parameter identifies which session to read: - A session ID (e.g. "ses_xxx") to read a specific ses |
-| `session_search` | `search.session` | Search across session message content using regex patterns. Searches text in all messages across sessions, returning matching sessions with context around each match. Use this to find past conversatio |
+| `session_search` | `search.session` | Search across session message content using regex patterns. Searches messages in sessions across the selected scopes, returning matching sessions with context around each match. Use this to find past  |
 | `session_send` | `orchestration.session` | Send an actionable user message to a session. The target session's agent will process and respond to the message. The `target` parameter identifies which session to send to: - A session ID (e.g. "ses_ |
 | `skill` | `knowledge.skill` |  |
 | `speak` | `communication.audio` | Synthesize the given text into spoken audio and deliver it as a playable attachment in the conversation. Use this when the user asks you to speak, narrate, or read something aloud, wants a voice reply |
@@ -115,7 +113,6 @@ Generated from the builtin tool registry in `packages/synergy/src/tool/registry.
 | `view_file` | `code.read` | Read a file through the anchored coding harness. Use this instead of `read` when the content may feed `revise_file` or `resolve_conflicts`. The output starts with a real `[path#TAG]` header followed b |
 | `view_image` | `code.analyze` | Load a local image file into the current model context for direct visual inspection. Use this when the active model supports the image's format and you need to inspect it yourself, such as a generated |
 | `webfetch` | `search.web` | - Fetches content from a specified URL - Takes a URL and optional format as input - Fetches the URL content, converts to requested format (markdown by default) - Returns the content in the specified f |
-| `websearch` | `search.web` | - Search the web using real-time web search - Provides up-to-date information for current events and recent data - Supports configurable result counts and returns the content from the most relevant we |
 | `worktree_enter` | `platform.config` | Create or enter a git worktree for the current session.  |
 | `worktree_leave` | `platform.config` | Leave the current git worktree and return to the main checkout. Unbinds the session from the worktree,  |
 | `worktree_list` | `platform.config` | List all git worktrees in the current repository. Returns each worktree's path, branch, state, and a cleanup recommendation for non-main managed worktrees. The currently active worktree is marked. |
@@ -276,34 +273,6 @@ Set a one-time wake-up in THIS session. The primary use case is **recursive adap
 | `metadata` | - | yes |  |
 | `id` | item.id | yes |  |
 | `status` | item.status | yes |  |
-
-## arxiv_download
-
-Kind: `search.academic`
-
-Download an arXiv paper as a PDF file. Use this tool to download a paper from arXiv given its ID. The paper will be saved as a PDF file to the specified path. Examples of valid arXiv IDs: - 2401.12345 - 2401.12345v1 - hep-th/9901001
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `arxivId` | string | yes | The arXiv paper ID (e.g., '2401.12345' or '2401.12345v1') |
-| `outputPath` | string | yes | The output file path (must end with .pdf) |
-| `overwrite` | boolean |  | Whether to overwrite if file exists |
-
-## arxiv_search
-
-Kind: `search.academic`
-
-Search the arXiv database for academic papers using semantic search and filters. Use this tool to find research papers on arXiv. You can search using: - Natural language queries for semantic search - Author names (OR logic between multiple authors) - arXiv categories like 'cs.AI', 'hep-ph', 'math.AG' (OR logic) - Date ranges (YYYY-MM-DD format) - Title keywords (AND logic between keywords) Returns paper metadata including title, authors, abstract, categories, and arXiv ID.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `query` | string |  | Natural language search query for semantic search |
-| `authors` | string |  | Filter by author names (OR logic) |
-| `categories` | string |  | Filter by arXiv categories like 'cs.AI', 'hep-ph' (OR logic) |
-| `startDate` | string |  | Start date (YYYY-MM-DD, inclusive) |
-| `endDate` | string |  | End date (YYYY-MM-DD, inclusive) |
-| `titleKeywords` | string |  | Keywords in title (AND logic) |
-| `topK` | z.coerce.number |  | Number of results (1-100, default: 10) |
 
 ## ast_grep
 
@@ -870,15 +839,16 @@ Wait for a specific page condition: load state, URL, title, text, locator state,
 
 Kind: `orchestration.session`
 
-把结果或状态显式推送到当前会话绑定的渠道群(或回复某条消息),是 Boss Mode 的显式回执工具。Push a text receipt to the channel chat this session is bound to, or reply to an existing message. accountId and chatId default to the session's channel endpoint; pass replyToMessageId to reply to a specific message instead of pushing a new one.
+把结果或状态显式推送到渠道(或回复某条消息),是 Boss Mode 的显式回执工具。Push a text receipt to a channel chat, or reply to an inbound message — the only outbound delivery surface for boss-role sessions. accountId defaults to the session's channel account. chatId defaults to the chat the current inbound message arrived from; when there is no inbound message (a proactive push) you must pass chatId explicitly. Pass replyToMessageId to reply to a specific message (anchored replies in the inbound chat are the normal answer path and need no approval); pushing a new message to a chat, or pushing to a different chat, requires an explicit permission decision.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `sessionID` | ctx.sessionID | yes |  |
+| `messageID` | ctx.messageID | yes |  |
 | `permission` | - | yes |  |
 | `patterns` | - | yes |  |
 | `metadata` | - | yes |  |
 | `messageId` | params.replyToMessageId | yes |  |
-| `chatType` | channel.chatType | yes |  |
 | `scopeKey` | channel.scopeKey | yes |  |
 | `title` | - | yes |  |
 | `metadata` | - | yes |  |
@@ -2084,7 +2054,7 @@ Read messages from a session. Returns session metadata and a paginated list of m
 
 Kind: `search.session`
 
-Search across session message content using regex patterns. Searches text in all messages across sessions, returning matching sessions with context around each match. Use this to find past conversations about specific topics. For browsing sessions by time or scope, use `session_list` instead. To read full context around a match, use `session_read` with the `around` parameter. The search pattern is a regular expression applied to each message's text content. Results are grouped by session and sorted by most recently updated session first. The `scope` parameter controls which sessions are searched: - "all" (default): Search across all project scopes - "current": Only search sessions in the current project scope Use `since` and `before` to filter sessions by last updated time (ISO 8601 dates). Combine with pattern matching to find e.g. "sessions from last week mentioning X".
+Search across session message content using regex patterns. Searches messages in sessions across the selected scopes, returning matching sessions with context around each match. Use this to find past conversations about specific topics. For browsing sessions by time or scope, use `session_list` instead. To read full context around a match, use `session_read` with the `around` parameter. The search pattern is a regular expression applied to each message's content. Results are grouped by session; within each session matches are shown in chronological order, and matches are ranked globally by relevance (sessions with more distinct pattern words present in a match rank higher) before the `limit` is applied. The `scope` parameter controls which sessions are searched: - "all" (default): Search across all project scopes plus the Home scope (channel/Feishu and other Home sessions) - "project": Search all project scopes, or one project selected with `scopeID` - "home": Search Home scope sessions only (channel/Feishu and other Home sessions) - "current": Only search sessions in the current scope Home scope sessions may contain messages from other participants. Searching them is an explicit capability granted to agents that already have `session_list`/`session_read` access. By default only top-level sessions are searched. Set `includeChildren` to also search child sessions (delegated/Cortex/background sessions with a parent session). By default only message text parts are searched; set `content` to "tool" to also match tool-call inputs and completed tool outputs, or "all" to also match attachment filenames and URLs (including files produced by tools). Tool and attachment content is matched at excerpt level. When `scope` is "project" with `scopeID`, the id must name a real project scope; anything else (including "home") is rejected rather than searched. Use `since` and `before` to filter sessions by last updated time (ISO 8601 dates), or by message creation time when `timeField` is "message". Combine with pattern matching to find e.g. "sessions from last week mentioning X".
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -2356,20 +2326,6 @@ Kind: `search.web`
 | `url` | string | yes | The URL to fetch content from |
 | `format` | "text" \| "markdown" \| "html" |  | The format to return the content in (text, markdown, or html). Defaults to markdown. |
 | `timeout` | number |  | Optional timeout in seconds (max 120) |
-
-## websearch
-
-Kind: `search.web`
-
-- Search the web using real-time web search - Provides up-to-date information for current events and recent data - Supports configurable result counts and returns the content from the most relevant websites - Use this tool for accessing information beyond knowledge cutoff Usage notes: - Supports multiple search categories: general, images, videos, news, it (tech), science - Language filtering available (e.g., 'en', 'zh', 'de') - Time range filtering: day, month, year - Returns titles, URLs, snippets, and related search suggestions
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `query` | string | yes | Websearch query |
-| `numResults` | number |  | Number of search results to return (default: 10) |
-| `language` | string |  | Search language code (e.g., 'en', 'zh', 'de'). Default: 'auto' |
-| `categories` | "general" \| "images" \| "videos" \| "news" \| "it" \| "science" \| "files" \| "social media" |  | Search category (default: 'general') |
-| `timeRange` | "day" \| "month" \| "year" |  | Filter results by time range |
 
 ## worktree_enter
 

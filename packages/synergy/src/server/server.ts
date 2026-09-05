@@ -96,6 +96,7 @@ import { UpdateRoute } from "./update-route"
 import { ScopeBootstrapRoute } from "./scope-bootstrap-route"
 import { SessionVolatileBatchRoute } from "./session-volatile-batch-route"
 import { SynergyLinkRoute } from "./synergy-link-route"
+import { PushRoute } from "./push"
 import { resolveAppStaticRequest } from "./app-static"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
@@ -925,6 +926,7 @@ export namespace Server {
           },
         )
         .route("/holos", HolosRoute)
+        .route("/push", PushRoute)
         .route("/synergy-link", SynergyLinkRoute)
         .get(
           "/global/agenda",

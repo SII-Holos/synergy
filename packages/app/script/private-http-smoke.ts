@@ -131,6 +131,7 @@ function isolatedEnvironment(home: string, cwd: string, hostname: string) {
     SYNERGY_CWD: cwd,
     SYNERGY_CONFIG_CONTENT: "{}",
     SYNERGY_DISABLE_LSP_DOWNLOAD: "1",
+    SYNERGY_DISABLE_BUILTIN_MCP: "1",
     NO_PROXY: `localhost,127.0.0.1,::1,${hostname}`,
   }
 }

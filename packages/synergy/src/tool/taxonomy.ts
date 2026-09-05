@@ -83,10 +83,7 @@ function entry(kind: ToolKind, traits: ToolTraits = {}): ToolTaxonomyEntry {
 
 const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   // search
-  websearch: entry("search.web", { externalIO: true }),
   webfetch: entry("search.web", { externalIO: true }),
-  arxiv_search: entry("search.academic", { externalIO: true }),
-  arxiv_download: entry("search.academic", { externalIO: true }),
   grep: entry("search.codebase"),
   file_search: entry("search.codebase"),
   scan_files: entry("search.codebase"),

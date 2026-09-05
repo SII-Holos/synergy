@@ -10,6 +10,7 @@ import { ScopeContext } from "@/scope/context"
 import { ObservabilityStore } from "@/observability/store"
 import { tmpdir } from "../fixture/fixture"
 import { Config } from "@/config/config"
+import "../../src/product-registration"
 
 const originalAgentGet = Agent.get
 const originalPluginOwner = Agent.pluginOwner

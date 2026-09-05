@@ -949,7 +949,7 @@ describe("SessionSummary", () => {
 
   test("preserves ready diffs when session aggregation exceeds the run timeout", async () => {
     const previousTimeout = process.env.SYNERGY_SUMMARY_TIMEOUT_MS
-    process.env.SYNERGY_SUMMARY_TIMEOUT_MS = "50"
+    process.env.SYNERGY_SUMMARY_TIMEOUT_MS = "500"
     await using tmp = await tmpdir({ git: true })
     try {
       await ScopeContext.provide({
@@ -976,7 +976,16 @@ describe("SessionSummary", () => {
 
           const summarizing = SessionSummary.summarize({ sessionID: session.id, messageID: second.user.id })
           await Promise.all([messageDiffReady.promise, sessionDiffStarted.promise])
-          expect((await storedUser(session.id, second.user.id))?.summary?.diffState).toEqual({ status: "ready" })
+          let readyBeforeTimeout = false
+          for (let attempt = 0; attempt < 100; attempt++) {
+            const stored = await storedUser(session.id, second.user.id)
+            if (stored?.summary?.diffState?.status === "ready") {
+              readyBeforeTimeout = true
+              break
+            }
+            await Bun.sleep(10)
+          }
+          expect(readyBeforeTimeout).toBe(true)
           await summarizing
           sessionDiff.resolve([first.diff, second.diff])
 

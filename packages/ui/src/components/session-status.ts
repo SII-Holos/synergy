@@ -65,7 +65,6 @@ const TOOL_DESC: Record<string, MessageDescriptor> = {
   ast_grep: defineDescriptor("session-status.searching-codebase", "Searching the codebase"),
 
   webfetch: defineDescriptor("session-status.searching-web", "Searching the web"),
-  websearch: defineDescriptor("session-status.searching-web", "Searching the web"),
 
   edit: defineDescriptor("session-status.making-edits", "Making edits"),
   write: defineDescriptor("session-status.making-edits", "Making edits"),
@@ -80,9 +79,6 @@ const TOOL_DESC: Record<string, MessageDescriptor> = {
   lsp: defineDescriptor("session-status.querying-language-server", "Querying language server"),
 
   skill: defineDescriptor("session-status.loading-skill", "Loading skill"),
-
-  arxiv_search: defineDescriptor("session-status.searching-papers", "Searching papers"),
-  arxiv_download: defineDescriptor("session-status.searching-papers", "Searching papers"),
 
   task_output: defineDescriptor("session-status.managing-tasks", "Managing tasks"),
   task_cancel: defineDescriptor("session-status.managing-tasks", "Managing tasks"),

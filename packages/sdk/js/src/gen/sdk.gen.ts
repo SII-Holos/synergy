@@ -89,6 +89,8 @@ import type {
   BlueprintLoopStartResponses,
   BlueprintLoopWaitErrors,
   BlueprintLoopWaitResponses,
+  BossSessionOpenErrors,
+  BossSessionOpenResponses,
   BossSessionTreeErrors,
   BossSessionTreeResponses,
   BossSessionWorkerAssignErrors,
@@ -327,6 +329,10 @@ import type {
   LibraryGetResponses,
   LibraryListErrors,
   LibraryListResponses,
+  LibraryMemoryCreateErrors,
+  LibraryMemoryCreateResponses,
+  LibraryMemoryUpdateErrors,
+  LibraryMemoryUpdateResponses,
   LibraryRemoveErrors,
   LibraryRemoveResponses,
   LibraryResetErrors,
@@ -348,6 +354,8 @@ import type {
   McpAuthRemoveResponses,
   McpAuthStartErrors,
   McpAuthStartResponses,
+  McpBuiltinsErrors,
+  McpBuiltinsResponses,
   McpConnectErrors,
   McpConnectResponses,
   McpDisconnectErrors,
@@ -504,6 +512,19 @@ import type {
   PtyRemoveResponses,
   PtyUpdateErrors,
   PtyUpdateResponses,
+  PushCategories,
+  PushGetVapidKeyErrors,
+  PushGetVapidKeyResponses,
+  PushListErrors,
+  PushListResponses,
+  PushSubscribeErrors,
+  PushSubscribeResponses,
+  PushTestErrors,
+  PushTestResponses,
+  PushUnsubscribeErrors,
+  PushUnsubscribeResponses,
+  PushUpdateCategoriesErrors,
+  PushUpdateCategoriesResponses,
   QuestionAnswer,
   QuestionListErrors,
   QuestionListResponses,
@@ -3514,6 +3535,36 @@ export class Session extends HeyApiClient {
     })
   }
 
+  /**
+   * Open the runtime Boss session
+   *
+   * Returns the runtime boss session for the current config, creating a channel-less local boss session in home scope on first open when no routable Feishu account is enabled.
+   */
+  public open<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BossSessionOpenResponses, BossSessionOpenErrors, ThrowOnError>({
+      url: "/boss/session/open",
+      ...options,
+      ...params,
+    })
+  }
+
   files = new Files({ client: this.client })
 
   export = new Export({ client: this.client })
@@ -5047,6 +5098,161 @@ export class Holos extends HeyApiClient {
   outbox = new Outbox({ client: this.client })
 
   thread = new Thread({ client: this.client })
+}
+
+export class Push extends HeyApiClient {
+  /**
+   * Get the server's public Web Push VAPID key
+   *
+   * Returns the public VAPID key browsers need for PushManager.subscribe. The key pair is generated on first use.
+   */
+  public getVapidKey<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<PushGetVapidKeyResponses, PushGetVapidKeyErrors, ThrowOnError>({
+      url: "/push/vapid-key",
+      ...options,
+    })
+  }
+
+  /**
+   * List Web Push subscriptions
+   *
+   * List every registered push subscription. Subscription keys are never returned.
+   */
+  public list<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<PushListResponses, PushListErrors, ThrowOnError>({
+      url: "/push/subscriptions",
+      ...options,
+    })
+  }
+
+  /**
+   * Register a Web Push subscription
+   *
+   * Register a browser push subscription (endpoint + encryption keys). Re-subscribing with the same endpoint updates it in place.
+   */
+  public subscribe<ThrowOnError extends boolean = false>(
+    parameters?: {
+      endpoint?: string
+      keys?: {
+        p256dh: string
+        auth: string
+      }
+      deviceLabel?: string
+      categories?: PushCategories
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "endpoint" },
+            { in: "body", key: "keys" },
+            { in: "body", key: "deviceLabel" },
+            { in: "body", key: "categories" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<PushSubscribeResponses, PushSubscribeErrors, ThrowOnError>({
+      url: "/push/subscribe",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Remove a Web Push subscription
+   *
+   * Remove the subscription matching the given push endpoint.
+   */
+  public unsubscribe<ThrowOnError extends boolean = false>(
+    parameters?: {
+      endpoint?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "endpoint" }] }])
+    return (options?.client ?? this.client).post<PushUnsubscribeResponses, PushUnsubscribeErrors, ThrowOnError>({
+      url: "/push/unsubscribe",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Send a test Web Push notification
+   *
+   * Send one test notification to verify an existing subscription end to end. With an endpoint, only that subscription receives it.
+   */
+  public test<ThrowOnError extends boolean = false>(
+    parameters?: {
+      endpoint?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "endpoint" }] }])
+    return (options?.client ?? this.client).post<PushTestResponses, PushTestErrors, ThrowOnError>({
+      url: "/push/test",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Update push category preferences for one subscription
+   *
+   * Enable or disable completion/error/input pushes per subscribed device.
+   */
+  public updateCategories<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      pushCategories?: PushCategories
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { key: "pushCategories", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<
+      PushUpdateCategoriesResponses,
+      PushUpdateCategoriesErrors,
+      ThrowOnError
+    >({
+      url: "/push/subscriptions/{id}/categories",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
 }
 
 export class SynergyLink extends HeyApiClient {
@@ -8763,6 +8969,100 @@ export class Experience extends HeyApiClient {
   }
 }
 
+export class Memory extends HeyApiClient {
+  /**
+   * Create memory
+   *
+   * Create a new active memory row. Generates an embedding from the title and content so the row is immediately retrievable. Requires the embedding API to be configured.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      title?: string
+      content?: string
+      category?: MemoryCategory
+      recallMode?: MemoryRecallMode
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "title" },
+            { in: "body", key: "content" },
+            { in: "body", key: "category" },
+            { in: "body", key: "recallMode" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<LibraryMemoryCreateResponses, LibraryMemoryCreateErrors, ThrowOnError>(
+      {
+        url: "/library/memory",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * Update memory
+   *
+   * Replace the title, content, category, and recall mode of an existing memory row and regenerate its embedding.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      id?: string
+      title?: string
+      content?: string
+      category?: MemoryCategory
+      recallMode?: MemoryRecallMode
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "id" },
+            { in: "body", key: "title" },
+            { in: "body", key: "content" },
+            { in: "body", key: "category" },
+            { in: "body", key: "recallMode" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<LibraryMemoryUpdateResponses, LibraryMemoryUpdateErrors, ThrowOnError>(
+      {
+        url: "/library/memory/update",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+}
+
 export class Library extends HeyApiClient {
   /**
    * Get library stats
@@ -8989,6 +9289,8 @@ export class Library extends HeyApiClient {
   embedding = new Embedding({ client: this.client })
 
   experience = new Experience({ client: this.client })
+
+  memory = new Memory({ client: this.client })
 }
 
 export class Note extends HeyApiClient {
@@ -11299,6 +11601,36 @@ export class Mcp extends HeyApiClient {
   }
 
   /**
+   * List built-in MCP servers
+   *
+   * List the built-in MCP servers shipped with Synergy and their current status.
+   */
+  public builtins<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<McpBuiltinsResponses, McpBuiltinsErrors, ThrowOnError>({
+      url: "/mcp/builtins",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Connect an MCP server
    */
   public connect<ThrowOnError extends boolean = false>(
@@ -11984,6 +12316,8 @@ export class SynergyClient extends HeyApiClient {
   performance = new Performance({ client: this.client })
 
   holos = new Holos({ client: this.client })
+
+  push = new Push({ client: this.client })
 
   synergyLink = new SynergyLink({ client: this.client })
 

@@ -497,12 +497,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         icon: "message-circle",
         title: TOOL_TITLE_DESC["question"],
       }
-    case "websearch":
-      return {
-        icon: "globe",
-        title: TOOL_TITLE_DESC["websearch"],
-        subtitle: input.query,
-      }
     case "look_at":
       return {
         icon: "scan-eye",
@@ -552,18 +546,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         icon: "tool-expand",
         title: TOOL_TITLE_DESC["expand_tools"],
         subtitle: [...(input.groups ?? []), ...(input.tools ?? [])].join(", ") || input.reason,
-      }
-    case "arxiv_search":
-      return {
-        icon: "book-open",
-        title: TOOL_TITLE_DESC["arxiv_search"],
-        subtitle: input.query,
-      }
-    case "arxiv_download":
-      return {
-        icon: "book-down",
-        title: TOOL_TITLE_DESC["arxiv_download"],
-        subtitle: input.arxivId,
       }
     case "process":
       return {

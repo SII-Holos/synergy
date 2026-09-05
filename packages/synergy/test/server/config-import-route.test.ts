@@ -6,6 +6,7 @@ import { ConfigDomain } from "../../src/config/domain"
 import { ConfigImport } from "../../src/config/import"
 import { Server } from "../../src/server/server"
 import { tmpdir } from "../fixture/fixture"
+import "../../src/product-registration"
 
 function post(app: ReturnType<typeof Server.App>, url: string, body: unknown) {
   return app.request(url, {

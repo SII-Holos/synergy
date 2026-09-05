@@ -244,7 +244,7 @@ describe("loop-signals: tool_failure_pattern (scholar search)", () => {
         makeUserWrapper("scholar"),
         makeAssistant(
           [
-            makeTool("websearch", { query: "very specific paper xyz" }, "completed", {
+            makeTool("webfetch", { url: "https://example.com/very-specific-paper-xyz" }, "completed", {
               output: "No search results found. Please try a different query.",
               metadata: { searchFailureType: "no_results" },
             }),
@@ -253,7 +253,7 @@ describe("loop-signals: tool_failure_pattern (scholar search)", () => {
         ),
         makeAssistant(
           [
-            makeTool("arxiv_search", { query: "very specific paper xyz", startDate: "2026-01-01" }, "completed", {
+            makeTool("webfetch", { url: "https://example.com/papers/very-specific-paper-xyz" }, "completed", {
               output: "No papers found matching your search criteria.",
               metadata: { searchFailureType: "no_results" },
             }),
@@ -273,13 +273,13 @@ describe("loop-signals: tool_failure_pattern (scholar search)", () => {
     const ctx = makeCtx(2, [
       makeUserWrapper(),
       makeAssistant([
-        makeTool("websearch", { query: "missing one" }, "completed", {
+        makeTool("webfetch", { url: "https://example.com/missing-one" }, "completed", {
           output: "No search results found. Please try a different query.",
           metadata: { searchFailureType: "no_results" },
         }),
       ]),
       makeAssistant([
-        makeTool("websearch", { query: "missing two" }, "completed", {
+        makeTool("webfetch", { url: "https://example.com/missing-two" }, "completed", {
           output: "No search results found. Please try a different query.",
           metadata: { searchFailureType: "no_results" },
         }),
@@ -302,7 +302,7 @@ describe("loop-signals: tool_failure_pattern (scholar search)", () => {
         makeUserWrapper("scholar"),
         makeAssistant(
           [
-            makeTool("websearch", { query: "a" }, "completed", {
+            makeTool("webfetch", { url: "https://example.com/a" }, "completed", {
               output: "No search results found. Please try a different query.",
               metadata: { searchFailureType: "no_results" },
             }),
@@ -327,7 +327,7 @@ describe("loop-signals: tool_failure_pattern (scholar search)", () => {
         ),
         makeAssistant(
           [
-            makeTool("arxiv_search", { query: "b" }, "completed", {
+            makeTool("webfetch", { url: "https://example.com/b" }, "completed", {
               output: "No papers found matching your search criteria.",
               metadata: { searchFailureType: "no_results" },
             }),

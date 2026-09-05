@@ -42,8 +42,6 @@ import z from "zod"
 import Ajv2020 from "ajv/dist/2020"
 import { ToolPluginSource } from "./plugin-source"
 import type { PluginSettingCondition } from "@ericsanchezok/synergy-plugin"
-import { WebSearchTool } from "./websearch"
-import { ArxivSearchTool, ArxivDownloadTool } from "./arxiv"
 import { Log } from "@/util/log"
 import { ProcessTool } from "./process"
 import { Truncate } from "./truncation"
@@ -265,11 +263,8 @@ export namespace ToolRegistry {
       DagWriteTool,
       DagReadTool,
       DagPatchTool,
-      WebSearchTool,
       SearchToolsTool,
       ExpandToolsTool,
-      ArxivSearchTool,
-      ArxivDownloadTool,
       SkillTool,
       LookAtTool,
       ScanDocumentTool,

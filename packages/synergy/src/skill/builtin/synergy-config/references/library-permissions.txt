@@ -162,7 +162,6 @@ Canonical permission keys are tool names such as `edit`, `read`, and `bash`. Use
     "bash": "ask",
     "task": "allow",
     "webfetch": "allow",
-    "websearch": "allow",
     "external_directory": "deny",
     "download": "allow",
     "lsp": "allow",

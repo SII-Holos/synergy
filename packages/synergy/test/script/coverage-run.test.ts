@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test"
-import { ISOLATED_COVERAGE_FILES, splitCoverageBatches, runBatches } from "../../script/coverage-run"
+import {
+  batchShardCount,
+  ISOLATED_BATCH_FILES,
+  runBatches,
+  shardMainFiles,
+  splitBatchFiles,
+} from "../../script/coverage-run"
 
 describe("coverage batch splitting", () => {
   test("keeps every discovered file exactly once across batches", () => {
@@ -11,12 +17,12 @@ describe("coverage batch splitting", () => {
       "test/tool/openai-image-gen.test.ts",
       "test/channel/svg-raster-standalone.test.ts",
     ]
-    const { main, isolated } = splitCoverageBatches(files)
+    const { main, isolated } = splitBatchFiles(files)
     expect([...main, ...isolated].toSorted()).toEqual([...files].toSorted())
   })
 
   test("moves isolated files out of the main batch in canonical order", () => {
-    const { main, isolated } = splitCoverageBatches([
+    const { main, isolated } = splitBatchFiles([
       "test/a.test.ts",
       "test/vector/embedding-standalone.test.ts",
       "test/server/nav-global-routes.test.ts",
@@ -25,11 +31,26 @@ describe("coverage batch splitting", () => {
     expect(isolated).toEqual(["test/vector/embedding-standalone.test.ts", "test/server/nav-global-routes.test.ts"])
   })
 
-  test("isolated set is pinned to the known load-sensitive files", () => {
-    expect([...ISOLATED_COVERAGE_FILES].toSorted()).toEqual([
+  test("isolated set is pinned to the known load- and state-sensitive files", () => {
+    expect([...ISOLATED_BATCH_FILES].toSorted()).toEqual([
+      "test/channel/clarus-assignment.test.ts",
+      "test/channel/clarus-invite-accept.test.ts",
+      "test/channel/feishu-provider.test.ts",
+      "test/channel/host.test.ts",
+      "test/channel/managed-project-ownership.test.ts",
       "test/channel/svg-raster-standalone.test.ts",
+      "test/cli/daemon-entry.test.ts",
       "test/config/import.test.ts",
+      "test/daemon/observe.test.ts",
+      "test/daemon/spec.test.ts",
+      "test/email/imap.test.ts",
+      "test/global/test-home-guard.test.ts",
       "test/holos/runtime.test.ts",
+      "test/library/database.test.ts",
+      "test/library/embedding-local.test.ts",
+      "test/library/embedding.test.ts",
+      "test/library/experience-recall.test.ts",
+      "test/library/experience-reencode.test.ts",
       "test/plugin/mcp-declarative-oauth.test.ts",
       "test/provider/catalog-stability.test.ts",
       "test/provider/proxy.test.ts",
@@ -38,11 +59,44 @@ describe("coverage batch splitting", () => {
       "test/server/plugin-registry-routes.test.ts",
       "test/server/skill-route.test.ts",
       "test/session/retry.test.ts",
-      "test/tool/arxiv-download.test.ts",
+      "test/storage/storage-retry.test.ts",
+      "test/storage/storage-silent-not-found.test.ts",
       "test/tool/auto-expand.test.ts",
       "test/tool/openai-image-gen.test.ts",
+      "test/tool/session-search.test.ts",
       "test/vector/embedding-standalone.test.ts",
     ])
+  })
+})
+
+describe("main batch sharding", () => {
+  test("batchShardCount reads SYNERGY_BATCH_SHARDS and defaults to 4", () => {
+    expect(batchShardCount({})).toBe(4)
+    expect(batchShardCount({ SYNERGY_BATCH_SHARDS: "6" })).toBe(6)
+    expect(batchShardCount({ SYNERGY_BATCH_SHARDS: "" })).toBe(4)
+    expect(batchShardCount({ SYNERGY_BATCH_SHARDS: "nope" })).toBe(4)
+    expect(batchShardCount({ SYNERGY_BATCH_SHARDS: "0" })).toBe(4)
+  })
+
+  test("shardMainFiles assigns shards by file-name hash, not batch position", () => {
+    const full = shardMainFiles(["test/a.test.ts", "test/b.test.ts", "test/c.test.ts"], 4)
+    const withoutFirst = shardMainFiles(["test/b.test.ts", "test/c.test.ts"], 4)
+    const shardOf = (shards: string[][], file: string) => shards.findIndex((shard) => shard.includes(file))
+    expect(shardOf(withoutFirst, "test/b.test.ts")).toBe(shardOf(full, "test/b.test.ts"))
+    expect(shardOf(withoutFirst, "test/c.test.ts")).toBe(shardOf(full, "test/c.test.ts"))
+  })
+
+  test("shardMainFiles keeps every file exactly once across shards, deterministically", () => {
+    const files = ["test/a.test.ts", "test/b.test.ts", "test/c.test.ts", "test/d.test.ts", "test/e.test.ts"]
+    const shards = shardMainFiles(files, 2)
+    expect(shards.flat().toSorted()).toEqual(files.toSorted())
+    expect(shardMainFiles(files, 2)).toEqual(shards)
+  })
+
+  test("shardMainFiles tolerates more shards than files", () => {
+    const shards = shardMainFiles(["a.test.ts"], 3)
+    expect(shards).toHaveLength(3)
+    expect(shards.flat()).toEqual(["a.test.ts"])
   })
 })
 
@@ -64,7 +118,13 @@ describe("runBatches failure reporting", () => {
       errors.push(args.map(String).join(" "))
     }) as typeof console.error
     try {
-      expect(await runBatches(["test/a.test.ts", "test/vector/embedding-standalone.test.ts"], env, fail)).toBe(1)
+      expect(
+        await runBatches(
+          ["test/a.test.ts", "test/vector/embedding-standalone.test.ts"],
+          { SYNERGY_BATCH_SHARDS: "1" },
+          fail,
+        ),
+      ).toBe(1)
     } finally {
       console.error = originalError
     }
@@ -73,7 +133,7 @@ describe("runBatches failure reporting", () => {
     expect(message).toContain("shard 1")
   })
 
-  test("runs the main batch first, then isolated batches", async () => {
+  test("runs every main shard first, then isolated batches", async () => {
     const calls: Array<{ shard: number; files: number }> = []
     const recording: (
       files: string[],
@@ -83,10 +143,29 @@ describe("runBatches failure reporting", () => {
       calls.push({ shard, files: files.length })
       return 0
     }
-    await runBatches(["test/a.test.ts", "test/b.test.ts", "test/vector/embedding-standalone.test.ts"], env, recording)
+    await runBatches(
+      ["test/a.test.ts", "test/b.test.ts", "test/vector/embedding-standalone.test.ts"],
+      { SYNERGY_BATCH_SHARDS: "2" },
+      recording,
+    )
     expect(calls).toEqual([
-      { shard: 0, files: 2 },
+      { shard: 0, files: 1 },
       { shard: 1, files: 1 },
+      { shard: 2, files: 1 },
     ])
+  })
+
+  test("never spawns a batch for an empty shard", async () => {
+    const shards: number[] = []
+    const recording: (
+      files: string[],
+      shard: number,
+      env: Record<string, string | undefined>,
+    ) => Promise<number> = async (files, shard) => {
+      shards.push(shard)
+      return 0
+    }
+    await runBatches(["test/a.test.ts", "test/b.test.ts"], { SYNERGY_BATCH_SHARDS: "4" }, recording)
+    expect(shards).toEqual([0, 1])
   })
 })

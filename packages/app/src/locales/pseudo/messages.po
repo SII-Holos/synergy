@@ -11743,6 +11743,42 @@ msgstr ""
 msgid "scopes.working"
 msgstr ""
 
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.domains"
+msgstr ""
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.elapsed"
+msgstr ""
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.format"
+msgstr ""
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.host"
+msgstr ""
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.papers"
+msgstr ""
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.results"
+msgstr ""
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.searching"
+msgstr ""
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.strength"
+msgstr ""
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.total"
+msgstr ""
+
 #. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.collapse-all"
 msgstr ""
@@ -11909,10 +11945,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session-status.searching-codebase"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session-status.searching-papers"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -15414,6 +15446,78 @@ msgid "settings.general.compactReasoning.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.general.devicePush.completion"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enableFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.error"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.input"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.insecure"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.iosTab"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.permissionDenied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.removed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.removeFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.test"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.testFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.testSent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.unsupported"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.general.font.applied"
 msgstr ""
 
@@ -16726,6 +16830,58 @@ msgid "settings.mcp.addServer"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clear"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clearPending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clearUndo"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.configured"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.badge"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.section.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.section.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.connected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.disabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.other"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.card.collapse"
 msgstr ""
 
@@ -17906,23 +18062,83 @@ msgid "settings.runtime.boss.enabled.desc"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.identity"
+msgid "settings.runtime.boss.name"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.identity.desc"
+msgid "settings.runtime.boss.name.desc"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.identity.placeholder"
+msgid "settings.runtime.boss.name.placeholder"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.interval"
+msgid "settings.runtime.boss.name.saveFailed"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.interval.desc"
+msgid "settings.runtime.boss.name.saveFailed.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.busy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.conciseness"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.custom"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.customTraits"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.default"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.formality"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.opsAssistant"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.proactiveness"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.projectManager"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.warmth"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.personality"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.personality.desc"
 msgstr ""
 
 #. Boss Mode
@@ -19090,14 +19306,6 @@ msgid "tool.title.archive-note"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.arxiv-download"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.arxiv-search"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.ast-search"
 msgstr ""
 
@@ -19739,10 +19947,6 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.watch"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.web-search"
 msgstr ""
 
 #. Search / web

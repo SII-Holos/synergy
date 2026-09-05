@@ -105,6 +105,58 @@ describe("settings form boss mode", () => {
   test("hydrates explicit boss mode false", () => {
     expect(initializedRuntime({ experimental: { boss_mode: false } }).bossMode).toBe("false")
   })
+
+  test("defaults persona preset to none with 0.5 traits when config is absent", () => {
+    expect(initializedRuntime({})).toMatchObject({
+      bossPersonaPreset: "none",
+      bossPersonaFormality: "0.5",
+      bossPersonaConciseness: "0.5",
+      bossPersonaProactiveness: "0.5",
+      bossPersonaWarmth: "0.5",
+    })
+  })
+
+  test("hydrates a stored built-in persona preset", () => {
+    expect(
+      initializedRuntime({
+        experimental: {
+          boss_persona: { preset: "project_manager" },
+        },
+      }),
+    ).toMatchObject({
+      bossPersonaPreset: "project_manager",
+      bossPersonaFormality: "0.5",
+      bossPersonaConciseness: "0.5",
+      bossPersonaProactiveness: "0.5",
+      bossPersonaWarmth: "0.5",
+    })
+  })
+
+  test("hydrates a stored custom persona with its trait numbers", () => {
+    expect(
+      initializedRuntime({
+        experimental: {
+          boss_persona: {
+            preset: "custom",
+            formality: 0.9,
+            conciseness: 0.25,
+            proactiveness: 0.6,
+            warmth: 0.05,
+          },
+        },
+      }),
+    ).toMatchObject({
+      bossPersonaPreset: "custom",
+      bossPersonaFormality: "0.9",
+      bossPersonaConciseness: "0.25",
+      bossPersonaProactiveness: "0.6",
+      bossPersonaWarmth: "0.05",
+    })
+  })
+
+  test("boss name stays empty on init (it is read from the library by the panel)", () => {
+    expect(initializedRuntime({}).bossName).toBe("")
+  })
 })
 
 describe("settings form performance monitoring", () => {

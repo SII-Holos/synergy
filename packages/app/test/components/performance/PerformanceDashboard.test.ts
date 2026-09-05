@@ -325,7 +325,7 @@ describe("performance dashboard tool failures", () => {
   test("formats ranked error categories without exposing error messages", () => {
     expect(
       toolFailureCategories({
-        tool: "websearch",
+        tool: "webfetch",
         callCount: 4,
         errorCount: 2,
         errorRate: 0.5,

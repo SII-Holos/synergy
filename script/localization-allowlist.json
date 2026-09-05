@@ -64,6 +64,22 @@
     "reason": "Third-party plugin label — provided by the Anysearch plugin, not Synergy-owned chrome."
   },
   {
+    "path": "packages/ui/src/components/tool/scholight-info.ts",
+    "kind": "user-visible-property",
+    "literal": "Scholight",
+    "occurrence": 1,
+    "category": "plugin-content",
+    "reason": "Third-party service name — provided by the Scholight MCP server, not Synergy-owned chrome."
+  },
+  {
+    "path": "packages/ui/src/components/tool/scholight-info.ts",
+    "kind": "user-visible-property",
+    "literal": "Scholight Extract",
+    "occurrence": 1,
+    "category": "plugin-content",
+    "reason": "Third-party service label — provided by the Scholight MCP server, not Synergy-owned chrome."
+  },
+  {
     "path": "packages/ui/src/components/tool/renders/standard.tsx",
     "kind": "user-visible-property",
     "literal": "pattern=",
