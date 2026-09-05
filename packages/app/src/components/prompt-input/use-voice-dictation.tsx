@@ -14,6 +14,7 @@ import { requestErrorMessage } from "@/utils/error"
 import { PI } from "./prompt-input-i18n"
 import {
   createVoiceDictationEngine,
+  isNoSpeechReason,
   isSttConfigured,
   type VoiceDictationDependencies,
   type VoiceDictationPhase,
@@ -58,6 +59,14 @@ export function useVoiceDictation(options: {
         reportFailure(PI.voiceMicErrorTitle, PI.voiceMicErrorDescription, event.error)
         break
       case "transcription-failed":
+        if (isNoSpeechReason(event.error)) {
+          showToast({
+            type: "warning",
+            title: i18n._(PI.voiceNoSpeechTitle),
+            description: i18n._(PI.voiceNoSpeechDescription),
+          })
+          break
+        }
         reportFailure(PI.voiceFailedTitle, PI.voiceFailedDescription, event.error)
         break
     }

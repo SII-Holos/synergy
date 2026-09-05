@@ -49,6 +49,16 @@ export function isMicrophonePermissionError(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as { name?: unknown }).name === "NotAllowedError"
 }
 
+/** True when the voice route reported that no speech was detected in the clip. */
+export function isNoSpeechReason(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false
+  const data = (error as { data?: unknown }).data
+  if (typeof data === "object" && data !== null && (data as { reason?: unknown }).reason === "voice_no_speech") {
+    return true
+  }
+  return (error as { reason?: unknown }).reason === "voice_no_speech"
+}
+
 export function isSttConfigured(config: { voice?: { stt?: { model?: string } } }): boolean {
   const model = config.voice?.stt?.model
   return typeof model === "string" && model.trim().length > 0

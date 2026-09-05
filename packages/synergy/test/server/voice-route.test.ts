@@ -113,6 +113,25 @@ describe("voice transcribe route", () => {
     expect(body.message).toContain("invalid api key")
     ;(Voice.transcribe as typeof Voice.transcribe) = originalTranscribe
   })
+
+  test("translates an empty-transcript provider result into a voice_no_speech reason", async () => {
+    stubConfig({ stt: { model: "whisper-1", apiKey: "test" } })
+
+    const originalTranscribe = Voice.transcribe
+    ;(Voice.transcribe as typeof Voice.transcribe) = mock(async () => {
+      throw Object.assign(new Error("No transcript generated."), { name: "AI_NoTranscriptGeneratedError" })
+    })
+
+    const form = new FormData()
+    form.append("file", audioFile())
+    const response = await app().request("/voice/transcribe", { method: "POST", body: form })
+
+    expect(response.status).toBe(400)
+    const body = (await response.json()) as { message: string; reason: string }
+    expect(body.reason).toBe("voice_no_speech")
+    expect(body.message).toContain("No speech was detected")
+    ;(Voice.transcribe as typeof Voice.transcribe) = originalTranscribe
+  })
 })
 
 describe("voice transcribe route scope enforcement", () => {

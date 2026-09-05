@@ -3,6 +3,7 @@ import {
   collectDictationContext,
   createVoiceDictationEngine,
   isMicrophonePermissionError,
+  isNoSpeechReason,
   isSttConfigured,
   negotiateRecordingMimeType,
   shouldTranscribeDuration,
@@ -170,6 +171,13 @@ describe("voice dictation core", () => {
     expect(isMicrophonePermissionError(undefined)).toBe(false)
   })
 
+  test("no-speech reason classification", () => {
+    expect(isNoSpeechReason({ data: { reason: "voice_no_speech" } })).toBe(true)
+    expect(isNoSpeechReason({ reason: "voice_no_speech" })).toBe(true)
+    expect(isNoSpeechReason({ data: { reason: "voice_stt_not_configured" } })).toBe(false)
+    expect(isNoSpeechReason(new Error("boom"))).toBe(false)
+    expect(isNoSpeechReason(undefined)).toBe(false)
+  })
   test("stt config detection", () => {
     expect(isSttConfigured({ voice: { stt: { model: "qwen3-asr-flash" } } })).toBe(true)
     expect(isSttConfigured({ voice: { stt: { model: "  " } } })).toBe(false)

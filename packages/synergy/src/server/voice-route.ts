@@ -72,6 +72,18 @@ export const VoiceRoute = new Hono().post(
       if (err instanceof VoiceNotConfiguredError) {
         return c.json({ message: err.message, reason: "voice_stt_not_configured" }, 400)
       }
+      // STT providers return an empty transcript (200 with no text) when no
+      // speech is detected; the AI SDK surfaces that as NoTranscriptGenerated.
+      // Translate it into an actionable reason instead of the raw SDK error.
+      if (err?.name === "AI_NoTranscriptGeneratedError") {
+        return c.json(
+          {
+            message: "No speech was detected in the recording. Move closer to the microphone and try again.",
+            reason: "voice_no_speech",
+          },
+          400,
+        )
+      }
       return c.json({ message: err?.message ?? String(err) }, 400)
     }
   },

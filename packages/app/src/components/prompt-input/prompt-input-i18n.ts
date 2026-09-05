@@ -504,6 +504,11 @@ export const PI = {
     id: "prompt.voice.failed.description",
     message: "The recording could not be transcribed.",
   },
+  voiceNoSpeechTitle: { id: "prompt.voice.noSpeech.title", message: "No speech detected" },
+  voiceNoSpeechDescription: {
+    id: "prompt.voice.noSpeech.description",
+    message: "No speech was heard. Move closer to the microphone and try again.",
+  },
   voiceInsertFailedTitle: { id: "prompt.voice.insertFailed.title", message: "Could not insert dictation" },
   voiceInsertFailedDescription: {
     id: "prompt.voice.insertFailed.description",
