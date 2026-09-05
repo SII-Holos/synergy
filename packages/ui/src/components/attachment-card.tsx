@@ -33,24 +33,15 @@ export {
   resolveAttachmentUrl,
   resolveImagePreviewImage,
 } from "./attachment-card-utils"
+import {
+  claimSpeakAutoplay,
+  finishSpeakAutoplay,
+  rememberSpeakPlaybackPosition,
+  speakPlaybackPosition,
+} from "./session-turn-speak-autoplay"
 
 const previewImageDescriptor = { id: "ui.attachment.previewImage", message: "Preview {filename}" }
 const openAttachmentDescriptor = { id: "ui.attachment.openAttachment", message: "Open {filename}" }
-
-// Autoplay is honored once per attachment per page session: re-rendering an
-// already played card (scroll reconciliation, activity-mode projection
-// switches) must not make it speak again.
-const autoplayedByKey = new Map<string, number>()
-const AUTOPLAY_MEMORY_LIMIT = 500
-
-function markAutoplayDone(key: string) {
-  if (autoplayedByKey.size >= AUTOPLAY_MEMORY_LIMIT) autoplayedByKey.clear()
-  autoplayedByKey.set(key, Date.now())
-}
-
-function wasAutoplayDone(key: string): boolean {
-  return autoplayedByKey.has(key)
-}
 
 export function AttachmentCard(props: {
   file: AttachmentFile
@@ -70,25 +61,44 @@ export function AttachmentCard(props: {
   const meta = createMemo(() => attachmentMeta(props.file))
   const [mounted, setMounted] = createSignal(false)
   let audioRef: HTMLAudioElement | undefined
-  let autoplayStarted = false
 
   onMount(() => setMounted(true))
 
-  // Speech the agent decided to announce (speak tool) plays once when its
-  // freshly generated card renders. The audio element is only assigned after
-  // mount, so gate on mounted() and re-check autoplay flips later. Browsers
-  // may reject play() without a user gesture — controls remain for manual
-  // playback in that case.
+  // Speech the agent decided to announce (speak tool) plays on its own when
+  // its freshly generated card renders, and keeps playing across the turn
+  // settlement re-projection that remounts the card while audio is in
+  // flight. Qualification is sticky in the tracker until the clip ends or
+  // the user pauses, so a remounted card resumes from the remembered
+  // position instead of silencing or restarting. Browsers may reject play()
+  // without a user gesture — controls remain for manual playback.
+  let autoplayWired = false
+  const wireAutoplayEvents = (key: string) => {
+    if (autoplayWired) return
+    autoplayWired = true
+    const element = audioRef
+    if (!element) return
+    const remember = () => rememberSpeakPlaybackPosition(key, element.currentTime)
+    const finish = () => finishSpeakAutoplay(key)
+    element.addEventListener("timeupdate", remember)
+    element.addEventListener("ended", finish)
+    element.addEventListener("pause", finish)
+  }
+
   createEffect(() => {
     if (!props.autoplay || !mounted()) return
-    if (props.autoplayKey !== undefined && wasAutoplayDone(props.autoplayKey)) return
     const renderer = presentation().renderer
     const audioUrl = url()
     if (renderer !== "audio" || !audioUrl) return
     const element = audioRef
     if (!element) return
-    autoplayStarted = true
-    if (props.autoplayKey !== undefined) markAutoplayDone(props.autoplayKey)
+    if (props.autoplayKey !== undefined && !claimSpeakAutoplay(props.autoplayKey)) return
+    if (props.autoplayKey !== undefined) {
+      wireAutoplayEvents(props.autoplayKey)
+      const resumeAt = speakPlaybackPosition(props.autoplayKey)
+      if (resumeAt > 0 && (!element.duration || resumeAt < element.duration - 0.5)) {
+        element.currentTime = resumeAt
+      }
+    }
     void element.play().catch(() => {})
   })
 

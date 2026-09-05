@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import {
   claimSpeakAutoplay,
+  finishSpeakAutoplay,
   isSpeakTool,
   noteSpeakPartActive,
+  rememberSpeakPlaybackPosition,
   resetSpeakAutoplayTrackerForTest,
+  speakPlaybackPosition,
 } from "../../src/components/session-turn-speak-autoplay"
 
 afterEach(() => {
@@ -18,35 +21,53 @@ describe("session-turn speak autoplay tracker", () => {
   })
 
   test("a completed part that was never seen active does not autoplay (history replay)", () => {
-    expect(claimSpeakAutoplay("part-history")).toBe(false)
+    expect(claimSpeakAutoplay("speak:part-history")).toBe(false)
   })
 
-  test("a part seen active then claimed autoplays exactly once", () => {
-    noteSpeakPartActive("part-live")
-    expect(claimSpeakAutoplay("part-live")).toBe(true)
-    // One-shot: the second completed render of the same part stays silent.
-    expect(claimSpeakAutoplay("part-live")).toBe(false)
+  test("a part seen active stays qualified across re-renders until finished", () => {
+    noteSpeakPartActive("speak:part-live")
+    expect(claimSpeakAutoplay("speak:part-live")).toBe(true)
+    // Re-renders (turn settlement remount) keep the qualification so the
+    // remounted card resumes playback instead of staying silent.
+    expect(claimSpeakAutoplay("speak:part-live")).toBe(true)
+    expect(claimSpeakAutoplay("speak:part-live")).toBe(true)
+  })
+
+  test("finishSpeakAutoplay clears the qualification when playback ends or pauses", () => {
+    noteSpeakPartActive("speak:part-done")
+    expect(claimSpeakAutoplay("speak:part-done")).toBe(true)
+    finishSpeakAutoplay("speak:part-done")
+    expect(claimSpeakAutoplay("speak:part-done")).toBe(false)
   })
 
   test("unrelated parts do not consume each other's claims", () => {
-    noteSpeakPartActive("part-a")
-    noteSpeakPartActive("part-b")
-    expect(claimSpeakAutoplay("part-b")).toBe(true)
-    expect(claimSpeakAutoplay("part-a")).toBe(true)
-    expect(claimSpeakAutoplay("part-a")).toBe(false)
+    noteSpeakPartActive("speak:part-a")
+    noteSpeakPartActive("speak:part-b")
+    expect(claimSpeakAutoplay("speak:part-b")).toBe(true)
+    expect(claimSpeakAutoplay("speak:part-a")).toBe(true)
   })
 
-  test("active parts observed across repeated renders stay claimable until completion", () => {
-    noteSpeakPartActive("part-stream")
+  test("active parts observed across repeated pending renders stay claimable", () => {
+    noteSpeakPartActive("speak:part-stream")
     // Streaming deltas re-render the pending card many times.
-    noteSpeakPartActive("part-stream")
-    noteSpeakPartActive("part-stream")
-    expect(claimSpeakAutoplay("part-stream")).toBe(true)
+    noteSpeakPartActive("speak:part-stream")
+    noteSpeakPartActive("speak:part-stream")
+    expect(claimSpeakAutoplay("speak:part-stream")).toBe(true)
   })
 
-  test("an active part that errors or is superseded never autoplays after reset", () => {
-    noteSpeakPartActive("part-doomed")
+  test("playback position is remembered and returned", () => {
+    expect(speakPlaybackPosition("speak:part-x")).toBe(0)
+    rememberSpeakPlaybackPosition("speak:part-x", 4.25)
+    expect(speakPlaybackPosition("speak:part-x")).toBe(4.25)
+    rememberSpeakPlaybackPosition("speak:part-x", 5)
+    expect(speakPlaybackPosition("speak:part-x")).toBe(5)
+  })
+
+  test("reset clears active, qualified, and remembered positions", () => {
+    noteSpeakPartActive("speak:part-doomed")
+    rememberSpeakPlaybackPosition("speak:part-doomed", 3)
     resetSpeakAutoplayTrackerForTest()
-    expect(claimSpeakAutoplay("part-doomed")).toBe(false)
+    expect(claimSpeakAutoplay("speak:part-doomed")).toBe(false)
+    expect(speakPlaybackPosition("speak:part-doomed")).toBe(0)
   })
 })
