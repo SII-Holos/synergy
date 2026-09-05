@@ -508,7 +508,11 @@ export namespace LLM {
         stopWhen: stepCountIs(1),
         maxOutputTokens,
         abortSignal: input.abort,
-        headers: ProviderSessionHeader.forRequest({ model: input.model, sessionID: input.sessionID }),
+        headers: ProviderSessionHeader.forRequest({
+          model: input.model,
+          providerOptions: prepared.provider.options,
+          sessionID: input.sessionID,
+        }),
         maxRetries: input.retries ?? 0,
         messages: promptMessages({
           model: input.model,

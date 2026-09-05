@@ -91,6 +91,81 @@ describe("ProviderSessionHeader", () => {
     })
     expect(merged).toEqual({ Authorization: "x" })
   })
+
+  test("does not match lookalike hosts that embed the endpoint text", () => {
+    expect(
+      ProviderSessionHeader.headers({
+        providerID: "my-opencode-proxy",
+        baseURL: "https://notopencode.ai/zen/go/v1",
+        sessionID: "ses_abc",
+      }),
+    ).toEqual({})
+  })
+
+  test("does not match endpoint text smuggled into another host's URL", () => {
+    expect(
+      ProviderSessionHeader.headers({
+        providerID: "my-opencode-proxy",
+        baseURL: "https://evil.example/v1?next=https://opencode.ai/zen/go",
+        sessionID: "ses_abc",
+      }),
+    ).toEqual({})
+  })
+
+  test("checks the provider options baseURL override", () => {
+    const merged = ProviderSessionHeader.forRequest({
+      model: {
+        providerID: "my-opencode",
+        api: { id: "m", npm: "@ai-sdk/openai-compatible", url: "https://catalog.example/v1" },
+        options: {},
+        headers: {},
+      },
+      providerOptions: { baseURL: "https://opencode.ai/zen/go/v1" },
+      sessionID: "ses_abc",
+    })
+    expect(merged).toEqual({ "x-opencode-session": "ses_abc" })
+  })
+
+  test("does not send the header when the endpoint is overridden away from OpenCode Go", () => {
+    const merged = ProviderSessionHeader.forRequest({
+      model: {
+        providerID: "opencode-go",
+        api: { id: "m", npm: "@ai-sdk/openai-compatible", url: "https://opencode.ai/zen/go/v1" },
+        options: {},
+        headers: {},
+      },
+      providerOptions: { baseURL: "https://my-proxy.example/v1" },
+      sessionID: "ses_abc",
+    })
+    expect(merged).toEqual({})
+  })
+
+  test("model options baseURL wins over provider options when checking the endpoint", () => {
+    const merged = ProviderSessionHeader.forRequest({
+      model: {
+        providerID: "my-opencode",
+        api: { id: "m", npm: "@ai-sdk/openai-compatible", url: "https://catalog.example/v1" },
+        options: { baseURL: "https://opencode.ai/zen/go/v1" },
+        headers: {},
+      },
+      providerOptions: { baseURL: "https://other.example/v1" },
+      sessionID: "ses_abc",
+    })
+    expect(merged).toEqual({ "x-opencode-session": "ses_abc" })
+  })
+
+  test("case-insensitive pinned session header replaces the generated one without duplication", () => {
+    const merged = ProviderSessionHeader.forRequest({
+      model: {
+        providerID: "opencode-go",
+        api: { id: "m", npm: "@ai-sdk/openai-compatible", url: "https://opencode.ai/zen/go/v1" },
+        options: {},
+        headers: { "X-OpenCode-Session": "pinned", "X-Custom": "keep" },
+      },
+      sessionID: "ses_abc",
+    })
+    expect(merged).toEqual({ "X-OpenCode-Session": "pinned", "X-Custom": "keep" })
+  })
 })
 
 describe("x-opencode-session reaches the wire", () => {

@@ -1042,7 +1042,7 @@ export namespace ConfigSetup {
         maxOutputTokens: 8,
         temperature: 0,
         providerOptions,
-        headers: ProviderSessionHeader.headers({ providerID: model.providerID, baseURL: model.api.url }),
+        headers: ProviderSessionHeader.forRequest({ model, providerOptions: target.provider?.options }),
         abortSignal: AbortSignal.timeout(options?.requireImageInput ? 60_000 : 12_000),
       })
 
