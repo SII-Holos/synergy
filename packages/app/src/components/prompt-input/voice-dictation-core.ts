@@ -49,14 +49,26 @@ export function isMicrophonePermissionError(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as { name?: unknown }).name === "NotAllowedError"
 }
 
+/** Extract the structured `reason` field from a route error, if present. */
+export function errorReason(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) return undefined
+  const data = (error as { data?: unknown }).data
+  if (typeof data === "object" && data !== null) {
+    const nested = (data as { reason?: unknown }).reason
+    if (typeof nested === "string") return nested
+  }
+  const reason = (error as { reason?: unknown }).reason
+  return typeof reason === "string" ? reason : undefined
+}
+
 /** True when the voice route reported that no speech was detected in the clip. */
 export function isNoSpeechReason(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) return false
-  const data = (error as { data?: unknown }).data
-  if (typeof data === "object" && data !== null && (data as { reason?: unknown }).reason === "voice_no_speech") {
-    return true
-  }
-  return (error as { reason?: unknown }).reason === "voice_no_speech"
+  return errorReason(error) === "voice_no_speech"
+}
+
+/** True when the client detected that the microphone captured no sound at all. */
+export function isMicSilenceReason(error: unknown): boolean {
+  return errorReason(error) === "voice_mic_silence"
 }
 
 export function isSttConfigured(config: { voice?: { stt?: { model?: string } } }): boolean {

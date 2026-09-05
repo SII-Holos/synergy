@@ -12,8 +12,10 @@ import { useLocale } from "@/context/locale"
 import { SettingsDialog } from "@/components/settings"
 import { requestErrorMessage } from "@/utils/error"
 import { PI } from "./prompt-input-i18n"
+import { normalizeDictationBlob, type DecodedAudio } from "./voice-dictation-audio"
 import {
   createVoiceDictationEngine,
+  isMicSilenceReason,
   isNoSpeechReason,
   isSttConfigured,
   type VoiceDictationDependencies,
@@ -22,6 +24,19 @@ import {
   type VoiceDictationReport,
   type VoiceDictationStream,
 } from "./voice-dictation-core"
+
+/** Decode a recorded blob to mono Float32 via the lightweight offline context. */
+async function decodeDictationAudio(arrayBuffer: ArrayBuffer): Promise<DecodedAudio> {
+  const context = new OfflineAudioContext(1, 1, 48000)
+  const buffer = await context.decodeAudioData(arrayBuffer)
+  const channels = buffer.numberOfChannels
+  const channelData = new Float32Array(buffer.length)
+  for (let channel = 0; channel < channels; channel++) {
+    const data = buffer.getChannelData(channel)
+    for (let i = 0; i < data.length; i++) channelData[i]! += data[i]! / channels
+  }
+  return { channelData, sampleRate: buffer.sampleRate }
+}
 
 export function useVoiceDictation(options: {
   getContext: () => string
@@ -59,6 +74,14 @@ export function useVoiceDictation(options: {
         reportFailure(PI.voiceMicErrorTitle, PI.voiceMicErrorDescription, event.error)
         break
       case "transcription-failed":
+        if (isMicSilenceReason(event.error)) {
+          showToast({
+            type: "warning",
+            title: i18n._(PI.voiceMicSilenceTitle),
+            description: i18n._(PI.voiceMicSilenceDescription),
+          })
+          break
+        }
         if (isNoSpeechReason(event.error)) {
           showToast({
             type: "warning",
@@ -108,7 +131,19 @@ export function useVoiceDictation(options: {
     createRecorder: mediaRecorder.createRecorder,
     nowMs: () => Date.now(),
     transcribe: async (input) => {
-      const result = await sdk.client.voice.transcribe(input, { throwOnError: true })
+      // Real microphone clips are often far below full scale (or digitally
+      // silent when the OS routes no audio to the browser); STT voice-activity
+      // detection treats such clips as silence. Decode, peak-normalize, and
+      // re-encode as PCM16 WAV before uploading; truly silent clips are
+      // reported locally instead of wasting a provider call.
+      const prepared = await normalizeDictationBlob(input.file, decodeDictationAudio)
+      if (prepared.kind === "silence") {
+        throw Object.assign(new Error("Microphone captured no sound"), { reason: "voice_mic_silence" })
+      }
+      const result = await sdk.client.voice.transcribe(
+        { file: prepared.file, ...(input.context ? { context: input.context } : {}) },
+        { throwOnError: true },
+      )
       return { text: result.data?.text ?? "" }
     },
     report,

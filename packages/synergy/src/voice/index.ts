@@ -51,9 +51,14 @@ export namespace Voice {
     const language = input.language ?? stt.language
     const prompt = input.context?.slice(0, 1000)
 
+    // Microphone recordings are frequently mastered far below full scale and
+    // STT voice-activity detection treats very quiet clips as silence. WAV
+    // input is peak-normalized before transcription so real speech is heard;
+    // other containers pass through untouched.
+    const normalizedAudio = peakNormalizeWavPcm16(input.data)
     const result = await transcribeAudio({
       model: client.transcription(stt.model),
-      audio: input.data,
+      audio: normalizedAudio,
       abortSignal: input.abortSignal,
       ...(prompt || language
         ? { providerOptions: { openai: { ...(prompt ? { prompt } : {}), ...(language ? { language } : {}) } } }
