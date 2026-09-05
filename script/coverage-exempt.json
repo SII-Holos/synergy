@@ -57,6 +57,10 @@
           "reason": "channel providers require live external services"
         },
         {
+          "glob": "src/cli/cmd/agent.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
           "glob": "src/cli/cmd/auth.ts",
           "reason": "CLI command surface; exercised through integration flows, not the unit suite"
         },
@@ -69,7 +73,19 @@
           "reason": "CLI command surface; exercised through integration flows, not the unit suite"
         },
         {
+          "glob": "src/cli/cmd/data/move.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/holos.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
           "glob": "src/cli/cmd/library.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/logs.ts",
           "reason": "CLI command surface; exercised through integration flows, not the unit suite"
         },
         {
@@ -82,6 +98,10 @@
         },
         {
           "glob": "src/cli/cmd/run.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        },
+        {
+          "glob": "src/cli/cmd/session.ts",
           "reason": "CLI command surface; exercised through integration flows, not the unit suite"
         },
         {
