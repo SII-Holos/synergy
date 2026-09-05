@@ -580,7 +580,6 @@ test("inline model credentials initialize mapped profiles and reach model loader
         await Bun.write(
           path.join(dir, "synergy.json"),
           JSON.stringify({
-            providerCatalog: { enabled: false, offlineCache: false },
             provider: {
               [connectionID]: {
                 profile: profileID,
@@ -644,7 +643,6 @@ test("inline provider credentials initialize mapped profile auth", async () => {
         await Bun.write(
           path.join(dir, "synergy.json"),
           JSON.stringify({
-            providerCatalog: { enabled: false, offlineCache: false },
             provider: {
               [connectionID]: {
                 profile: profileID,
@@ -713,7 +711,6 @@ test("custom provider resolves runtime behavior through its canonical profile", 
         path.join(dir, "synergy.json"),
         JSON.stringify({
           $schema: "file:///test/config.schema.json",
-          providerCatalog: { enabled: false, offlineCache: false },
           provider: {
             [connectionID]: {
               profile: profileID,
@@ -781,7 +778,6 @@ test("mapped OpenRouter usage uses inline and environment connection credentials
           await Bun.write(
             path.join(dir, "synergy.json"),
             JSON.stringify({
-              providerCatalog: { enabled: false, offlineCache: false },
               provider: {
                 [account.id]: account.provider,
               },
@@ -828,7 +824,6 @@ test("environment-backed OpenRouter usage rejection requests an environment upda
         await Bun.write(
           path.join(dir, "synergy.json"),
           JSON.stringify({
-            providerCatalog: { enabled: false, offlineCache: false },
             provider: {
               [providerID]: {
                 profile: "openrouter",
@@ -919,7 +914,6 @@ test("custom provider inherits a models.dev catalog without sharing account iden
 test("catalog-only connections are visible before credentials are connected", async () => {
   const connectionID = `catalog-only-${Math.random().toString(36).slice(2)}`
   const config = {
-    providerCatalog: { enabled: false, offlineCache: false },
     provider: {
       [connectionID]: {
         modelsDevProviderID: "openai",
@@ -996,7 +990,6 @@ test("custom provider inheritance excludes credential-aware live catalog snapsho
   ProviderCatalog.reset()
   await ProviderCatalog.refresh(profileID)
   const liveCatalog = await ProviderCatalog.resolve({
-    config: { providerCatalog: { enabled: false, offlineCache: false } },
     includeLive: true,
   })
   expect(liveCatalog[profileID].models["primary-account-only-model"]).toBeDefined()
@@ -1045,7 +1038,6 @@ test("custom provider live catalogs are discovered and cached per account connec
   ProviderCatalog.reset()
   const config = {
     $schema: "file:///test/config.schema.json",
-    providerCatalog: { enabled: false, offlineCache: false },
     provider: {
       [firstConnectionID]: {
         profile: profileID,

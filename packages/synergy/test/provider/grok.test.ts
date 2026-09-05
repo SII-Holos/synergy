@@ -437,7 +437,7 @@ test("provider catalog caches static and live Grok models independently", async 
     discoveryCalls += 1
     return jsonResponse({ models: [{ id: "grok-4.6" }, { id: "grok-account-live-only" }] })
   })
-  const config = { providerCatalog: { enabled: false, offlineCache: false } }
+  const config = {}
 
   await ProviderCatalog.refresh(GrokProvider.PROVIDER_ID)
   ProviderCatalog.reset()
@@ -466,7 +466,6 @@ test("failed Grok discovery falls back to the bundled list without error", async
   const catalog = await ProviderCatalog.resolve({
     forceRefresh: true,
     includeLive: true,
-    config: { providerCatalog: { enabled: false, offlineCache: false } },
   })
   const grok = catalog[GrokProvider.PROVIDER_ID]
   expect(grok.models["grok-4.6"]).toBeDefined()
@@ -474,7 +473,7 @@ test("failed Grok discovery falls back to the bundled list without error", async
 })
 
 test("Grok catalog identity stays stable across refresh-token rotation", async () => {
-  const config = { providerCatalog: { enabled: false, offlineCache: false } }
+  const config = {}
   globalThis.fetch = asFetch(async () => jsonResponse({ models: [{ id: "grok-4.6" }] }))
 
   await Auth.set(GrokProvider.PROVIDER_ID, {

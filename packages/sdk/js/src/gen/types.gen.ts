@@ -2334,32 +2334,6 @@ export type PluginMarketplaceConfig = {
   cliRequestTimeoutMs?: number
 }
 
-/**
- * Signed remote provider catalog configuration
- */
-export type ProviderCatalogConfig = {
-  /**
-   * Enable signed remote provider catalog updates
-   */
-  enabled?: boolean
-  /**
-   * Signed provider catalog URL. The signature is fetched from the same URL plus .sig.
-   */
-  registryUrl?: string
-  /**
-   * Base64 Ed25519 public key used to verify provider catalog signatures
-   */
-  publicKey?: string
-  /**
-   * Provider catalog cache TTL in milliseconds
-   */
-  cacheTtlMs?: number
-  /**
-   * Use the last verified provider catalog when offline
-   */
-  offlineCache?: boolean
-}
-
 export type QuickSwitcherModelConfig = {
   /**
    * Provider id for the quick switcher model preference
@@ -3926,7 +3900,6 @@ export type Config = {
    * When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters
    */
   enabled_providers?: Array<string>
-  providerCatalog?: ProviderCatalogConfig
   /**
    * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5
    */

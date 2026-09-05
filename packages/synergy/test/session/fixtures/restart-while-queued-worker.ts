@@ -23,7 +23,6 @@ const modelsFixture = await Bun.file(path.join(packageRoot, "test/tool/fixtures/
 await fs.writeFile(modelsCachePath, modelsFixture)
 process.env["MODELS_DEV_API_JSON"] = modelsCachePath
 process.env["SYNERGY_DISABLE_MODELS_FETCH"] = "true"
-process.env["SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH"] = "true"
 process.env["SYNERGY_DISABLE_DEFAULT_PLUGINS"] = "true"
 process.env["SYNERGY_DISABLE_LSP_DOWNLOAD"] = "true"
 process.env["SYNERGY_DISABLE_FILEWATCHER"] = "true"

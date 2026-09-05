@@ -819,7 +819,7 @@ test("github copilot model catalog preserves API vision capabilities", async () 
 test("github copilot live catalog changes only image capability and preserves other modalities", async () => {
   await Auth.set(CopilotProvider.PROVIDER_ID, { type: "api", key: "github-device-token" })
   ProviderCatalog.reset()
-  const config = { providerCatalog: { enabled: false, offlineCache: false } }
+  const config = {}
   const baseline = await ProviderCatalog.resolve({ forceRefresh: true, includeLive: false, config })
   const baselineModels = baseline[CopilotProvider.PROVIDER_ID].models
   const baselineInputs = (modelID: string) => baselineModels[modelID]?.modalities?.input ?? ["text"]

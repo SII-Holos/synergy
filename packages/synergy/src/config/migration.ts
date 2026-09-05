@@ -9,6 +9,9 @@ import { Flag } from "../flag/flag"
 import { Log } from "../util/log"
 import { MEMORY_CATEGORIES } from "./schema"
 import { ConfigDomain } from "./domain"
+import { Storage } from "../storage/storage"
+import { StoragePath } from "../storage/path"
+import { Identifier } from "../id/id"
 import { Auth } from "../provider/api-key"
 import { registerBuiltinProviderProfiles } from "../provider/builtin"
 import { ProviderProfile } from "../provider/profile"
@@ -778,14 +781,29 @@ async function removeDeprecatedAutoupdateConfig(): Promise<number> {
   return changed
 }
 
-async function ensureProviderCatalogConfig(): Promise<boolean> {
-  const providersFile = ConfigDomain.filepath("providers", Global.Path.config)
-  return mergeTopLevelKey(providersFile, "providerCatalog", {
-    enabled: true,
-    registryUrl: "https://raw.githubusercontent.com/SII-Holos/synergy-provider-registry/main/catalog.v1.json",
-    offlineCache: true,
-    cacheTtlMs: 3600000,
-  })
+async function removeDeprecatedProviderCatalogConfig(): Promise<number> {
+  let changed = 0
+
+  for (const filepath of await findConfigFiles()) {
+    if (await removeTopLevelConfigKeys(filepath, ["providerCatalog"])) changed++
+  }
+
+  for (const dir of await findConfigDomainDirs()) {
+    const providersFile = path.join(dir, "20-providers.jsonc")
+    if (await removeTopLevelConfigKeys(providersFile, ["providerCatalog"])) changed++
+  }
+
+  for (const scopeID of await Storage.scan(StoragePath.scopeRoot())) {
+    const record = await Storage.read<{ worktree?: string }>(StoragePath.scope(Identifier.asScopeID(scopeID)), {
+      silentNotFound: true,
+    }).catch(() => undefined)
+    const worktree = record?.worktree
+    if (!worktree) continue
+    const providersFile = path.join(ConfigDomain.directory(path.join(worktree, ".synergy")), "20-providers.jsonc")
+    if (await removeTopLevelConfigKeys(providersFile, ["providerCatalog"])) changed++
+  }
+
+  return changed
 }
 
 function providerAliasMap() {
@@ -1185,11 +1203,11 @@ export const migrations: Migration[] = [
     },
   },
   {
-    id: "20260625-provider-catalog-config",
-    description: "Add signed provider catalog configuration",
+    id: "20260905-config-remove-provider-catalog",
+    description: "Remove retired signed provider catalog config",
     async up(progress) {
       progress(0, 1)
-      await ensureProviderCatalogConfig()
+      await removeDeprecatedProviderCatalogConfig()
       progress(1, 1)
     },
   },
