@@ -219,6 +219,16 @@
     padding: 2px;
   }
 
+  &[data-state="error"] [data-slot="activity-receipt-row"] {
+    border-inline-start: 2px solid var(--border-critical-base);
+    padding-inline-start: 0;
+  }
+
+  &[data-state="waiting-approval"] [data-slot="activity-receipt-row"] {
+    border-inline-start: 2px solid var(--border-warning-base);
+    padding-inline-start: 0;
+  }
+
   [data-slot="activity-receipt-icon"] {
     display: grid;
     flex: 0 0 20px;

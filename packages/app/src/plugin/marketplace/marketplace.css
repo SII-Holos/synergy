@@ -15,7 +15,7 @@
 .plugin-marketplace-header {
   gap: 0.875rem;
   border-bottom-color: color-mix(in oklab, var(--border-weaker-base) 48%, transparent);
-  padding: 1.5rem 1.5rem 0.75rem;
+  padding: 1.25rem 1.5rem 0.75rem;
 }
 
 .plugin-marketplace-header-inner,
@@ -55,7 +55,7 @@
   border-radius: 0.75rem;
   background: var(--plugin-input-bg);
   padding: 0 0.75rem;
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border-base) 24%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border-base) 18%, transparent);
   transition:
     background-color 150ms ease,
     box-shadow 150ms ease;
@@ -99,6 +99,13 @@
   border-radius: 0.5rem;
 }
 
+.plugin-marketplace-search button:focus-visible,
+.plugin-marketplace-refresh:focus-visible,
+.plugin-marketplace-source-filter button:focus-visible,
+.plugin-marketplace-nav button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--text-strong) 22%, transparent);
+}
 .plugin-marketplace-search button:hover,
 .plugin-detail-close:hover,
 .plugin-detail-icon-link:hover {
@@ -116,7 +123,7 @@
   border-radius: 0.75rem;
   color: var(--icon-weak);
   background: var(--plugin-input-bg);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border-base) 24%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border-base) 18%, transparent);
   transition:
     background-color 150ms ease,
     color 150ms ease,
@@ -237,11 +244,11 @@
   min-height: 5rem;
   align-items: center;
   gap: 0.875rem;
-  border-radius: 0.875rem;
+  border-radius: 0.75rem;
   background: var(--plugin-card-bg);
-  padding: 0.875rem;
+  padding: 0.75rem;
   text-align: left;
-  box-shadow: inset 0 0 0 1px var(--plugin-line);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--plugin-line) 72%, transparent);
   transition:
     background-color 150ms ease,
     box-shadow 150ms ease,
@@ -250,7 +257,7 @@
 
 .plugin-marketplace-row:hover {
   background: var(--plugin-card-bg-hover);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border-base) 24%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border-base) 18%, transparent);
 }
 
 .plugin-marketplace-row:focus-visible {
@@ -419,7 +426,7 @@
   background: var(--plugin-card-bg);
   padding: 2rem;
   text-align: center;
-  box-shadow: inset 0 0 0 1px var(--plugin-line);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--plugin-line) 72%, transparent);
 }
 
 .plugin-marketplace-empty-icon {
@@ -482,7 +489,7 @@
   overflow: hidden;
   border-radius: 0.875rem;
   background: var(--plugin-card-bg);
-  box-shadow: inset 0 0 0 1px var(--plugin-line);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--plugin-line) 72%, transparent);
 }
 
 .plugin-marketplace-skeleton-row::after {
@@ -965,6 +972,14 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .plugin-marketplace-search,
+  .plugin-marketplace-search button,
+  .plugin-marketplace-refresh,
+  .plugin-marketplace-row,
+  .plugin-marketplace-source-filter button {
+    transition: none;
+  }
+
   .plugin-marketplace-skeleton-row::after,
   .plugin-detail-progress::after,
   .plugin-detail-spinner {

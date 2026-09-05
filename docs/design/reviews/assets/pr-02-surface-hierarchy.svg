@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720">
+  <rect width="1200" height="720" fill="#f6f7f9"/>
+  <style>
+    .title{font:700 26px Segoe UI,Arial;fill:#172033}.label{font:600 15px Segoe UI,Arial;fill:#526074}.body{font:500 16px Segoe UI,Arial;fill:#263247}.meta{font:400 13px Segoe UI,Arial;fill:#78849a}.small{font:600 12px Segoe UI,Arial;fill:#66738a}.before{fill:#fff;stroke:#dfe4eb}.after{fill:#fff;stroke:#d4dae3}.row{fill:#fff;stroke:#e3e7ed}.active{fill:#f1f3f6}.card{fill:#fff;stroke:#d8dee7}.line{stroke:#e2e6ec;stroke-width:1}.accent{fill:#386fe8}
+  </style>
+  <text x="56" y="54" class="title">PR 02 · Surface hierarchy</text>
+  <text x="56" y="82" class="label">同一组列表与卡片的密度、边界和选中态对比</text>
+  <rect x="56" y="120" width="520" height="520" rx="18" class="before"/>
+  <rect x="624" y="120" width="520" height="520" rx="18" class="after"/>
+  <text x="84" y="160" class="title">Before</text><text x="84" y="185" class="meta">间距偏大 · 选中项像浮动胶囊 · 边界偏弱</text>
+  <text x="652" y="160" class="title">After</text><text x="652" y="185" class="meta">更紧凑 · 仍保留可点击性 · 层级更连续</text>
+  <rect x="84" y="220" width="464" height="72" rx="12" class="card"/><text x="108" y="251" class="body">项目 Alpha</text><text x="108" y="274" class="meta">12 sessions</text>
+  <rect x="84" y="304" width="464" height="72" rx="12" class="card"/><text x="108" y="335" class="body">项目 Beta</text><text x="108" y="358" class="meta">最近使用</text>
+  <rect x="84" y="388" width="464" height="72" rx="12" class="active"/><text x="108" y="419" class="body">当前会话</text><text x="108" y="442" class="meta">running</text>
+  <rect x="84" y="472" width="464" height="72" rx="12" class="card"/><text x="108" y="503" class="body">另一个会话</text><text x="108" y="526" class="meta">idle</text>
+  <text x="84" y="590" class="small">12px row gap · 8px/12px padding · large active radius</text>
+  <rect x="652" y="220" width="464" height="68" rx="8" class="card"/><text x="676" y="250" class="body">项目 Alpha</text><text x="676" y="272" class="meta">12 sessions</text>
+  <rect x="652" y="296" width="464" height="68" rx="8" class="card"/><text x="676" y="326" class="body">项目 Beta</text><text x="676" y="348" class="meta">最近使用</text>
+  <rect x="652" y="372" width="464" height="68" rx="8" class="active"/><text x="676" y="402" class="body">当前会话</text><text x="676" y="424" class="meta">running</text>
+  <rect x="652" y="448" width="464" height="68" rx="8" class="card"/><text x="676" y="478" class="body">另一个会话</text><text x="676" y="500" class="meta">idle</text>
+  <text x="652" y="562" class="small">8px row gap · 7px/10px padding · medium active radius</text>
+  <line x1="84" y1="615" x2="548" y2="615" class="line"/><line x1="652" y1="615" x2="1116" y2="615" class="line"/>
+  <text x="84" y="625" class="small">目标：减少“卡片墙”感，而不是删除必要边界</text><text x="652" y="625" class="small">目标：让列表读成连续工作区</text>
+</svg>

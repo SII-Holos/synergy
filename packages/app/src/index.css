@@ -199,7 +199,7 @@ a {
 .synergy-workbench-canvas :where(.workbench-row-surface) {
   background-color: var(--workbench-row-bg);
   border-color: var(--workbench-border);
-  box-shadow: inset 0 0 0 1px var(--workbench-border);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--workbench-border) 62%, transparent);
 }
 
 .synergy-workbench-canvas :where(.workbench-row-surface:hover, .workbench-row-surface-hover:hover) {
@@ -325,7 +325,7 @@ a {
     .bg-surface-interactive-selected-weak\/70,
     .bg-surface-interactive-selected-weak\/40
   ) {
-  background-color: var(--workbench-selected-bg);
+  background-color: color-mix(in srgb, var(--workbench-selected-bg) 72%, transparent);
 }
 
 .synergy-workbench-canvas :where(.bg-input-base, .bg-input-hover) {
@@ -355,7 +355,8 @@ a {
 }
 
 .synergy-workbench-canvas :where(.workbench-selected-surface) {
-  background-color: var(--workbench-selected-bg);
+  background-color: color-mix(in srgb, var(--workbench-selected-bg) 72%, transparent);
+  box-shadow: inset 2px 0 0 var(--border-interactive-base);
 }
 
 .synergy-workbench-canvas :where(.workbench-selected-surface:hover) {
@@ -720,7 +721,7 @@ a {
 }
 
 .synergy-workbench-canvas .prompt-input-toolbar {
-  padding: 6px 12px 8px;
+  padding: 4px 10px 6px;
 }
 
 .synergy-workbench-canvas .prompt-input-toolbar-button,
@@ -742,7 +743,7 @@ a {
 
 .synergy-workbench-canvas .prompt-input-toolbar-chip {
   padding: 0 10px;
-  background-color: var(--workbench-selected-bg);
+  background-color: color-mix(in srgb, var(--workbench-selected-bg) 72%, transparent);
 }
 
 .synergy-workbench-canvas .prompt-input-toolbar-icon-button {

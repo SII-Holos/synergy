@@ -123,6 +123,10 @@
     border-color 140ms ease;
 }
 
+.settings-panel-close:focus-visible {
+  outline: none;
+  box-shadow: var(--settings-focus-ring);
+}
 .settings-panel-close:hover {
   color: var(--icon-base);
   background: var(--settings-control-bg-hover);
@@ -268,7 +272,7 @@
 .ds-content-inner {
   flex: 1;
   overflow-y: auto;
-  padding: 36px 48px 32px;
+  padding: 28px 40px 28px;
   box-sizing: border-box;
   width: min(100%, 1080px);
   max-width: 1080px;
@@ -3805,6 +3809,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .settings-panel-close,
+  .ds-settings-search,
+  .settings-dev-toggle {
+    transition: none;
+  }
+
   .settings-save-indicator[data-save-status="saving"] svg {
     animation: none;
   }

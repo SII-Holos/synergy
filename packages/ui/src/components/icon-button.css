@@ -80,8 +80,8 @@
   }
 
   &[data-size="normal"] {
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
 
     font-size: var(--font-size-small);
     line-height: var(--line-height-large);

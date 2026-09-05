@@ -2,7 +2,7 @@
   --sb-bg: var(--background-base);
   --sb-hover-bg: var(--surface-hover-base);
   --sb-control-hover-bg: var(--surface-inset-base-hover);
-  --sb-active-bg: var(--surface-interactive-selected);
+  --sb-active-bg: color-mix(in srgb, var(--surface-interactive-selected) 72%, transparent);
   --sb-popover-bg: var(--surface-raised-stronger-non-alpha);
   --sb-popover-card-bg: var(--surface-raised-base);
   --sb-border: var(--border-weaker-base);
@@ -10,7 +10,7 @@
   flex-direction: column;
   height: 100%;
   background: var(--sb-bg);
-  border-right: 1px solid var(--sb-border);
+  border-right: 1px solid color-mix(in srgb, var(--sb-border) 72%, transparent);
   overflow: visible;
   flex-shrink: 0;
   position: relative;
@@ -45,7 +45,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 14px 12px 10px;
+  padding: 12px 12px 8px;
   flex-shrink: 0;
   min-height: auto;
 }
@@ -242,7 +242,7 @@
   min-height: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
-  padding: 4px 8px 0;
+  padding: 6px 8px 0;
 }
 .sb-projects {
   padding: 0;
@@ -376,7 +376,7 @@
 
 .sb-project-group {
   position: relative;
-  margin-bottom: 1px;
+  margin-bottom: 2px;
 }
 .sb-project-row {
   position: relative;
@@ -397,6 +397,13 @@
 
 .sb-project-active {
   background: var(--sb-active-bg);
+}.sb-project-active::before {
+  position: absolute;
+  inset: 6px auto 6px 0;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--border-interactive-base);
+  content: "";
 }
 
 .sb-project-active:hover {
@@ -557,6 +564,13 @@
 .sb-session-active:hover {
   background: var(--sb-active-bg);
   color: var(--text-base);
+}.sb-session-active::before {
+  position: absolute;
+  inset: 5px auto 5px 0;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--border-interactive-base);
+  content: "";
 }
 
 .sb-session-active .sb-session-title,

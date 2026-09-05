@@ -19,7 +19,7 @@
 [data-component="list"] {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   overflow: hidden;
   padding: 0 12px;
 
@@ -28,7 +28,7 @@
     flex-shrink: 0;
     padding: 8px 12px;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     align-self: stretch;
     margin-bottom: 4px;
 
@@ -78,7 +78,7 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
-    gap: 12px;
+    gap: 8px;
     overflow-y: auto;
     overscroll-behavior: contain;
     mask: linear-gradient(to bottom, #ffff calc(100% - var(--bottom-fade)), #0000);
@@ -179,7 +179,7 @@
         [data-slot="list-item"] {
           display: flex;
           width: 100%;
-          padding: 8px 12px;
+          padding: 7px 10px;
           align-items: center;
           color: var(--text-strong);
           scroll-margin-top: 28px;
@@ -219,7 +219,7 @@
           }
 
           &[data-active="true"] {
-            border-radius: var(--radius-lg);
+            border-radius: var(--radius-md);
             background: var(--workbench-selected-bg, var(--surface-raised-base-hover));
             [data-slot="list-item-active-icon"] {
               display: inline-flex;

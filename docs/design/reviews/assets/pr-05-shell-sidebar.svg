@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="620" viewBox="0 0 1120 620">
+  <rect width="1120" height="620" fill="#f7f7f5"/>
+  <text x="56" y="58" font-family="Segoe UI, sans-serif" font-size="28" font-weight="700" fill="#20201e">Shell + sidebar hierarchy</text>
+  <text x="56" y="88" font-family="Segoe UI, sans-serif" font-size="15" fill="#6d6d68">PR 05 · reduce stacked-card feeling in navigation</text>
+  <g transform="translate(56 126)">
+    <rect width="454" height="410" rx="16" fill="#fff" stroke="#deded8"/>
+    <text x="26" y="34" font-family="Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#8a8a83">BEFORE</text>
+    <rect x="26" y="58" width="402" height="326" rx="8" fill="#f2f2ef" stroke="#d6d6d0"/>
+    <rect x="26" y="58" width="180" height="326" rx="8" fill="#e8e8e3"/>
+    <text x="48" y="92" font-family="Segoe UI, sans-serif" font-size="16" font-weight="700" fill="#3d3d39">Synergy</text>
+    <rect x="42" y="116" width="148" height="34" rx="8" fill="#d8d8d2"/><text x="60" y="138" font-family="Segoe UI, sans-serif" font-size="13" fill="#3d3d39">Home</text>
+    <rect x="42" y="158" width="148" height="34" rx="8" fill="#cfd9e9"/><text x="60" y="180" font-family="Segoe UI, sans-serif" font-size="13" fill="#3d3d39">Project Alpha</text>
+    <rect x="48" y="202" width="136" height="30" rx="7" fill="#cfd9e9"/><text x="64" y="221" font-family="Segoe UI, sans-serif" font-size="12" fill="#3d3d39">Active session</text>
+    <rect x="48" y="240" width="136" height="30" rx="7" fill="#e1e1dc"/><text x="64" y="259" font-family="Segoe UI, sans-serif" font-size="12" fill="#6d6d68">Another session</text>
+    <text x="228" y="190" font-family="Segoe UI, sans-serif" font-size="14" fill="#6d6d68">Strong blocks</text><text x="228" y="214" font-family="Segoe UI, sans-serif" font-size="14" fill="#6d6d68">compete with content</text>
+  </g>
+  <g transform="translate(610 126)">
+    <rect width="454" height="410" rx="16" fill="#fff" stroke="#deded8"/>
+    <text x="26" y="34" font-family="Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#4b4b46">AFTER</text>
+    <rect x="26" y="58" width="402" height="326" rx="8" fill="#f7f7f5" stroke="#e4e4de"/>
+    <rect x="26" y="58" width="180" height="326" rx="8" fill="#f2f2ee"/>
+    <text x="48" y="90" font-family="Segoe UI, sans-serif" font-size="16" font-weight="700" fill="#3d3d39">Synergy</text>
+    <rect x="42" y="112" width="148" height="32" rx="7" fill="none"/><text x="60" y="133" font-family="Segoe UI, sans-serif" font-size="13" fill="#6d6d68">Home</text>
+    <rect x="42" y="150" width="148" height="34" rx="7" fill="#e3eaf5"/><rect x="42" y="150" width="3" height="34" fill="#3978c8"/><text x="60" y="172" font-family="Segoe UI, sans-serif" font-size="13" fill="#303f57">Project Alpha</text>
+    <rect x="48" y="194" width="136" height="29" rx="6" fill="#e3eaf5"/><rect x="48" y="194" width="2" height="29" fill="#3978c8"/><text x="64" y="213" font-family="Segoe UI, sans-serif" font-size="12" fill="#303f57">Active session</text>
+    <rect x="48" y="231" width="136" height="29" rx="6" fill="none"/><text x="64" y="250" font-family="Segoe UI, sans-serif" font-size="12" fill="#777771">Another session</text>
+    <text x="228" y="190" font-family="Segoe UI, sans-serif" font-size="14" fill="#6d6d68">Quiet surface</text><text x="228" y="214" font-family="Segoe UI, sans-serif" font-size="14" fill="#6d6d68">thin rail shows focus</text>
+  </g>
+</svg>

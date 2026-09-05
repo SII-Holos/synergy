@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="620" viewBox="0 0 1120 620">
+  <rect width="1120" height="620" fill="#f7f7f5"/>
+  <text x="56" y="58" font-family="Segoe UI, sans-serif" font-size="28" font-weight="700" fill="#20201e">Shared state language</text>
+  <text x="56" y="88" font-family="Segoe UI, sans-serif" font-size="15" fill="#6d6d68">PR 04 · reduce color noise while preserving urgency</text>
+  <rect x="56" y="126" width="1008" height="188" rx="16" fill="#ffffff" stroke="#deded8"/>
+  <text x="82" y="160" font-family="Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#8a8a83">BEFORE · status competes with content</text>
+  <g font-family="Segoe UI, sans-serif" font-size="15">
+    <rect x="82" y="184" width="456" height="42" rx="8" fill="#fff0ef" stroke="#f0b7b3"/><circle cx="105" cy="205" r="7" fill="#c53b35"/><text x="124" y="211" fill="#8f2b27">Failed</text><text x="200" y="211" fill="#6d6d68">Tool execution interrupted</text>
+    <rect x="574" y="184" width="456" height="42" rx="8" fill="#fff7e5" stroke="#ebcf8e"/><circle cx="597" cy="205" r="7" fill="#c48a16"/><text x="616" y="211" fill="#8b650f">Waiting for approval</text><text x="792" y="211" fill="#6d6d68">Review required</text>
+    <rect x="82" y="242" width="456" height="42" rx="8" fill="#eef5ff" stroke="#b8d1f4"/><circle cx="105" cy="263" r="7" fill="#3978c8"/><text x="124" y="269" fill="#315f9f">Running</text><text x="200" y="269" fill="#6d6d68">Reading project files</text>
+  </g>
+  <rect x="56" y="344" width="1008" height="220" rx="16" fill="#ffffff" stroke="#deded8"/>
+  <text x="82" y="378" font-family="Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#4b4b46">AFTER · state supports the reading flow</text>
+  <g font-family="Segoe UI, sans-serif" font-size="15">
+    <rect x="82" y="402" width="456" height="42" rx="8" fill="#ffffff" stroke="#e5e5df"/><circle cx="105" cy="423" r="7" fill="#3978c8"/><text x="124" y="429" fill="#4b4b46">Running</text><text x="200" y="429" fill="#8a8a83">Reading project files</text>
+    <rect x="574" y="402" width="456" height="42" rx="8" fill="#ffffff" stroke="#e5e5df"/><rect x="574" y="402" width="3" height="42" fill="#c48a16"/><circle cx="597" cy="423" r="7" fill="#c48a16"/><text x="616" y="429" fill="#8b650f">Waiting for approval</text><text x="792" y="429" fill="#8a8a83">Review required</text>
+    <rect x="82" y="460" width="456" height="42" rx="8" fill="#ffffff" stroke="#e5e5df"/><rect x="82" y="460" width="3" height="42" fill="#c53b35"/><circle cx="105" cy="481" r="7" fill="#c53b35"/><text x="124" y="487" fill="#8f2b27">Failed</text><text x="200" y="487" fill="#8a8a83">Tool execution interrupted</text>
+    <text x="82" y="537" fill="#6d6d68">Neutral surfaces stay neutral; semantic color marks only the state.</text>
+  </g>
+</svg>
