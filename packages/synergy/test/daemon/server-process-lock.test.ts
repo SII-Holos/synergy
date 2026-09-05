@@ -38,6 +38,10 @@ describe("ServerProcessLock", () => {
     }
 
     try {
+      // Workers park on startPath until the start file appears, so every
+      // worker can be spawned and readied before the competition begins;
+      // readiness is bounded as one phase deadline, not a sum of per-worker
+      // waits (see docs/postmortem/0006).
       for (let index = 0; index < count; index++) {
         children.push(
           Bun.spawn([process.execPath, "run", workerPath], {
@@ -46,11 +50,17 @@ describe("ServerProcessLock", () => {
             stderr: "inherit",
           }),
         )
-        const readyDeadline = Date.now() + 60_000
-        while (!(await fs.readFile(readyPath, "utf8").catch(() => "")).split("\n").includes(String(index))) {
-          if (Date.now() >= readyDeadline) throw new Error(`Lock worker ${index} did not become ready`)
-          await Bun.sleep(10)
+      }
+
+      const readyDeadline = Date.now() + 60_000
+      const ready = new Set<string>()
+      while (ready.size < count) {
+        for (const line of (await fs.readFile(readyPath, "utf8").catch(() => "")).split("\n")) {
+          if (line) ready.add(line)
         }
+        if (ready.size >= count) break
+        if (Date.now() >= readyDeadline) throw new Error(`Lock workers did not become ready (${ready.size}/${count})`)
+        await Bun.sleep(50)
       }
 
       await Bun.write(startPath, "go\n")
@@ -80,7 +90,7 @@ describe("ServerProcessLock", () => {
       await Promise.all(children.map((child) => child.exited.catch(() => -1)))
       await fs.rm(home, { recursive: true, force: true })
     }
-  }, 90_000)
+  }, 150_000)
 
   test("recovers stale locks and rejects a reused pid with a different start identity", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-server-lock-stale-"))
@@ -396,11 +406,17 @@ describe("ServerProcessLock", () => {
             stderr: "inherit",
           }),
         )
-        const readyDeadline = Date.now() + 60_000
-        while (!(await fs.readFile(readyPath, "utf8").catch(() => "")).split("\n").includes(String(index))) {
-          if (Date.now() >= readyDeadline) throw new Error(`Lock worker ${index} did not become ready`)
-          await Bun.sleep(10)
+      }
+
+      const readyDeadline = Date.now() + 60_000
+      const ready = new Set<string>()
+      while (ready.size < count) {
+        for (const line of (await fs.readFile(readyPath, "utf8").catch(() => "")).split("\n")) {
+          if (line) ready.add(line)
         }
+        if (ready.size >= count) break
+        if (Date.now() >= readyDeadline) throw new Error(`Lock workers did not become ready (${ready.size}/${count})`)
+        await Bun.sleep(50)
       }
 
       await Bun.write(startPath, "go\n")
@@ -425,7 +441,7 @@ describe("ServerProcessLock", () => {
       await Promise.all(children.map((child) => child.exited.catch(() => -1)))
       await fs.rm(home, { recursive: true, force: true })
     }
-  }, 90_000)
+  }, 150_000)
 
   test("does not release a replacement lock with another process identity", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-server-lock-owner-"))

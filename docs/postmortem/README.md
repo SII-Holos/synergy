@@ -41,6 +41,7 @@ Entries are added only when an incident qualifies; the table stays empty until t
 | 0003   | Leaked module-level fetch stub failed the arXiv suite on CI                | implemented | 2026-08-27 |
 | 0004   | Scope-scoped theme registry flipped the skin on session switches           | implemented | 2026-08-30 |
 | 0005   | Linux inotify exhaustion stormed the file watcher and degraded the process | implemented | 2026-09-03 |
+| 0006   | Sequential lock-worker spawns consumed the CI test budget                  | implemented | 2026-09-05 |
 
 ## History rules
 
