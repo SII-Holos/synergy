@@ -10,13 +10,13 @@ Marketplace rows read as cramped: an 80px min-height with 14px padding left two-
 
 Restyle the marketplace list (registry rows and installed rows alike) around a more generous card rhythm and a structured metadata layer, keeping each row's DOM contract (button → icon → main → status → arrow) and all message IDs unchanged:
 
-- Row min-height rises 80px → 130px with 20px/22px padding and a 16px inter-card gap; radius grows 14px → 18px; skeleton rows and the empty-state card adopt the same height and radius so loading states do not jump.
+- Row min-height rises 80px → 130px with 20px/22px padding and a 16px inter-card gap; radius grows 14px → 18px. Skeleton rows (3 × 130px + 2 × 16px = 422px) and the empty-state card (min-height 422px) share the same geometry so the loading-to-result transition does not jump.
 - The plugin icon grows 42px → 56px (16px radius) to stay proportional to the taller card.
 - Row typography scales one step: title 14px → 15px, description 12px → 13px with the 2-line clamp retained.
-- Metadata is restructured from dot-separated plain text into rounded pill chips (inset background, 11px, weight 500). The aria-hidden `·` separators are removed from both row components; each metadata item is a plain span styled by `.plugin-marketplace-row-meta > span`.
+- Metadata is restructured from dot-separated plain text into rounded pill chips (inset background, 11px, weight 500, `--text-weak` foreground). The aria-hidden `·` separators are removed from both row components; each metadata item is a plain span styled by `.plugin-marketplace-row-meta > span`. Row version pills share the same pairing.
 - The installed/update status dot follows the larger padding (16px inset), and the ≤760px breakpoint drops to 16px/18px padding.
 
-All colors still resolve through the existing workbench surface variables — no theme-token changes.
+All colors still resolve through the existing workbench surface variables — no theme-token changes. Chips use the `--text-weak`-on-`--surface-inset-base` pairing (9.4:1 light, 10.6:1 dark) rather than `--text-weaker` (4.4:1 light on the same surface, below AA).
 
 ## Alternatives considered
 
