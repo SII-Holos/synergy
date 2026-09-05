@@ -280,12 +280,14 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
     prune: runtime.compactionPrune === "true",
     overflowThreshold: boundedNumber(runtime.compactionOverflowThreshold, 0.5, 1),
     maxHistoryImages: nonNegativeInteger(runtime.compactionMaxHistoryImages),
+    codexRemote: runtime.compactionCodexRemote === "true",
   }
   const currentCompaction = {
     auto: cfg.compaction?.auto !== false,
     prune: cfg.compaction?.prune !== false,
     overflowThreshold: cfg.compaction?.overflowThreshold ?? Number(UI_DEFAULTS.compactionOverflowThreshold),
     maxHistoryImages: cfg.compaction?.maxHistoryImages ?? Number(UI_DEFAULTS.compactionMaxHistoryImages),
+    codexRemote: cfg.compaction?.codexRemote === true,
   }
   if (
     compaction.overflowThreshold !== undefined &&

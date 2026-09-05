@@ -6,6 +6,7 @@ import { watchManagedParent } from "@/util/managed-parent"
 import { AgentTurnProtocol } from "./protocol"
 import { AgentStreamEventCoalescer } from "./stream-event-coalescer"
 import type { AgentTurnWorkerInput } from "./worker-pool"
+import { clearReplayPlan } from "@/provider/codex-compaction"
 
 type AgentSDKStreamPart = LLM.StreamOutput["fullStream"] extends AsyncIterable<infer Part> ? Part : never
 
@@ -197,6 +198,12 @@ async function executeTurn(turn: ActiveTurn, envelope: AgentTurnProtocol.TurnEnv
       error: AgentTurnProtocol.serializeError(error),
     }
   }
+  // Release the per-session replay plan now that the turn has terminated
+  // (completion, failure, or cancellation all converge here). Keeping it
+  // registered across turns would let a long-lived worker retain ~20K tokens
+  // of history plus the opaque artifact per handled session indefinitely.
+  const sessionID = (input as { sessionID?: unknown }).sessionID
+  if (typeof sessionID === "string" && sessionID) clearReplayPlan(sessionID)
   const memoryBeforeDispose = memory()
   await ownedStream?.dispose().catch(() => {})
   turn.windowWaiter?.()
