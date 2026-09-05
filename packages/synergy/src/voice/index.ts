@@ -1,7 +1,7 @@
 import { experimental_generateSpeech as generateSpeech, experimental_transcribe as transcribeAudio } from "ai"
 import { createOpenAI } from "@ai-sdk/openai"
 import { Config } from "../config/config"
-
+import { peakNormalizeWavPcm16 } from "./wav-loudness"
 const DEFAULT_BASE_URL = "https://api.openai.com/v1"
 
 type ClientFactory = typeof createOpenAI
@@ -74,15 +74,30 @@ export namespace Voice {
 
     const client = clientFactory({ baseURL: tts.baseURL ?? DEFAULT_BASE_URL, apiKey: tts.apiKey })
 
-    const result = await generateSpeech({
-      model: client.speech(tts.model),
-      text: input.text,
-      voice: input.voice ?? tts.voice,
-      instructions: input.instructions ?? tts.instructions,
-      outputFormat: "mp3",
-      abortSignal: input.abortSignal,
-    })
-    const mimeType = result.audio.mediaType === "audio/mp3" ? "audio/mpeg" : result.audio.mediaType || "audio/mpeg"
-    return { data: result.audio.uint8Array, mimeType }
+    // Request uncompressed PCM16 WAV so the clip can be peak-normalized in
+    // pure JS before storage: TTS providers master well below full scale and
+    // users hear the result as unexpectedly quiet. Providers that only serve
+    // mp3 fall back without normalization rather than failing the call.
+    try {
+      const result = await generateSpeech({
+        model: client.speech(tts.model),
+        text: input.text,
+        voice: input.voice ?? tts.voice,
+        instructions: input.instructions ?? tts.instructions,
+        outputFormat: "wav",
+        abortSignal: input.abortSignal,
+      })
+      return { data: peakNormalizeWavPcm16(result.audio.uint8Array), mimeType: "audio/wav" }
+    } catch (wavError) {
+      const result = await generateSpeech({
+        model: client.speech(tts.model),
+        text: input.text,
+        voice: input.voice ?? tts.voice,
+        instructions: input.instructions ?? tts.instructions,
+        outputFormat: "mp3",
+        abortSignal: input.abortSignal,
+      })
+      return { data: result.audio.uint8Array, mimeType: "audio/mpeg" }
+    }
   }
 }

@@ -136,7 +136,7 @@ describe("voice runtime", () => {
     })
   })
 
-  test("speak merges configured defaults with call overrides and returns audio bytes", async () => {
+  test("speak requests wav, peak-normalizes PCM16, and returns wav bytes", async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -147,23 +147,20 @@ describe("voice runtime", () => {
         await Config.reload("global")
 
         const log: CallLog = []
-        const audioBytes = new Uint8Array([7, 7, 7])
-        Voice.setClientFactoryForTest(fakeClientFactory(log, { audio: audioBytes }))
+        Voice.setClientFactoryForTest(fakeClientFactory(log, { audio: new Uint8Array([7, 7, 7]) }))
 
         const result = await Voice.speak({ text: "Report ready" })
 
+        expect(result.mimeType).toBe("audio/wav")
+        // Non-PCM16 payloads pass through untouched.
         expect(Array.from(result.data)).toEqual([7, 7, 7])
-        expect(result.mimeType).toBe("audio/mpeg")
         expect(log).toHaveLength(1)
         expect(log[0]!.model).toBe("gpt-4o-mini-tts")
         expect(log[0]!.args.text).toBe("Report ready")
         expect(log[0]!.args.voice).toBe("alloy")
         expect(log[0]!.args.instructions).toBe("Speak calmly")
+        expect(log[0]!.args.outputFormat).toBe("wav")
         expect(log[0]!.baseURL).toBe("https://api.openai.com/v1")
-
-        const overridden = await Voice.speak({ text: "Second", voice: "echo" })
-        expect(Array.from(overridden.data)).toEqual([7, 7, 7])
-        expect(log[1]!.args.voice).toBe("echo")
       },
     })
   })

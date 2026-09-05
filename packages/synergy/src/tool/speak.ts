@@ -57,7 +57,8 @@ export const SpeakTool = Tool.define(
         abortSignal: ctx.abort,
       })
 
-      const filename = `speech-${Identifier.ascending("part")}.mp3`
+      const extension = result.mimeType === "audio/wav" ? "wav" : "mp3"
+      const filename = `speech-${Identifier.ascending("part")}.${extension}`
       const assetId = await Asset.write(Buffer.from(result.data), result.mimeType, filename)
       const bytes = result.data.byteLength
 
