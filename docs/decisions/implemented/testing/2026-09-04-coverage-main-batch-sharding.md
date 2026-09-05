@@ -19,6 +19,15 @@ The same CI round exposed unrelated `dev` regressions this PR carries: `packages
 
 3. **Root fixes for what isolation was papering over.** Five suites were silently order-dependent on `product-registration` mounts from alphabetically earlier siblings (`test/session/boss-workflow.test.ts`, `test/skill/synergy-agent-tooling.test.ts`, `test/skill/synergy-prompt-architect.test.ts`, `test/server/config-import-route.test.ts`, `test/plugin/system-transform-hook.test.ts`); they now mount it themselves per the established convention. `session_search` gained product-level orphan tolerance: page-index entries whose `info.json` no longer exists (interrupted delete) are skipped instead of failing the whole search, matching the global search route's existing semantics, with a regression test.
 
+## Follow-up (2026-09-05): first post-merge dev failures
+
+The first dev push after this PR merged (#1318, voice modality) failed both jobs, exercising the follow-through this record promised:
+
+- **Test**: `ServerProcessLock > allows exactly one of many processes to acquire concurrently` timed out for the third time (the #1317 review round, #1317's own dev push, now #1318's) — the load-sensitive observation item noted during review. The flake mechanism was in the test itself: 24 workers were spawned sequentially, each awaited ready before the next spawn, so worker N's startup accumulated behind 1..N-1 under CI runner load until the 90s budget expired mid-hook. Both competition tests now spawn every worker up front (workers park on the start file, so concurrent spawning is race-free), poll a shared ready set against a 60s deadline, and carry a 150s per-test budget above the worst observed CI startup time.
+- **Coverage**: `packages/app` failed with `missing 3` — #1318's voice files were never loaded by the bun-instrumented unit run. `voice-panel-model.ts` gained a real unit test (draft mapping, per-side stored-key presence, and the patch-building edge cases around cleared models and trimmed keys); `VoicePanel.tsx` joins the settings-panels exemption category (the panel is exercised by the Playwright `VoicePanel.test.ts` browser suite) and `use-voice-dictation.tsx` joins the prompt-input category (its logic lives in the already-unit-tested `voice-dictation-core.ts`; the hook needs a live editor and microphone).
+
+The sharded packages/synergy gate reported real measured numbers on the same run (`lines 75.2%/75%`), confirming the single-process collapse that motivated this record has not recurred on dev.
+
 ## Alternatives considered
 
 - **Keep growing the isolation list.** Rejected: it had already been patched four times without converging; sharding shrinks the blast radius structurally, and stable-hash assignment removes the reshuffle-amplifier that made each list edit create new victims.
