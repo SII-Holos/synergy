@@ -30,7 +30,6 @@ test("successful tool initialization does not emit per-tool info records", async
   delete env.SYNERGY_HOME
   env.SYNERGY_TEST_HOME = home
   env.SYNERGY_DISABLE_MODELS_FETCH = "true"
-  env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH = "true"
   env.SYNERGY_DISABLE_DEFAULT_PLUGINS = "true"
   env.SYNERGY_DISABLE_LSP_DOWNLOAD = "true"
   env.SYNERGY_DISABLE_FILEWATCHER = "true"

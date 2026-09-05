@@ -8,7 +8,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 import { Env } from "../../src/util/env"
 
-const config = { providerCatalog: { enabled: false, offlineCache: false } }
+const config = {}
 const providerID = `catalog-stability-${Math.random().toString(36).slice(2)}`
 let identity = "account-a"
 let fetchCatalog: () => Promise<ProviderProfile.ModelCatalogEntry[]>
@@ -201,102 +201,6 @@ test("a failed refresh without a prior verified catalog keeps bundled fallback m
   expect(catalog[providerID].models["gpt-5.5"]).toBeDefined()
 })
 
-test("resolve serves the cached registry catalog without waiting on the network", async () => {
-  const previousDisableFetch = process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
-  delete process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
-  const server = Bun.serve({
-    port: 0,
-    async fetch() {
-      await Bun.sleep(30_000)
-      return new Response("unreachable", { status: 502 })
-    },
-  })
-  try {
-    const remoteConfig = {
-      providerCatalog: {
-        enabled: true,
-        registryUrl: `http://127.0.0.1:${server.port}/catalog.json`,
-        publicKey: "test-public-key",
-        cacheTtlMs: 60_000,
-      },
-    }
-    await fs.mkdir(Global.Path.cache, { recursive: true })
-    await Bun.write(
-      Global.Path.providerCatalogCache,
-      JSON.stringify({
-        version: 1,
-        providers: { "remote-cached-provider": { id: "remote-cached-provider", name: "Remote Cached Provider" } },
-      }),
-    )
-
-    const startedAt = Date.now()
-    const catalog = await ProviderCatalog.resolve({ config: remoteConfig })
-    expect(Date.now() - startedAt).toBeLessThan(1000)
-    expect(catalog["remote-cached-provider"]?.name).toBe("Remote Cached Provider")
-
-    // A cold first run (no cache) must also not block on the registry.
-    await fs.rm(Global.Path.providerCatalogCache, { force: true })
-    ProviderCatalog.reset()
-    const coldStart = Date.now()
-    const coldCatalog = await ProviderCatalog.resolve({ config: remoteConfig })
-    expect(Date.now() - coldStart).toBeLessThan(1000)
-    expect(coldCatalog["remote-cached-provider"]).toBeUndefined()
-  } finally {
-    server.stop(true)
-    await fs.rm(Global.Path.providerCatalogCache, { force: true })
-    if (previousDisableFetch === undefined) delete process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
-    else process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH = previousDisableFetch
-  }
-})
-
-test("offlineCache:false still applies the fetched remote catalog on forceRefresh and from memory", async () => {
-  const keyPair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])
-  const publicKey = Buffer.from(await crypto.subtle.exportKey("raw", keyPair.publicKey)).toString("base64")
-  const catalogText = JSON.stringify({
-    version: 1,
-    providers: { "remote-live-provider": { id: "remote-live-provider", name: "Remote Live Provider" } },
-  })
-  const signature = Buffer.from(
-    await crypto.subtle.sign("Ed25519", keyPair.privateKey, new TextEncoder().encode(catalogText)),
-  ).toString("base64")
-  const registryDir = `${Global.Path.cache}/registry-${Math.random().toString(36).slice(2)}`
-  await fs.mkdir(registryDir, { recursive: true })
-  await Bun.write(`${registryDir}/catalog.json`, catalogText)
-  await Bun.write(`${registryDir}/catalog.json.sig`, signature)
-  const previousDisableFetch = process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
-  delete process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
-  try {
-    const remoteConfig = {
-      providerCatalog: {
-        enabled: true,
-        registryUrl: `file://${registryDir}/catalog.json`,
-        publicKey,
-        offlineCache: false,
-        cacheTtlMs: 60_000,
-      },
-    }
-    await fs.rm(Global.Path.providerCatalogCache, { force: true })
-    ProviderCatalog.reset()
-    const forced = await ProviderCatalog.resolve({ config: remoteConfig, forceRefresh: true })
-    expect(forced["remote-live-provider"]?.name).toBe("Remote Live Provider")
-
-    // offlineCache:false never reads the cache file, so the in-memory
-    // last-known catalog must keep the registry providers available on
-    // subsequent resolves (which do not wait on the network).
-    const plain = await ProviderCatalog.resolve({ config: remoteConfig })
-    expect(plain["remote-live-provider"]?.name).toBe("Remote Live Provider")
-
-    await fs.rm(Global.Path.providerCatalogCache, { force: true })
-    const afterCacheRemoval = await ProviderCatalog.resolve({ config: remoteConfig })
-    expect(afterCacheRemoval["remote-live-provider"]?.name).toBe("Remote Live Provider")
-  } finally {
-    await fs.rm(registryDir, { recursive: true, force: true })
-    await fs.rm(Global.Path.providerCatalogCache, { force: true })
-    if (previousDisableFetch === undefined) delete process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH
-    else process.env.SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH = previousDisableFetch
-  }
-})
-
 test("refresh is single-flight per provider", async () => {
   let release!: (entries: ProviderProfile.ModelCatalogEntry[]) => void
   let started!: () => void
@@ -371,7 +275,6 @@ test("catalog snapshots include the normalized discovery endpoint", async () => 
 test("configured account endpoint is passed to live model discovery", async () => {
   await ProviderCatalog.resolve({
     config: {
-      providerCatalog: { enabled: false, offlineCache: false },
       provider: {
         [configuredProviderID]: {
           profile: configuredProfileID,
@@ -439,7 +342,6 @@ test("configured environment credentials participate in live discovery", async (
       Env.set(mappedEnvironmentName, "environment-account-key")
       await ProviderCatalog.resolve({
         config: {
-          providerCatalog: { enabled: false, offlineCache: false },
           provider: {
             [environmentProviderID]: {
               profile: environmentProfileID,
@@ -483,7 +385,6 @@ test("connection model rules remain applied after live discovery", async () => {
       )
       const catalog = await ProviderCatalog.resolve({
         config: {
-          providerCatalog: { enabled: false, offlineCache: false },
           provider: { [configuredProviderID]: configured },
         },
         includeLive: true,
@@ -526,7 +427,6 @@ test("mapped connections do not inherit canonical profile environment credential
       Env.set(environmentName, "canonical-environment-key")
       await ProviderCatalog.resolve({
         config: {
-          providerCatalog: { enabled: false, offlineCache: false },
           provider: {
             [mappedProviderID]: {
               profile: environmentProfileID,
@@ -564,7 +464,6 @@ test("configured inline credentials participate in live discovery", async () => 
     fn: async () => {
       await ProviderCatalog.resolve({
         config: {
-          providerCatalog: { enabled: false, offlineCache: false },
           provider: {
             [inlineProviderID]: configured,
           },
@@ -583,7 +482,6 @@ test("configured inline credentials participate in live discovery", async () => 
 test("catalog-only account projections are isolated by configuration", async () => {
   const first = await ProviderCatalog.resolve({
     config: {
-      providerCatalog: { enabled: false, offlineCache: false },
       provider: {
         "catalog-account-a": {
           modelsDevProviderID: "openai",
@@ -596,7 +494,6 @@ test("catalog-only account projections are isolated by configuration", async () 
 
   const second = await ProviderCatalog.resolve({
     config: {
-      providerCatalog: { enabled: false, offlineCache: false },
       provider: {
         "catalog-account-b": {
           modelsDevProviderID: "anthropic",
@@ -613,7 +510,6 @@ test("catalog-only projections apply model rules without exposing inline credent
   const accountID = "catalog-account-rules"
   const first = await ProviderCatalog.resolve({
     config: {
-      providerCatalog: { enabled: false, offlineCache: false },
       provider: {
         [accountID]: {
           modelsDevProviderID: "openai",
@@ -657,7 +553,6 @@ test("catalog-only projections apply model rules without exposing inline credent
 
   const second = await ProviderCatalog.resolve({
     config: {
-      providerCatalog: { enabled: false, offlineCache: false },
       provider: {
         [accountID]: {
           modelsDevProviderID: "openai",

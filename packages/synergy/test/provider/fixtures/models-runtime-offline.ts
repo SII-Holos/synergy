@@ -278,7 +278,6 @@ if (action === "refresh") {
   releaseModelsRefresh()
   await ModelsDev.refresh()
   await ProviderCatalog.resolve({
-    config: { providerCatalog: { enabled: false, offlineCache: false } },
     includeLive: true,
   })
   const sourceAfter = ProviderCatalog.modelCatalogState(providerID)?.source

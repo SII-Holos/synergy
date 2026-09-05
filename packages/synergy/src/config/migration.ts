@@ -778,14 +778,19 @@ async function removeDeprecatedAutoupdateConfig(): Promise<number> {
   return changed
 }
 
-async function ensureProviderCatalogConfig(): Promise<boolean> {
-  const providersFile = ConfigDomain.filepath("providers", Global.Path.config)
-  return mergeTopLevelKey(providersFile, "providerCatalog", {
-    enabled: true,
-    registryUrl: "https://raw.githubusercontent.com/SII-Holos/synergy-provider-registry/main/catalog.v1.json",
-    offlineCache: true,
-    cacheTtlMs: 3600000,
-  })
+async function removeDeprecatedProviderCatalogConfig(): Promise<number> {
+  let changed = 0
+
+  for (const filepath of await findConfigFiles()) {
+    if (await removeTopLevelConfigKeys(filepath, ["providerCatalog"])) changed++
+  }
+
+  for (const dir of await findConfigDomainDirs()) {
+    const providersFile = path.join(dir, "20-providers.jsonc")
+    if (await removeTopLevelConfigKeys(providersFile, ["providerCatalog"])) changed++
+  }
+
+  return changed
 }
 
 function providerAliasMap() {
@@ -1185,11 +1190,11 @@ export const migrations: Migration[] = [
     },
   },
   {
-    id: "20260625-provider-catalog-config",
-    description: "Add signed provider catalog configuration",
+    id: "20260905-config-remove-provider-catalog",
+    description: "Remove retired signed provider catalog config",
     async up(progress) {
       progress(0, 1)
-      await ensureProviderCatalogConfig()
+      await removeDeprecatedProviderCatalogConfig()
       progress(1, 1)
     },
   },

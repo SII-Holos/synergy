@@ -70,7 +70,6 @@ File: `20-providers.jsonc` · Merge: merge
 | Key | Type | Description |
 | --- | --- | --- |
 | `provider` | string (optional) | Custom provider configurations and model overrides |
-| `providerCatalog` | ProviderCatalog.optional (optional) | Signed remote provider catalog configuration |
 | `enabled_providers` | string (optional) | When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters |
 | `disabled_providers` | string (optional) | Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters |
 

@@ -620,7 +620,6 @@ test("Codex metadata overrides source context without mutating OpenAI model meta
 test("provider catalog includes OpenAI Codex before login", async () => {
   const catalog = await ProviderCatalog.resolve({
     forceRefresh: true,
-    config: { providerCatalog: { enabled: false, offlineCache: false } },
   })
   const codex = catalog[CodexProvider.PROVIDER_ID]
 
@@ -656,7 +655,6 @@ test("logged-in Codex provider applies fallback context when live metadata omits
   const catalog = await ProviderCatalog.resolve({
     forceRefresh: true,
     includeLive: true,
-    config: { providerCatalog: { enabled: false, offlineCache: false } },
   })
   const codex = catalog[CodexProvider.PROVIDER_ID]
 
@@ -682,7 +680,7 @@ test("provider catalog caches static and live Codex models independently", async
       models: [{ slug: "account-live-only-model", priority: 1 }],
     })
   })
-  const config = { providerCatalog: { enabled: false, offlineCache: false } }
+  const config = {}
 
   await ProviderCatalog.refresh(CodexProvider.PROVIDER_ID)
   ProviderCatalog.reset()
@@ -867,7 +865,6 @@ test("live discovery preserves image modalities from upstream OpenAI source", as
   const catalog = await ProviderCatalog.resolve({
     forceRefresh: true,
     includeLive: true,
-    config: { providerCatalog: { enabled: false, offlineCache: false } },
   })
   const codex = catalog[CodexProvider.PROVIDER_ID]
 
@@ -892,7 +889,7 @@ test("Codex GPT-5.6 remains available after restart and an immediate timeout", a
     refresh: "refresh-lkg",
     expires: nowSeconds() + 60 * 60,
   })
-  const config = { providerCatalog: { enabled: false, offlineCache: false } }
+  const config = {}
   globalThis.fetch = asFetch(async () =>
     jsonResponse({
       models: [{ slug: "gpt-5.6-sol", priority: 1 }],
@@ -969,7 +966,7 @@ test("Codex usage reads and reports the selected connection", async () => {
 })
 
 test("live catalog cache isolates Codex accounts without exposing credential secrets", async () => {
-  const config = { providerCatalog: { enabled: false, offlineCache: false } }
+  const config = {}
   let discoveryCalls = 0
   globalThis.fetch = asFetch(async (_input, init) => {
     discoveryCalls++
