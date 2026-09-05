@@ -684,9 +684,25 @@ function shellWords(segment: string): string[] {
   let current = ""
   let started = false
   let quote: "'" | '"' | undefined
+  let inBacktick = false
+  let substitutionDepth = 0
 
   for (let index = 0; index < segment.length; index++) {
     const char = segment[index]
+    if (inBacktick) {
+      if (char === "`") {
+        inBacktick = false
+        current += char
+        continue
+      }
+      if (char === "\\" && index + 1 < segment.length) {
+        current += char + segment[index + 1]!
+        index++
+        continue
+      }
+      current += char
+      continue
+    }
     if (quote) {
       if (char === quote) {
         quote = undefined
@@ -705,10 +721,34 @@ function shellWords(segment: string): string[] {
       current += char
       continue
     }
-    if (/\s/.test(char)) {
+    if (/\s/.test(char) && substitutionDepth === 0) {
       if (started) words.push(current)
       current = ""
       started = false
+      continue
+    }
+    if (char === "\\" && (segment[index + 1] === "(" || segment[index + 1] === ")")) {
+      // Escaped grouping characters are literal find predicate operands,
+      // not substitution delimiters.
+      current += segment[index + 1]!
+      index++
+      started = true
+      continue
+    }
+    if (char === "`") {
+      inBacktick = true
+      current += char
+      started = true
+      continue
+    }
+    if (char === "$" && segment[index + 1] === "(" && segment[index + 2] !== "(") {
+      // Command substitution: keep nested text in one word so an assignment
+      // prefix (`files=$(find ...)`) is not mis-split into a dynamic command
+      // name. Arithmetic `$((` stays on the plain-character path.
+      current += "$("
+      index++
+      substitutionDepth = 1
+      started = true
       continue
     }
     if (char === "$" && (segment[index + 1] === "'" || segment[index + 1] === '"')) {
@@ -718,6 +758,13 @@ function shellWords(segment: string): string[] {
     }
     if (char === "'" || char === '"') {
       quote = char
+      started = true
+      continue
+    }
+    if (substitutionDepth > 0) {
+      if (char === "(") substitutionDepth++
+      else if (char === ")") substitutionDepth--
+      current += char
       started = true
       continue
     }
@@ -819,9 +866,7 @@ const HARDLINE_PREFIXES = [
 const HARDLINE_EXACTS = ["init 0", "init 6", "telinit 0", "telinit 6"]
 
 const ARGUMENT_INJECTION_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
-  { pattern: /\bfind\b.*(?:-exec(?:dir)?|-ok|-delete)\b/, reason: "find with command execution or deletion" },
   { pattern: /\b(?:rg|ripgrep)\b.*--pre(?:-glob)?\b/, reason: "ripgrep with preprocessor execution" },
-  { pattern: /\bfd\b.*(?:-x\b|--exec(?:-batch)?)\b/, reason: "fd with command execution" },
   { pattern: /\bgo\s+test\b.*-exec\b/, reason: "go test with custom executor" },
   { pattern: /\bgit\s+show\b.*--format=.*--output=/, reason: "git show writing to custom output file" },
   { pattern: /\bgit\s+show\b.*--output=/, reason: "git show writing to custom output file" },
@@ -842,6 +887,114 @@ const ARGUMENT_INJECTION_PATTERNS: Array<{ pattern: RegExp; reason: string }> = 
     reason: "interpreter subprocess around destructive git command",
   },
 ]
+
+/**
+ * Closed-world read-only utilities permitted after find/fd -exec/-execdir/-x:
+ * anything else — interpreters, shells, mutators, network tools, or unknown
+ * commands — keeps the command shell_destructive. awk/gawk/sed are excluded
+ * because awk can system() and sed -i writes; xargs/tee can execute or write
+ * derived content. Unknown tools fail closed (destructive).
+ */
+const READ_ONLY_EXEC_TOOLS = new Set([
+  "cat",
+  "wc",
+  "grep",
+  "egrep",
+  "fgrep",
+  "rg",
+  "head",
+  "tail",
+  "sort",
+  "uniq",
+  "cut",
+  "tr",
+  "od",
+  "hexdump",
+  "xxd",
+  "diff",
+  "cmp",
+  "comm",
+  "basename",
+  "dirname",
+  "readlink",
+  "stat",
+  "du",
+  "ls",
+  "file",
+  "echo",
+  "printf",
+  "nl",
+  "paste",
+  "join",
+  "expand",
+  "unexpand",
+  "fmt",
+  "fold",
+  "pr",
+  "column",
+  "seq",
+  "cksum",
+  "sum",
+  "shasum",
+  "sha1sum",
+  "sha224sum",
+  "sha256sum",
+  "sha384sum",
+  "sha512sum",
+  "md5sum",
+  "zcat",
+  "bzcat",
+  "xzcat",
+  "pwd",
+  "true",
+  "false",
+])
+
+const FIND_FD_EXEC_OPTIONS = new Set(["-exec", "-execdir", "-ok", "-x", "-X", "--exec", "--exec-batch"])
+
+/**
+ * Scan quote-masked executable text for find/fd command executions whose
+ * utility is not in the closed read-only whitelist (-exec/-execdir/-x/-X/
+ * --exec/--exec-batch), plus -delete and -ok which are always destructive.
+ * Operates on one executable region (substitutions handled by the caller).
+ */
+function findFdExecTextUnsafe(executable: string): boolean {
+  const compound = lexCompoundCommands(executable)
+  const segments = compound.segments.length > 0 ? compound.segments : [executable]
+  for (const segment of segments) {
+    const words = shellWords(normalizeCommand(segment))
+    for (let index = 0; index < words.length; index++) {
+      const word = commandBasename(words[index] ?? "")
+      if (word !== "find" && word !== "fd") continue
+      for (let optionIndex = index + 1; optionIndex < words.length; optionIndex++) {
+        const option = words[optionIndex]!
+        if (!option.startsWith("-")) continue
+        if (option === "-delete") return true
+        if (!FIND_FD_EXEC_OPTIONS.has(option)) continue
+        if (option === "-ok") return true
+        const rawUtility = words[optionIndex + 1]
+        if (rawUtility === undefined || rawUtility === "{}") return true
+        if (/[$`\\]/.test(rawUtility)) return true
+        const utility = commandBasename(rawUtility)
+        if (!READ_ONLY_EXEC_TOOLS.has(utility)) return true
+      }
+    }
+  }
+  return false
+}
+
+/**
+ * Recursively inspect every executable region (top level plus command and
+ * process substitutions and backticks) for an unsafe find/fd -exec target.
+ * Budget or depth exhaustion fails closed (treated as unsafe).
+ */
+function hasUnsafeExecTarget(command: string, state: ClassificationState, depth = 0): boolean {
+  if (classificationExhausted(state, command) || depth > DIRECTORY_CHANGE_MAX_DEPTH) return true
+  if (findFdExecTextUnsafe(executableShellSyntaxText(command))) return true
+  const payloads = commandSubstitutionPayloads(command, state)
+  if (payloads === undefined) return true
+  return payloads.some((payload) => hasUnsafeExecTarget(payload, state, depth + 1))
+}
 
 const INLINE_STRING_ESCAPE = /^(?:[xX][0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|u\{[0-9a-fA-F]{1,6}\}|[0-7]{1,3})/
 
@@ -925,6 +1078,58 @@ function checkHardline(command: string): boolean {
 export interface DirectoryChangeAnalysis {
   targets: string[]
   opaque: boolean
+}
+
+export interface DirectoryChangeOptions {
+  /**
+   * When true, a relative cd target that contains a slash (e.g.
+   * `cd packages/synergy/src`) is statically resolved against the current
+   * working directory instead of treated as CDPATH-dependent opaque — unless
+   * the command text itself defines CDPATH (assignment or export), in which
+   * case the target stays opaque. Bare names (`cd node_modules`) stay opaque
+   * because CDPATH can redirect them even without an in-command definition
+   * (the parent environment may still define CDPATH).
+   */
+  resolveSlashRelativeCd?: boolean
+}
+
+/**
+ * Detection context threaded through recursive directory-change analysis.
+ * Slash-containing relative cd targets are resolvable only when the caller
+ * opted in and no enclosing command text defines CDPATH (execution
+ * environments built from SANDBOX_ENV_ALLOWLIST never carry a parent CDPATH,
+ * so only an in-command definition can redirect them).
+ */
+interface DirectoryChangeContext {
+  options: DirectoryChangeOptions
+  /** True when this scope or an enclosing scope defines/mutates CDPATH. */
+  cdpathDefined: boolean
+}
+
+/**
+ * Whether a cd/pushd positional target may be statically resolved given the
+ * directory-change context. Bare names stay opaque (CDPATH can redirect them
+ * even without an in-command definition); dot-prefixed and absolute targets
+ * are already resolved by the caller's own branch.
+ */
+function slashRelativeCdResolvable(target: string | undefined, ctx: DirectoryChangeContext): boolean {
+  return Boolean(
+    ctx.options.resolveSlashRelativeCd &&
+      target &&
+      !target.startsWith("/") &&
+      !target.startsWith("~") &&
+      !target.startsWith(".") &&
+      target.includes("/") &&
+      !ctx.cdpathDefined,
+  )
+}
+
+/**
+ * Detect whether a command text defines or mutates CDPATH, which would make
+ * even a slash-containing relative cd target dependent on that search path.
+ */
+function commandDefinesCdpath(command: string): boolean {
+  return /\b(?:export\s+CDPATH|CDPATH=)/.test(unquotedShellText(normalizeCommand(command)))
 }
 
 const CLASSIFICATION_BUDGET_MS = 200
@@ -2332,6 +2537,7 @@ function analyzeDirectoryCommandParts(
   args: string[],
   state: ClassificationState,
   depth: number,
+  ctx: DirectoryChangeContext,
 ): DirectoryChangeAnalysis {
   const result: DirectoryChangeAnalysis = { targets: [], opaque: false }
   if (classificationExhausted(state)) return { targets: [], opaque: true }
@@ -2357,7 +2563,9 @@ function analyzeDirectoryCommandParts(
   }
   if (command === "cd" || command === "pushd") {
     const target = positionalDirectoryTarget(args)
-    if (
+    if (slashRelativeCdResolvable(target, ctx)) {
+      result.targets.push(target!)
+    } else if (
       dynamicDirectoryTarget(target) ||
       cdpathDependentDirectoryTarget(target) ||
       (command === "pushd" && /^[+-]\d+$/.test(target ?? ""))
@@ -2380,33 +2588,33 @@ function analyzeDirectoryCommandParts(
     if (expanded) {
       mergeDirectoryChangeAnalysis(
         result,
-        analyzeDirectoryCommandParts(expanded[0], expanded.slice(1), state, depth + 1),
+        analyzeDirectoryCommandParts(expanded[0], expanded.slice(1), state, depth + 1, ctx),
       )
     } else if (env.commandIndex < args.length) {
       mergeDirectoryChangeAnalysis(
         result,
-        analyzeDirectoryCommandParts(args[env.commandIndex], args.slice(env.commandIndex + 1), state, depth + 1),
+        analyzeDirectoryCommandParts(args[env.commandIndex], args.slice(env.commandIndex + 1), state, depth + 1, ctx),
       )
     }
     return result
   }
   if (MULTICALL_COMMANDS.has(command)) {
     const applet = multicallCommandParts(args)
-    mergeDirectoryChangeAnalysis(result, analyzeDirectoryCommandParts(applet.name, applet.args, state, depth + 1))
+    mergeDirectoryChangeAnalysis(result, analyzeDirectoryCommandParts(applet.name, applet.args, state, depth + 1, ctx))
     return result
   }
   if (hasInlineInterpreterPayload(command, args)) return { targets: [], opaque: true }
   if (isShellPayloadCommand(command)) {
     const payload = shellPayload(args)
-    if (payload) mergeDirectoryChangeAnalysis(result, analyzeDirectoryChangesRecursive(payload, state, depth + 1))
+    if (payload) mergeDirectoryChangeAnalysis(result, analyzeDirectoryChangesRecursive(payload, state, depth + 1, ctx))
     return result
   }
   if (command === "eval" && args.length > 0) {
-    mergeDirectoryChangeAnalysis(result, analyzeDirectoryChangesRecursive(args.join(" "), state, depth + 1))
+    mergeDirectoryChangeAnalysis(result, analyzeDirectoryChangesRecursive(args.join(" "), state, depth + 1, ctx))
   }
   if (command === "trap") {
     const payload = trapPayload(args)
-    if (payload) mergeDirectoryChangeAnalysis(result, analyzeDirectoryChangesRecursive(payload, state, depth + 1))
+    if (payload) mergeDirectoryChangeAnalysis(result, analyzeDirectoryChangesRecursive(payload, state, depth + 1, ctx))
     return result
   }
   if (DIRECTORY_WRAPPER_COMMANDS.has(command)) {
@@ -2419,7 +2627,7 @@ function analyzeDirectoryCommandParts(
     }
     const replacement = command === "xargs" ? xargsReplacementToken(args) : undefined
     const wrapped = wrapperCommandParts(command, args)
-    const wrappedAnalysis = analyzeDirectoryCommandParts(wrapped.name, wrapped.args, state, depth + 1)
+    const wrappedAnalysis = analyzeDirectoryCommandParts(wrapped.name, wrapped.args, state, depth + 1, ctx)
     if (replacement && wrappedAnalysis.targets.some((target) => target.includes(replacement))) {
       wrappedAnalysis.opaque = true
     }
@@ -2433,7 +2641,12 @@ function analyzeDirectoryChangesRecursive(
   command: string,
   state: ClassificationState,
   depth: number,
+  ctx: DirectoryChangeContext,
 ): DirectoryChangeAnalysis {
+  const childCtx: DirectoryChangeContext = {
+    options: ctx.options,
+    cdpathDefined: ctx.cdpathDefined || commandDefinesCdpath(normalizeCommand(command)),
+  }
   if (classificationExhausted(state, command)) return { targets: [], opaque: true }
 
   const normalized = normalizeCommand(command)
@@ -2453,7 +2666,7 @@ function analyzeDirectoryChangesRecursive(
     if (!payloads) return { targets: result.targets, opaque: true }
     for (const payload of payloads) {
       if (classificationExhausted(state)) return { targets: result.targets, opaque: true }
-      mergeDirectoryChangeAnalysis(result, analyzeDirectoryChangesRecursive(payload, state, depth + 1))
+      mergeDirectoryChangeAnalysis(result, analyzeDirectoryChangesRecursive(payload, state, depth + 1, childCtx))
     }
 
     const compound = lexCompoundCommands(normalized)
@@ -2463,14 +2676,17 @@ function analyzeDirectoryChangesRecursive(
       if (commandLookupOnly(segment)) continue
       const controlled = controlCommandSegment(segment)
       const parsed = simpleCommandParts(controlled)
-      const direct = analyzeDirectoryCommandParts(parsed.name, parsed.args, state, depth)
+      const direct = analyzeDirectoryCommandParts(parsed.name, parsed.args, state, depth, childCtx)
       mergeDirectoryChangeAnalysis(result, direct)
 
       if (direct.targets.length === 0 && !direct.opaque) {
         const stripped = stripWrappers(controlled)
         if (stripped !== controlled) {
           const wrapped = simpleCommandParts(stripped)
-          mergeDirectoryChangeAnalysis(result, analyzeDirectoryCommandParts(wrapped.name, wrapped.args, state, depth))
+          mergeDirectoryChangeAnalysis(
+            result,
+            analyzeDirectoryCommandParts(wrapped.name, wrapped.args, state, depth, childCtx),
+          )
         }
       }
 
@@ -3034,8 +3250,15 @@ export namespace ShellSafety {
     return segments.every(isSafeSimpleCommand)
   }
 
-  export function analyzeDirectoryChanges(command: string): DirectoryChangeAnalysis {
-    return analyzeDirectoryChangesRecursive(command, newClassificationState(), 0)
+  export function analyzeDirectoryChanges(
+    command: string,
+    options: DirectoryChangeOptions = {},
+  ): DirectoryChangeAnalysis {
+    const ctx: DirectoryChangeContext = {
+      options,
+      cdpathDefined: commandDefinesCdpath(command),
+    }
+    return analyzeDirectoryChangesRecursive(command, newClassificationState(), 0, ctx)
   }
 
   export function hasCompoundShellStateDependency(command: string): boolean {
@@ -3156,6 +3379,7 @@ export namespace ShellSafety {
     if (checkHardline(normalized)) return "shell_hardline"
 
     if (hasPipeToShell(normalized)) return "shell_destructive"
+    if (hasUnsafeExecTarget(normalized, state)) return "shell_destructive"
     if (hasArgumentInjection(normalized)) return "shell_destructive"
     if (hasDownloadExecuteChain(normalized)) return "shell_destructive"
 

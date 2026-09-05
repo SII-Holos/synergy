@@ -363,7 +363,13 @@ function extractAbsolutePaths(command: string): string[] {
     const candidate = match[1].replace(/[)}]+$/, "")
     if (candidate.includes("/") && !SAFE_PSEUDO_PATHS.has(candidate)) paths.push(candidate)
   }
-  // Post-filter: reject likely non-filesystem paths (URL fragments, commit message artifacts)
+  // Post-filter: reject likely non-filesystem paths (URL fragments, commit
+  // message artifacts) and regex/pattern literals that the path extractor
+  // cannot distinguish from absolute paths:
+  //  - bare "/" and "/^..." awk/sed regex literals (also after #1308 strips a
+  //    glued ")" or "}"),
+  //  - candidates containing backslash, backtick, or "$" (escaped, dynamic,
+  //    or regex metacharacters — never statically resolvable paths).
   const NON_PATH_PATTERNS = [
     /^\/[A-Z]{2,}$/,
     /^\/[a-z]{1,3}$/,
@@ -371,6 +377,9 @@ function extractAbsolutePaths(command: string): string[] {
     /^\/bin\/[^/]+$/,
     /^\/sbin\/[^/]+$/,
     /:\/\//,
+    /^\/?$/, // lone "/" (awk -F'/' field separators)
+    /^\/\^/, // awk/sed regex literal opened by "/^"
+    /[\\`$]/, // escaped, dynamic, or regex metacharacter
   ]
   return paths.filter((p) => !NON_PATH_PATTERNS.some((pat) => pat.test(p)))
 }
@@ -1171,7 +1180,7 @@ export namespace EnforcementGate {
 
         const compound = lexCompoundCommands(command)
         const pathSegments = compound.segments.length > 0 ? compound.segments : [command]
-        const directoryChanges = ShellSafety.analyzeDirectoryChanges(command)
+        const directoryChanges = ShellSafety.analyzeDirectoryChanges(command, { resolveSlashRelativeCd: true })
         const pipelinePathRisk = compound.operators.some((operator) => operator === "|" || operator === "|&")
         const shellStatePathRisk = ShellSafety.hasCompoundShellStateDependency(command)
         const aggregatePathRisk =
