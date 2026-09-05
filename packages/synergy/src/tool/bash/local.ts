@@ -1,4 +1,5 @@
 import { spawn } from "child_process"
+import * as fs from "node:fs"
 import { fileURLToPath } from "url"
 import { Language, type Node } from "web-tree-sitter"
 import { $ } from "bun"
@@ -9,6 +10,7 @@ import { ScopeContext } from "@/scope/context"
 import { ProcessRegistry } from "@/process/registry"
 import { truncateMetadataOutput } from "./shared"
 import { SandboxBackend } from "@/sandbox/backend"
+import { controlledTempRoot } from "@/sandbox/policy"
 import { ShellSafety } from "@/enforcement/shell-safety"
 import { AttachmentDiscovery } from "../attachment-discovery"
 import type { MessageV2 } from "@/session/message-v2"
@@ -347,6 +349,31 @@ export const LocalBashBackend = {
       const val = process.env[key]
       if (val !== undefined) {
         sandboxEnv[key] = val
+      }
+    }
+
+    // Autonomous (and any gate-sandboxed) execution: point TMPDIR/TMP/TEMP at
+    // the workspace-controlled temporary root so tools that honor TMPDIR write
+    // inside the workspace boundary instead of the host's shared temporary
+    // directory. The sandbox writable roots already include this root via the
+    // profile (workspace/.synergy/tmp), so the child may create files there.
+    const sandboxPreparePresent = (ctx.extra as { sandboxPrepare?: unknown } | undefined)?.sandboxPrepare != null
+    if (sandboxPreparePresent) {
+      // Base the controlled root on the session workspace (the sandbox
+      // wrapper's writable root), never on a possibly external workdir: the
+      // host-side mkdir below must stay inside the workspace boundary.
+      const workspaceRoot = ScopeContext.current.directory
+      const controlledRoot = controlledTempRoot(workspaceRoot, ctx.sessionID)
+      try {
+        fs.mkdirSync(controlledRoot, { recursive: true })
+        sandboxEnv.TMPDIR = controlledRoot
+        sandboxEnv.TMP = controlledRoot
+        sandboxEnv.TEMP = controlledRoot
+        await trace("bash.controlled-tmp.active", { root: controlledRoot })
+      } catch (error) {
+        // Never fail the command for env setup; the sandbox itself still
+        // constrains writes to the workspace.
+        await trace("bash.controlled-tmp.error", { error: String(error) }, "warn")
       }
     }
     if (ghCommandCount > 0 && !sandboxEnv.GH_TOKEN && !sandboxEnv.GITHUB_TOKEN) {

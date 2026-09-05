@@ -7,6 +7,7 @@ import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { SessionWorkflowService, WorkflowConflictError } from "../../src/session/workflow"
 import { tmpdir } from "../fixture/fixture"
+import "../../src/product-registration"
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true })

@@ -1,16 +1,10 @@
-import { Config } from "../config/config"
 import { ContinuationKernel } from "../session/continuation-kernel"
 import type { Info as SessionInfo } from "../session/types"
 import { WorkflowPromptRegistry } from "../session/workflow-prompt-registry"
 import { ToolRegistry } from "../tool/registry"
 import { BossContinuationPolicy } from "./boss-continuation"
-import {
-  DEFAULT_IDENTITY_TEXT,
-  buildBossDeliveryHint,
-  buildRuntimeBossContext,
-  buildWorkerContext,
-  renderBossTree,
-} from "./boss-prompt"
+import { buildBossDeliveryHint, buildRuntimeBossContext, buildWorkerContext, renderBossTree } from "./boss-prompt"
+import { resolveBossPersona } from "./persona"
 import { BossService } from "./boss"
 import { BossSpawnTool } from "./tools/boss-spawn"
 import { BossAssignTool } from "./tools/boss-assign"
@@ -39,31 +33,32 @@ export function registerBossDomain(): void {
       if (workflow?.kind !== "boss") return []
       if (workflow.role !== "boss") return [buildWorkerContext(session)]
 
-      const configuredIdentity = (await Config.current().catch(() => undefined))?.experimental?.boss_identity_text
-      const identityText = configuredIdentity?.trim() || DEFAULT_IDENTITY_TEXT
+      const persona = await resolveBossPersona()
       const parts = [
         buildRuntimeBossContext(session, {
-          identityText,
+          identityText: persona.identityText,
+          reportStyle: persona.reportStyle,
           instructions: workflow.instructions,
         }),
       ]
-
-      // Tell the boss whether this turn's reply auto-delivers back to the
-      // originating Feishu message, so it neither duplicates with
-      // channel_push nor misses a receipt. Treat delivery as automatic only
-      // when a single unambiguous reply anchor exists; conflicting anchors
-      // (multiple Feishu requests in one turn) cannot auto-deliver, so the
-      // boss must use channel_push explicitly per requester.
-      const bossDeliveryMetadata = ctx.deliveryMetadata
-      const autoDelivers =
-        bossDeliveryMetadata?.channelPush === true && typeof bossDeliveryMetadata.channelReplyToMessageId === "string"
-      parts.push(
-        buildBossDeliveryHint(
-          autoDelivers
-            ? { auto: true, replyToMessageId: bossDeliveryMetadata!.channelReplyToMessageId }
-            : { auto: false },
-        ),
-      )
+      // R6 explicit delivery applies only to channel-routed boss sessions:
+      // those never auto-deliver — the human sees nothing unless the boss
+      // calls channel_push. Channel-less local boss sessions (opened from
+      // Settings) and project bosses reply inside their own interactive
+      // session, so the channel-push contract is omitted for them.
+      if (session.endpoint?.kind === "channel") {
+        const bossDeliveryMetadata = ctx.deliveryMetadata
+        parts.push(
+          buildBossDeliveryHint(
+            bossDeliveryMetadata?.channelPush === true
+              ? {
+                  chatId: bossDeliveryMetadata.channelChatId,
+                  replyToMessageId: bossDeliveryMetadata.channelReplyToMessageId,
+                }
+              : undefined,
+          ),
+        )
+      }
 
       const tree = await BossService.status(session.id).catch(() => undefined)
       if (tree) {

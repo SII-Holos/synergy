@@ -96,7 +96,11 @@ export namespace SessionInvoke {
     let channelPush = false
     let channelReply = false
     let channelReplyToMessageId: string | undefined
+    let channelChatId: string | undefined
+    let channelChatType: "dm" | "group" | undefined
     let replyAnchorConflict = false
+    let chatIdConflict = false
+    let chatTypeConflict = false
     for (let index = afterIndex + 1; index < messages.length; index++) {
       const info = messages[index].info
       if (info.role !== "user") continue
@@ -107,15 +111,34 @@ export namespace SessionInvoke {
         typeof metadata?.channelReplyToMessageId === "string" && metadata.channelReplyToMessageId.trim()
           ? metadata.channelReplyToMessageId
           : undefined
-      if (!replyAnchor) continue
-      if (channelReplyToMessageId && channelReplyToMessageId !== replyAnchor) replyAnchorConflict = true
-      else channelReplyToMessageId = replyAnchor
+      if (replyAnchor) {
+        if (channelReplyToMessageId && channelReplyToMessageId !== replyAnchor) replyAnchorConflict = true
+        else channelReplyToMessageId = replyAnchor
+      }
+      const chatId =
+        typeof metadata?.channelChatId === "string" && metadata.channelChatId.trim()
+          ? metadata.channelChatId
+          : undefined
+      if (chatId) {
+        if (channelChatId && channelChatId !== chatId) chatIdConflict = true
+        else channelChatId = chatId
+      }
+      const chatType =
+        metadata?.channelChatType === "dm" || metadata?.channelChatType === "group"
+          ? metadata.channelChatType
+          : undefined
+      if (chatType) {
+        if (channelChatType && channelChatType !== chatType) chatTypeConflict = true
+        else channelChatType = chatType
+      }
     }
     if (!channelPush) return undefined
     return {
       channelPush: true,
       ...(channelReply ? { channelReply: true } : {}),
       ...(channelReply && channelReplyToMessageId && !replyAnchorConflict ? { channelReplyToMessageId } : {}),
+      ...(channelChatId && !chatIdConflict ? { channelChatId } : {}),
+      ...(channelChatType && !chatTypeConflict ? { channelChatType } : {}),
     }
   }
 

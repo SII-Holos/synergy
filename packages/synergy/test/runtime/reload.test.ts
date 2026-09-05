@@ -673,4 +673,58 @@ describe("runtime.reload", () => {
       },
     })
   })
+
+  test("boss_persona config changes hot-reload the runtime boss identity", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        // The reload config path dynamically imports boss-runtime only inside
+        // the experimental-diff branch, so intercept that module and assert
+        // the wiring calls refreshIdentity for a persona change while
+        // boss_mode stays enabled.
+        const refreshIdentity = mock(async () => {})
+        const rescheduleBriefing = mock(async () => {})
+        mock.module(import.meta.resolve("../../src/boss/boss-runtime"), () => ({
+          BossRuntime: {
+            sync: mock(async () => {}),
+            refreshIdentity,
+            rescheduleBriefing,
+          },
+        }))
+
+        Config.reload = mock(async () => ({
+          config: { experimental: { boss_mode: true, boss_persona: { preset: "ops_assistant" } } },
+          changedFields: ["experimental"],
+          oldConfig: { experimental: { boss_mode: true, boss_persona: { preset: "project_manager" } } },
+        })) as typeof Config.reload
+
+        const result = await RuntimeReload.reload({ targets: ["config"], scope: "global", reason: "test" })
+
+        expect(refreshIdentity).toHaveBeenCalledWith({ versioned: true })
+        expect(rescheduleBriefing).not.toHaveBeenCalled()
+        expect(result.success).toBe(true)
+      },
+    })
+  })
+
+  test("boss_persona changes are ignored while boss_mode is disabled", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const refreshIdentity = mock(async () => {})
+        Config.reload = mock(async () => ({
+          config: { experimental: { boss_mode: false, boss_persona: { preset: "ops_assistant" } } },
+          changedFields: ["experimental"],
+          oldConfig: { experimental: { boss_mode: false } },
+        })) as typeof Config.reload
+
+        const result = await RuntimeReload.reload({ targets: ["config"], scope: "global", reason: "test" })
+
+        expect(refreshIdentity).not.toHaveBeenCalled()
+        expect(result.success).toBe(true)
+      },
+    })
+  })
 })

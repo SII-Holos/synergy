@@ -18,6 +18,7 @@ import { SessionRecovery } from "@/session/recovery"
 import { SessionInvoke } from "@/session/invoke"
 import { ActivitySummary } from "@/session/activity-summary"
 import { LatticeRuntime } from "@/lattice/runtime"
+import { PushBridge } from "@/push/bridge"
 import { Embedding } from "@/vector/embedding"
 import { AgentTurn } from "@/session/agent-turn"
 import { DEFAULT_AGENT_WORKER_POOL_OPTIONS } from "@/session/agent-turn/worker-pool"
@@ -29,6 +30,7 @@ export namespace GlobalRuntime {
   const log = Log.create({ service: "global-runtime" })
   let started: Promise<void> | undefined
   let configuredShutdownTimeoutMs = resolveRuntimeShutdownTimeoutMs(DEFAULT_AGENT_WORKER_POOL_OPTIONS.cancelGraceMs)
+  let disposePushBridge: (() => void) | undefined
 
   export async function start() {
     if (!started) {
@@ -134,6 +136,7 @@ export namespace GlobalRuntime {
             log.warn("response-card expired registration cleanup failed", { error })
           })
           await startChannels(config)
+          disposePushBridge = PushBridge.init()
           await HolosRuntime.init()
           FileWatcher.init()
           MCP.ensureStarted()
@@ -165,6 +168,13 @@ export namespace GlobalRuntime {
     closeAdmission()
     const executionStop = Promise.all([AgentTurn.stop(), PolicyWorker.stop(), ToolScheduler.stop()])
     Agenda.stop()
+    // Stop accepting new pushes and wait for queued fan-outs before the
+    // storage/services they rely on are torn down.
+    if (disposePushBridge) {
+      disposePushBridge()
+      disposePushBridge = undefined
+    }
+    await PushBridge.flush().catch(() => undefined)
     await executionStop
     await Promise.all([
       ScopeContext.provide({

@@ -13,6 +13,7 @@ import { LLM } from "../../src/session/llm"
 import { PromptBudgeter } from "../../src/session/prompt-budgeter"
 import { sha256File } from "../../src/util/crypto"
 import { tmpdir } from "../fixture/fixture"
+import "../../src/product-registration"
 
 function model(): Provider.Model {
   return {

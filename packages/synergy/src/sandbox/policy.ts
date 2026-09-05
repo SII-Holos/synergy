@@ -9,6 +9,25 @@ import * as path from "path"
 
 export const DEFAULT_SYSTEM_RUNTIME_READ_ROOTS = ["/usr/lib", "/System/Library", "/bin", "/usr/bin"]
 
+/**
+ * Developer-toolchain read roots for macOS sandbox profiles. Homebrew
+ * (`/opt/homebrew` on Apple Silicon, `/usr/local` on Intel) hosts the git,
+ * language runtimes, and package managers a developer shell actually uses;
+ * `/Library/Developer/CommandLineTools` and `/private/etc` cover CLT tools and
+ * TLS/ssl configuration. Only meaningful on darwin; other platforms ignore it.
+ */
+export const MACOS_DEVELOPER_READ_ROOTS = [
+  "/opt/homebrew",
+  "/usr/local",
+  "/Library/Developer/CommandLineTools",
+  "/etc",
+  "/private/etc",
+]
+
+export function macosPlatformReadRoots(): string[] {
+  return [...MACOS_DEVELOPER_READ_ROOTS]
+}
+
 export function pathFlavor(root: string): typeof path.posix | typeof path.win32 {
   return /^[A-Za-z]:[\\/]/.test(root) || root.startsWith("\\\\") ? path.win32 : path.posix
 }
@@ -34,6 +53,24 @@ export function uniqueRoots(roots: string[]): string[] {
   return [...new Set(roots.filter(Boolean))]
 }
 
+export function gitProtectedSubpaths(root: string): string[] {
+  return [joinPathLike(root, ".git", "hooks"), joinPathLike(root, ".git", "config")]
+}
+
+/**
+ * Expand bare `<root>/.git` entries into the granular read-only subpaths
+ * (hooks + config) so git index/object/ref writes keep working under a
+ * writable root while the tamper/code-execution surface stays protected.
+ */
+export function expandGitProtectedSubpaths(paths: string[]): string[] {
+  return uniqueRoots(
+    paths.flatMap((p) => {
+      const flavor = pathFlavor(p)
+      return flavor.basename(p) === ".git" ? gitProtectedSubpaths(flavor.dirname(p)) : [p]
+    }),
+  )
+}
+
 export function ancestorLiterals(root: string): string[] {
   const flavor = pathFlavor(root)
   const resolved = flavor.resolve(root)
@@ -49,6 +86,23 @@ export function ancestorLiterals(root: string): string[] {
 
 export function traversalLiterals(roots: string[]): string[] {
   return uniqueRoots(roots.flatMap((root) => ancestorLiterals(root)))
+}
+
+/**
+ * Controlled temporary write root for sandboxed autonomous execution.
+ *
+ * Reuses the existing controlled-tmp precedent (Linux helper binds
+ * `<workspace>/.synergy/tmp` onto /tmp; the legacy macOS Seatbelt profile
+ * lists it as a writable root). When a session key is supplied the root is
+ * further isolated per session/process (glob-expand naming precedent
+ * `synergy-glob-{pid}-{id}`), so concurrent sandboxed shells cannot peek at
+ * each other's temporary files through TMPDIR.
+ */
+export function controlledTempRoot(workspace: string, sessionKey?: string): string {
+  const base = joinPathLike(workspace, ".synergy", "tmp")
+  if (!sessionKey) return base
+  const safeKey = sessionKey.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24)
+  return joinPathLike(base, `synergy-${process.pid}-${safeKey}`)
 }
 
 // ------------------------------------------------------------------

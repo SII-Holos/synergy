@@ -742,9 +742,17 @@ describe("SandboxBackend OS execution (skipped unless available)", () => {
 
     if (wrapper.skipReason) return
 
-    const result = executeIfSandboxAvailable(wrapper)
-    if (!result) return
-    // Sandbox should prevent writing to /etc — command exits non-zero
-    expect(result.exitCode).not.toBe(0)
+    // The write must be blocked. Depending on whether the denial logger
+    // classifies the Seatbelt audit event, the block surfaces either as a
+    // thrown SandboxBlocked (denial recognized) or as a non-zero exit from
+    // the sandboxed touch; both prove the protected write did not happen.
+    try {
+      const result = executeIfSandboxAvailable(wrapper)
+      if (!result) return
+      expect(result.exitCode).not.toBe(0)
+    } catch (error) {
+      if (error instanceof EnforcementError.SandboxBlocked) return
+      throw error
+    }
   })
 })

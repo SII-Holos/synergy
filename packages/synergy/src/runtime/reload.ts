@@ -419,6 +419,19 @@ export namespace RuntimeReload {
               )
             }
           }
+          if (
+            newExp.boss_mode === true &&
+            JSON.stringify(oldExp.boss_persona ?? null) !== JSON.stringify(newExp.boss_persona ?? null)
+          ) {
+            try {
+              const { BossRuntime } = await import("../boss/boss-runtime")
+              await BossRuntime.refreshIdentity({ versioned: true })
+            } catch (err) {
+              ctx.warnings.push(
+                `Failed to refresh runtime boss persona: ${err instanceof Error ? err.message : String(err)}`,
+              )
+            }
+          }
           if (newExp.boss_mode === true && oldExp.boss_briefing_interval_days !== newExp.boss_briefing_interval_days) {
             try {
               const { BossRuntime } = await import("../boss/boss-runtime")

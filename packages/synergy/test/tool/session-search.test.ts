@@ -7,6 +7,8 @@ import { Session } from "../../src/session"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionMemoryPressure } from "../../src/session/memory-pressure"
 import { SessionSearchTool } from "../../src/tool/session-search"
+import { Storage } from "../../src/storage/storage"
+import { StoragePath } from "../../src/storage/path"
 import { Log } from "../../src/util/log"
 
 Log.init({ print: false })
@@ -97,6 +99,30 @@ describe("session_search", () => {
         const lines = result.output.split("\n")
         const sessionLines = lines.filter((l: string) => /^\[ses_/.test(l))
         expect(sessionLines.length).toBe(1)
+      },
+    })
+  })
+
+  test("skips orphaned page-index entries whose info file no longer exists", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const scope = ScopeContext.current.scope
+        const orphan = await Session.create({ title: "Orphan Candidate" })
+        await writeMessage(orphan.id, Identifier.ascending("message"), "orphan needle", 100)
+        const live = await Session.create({ title: "Live" })
+        await writeMessage(live.id, Identifier.ascending("message"), "orphan needle", 200)
+
+        // Simulate an interrupted delete: info file removed, page-index entry retained.
+        await Storage.remove(StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(orphan.id)))
+
+        const tool = await SessionSearchTool.init()
+        const result = await run(tool, "orphan needle")
+
+        expect(result.metadata.sessionsMatched).toBe(1)
+        expect(result.output).toContain(live.id)
+        expect(result.output).not.toContain(orphan.id)
       },
     })
   })

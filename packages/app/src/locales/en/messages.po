@@ -15331,6 +15331,78 @@ msgid "settings.general.compactReasoning.title"
 msgstr "Compact reasoning"
 
 #. js-lingui-explicit-id
+msgid "settings.general.devicePush.completion"
+msgstr "Completions"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.description"
+msgstr "Receive completion, error, and input-required notifications on this device through the browser."
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enable"
+msgstr "Enable push"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enabled"
+msgstr "Push enabled on this device"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enableFailed"
+msgstr "Could not enable push"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.error"
+msgstr "Errors"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.input"
+msgstr "Needs input"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.insecure"
+msgstr "Push requires a secure (HTTPS) connection"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.iosTab"
+msgstr "On iOS, add this site to your Home Screen and open it as an app to enable push"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.permissionDenied"
+msgstr "Notification permission was denied in browser settings"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.remove"
+msgstr "Remove"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.removed"
+msgstr "Device removed"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.removeFailed"
+msgstr "Could not remove device; it is still subscribed to pushes"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.test"
+msgstr "Send test"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.testFailed"
+msgstr "Test notification failed"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.testSent"
+msgstr "Test notification sent"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.title"
+msgstr "Device push"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.unsupported"
+msgstr "Push is not supported in this browser"
+
+#. js-lingui-explicit-id
 msgid "settings.general.font.applied"
 msgstr "Applied"
 
@@ -17875,24 +17947,84 @@ msgid "settings.runtime.boss.enabled.desc"
 msgstr "Route all Feishu messages to the runtime boss session"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.identity"
-msgstr "Colleague Identity"
+msgid "settings.runtime.boss.name"
+msgstr "Name"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.identity.desc"
-msgstr "Optional colleague identity description injected into the runtime boss session."
+msgid "settings.runtime.boss.name.desc"
+msgstr "The name your boss colleague will use."
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.identity.placeholder"
-msgstr "e.g. Product-minded operator who triages Feishu requests"
+msgid "settings.runtime.boss.name.placeholder"
+msgstr "e.g. Xiaofei"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.interval"
-msgstr "World Overview Briefing Interval (days)"
+msgid "settings.runtime.boss.name.saveFailed"
+msgstr "Could not save boss name"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.interval.desc"
-msgstr "Re-inject the versioned world-overview briefing every N days; leave empty to disable."
+msgid "settings.runtime.boss.name.saveFailed.desc"
+msgstr "The boss name could not be saved. Please try again."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession"
+msgstr "Open boss session"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.busy"
+msgstr "Opening…"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.desc"
+msgstr "Open the runtime boss chat. Creates the session on first use."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.failed"
+msgstr "Could not open the boss session"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.conciseness"
+msgstr "Conciseness"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.custom"
+msgstr "Custom"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.customTraits"
+msgstr "Custom personality traits"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.default"
+msgstr "Default"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.formality"
+msgstr "Formality"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.opsAssistant"
+msgstr "Ops Assistant"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.proactiveness"
+msgstr "Proactiveness"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.projectManager"
+msgstr "Project Manager"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.warmth"
+msgstr "Warmth"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.personality"
+msgstr "Personality"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.personality.desc"
+msgstr "How your boss colleague behaves and communicates."
 
 #. Boss Mode
 msgid "settings.runtime.boss.title"

@@ -351,6 +351,20 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
     experimental.boss_briefing_interval_days = bossBriefingIntervalDays
   }
 
+  const currentBossPersona = cfg.experimental?.boss_persona
+  const nextBossPersona = bossPersonaFromRuntime(runtime)
+  // null is the only value that removes a stored persona, and a null clear is
+  // meaningful only when the server actually holds a value (undefined would
+  // keep the stored value through the merge). bossName never participates: it
+  // is not config and is persisted directly to the shared memory library.
+  const hasCurrentBossPersona = currentBossPersona !== undefined && currentBossPersona !== null
+  if (
+    (nextBossPersona !== null || hasCurrentBossPersona) &&
+    JSON.stringify(nextBossPersona) !== JSON.stringify(currentBossPersona ?? null)
+  ) {
+    experimental.boss_persona = nextBossPersona
+  }
+
   if (Object.keys(experimental).length) {
     patch.experimental = { ...(cfg.experimental ?? {}), ...experimental }
   }
@@ -612,6 +626,24 @@ function buildSkillsPatch(cfg: Config, state: SettingsState, patch: Record<strin
   if (Object.keys(next).length === 0) return
 
   patch.skills = { compatibility: next }
+}
+
+/** Materialize the runtime boss persona draft. null clears a stored persona;
+ * undefined means the draft carries no valid intent and nothing is emitted. */
+function bossPersonaFromRuntime(runtime: SettingsState["runtime"]): Record<string, unknown> | null | undefined {
+  const { bossPersonaPreset } = runtime
+  if (bossPersonaPreset === "none") return null
+  if (bossPersonaPreset === "custom") {
+    return {
+      preset: "custom",
+      formality: boundedNumber(runtime.bossPersonaFormality, 0, 1) ?? 0.5,
+      conciseness: boundedNumber(runtime.bossPersonaConciseness, 0, 1) ?? 0.5,
+      proactiveness: boundedNumber(runtime.bossPersonaProactiveness, 0, 1) ?? 0.5,
+      warmth: boundedNumber(runtime.bossPersonaWarmth, 0, 1) ?? 0.5,
+    }
+  }
+  if (bossPersonaPreset !== "project_manager" && bossPersonaPreset !== "ops_assistant") return undefined
+  return { preset: bossPersonaPreset }
 }
 
 function parseList(value: string): string[] {

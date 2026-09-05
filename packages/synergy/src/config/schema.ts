@@ -2082,6 +2082,27 @@ export const Info = z
           .nullable()
           .optional()
           .describe("Re-inject the versioned world-overview briefing every N days (default: disabled)"),
+        boss_persona: z
+          .discriminatedUnion("preset", [
+            z.object({
+              preset: z.literal("project_manager"),
+            }),
+            z.object({
+              preset: z.literal("ops_assistant"),
+            }),
+            z.object({
+              preset: z.literal("custom"),
+              formality: z.number().min(0).max(1),
+              conciseness: z.number().min(0).max(1),
+              proactiveness: z.number().min(0).max(1),
+              warmth: z.number().min(0).max(1),
+            }),
+          ])
+          .nullable()
+          .optional()
+          .describe(
+            "Colleague persona preset for the runtime boss: a built-in personality (project_manager or ops_assistant) or a custom blend of four 0..1 traits. Pass null to clear. When unset, boss_identity_text (legacy) or the default colleague identity is used.",
+          ),
       })
       .optional(),
     pluginConfig: z
