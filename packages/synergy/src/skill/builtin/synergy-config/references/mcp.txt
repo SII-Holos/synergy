@@ -96,6 +96,22 @@ Disable without removing config:
 { "mcp": { "<name>": { "enabled": false } } }
 ```
 
+## Built-in servers and API keys
+
+Synergy ships `anysearch` and `scholight` as built-in MCP servers, enabled by default without a key. Users can raise rate limits by storing an API key without replacing the server config:
+
+```jsonc
+{ "mcp": { "anysearch": { "apiKey": "as_sk_..." } } }
+```
+
+The stub does NOT take ownership of the name — the built-in server stays managed by Synergy, and the key is injected as `Authorization: Bearer <key>` at connect time. Combine with opt-out markers freely (`{ "enabled": false, "apiKey": "..." }` keeps the key stored while disabled). An empty string clears the key (`{ "apiKey": "" }`).
+
+Rules:
+1. A stub without `type` never becomes a user-owned server; only a full typed entry takes ownership.
+2. `{ "enabled": false }` opts the built-in out; `{ "enabled": true }` is the merge-safe re-enable.
+3. Keys are redacted (`__REDACTED__`) in every config read-back; never log or echo the stored value.
+4. After writing the stub, run `runtime_reload(target: "mcp")` — the reconnect uses the new credential immediately.
+
 ## Converting from other formats
 
 Users often paste configs from Claude Desktop, Cursor, or VS Code. Apply these conversions:

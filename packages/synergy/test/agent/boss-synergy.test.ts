@@ -28,7 +28,7 @@ describe("boss-synergy primary agent", () => {
     expect(agent.prompt).toContain("协调者")
   })
 
-  test("allows the coordination whitelist", () => {
+  test("allows the coordination whitelist (sessions, agenda, memory, notes)", () => {
     const agent = agents["boss-synergy"]
     for (const permission of [
       "boss_spawn",
@@ -37,15 +37,28 @@ describe("boss-synergy primary agent", () => {
       "boss_cancel",
       "boss_project",
       "channel_push",
+      "session_control",
       "session_send",
       "session_read",
       "session_list",
       "session_search",
       "scope_list",
       "agenda_list",
+      "agenda_schedule",
+      "agenda_update",
+      "agenda_cancel",
+      "agenda_trigger",
+      "agenda_watch",
+      "agenda_logs",
+      "memory_get",
       "memory_write",
       "memory_edit",
       "memory_search",
+      "note_list",
+      "note_read",
+      "note_search",
+      "note_write",
+      "note_edit",
       "question",
       "bash",
       "process",
@@ -54,7 +67,7 @@ describe("boss-synergy primary agent", () => {
     }
   })
 
-  test("denies subagent, file, and runtime tools", () => {
+  test("denies subagent, file, runtime, destructive-note, and agenda-internal tools", () => {
     const agent = agents["boss-synergy"]
     for (const permission of [
       "task",
@@ -75,8 +88,8 @@ describe("boss-synergy primary agent", () => {
       "dagwrite",
       "dagread",
       "dagpatch",
-      "note_write",
-      "note_edit",
+      "note_archive",
+      "note_delete",
     ]) {
       expect(action(agent, permission), permission).toBe("deny")
     }
@@ -84,7 +97,7 @@ describe("boss-synergy primary agent", () => {
 
   test("denies unknown tools via the wildcard deny", () => {
     const agent = agents["boss-synergy"]
-    expect(action(agent, "websearch")).toBe("deny")
+    expect(action(agent, "webfetch")).toBe("deny")
     expect(action(agent, "todowrite")).toBe("deny")
   })
 })

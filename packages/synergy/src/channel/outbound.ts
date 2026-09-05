@@ -86,6 +86,18 @@ export namespace ChannelOutbound {
         const session = await SessionManager.getSession(msg.sessionID).catch(() => undefined)
         if (!session?.endpoint || session.endpoint.kind !== "channel") return
 
+        // Runtime Boss Mode: boss-role sessions reply only through explicit
+        // channel_push tool calls (R6). Never auto-deliver a boss terminal
+        // through the bridge — the boss decides what reaches the user, so
+        // nothing is posted unless the boss called channel_push for it.
+        if (session.workflow?.kind === "boss" && session.workflow.role === "boss") {
+          log.debug("skipping outbound bridge for boss-role session (explicit channel_push only)", {
+            sessionID: msg.sessionID,
+            messageID: msg.id,
+          })
+          return
+        }
+
         const channelInfo = session.endpoint.channel
         if (INTERNAL_CHANNEL_TYPES.has(channelInfo.type)) return
         if (!channelInfo.accountId) return

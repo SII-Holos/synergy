@@ -2,9 +2,11 @@ import * as os from "os"
 import {
   DEFAULT_PROTECTED_PATHS,
   defaultRuntimeReadRoots,
-  joinPathLike,
+  expandGitProtectedSubpaths,
+  gitProtectedSubpaths,
   protectedMetadataUnderWritableRoot,
   PROTECTED_METADATA_PATH_NAMES,
+  uniqueRoots,
   isMetadataWriteDenied,
 } from "./policy"
 import { Log } from "@/util/log"
@@ -56,7 +58,7 @@ export interface SandboxPolicyInput {
  */
 export function buildPermissionProfile(input: SandboxPolicyInput): SynergySandboxPermissionProfile {
   const homedir = os.homedir()
-  const protectedNames = PROTECTED_METADATA_PATH_NAMES
+  const protectedNames = PROTECTED_METADATA_PATH_NAMES.filter((name) => name !== ".git")
 
   // Network policy
   const network: SynergyNetworkSandboxPolicy = input.approvedNetwork
@@ -68,7 +70,7 @@ export function buildPermissionProfile(input: SandboxPolicyInput): SynergySandbo
   const writableRoots: string[] = []
   const readOnlySubpaths: string[] = []
   const explicitProtected = input.protectedPaths !== undefined
-  const protectedPaths: string[] = input.protectedPaths ?? DEFAULT_PROTECTED_PATHS(homedir, input.workspace)
+  let protectedPaths: string[] = input.protectedPaths ?? DEFAULT_PROTECTED_PATHS(homedir, input.workspace)
   const dataDenyRoots: string[] = input.dataDenyRoots ?? [homedir]
 
   // Always include platform default read roots
@@ -109,16 +111,22 @@ export function buildPermissionProfile(input: SandboxPolicyInput): SynergySandbo
   }
 
   // Every writable root (including additional project folders) keeps its own
-  // metadata directory read-only. DEFAULT_PROTECTED_PATHS only covers the
-  // primary workspace, so each additional writable root's `.git` must be
-  // registered explicitly or it would become writable by virtue of being
-  // inside a writable root mount.
+  // git tamper surface read-only. DEFAULT_PROTECTED_PATHS only covers the
+  // primary workspace, so each additional writable root's `.git/hooks` and
+  // `.git/config` must be registered explicitly or they would become
+  // writable by virtue of being inside a writable root mount.
   if (!explicitProtected) {
     for (const root of writableRoots) {
-      const gitPath = joinPathLike(root, ".git")
-      if (!protectedPaths.includes(gitPath)) protectedPaths.push(gitPath)
+      for (const gitSubpath of gitProtectedSubpaths(root)) {
+        if (!protectedPaths.includes(gitSubpath)) protectedPaths.push(gitSubpath)
+      }
     }
   }
+  // Whole-directory `.git` entries (platform defaults or caller-provided)
+  // expand into the granular hooks/config subpaths so git index/object/ref
+  // writes keep working under a writable root while the tamper and
+  // code-execution surface stays read-only.
+  protectedPaths = expandGitProtectedSubpaths(uniqueRoots(protectedPaths))
   // Read-only subpaths: protect critical files inside writable roots.
   // For each writable root, ensure its protected metadata subpaths
   // become read-only subpaths in the profile.

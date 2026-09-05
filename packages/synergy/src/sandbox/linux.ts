@@ -4,7 +4,13 @@ import * as fs from "fs"
 import * as crypto from "crypto"
 import type { PrepareLinuxWrapperOpts, SandboxExecutionWrapper } from "./types"
 import { detectPlatform } from "./detect"
-import { DEFAULT_PROTECTED_PATHS, defaultRuntimeReadRoots, joinPathLike, uniqueRoots } from "./policy"
+import {
+  DEFAULT_PROTECTED_PATHS,
+  defaultRuntimeReadRoots,
+  expandGitProtectedSubpaths,
+  joinPathLike,
+  uniqueRoots,
+} from "./policy"
 import { Log } from "@/util/log"
 import { isWsl1 } from "./wsl"
 import { isTarballHelperUpToDate, verifyHelperHash } from "./utils"
@@ -589,18 +595,30 @@ export namespace LinuxBackend {
 
     const homedir = os.homedir()
     const workspace = opts.workspace
+    // Full-network children share the host network namespace but start from a
+    // --tmpfs root, so resolv.conf and CA stores would be invisible. Bind the
+    // network config paths read-only when full networking is approved; every
+    // entry is existence-filtered because bwrap hard-fails on missing sources.
+    const networkConfigRoots =
+      opts.networkMode === "full"
+        ? ["/etc", "/etc/resolv.conf", "/run/systemd/resolve", "/var/run/systemd/resolve"].filter((p) =>
+            fs.existsSync(p),
+          )
+        : []
 
     // Aggregate protected paths: the platform defaults plus every protected
     // path accumulated by the enforcement gate — which includes `<root>/.git`
     // for every writable project root, closing the gap where additional
-    // project folders' git metadata would otherwise be writable. Only paths
-    // that exist on disk are passed to the helper: bwrap hard-fails when a
-    // --ro-bind source is missing, and the helper's ProtectedCreateMonitor
-    // covers the create-new-metadata vector for paths that do not exist yet.
-    const protectedPaths = uniqueRoots([
-      ...DEFAULT_PROTECTED_PATHS(homedir, workspace),
-      ...(opts.protectedPaths ?? []),
-    ]).filter((p) => fs.existsSync(p))
+    // project folders' git metadata would otherwise be writable. Whole-dir
+    // `.git` entries expand into `.git/hooks` + `.git/config` so git
+    // index/object/ref writes keep working while the tamper surface stays
+    // read-only. Only paths that exist on disk are passed to the helper:
+    // bwrap hard-fails when a --ro-bind source is missing, and the helper's
+    // ProtectedCreateMonitor covers the create-new-metadata vector for paths
+    // that do not exist yet.
+    const protectedPaths = expandGitProtectedSubpaths(
+      uniqueRoots([...DEFAULT_PROTECTED_PATHS(homedir, workspace), ...(opts.protectedPaths ?? [])]),
+    ).filter((p) => fs.existsSync(p))
 
     // Build the sandbox permission profile JSON for the helper
     const profile: Record<string, unknown> = {
@@ -610,14 +628,20 @@ export namespace LinuxBackend {
           workspace,
           ...(opts.runtimeReadRoots ?? defaultRuntimeReadRoots(homedir)),
           ...(opts.extraReadRoots ?? []),
+          ...networkConfigRoots,
         ],
         writableRoots: opts.sandboxMode === "workspace_write" ? [workspace, ...(opts.extraWritableRoots ?? [])] : [],
         readOnlySubpaths: protectedPaths,
         protectedPaths,
+        // Without ".git" in the metadata names, the helper's per-root ro-bind
+        // loop and create-monitor no longer blanket-protect `.git` directories;
+        // the granular hooks/config read-only mounts above keep the tamper and
+        // code-execution surface protected while git writes work.
+        protectedMetadataNames: [".agents", ".codex"],
         includePlatformDefaults: true,
       },
       network: {
-        mode: "restricted",
+        mode: opts.networkMode ?? "restricted",
         allowLocalBinding: false,
         allowedUnixSockets: [],
       },

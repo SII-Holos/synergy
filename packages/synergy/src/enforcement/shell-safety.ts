@@ -669,7 +669,11 @@ const UNSAFE_SHELL_TOKENS = [
 ]
 
 function stripAllowedRedirects(command: string): string {
+  // Null-device sinks are not write targets. Recognize stdout/stderr and
+  // combined spellings (`>`, `1>`, `2>`, `&>`, `>>`), optional whitespace
+  // after the operator, and a glued closing paren/brace (`2>/dev/null)`).
   return command
+    .replace(/\s+[12]?&?>>?\s*\/dev\/null(?=[\s;&|(){}]|$)/g, " ")
     .replace(/\s+2>\s*\/dev\/null/g, " ")
     .replace(/\s+2>&1/g, " ")
     .replace(/\s+1>&2/g, " ")

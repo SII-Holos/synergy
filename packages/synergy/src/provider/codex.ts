@@ -11,11 +11,24 @@ import type { ProviderProfile } from "./profile"
 import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin/auth"
 import { AccountUsage } from "./usage"
 import { ProviderAuthRecovery } from "./auth-recovery"
+import {
+  CODEX_PROVIDER_ID,
+  applyReplaySplice,
+  buildRemoteCompactionBody,
+  clearReplayPlanForCacheKey,
+  getReplayPlan,
+  normalizeUsage,
+  parseRemoteCompactionEvents,
+  readSseJsonEvents,
+  remoteCompactionHeaders,
+  type CodexRemoteCompactionUsage,
+  type CodexResponseItem,
+} from "./codex-compaction"
 
 export namespace CodexProvider {
   const log = Log.create({ service: "provider.codex" })
 
-  export const PROVIDER_ID = "openai-codex"
+  export const PROVIDER_ID = CODEX_PROVIDER_ID
   export const BASE_URL = "https://chatgpt.com/backend-api/codex"
   export const DEVICE_URL = "https://auth.openai.com/codex/device"
   export const OAUTH_ISSUER = "https://auth.openai.com"
@@ -706,18 +719,38 @@ export namespace CodexProvider {
     return typeof value === "string" && value.trim() ? value.trim() : undefined
   }
 
-  function rewriteCodexBody(body: BodyInit | null | undefined) {
-    if (typeof body !== "string") return { body, promptCacheKey: undefined }
+  function rewriteCodexBody(body: BodyInit | null | undefined): {
+    body: BodyInit | null | undefined
+    promptCacheKey: string | undefined
+    spliced: boolean
+  } {
+    if (typeof body !== "string") return { body, promptCacheKey: undefined, spliced: false }
     try {
       const parsed = JSON.parse(body)
       const promptCacheKey = extractPromptCacheKey(parsed)
-      if (parsed && typeof parsed === "object" && "max_output_tokens" in parsed) {
-        delete parsed.max_output_tokens
-        return { body: JSON.stringify(parsed), promptCacheKey }
+      if (!parsed || typeof parsed !== "object") return { body, promptCacheKey, spliced: false }
+      const record = parsed as Record<string, unknown>
+      // Codex remote-compaction replay: when a replay plan is registered for
+      // this session (prompt_cache_key) and the serialized body is a normal
+      // turn, splice the persisted replacement history over the compacted
+      // region. The splice is conservative — when the body shape does not
+      // match, applyReplaySplice returns undefined and the request proceeds
+      // unchanged (local-history replay).
+      const plan = promptCacheKey ? getReplayPlan(promptCacheKey) : undefined
+      if (plan) {
+        const spliced = applyReplaySplice(record, plan)
+        if (spliced) {
+          if ("max_output_tokens" in spliced) delete spliced.max_output_tokens
+          return { body: JSON.stringify(spliced), promptCacheKey, spliced: true }
+        }
       }
-      return { body, promptCacheKey }
+      if ("max_output_tokens" in record) {
+        delete record.max_output_tokens
+        return { body: JSON.stringify(record), promptCacheKey, spliced: false }
+      }
+      return { body, promptCacheKey, spliced: false }
     } catch {
-      return { body, promptCacheKey: undefined }
+      return { body, promptCacheKey: undefined, spliced: false }
     }
   }
 
@@ -742,27 +775,54 @@ export namespace CodexProvider {
             })
           }
 
-          const headers = new Headers(input instanceof Request ? input.headers : init?.headers)
-          if (input instanceof Request && init?.headers) {
-            for (const [key, value] of new Headers(init.headers)) headers.set(key, value)
-          }
-          headers.set("Authorization", `Bearer ${access}`)
-          for (const [key, value] of Object.entries(codexHeaders(access))) {
-            headers.set(key, value)
+          const rawBody = await codexRequestBody(input, init)
+          const attempt = async (rewritten: ReturnType<typeof rewriteCodexBody>) => {
+            const headers = new Headers(input instanceof Request ? input.headers : init?.headers)
+            if (input instanceof Request && init?.headers) {
+              for (const [key, value] of new Headers(init.headers)) headers.set(key, value)
+            }
+            headers.set("Authorization", `Bearer ${access}`)
+            for (const [key, value] of Object.entries(codexHeaders(access))) {
+              headers.set(key, value)
+            }
+            if (rewritten.promptCacheKey) {
+              headers.set("session_id", rewritten.promptCacheKey)
+              headers.set("x-client-request-id", rewritten.promptCacheKey)
+            }
+            const requestInit: RequestInit = {
+              ...init,
+              headers,
+            }
+            if (rewritten.body !== undefined) requestInit.body = rewritten.body
+            // The body is always re-supplied as a string on `requestInit`, so
+            // the original Request's own stream is never consumed by fetch and
+            // the same input can be reused for the replay fallback.
+            return fetch(input, requestInit)
           }
 
-          const rewritten = rewriteCodexBody(await codexRequestBody(input, init))
-          if (rewritten.promptCacheKey) {
-            headers.set("session_id", rewritten.promptCacheKey)
-            headers.set("x-client-request-id", rewritten.promptCacheKey)
+          const rewritten = rewriteCodexBody(rawBody)
+          const response = await attempt(rewritten)
+          if (
+            !response.ok &&
+            rewritten.spliced &&
+            rewritten.promptCacheKey &&
+            // Auth/rate-limit failures are handled by ProviderAuthRecovery on
+            // the returned response; only a replay-specific rejection (private
+            // protocol drift, artifact expiry, account change) warrants a retry.
+            !classifyError({ status: response.status })
+          ) {
+            // The backend rejected the opaque artifact. This is a best-effort
+            // optimization: drop the plan so later turns stop splicing, then
+            // retry once with the original local-summary body so the portable
+            // summary keeps the user turn working.
+            clearReplayPlanForCacheKey(rewritten.promptCacheKey)
+            log.warn("codex replay splice rejected; retrying with local history", {
+              providerID,
+              status: response.status,
+            })
+            return attempt(rewriteCodexBody(rawBody))
           }
-
-          const requestInit: RequestInit = {
-            ...init,
-            headers,
-          }
-          if (rewritten.body !== undefined) requestInit.body = rewritten.body
-          return fetch(input, requestInit)
+          return response
         },
         refresh: async (auth) => {
           return refreshAuth(auth, fetch, providerID)
@@ -772,6 +832,84 @@ export namespace CodexProvider {
   }
 
   export const codexFetch = codexFetchFor(PROVIDER_ID)
+
+  export type RemoteCompactionV2Result = {
+    compactionItem: CodexResponseItem
+    usage?: CodexRemoteCompactionUsage
+  }
+
+  /**
+   * Request server-side compaction from the codex Responses endpoint (Codex
+   * private protocol v2): a normal streaming `/responses` request whose input
+   * ends with `compaction_trigger` and whose headers carry
+   * `x-codex-beta-features: remote_compaction_v2`. Returns exactly one opaque
+   * `compaction` output item. Any non-2xx response or malformed stream throws
+   * so the caller can fall back to the local text-summary track.
+   */
+  export async function requestRemoteCompactionV2(input: {
+    providerID?: string
+    modelID: string
+    items: CodexResponseItem[]
+    sessionID?: string
+    signal?: AbortSignal
+    fetchFn?: FetchLike
+  }): Promise<RemoteCompactionV2Result> {
+    const providerID = input.providerID ?? PROVIDER_ID
+    const fetchFn = input.fetchFn ?? fetch
+    const response = await ProviderAuthRecovery.execute({
+      providerID,
+      request: async () => {
+        const access = await resolveToken({ providerID, refreshIfExpiring: true, fetch: fetchFn })
+        if (!access) {
+          throw new AuthError({
+            providerID,
+            code: "codex_auth_missing",
+            message: "No Codex credentials stored. Run `synergy auth login` and choose OpenAI Codex.",
+            reloginRequired: true,
+          })
+        }
+        const headers = remoteCompactionHeaders({
+          accessToken: access,
+          accountID: chatGPTAccountID(access),
+          originator: "codex_cli_rs",
+        })
+        return fetchFn(`${baseURL()}/responses`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(
+            buildRemoteCompactionBody({
+              modelID: input.modelID,
+              items: input.items,
+              sessionID: input.sessionID,
+            }),
+          ),
+          signal: input.signal,
+        })
+      },
+      refresh: async (auth) => {
+        return refreshAuth(auth, fetchFn, providerID)
+      },
+      classify: classifyError,
+      throwOnActionRequired: false,
+    })
+    if (!response.ok) {
+      const payload = await safeJson(response.clone()).catch(() => ({}))
+      const message = errorMessage(payload, `Codex remote compaction request failed with status ${response.status}.`)
+      throw new Error(`Codex remote compaction v2 failed: ${message}`)
+    }
+    // Pull-based, per-event-bounded SSE read: never buffer the whole stream
+    // (a malformed or misbehaving upstream must not grow Control Plane memory
+    // during the 90s window), and release the reader on every terminal path.
+    if (!response.body) {
+      throw new Error("Codex remote compaction v2 response had no body stream.")
+    }
+    const events: unknown[] = []
+    for await (const event of readSseJsonEvents(response.body, { signal: input.signal })) {
+      events.push(event)
+    }
+    const parsed = parseRemoteCompactionEvents(events)
+    return { compactionItem: parsed.compactionItem, usage: normalizeUsage(parsed.usage) }
+  }
 
   export function classifyError(input: {
     status?: number

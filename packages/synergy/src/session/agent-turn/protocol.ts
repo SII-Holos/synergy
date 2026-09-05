@@ -121,6 +121,15 @@ export namespace AgentTurnProtocol {
           .strict(),
       ),
       activeToolIDs: z.array(z.string()).optional(),
+      codexReplay: z
+        .object({
+          replacementHistory: z.array(z.unknown()),
+          summaryText: z.string(),
+        })
+        .optional()
+        .describe(
+          "Codex remote-compaction replay plan: persisted replacement history (retained user messages + opaque compaction item) plus the exact stored summary text used to locate the region to replace in the serialized request body.",
+        ),
       retries: z.number().int().nonnegative().optional(),
       maxOutputTokens: z.number().int().positive().optional(),
       prepared: z

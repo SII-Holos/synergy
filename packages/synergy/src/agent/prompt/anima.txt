@@ -27,7 +27,7 @@ Use the `since` parameter on list tools to focus on recent activity.
 
 - `agenda_list` — See all existing scheduled tasks. What's active? What's pending? Are there stale items?
 - `agenda_logs` — Check execution history. Did anything fail? Do any items have consecutive errors?
-- `websearch` — Glance at what's happening in domains relevant to your user.
+- `mcp__anysearch__search` — Glance at what's happening in domains relevant to your user.
 
 # Thinking — Three Dimensions
 

@@ -15,11 +15,11 @@ Prefetch only what the question demands — do not deep-read papers or synthesiz
 
 **Multi-pass, recency-first:**
 
-1. **First pass** (cutting-edge): `arxiv_search` with `startDate` = 6 months ago — find the latest work
+1. **First pass** (cutting-edge): `mcp__scholight__search_papers` with a date range starting 6 months ago — find the latest work
 2. **Second pass** (recent): broaden to 12 months if the first pass yields too few results
 3. **Third pass** (foundational, only if the topic requires historical context): no date filter — find seminal works
-Do not use `websearch` for paper discovery — arXiv is the primary source for CS/AI/ML research, and `websearch` results in these fields largely duplicate arXiv listings without the metadata, recency filtering, or structured output that `arxiv_search` provides.
-If the field is genuinely not well-represented on arXiv (e.g., clinical medicine, wet-lab biology, social sciences, humanities), state the limitation clearly in Blockers. Do not attempt to compensate with `websearch` — the quality and searchability gap is too large for reliable research work.
+Do not use `mcp__anysearch__search` for paper discovery — `mcp__scholight__search_papers` covers arXiv and scholarly indexes, and general web results lack its metadata, recency filtering, and structured output.
+If the field is genuinely not well-represented on arXiv (e.g., clinical medicine, wet-lab biology, social sciences, humanities), state the limitation clearly in Blockers. Do not attempt to compensate with general web search — the metadata and quality gap is too large for reliable triage work; flag when a `strength: "thorough"` scholarly pass or the `scholar` agent would be needed instead.
 
 **Search from the problem, not the solution:**
 - Poor: searching "transformer architecture" when the user wants to understand attention mechanisms
@@ -56,7 +56,7 @@ completed | blocked | failed
 One dense sentence: how many papers found, date range, what the corpus suggests about the field.
 
 ## Evidence
-- `arxiv_search(query="...", startDate="...")` → N results
+- `mcp__scholight__search_papers(query="...", strength="standard")` → N results
 
 ## Findings
 

@@ -12,27 +12,27 @@ describe("SearchGuard", () => {
     )
   })
 
-  test("detects exact duplicate searches per session", () => {
+  test("detects exact duplicate fetches per session", () => {
     SearchGuard.reset()
 
-    const input = { query: "retrieval augmented generation", categories: "science" }
-    SearchGuard.recordAttempt("ses_test", "websearch", input)
+    const input = { url: "https://example.com/docs", format: "markdown" }
+    SearchGuard.recordAttempt("ses_test", "webfetch", input)
 
-    const duplicate = SearchGuard.checkDuplicate("ses_test", "websearch", input)
+    const duplicate = SearchGuard.checkDuplicate("ses_test", "webfetch", input)
     expect(duplicate?.output).toContain("Search skipped")
   })
 
-  test("does not treat changed filters as the same search", () => {
+  test("does not treat changed format as the same fetch", () => {
     SearchGuard.reset()
 
-    SearchGuard.recordAttempt("ses_test", "arxiv_search", {
-      query: "agent memory",
-      startDate: "2026-01-01",
+    SearchGuard.recordAttempt("ses_test", "webfetch", {
+      url: "https://example.com/docs",
+      format: "markdown",
     })
 
-    const duplicate = SearchGuard.checkDuplicate("ses_test", "arxiv_search", {
-      query: "agent memory",
-      startDate: "2025-01-01",
+    const duplicate = SearchGuard.checkDuplicate("ses_test", "webfetch", {
+      url: "https://example.com/docs",
+      format: "text",
     })
 
     expect(duplicate).toBeUndefined()
@@ -41,8 +41,8 @@ describe("SearchGuard", () => {
   test("detects very similar recent queries", () => {
     expect(
       SearchGuard.hasSimilarQueries([
-        { tool: "websearch", query: "large language model memory systems" },
-        { tool: "websearch", query: "memory systems large language model" },
+        { tool: "webfetch", query: "large language model memory systems" },
+        { tool: "webfetch", query: "memory systems large language model" },
       ]),
     ).toBe(true)
   })

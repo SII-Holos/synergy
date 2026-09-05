@@ -398,12 +398,13 @@ export namespace Config {
     if (result.question === undefined) result.question = { timeout: 3600 }
     else if (result.question.timeout === undefined) result.question.timeout = 3600
     if (result.compaction === undefined) {
-      result.compaction = { auto: true, prune: true, overflowThreshold: 0.85, maxHistoryImages: 8 }
+      result.compaction = { auto: true, prune: true, overflowThreshold: 0.85, maxHistoryImages: 8, codexRemote: false }
     } else {
       if (result.compaction.auto === undefined) result.compaction.auto = true
       if (result.compaction.prune === undefined) result.compaction.prune = true
       if (result.compaction.overflowThreshold === undefined) result.compaction.overflowThreshold = 0.85
       if (result.compaction.maxHistoryImages === undefined) result.compaction.maxHistoryImages = 8
+      if (result.compaction.codexRemote === undefined) result.compaction.codexRemote = false
     }
     if (result.library) {
       if (result.library.memory === undefined) result.library.memory = { enabled: true }
@@ -1251,6 +1252,7 @@ export namespace Config {
         if (server?.oauth?.clientSecret) server.oauth.clientSecret = REDACTED_SENTINEL
         if (server?.headers) redactSecretShapedRecord(server.headers)
         if (server?.environment) redactSecretShapedRecord(server.environment)
+        if (server?.apiKey) server.apiKey = REDACTED_SENTINEL
       }
     }
     if (result.agent) {
@@ -1312,6 +1314,9 @@ export namespace Config {
         }
         if (server?.headers) mergeSecretShapedRecord(server.headers, storedServer?.headers)
         if (server?.environment) mergeSecretShapedRecord(server.environment, storedServer?.environment)
+        if (server?.apiKey === REDACTED_SENTINEL && storedServer?.apiKey) {
+          server.apiKey = storedServer.apiKey
+        }
       }
     }
     if (result.agent && stored.agent) {

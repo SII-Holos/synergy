@@ -1,4 +1,10 @@
-import { lexCompoundCommands, splitCompoundCommands, stripWrappers } from "./shell-command"
+import {
+  extractShellHeredocBodies,
+  lexCompoundCommands,
+  splitCompoundCommands,
+  stripWrappers,
+  walkShellChars,
+} from "./shell-command"
 
 export { splitCompoundCommands, stripWrappers } from "./shell-command"
 
@@ -109,6 +115,8 @@ export interface GateOptions {
   pluginToolCapabilities?: Record<string, PluginToolCapabilityMap>
   /** Pre-loaded approval records keyed by plugin ID. If absent, no approval check is performed. */
   pluginApprovals?: Record<string, PluginApprovalCapabilities>
+  /** Session-scoped isolation key for the controlled temporary root (autonomous profile). */
+  sessionKey?: string
   originalCheckout?: string
   /** Additional directories where read-only access is treated as inside-workspace.
    *  Write operations are never allowed through readRoots. */
@@ -253,6 +261,24 @@ const NETWORK_PATTERNS = [
   "pip3 install",
   "gem install",
   "cargo install",
+  // VCS network operations
+  "git fetch",
+  "git pull",
+  "git clone",
+  "git push",
+  "git ls-remote",
+  // JS/TS package managers
+  "npm install",
+  "npm ci ",
+  "bun install",
+  "bun add",
+  "pnpm install",
+  "pnpm add",
+  "yarn install",
+  "yarn add",
+  // Go module downloads
+  "go get ",
+  "go mod download",
 ]
 
 const SAFE_PSEUDO_PATHS = new Set([
@@ -268,8 +294,14 @@ const SAFE_PSEUDO_PATHS = new Set([
   "/dev/fd/2",
 ])
 
+// Null-device sinks (`2>/dev/null`, `>/dev/null`, `&>/dev/null`, …) are not
+// filesystem write targets. The extractors below must never surface them as
+// external paths, including when a closing `)`/`}` is glued on inside a
+// subshell or loop body (`2>/dev/null)`).
+const NULL_DEVICE_SINK = /^\/dev\/(?:null|zero|random|urandom|stdin|stdout|stderr|fd\/\d)$/
+
 const SESSION_STATE_TOOLS = new Set(["dagwrite", "dagpatch", "todowrite", "task", "task_cancel"])
-const NETWORK_READ_TOOLS = new Set(["webfetch", "websearch", "arxiv_search", "arxiv_download"])
+const NETWORK_READ_TOOLS = new Set(["webfetch"])
 
 const AGENT_ORCHESTRATION_TOOLS = new Set([
   "runtime_reload",
@@ -309,7 +341,10 @@ function isDestructive(command: string): string | null {
 
 function extractAbsolutePaths(command: string): string[] {
   const paths: string[] = []
-  const pathPattern = /(?:\s|"|'|>|<|^|\|)(\/[^\s"'|;&]+)/g
+  // Closing shell punctuation (`)`, `}`) terminates a path candidate: a null
+  // device sink glued to a subshell/brace close (`2>/dev/null)`) must never be
+  // extracted as the pseudo path "/dev/null)".
+  const pathPattern = /(?:\s|"|'|>|<|^|\|)(\/[^\s"'|;&)}]+)/g
   // Mask gh api jq expression values before extracting absolute paths:
   // jq syntax such as the null-coalescing operator (//) is not a filesystem
   // path. Masking only jq arguments (--jq/-q) inside gh api invocations keeps
@@ -323,7 +358,9 @@ function extractAbsolutePaths(command: string): string[] {
   }
   let match: RegExpExecArray | null
   while ((match = pathPattern.exec(masked)) !== null) {
-    const candidate = match[1]
+    // Normalize any trailing closing punctuation so a sink glued to a closing
+    // paren/brace still matches SAFE_PSEUDO_PATHS below.
+    const candidate = match[1].replace(/[)}]+$/, "")
     if (candidate.includes("/") && !SAFE_PSEUDO_PATHS.has(candidate)) paths.push(candidate)
   }
   // Post-filter: reject likely non-filesystem paths (URL fragments, commit message artifacts)
@@ -336,6 +373,154 @@ function extractAbsolutePaths(command: string): string[] {
     /:\/\//,
   ]
   return paths.filter((p) => !NON_PATH_PATTERNS.some((pat) => pat.test(p)))
+}
+
+function isNullDeviceSink(candidate: string): boolean {
+  const normalized = candidate.replace(/[)}]+$/, "")
+  return NULL_DEVICE_SINK.test(normalized)
+}
+
+/**
+ * Replace heredoc body lines with same-length blanks so body content is
+ * literal data for every downstream extractor. Character offsets stay
+ * aligned; headers and delimiters remain untouched.
+ */
+function maskHeredocBodies(segment: string): string {
+  const heredocs = extractShellHeredocBodies(segment)
+  if (heredocs.length === 0) return segment
+  const lines = segment.split("\n")
+  for (const heredoc of heredocs) {
+    if (!heredoc.body) continue
+    const bodyLineCount = heredoc.body.split("\n").length
+    for (let offset = 0; offset < bodyLineCount; offset++) {
+      const lineIndex = heredoc.headerLine + 1 + offset
+      const line = lines[lineIndex]
+      if (line === undefined) break
+      lines[lineIndex] = " ".repeat(line.length)
+    }
+  }
+  return lines.join("\n")
+}
+
+/**
+ * Extract statically resolvable write-redirect targets (`>`, `>>`, `>|`,
+ * `&>`, `&>>`, `N>`, `<>`, `>&word`) from a segment through a quote-aware
+ * character walk. A redirect target is a genuine write even when the rest of
+ * the segment classifies read-only (e.g. `git status > /tmp/out`).
+ *
+ * A `>` is only an operator when the shell parser says so: inside quotes it
+ * is string content (`--grep='a > /tmp/y'`), inside arithmetic (`(( i > 5 ))`)
+ * it is a comparison, inside `[[ ]]` a string comparison, and inside heredoc
+ * bodies it is literal data. Heredoc/herestring and `<`-family input
+ * redirects, fd duplication (`2>&1`, `<&1`), fd closing (`3>&-`), process
+ * substitution (`>(cmd)`), dynamic targets (`$var`, backtick), and
+ * null-device sinks are excluded.
+ */
+function writeRedirectTargets(segment: string, cwd: string): string[] {
+  // Mask heredoc bodies first: their lines are literal data, not operators.
+  // Same-length replacement keeps walker indices aligned.
+  const maskedSegment = extractShellHeredocBodies(segment).reduce(
+    (current, heredoc) => (heredoc.body ? current.replace(heredoc.body, " ".repeat(heredoc.body.length)) : current),
+    segment,
+  )
+  const targets: string[] = []
+  const pushTarget = (word: string) => {
+    let target = word.trim().replace(/[)}\]]+$/, "")
+    if (
+      target.length > 1 &&
+      ((target.startsWith('"') && target.endsWith('"')) || (target.startsWith("'") && target.endsWith("'")))
+    ) {
+      target = target.slice(1, -1)
+    }
+    // Dynamic targets cannot be resolved statically; the OS sandbox (when
+    // active) is the boundary for those. Sinks are not file paths.
+    if (!target || target === "-" || /[$`]/.test(target) || isNullDeviceSink(target)) return
+    targets.push(target.startsWith("/") || target.startsWith("~") ? target : `${cwd}/${target}`)
+  }
+  const readWord = (start: number): { word: string; end: number } => {
+    let cursor = start
+    while (cursor < maskedSegment.length && /\s/.test(maskedSegment[cursor] ?? "")) cursor++
+    let word = ""
+    let quote: string | undefined
+    while (cursor < maskedSegment.length) {
+      const char = maskedSegment[cursor] ?? ""
+      if (quote) {
+        if (char === quote) quote = undefined
+        else word += char
+        cursor++
+        continue
+      }
+      if (char === '"' || char === "'") {
+        quote = char
+        cursor++
+        continue
+      }
+      if (char === "\\" && cursor + 1 < maskedSegment.length) {
+        word += maskedSegment[cursor + 1] ?? ""
+        cursor += 2
+        continue
+      }
+      if (/[\s;|&()<>]/.test(char)) break
+      word += char
+      cursor++
+    }
+    return { word, end: cursor - 1 }
+  }
+  let testDepth = 0
+  walkShellChars(
+    maskedSegment,
+    (char, index, quote, context) => {
+      if (quote || context.arithmetic) return
+      // `[[` ... `]]` test contexts: a bare `>` is a string comparison.
+      if (
+        char === "[" &&
+        maskedSegment[index + 1] === "[" &&
+        (index === 0 || /[\s;&|({}]/.test(maskedSegment[index - 1] ?? ""))
+      ) {
+        testDepth++
+        return index
+      }
+      if (char === "]" && maskedSegment[index + 1] === "]" && testDepth > 0) {
+        testDepth--
+        return index
+      }
+      if (testDepth > 0) return
+      let operatorLength = 0
+      let targetStart = -1
+      const next = maskedSegment[index + 1]
+      if (char === ">") {
+        if (next === ">" || next === "|") {
+          operatorLength = 2
+          targetStart = index + 2
+        } else if (next === "&") {
+          // `>&word` (word not a fd number/-) is a combined write redirect;
+          // `>&N` / `>&-` are fd duplication/closing with no file target.
+          const after = maskedSegment[index + 2]
+          if (after !== undefined && !/[\d-]/.test(after)) {
+            operatorLength = 2
+            targetStart = index + 2
+          } else {
+            return index + 1
+          }
+        } else {
+          operatorLength = 1
+          targetStart = index + 1
+        }
+      } else if (char === "&" && next === ">") {
+        operatorLength = maskedSegment[index + 2] === ">" ? 3 : 2
+        targetStart = index + operatorLength
+      } else if (char === "<" && next === ">") {
+        operatorLength = 2
+        targetStart = index + 2
+      }
+      if (operatorLength === 0) return
+      const { word, end } = readWord(targetStart)
+      if (word) pushTarget(word)
+      return Math.max(end, index)
+    },
+    { comments: true, backticks: true },
+  )
+  return targets
 }
 function pathFromHashlinePatch(input: unknown): string | undefined {
   if (typeof input !== "string") return undefined
@@ -468,6 +653,9 @@ function extractShellPathArguments(command: string, cwd: string): string[] {
       }
       if (name === "chmod" && (raw.startsWith("+") || /^\d+$/.test(raw))) continue
       const arg = raw.replace(/^["']/, "").replace(/["']$/, "")
+      // Redirect targets (e.g. `2>/dev/null` after `tee out 2>/dev/null`) are
+      // never plain operands, and null-device sinks are not file paths.
+      if (/[<>]/.test(arg) || isNullDeviceSink(arg)) continue
       paths.push(arg.startsWith("/") || arg.startsWith("~") || /^\$(\{?HOME\}?)/.test(arg) ? arg : `${cwd}/${arg}`)
     }
   }
@@ -719,6 +907,7 @@ export namespace EnforcementGate {
       trustedRoots,
       execPolicy,
       synergyRoot,
+      sessionKey,
     } = options
     const profileId = ControlProfileCompiler.normalize(rawProfileId)
     const trustedRootList = trustedRoots ?? []
@@ -727,6 +916,7 @@ export namespace EnforcementGate {
       workspace: activeWorkspace,
       workspaceType,
       trustedRoots: trustedRootList,
+      sessionKey,
     })
 
     if (!resolved.valid) {
@@ -734,9 +924,13 @@ export namespace EnforcementGate {
     }
     const auditRecords: AuditRecord[] = []
     const pendingCapabilities = new Set<string>()
-    // Accumulated sandbox-approved paths across all evaluate() calls
+    // Accumulated sandbox-approved paths across all evaluate() calls.
+    // The write seed includes the profile's own writable roots (workspace,
+    // trusted roots, and the autonomous controlled temporary root), so the
+    // sandbox permission profile permits the same write set the profile
+    // boundary declares.
     const approvedReadPaths = new Set<string>(trustedRootList)
-    const approvedWritePaths = new Set<string>(trustedRootList)
+    const approvedWritePaths = new Set<string>([...trustedRootList, ...(resolved.filesystem.writeRoots ?? [])])
     const pathOptions = { activeWorkspace, originalCheckout, readRoots, trustedRoots }
     let approvedNetwork = false
     const approvalCache = new ApprovalCache()
@@ -1003,25 +1197,42 @@ export namespace EnforcementGate {
           classifyPathCapability(caps, candidate, { ...pathOptions, write: aggregateWriteCapable })
         }
         for (const segment of pathSegments) {
-          const segmentTokens = shellTokenize(segment)
+          // Heredoc bodies are literal data, not operators or operands: mask
+          // them before every extractor so body content (`line > /tmp/x`)
+          // never classifies as a redirect or a path argument.
+          const maskedSegment = maskHeredocBodies(segment)
+          const segmentTokens = shellTokenize(maskedSegment)
           const entrySemantics = segmentTokens !== undefined && PATHNAME_MUTATING_COMMANDS.has(segmentTokens[0]!)
           const containmentOptions = entrySemantics ? ({ followFinalSymlink: false } as const) : {}
-          const writeCapable = aggregateWriteCapable || ShellSafety.classifyBashRisk(segment) !== "shell_read"
-          const pathCandidates = [...extractAbsolutePaths(segment), ...extractShellPathArguments(segment, cwd)].filter(
-            (candidate) => !BashVirtualPath.isShellCandidate(candidate),
-          )
+          // A bare `[[ ... ]]` conditional without command substitution is a
+          // string/numeric test: `[[ $a > /tmp/z ]]` compares, it does not
+          // write. Aggregate compound risk stays conservative.
+          const bareTestCommand = /^\s*\[\[.*\]\]\s*$/.test(segment) && !/\$\(|`/.test(segment)
+          const writeCapable =
+            aggregateWriteCapable || (ShellSafety.classifyBashRisk(segment) !== "shell_read" && !bareTestCommand)
+          const segmentWriteTargets = writeRedirectTargets(maskedSegment, cwd)
+          const pathCandidates = [
+            ...new Set([
+              ...extractAbsolutePaths(maskedSegment),
+              ...extractShellPathArguments(maskedSegment, cwd),
+              ...segmentWriteTargets,
+            ]),
+          ].filter((candidate) => !BashVirtualPath.isShellCandidate(candidate) && !isNullDeviceSink(candidate))
           if (!writeCapable || aggregateWriteCapable) {
             for (const candidate of pathCandidates) {
-              classifyProtectedPathCapability(caps, candidate, writeCapable ? "write" : "read", {
+              // A statically resolvable write-redirect target is a genuine
+              // write even when the segment itself is read-only.
+              const write = writeCapable || segmentWriteTargets.includes(candidate)
+              classifyProtectedPathCapability(caps, candidate, write ? "write" : "read", {
                 activeWorkspace,
                 originalCheckout,
                 synergyRoot,
               })
-              classifyPathCapability(caps, candidate, { ...pathOptions, write: writeCapable, ...containmentOptions })
+              classifyPathCapability(caps, candidate, { ...pathOptions, write, ...containmentOptions })
             }
             continue
           }
-          const copyOperands = resolveCopyOperands(segment, cwd)
+          const copyOperands = resolveCopyOperands(maskedSegment, cwd)
           if (copyOperands === undefined) {
             for (const candidate of pathCandidates) {
               classifyProtectedPathCapability(caps, candidate, "write", {

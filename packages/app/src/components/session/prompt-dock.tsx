@@ -82,7 +82,7 @@ export function PromptDock(props: {
       ref={props.ref}
       classList={{
         "relative md:absolute md:inset-x-0 md:bottom-0 flex flex-col justify-center items-center z-50 px-0 pointer-events-none safe-bottom pb-0 md:pb-3": true,
-        "pt-12": !props.isNewSession(),
+        "md:pt-12": !props.isNewSession(),
       }}
       style={{
         transform: props.isNewSession() ? "translateY(-35vh)" : "translateY(0)",

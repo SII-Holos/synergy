@@ -144,6 +144,14 @@ function buildMcpPatch(
   patch: Record<string, unknown>,
 ) {
   const newMcp: Record<string, Record<string, unknown>> = {}
+  // Carry `enabled`-only stubs forward: they are opt-out/opt-in markers for
+  // built-in servers, not editable server cards, and the mcp config domain
+  // merges deep, so an omitted stub would survive every save and keep the
+  // patch permanently dirty.
+  for (const [key, value] of Object.entries(cfg.mcp ?? {})) {
+    const mcp = value as Record<string, unknown>
+    if (typeof mcp.type !== "string") newMcp[key] = { ...mcp }
+  }
   for (const entry of state.mcps.entries) {
     if (!entry.key.trim()) continue
     const key = entry.key.trim()
@@ -188,6 +196,28 @@ function buildMcpPatch(
     }
 
     newMcp[key] = base
+  }
+
+  // Built-in server toggles + API keys ride on the same stub: switching off
+  // writes the opt-out marker, switching back on writes a bare `enabled:
+  // true` stub, a non-empty key draft writes the key, and an explicit clear
+  // writes the empty-string marker. Unchanged fields stay out of the stub so
+  // the deep merge preserves whatever is already stored.
+  for (const builtin of state.mcps.builtins) {
+    const configured = cfg.mcp?.[builtin.name]
+    const stubConfigured =
+      configured && typeof configured === "object" ? (configured as Record<string, unknown>) : undefined
+    const enabled = !stubConfigured || stubConfigured.enabled !== false
+    const trimmedKey = builtin.apiKeyDraft.trim()
+    const keyChanged = trimmedKey !== "" || (builtin.clearApiKey && builtin.keyConfigured)
+    if (builtin.toggle === enabled && !keyChanged) continue
+    // Merge onto the carried-forward stub so untouched stored fields (an
+    // existing key alongside an opt-out marker, for example) survive.
+    const stub: Record<string, unknown> = { ...(newMcp[builtin.name] ?? {}) }
+    if (builtin.toggle !== enabled) stub.enabled = builtin.toggle
+    if (trimmedKey !== "") stub.apiKey = trimmedKey
+    else if (builtin.clearApiKey && builtin.keyConfigured) stub.apiKey = ""
+    newMcp[builtin.name] = stub
   }
 
   if (JSON.stringify(newMcp) !== JSON.stringify(cfg.mcp ?? {})) patch.mcp = newMcp
@@ -250,12 +280,14 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
     prune: runtime.compactionPrune === "true",
     overflowThreshold: boundedNumber(runtime.compactionOverflowThreshold, 0.5, 1),
     maxHistoryImages: nonNegativeInteger(runtime.compactionMaxHistoryImages),
+    codexRemote: runtime.compactionCodexRemote === "true",
   }
   const currentCompaction = {
     auto: cfg.compaction?.auto !== false,
     prune: cfg.compaction?.prune !== false,
     overflowThreshold: cfg.compaction?.overflowThreshold ?? Number(UI_DEFAULTS.compactionOverflowThreshold),
     maxHistoryImages: cfg.compaction?.maxHistoryImages ?? Number(UI_DEFAULTS.compactionMaxHistoryImages),
+    codexRemote: cfg.compaction?.codexRemote === true,
   }
   if (
     compaction.overflowThreshold !== undefined &&
@@ -317,6 +349,20 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
     (bossBriefingIntervalDays !== null || currentBossBriefingIntervalDays !== undefined)
   ) {
     experimental.boss_briefing_interval_days = bossBriefingIntervalDays
+  }
+
+  const currentBossPersona = cfg.experimental?.boss_persona
+  const nextBossPersona = bossPersonaFromRuntime(runtime)
+  // null is the only value that removes a stored persona, and a null clear is
+  // meaningful only when the server actually holds a value (undefined would
+  // keep the stored value through the merge). bossName never participates: it
+  // is not config and is persisted directly to the shared memory library.
+  const hasCurrentBossPersona = currentBossPersona !== undefined && currentBossPersona !== null
+  if (
+    (nextBossPersona !== null || hasCurrentBossPersona) &&
+    JSON.stringify(nextBossPersona) !== JSON.stringify(currentBossPersona ?? null)
+  ) {
+    experimental.boss_persona = nextBossPersona
   }
 
   if (Object.keys(experimental).length) {
@@ -580,6 +626,24 @@ function buildSkillsPatch(cfg: Config, state: SettingsState, patch: Record<strin
   if (Object.keys(next).length === 0) return
 
   patch.skills = { compatibility: next }
+}
+
+/** Materialize the runtime boss persona draft. null clears a stored persona;
+ * undefined means the draft carries no valid intent and nothing is emitted. */
+function bossPersonaFromRuntime(runtime: SettingsState["runtime"]): Record<string, unknown> | null | undefined {
+  const { bossPersonaPreset } = runtime
+  if (bossPersonaPreset === "none") return null
+  if (bossPersonaPreset === "custom") {
+    return {
+      preset: "custom",
+      formality: boundedNumber(runtime.bossPersonaFormality, 0, 1) ?? 0.5,
+      conciseness: boundedNumber(runtime.bossPersonaConciseness, 0, 1) ?? 0.5,
+      proactiveness: boundedNumber(runtime.bossPersonaProactiveness, 0, 1) ?? 0.5,
+      warmth: boundedNumber(runtime.bossPersonaWarmth, 0, 1) ?? 0.5,
+    }
+  }
+  if (bossPersonaPreset !== "project_manager" && bossPersonaPreset !== "ops_assistant") return undefined
+  return { preset: bossPersonaPreset }
 }
 
 function parseList(value: string): string[] {

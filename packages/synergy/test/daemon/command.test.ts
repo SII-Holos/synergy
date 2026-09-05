@@ -45,7 +45,6 @@ describe("daemon.command", () => {
     process.env.SYNERGY_DISABLE_PRUNE = "1"
     process.env.SYNERGY_EXPERIMENTAL = "1"
     process.env.SYNERGY_EXPERIMENTAL_LSP_TOOL = "true"
-    process.env.SYNERGY_SEARXNG_URL = "https://search.example"
     process.env.SYNERGY_BIN_PATH = "/custom/bin/synergy"
     process.env.SYNERGY_CLIENT = "web"
     process.env.SYNERGY_CALLER = "vscode"
@@ -63,7 +62,6 @@ describe("daemon.command", () => {
     expect(spec.env.SYNERGY_DISABLE_PRUNE).toBe("1")
     expect(spec.env.SYNERGY_EXPERIMENTAL).toBe("1")
     expect(spec.env.SYNERGY_EXPERIMENTAL_LSP_TOOL).toBe("true")
-    expect(spec.env.SYNERGY_SEARXNG_URL).toBe("https://search.example")
     expect(spec.env.SYNERGY_BIN_PATH).toBe("/custom/bin/synergy")
     expect(spec.env.SYNERGY_CLIENT).toBeUndefined()
     expect(spec.env.SYNERGY_CALLER).toBeUndefined()

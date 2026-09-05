@@ -39,6 +39,18 @@ export namespace StoragePath {
   ]
   export const sessionNavIndexRoot = () => ["session_nav_v2"]
   export const sessionNavIndex = (scopeID: ScopeID) => ["session_nav_v2", scopeID as string]
+  export const sessionSearchIndexRoot = () => ["session_search_v1"]
+  export const sessionSearchIndex = (scopeID: ScopeID, sessionID: SessionID) => [
+    "session_search_v1",
+    scopeID as string,
+    sessionID as string,
+  ]
+  export const sessionSearchDirtyRoot = () => ["session_search_dirty_v1"]
+  export const sessionSearchDirty = (scopeID: ScopeID, sessionID: SessionID) => [
+    "session_search_dirty_v1",
+    scopeID as string,
+    sessionID as string,
+  ]
   export const sessionMessageOrderRoot = (scopeID: ScopeID, sessionID: SessionID) => [
     "session_message_order_v1",
     scopeID as string,
@@ -318,6 +330,11 @@ export namespace StoragePath {
   /** Daily buckets: stats/daily/{YYYY-MM-DD} */
   export const statsDailyRoot = () => ["stats", "daily"]
   export const statsDaily = (day: string) => ["stats", "daily", day]
+
+  // Push notifications (global: subscriptions and VAPID keys are not scope-scoped)
+  export const pushSubscriptionsRoot = () => ["push", "subscriptions"]
+  export const pushSubscription = (id: string) => ["push", "subscriptions", id]
+  export const pushVapid = () => ["push", "vapid"]
   // Channel diagnostics (independently addressable records per account)
   export const channelDiagnosticsRoot = () => ["channel", "diagnostics"]
   export const channelDiagnosticsAccountsRoot = () => [...channelDiagnosticsRoot(), "accounts"]

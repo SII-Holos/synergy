@@ -176,9 +176,14 @@ describe("Sandbox policy engine multi-root writable roots", () => {
 
     expect(profile.fileSystem.writableRoots).toContain(MAIN)
     expect(profile.fileSystem.writableRoots).toContain(FOLDER_A)
-    // Each writable root's .git metadata stays read-only.
-    expect(profile.fileSystem.readOnlySubpaths).toContain(`${MAIN}/.git`)
-    expect(profile.fileSystem.readOnlySubpaths).toContain(`${FOLDER_A}/.git`)
+    // Each writable root's git tamper surface (hooks/config) stays read-only;
+    // the rest of .git (objects/refs/HEAD/index) stays writable for git.
+    expect(profile.fileSystem.readOnlySubpaths).toContain(`${MAIN}/.git/hooks`)
+    expect(profile.fileSystem.readOnlySubpaths).toContain(`${MAIN}/.git/config`)
+    expect(profile.fileSystem.readOnlySubpaths).toContain(`${FOLDER_A}/.git/hooks`)
+    expect(profile.fileSystem.readOnlySubpaths).toContain(`${FOLDER_A}/.git/config`)
+    expect(profile.fileSystem.readOnlySubpaths).not.toContain(`${MAIN}/.git`)
+    expect(profile.fileSystem.readOnlySubpaths).not.toContain(`${FOLDER_A}/.git`)
   })
 
   test("isMetadataWriteDenied rejects .git writes under every writable root", async () => {

@@ -1,45 +1,73 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
-import { runSequentialShards, shardArgs, runBunTest } from "../../script/test-ci"
+import { batchArgs, planShards, runSequentialShards, runBunTest } from "../../script/test-ci"
 import { createIsolatedTestEnv } from "../../script/test-env"
 
 describe("Synergy CI test runner", () => {
-  test("builds isolated Bun test shard arguments", () => {
-    expect(shardArgs(2, 4)).toEqual(["test", "--timeout", "30000", "--no-orphans", "--shard=2/4"])
-  })
-
-  test("writes one JUnit report per shard when requested", () => {
-    expect(shardArgs(2, 4, "coverage/ci-tests")).toEqual([
+  test("builds explicit file-list batch arguments", () => {
+    expect(batchArgs(["test/a.test.ts", "test/b.test.ts"], 2, 3)).toEqual([
       "test",
       "--timeout",
       "30000",
       "--no-orphans",
-      "--shard=2/4",
-      "--reporter=junit",
-      `--reporter-outfile=${path.join("coverage/ci-tests", "synergy-test-shard-2-of-4.xml")}`,
+      "test/a.test.ts",
+      "test/b.test.ts",
     ])
+  })
+
+  test("writes one JUnit report per shard when requested", () => {
+    expect(batchArgs(["test/a.test.ts"], 2, 3, "coverage/ci-tests")).toEqual([
+      "test",
+      "--timeout",
+      "30000",
+      "--no-orphans",
+      "test/a.test.ts",
+      "--reporter=junit",
+      `--reporter-outfile=${path.join("coverage/ci-tests", "synergy-test-shard-2-of-3.xml")}`,
+    ])
+  })
+
+  test("planShards deals the main batch by hash and runs isolated files alone", () => {
+    const plan = planShards(["test/a.test.ts", "test/b.test.ts", "test/vector/embedding-standalone.test.ts"])
+    const flattened = plan.batches
+      .map((batch) => batch.files)
+      .flat()
+      .toSorted()
+    expect(flattened).toEqual(["test/a.test.ts", "test/b.test.ts", "test/vector/embedding-standalone.test.ts"])
+    expect(plan.batches.map((batch) => batch.shard)).toEqual([1, 2, 3])
+    const isolatedBatch = plan.batches.find((batch) => batch.files.includes("test/vector/embedding-standalone.test.ts"))
+    expect(isolatedBatch?.files).toEqual(["test/vector/embedding-standalone.test.ts"])
+  })
+
+  test("planShards honors SYNERGY_BATCH_SHARDS", () => {
+    const plan = planShards(["test/a.test.ts", "test/b.test.ts"], { SYNERGY_BATCH_SHARDS: "2" })
+    expect(plan.batches).toHaveLength(2)
   })
 
   test("runs every shard sequentially", async () => {
     const calls: string[][] = []
-    const exitCode = await runSequentialShards(async (args) => {
+    const plan = planShards(["test/a.test.ts", "test/b.test.ts"], { SYNERGY_BATCH_SHARDS: "2" })
+    const exitCode = await runSequentialShards(plan, async (args) => {
       calls.push(args)
       return 0
-    }, 4)
+    })
 
     expect(exitCode).toBe(0)
-    expect(calls.map((args) => args.at(-1))).toEqual(["--shard=1/4", "--shard=2/4", "--shard=3/4", "--shard=4/4"])
+    expect(calls).toHaveLength(2)
+    expect(calls[0]).toContain("test/a.test.ts")
+    expect(calls[1]).toContain("test/b.test.ts")
   })
 
   test("stops after the first failing shard", async () => {
     const calls: string[][] = []
-    const exitCode = await runSequentialShards(async (args) => {
+    const plan = planShards(["test/a.test.ts", "test/b.test.ts"], { SYNERGY_BATCH_SHARDS: "2" })
+    const exitCode = await runSequentialShards(plan, async (args) => {
       calls.push(args)
       return calls.length === 2 ? 17 : 0
-    }, 4)
+    })
 
     expect(exitCode).toBe(17)
-    expect(calls.map((args) => args.at(-1))).toEqual(["--shard=1/4", "--shard=2/4"])
+    expect(calls).toHaveLength(2)
   })
 })
 
@@ -60,7 +88,7 @@ describe("CI orchestrator isolation env", () => {
     try {
       const isolated = await createIsolatedTestEnv()
       try {
-        const exit = await runBunTest(["test", "--shard=1/4"], isolated.env)
+        const exit = await runBunTest(["test", "test/a.test.ts"], isolated.env)
         expect(exit).toBe(0)
         expect(calls).toHaveLength(1)
         expect(calls[0]!.env["SYNERGY_TEST_HOME"]).toBe(isolated.env["SYNERGY_TEST_HOME"])

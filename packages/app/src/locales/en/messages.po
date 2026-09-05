@@ -11648,6 +11648,42 @@ msgstr "{running}/{count} tasks running"
 msgid "scopes.working"
 msgstr "Working…"
 
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.domains"
+msgstr "Domains"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.elapsed"
+msgstr "Elapsed"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.format"
+msgstr "Format"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.host"
+msgstr "Host"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.papers"
+msgstr "Papers"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.results"
+msgstr "Results"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.searching"
+msgstr "Searching…"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.strength"
+msgstr "Strength"
+
+#. ── Search tool summaries (anysearch / scholight cards) ────────────
+msgid "search.summary.total"
+msgstr "Total"
+
 #. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.collapse-all"
 msgstr "Collapse all"
@@ -11815,10 +11851,6 @@ msgstr "Running commands"
 #. js-lingui-explicit-id
 msgid "session-status.searching-codebase"
 msgstr "Searching the codebase"
-
-#. js-lingui-explicit-id
-msgid "session-status.searching-papers"
-msgstr "Searching papers"
 
 #. js-lingui-explicit-id
 msgid "session-status.searching-web"
@@ -15299,6 +15331,78 @@ msgid "settings.general.compactReasoning.title"
 msgstr "Compact reasoning"
 
 #. js-lingui-explicit-id
+msgid "settings.general.devicePush.completion"
+msgstr "Completions"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.description"
+msgstr "Receive completion, error, and input-required notifications on this device through the browser."
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enable"
+msgstr "Enable push"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enabled"
+msgstr "Push enabled on this device"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.enableFailed"
+msgstr "Could not enable push"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.error"
+msgstr "Errors"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.input"
+msgstr "Needs input"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.insecure"
+msgstr "Push requires a secure (HTTPS) connection"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.iosTab"
+msgstr "On iOS, add this site to your Home Screen and open it as an app to enable push"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.permissionDenied"
+msgstr "Notification permission was denied in browser settings"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.remove"
+msgstr "Remove"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.removed"
+msgstr "Device removed"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.removeFailed"
+msgstr "Could not remove device; it is still subscribed to pushes"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.test"
+msgstr "Send test"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.testFailed"
+msgstr "Test notification failed"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.testSent"
+msgstr "Test notification sent"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.title"
+msgstr "Device push"
+
+#. js-lingui-explicit-id
+msgid "settings.general.devicePush.unsupported"
+msgstr "Push is not supported in this browser"
+
+#. js-lingui-explicit-id
 msgid "settings.general.font.applied"
 msgstr "Applied"
 
@@ -16611,6 +16715,58 @@ msgid "settings.mcp.addServer"
 msgstr "Add server"
 
 #. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clear"
+msgstr "Clear stored key"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clearPending"
+msgstr "Key will be removed on save"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.clearUndo"
+msgstr "Keep stored key"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.configured"
+msgstr "Key set"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.description"
+msgstr "Optional. Sent as a Bearer token to raise rate limits beyond the anonymous quota."
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.label"
+msgstr "API key"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.apiKey.placeholder"
+msgstr "Paste key to raise rate limits"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.badge"
+msgstr "Built-in"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.section.description"
+msgstr "Shipped with Synergy and usable without an API key. Turning one off disables its tools."
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.section.title"
+msgstr "Built-in servers"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.connected"
+msgstr "Connected"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.disabled"
+msgstr "Off"
+
+#. js-lingui-explicit-id
+msgid "settings.mcp.builtins.status.other"
+msgstr "Unavailable"
+
+#. js-lingui-explicit-id
 msgid "settings.mcp.card.collapse"
 msgstr "Collapse server details"
 
@@ -17791,24 +17947,84 @@ msgid "settings.runtime.boss.enabled.desc"
 msgstr "Route all Feishu messages to the runtime boss session"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.identity"
-msgstr "Colleague Identity"
+msgid "settings.runtime.boss.name"
+msgstr "Name"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.identity.desc"
-msgstr "Optional colleague identity description injected into the runtime boss session."
+msgid "settings.runtime.boss.name.desc"
+msgstr "The name your boss colleague will use."
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.identity.placeholder"
-msgstr "e.g. Product-minded operator who triages Feishu requests"
+msgid "settings.runtime.boss.name.placeholder"
+msgstr "e.g. Xiaofei"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.interval"
-msgstr "World Overview Briefing Interval (days)"
+msgid "settings.runtime.boss.name.saveFailed"
+msgstr "Could not save boss name"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.boss.interval.desc"
-msgstr "Re-inject the versioned world-overview briefing every N days; leave empty to disable."
+msgid "settings.runtime.boss.name.saveFailed.desc"
+msgstr "The boss name could not be saved. Please try again."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession"
+msgstr "Open boss session"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.busy"
+msgstr "Opening…"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.desc"
+msgstr "Open the runtime boss chat. Creates the session on first use."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.openSession.failed"
+msgstr "Could not open the boss session"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.conciseness"
+msgstr "Conciseness"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.custom"
+msgstr "Custom"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.customTraits"
+msgstr "Custom personality traits"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.default"
+msgstr "Default"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.formality"
+msgstr "Formality"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.opsAssistant"
+msgstr "Ops Assistant"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.proactiveness"
+msgstr "Proactiveness"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.projectManager"
+msgstr "Project Manager"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.persona.warmth"
+msgstr "Warmth"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.personality"
+msgstr "Personality"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.boss.personality.desc"
+msgstr "How your boss colleague behaves and communicates."
 
 #. Boss Mode
 msgid "settings.runtime.boss.title"
@@ -17821,6 +18037,14 @@ msgstr "Compact sessions when context is full"
 #. js-lingui-explicit-id
 msgid "settings.runtime.compaction.autoCompact.title"
 msgstr "Auto Compact"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.compaction.codexRemote.desc"
+msgstr "Ask the Codex backend to compact server-side alongside the local summary (OpenAI Codex sessions only)."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.compaction.codexRemote.title"
+msgstr "Codex Remote Compaction"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.compaction.ctx.title"
@@ -18815,14 +19039,6 @@ msgid "tool.title.archive-note"
 msgstr "Archive Note"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.arxiv-download"
-msgstr "Download arXiv paper"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.arxiv-search"
-msgstr "Search arXiv"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.ast-search"
 msgstr "Search AST"
 
@@ -19461,10 +19677,6 @@ msgstr "View Image"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.watch"
 msgstr "Monitor schedule"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.web-search"
-msgstr "Search web"
 
 #. Search / web
 msgid "tool.title.webfetch"

@@ -13,6 +13,9 @@ import {
 import { createStore, produce, reconcile } from "solid-js/store"
 import { Dynamic } from "solid-js/web"
 import { createMediaQuery } from "@solid-primitives/media"
+import { useNavigate } from "@solidjs/router"
+import { base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { HOME_SCOPE_KEY } from "@/utils/scope"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
@@ -50,7 +53,15 @@ import { AppPanel } from "@/components/app-panel"
 import { translateDescriptor } from "@/locales/translate"
 import { requestErrorMessage } from "@/utils/error"
 import "./settings-panel.css"
-import type { DialogSettingsProps, McpEntry, ModelsStore, ProviderGroup, ProviderModel, SettingsState } from "./types"
+import type {
+  BuiltinMcpInfo,
+  DialogSettingsProps,
+  McpEntry,
+  ModelsStore,
+  ProviderGroup,
+  ProviderModel,
+  SettingsState,
+} from "./types"
 import { defaultSettingsState, emptyMcp, groupByProvider } from "./types"
 import { isBuiltinSettingsId, settingsGroupOrder } from "./catalog"
 import { ensureInit } from "./hooks/useSettingsForm"
@@ -245,6 +256,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const theme = useTheme()
   const font = useFontPreference()
   const holos = useHolos()
+  const navigate = useNavigate()
   const personalizeController = createPersonalizeController({
     get: async () => (await globalSDK.client.config.instructions.get()).data!,
     update: async (content) =>
@@ -444,6 +456,14 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return res.data as SandboxStatus | undefined
   })
 
+  const [builtinMcps, { refetch: refetchBuiltinMcps }] = createResource(async () => {
+    try {
+      const res = await globalSDK.client.mcp.builtins()
+      return (res.data ?? []) as BuiltinMcpInfo[]
+    } catch {
+      return [] as BuiltinMcpInfo[]
+    }
+  })
   const originalMcpsRef = { current: {} as Record<string, Record<string, unknown>> }
   let initializedForSet: string | undefined
 
@@ -459,6 +479,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       setSettings,
       setInitialized,
       originalMcpsRef,
+      builtinMcps: builtinMcps(),
     })
     if (result !== undefined) initializedForSet = result
   }
@@ -466,6 +487,25 @@ export function SettingsPanel(props: SettingsPanelProps) {
   createEffect(() => {
     config()
     doEnsureInit()
+  })
+
+  // The builtin list loads independently of config; re-seed the toggles
+  // whenever it (re)loads so late resolution and post-save refetches both
+  // converge. User draft toggles live in the same slice and are only
+  // replaced when the resource itself changes.
+  createEffect(() => {
+    const list = builtinMcps()
+    if (!list) return
+    setSettings(
+      "mcps",
+      "builtins",
+      list.map((info) => ({
+        ...info,
+        toggle: info.status.status !== "disabled",
+        apiKeyDraft: "",
+        clearApiKey: false,
+      })),
+    )
   })
 
   // Include agents() — the Agents page requires the agent list for the Default Agent dropdown.
@@ -503,6 +543,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       ...(agentFields.some((field) => changed.has(field)) ? [refetchAgents()] : []),
       ...(changed.has("cortex") ? [refetchCortexConcurrencyStatus()] : []),
       ...(changed.has("channel") ? [refetchChannelStatuses()] : []),
+      ...(changed.has("mcp") ? [refetchBuiltinMcps()] : []),
       ...(changed.has("skills") ? [refetchSkillSources()] : []),
     ])
     const currentDraft = submittedDraft ? snapshotSettingsDraft(settings) : undefined
@@ -595,6 +636,24 @@ export function SettingsPanel(props: SettingsPanelProps) {
     closeDialog: () => props.onClose?.() ?? dialog.close(),
     showConfirm,
   })
+
+  async function openBossSession() {
+    // /boss/session/open refuses to run while boss_mode is disabled, so flush
+    // any pending runtime draft (the enable toggle / persona) first.
+    const saved = await save.saveServerChanges()
+    if (!saved) {
+      throw new Error("Could not save the Boss Mode settings before opening the session.")
+    }
+    // The runtime boss session lives in home scope; the open route requires
+    // an explicit scope (it refuses to guess from the request context).
+    const result = await globalSDK.client.boss.session.open({ scopeID: HOME_SCOPE_KEY })
+    const sessionID = result.data?.sessionID
+    if (!sessionID) {
+      throw new Error("The runtime did not return a boss session.")
+    }
+    ;(props.onClose ?? (() => dialog.close()))()
+    navigate(`/${base64Encode(HOME_SCOPE_KEY)}/session/${sessionID}`)
+  }
 
   async function savePersonalizeChanges() {
     const saved = await personalizeController.save()
@@ -911,6 +970,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     mcp: () => (
       <McpPanel
         entries={settings.mcps.entries}
+        builtins={settings.mcps.builtins}
         onAdd={() => setSettings("mcps", "entries", (prev) => [...prev, emptyMcp()])}
         onChange={(index, field, value) =>
           setSettings("mcps", "entries", index, field as keyof McpEntry, value as never)
@@ -921,6 +981,39 @@ export function SettingsPanel(props: SettingsPanelProps) {
             "entries",
             produce((draft) => {
               draft.splice(index, 1)
+            }),
+          )
+        }
+        onBuiltinToggle={(name, value) =>
+          setSettings(
+            "mcps",
+            "builtins",
+            produce((draft) => {
+              const entry = draft.find((item) => item.name === name)
+              if (entry) entry.toggle = value
+            }),
+          )
+        }
+        onBuiltinApiKeyChange={(name, value) =>
+          setSettings(
+            "mcps",
+            "builtins",
+            produce((draft) => {
+              const entry = draft.find((item) => item.name === name)
+              if (entry) {
+                entry.apiKeyDraft = value
+                if (value.trim() !== "") entry.clearApiKey = false
+              }
+            }),
+          )
+        }
+        onBuiltinClearKey={(name, cleared) =>
+          setSettings(
+            "mcps",
+            "builtins",
+            produce((draft) => {
+              const entry = draft.find((item) => item.name === name)
+              if (entry) entry.clearApiKey = cleared
             }),
           )
         }
@@ -1007,7 +1100,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
       />
     ),
     boss: () => (
-      <BossModePanel runtime={settings.runtime} onRuntimeChange={(key, value) => setSettings("runtime", key, value)} />
+      <BossModePanel
+        runtime={settings.runtime}
+        onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
+        onOpenBossSession={openBossSession}
+      />
     ),
     import: () => (
       <ImportPanel

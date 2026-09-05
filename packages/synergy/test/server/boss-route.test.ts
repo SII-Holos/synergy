@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, mock, test } from "bun:test"
+import { Config } from "../../src/config/config"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { Server } from "../../src/server/server"
@@ -179,5 +180,55 @@ describe("boss routes", () => {
 
       expect(response.status).toBe(400)
     })
+  })
+
+  test("POST session/open returns 409 when boss mode is disabled", async () => {
+    const originalConfigCurrent = Config.current
+    try {
+      Config.current = mock(async () => ({})) as typeof Config.current
+      await withScope(async (scope) => {
+        const response = await Server.App().request(`/boss/session/open`, {
+          method: "POST",
+          headers: scopeHeaders(scope),
+        })
+        const body = await response.clone().text()
+        expect(response.status, body).toBe(409)
+        expect(await response.json()).toMatchObject({ code: "boss_disabled" })
+      })
+    } finally {
+      Config.current = originalConfigCurrent
+    }
+  })
+
+  test("POST session/open opens the boss session (channel-less local on demand)", async () => {
+    const originalConfigCurrent = Config.current
+    try {
+      Config.current = mock(async () =>
+        Config.Info.parse({ experimental: { boss_mode: true } } as unknown as Config.Info),
+      ) as typeof Config.current
+      await withScope(async (scope) => {
+        const app = Server.App()
+        const first = await app.request(`/boss/session/open`, {
+          method: "POST",
+          headers: scopeHeaders(scope),
+        })
+        const firstBody = await first.clone().text()
+        expect(first.status, firstBody).toBe(200)
+        const firstJson = (await first.json()) as { sessionID: string }
+        const session = await Session.get(firstJson.sessionID)
+        expect(session?.workflow?.kind).toBe("boss")
+        expect(session?.endpoint?.kind).not.toBe("channel")
+
+        // Repeated open reuses the same session.
+        const second = await app.request(`/boss/session/open`, {
+          method: "POST",
+          headers: scopeHeaders(scope),
+        })
+        const secondJson = (await second.json()) as { sessionID: string }
+        expect(secondJson.sessionID).toBe(firstJson.sessionID)
+      })
+    } finally {
+      Config.current = originalConfigCurrent
+    }
   })
 })

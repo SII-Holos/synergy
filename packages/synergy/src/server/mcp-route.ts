@@ -51,6 +51,36 @@ export const McpRoute = new Hono()
       return c.json(await MCP.status())
     },
   )
+  .get(
+    "/builtins",
+    describeRoute({
+      summary: "List built-in MCP servers",
+      description: "List the built-in MCP servers shipped with Synergy and their current status.",
+      operationId: "mcp.builtins",
+      responses: {
+        200: {
+          description: "Built-in MCP server list",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z.array(
+                  z.object({
+                    name: z.string(),
+                    url: z.string(),
+                    status: MCP.Status,
+                    keyConfigured: z.boolean(),
+                  }),
+                ),
+              ),
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      return c.json(await MCP.builtins())
+    },
+  )
   .post(
     "/",
     describeRoute({

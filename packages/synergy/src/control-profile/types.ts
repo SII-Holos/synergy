@@ -47,6 +47,13 @@ export interface ResolutionContext {
   workspace: string
   workspaceType: string
   trustedRoots?: string[]
+  /**
+   * Session-scoped isolation key for the controlled temporary root. When
+   * present, the autonomous profile's writable roots include a per-session
+   * sub-root of workspace/.synergy/tmp so concurrent sandboxed shells cannot
+   * peek at each other's temporary files.
+   */
+  sessionKey?: string
 }
 
 export interface ProfileSummary {
