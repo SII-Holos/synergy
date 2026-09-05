@@ -950,13 +950,14 @@ const READ_ONLY_EXEC_TOOLS = new Set([
   "false",
 ])
 
-const FIND_FD_EXEC_OPTIONS = new Set(["-exec", "-execdir", "-ok", "-x", "-X", "--exec", "--exec-batch"])
+const FIND_FD_EXEC_OPTIONS = new Set(["-exec", "-execdir", "-ok", "-okdir", "-x", "-X", "--exec", "--exec-batch"])
 
 /**
  * Scan quote-masked executable text for find/fd command executions whose
  * utility is not in the closed read-only whitelist (-exec/-execdir/-x/-X/
- * --exec/--exec-batch), plus -delete and -ok which are always destructive.
- * Operates on one executable region (substitutions handled by the caller).
+ * --exec/--exec-batch), plus -delete, -ok, and -okdir which are always
+ * destructive. Operates on one executable region (substitutions and shell
+ * re-parse payloads handled by the caller).
  */
 function findFdExecTextUnsafe(executable: string): boolean {
   const compound = lexCompoundCommands(executable)
@@ -971,7 +972,7 @@ function findFdExecTextUnsafe(executable: string): boolean {
         if (!option.startsWith("-")) continue
         if (option === "-delete") return true
         if (!FIND_FD_EXEC_OPTIONS.has(option)) continue
-        if (option === "-ok") return true
+        if (option === "-ok" || option === "-okdir") return true
         const rawUtility = words[optionIndex + 1]
         if (rawUtility === undefined || rawUtility === "{}") return true
         if (/[$`\\]/.test(rawUtility)) return true
@@ -984,16 +985,58 @@ function findFdExecTextUnsafe(executable: string): boolean {
 }
 
 /**
- * Recursively inspect every executable region (top level plus command and
- * process substitutions and backticks) for an unsafe find/fd -exec target.
- * Budget or depth exhaustion fails closed (treated as unsafe).
+ * Recursively inspect every executable region (top level, command and
+ * process substitutions, backticks, and shell re-parse payloads) for an
+ * unsafe find/fd exec target. Quoted payload text is masked at the top
+ * level, so payload-bearing commands are unwrapped and rescanned like sudo
+ * classification does. Budget or depth exhaustion fails closed (treated as
+ * unsafe).
  */
 function hasUnsafeExecTarget(command: string, state: ClassificationState, depth = 0): boolean {
   if (classificationExhausted(state, command) || depth > DIRECTORY_CHANGE_MAX_DEPTH) return true
   if (findFdExecTextUnsafe(executableShellSyntaxText(command))) return true
   const payloads = commandSubstitutionPayloads(command, state)
   if (payloads === undefined) return true
-  return payloads.some((payload) => hasUnsafeExecTarget(payload, state, depth + 1))
+  if (payloads.some((payload) => hasUnsafeExecTarget(payload, state, depth + 1))) return true
+  const compound = lexCompoundCommands(command)
+  const segments = compound.segments.length > 0 ? compound.segments : [command]
+  return segments.some((segment) => execPayloadTargetUnsafe(segment, state, depth))
+}
+
+/**
+ * Unwrap one compound segment's re-parse payload (shell `-c`, `eval`, `trap`
+ * payload, function body, multicall applet, or directory wrapper payload)
+ * and rescan it for an unsafe find/fd exec target, mirroring the payload
+ * traversal of sudo classification.
+ */
+function execPayloadTargetUnsafe(segment: string, state: ClassificationState, depth: number): boolean {
+  const functionBody = functionDefinitionBody(segment)
+  if (functionBody !== undefined) {
+    return functionBody ? hasUnsafeExecTarget(functionBody, state, depth + 1) : false
+  }
+  if (commandLookupOnly(segment)) return false
+  const { name, args } = simpleCommandParts(controlCommandSegment(segment))
+  if (!name) return false
+  if (MULTICALL_COMMANDS.has(name)) {
+    const applet = multicallCommandParts(args)
+    return applet.name ? hasUnsafeExecTarget([applet.name, ...applet.args].join(" "), state, depth + 1) : false
+  }
+  if (isShellPayloadCommand(name)) {
+    const payload = shellPayload(args)
+    return payload ? hasUnsafeExecTarget(payload, state, depth + 1) : false
+  }
+  if (name === "eval" && args.length > 0) {
+    return hasUnsafeExecTarget(args.join(" "), state, depth + 1)
+  }
+  if (name === "trap") {
+    const payload = trapPayload(args)
+    return payload ? hasUnsafeExecTarget(payload, state, depth + 1) : false
+  }
+  if (DIRECTORY_WRAPPER_COMMANDS.has(name)) {
+    const wrapped = wrapperCommandParts(name, args)
+    return wrapped.name ? hasUnsafeExecTarget([wrapped.name, ...wrapped.args].join(" "), state, depth + 1) : false
+  }
+  return false
 }
 
 const INLINE_STRING_ESCAPE = /^(?:[xX][0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|u\{[0-9a-fA-F]{1,6}\}|[0-7]{1,3})/
@@ -1109,13 +1152,16 @@ interface DirectoryChangeContext {
 /**
  * Whether a cd/pushd positional target may be statically resolved given the
  * directory-change context. Bare names stay opaque (CDPATH can redirect them
- * even without an in-command definition); dot-prefixed and absolute targets
- * are already resolved by the caller's own branch.
+ * even without an in-command definition) and dynamic ($ or backtick) targets
+ * stay opaque because their resolved value is unknowable statically;
+ * dot-prefixed and absolute targets are already resolved by the caller's own
+ * branch.
  */
 function slashRelativeCdResolvable(target: string | undefined, ctx: DirectoryChangeContext): boolean {
   return Boolean(
     ctx.options.resolveSlashRelativeCd &&
       target &&
+      !dynamicDirectoryTarget(target) &&
       !target.startsWith("/") &&
       !target.startsWith("~") &&
       !target.startsWith(".") &&

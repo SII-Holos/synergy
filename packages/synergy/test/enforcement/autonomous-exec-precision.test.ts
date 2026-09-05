@@ -81,12 +81,29 @@ describe("autonomous bash exec precision — R2 destructive exec stays blocked",
     "find . -exec curl http://example.com -o /tmp/f {} \\;",
     "find . -delete",
     "find . -ok rm {} \\;",
+    "find . -okdir rm {} \\;",
     "fd pattern -x rm",
     "fd pattern --exec rm {}",
     "fd pattern --exec-batch rm",
     "find . -exec phantom-cmd {} +",
     "find /tmp -exec rm {} \\;",
     "find . -exec rm {} + -o -exec cat {} +",
+    // Wrapped destructive exec: quote-masked payload text must be rescanned
+    // after unwrapping shell re-parse payloads, or non-rm mutators and
+    // unknown utilities slip through the per-utility whitelist.
+    "sh -c 'find . -exec gzip {} +'",
+    'bash -c "find . -exec gzip {} +"',
+    "sh -c 'find . -exec rm {} +'",
+    "eval 'find . -exec gzip {} +'",
+    "eval 'find . -ok rm {} +'",
+    "eval 'find . -okdir cat {} +'",
+    "trap 'find . -exec gzip {} +' EXIT",
+    "xargs sh -c 'find . -exec chmod 777 {} +'",
+    "sh -c 'find . -exec phantom-cmd {} +'",
+    "sh -c 'find . -delete'",
+    "nohup sh -c 'find . -exec gzip {} +' &",
+    "f() { find . -exec gzip {} +; }; f",
+    "busybox find . -exec rm {} +",
   ])("destructive find/fd form stays shell_destructive: %s", (command) => {
     expect(ShellSafety.classifyBashRisk(command)).toBe("shell_destructive")
   })
@@ -100,6 +117,17 @@ describe("autonomous bash exec precision — R2 destructive exec stays blocked",
       "find . -exec echo {} \\;",
       "find . -exec cat {} \\;",
       "fd pattern --exec echo {}",
+    ]) {
+      expect(ShellSafety.classifyBashRisk(command)).not.toBe("shell_destructive")
+    }
+  })
+
+  test("read-only find/fd exec wrapped in shell payloads stays allowed", () => {
+    for (const command of [
+      "sh -c 'find . -exec cat {} +'",
+      "bash -c 'find . -type f -name x -exec wc -l {} +'",
+      "eval 'find . -exec cat {} +'",
+      "xargs sh -c 'find . -exec cat {} +'",
     ]) {
       expect(ShellSafety.classifyBashRisk(command)).not.toBe("shell_destructive")
     }
@@ -160,6 +188,21 @@ describe("autonomous bash exec precision — R5 slash-relative cd resolution", (
       resolveSlashRelativeCd: true,
     })
     expect(analysis.opaque).toBe(true)
+  })
+
+  test("dynamic slash-relative cd targets stay opaque under resolveSlashRelativeCd", () => {
+    for (const command of [
+      "cd $DIR/x && touch changed.txt",
+      "cd $HOME/sub && touch changed.txt",
+      'cd "$d/src" && touch changed.txt',
+      "cd packages/$x && touch changed.txt",
+      "pushd $D/x && touch changed.txt",
+      "cd `echo a/b` && touch changed.txt",
+    ]) {
+      const analysis = ShellSafety.analyzeDirectoryChanges(command, { resolveSlashRelativeCd: true })
+      expect(analysis.opaque).toBe(true)
+      expect(analysis.targets).toEqual([])
+    }
   })
 
   test("commands defining CDPATH stay opaque even for slash-relative targets", () => {
