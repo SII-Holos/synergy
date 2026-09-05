@@ -1156,6 +1156,47 @@ export const RerankConfig = z
   .meta({ ref: "RerankConfig" })
   .describe("Rerank model for memory retrieval refinement. Disabled when not configured.")
 export type RerankConfig = z.infer<typeof RerankConfig>
+export const VoiceSttConfig = z
+  .object({
+    baseURL: z.string().optional().describe("Base URL for the speech-to-text API (OpenAI-compatible)"),
+    apiKey: z.string().optional().describe("API key for the speech-to-text service"),
+    model: z.string().optional().describe("Speech-to-text model name. Voice input is disabled when not set."),
+    language: z
+      .string()
+      .optional()
+      .describe("BCP-47 language hint for transcription, e.g. zh, en. Auto-detected when not set."),
+  })
+  .strict()
+  .meta({ ref: "VoiceSttConfig" })
+  .describe("Speech-to-text service for composer voice dictation. Disabled when model is not set.")
+export type VoiceSttConfig = z.infer<typeof VoiceSttConfig>
+
+export const VoiceTtsConfig = z
+  .object({
+    baseURL: z.string().optional().describe("Base URL for the text-to-speech API (OpenAI-compatible)"),
+    apiKey: z.string().optional().describe("API key for the text-to-speech service"),
+    model: z.string().optional().describe("Text-to-speech model name. The speak tool is disabled when not set."),
+    voice: z.string().optional().describe("Voice name for synthesis (provider-specific, e.g. alloy)"),
+    instructions: z
+      .string()
+      .optional()
+      .describe("Natural-language delivery instructions applied to synthesized speech, e.g. tone and pace"),
+  })
+  .strict()
+  .meta({ ref: "VoiceTtsConfig" })
+  .describe("Text-to-speech service backing the speak tool. Disabled when model is not set.")
+export type VoiceTtsConfig = z.infer<typeof VoiceTtsConfig>
+
+export const VoiceConfig = z
+  .object({
+    stt: VoiceSttConfig.optional().describe("Speech-to-text service configuration"),
+    tts: VoiceTtsConfig.optional().describe("Text-to-speech service configuration"),
+  })
+  .strict()
+  .optional()
+  .meta({ ref: "VoiceConfig" })
+  .describe("Voice input (dictation) and output (speech synthesis) configuration.")
+export type VoiceConfig = z.infer<typeof VoiceConfig>
 
 export const MemoryConfig = z
   .object({
@@ -1886,6 +1927,7 @@ export const Info = z
     provider: z.record(z.string(), Provider).optional().describe("Custom provider configurations and model overrides"),
     embedding: EmbeddingConfig,
     rerank: RerankConfig,
+    voice: VoiceConfig,
     library: LibraryConfig,
     skills: SkillsConfig,
     mcp: z

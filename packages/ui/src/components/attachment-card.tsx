@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Match, onMount, Show, Switch, type JSX } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { useDialog } from "../context/dialog"
 import { useResourceOpen } from "../context/resource-open"
@@ -33,6 +33,12 @@ export {
   resolveAttachmentUrl,
   resolveImagePreviewImage,
 } from "./attachment-card-utils"
+import {
+  claimSpeakAutoplay,
+  finishSpeakAutoplay,
+  rememberSpeakPlaybackPosition,
+  speakPlaybackPosition,
+} from "./session-turn-speak-autoplay"
 
 const previewImageDescriptor = { id: "ui.attachment.previewImage", message: "Preview {filename}" }
 const openAttachmentDescriptor = { id: "ui.attachment.openAttachment", message: "Open {filename}" }
@@ -41,6 +47,8 @@ export function AttachmentCard(props: {
   file: AttachmentFile
   serverUrl: string
   imagePreview?: { images: ImagePreviewImage[]; index: number }
+  autoplay?: boolean
+  autoplayKey?: string
 }) {
   const { _ } = useLingui()
   const dialog = useDialog()
@@ -51,6 +59,49 @@ export function AttachmentCard(props: {
   const presentation = createMemo(() => resolveAttachmentPresentation(props.file))
   const filename = createMemo(() => props.file.filename ?? (isPdfAttachment(props.file) ? "file.pdf" : "file"))
   const meta = createMemo(() => attachmentMeta(props.file))
+  const [mounted, setMounted] = createSignal(false)
+  let audioRef: HTMLAudioElement | undefined
+
+  onMount(() => setMounted(true))
+
+  // Speech the agent decided to announce (speak tool) plays on its own when
+  // its freshly generated card renders, and keeps playing across the turn
+  // settlement re-projection that remounts the card while audio is in
+  // flight. Qualification is sticky in the tracker until the clip ends or
+  // the user pauses, so a remounted card resumes from the remembered
+  // position instead of silencing or restarting. Browsers may reject play()
+  // without a user gesture — controls remain for manual playback.
+  let autoplayWired = false
+  const wireAutoplayEvents = (key: string) => {
+    if (autoplayWired) return
+    autoplayWired = true
+    const element = audioRef
+    if (!element) return
+    const remember = () => rememberSpeakPlaybackPosition(key, element.currentTime)
+    const finish = () => finishSpeakAutoplay(key)
+    element.addEventListener("timeupdate", remember)
+    element.addEventListener("ended", finish)
+    element.addEventListener("pause", finish)
+  }
+
+  createEffect(() => {
+    if (!props.autoplay || !mounted()) return
+    const renderer = presentation().renderer
+    const audioUrl = url()
+    if (renderer !== "audio" || !audioUrl) return
+    const element = audioRef
+    if (!element) return
+    if (props.autoplayKey !== undefined && !claimSpeakAutoplay(props.autoplayKey)) return
+    if (props.autoplayKey !== undefined) {
+      wireAutoplayEvents(props.autoplayKey)
+      const resumeAt = speakPlaybackPosition(props.autoplayKey)
+      if (resumeAt > 0 && (!element.duration || resumeAt < element.duration - 0.5)) {
+        element.currentTime = resumeAt
+      }
+    }
+    void element.play().catch(() => {})
+  })
+
   const openAttachment = () => {
     const preview = props.imagePreview
     if (preview) {
@@ -119,7 +170,7 @@ export function AttachmentCard(props: {
           <span data-slot="attachment-card-body">
             <span data-slot="attachment-card-filename">{filename()}</span>
             <span data-slot="attachment-card-meta">{meta()}</span>
-            <audio src={url()} controls preload="metadata" />
+            <audio ref={audioRef} src={url()} controls preload="metadata" />
           </span>
           <button
             type="button"
@@ -243,7 +294,13 @@ interface AttachmentGalleryEntry {
   imagePreviewIndex?: number
 }
 
-export function AttachmentGallery(props: { files: AttachmentFile[]; serverUrl: string; align?: "start" | "end" }) {
+export function AttachmentGallery(props: {
+  files: AttachmentFile[]
+  serverUrl: string
+  align?: "start" | "end"
+  autoplay?: boolean
+  autoplayKey?: string
+}) {
   const visibleFiles = createMemo(() => props.files.filter((file) => !resolveAttachmentPresentation(file).hidden))
   const entries = createMemo<AttachmentGalleryEntry[]>(() => {
     let previewIndex = 0
@@ -271,6 +328,8 @@ export function AttachmentGallery(props: { files: AttachmentFile[]; serverUrl: s
                     <AttachmentCard
                       file={entry.file}
                       serverUrl={props.serverUrl}
+                      autoplay={props.autoplay}
+                      autoplayKey={props.autoplay ? props.autoplayKey : undefined}
                       imagePreview={
                         entry.imagePreviewIndex !== undefined
                           ? { images: previewImages(), index: entry.imagePreviewIndex }

@@ -11246,6 +11246,129 @@ msgstr "Isolated checkout"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.failed.description"
+msgstr "The recording could not be transcribed."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.failed.title"
+msgstr "Transcription failed"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.insertFailed.description"
+msgstr "The transcript could not be inserted into the composer."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.insertFailed.title"
+msgstr "Could not insert dictation"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.micError.description"
+msgstr "The microphone could not be started."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.micError.title"
+msgstr "Microphone unavailable"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.micSilence.description"
+msgstr "The microphone captured no sound. Check the mic, its system permission, and the selected input device."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.micSilence.title"
+msgstr "No sound captured"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.noSpeech.description"
+msgstr "No speech was heard. Move closer to the microphone and try again."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.noSpeech.title"
+msgstr "No speech detected"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.notConfigured"
+msgstr "Voice recognition is not configured"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.openSettings"
+msgstr "Configure a speech recognition model in Settings → Voice to enable dictation."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.permission.description"
+msgstr "Allow microphone access (and enable it in your browser/desktop settings) to use voice input."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.permission.title"
+msgstr "Microphone access needed"
+
+#. use-voice-dictation.tsx
+msgid "prompt.voice.start"
+msgstr "Voice input"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.stop"
+msgstr "Stop recording"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.transcribing"
+msgstr "Transcribing audio..."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.unsupported"
+msgstr "Voice dictation is not supported in this browser."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.wm.bossUnavailableBp"
 msgstr "Boss Mode is unavailable while a Blueprint is equipped"
 
@@ -14725,6 +14848,26 @@ msgstr "Usage"
 #. js-lingui-explicit-id
 msgid "settings.catalog.usage.searchTerms"
 msgstr "usage | quota | credits | billing | codex | claude"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.voice.description"
+msgstr "Speech recognition and synthesis endpoints for voice input and output."
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.voice.label"
+msgstr "Voice"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.voice.row.speechRecognition"
+msgstr "Speech Recognition"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.voice.row.speechSynthesis"
+msgstr "Speech Synthesis"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.voice.searchTerms"
+msgstr "voice | stt | tts | speech | dictation | recognition | synthesis"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.worktrees.description"
@@ -18675,6 +18818,166 @@ msgid "settings.usage.unavailable"
 msgstr "Usage unavailable for this provider."
 
 #. js-lingui-explicit-id
+msgid "settings.voice.apiKey.saved"
+msgstr "Saved"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.cancel"
+msgstr "Cancel"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.load.error"
+msgstr "Voice settings could not be loaded."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.load.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.page.description"
+msgstr "Configure OpenAI-compatible speech-to-text and text-to-speech endpoints."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.page.title"
+msgstr "Voice"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.save"
+msgstr "Save"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.saved.description"
+msgstr "Voice configuration was updated."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.saved.title"
+msgstr "Voice settings saved"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.saveFailed.description"
+msgstr "Unable to update the voice configuration."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.saveFailed.title"
+msgstr "Voice settings could not be saved"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.saving"
+msgstr "Saving..."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.apiKey.description"
+msgstr "API key for the speech-to-text service."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.apiKey.title"
+msgstr "API Key"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.baseURL.description"
+msgstr "Speech-to-text endpoint. Leave empty for the OpenAI default."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.baseURL.placeholder"
+msgstr "https://api.openai.com/v1"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.baseURL.title"
+msgstr "Base URL"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.description"
+msgstr "Any OpenAI-compatible endpoint works, e.g. DashScope qwen3-asr-flash supports Chinese dialect recognition. Voice dictation is disabled when the model is empty."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.language.description"
+msgstr "BCP-47 language hint for transcription, e.g. zh or en. Auto-detected when empty."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.language.placeholder"
+msgstr "zh"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.language.title"
+msgstr "Language (optional)"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.model.description"
+msgstr "Speech-to-text model, e.g. gpt-4o-mini-transcribe."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.model.placeholder"
+msgstr "gpt-4o-mini-transcribe"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.model.title"
+msgstr "Model"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.title"
+msgstr "Speech recognition (STT)"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.apiKey.description"
+msgstr "API key for the text-to-speech service."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.apiKey.title"
+msgstr "API Key"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.baseURL.description"
+msgstr "Text-to-speech endpoint. Leave empty for the OpenAI default."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.baseURL.placeholder"
+msgstr "https://api.openai.com/v1"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.baseURL.title"
+msgstr "Base URL"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.description"
+msgstr "Any OpenAI-compatible endpoint works, e.g. DashScope cosyvoice-v3-flash. The speak tool is disabled when the model is empty."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.instructions.description"
+msgstr "Natural-language delivery instructions such as tone and pace."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.instructions.title"
+msgstr "Instructions (optional)"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.model.description"
+msgstr "Text-to-speech model, e.g. gpt-4o-mini-tts."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.model.placeholder"
+msgstr "gpt-4o-mini-tts"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.model.title"
+msgstr "Model"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.title"
+msgstr "Speech synthesis (TTS)"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.voice.description"
+msgstr "Voice name for synthesis, e.g. alloy. Provider-specific."
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.voice.placeholder"
+msgstr "alloy"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.voice.title"
+msgstr "Voice"
+
+#. js-lingui-explicit-id
 msgid "settings.worktrees.badge.boundSession.plural"
 msgstr "bound sessions"
 
@@ -19597,6 +19900,10 @@ msgstr "Log in to SII"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.skill"
 msgstr "Use skill"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.speak"
+msgstr "Speak"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.start-notebook"

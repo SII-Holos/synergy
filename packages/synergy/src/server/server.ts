@@ -58,6 +58,7 @@ import { LibraryRoute } from "./library"
 import { AgendaRoute } from "./agenda"
 import { NoteRoute } from "./note"
 import { AssetRoute } from "./asset"
+import { VoiceRoute } from "./voice-route"
 import { PluginRoute, ApiPluginRoute } from "./plugin-routes"
 import { PluginRuntimeRoute } from "./plugin-runtime-routes"
 import { RegistryRoute } from "./plugin-registry-routes"
@@ -318,7 +319,8 @@ export namespace Server {
 
   function isScopeRequiredRoute(pathname: string) {
     return (
-      pathname === "/scope/current" ||
+      pathname === "/voice" ||
+      pathname.startsWith("/voice/") ||
       pathname === "/git" ||
       pathname.startsWith("/git/") ||
       pathname === "/pty" ||
@@ -1352,6 +1354,7 @@ export namespace Server {
         .route("/workflow", WorkflowRoute)
         .route("/boss", BossRoute)
         .route("/asset", AssetRoute)
+        .route("/voice", VoiceRoute)
         .route("/holos", HolosDataRoute)
         .route("", BrowserRoute)
         .route("/plugin", PluginRoute)

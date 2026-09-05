@@ -123,6 +123,7 @@ export const SemanticIconToken = {
   "settings.import": "upload",
   "settings.configFiles": "folder-cog",
   "settings.personalize": "scroll-text",
+  "settings.voice": "audio-lines",
 
   // Permission modes and prompts
   "permission.required": "octagon-alert",
@@ -166,6 +167,7 @@ export const SemanticIconToken = {
   "prompt.submitArrow": "arrow-up",
   "prompt.blueprintStart": "circle-play",
   "prompt.blueprintEquip": "clipboard-check",
+  "prompt.voice": "mic",
 
   // Quick actions and runtime commands
   "command.undo": "undo-2",

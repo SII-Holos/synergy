@@ -11246,6 +11246,129 @@ msgstr "为当前会话创建独立工作区"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.failed.description"
+msgstr "录音无法转写。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.failed.title"
+msgstr "转写失败"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.insertFailed.description"
+msgstr "转写文本无法插入输入框。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.insertFailed.title"
+msgstr "无法插入语音转写"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.micError.description"
+msgstr "麦克风无法启动。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.micError.title"
+msgstr "麦克风不可用"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.micSilence.description"
+msgstr "麦克风没有捕捉到声音。请检查麦克风、系统权限和所选输入设备。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.micSilence.title"
+msgstr "未捕捉到声音"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.noSpeech.description"
+msgstr "没有听到语音。请靠近麦克风再试一次。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.noSpeech.title"
+msgstr "未检测到语音"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.notConfigured"
+msgstr "语音识别尚未配置"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.openSettings"
+msgstr "请在“设置 → 语音”中配置语音识别模型，以启用语音输入。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.permission.description"
+msgstr "允许麦克风访问（并在浏览器或桌面端设置中开启麦克风权限）后即可使用语音输入。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.permission.title"
+msgstr "需要麦克风权限"
+
+#. use-voice-dictation.tsx
+msgid "prompt.voice.start"
+msgstr "语音输入"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.stop"
+msgstr "停止录音"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.transcribing"
+msgstr "正在转写音频…"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.voice.unsupported"
+msgstr "当前浏览器不支持语音输入。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.wm.bossUnavailableBp"
 msgstr "装备 Blueprint 时无法使用 Boss 模式"
 
@@ -14725,6 +14848,26 @@ msgstr "用量"
 #. js-lingui-explicit-id
 msgid "settings.catalog.usage.searchTerms"
 msgstr "用量 | 配额 | 额度 | 账单 | Codex | Claude"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.voice.description"
+msgstr "语音输入与输出的语音识别和合成端点。"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.voice.label"
+msgstr "语音"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.voice.row.speechRecognition"
+msgstr "语音识别"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.voice.row.speechSynthesis"
+msgstr "语音合成"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.voice.searchTerms"
+msgstr "语音 | 听写 | 语音转文字 | 文字转语音 | 识别 | 合成"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.worktrees.description"
@@ -18675,6 +18818,166 @@ msgid "settings.usage.unavailable"
 msgstr "此提供商的用量不可用。"
 
 #. js-lingui-explicit-id
+msgid "settings.voice.apiKey.saved"
+msgstr "已保存"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.cancel"
+msgstr "取消"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.load.error"
+msgstr "无法加载语音设置。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.load.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.page.description"
+msgstr "配置兼容 OpenAI 的语音转文字与文字转语音端点。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.page.title"
+msgstr "语音"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.save"
+msgstr "保存"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.saved.description"
+msgstr "语音配置已更新。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.saved.title"
+msgstr "语音设置已保存"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.saveFailed.description"
+msgstr "无法更新语音配置。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.saveFailed.title"
+msgstr "无法保存语音设置"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.saving"
+msgstr "正在保存…"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.apiKey.description"
+msgstr "语音转文字服务的 API 密钥。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.apiKey.title"
+msgstr "API 密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.baseURL.description"
+msgstr "语音转文字端点。留空则使用 OpenAI 默认地址。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.baseURL.placeholder"
+msgstr "https://api.openai.com/v1"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.baseURL.title"
+msgstr "服务地址"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.description"
+msgstr "任何兼容 OpenAI 的端点皆可，例如支持方言识别的 DashScope qwen3-asr-flash。模型留空时语音听写功能将被禁用。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.language.description"
+msgstr "转写语言提示（BCP-47），例如 zh 或 en。留空时自动检测。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.language.placeholder"
+msgstr "zh"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.language.title"
+msgstr "语言（可选）"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.model.description"
+msgstr "语音转文字模型，例如 gpt-4o-mini-transcribe。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.model.placeholder"
+msgstr "gpt-4o-mini-transcribe"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.model.title"
+msgstr "模型"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.stt.title"
+msgstr "语音识别（STT）"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.apiKey.description"
+msgstr "文字转语音服务的 API 密钥。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.apiKey.title"
+msgstr "API 密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.baseURL.description"
+msgstr "文字转语音端点。留空则使用 OpenAI 默认地址。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.baseURL.placeholder"
+msgstr "https://api.openai.com/v1"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.baseURL.title"
+msgstr "服务地址"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.description"
+msgstr "任何兼容 OpenAI 的端点皆可，例如 DashScope cosyvoice-v3-flash。模型留空时朗读工具将被禁用。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.instructions.description"
+msgstr "自然语言表达指令，例如语气和语速。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.instructions.title"
+msgstr "语气指令（可选）"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.model.description"
+msgstr "文字转语音模型，例如 gpt-4o-mini-tts。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.model.placeholder"
+msgstr "gpt-4o-mini-tts"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.model.title"
+msgstr "模型"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.title"
+msgstr "语音合成（TTS）"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.voice.description"
+msgstr "合成音色名称，例如 alloy。取决于服务商。"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.voice.placeholder"
+msgstr "alloy"
+
+#. js-lingui-explicit-id
+msgid "settings.voice.tts.voice.title"
+msgstr "音色"
+
+#. js-lingui-explicit-id
 msgid "settings.worktrees.badge.boundSession.plural"
 msgstr "已绑定会话"
 
@@ -19597,6 +19900,10 @@ msgstr "登录 SII"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.skill"
 msgstr "使用技能"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.speak"
+msgstr "朗读"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.start-notebook"

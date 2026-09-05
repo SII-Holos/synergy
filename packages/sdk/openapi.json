@@ -4450,6 +4450,7 @@
                 "holos",
                 "email",
                 "github",
+                "voice",
                 "runtime"
               ]
             },
@@ -4534,6 +4535,7 @@
                 "holos",
                 "email",
                 "github",
+                "voice",
                 "runtime"
               ]
             },
@@ -4629,6 +4631,7 @@
                 "holos",
                 "email",
                 "github",
+                "voice",
                 "runtime"
               ]
             },
@@ -4734,6 +4737,7 @@
                     "holos",
                     "email",
                     "github",
+                    "voice",
                     "runtime"
                   ]
                 },
@@ -4756,6 +4760,7 @@
                       "holos",
                       "email",
                       "github",
+                      "voice",
                       "runtime"
                     ]
                   }
@@ -19226,6 +19231,86 @@
         ]
       }
     },
+    "/voice/transcribe": {
+      "post": {
+        "operationId": "voice.transcribe",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Transcribe audio",
+        "description": "Transcribe a short audio recording to text for composer voice dictation. Audio is processed in memory and never persisted.",
+        "responses": {
+          "200": {
+            "description": "Transcribed text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceTranscriptionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {},
+                  "context": {
+                    "type": "string"
+                  },
+                  "language": {
+                    "type": "string"
+                  }
+                },
+                "required": ["file"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.voice.transcribe({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/holos/credentials/status": {
       "get": {
         "operationId": "holos.credentials.status",
@@ -32818,6 +32903,69 @@
         },
         "additionalProperties": false
       },
+      "VoiceSttConfig": {
+        "description": "Speech-to-text service configuration",
+        "type": "object",
+        "properties": {
+          "baseURL": {
+            "description": "Base URL for the speech-to-text API (OpenAI-compatible)",
+            "type": "string"
+          },
+          "apiKey": {
+            "description": "API key for the speech-to-text service",
+            "type": "string"
+          },
+          "model": {
+            "description": "Speech-to-text model name. Voice input is disabled when not set.",
+            "type": "string"
+          },
+          "language": {
+            "description": "BCP-47 language hint for transcription, e.g. zh, en. Auto-detected when not set.",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "VoiceTtsConfig": {
+        "description": "Text-to-speech service configuration",
+        "type": "object",
+        "properties": {
+          "baseURL": {
+            "description": "Base URL for the text-to-speech API (OpenAI-compatible)",
+            "type": "string"
+          },
+          "apiKey": {
+            "description": "API key for the text-to-speech service",
+            "type": "string"
+          },
+          "model": {
+            "description": "Text-to-speech model name. The speak tool is disabled when not set.",
+            "type": "string"
+          },
+          "voice": {
+            "description": "Voice name for synthesis (provider-specific, e.g. alloy)",
+            "type": "string"
+          },
+          "instructions": {
+            "description": "Natural-language delivery instructions applied to synthesized speech, e.g. tone and pace",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "VoiceConfig": {
+        "description": "Voice input (dictation) and output (speech synthesis) configuration.",
+        "type": "object",
+        "properties": {
+          "stt": {
+            "$ref": "#/components/schemas/VoiceSttConfig"
+          },
+          "tts": {
+            "$ref": "#/components/schemas/VoiceTtsConfig"
+          }
+        },
+        "additionalProperties": false
+      },
       "MemoryConfig": {
         "type": "object",
         "properties": {
@@ -34698,6 +34846,9 @@
           },
           "rerank": {
             "$ref": "#/components/schemas/RerankConfig"
+          },
+          "voice": {
+            "$ref": "#/components/schemas/VoiceConfig"
           },
           "library": {
             "$ref": "#/components/schemas/LibraryConfig"
@@ -37022,6 +37173,7 @@
               "holos",
               "email",
               "github",
+              "voice",
               "runtime"
             ]
           },
@@ -37167,6 +37319,7 @@
                 "holos",
                 "email",
                 "github",
+                "voice",
                 "runtime"
               ]
             }
@@ -37297,6 +37450,7 @@
               "holos",
               "email",
               "github",
+              "voice",
               "runtime"
             ]
           },
@@ -37428,6 +37582,7 @@
                 "holos",
                 "email",
                 "github",
+                "voice",
                 "runtime"
               ]
             }
@@ -37647,6 +37802,7 @@
                     "holos",
                     "email",
                     "github",
+                    "voice",
                     "runtime"
                   ]
                 }
@@ -37704,6 +37860,7 @@
                 "holos",
                 "email",
                 "github",
+                "voice",
                 "runtime"
               ]
             }
@@ -44855,6 +45012,15 @@
           }
         },
         "required": ["id", "url", "mime", "size"]
+      },
+      "VoiceTranscriptionResult": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": ["text"]
       },
       "HolosCredentialsStatusResponse": {
         "type": "object",

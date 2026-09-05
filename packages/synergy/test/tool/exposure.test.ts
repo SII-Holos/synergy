@@ -288,6 +288,49 @@ describe("tool exposure", () => {
     })
   })
 
+  test("speak is hidden when no voice.tts.model is configured", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        expect((await definitionIDs(session)).has("speak")).toBe(false)
+      },
+    })
+  })
+
+  test("speak is exposed when voice.tts.model is set", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        voice: { tts: { model: "gpt-4o-mini-tts", apiKey: "test-key" } },
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        expect((await definitionIDs(session)).has("speak")).toBe(true)
+      },
+    })
+  })
+
+  test("empty-string voice.tts.model disables speak like an unset model", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        voice: { tts: { model: "" } },
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        expect((await definitionIDs(session)).has("speak")).toBe(false)
+      },
+    })
+  })
+
   test("ToolResolver hides deferred groups until the session expands them", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

@@ -101,6 +101,8 @@ import { WorktreeUnavailableDialog } from "./worktree-unavailable-dialog"
 import { ComposerDocumentController } from "./composer-document"
 import { createAbortRequestController } from "./abort-request"
 import { ComposerExtensionOutlet } from "@/plugin/registries/composer-extension-registry"
+import { VoiceDictationButton } from "./use-voice-dictation"
+import { collectDictationContext } from "./voice-dictation-core"
 
 function sanitizePromptHistory(value: unknown) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value
@@ -1431,6 +1433,40 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     unsubscribeComposer()
     composerDocument.dispose()
   })
+
+  const insertDictationText = async (text: string) => {
+    const apply = async () => {
+      const snapshot = composerDocument.current()
+      // The controller reports the live caret in text coordinates (file pills
+      // are excluded), so inserting there matches typing even in drafts that
+      // mix attachments and text. When the caret left the editor during the
+      // transcription, append to the end of the draft instead.
+      const selection = window.getSelection()
+      const caretInEditor =
+        selection !== null &&
+        selection.rangeCount > 0 &&
+        !!selection.anchorNode &&
+        editorRef.contains(selection.anchorNode)
+      const range = caretInEditor ? snapshot.selection : { start: snapshot.text.length, end: snapshot.text.length }
+      try {
+        await composerDocument.applyEdits({ revision: snapshot.revision, edits: [{ range, text }] })
+        return true
+      } catch {
+        return false
+      }
+    }
+    if (!(await apply())) {
+      // The document moved while transcribing (stale revision) — retry once
+      // against the fresh snapshot so dictation text is never lost silently.
+      if (!(await apply())) {
+        showToast({
+          type: "error",
+          title: i18n._(PI.voiceInsertFailedTitle),
+          description: i18n._(PI.voiceInsertFailedDescription),
+        })
+      }
+    }
+  }
   const activeCompletion = () => {
     composerVersion()
     return composerDocument.completion()
@@ -2109,6 +2145,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               }}
             />
             <ComposerSlotOutlet slot="composer.toolbar.right" sessionId={params.id} class="contents" />
+            <VoiceDictationButton
+              getContext={() => collectDictationContext(view().messagesFor(params.id ?? ""))}
+              insertText={insertDictationText}
+              focusEditor={() => {
+                // Restores the caret the applyEdits insert left behind.
+                editorRef.focus()
+              }}
+            />
             <Show when={!sdk.connected()}>
               <Tooltip placement="top" value={i18n._(PI.connectionLost)}>
                 <div class="flex items-center justify-center size-5">

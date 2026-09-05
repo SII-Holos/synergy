@@ -8,15 +8,27 @@ const { enforceProductionLoading, installSessionSecurity, installWindowSecurity,
 )
 
 describe("desktop session security", () => {
-  test("denies every renderer permission request by default", () => {
+  test("denies every renderer permission request except microphone-only media", () => {
     electronMockState.permissionRequestHandlers = []
     installSessionSecurity()
     expect(electronMockState.permissionRequestHandlers).toHaveLength(1)
 
+    const handler = electronMockState.permissionRequestHandlers[0]! as (
+      webContents: unknown,
+      permission: string,
+      callback: (granted: boolean) => void,
+      details?: { mediaTypes?: Array<"audio" | "video"> },
+    ) => void
     const decisions: boolean[] = []
-    electronMockState.permissionRequestHandlers[0]!(null, "media", (granted) => decisions.push(granted))
-    electronMockState.permissionRequestHandlers[0]!(null, "geolocation", (granted) => decisions.push(granted))
-    expect(decisions).toEqual([false, false])
+    const request = (permission: string, mediaTypes?: Array<"audio" | "video">) => {
+      handler(null, permission, (granted) => decisions.push(granted), mediaTypes && { mediaTypes })
+    }
+    request("media", ["audio"])
+    request("media", ["video"])
+    request("media", ["audio", "video"])
+    request("media")
+    request("geolocation")
+    expect(decisions).toEqual([true, false, false, false, false])
   })
 
   test("opens only http, https, and mailto URLs externally", async () => {
