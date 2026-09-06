@@ -597,6 +597,18 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
               <span>{lingui._({ id: F.openInBrowser.id, message: F.openInBrowser.message })}</span>
             </button>
           </Show>
+          <Show when={path()}>
+            <a
+              class="file-download"
+              href={`${buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, directory: sdk.directory })}?download=1`}
+              download={breadcrumb().at(-1)}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Icon name={getSemanticIcon("action.download")} size="small" />
+              <span>{lingui._({ id: F.download.id, message: F.download.message })}</span>
+            </a>
+          </Show>
           <IconButton
             icon={getSemanticIcon("workspace.files")}
             variant="ghost"

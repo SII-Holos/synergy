@@ -44,6 +44,15 @@ function isUnsafeRawPath(rel: string) {
   return rel.split(/[\\/]+/).some((seg) => seg === "..")
 }
 
+function contentDispositionAttachment(filename: string) {
+  const ascii = filename.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_")
+  const encoded = encodeURIComponent(filename).replace(
+    /[!'()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  )
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`
+}
+
 function parseRange(input: string | undefined) {
   if (!input) return {}
   const match = input.trim().match(/^(\d+)\s*(?::|,|-)\s*(\d+)$/)
@@ -292,7 +301,9 @@ export const WorkspaceFilesRoute = new Hono()
         "Serve an .html/.htm/.svg/.xml file or a static relative resource it references (images, CSS, scripts, fonts). " +
         "The first segment selects the scope: the literal home or a base64url-encoded directory. The remaining " +
         "path is a workspace-relative file that must stay inside the scope. Script-capable document responses " +
-        "(HTML, SVG, XML) carry a sandbox CSP that places the page in an opaque origin.",
+        "(HTML, SVG, XML) carry a sandbox CSP that places the page in an opaque origin. A download query " +
+        "(?download or ?download=1, negated by ?download=false) returns the bytes as a Content-Disposition " +
+        "attachment without the document sandbox, so any file the route serves can also be saved to disk.",
       operationId: "workspace.files.raw",
       hide: true,
       responses: {
@@ -338,6 +349,17 @@ export const WorkspaceFilesRoute = new Hono()
       try {
         const result = await WorkspaceFileService.serveFile({ path: rel })
         const ext = path.extname(rel).toLowerCase()
+        const download = c.req.query("download")
+        if (download !== undefined && download !== "false") {
+          // Attachment responses hand raw bytes to the browser's download
+          // path, never to a renderer: the document sandbox CSP is irrelevant
+          // and the filename only reaches the header, RFC 5987-encoded with
+          // reserved characters percent-escaped so any name survives.
+          c.header("Content-Disposition", contentDispositionAttachment(path.basename(rel)))
+          c.header("Content-Type", result.mime || "application/octet-stream")
+          c.header("Cache-Control", "no-store")
+          return c.body(result.stream)
+        }
         // Document types that can execute scripts when opened as a top-level
         // page: HTML, SVG, and XML (XSLT processing instructions). They are
         // untrusted — sandbox them into an opaque origin so scripts can run

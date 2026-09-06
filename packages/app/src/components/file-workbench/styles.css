@@ -141,6 +141,27 @@
   flex-shrink: 0;
 }
 
+.file-download {
+  display: flex;
+  height: 26px;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  padding: 0 8px;
+  color: var(--text-base);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.file-download:hover {
+  background: var(--surface-raised-base-hover);
+  color: var(--text-strong);
+}
+
+.file-download svg {
+  flex-shrink: 0;
+}
+
 .file-add-context span:first-child {
   color: var(--text-weak);
   font-family: var(--font-mono);

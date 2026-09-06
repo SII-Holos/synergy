@@ -2592,6 +2592,10 @@ msgid "app.file.toolbar.discard"
 msgstr "放弃"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.download"
+msgstr "下载"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toolbar.edit"
 msgstr "编辑"
 
