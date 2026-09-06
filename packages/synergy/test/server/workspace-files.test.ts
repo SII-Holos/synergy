@@ -673,4 +673,101 @@ describe("GET /workspace/files/content", () => {
     const body = await response.json()
     expect(body.name).toBe("NotFoundError")
   })
+
+  test("serves a download query as an attachment without the document sandbox", async () => {
+    const html = "<!doctype html><script>1</script><p>hi</p>"
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "report.html"), html)
+        await Bun.write(path.join(dir, "数据 表.csv"), "a,b\n1,2\n")
+      },
+    })
+    const app = Server.App()
+
+    const document = await app.request(`${rawUrl(tmp.path, "report.html")}?download=1`)
+    expect(document.status).toBe(200)
+    expect(document.headers.get("content-disposition")).toBe(
+      `attachment; filename="report.html"; filename*=UTF-8''report.html`,
+    )
+    expect(document.headers.get("content-type")).toContain("text/html")
+    expect(document.headers.get("content-security-policy") ?? "").not.toContain("sandbox")
+    expect(document.headers.get("cache-control")).toBe("no-store")
+    expect(await document.text()).toBe(html)
+
+    const encoded = encodeURIComponent("数据 表.csv")
+    const data = await app.request(`${rawUrl(tmp.path, encoded)}?download`)
+    expect(data.status).toBe(200)
+    expect(data.headers.get("content-disposition")).toContain(`filename*=UTF-8''${encoded}`)
+    expect(data.headers.get("content-disposition")).toContain(`filename="__ _.csv"`)
+    expect(await data.text()).toBe("a,b\n1,2\n")
+  })
+
+  test("keeps download behavior behind the same workspace guards", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const app = Server.App()
+
+    const traversal = await app.request(`${rawUrl(tmp.path, "../outside.txt")}?download=1`)
+    expect([400, 403, 404]).toContain(traversal.status)
+
+    const missing = await app.request(`${rawUrl(tmp.path, "missing.txt")}?download=1`)
+    expect(missing.status).toBe(404)
+  })
+
+  test("percent-encodes RFC 5987-reserved characters in the attachment filename", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "it's v2*draft.csv"), "a,b\n1,2\n")
+      },
+    })
+    const app = Server.App()
+    const encodedName = encodeURIComponent("it's v2*draft.csv").replace(
+      /[!'()*]/g,
+      (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+    )
+
+    const response = await app.request(`${rawUrl(tmp.path, encodedName)}?download=1`)
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-disposition")).toBe(
+      `attachment; filename="it's v2*draft.csv"; filename*=UTF-8''it%27s%20v2%2Adraft.csv`,
+    )
+    expect(await response.text()).toBe("a,b\n1,2\n")
+  })
+
+  test("treats only a truthy download query as a download request", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "page.html"), "<!doctype html><p>hi</p>")
+      },
+    })
+    const app = Server.App()
+    const url = rawUrl(tmp.path, "page.html")
+
+    for (const value of ["", "1", "true"]) {
+      const response = await app.request(`${url}?download=${value}`)
+      expect(response.headers.get("content-disposition")).toContain("attachment")
+    }
+
+    const negated = await app.request(`${url}?download=false`)
+    expect(negated.headers.get("content-disposition")).toBeNull()
+    expect(negated.headers.get("content-security-policy")).toContain("sandbox")
+  })
+
+  test("keeps the serve size ceiling for downloads", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "huge.pdf"), "%PDF-1.1\n")
+        await fs.truncate(path.join(dir, "huge.pdf"), 50 * 1024 * 1024 + 1)
+      },
+    })
+    const app = Server.App()
+
+    const response = await app.request(`${rawUrl(tmp.path, "huge.pdf")}?download=1`)
+    expect(response.status).toBe(400)
+    const body = await response.json()
+    expect(body.name).toBe("WorkspaceFileTooLargeError")
+  })
 })

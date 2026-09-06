@@ -364,6 +364,7 @@ export const fileWorkbench = {
   preview: { id: "app.file.mode.preview", message: "Preview" },
   toggleFileTree: { id: "app.file.toolbar.toggleFileTree", message: "Toggle file tree" },
   openInBrowser: { id: "app.file.toolbar.openInBrowser", message: "Open in browser" },
+  download: { id: "app.file.toolbar.download", message: "Download" },
   zoomOut: { id: "app.file.image.zoomOut", message: "Zoom out" },
   zoomIn: { id: "app.file.image.zoomIn", message: "Zoom in" },
   fit: { id: "app.file.image.fit", message: "Fit" },

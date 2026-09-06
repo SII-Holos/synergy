@@ -11,7 +11,10 @@ This directory owns the complete read-only file workspace UI:
 
 PDF preview bytes come from `GET /workspace/files/content` and are cached in
 `context/file.tsx` with a 50 MiB per-file cap and a two-buffer LRU, separate from
-the JSON document cache.
+the JSON document cache. The toolbar Download action points at the raw route with
+a `?download=1` query (`GET /workspace/files/raw/{scope}/{path}?download=1`),
+which answers `Content-Disposition: attachment` so any served file type can be
+saved to disk.
 
 The public component boundary is `index.ts`. File data, caching, persistence, and
 watcher reconciliation are owned by `context/file.tsx`; all filesystem access goes

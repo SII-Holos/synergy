@@ -2592,6 +2592,10 @@ msgid "app.file.toolbar.discard"
 msgstr ""
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.toolbar.download"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.toolbar.edit"
 msgstr ""
 

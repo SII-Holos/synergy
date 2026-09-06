@@ -77,7 +77,10 @@ export namespace PushService {
         TTL: TTL_BY_CATEGORY[category],
         urgency: URGENCY_BY_CATEGORY[category],
         vapidDetails: {
-          subject: "mailto:synergy@localhost",
+          // RFC 8292 requires the subject to be a contactable mailto or
+          // https URI. Apple rejects JWTs whose host cannot be resolved
+          // (403 BadJwtToken), so this must stay a public, project-owned URL.
+          subject: "https://github.com/SII-Holos/synergy",
           publicKey: vapid.publicKey,
           privateKey: vapid.privateKey,
         },
@@ -88,7 +91,7 @@ export namespace PushService {
         await PushStore.removeById(sub.id).catch(() => undefined)
         log.info("pruned expired push subscription", { subscriptionID: sub.id })
       } else {
-        log.warn("push delivery failed", { subscriptionID: sub.id, error })
+        log.warn("push delivery failed", { subscriptionID: sub.id, statusCode, error })
       }
       if (options?.propagate) throw error
     }
