@@ -995,6 +995,15 @@ export namespace Config {
           issues: parsed.error.issues,
         })
       }
+      if (issue.path.length === 0 && issue.code === "unrecognized_keys") {
+        // The root schema is strict, so retired top-level keys surface as a
+        // root-level issue that names them via `keys` instead of carrying a
+        // real path. Strip exactly those keys like any recoverable section;
+        // keying the strip on path[0] would delete a bogus "undefined" entry
+        // and quarantine the whole file.
+        for (const key of issue.keys) stripKeys.add(String(key))
+        continue
+      }
       const section = String(issue.path[0])
       stripKeys.add(section)
     }

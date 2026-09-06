@@ -406,14 +406,15 @@ test("handles file inclusion substitution", async () => {
   })
 })
 
-test("validates config schema and throws on invalid fields", async () => {
+test("strips unknown top-level fields and keeps the rest of the config", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(
         path.join(dir, "synergy.json"),
         JSON.stringify({
           $schema: "file:///test/config.schema.json",
-          invalid_field: "should cause error",
+          invalid_field: "should be stripped",
+          theme: "test_theme",
         }),
       )
     },
@@ -421,8 +422,14 @@ test("validates config schema and throws on invalid fields", async () => {
   await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      // Strict schema should throw an error for invalid fields
-      await expect(Config.current()).rejects.toThrow()
+      // The strict schema still rejects unknown keys when parsing a value
+      // directly...
+      expect(() => Config.Info.parse({ invalid_field: 1 })).toThrow()
+      // ...but file loading strips them with a warning instead of failing
+      // the whole load, matching the section-level recovery semantics.
+      const config = await Config.current()
+      expect(config.theme).toBe("test_theme")
+      expect((config as Record<string, unknown>).invalid_field).toBeUndefined()
     },
   })
 })
