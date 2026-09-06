@@ -100,6 +100,18 @@ export function builtinApiKeyOf(entry: unknown): string | undefined {
   const apiKey = (entry as Record<string, unknown>).apiKey
   return typeof apiKey === "string" && apiKey.trim() !== "" ? apiKey : undefined
 }
+/**
+ * True when the named server is staged from the builtin catalog right now:
+ * the catalog ships it, the disable switch is off, and no user entry owns
+ * the name. Exposure decisions use this as the expand-by-default fallback
+ * so the shipped search servers stay resident like the first-party tools
+ * they replaced.
+ */
+export function builtinServerStaged(name: string, userMcp: Record<string, unknown> | undefined): boolean {
+  if (builtinMcpDisabled()) return false
+  const user = userMcp ?? {}
+  return catalog().some((server) => server.name === name) && !userOwnsServer(user[name])
+}
 
 /** Builtin entries to stage for the given merged user config (may be empty). */
 export function collectBuiltinMcpServers(userMcp: Record<string, unknown> | undefined): BuiltinMcpServer[] {

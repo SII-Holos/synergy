@@ -1,5 +1,6 @@
 import { ToolMcpSource } from "../tool/mcp-source"
 import { MCP } from "./index"
+import { builtinServerStaged } from "./builtin-catalog"
 
 /**
  * P9 source inversion: the L1 tool domain reads MCP tool entries, call
@@ -12,5 +13,6 @@ export function registerMcpToolSource() {
     toolEntries: () => MCP.toolEntries(),
     toolCallTimeout: (toolName) => MCP.toolCallTimeout(toolName),
     deferredGroupCatalog: () => MCP.deferredGroupCatalog(),
+    builtinServerStaged: (serverName, userMcp) => builtinServerStaged(serverName, userMcp),
   })
 }

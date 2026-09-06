@@ -36,7 +36,12 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => {
     }))
   const config = await Config.current()
   const foldedServers = mcpCatalog.servers.filter(
-    (server) => !ToolExposure.mcpExpandByDefault(config.mcp?.[server.serverName], config.mcpDefaults),
+    (server) =>
+      !ToolExposure.mcpExpandByDefault(
+        config.mcp?.[server.serverName],
+        config.mcpDefaults,
+        ToolMcpSource.get()?.builtinServerStaged(server.serverName, config.mcp) ?? false,
+      ),
   )
   const mcpSection =
     foldedServers.length > 0 ? ["Connected MCP groups:", ToolExposure.mcpGroupTable(foldedServers)].join("\n") : ""

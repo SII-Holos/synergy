@@ -34865,6 +34865,10 @@
                     },
                     "apiKey": {
                       "type": "string"
+                    },
+                    "expandByDefault": {
+                      "description": "Keep this built-in server's tools always visible to the model instead of folding them into an expandable MCP group",
+                      "type": "boolean"
                     }
                   },
                   "additionalProperties": false

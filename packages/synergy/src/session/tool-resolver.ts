@@ -1743,7 +1743,11 @@ export namespace ToolResolver {
         const item = entry.tool
         const exposure = ToolExposure.mcpExposure(
           entry.serverName,
-          ToolExposure.mcpExpandByDefault(mcpConfig[entry.serverName], config.mcpDefaults),
+          ToolExposure.mcpExpandByDefault(
+            mcpConfig[entry.serverName],
+            config.mcpDefaults,
+            ToolMcpSource.get()?.builtinServerStaged(entry.serverName, mcpConfig) ?? false,
+          ),
         )
         const schema = entry.inputSchema
         result.push({

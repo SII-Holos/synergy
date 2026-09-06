@@ -1927,13 +1927,20 @@ export const Info = z
           z
             .object({
               enabled: z.boolean().optional(),
-              // Built-in server credential stub: raising rate limits for a
-              // built-in MCP server without taking ownership of its config.
-              // Injected as a Bearer header at staging; empty string clears.
+              // Built-in server stub: add a credential (apiKey), opt out of
+              // the builtin (enabled:false), or override expansion
+              // (expandByDefault) without owning the builtin config. The key
+              // is injected as a Bearer header at staging; empty clears.
               apiKey: z.string().optional(),
+              expandByDefault: z
+                .boolean()
+                .optional()
+                .describe(
+                  "Keep this built-in server's tools always visible to the model instead of folding them into an expandable MCP group",
+                ),
             })
             .strict()
-            .refine((stub) => "enabled" in stub || "apiKey" in stub, {
+            .refine((stub) => "enabled" in stub || "apiKey" in stub || "expandByDefault" in stub, {
               error: "Built-in server stubs must set at least one field",
             }),
         ]),
