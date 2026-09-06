@@ -94,6 +94,22 @@ describe("instruction files", () => {
     expect(joined.indexOf("root doc")).toBeGreaterThanOrEqual(0)
     expect(joined.indexOf("nested doc")).toBeGreaterThan(joined.indexOf("root doc"))
   })
+  test("deduplicates byte-identical instruction files across directories", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        const nested = path.join(dir, "packages", "app")
+        await fs.mkdir(nested, { recursive: true })
+        await Bun.write(path.join(dir, "AGENTS.md"), "shared repo rules")
+        await Bun.write(path.join(nested, "AGENTS.md"), "shared repo rules")
+      },
+    })
+
+    const nested = path.join(tmp.path, "packages", "app")
+    const parts = await customPromptFor(await tmp.scope(), nested)
+
+    expect(parts.filter((part) => part.includes("shared repo rules"))).toHaveLength(1)
+  })
 
   test("loads global instructions before project-specific instructions", async () => {
     await using tmp = await tmpdir({

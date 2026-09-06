@@ -99,9 +99,9 @@ The tool performs multi-layer validation before saving. Some issues are auto-fix
 - cancelled → pending (re-activate)
 - completed → (immutable, no transitions allowed)
 
-## Examples
+## Example
 
-### Parallel branches converging
+Basic plan with parallel branches converging:
 ```
 dagwrite({ nodes: [
   { id: "research", content: "Research API options",  status: "pending", deps: [], assign: "explore" },
@@ -110,27 +110,4 @@ dagwrite({ nodes: [
   { id: "test",     content: "Write and run tests",   status: "pending", deps: ["impl"] }
 ]})
 ```
-→ "research" and "design" are auto-promoted to `running` — both can run in parallel.
-
-### Retry after failure
-```
-dagwrite({ nodes: [
-  { id: "research", content: "Research API options",  status: "completed", deps: [] },
-  { id: "design",   content: "Design component API",  status: "completed", deps: [] },
-  { id: "impl",     content: "Implement component (revised approach)", status: "pending", deps: ["research", "design"] },
-  { id: "test",     content: "Write and run tests",   status: "pending", deps: ["impl"] }
-]})
-```
-
-### Mid-flight graft
-After research reveals a new prerequisite:
-```
-dagwrite({ nodes: [
-  { id: "research", content: "Research API options",  status: "completed", deps: [] },
-  { id: "design",   content: "Design component API",  status: "completed", deps: [] },
-  { id: "migrate",  content: "Migrate legacy code",   status: "pending", deps: ["research"] },
-  { id: "impl",     content: "Implement component",   status: "pending", deps: ["design", "migrate"] },
-  { id: "test",     content: "Write and run tests",   status: "pending", deps: ["impl"] }
-]})
-```
-→ New "migrate" node inserted, "impl" deps updated.
+Retry/graft patterns are just re-calls of `dagwrite` with the full updated node list; use `dagpatch` for status-only updates, `dagread` to inspect the graph.

@@ -3,6 +3,15 @@ import { InstructionRegistry } from "../instruction/registry"
 import { PermissionNext } from "../permission/next"
 import { Tool } from "./tool"
 
+export function truncateSkillDescription(raw: string): string {
+  if (!raw) return ""
+  const collapsed = raw.split("\n")[0].replace(/\s+/g, " ").trim()
+  if (collapsed.length <= 100) return collapsed
+  const boundary = collapsed.lastIndexOf(" ", 100)
+  const cut = boundary === -1 ? 100 : boundary
+  return `${collapsed.slice(0, cut)}…`
+}
+
 const parameters = z.object({
   name: z.string().describe("The skill identifier from available_skills (e.g., 'code-review' or 'category/helper')"),
   reference: z
@@ -30,7 +39,7 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
             ...accessible.flatMap((entry) => [
               "  <skill>",
               `    <name>${entry.name}</name>`,
-              `    <description>${entry.description}</description>`,
+              `    <description>${truncateSkillDescription(entry.description)}</description>`,
               "  </skill>",
             ]),
             "</available_skills>",

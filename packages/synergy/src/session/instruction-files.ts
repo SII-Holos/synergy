@@ -154,6 +154,24 @@ export namespace InstructionFiles {
     return Promise.all([...foundFiles, ...foundUrls]).then((result) => result.filter((x): x is string => !!x))
   }
 
+  const PART_HEADER_PREFIX = "Instructions from: "
+
+  function partBody(part: string): string {
+    if (!part.startsWith(PART_HEADER_PREFIX)) return part
+    const newline = part.indexOf("\n")
+    return newline === -1 ? "" : part.slice(newline + 1)
+  }
+
+  function dedupeParts(parts: string[]): string[] {
+    const seen = new Set<string>()
+    return parts.filter((part) => {
+      const body = partBody(part)
+      if (seen.has(body)) return false
+      seen.add(body)
+      return true
+    })
+  }
+
   export async function load() {
     const config = await Config.current()
     const maxBytes = config.project_doc_max_bytes ?? DEFAULT_PROJECT_DOC_MAX_BYTES
@@ -165,6 +183,6 @@ export namespace InstructionFiles {
       automaticPaths.map((filepath) => readInstructionFilePart(filepath, maxBytes)),
     )
     const explicitParts = await loadExplicitInstructions(config.instructions, new Set(automaticPaths))
-    return [...automaticParts.filter((part): part is string => !!part), ...explicitParts]
+    return dedupeParts([...automaticParts.filter((part): part is string => !!part), ...explicitParts])
   }
 }
