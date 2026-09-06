@@ -633,6 +633,10 @@ export const Agent = z
       .array(z.string())
       .optional()
       .describe("Additional delegation catalogs this agent may use when dispatching subagents"),
+    deferredTools: z
+      .array(z.string())
+      .optional()
+      .describe("Tool IDs folded behind expand_tools for this agent, such as task delegation and DAG planning tools"),
     options: z.record(z.string(), z.any()).optional(),
     color: z
       .string()
@@ -670,6 +674,7 @@ export const Agent = z
       "visibleTo",
       "delegationGroups",
       "color",
+      "deferredTools",
       "steps",
       "maxSteps",
       "options",
@@ -1890,6 +1895,7 @@ export const Info = z
         // primary
         synergy: Agent.optional(),
         "synergy-max": Agent.optional(),
+        "synergy-flash": Agent.optional(),
         // classic subagents
         developer: Agent.optional(),
         // subagent

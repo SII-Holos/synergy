@@ -204,6 +204,40 @@ export namespace ToolExposure {
   export function builtinGroupForTool(toolID: string): GroupInfo | undefined {
     return BUILTIN_GROUP_BY_TOOL.get(toolID)
   }
+  /**
+   * Stable group id for orchestration tools (task delegation, DAG planning)
+   * folded behind expand_tools for lightweight agents.
+   */
+  export const ORCHESTRATION_GROUP = "orchestration"
+
+  export const ORCHESTRATION_GROUP_INFO: GroupInfo = {
+    id: ORCHESTRATION_GROUP,
+    title: "Orchestration",
+    description:
+      "Specialist delegation (task) and DAG planning (dagwrite, dagpatch, dagread) for parallel or multi-phase work.",
+    whenToExpand:
+      'Expand with expand_tools({ groups: ["orchestration"] }) when the user asks for parallel or delegated work, when the request is clearly a large multi-part task, or when you already know you will dispatch specialists or plan a DAG.',
+    tools: [],
+  }
+
+  /**
+   * Fold a resident orchestration tool behind the shared orchestration group
+   * for agents that declare it in their deferredTools list. Exposures that are
+   * already grouped, searched, or internal pass through unchanged, and tools
+   * outside the deferred list are untouched.
+   */
+  export function deferredExposure(toolID: string, exposure: Info | undefined, deferredTools?: string[]): Info {
+    if (!deferredTools?.includes(toolID)) return exposure ?? RESIDENT
+    const normalized = normalize(toolID, exposure)
+    if (normalized.mode !== "resident") return normalized
+    return {
+      mode: "group",
+      group: ORCHESTRATION_GROUP,
+      title: ORCHESTRATION_GROUP_INFO.title,
+      description: ORCHESTRATION_GROUP_INFO.description,
+      whenToExpand: ORCHESTRATION_GROUP_INFO.whenToExpand,
+    }
+  }
 
   export function normalize(toolID: string, explicit?: Info): Info {
     if (explicit) return explicit

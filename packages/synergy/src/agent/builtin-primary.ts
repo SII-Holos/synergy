@@ -29,6 +29,34 @@ function classicPrimaryPermission(ctx: BuiltinAgentContext): PermissionNext.Rule
   )
 }
 
+function flashPrimaryPermission(ctx: BuiltinAgentContext): PermissionNext.Ruleset {
+  return PermissionNext.merge(
+    ctx.defaults,
+    PermissionNext.fromConfig({
+      question: "allow",
+      runtime_reload: "allow",
+      dagwrite: "allow",
+      dagread: "allow",
+      dagpatch: "allow",
+      todowrite: "deny",
+      todoread: "deny",
+      view_file: "deny",
+      revise_file: "deny",
+      resolve_conflicts: "deny",
+      save_file: "deny",
+      scan_files: "deny",
+      parse_code: "deny",
+      glob: "deny",
+      grep: "deny",
+      ast_grep: "deny",
+      memory_write: "allow",
+      memory_edit: "allow",
+      ...(ctx.evolutionActive ? {} : { memory_search: "deny", memory_get: "deny" }),
+    }),
+    ctx.user,
+  )
+}
+
 function bossPrimaryPermission(ctx: BuiltinAgentContext): PermissionNext.Ruleset {
   return PermissionNext.merge(
     ctx.defaults,
@@ -139,6 +167,17 @@ export function createBuiltinPrimaryAgents(ctx: BuiltinAgentContext): Record<str
       permission: maxPrimaryPermission(ctx),
       mode: "primary",
       native: true,
+    },
+    "synergy-flash": {
+      name: "synergy-flash",
+      description:
+        "Primary lightweight general-purpose agent. Works hands-on with the classic execution surface and stays concise; orchestration tools (task delegation, DAG planning) stay folded behind expand_tools and are expanded only when the user asks for parallel work or the request is clearly a large multi-part task.",
+      prompt: "",
+      options: {},
+      permission: flashPrimaryPermission(ctx),
+      mode: "primary",
+      native: true,
+      deferredTools: ["task", "task_list", "task_output", "task_cancel", "dagwrite", "dagread", "dagpatch"],
     },
     "boss-synergy": {
       name: "boss-synergy",
