@@ -140,6 +140,17 @@ export function createBuiltinPrimaryAgents(ctx: BuiltinAgentContext): Record<str
       mode: "primary",
       native: true,
     },
+    "synergy-flash": {
+      name: "synergy-flash",
+      description:
+        "Primary lightweight general-purpose agent. Works hands-on with the classic execution surface and stays concise; orchestration tools (task delegation, DAG planning) stay folded behind expand_tools and are expanded only when the user asks for parallel work or the request is clearly a large multi-part task.",
+      prompt: "",
+      options: {},
+      permission: classicPrimaryPermission(ctx),
+      mode: "primary",
+      native: true,
+      deferredTools: ["task", "task_list", "task_output", "task_cancel", "dagwrite", "dagread", "dagpatch"],
+    },
     "boss-synergy": {
       name: "boss-synergy",
       description:

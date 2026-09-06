@@ -1837,6 +1837,7 @@ export type Agent = {
   hidden?: boolean
   visibleTo?: Array<string>
   delegationGroups?: Array<string>
+  deferredTools?: Array<string>
   topP?: number
   temperature?: number
   color?: string
@@ -2421,6 +2422,10 @@ export type AgentConfig = {
    * Additional delegation catalogs this agent may use when dispatching subagents
    */
   delegationGroups?: Array<string>
+  /**
+   * Tool IDs folded behind expand_tools for this agent, such as task delegation and DAG planning tools
+   */
+  deferredTools?: Array<string>
   options?: {
     [key: string]: unknown
   }
@@ -2454,6 +2459,7 @@ export type AgentConfig = {
     | "subagent"
     | "primary"
     | "all"
+    | Array<string>
     | Array<string>
     | Array<string>
     | {
@@ -3953,6 +3959,7 @@ export type Config = {
   agent?: {
     synergy?: AgentConfig
     "synergy-max"?: AgentConfig
+    "synergy-flash"?: AgentConfig
     developer?: AgentConfig
     general?: AgentConfig
     explore?: AgentConfig

@@ -31540,6 +31540,12 @@
               "type": "string"
             }
           },
+          "deferredTools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "topP": {
             "type": "number"
           },
@@ -32415,6 +32421,13 @@
           },
           "delegationGroups": {
             "description": "Additional delegation catalogs this agent may use when dispatching subagents",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "deferredTools": {
+            "description": "Tool IDs folded behind expand_tools for this agent, such as task delegation and DAG planning tools",
             "type": "array",
             "items": {
               "type": "string"
@@ -34763,6 +34776,9 @@
                 "$ref": "#/components/schemas/AgentConfig"
               },
               "synergy-max": {
+                "$ref": "#/components/schemas/AgentConfig"
+              },
+              "synergy-flash": {
                 "$ref": "#/components/schemas/AgentConfig"
               },
               "developer": {

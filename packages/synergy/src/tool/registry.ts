@@ -323,7 +323,7 @@ export namespace ToolRegistry {
         const def = await t.init({ agent })
         return {
           id: t.id,
-          exposure: ToolExposure.normalize(t.id, t.exposure),
+          exposure: ToolExposure.deferredExposure(t.id, ToolExposure.normalize(t.id, t.exposure), agent?.deferredTools),
           display: t.display,
           source: t.source,
           inputSchema: t.inputSchema,
