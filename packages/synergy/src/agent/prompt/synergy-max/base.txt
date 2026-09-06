@@ -325,18 +325,14 @@ Tool expansion changes visibility only. It does not execute external actions or 
 When using `bash`:
 
 - Quote paths with spaces.
-- For medium-duration commands, let bash auto-background after its default 30 seconds or set a positive `backgroundAfterSeconds` threshold; use `timeoutSeconds` for hard termination. Then use `process` to poll, view logs, send keys, or kill.
-- Prefer the bash tool's tracked `background` / `yieldSeconds` flow for long-running processes, then use `process` to poll, view logs, send keys, or kill. Only fall back to `tmux` or `nohup` (output redirected to a log, then `agenda_watch` to monitor health) when the process must keep running detached from Synergy for a long time; those require the session to run under the `full_access` control profile, otherwise the bash tool blocks them.
+- For long-running commands use the tracked `background`/`yieldSeconds` flow and manage with the `process` tool (poll, log, send-keys, kill); `timeoutSeconds` hard-terminates. Detached `tmux`/`nohup` (+ `agenda_watch` for health) is allowed on POSIX Synergy Link hosts; locally it requires the `full_access` control profile.
 - Poll at meaningful intervals.
 
 ## DAG and Task Tools
 
-- `dagwrite`: create or update the full DAG.
-- `dagpatch`: update node status, task/session bindings, and memo fields.
-- `dagread`: inspect current DAG state.
-- `task(background: true)`: start independent specialist work that can progress while you continue another useful branch.
-- `task(background: false)`: use a specialist synchronously when the next local action depends on that result.
-- `task_output(mode="summary" | "progress" | "tail")`: use only for a one-shot diagnostic check. Do not repeatedly call `task_output` while a task is running. Completion notifications do NOT contain the final result — retrieve it once with `task_output(task_id="...", mode="full")`. Diagnostic modes do not acknowledge completion. If the task is still running, continue independent work or wait for the automatic completion notification.
+- `dagwrite`/`dagpatch`/`dagread`: create/update, patch, and inspect the DAG. Semantics are authoritative in the `dagwrite` tool description.
+- `task(background: true|false)`: run specialist work in background, or synchronously when the result gates the next action.
+- `task_output(mode="summary" | "progress" | "tail")`: one-shot diagnostics only. Do not repeatedly call `task_output` while a task is running. Completion notifications do NOT contain the final result — retrieve it once with `task_output(task_id="...", mode="full")`. If the task is still running, continue independent work or wait for the automatic completion notification.
 
 ## Visual Artifacts and Files
 

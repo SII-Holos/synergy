@@ -154,6 +154,33 @@ export namespace InstructionFiles {
     return Promise.all([...foundFiles, ...foundUrls]).then((result) => result.filter((x): x is string => !!x))
   }
 
+  const PART_HEADER_PREFIX = "Instructions from: "
+
+  function partBody(part: string): string {
+    if (!part.startsWith(PART_HEADER_PREFIX)) return part
+    const newline = part.indexOf("\n")
+    return newline === -1 ? "" : part.slice(newline + 1)
+  }
+
+  function dedupeParts(parts: string[]): string[] {
+    const firstIndex = new Map<string, number>()
+    const result: string[] = []
+    for (const part of parts) {
+      const body = partBody(part)
+      const existing = firstIndex.get(body)
+      // Keep the first position for stable ordering but the nearest source
+      // header: relative links and directory-relative wording resolve
+      // against the active/nearest copy, not the earliest one.
+      if (existing === undefined) {
+        firstIndex.set(body, result.length)
+        result.push(part)
+        continue
+      }
+      result[existing] = part
+    }
+    return result
+  }
+
   export async function load() {
     const config = await Config.current()
     const maxBytes = config.project_doc_max_bytes ?? DEFAULT_PROJECT_DOC_MAX_BYTES
@@ -165,6 +192,6 @@ export namespace InstructionFiles {
       automaticPaths.map((filepath) => readInstructionFilePart(filepath, maxBytes)),
     )
     const explicitParts = await loadExplicitInstructions(config.instructions, new Set(automaticPaths))
-    return [...automaticParts.filter((part): part is string => !!part), ...explicitParts]
+    return dedupeParts([...automaticParts.filter((part): part is string => !!part), ...explicitParts])
   }
 }
