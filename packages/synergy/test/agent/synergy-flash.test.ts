@@ -29,7 +29,7 @@ test("synergy-flash registers as a visible primary agent", async () => {
   })
 })
 
-test("synergy-flash keeps the classic synergy permission surface", async () => {
+test("synergy-flash keeps the classic execution surface with file_search as the only search tool", async () => {
   await using tmp = await tmpdir()
   await ScopeContext.provide({
     scope: await tmp.scope(),
@@ -47,6 +47,10 @@ test("synergy-flash keeps the classic synergy permission surface", async () => {
       expect(evalPerm(flash, "memory_edit")).toBe("allow")
       expect(evalPerm(flash, "question")).toBe("allow")
       expect(evalPerm(flash, "expand_tools")).toBe("allow")
+      expect(evalPerm(flash, "file_search")).not.toBe("deny")
+      expect(evalPerm(flash, "glob")).toBe("deny")
+      expect(evalPerm(flash, "grep")).toBe("deny")
+      expect(evalPerm(flash, "ast_grep")).toBe("deny")
     },
   })
 })
