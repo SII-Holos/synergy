@@ -713,4 +713,61 @@ describe("GET /workspace/files/content", () => {
     const missing = await app.request(`${rawUrl(tmp.path, "missing.txt")}?download=1`)
     expect(missing.status).toBe(404)
   })
+
+  test("percent-encodes RFC 5987-reserved characters in the attachment filename", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "it's v2*draft.csv"), "a,b\n1,2\n")
+      },
+    })
+    const app = Server.App()
+    const encodedName = encodeURIComponent("it's v2*draft.csv").replace(
+      /[!'()*]/g,
+      (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+    )
+
+    const response = await app.request(`${rawUrl(tmp.path, encodedName)}?download=1`)
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-disposition")).toBe(
+      `attachment; filename="it's v2*draft.csv"; filename*=UTF-8''it%27s%20v2%2Adraft.csv`,
+    )
+    expect(await response.text()).toBe("a,b\n1,2\n")
+  })
+
+  test("treats only a truthy download query as a download request", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "page.html"), "<!doctype html><p>hi</p>")
+      },
+    })
+    const app = Server.App()
+    const url = rawUrl(tmp.path, "page.html")
+
+    for (const value of ["", "1", "true"]) {
+      const response = await app.request(`${url}?download=${value}`)
+      expect(response.headers.get("content-disposition")).toContain("attachment")
+    }
+
+    const negated = await app.request(`${url}?download=false`)
+    expect(negated.headers.get("content-disposition")).toBeNull()
+    expect(negated.headers.get("content-security-policy")).toContain("sandbox")
+  })
+
+  test("keeps the serve size ceiling for downloads", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "huge.pdf"), "%PDF-1.1\n")
+        await fs.truncate(path.join(dir, "huge.pdf"), 50 * 1024 * 1024 + 1)
+      },
+    })
+    const app = Server.App()
+
+    const response = await app.request(`${rawUrl(tmp.path, "huge.pdf")}?download=1`)
+    expect(response.status).toBe(400)
+    const body = await response.json()
+    expect(body.name).toBe("WorkspaceFileTooLargeError")
+  })
 })

@@ -46,7 +46,11 @@ function isUnsafeRawPath(rel: string) {
 
 function contentDispositionAttachment(filename: string) {
   const ascii = filename.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_")
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+  const encoded = encodeURIComponent(filename).replace(
+    /[!'()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  )
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`
 }
 
 function parseRange(input: string | undefined) {
@@ -297,9 +301,9 @@ export const WorkspaceFilesRoute = new Hono()
         "Serve an .html/.htm/.svg/.xml file or a static relative resource it references (images, CSS, scripts, fonts). " +
         "The first segment selects the scope: the literal home or a base64url-encoded directory. The remaining " +
         "path is a workspace-relative file that must stay inside the scope. Script-capable document responses " +
-        "(HTML, SVG, XML) carry a sandbox CSP that places the page in an opaque origin. A ?download=1 query " +
-        "returns the bytes as a Content-Disposition attachment without the document sandbox, so any file the " +
-        "route serves can also be saved to disk.",
+        "(HTML, SVG, XML) carry a sandbox CSP that places the page in an opaque origin. A download query " +
+        "(?download or ?download=1, negated by ?download=false) returns the bytes as a Content-Disposition " +
+        "attachment without the document sandbox, so any file the route serves can also be saved to disk.",
       operationId: "workspace.files.raw",
       hide: true,
       responses: {
@@ -346,11 +350,11 @@ export const WorkspaceFilesRoute = new Hono()
         const result = await WorkspaceFileService.serveFile({ path: rel })
         const ext = path.extname(rel).toLowerCase()
         const download = c.req.query("download")
-        if (download !== undefined) {
+        if (download !== undefined && download !== "false") {
           // Attachment responses hand raw bytes to the browser's download
           // path, never to a renderer: the document sandbox CSP is irrelevant
-          // and the filename only reaches the header, RFC 5987-encoded so
-          // non-ASCII names survive.
+          // and the filename only reaches the header, RFC 5987-encoded with
+          // reserved characters percent-escaped so any name survives.
           c.header("Content-Disposition", contentDispositionAttachment(path.basename(rel)))
           c.header("Content-Type", result.mime || "application/octet-stream")
           c.header("Cache-Control", "no-store")
