@@ -673,4 +673,44 @@ describe("GET /workspace/files/content", () => {
     const body = await response.json()
     expect(body.name).toBe("NotFoundError")
   })
+
+  test("serves a download query as an attachment without the document sandbox", async () => {
+    const html = "<!doctype html><script>1</script><p>hi</p>"
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "report.html"), html)
+        await Bun.write(path.join(dir, "数据 表.csv"), "a,b\n1,2\n")
+      },
+    })
+    const app = Server.App()
+
+    const document = await app.request(`${rawUrl(tmp.path, "report.html")}?download=1`)
+    expect(document.status).toBe(200)
+    expect(document.headers.get("content-disposition")).toBe(
+      `attachment; filename="report.html"; filename*=UTF-8''report.html`,
+    )
+    expect(document.headers.get("content-type")).toContain("text/html")
+    expect(document.headers.get("content-security-policy") ?? "").not.toContain("sandbox")
+    expect(document.headers.get("cache-control")).toBe("no-store")
+    expect(await document.text()).toBe(html)
+
+    const encoded = encodeURIComponent("数据 表.csv")
+    const data = await app.request(`${rawUrl(tmp.path, encoded)}?download`)
+    expect(data.status).toBe(200)
+    expect(data.headers.get("content-disposition")).toContain(`filename*=UTF-8''${encoded}`)
+    expect(data.headers.get("content-disposition")).toContain(`filename="__ _.csv"`)
+    expect(await data.text()).toBe("a,b\n1,2\n")
+  })
+
+  test("keeps download behavior behind the same workspace guards", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const app = Server.App()
+
+    const traversal = await app.request(`${rawUrl(tmp.path, "../outside.txt")}?download=1`)
+    expect([400, 403, 404]).toContain(traversal.status)
+
+    const missing = await app.request(`${rawUrl(tmp.path, "missing.txt")}?download=1`)
+    expect(missing.status).toBe(404)
+  })
 })
