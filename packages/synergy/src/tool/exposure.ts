@@ -187,12 +187,14 @@ export namespace ToolExposure {
   /**
    * Resolve whether an MCP server's tools stay resident (always visible) by
    * default. Per-server `expandByDefault` wins; `mcpDefaults` supplies the
-   * fallback; the default is folded (false).
+   * next fallback; `builtinDefault` covers servers staged from the builtin
+   * catalog so the shipped search servers stay resident like the first-party
+   * tools they replaced; the ultimate default is folded (false).
    */
-  export function mcpExpandByDefault(server: unknown, defaults?: unknown): boolean {
+  export function mcpExpandByDefault(server: unknown, defaults?: unknown, builtinDefault?: boolean): boolean {
     const resolvedServer = (server ?? {}) as { expandByDefault?: boolean }
     const resolvedDefaults = (defaults ?? {}) as { expandByDefault?: boolean }
-    return resolvedServer.expandByDefault ?? resolvedDefaults.expandByDefault ?? false
+    return resolvedServer.expandByDefault ?? resolvedDefaults.expandByDefault ?? builtinDefault ?? false
   }
 
   export function builtinGroup(id: string): GroupInfo | undefined {

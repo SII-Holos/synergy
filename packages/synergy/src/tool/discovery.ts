@@ -62,7 +62,13 @@ export namespace ToolDiscovery {
       const entries = (await ToolMcpSource.get()?.toolEntries()) ?? []
       const toolsByServer = new Map<string, string[]>()
       for (const entry of entries) {
-        if (!ToolExposure.mcpExpandByDefault(config.mcp?.[entry.serverName], config.mcpDefaults)) {
+        if (
+          !ToolExposure.mcpExpandByDefault(
+            config.mcp?.[entry.serverName],
+            config.mcpDefaults,
+            ToolMcpSource.get()?.builtinServerStaged(entry.serverName, config.mcp) ?? false,
+          )
+        ) {
           const existing = toolsByServer.get(entry.serverName) ?? []
           existing.push(entry.id)
           toolsByServer.set(entry.serverName, existing)
@@ -75,7 +81,11 @@ export namespace ToolDiscovery {
       for (const entry of entries) {
         const exposure = ToolExposure.mcpExposure(
           entry.serverName,
-          ToolExposure.mcpExpandByDefault(config.mcp?.[entry.serverName], config.mcpDefaults),
+          ToolExposure.mcpExpandByDefault(
+            config.mcp?.[entry.serverName],
+            config.mcpDefaults,
+            ToolMcpSource.get()?.builtinServerStaged(entry.serverName, config.mcp) ?? false,
+          ),
         )
         const group = ToolExposure.groupInfoFromExposure(entry.id, exposure)
         tools.push({

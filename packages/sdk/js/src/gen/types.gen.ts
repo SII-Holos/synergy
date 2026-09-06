@@ -3988,6 +3988,10 @@ export type Config = {
       | {
           enabled?: boolean
           apiKey?: string
+          /**
+           * Keep this built-in server's tools always visible to the model instead of folding them into an expandable MCP group
+           */
+          expandByDefault?: boolean
         }
   }
   mcpDefaults?: McpDefaultsConfig

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { DISABLE_BUILTIN_MCP_ENV, collectBuiltinMcpServers } from "../../src/mcp/builtin-catalog"
+import { DISABLE_BUILTIN_MCP_ENV, builtinServerStaged, collectBuiltinMcpServers } from "../../src/mcp/builtin-catalog"
 
 // test/preload.ts sets SYNERGY_DISABLE_BUILTIN_MCP=true so no test touches
 // external endpoints; these tests toggle the env within this file's process
@@ -117,5 +117,20 @@ describe("collectBuiltinMcpServers", () => {
       anysearch: "https://custom.example/mcp",
     })
     expect(names(servers)).toEqual(["scholight"])
+  })
+
+  test("builtinServerStaged reflects catalog ownership and the disable switch", () => {
+    delete process.env[DISABLE_BUILTIN_MCP_ENV]
+    expect(builtinServerStaged("anysearch", undefined)).toBe(true)
+    expect(builtinServerStaged("scholight", undefined)).toBe(true)
+    expect(builtinServerStaged("github", undefined)).toBe(false)
+    expect(builtinServerStaged("anysearch", { anysearch: { type: "remote", url: "https://custom.example/mcp" } })).toBe(
+      false,
+    )
+    expect(builtinServerStaged("scholight", { scholight: { enabled: false } })).toBe(false)
+    expect(builtinServerStaged("anysearch", { anysearch: { apiKey: "as_sk_test" } })).toBe(true)
+    expect(builtinServerStaged("anysearch", { anysearch: { expandByDefault: false } })).toBe(true)
+    process.env[DISABLE_BUILTIN_MCP_ENV] = "true"
+    expect(builtinServerStaged("anysearch", undefined)).toBe(false)
   })
 })

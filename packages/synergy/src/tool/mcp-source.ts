@@ -24,6 +24,7 @@ export namespace ToolMcpSource {
     toolEntries(): Promise<Entry[]>
     toolCallTimeout(toolName: string): number | undefined
     deferredGroupCatalog(): Promise<DeferredGroupCatalog>
+    builtinServerStaged(serverName: string, userMcp: Record<string, unknown> | undefined): boolean
   }
 
   let source: Source | undefined
