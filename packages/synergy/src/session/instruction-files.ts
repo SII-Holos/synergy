@@ -163,13 +163,22 @@ export namespace InstructionFiles {
   }
 
   function dedupeParts(parts: string[]): string[] {
-    const seen = new Set<string>()
-    return parts.filter((part) => {
+    const firstIndex = new Map<string, number>()
+    const result: string[] = []
+    for (const part of parts) {
       const body = partBody(part)
-      if (seen.has(body)) return false
-      seen.add(body)
-      return true
-    })
+      const existing = firstIndex.get(body)
+      // Keep the first position for stable ordering but the nearest source
+      // header: relative links and directory-relative wording resolve
+      // against the active/nearest copy, not the earliest one.
+      if (existing === undefined) {
+        firstIndex.set(body, result.length)
+        result.push(part)
+        continue
+      }
+      result[existing] = part
+    }
+    return result
   }
 
   export async function load() {

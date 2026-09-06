@@ -325,7 +325,7 @@ Tool expansion changes visibility only. It does not execute external actions or 
 When using `bash`:
 
 - Quote paths with spaces.
-- For long-running commands use the tracked `background`/`yieldSeconds` flow and manage with the `process` tool (poll, log, send-keys, kill); `timeoutSeconds` hard-terminates. Only fall back to `tmux`/`nohup` + `agenda_watch` when a process must stay detached, which requires the `full_access` control profile.
+- For long-running commands use the tracked `background`/`yieldSeconds` flow and manage with the `process` tool (poll, log, send-keys, kill); `timeoutSeconds` hard-terminates. Detached `tmux`/`nohup` (+ `agenda_watch` for health) is allowed on POSIX Synergy Link hosts; locally it requires the `full_access` control profile.
 - Poll at meaningful intervals.
 
 ## DAG and Task Tools

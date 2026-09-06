@@ -41,7 +41,7 @@ There is NO other body row kind — never `-old` or a bare/context line. The bod
 4:greet("world")
 
 SWAP 3..3:
-+   return msg
++    return msg
 
 INS.POST 1:
 +    if not name: name = "stranger"

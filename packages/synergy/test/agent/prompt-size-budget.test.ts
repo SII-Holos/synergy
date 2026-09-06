@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
+import { createBuiltinInternalAgents } from "../../src/agent/builtin-internal"
+import { createBuiltinLegacySubagents } from "../../src/agent/builtin-legacy-subagents"
+import { createBuiltinMaxSubagents } from "../../src/agent/builtin-max-subagents"
+import { createBuiltinPrimaryAgents } from "../../src/agent/builtin-primary"
 import { buildSynergyMaxPrompt } from "../../src/agent/prompt/synergy-max/builder"
 import { buildSynergyPrompt } from "../../src/agent/prompt/synergy/builder"
+import { PermissionNext } from "../../src/permission/next"
 import { truncateSkillDescription } from "../../src/tool/skill"
 
 const PROMPT_DIR = path.join(import.meta.dir, "../../src/agent/prompt")
@@ -11,13 +16,38 @@ function sourceBytes(relativePath: string): number {
   return Bun.file(path.join(TOOL_DIR, relativePath)).size
 }
 
+function productionAgentInfos() {
+  const ctx = {
+    defaults: PermissionNext.fromConfig({}),
+    user: PermissionNext.fromConfig({}),
+    role: () => undefined,
+    evolutionActive: true,
+  }
+  const agents = {
+    ...createBuiltinPrimaryAgents(ctx),
+    ...createBuiltinLegacySubagents(ctx),
+    ...createBuiltinMaxSubagents(ctx),
+    ...createBuiltinInternalAgents(ctx),
+  }
+  return Object.values(agents).map((agent) => ({
+    name: agent.name,
+    description: agent.description ?? "",
+    mode: agent.mode,
+    hidden: agent.hidden,
+    visibleTo: agent.visibleTo,
+    delegationGroups: agent.delegationGroups,
+  }))
+}
+
 describe("static prompt and tool context size budgets", () => {
-  test("rendered primary prompts stay within budget", () => {
-    // Rendered budgets sit at the documented +10% tolerance because the shared
-    // memory section renders at 4,363 chars (planning estimated ~750) and
-    // active-memory sizing is explicitly out of scope for this change.
-    expect(buildSynergyPrompt([]).length).toBeLessThanOrEqual(44_000)
-    expect(buildSynergyMaxPrompt([]).length).toBeLessThanOrEqual(27_500)
+  test("rendered primary prompts stay within budget with the production agent catalog", () => {
+    const infos = productionAgentInfos()
+    expect(infos.length).toBeGreaterThanOrEqual(50)
+    // Thresholds are measured production values with ~2% headroom. The
+    // generated agent table dominates synergy-max's rendered size, and the
+    // shared memory section (4,363 chars) is explicitly out of scope.
+    expect(buildSynergyPrompt(infos).length).toBeLessThanOrEqual(46_000)
+    expect(buildSynergyMaxPrompt(infos).length).toBeLessThanOrEqual(42_500)
   })
 
   test("synergy base prompt source stays within budget", () => {
