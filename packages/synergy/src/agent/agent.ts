@@ -11,6 +11,7 @@ import { createBuiltinMaxSubagents } from "./builtin-max-subagents"
 import { AgentCall } from "./call"
 import { buildSynergyPrompt } from "./prompt/synergy/builder"
 import { buildSynergyMaxPrompt } from "./prompt/synergy-max/builder"
+import { buildSynergyFlashPrompt } from "./prompt/synergy-flash/builder"
 import { buildSupervisorPrompt } from "./prompt/supervisor/builder"
 import { buildLightLoopReviewerPrompt } from "./prompt/lightloop-reviewer/builder"
 
@@ -161,6 +162,7 @@ export namespace Agent {
       hidden: z.boolean().optional(),
       visibleTo: z.array(z.string()).optional(),
       delegationGroups: z.array(z.string()).optional(),
+      deferredTools: z.array(z.string()).optional(),
       topP: z.number().optional(),
       temperature: z.number().optional(),
       color: z.string().optional(),
@@ -263,6 +265,7 @@ export namespace Agent {
       item.hidden = value.hidden ?? item.hidden
       item.visibleTo = value.visibleTo ?? item.visibleTo
       item.delegationGroups = value.delegationGroups ?? item.delegationGroups
+      item.deferredTools = value.deferredTools ?? item.deferredTools
       item.name = value.name ?? item.name
       item.color = value.color ?? item.color
       item.steps = value.steps ?? item.steps
@@ -423,6 +426,7 @@ export namespace Agent {
     }))
     if (result.synergy) result.synergy.prompt = buildSynergyPrompt(agentInfos)
     if (result["synergy-max"]) result["synergy-max"].prompt = buildSynergyMaxPrompt(agentInfos)
+    if (result["synergy-flash"]) result["synergy-flash"].prompt = buildSynergyFlashPrompt()
     if (result.supervisor) result.supervisor.prompt = buildSupervisorPrompt(agentInfos)
     if (result["lightloop-reviewer"]) {
       result["lightloop-reviewer"].prompt = buildLightLoopReviewerPrompt(agentInfos)

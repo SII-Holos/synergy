@@ -18,7 +18,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       prompt: buildDeveloperPrompt(),
       model: "thinking",
       permission: "codeWrite",
-      visibleTo: ["synergy"],
+      visibleTo: ["synergy", "synergy-flash"],
     }),
     createSubagent(ctx, {
       name: "explore",
@@ -27,7 +27,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       prompt: PROMPT_EXPLORE,
       model: "mid",
       permission: "readOnly",
-      visibleTo: ["synergy"],
+      visibleTo: ["synergy", "synergy-flash"],
     }),
     createSubagent(ctx, {
       name: "scout",
@@ -36,7 +36,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       prompt: PROMPT_SCOUT,
       model: "mid",
       permission: "externalResearch",
-      visibleTo: ["synergy"],
+      visibleTo: ["synergy", "synergy-flash"],
     }),
     createSubagent(ctx, {
       name: "advisor",
@@ -45,7 +45,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       prompt: PROMPT_ADVISOR,
       model: "thinking",
       permission: "review",
-      visibleTo: ["synergy"],
+      visibleTo: ["synergy", "synergy-flash"],
     }),
     createSubagent(ctx, {
       name: "inspector",
@@ -54,7 +54,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       prompt: PROMPT_INSPECTOR,
       model: "mid",
       permission: "review",
-      visibleTo: ["synergy"],
+      visibleTo: ["synergy", "synergy-flash"],
     }),
     createSubagent(ctx, {
       name: "scribe",
@@ -63,7 +63,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       prompt: buildScribePrompt(),
       model: "creative",
       permission: "docsWrite",
-      visibleTo: ["synergy"],
+      visibleTo: ["synergy", "synergy-flash"],
     }),
     createSubagent(ctx, {
       name: "scholar",
@@ -72,7 +72,7 @@ export function createBuiltinLegacySubagents(ctx: BuiltinAgentContext): Record<s
       prompt: buildScholarPrompt(),
       model: "thinking",
       permission: "research",
-      visibleTo: ["synergy"],
+      visibleTo: ["synergy", "synergy-flash"],
     }),
   ]
 
