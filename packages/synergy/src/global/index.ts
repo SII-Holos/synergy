@@ -3,6 +3,7 @@ import fs from "fs/promises"
 import fsSync from "fs"
 import path from "path"
 import { pathToFileURL } from "url"
+import { randomUUID } from "crypto"
 import os from "os"
 import { Filesystem } from "../util/filesystem"
 import { assertIsolatedTestHome } from "./test-home-guard"
@@ -151,9 +152,24 @@ await Promise.all([
     return candidates.find((candidate) => fsSync.existsSync(candidate))
   })()
   if (bundled) {
-    await withFileLock({ directory: path.join(Global.Path.schema, ".locks"), key: "config-schema" }, async () => {
-      await fs.copyFile(bundled, Global.Path.configSchema)
-    })
+    // Identical-content boots skip the lock entirely; competing publishers
+    // serialize under the schema lock and publish through a same-volume
+    // rename so readers never observe a partial schema file.
+    const bundledContents = await fs.readFile(bundled, "utf8")
+    const current = await fs.readFile(Global.Path.configSchema, "utf8").catch(() => undefined)
+    if (current !== bundledContents) {
+      await withFileLock({ directory: path.join(Global.Path.schema, ".locks"), key: "config-schema" }, async () => {
+        const published = await fs.readFile(Global.Path.configSchema, "utf8").catch(() => undefined)
+        if (published === bundledContents) return
+        const temporaryPath = `${Global.Path.configSchema}.${randomUUID()}.tmp`
+        try {
+          await fs.copyFile(bundled, temporaryPath)
+          await fs.rename(temporaryPath, Global.Path.configSchema)
+        } finally {
+          await fs.rm(temporaryPath, { force: true }).catch(() => {})
+        }
+      })
+    }
   }
 }
 

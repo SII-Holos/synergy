@@ -4,17 +4,13 @@ import os from "os"
 import path from "path"
 import { ServerProcessLock } from "../../src/util/server-process-lock"
 import { DaemonPaths } from "../../src/util/daemon-paths"
-
-type WorkerResult = { id: string; acquired?: boolean; ownerToken?: string; error?: string }
+import { reapAll, spawnFleet, waitForResults, waitReady, type WorkerResult } from "./lock-fleet"
 
 const children: Bun.Subprocess[] = []
 const originalSynergyHome = process.env.SYNERGY_HOME
 
 afterEach(async () => {
-  for (const child of children.splice(0)) {
-    if (child.exitCode === null) child.kill()
-    await child.exited.catch(() => {})
-  }
+  await reapAll(children.splice(0))
   if (originalSynergyHome === undefined) delete process.env.SYNERGY_HOME
   else process.env.SYNERGY_HOME = originalSynergyHome
 })
@@ -42,40 +38,12 @@ describe("ServerProcessLock", () => {
       // worker can be spawned and readied before the competition begins;
       // readiness is bounded as one phase deadline, not a sum of per-worker
       // waits (see docs/postmortem/0006).
-      for (let index = 0; index < count; index++) {
-        children.push(
-          Bun.spawn([process.execPath, "run", workerPath], {
-            env: { ...env, LOCK_WORKER_ID: String(index) },
-            stdout: "ignore",
-            stderr: "inherit",
-          }),
-        )
-      }
-
-      const readyDeadline = Date.now() + 60_000
-      const ready = new Set<string>()
-      while (ready.size < count) {
-        for (const line of (await fs.readFile(readyPath, "utf8").catch(() => "")).split("\n")) {
-          if (line) ready.add(line)
-        }
-        if (ready.size >= count) break
-        if (Date.now() >= readyDeadline) throw new Error(`Lock workers did not become ready (${ready.size}/${count})`)
-        await Bun.sleep(50)
-      }
+      await spawnFleet(count, workerPath, env, children)
+      await waitReady(children, readyPath)
 
       await Bun.write(startPath, "go\n")
 
-      const resultDeadline = Date.now() + 60_000
-      let results: WorkerResult[] = []
-      while (results.length < count) {
-        if (Date.now() >= resultDeadline) throw new Error("Lock workers did not finish competing")
-        results = (await fs.readFile(resultPath, "utf8").catch(() => ""))
-          .trim()
-          .split("\n")
-          .filter(Boolean)
-          .map((line) => JSON.parse(line) as WorkerResult)
-        await Bun.sleep(10)
-      }
+      const results = await waitForResults(resultPath, count, "Lock workers did not finish competing")
 
       expect(await Bun.file(path.join(home, ".synergy", "schema", "config.schema.json")).json()).toEqual(
         await Bun.file(path.join(import.meta.dirname, "../../schema/config.schema.json")).json(),
@@ -90,7 +58,7 @@ describe("ServerProcessLock", () => {
       expect(await Promise.all(children.map((child) => child.exited))).toEqual(Array(count).fill(0))
     } finally {
       await Bun.write(releasePath, "release\n").catch(() => {})
-      await Promise.all(children.map((child) => child.exited.catch(() => -1)))
+      await reapAll(children)
       await fs.rm(home, { recursive: true, force: true })
     }
   }, 150_000)
@@ -269,7 +237,7 @@ describe("ServerProcessLock", () => {
       expect(results.filter((result) => result.error)).toHaveLength(0)
     } finally {
       await Bun.write(releasePath, "release\n").catch(() => {})
-      await Promise.all(children.map((child) => child.exited.catch(() => -1)))
+      await reapAll(children)
       await fs.rm(home, { recursive: true, force: true })
     }
   })
@@ -367,6 +335,7 @@ describe("ServerProcessLock", () => {
       expect(results[0]?.error).toContain("LockFileUncertainError")
       expect(await child.exited).toBe(1)
     } finally {
+      await reapAll(children)
       await fs.rm(home, { recursive: true, force: true })
     }
   })
@@ -401,39 +370,12 @@ describe("ServerProcessLock", () => {
         }),
       )
 
-      for (let index = 0; index < count; index++) {
-        children.push(
-          Bun.spawn([process.execPath, "run", workerPath], {
-            env: { ...env, LOCK_WORKER_ID: String(index) },
-            stdout: "ignore",
-            stderr: "inherit",
-          }),
-        )
-      }
-
-      const readyDeadline = Date.now() + 60_000
-      const ready = new Set<string>()
-      while (ready.size < count) {
-        for (const line of (await fs.readFile(readyPath, "utf8").catch(() => "")).split("\n")) {
-          if (line) ready.add(line)
-        }
-        if (ready.size >= count) break
-        if (Date.now() >= readyDeadline) throw new Error(`Lock workers did not become ready (${ready.size}/${count})`)
-        await Bun.sleep(50)
-      }
+      await spawnFleet(count, workerPath, env, children)
+      await waitReady(children, readyPath)
 
       await Bun.write(startPath, "go\n")
-      const resultDeadline = Date.now() + 60_000
-      let results: WorkerResult[] = []
-      while (results.length < count) {
-        if (Date.now() >= resultDeadline) throw new Error("Lock workers did not finish stale replacement")
-        results = (await fs.readFile(resultPath, "utf8").catch(() => ""))
-          .trim()
-          .split("\n")
-          .filter(Boolean)
-          .map((line) => JSON.parse(line) as WorkerResult)
-        await Bun.sleep(10)
-      }
+
+      const results = await waitForResults(resultPath, count, "Lock workers did not finish stale replacement")
 
       expect(results.filter((result) => result.acquired)).toHaveLength(1)
       expect(results.filter((result) => result.error)).toHaveLength(0)
@@ -441,10 +383,48 @@ describe("ServerProcessLock", () => {
       expect(await Promise.all(children.map((child) => child.exited))).toEqual(Array(count).fill(0))
     } finally {
       await Bun.write(releasePath, "release\n").catch(() => {})
-      await Promise.all(children.map((child) => child.exited.catch(() => -1)))
+      await reapAll(children)
       await fs.rm(home, { recursive: true, force: true })
     }
   }, 150_000)
+
+  test("fails the ready wait immediately when a worker exits without reporting ready", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-server-lock-crash-"))
+    const readyPath = path.join(home, "ready.log")
+
+    try {
+      const crashWorkerPath = path.join(home, "crash-worker.ts")
+      await fs.writeFile(crashWorkerPath, "process.exit(2)\n")
+      await spawnFleet(
+        1,
+        crashWorkerPath,
+        {
+          ...process.env,
+          SYNERGY_HOME: home,
+          LOCK_READY_PATH: readyPath,
+          LOCK_START_PATH: path.join(home, "start"),
+          LOCK_RESULT_PATH: path.join(home, "result.log"),
+          LOCK_RELEASE_PATH: path.join(home, "release"),
+        },
+        children,
+      )
+
+      let error: unknown
+      const started = Date.now()
+      try {
+        await waitReady(children, readyPath, 15_000)
+      } catch (caught) {
+        error = caught
+      }
+      expect(error).toBeInstanceOf(Error)
+      expect(String(error)).toContain("exited before becoming ready")
+      expect(String(error)).toContain("exit code 2")
+      expect(Date.now() - started).toBeLessThan(15_000)
+    } finally {
+      await reapAll(children)
+      await fs.rm(home, { recursive: true, force: true })
+    }
+  })
 
   test("does not release a replacement lock with another process identity", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-server-lock-owner-"))
