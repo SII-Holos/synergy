@@ -8,7 +8,7 @@ import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { formatBytes } from "@/components/library/shared"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { requestErrorMessage } from "@/utils/error"
-import { SettingRow } from "../components/SettingRow"
+import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { GeneralStore } from "../types"
 
