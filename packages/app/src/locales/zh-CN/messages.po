@@ -18653,6 +18653,10 @@ msgid "settings.storage.clean.nothing"
 msgstr "没有可回收的内容"
 
 #. js-lingui-explicit-id
+msgid "settings.storage.clean.partial.description"
+msgstr "{count} 个操作未完成。首个问题：{first}"
+
+#. js-lingui-explicit-id
 msgid "settings.storage.clean.success.description"
 msgstr "已从 {count} 中释放 {bytes}。"
 

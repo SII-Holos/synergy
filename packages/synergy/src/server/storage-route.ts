@@ -61,9 +61,23 @@ const StorageSnapshotCleanResult = z
   })
   .meta({ ref: "StorageSnapshotCleanResult" })
 
+const StorageSnapshotCleanFailure = z
+  .object({
+    scopeID: z.string(),
+    message: z.string(),
+  })
+  .meta({ ref: "StorageSnapshotCleanFailure" })
+
+const StorageSnapshotCleanBatch = z
+  .object({
+    results: z.array(StorageSnapshotCleanResult),
+    failures: z.array(StorageSnapshotCleanFailure),
+  })
+  .meta({ ref: "StorageSnapshotCleanBatch" })
+
 const StorageSnapshotCleanInput = z
   .object({
-    scopeID: z.string().optional(),
+    scopeID: z.string().min(1).optional(),
     apply: z.boolean().optional().default(false),
   })
   .meta({ ref: "StorageSnapshotCleanInput" })
@@ -105,15 +119,17 @@ export const GlobalStorageRoute = new Hono()
       },
       responses: {
         200: {
-          description: "Per-scope clean report (candidates for dry runs, removals otherwise)",
+          description:
+            "Per-scope clean reports plus failures for scopes that could not run (batch requests without scopeID keep completed work when a later scope fails)",
           content: {
             "application/json": {
-              schema: resolver(StorageSnapshotCleanResult.array()),
+              schema: resolver(StorageSnapshotCleanBatch),
             },
           },
         },
         409: {
-          description: "Snapshot storage is busy or failed its integrity check; nothing was reclaimed",
+          description:
+            "A scope-targeted request found storage busy or its integrity check failed; nothing was reclaimed",
           content: {
             "application/json": {
               schema: resolver(z.object({ message: z.string() })),
@@ -125,11 +141,10 @@ export const GlobalStorageRoute = new Hono()
     validator("json", StorageSnapshotCleanInput),
     async (c) => {
       const { scopeID, apply } = c.req.valid("json")
-      const scopes = scopeID ? [SnapshotStore.component(scopeID)] : await SnapshotMaintenance.scopes()
-      const results = []
-      for (const scope of scopes) {
+      if (scopeID !== undefined) {
         try {
-          results.push(await SnapshotMaintenance.clean(scope, { apply }))
+          const result = await SnapshotMaintenance.clean(SnapshotStore.component(scopeID), { apply })
+          return c.json({ results: [result], failures: [] })
         } catch (error) {
           if (error instanceof SnapshotLease.BusyError || error instanceof SnapshotStore.StorageError) {
             return c.json({ message: error.message }, 409)
@@ -137,6 +152,19 @@ export const GlobalStorageRoute = new Hono()
           throw error
         }
       }
-      return c.json(results)
+      const results = []
+      const failures: Array<{ scopeID: string; message: string }> = []
+      for (const scope of await SnapshotMaintenance.scopes()) {
+        try {
+          results.push(await SnapshotMaintenance.clean(scope, { apply }))
+        } catch (error) {
+          if (error instanceof SnapshotLease.BusyError || error instanceof SnapshotStore.StorageError) {
+            failures.push({ scopeID: scope, message: error.message })
+            continue
+          }
+          throw error
+        }
+      }
+      return c.json({ results, failures })
     },
   )

@@ -2512,6 +2512,15 @@ export const migrations: Migration[] = [
       await SnapshotMaintenance.registerLegacy(progress)
     },
   },
+  {
+    id: "20260907-snapshot-release-orphan-owners",
+    dependsOn: ["20260907-snapshot-shared-store"],
+    description: "Release legacy owner records that the shared-store migration created for orphan directories",
+    async up(progress) {
+      const { SnapshotMaintenance } = await import("./snapshot-maintenance")
+      await SnapshotMaintenance.releaseOrphanOwners(progress)
+    },
+  },
 ]
 
 function canonicalFieldsDiffer(before: any, after: any): boolean {

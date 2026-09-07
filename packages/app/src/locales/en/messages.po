@@ -18653,6 +18653,10 @@ msgid "settings.storage.clean.nothing"
 msgstr "Nothing to reclaim"
 
 #. js-lingui-explicit-id
+msgid "settings.storage.clean.partial.description"
+msgstr "{count} operation(s) did not complete. First issue: {first}"
+
+#. js-lingui-explicit-id
 msgid "settings.storage.clean.success.description"
 msgstr "Freed {bytes} from {count}."
 

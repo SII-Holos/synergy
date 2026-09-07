@@ -18653,6 +18653,10 @@ msgid "settings.storage.clean.nothing"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.storage.clean.partial.description"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.storage.clean.success.description"
 msgstr ""
 

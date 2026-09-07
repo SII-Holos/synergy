@@ -1155,6 +1155,16 @@ export type StorageSnapshotCleanResult = {
   errors: Array<string>
 }
 
+export type StorageSnapshotCleanFailure = {
+  scopeID: string
+  message: string
+}
+
+export type StorageSnapshotCleanBatch = {
+  results: Array<StorageSnapshotCleanResult>
+  failures: Array<StorageSnapshotCleanFailure>
+}
+
 export type StorageSnapshotCleanInput = {
   scopeID?: string
   apply?: boolean
@@ -11319,7 +11329,7 @@ export type StorageSnapshotCleanData = {
 
 export type StorageSnapshotCleanErrors = {
   /**
-   * Snapshot storage is busy or failed its integrity check; nothing was reclaimed
+   * A scope-targeted request found storage busy or its integrity check failed; nothing was reclaimed
    */
   409: {
     message: string
@@ -11334,9 +11344,9 @@ export type StorageSnapshotCleanError = StorageSnapshotCleanErrors[keyof Storage
 
 export type StorageSnapshotCleanResponses = {
   /**
-   * Per-scope clean report (candidates for dry runs, removals otherwise)
+   * Per-scope clean reports plus failures for scopes that could not run (batch requests without scopeID keep completed work when a later scope fails)
    */
-  200: Array<StorageSnapshotCleanResult>
+  200: StorageSnapshotCleanBatch
 }
 
 export type StorageSnapshotCleanResponse = StorageSnapshotCleanResponses[keyof StorageSnapshotCleanResponses]

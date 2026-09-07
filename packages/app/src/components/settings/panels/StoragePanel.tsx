@@ -106,6 +106,14 @@ function cleanSuccessDescription(count: string, bytes: string) {
   }
 }
 
+function cleanPartialDescription(count: string, first: string) {
+  return {
+    id: "settings.storage.clean.partial.description",
+    message: "{count} operation(s) did not complete. First issue: {first}",
+    values: { count, first },
+  }
+}
+
 export function StoragePanel(props: {
   general: GeneralStore
   onGeneralChange: <K extends keyof GeneralStore>(key: K, value: GeneralStore[K]) => void
@@ -118,8 +126,19 @@ export function StoragePanel(props: {
 
   const [usage, { refetch }] = createResource(async () => {
     const response = await globalSDK.client.storage.snapshot.usage()
+    if (response.error) throw new Error(requestErrorMessage(response.error))
     return response.data
   })
+
+  const [scopes] = createResource(async () => {
+    const response = await globalSDK.client.scope.list()
+    return response.data ?? []
+  })
+
+  function scopeDisplayName(scopeID: string): string {
+    const match = scopes.latest?.find((entry) => entry.id === scopeID)
+    return match?.name || match?.worktree || scopeID
+  }
 
   async function reclaimUnowned() {
     if (cleaning()) return
@@ -130,7 +149,7 @@ export function StoragePanel(props: {
         showToast({ type: "error", title: _(cleanFailedTitle), description: requestErrorMessage(dry.error) })
         return
       }
-      const reports = dry.data ?? []
+      const reports = dry.data?.results ?? []
       const count = reports.reduce((sum, entry) => sum + entry.candidates.length, 0)
       const bytes = reports.reduce((sum, entry) => sum + entry.candidates.reduce((s, c) => s + c.bytes, 0), 0)
       if (count === 0) {
@@ -146,15 +165,29 @@ export function StoragePanel(props: {
           const applied = await globalSDK.client.storage.snapshot.clean({
             storageSnapshotCleanInput: { apply: true },
           })
-          if (applied.error) throw applied.error
-          const appliedReports = applied.data ?? []
-          const removed = appliedReports.reduce((sum, entry) => sum + entry.removed, 0)
-          const freed = appliedReports.reduce((sum, entry) => sum + entry.bytes, 0)
-          showToast({
-            type: "success",
-            title: _(cleanSuccessTitle),
-            description: _(cleanSuccessDescription(String(removed), formatBytes(freed))),
-          })
+          if (applied.error) {
+            showToast({ type: "error", title: _(cleanFailedTitle), description: requestErrorMessage(applied.error) })
+            return
+          }
+          const batch = applied.data ?? { results: [], failures: [] }
+          const reclaimed = batch.results.reduce((sum, entry) => sum + entry.removed, 0)
+          const freed = batch.results.reduce((sum, entry) => sum + entry.bytes, 0)
+          const issues = [
+            ...batch.failures.map((entry) => `${entry.scopeID}: ${entry.message}`),
+            ...batch.results.flatMap((entry) => entry.errors),
+          ]
+          if (issues.length > 0)
+            showToast({
+              type: "warning",
+              title: _(cleanFailedTitle),
+              description: _(cleanPartialDescription(String(issues.length), issues[0]!)),
+            })
+          if (reclaimed > 0)
+            showToast({
+              type: "success",
+              title: _(cleanSuccessTitle),
+              description: _(cleanSuccessDescription(String(reclaimed), formatBytes(freed))),
+            })
           await refetch()
         },
       })
@@ -177,7 +210,7 @@ export function StoragePanel(props: {
     >
       <SettingsSection title={_(usageTitle)}>
         <Show
-          when={usage()}
+          when={!usage.error && usage()}
           fallback={<p class="ds-section-hint">{usage.error ? _(loadFailedLabel) : _(loadingLabel)}</p>}
         >
           {(scopes) => (
@@ -186,7 +219,7 @@ export function StoragePanel(props: {
                 <For each={scopes()}>
                   {(scope) => (
                     <div class="flex flex-col gap-1">
-                      <span class="settings-row-title">{scope.scopeID}</span>
+                      <span class="settings-row-title">{scopeDisplayName(scope.scopeID)}</span>
                       <span class="settings-row-description">
                         {_(ownersLabel)}:{" "}
                         <Show when={scope.owners.shared > 0}>{_(ownerSharedSummary(scope.owners.shared))}</Show>
@@ -200,10 +233,19 @@ export function StoragePanel(props: {
                         </Show>
                       </span>
                       <span class="settings-row-description">
-                        {_(sharedLabel)}: {formatBytes(scope.shared.bytes)} · {_(legacyLabel)}:{" "}
-                        {formatBytes(scope.legacy.bytes)} · {_(indexesLabel)}: {formatBytes(scope.indexes.bytes)}
+                        {_(sharedLabel)}: {formatBytes(scope.shared.allocatedBytes)} · {_(legacyLabel)}:{" "}
+                        {formatBytes(scope.legacy.allocatedBytes)} · {_(indexesLabel)}:{" "}
+                        {formatBytes(scope.indexes.allocatedBytes)}
                       </span>
-                      <Show when={scope.retainedLegacy.unowned + scope.retainedLegacy.reclaimed > 0}>
+                      <Show
+                        when={
+                          scope.retainedLegacy.unowned +
+                            scope.retainedLegacy.reclaimed +
+                            scope.retainedLegacy.sharedBaselines +
+                            scope.retainedLegacy.unregistered >
+                          0
+                        }
+                      >
                         <span class="settings-row-description">{_(retainedLegacySummary(scope))}</span>
                       </Show>
                     </div>

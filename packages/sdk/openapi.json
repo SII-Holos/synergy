@@ -1696,20 +1696,17 @@
         },
         "responses": {
           "200": {
-            "description": "Per-scope clean report (candidates for dry runs, removals otherwise)",
+            "description": "Per-scope clean reports plus failures for scopes that could not run (batch requests without scopeID keep completed work when a later scope fails)",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/StorageSnapshotCleanResult"
-                  }
+                  "$ref": "#/components/schemas/StorageSnapshotCleanBatch"
                 }
               }
             }
           },
           "409": {
-            "description": "Snapshot storage is busy or failed its integrity check; nothing was reclaimed",
+            "description": "A scope-targeted request found storage busy or its integrity check failed; nothing was reclaimed",
             "content": {
               "application/json": {
                 "schema": {
@@ -30493,11 +30490,42 @@
         },
         "required": ["scopeID", "applied", "candidates", "removed", "bytes", "skippedProtected", "errors"]
       },
-      "StorageSnapshotCleanInput": {
+      "StorageSnapshotCleanFailure": {
         "type": "object",
         "properties": {
           "scopeID": {
             "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["scopeID", "message"]
+      },
+      "StorageSnapshotCleanBatch": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageSnapshotCleanResult"
+            }
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageSnapshotCleanFailure"
+            }
+          }
+        },
+        "required": ["results", "failures"]
+      },
+      "StorageSnapshotCleanInput": {
+        "type": "object",
+        "properties": {
+          "scopeID": {
+            "type": "string",
+            "minLength": 1
           },
           "apply": {
             "default": false,

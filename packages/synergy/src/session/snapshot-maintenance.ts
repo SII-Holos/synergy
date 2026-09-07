@@ -63,6 +63,36 @@ export namespace SnapshotMaintenance {
     await SnapshotStore.write(StoragePath.snapshotFormat(), { version: 2 })
   }
 
+  /**
+   * Remove legacy owner records that the shared-store migration registered
+   * for directories with no session record. The migration predates the
+   * session-record ownership proof, so those records make crash- and
+   * scope-migration orphans invisible to `clean` forever. A record is
+   * released only when its repository is still an unclaimed legacy
+   * directory (HEAD present, `legacy` backend, no journal, no session
+   * record, shared store untouched); anything else keeps its record.
+   */
+  export async function releaseOrphanOwners(progress?: (current: number, total: number) => void) {
+    const ids = await scopes()
+    let done = 0
+    for (const scopeID of ids) {
+      await SnapshotLease.use(scopeID, true, async () => {
+        for (const sessionID of await ownerIDs(scopeID)) {
+          const owner = await SnapshotStore.owner(scopeID, sessionID)
+          if (owner?.backend !== "legacy") continue
+          if (!(await Bun.file(path.join(Global.Path.snapshot, scopeID, sessionID, "HEAD")).exists())) continue
+          if (await SnapshotStore.optional(StoragePath.snapshotMigration(scopeID, sessionID))) continue
+          const info = await SnapshotStore.optional<unknown>(
+            StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
+          )
+          if (info !== undefined) continue
+          await Storage.remove(StoragePath.snapshotOwner(scopeID, sessionID))
+        }
+      })
+      progress?.(++done, ids.length)
+    }
+  }
+
   export async function statistics(directory: string): Promise<Statistics> {
     const total: Statistics = { bytes: 0, allocatedBytes: 0, files: 0 }
     async function walk(dir: string) {

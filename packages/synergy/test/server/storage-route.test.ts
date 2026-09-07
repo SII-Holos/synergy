@@ -9,6 +9,7 @@ import { StoragePath } from "../../src/storage/path"
 import { Identifier } from "../../src/id/id"
 import { Session } from "../../src/session"
 import { ScopeContext } from "../../src/scope/context"
+import { SnapshotMaintenance } from "../../src/session/snapshot-maintenance"
 import { Global } from "../../src/global"
 import { GlobalStorageRoute } from "../../src/server/storage-route"
 import { tmpdir } from "../fixture/fixture"
@@ -40,6 +41,16 @@ interface CleanReport {
   bytes: number
   skippedProtected: number
   errors: string[]
+}
+
+interface CleanFailure {
+  scopeID: string
+  message: string
+}
+
+interface CleanBatch {
+  results: CleanReport[]
+  failures: CleanFailure[]
 }
 
 describe("GlobalStorageRoute", () => {
@@ -93,8 +104,8 @@ describe("GlobalStorageRoute", () => {
           body: JSON.stringify({ scopeID: scope.id }),
         })
         expect(dry.status).toBe(200)
-        const dryReports = (await dry.json()) as CleanReport[]
-        const dryReport = dryReports.find((entry) => entry.scopeID === scope.id)!
+        const dryReports = (await dry.json()) as CleanBatch
+        const dryReport = dryReports.results.find((entry) => entry.scopeID === scope.id)!
         expect(dryReport.applied).toBe(false)
         expect(dryReport.candidates.map((entry) => entry.sessionID)).toEqual([unowned])
         expect(dryReport.candidates[0]!.reason).toBe("unowned")
@@ -107,8 +118,8 @@ describe("GlobalStorageRoute", () => {
           body: JSON.stringify({ scopeID: scope.id, apply: true }),
         })
         expect(applied.status).toBe(200)
-        const appliedReports = (await applied.json()) as CleanReport[]
-        const appliedReport = appliedReports.find((entry) => entry.scopeID === scope.id)!
+        const appliedReports = (await applied.json()) as CleanBatch
+        const appliedReport = appliedReports.results.find((entry) => entry.scopeID === scope.id)!
         expect(appliedReport.applied).toBe(true)
         expect(appliedReport.removed).toBe(1)
         expect(appliedReport.skippedProtected).toBe(2)
@@ -182,8 +193,8 @@ describe("GlobalStorageRoute", () => {
           body: JSON.stringify({ scopeID: "__reclaimed__", apply: true }),
         })
         expect(applied.status).toBe(200)
-        const reports = (await applied.json()) as CleanReport[]
-        const report = reports.find((entry) => entry.scopeID === "__reclaimed__")!
+        const reports = (await applied.json()) as CleanBatch
+        const report = reports.results.find((entry) => entry.scopeID === "__reclaimed__")!
         expect(report.applied).toBe(true)
         expect(report.candidates.map((entry) => entry.sessionID)).toEqual([recordless])
         expect(report.removed).toBe(1)
@@ -192,6 +203,107 @@ describe("GlobalStorageRoute", () => {
           true,
         )
         await expect(fs.access(SnapshotStore.legacyRepository("__reclaimed__", recordless))).rejects.toThrow()
+      },
+    })
+  })
+  test("POST snapshot/clean rejects an empty scopeID instead of targeting every scope", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const unowned = "ses_routeUnowned04"
+        await makeLegacyRepo(scope.id, unowned)
+
+        const response = await app().request("/global/storage/snapshot/clean", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scopeID: "", apply: true }),
+        })
+        expect(response.ok).toBe(false)
+        expect(await Bun.file(path.join(SnapshotStore.legacyRepository(scope.id, unowned), "HEAD")).exists()).toBe(true)
+      },
+    })
+  })
+
+  test("POST snapshot/clean batch keeps completed results when a later scope fails", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        await Bun.write(path.join(tmp.path, "a.txt"), "retained")
+        await Snapshot.track(session.id)
+        await Storage.write(
+          StoragePath.messagePart(
+            Identifier.asScopeID(scope.id),
+            Identifier.asSessionID(session.id),
+            Identifier.asMessageID("message-route"),
+            Identifier.asPartID("part-route"),
+          ),
+          { type: "step-start", snapshot: "a".repeat(40) },
+        )
+        const corrupted = "ses_routeUnowned05"
+        await makeLegacyRepo(scope.id, corrupted)
+        const healthy = "ses_routeUnowned06"
+        await makeLegacyRepo("aaa_routeHealthy01", healthy)
+
+        const response = await app().request("/global/storage/snapshot/clean", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ apply: true }),
+        })
+        expect(response.status).toBe(200)
+        const batch = (await response.json()) as CleanBatch
+        const failure = batch.failures.find((entry) => entry.scopeID === scope.id)
+        expect(failure).toBeDefined()
+        expect(batch.results.find((entry) => entry.scopeID === "aaa_routeHealthy01")?.removed).toBe(1)
+        expect(await Bun.file(path.join(SnapshotStore.legacyRepository(scope.id, corrupted), "HEAD")).exists()).toBe(
+          true,
+        )
+        await expect(fs.access(SnapshotStore.legacyRepository("aaa_routeHealthy01", healthy))).rejects.toThrow()
+      },
+    })
+  })
+
+  test("releaseOrphanOwners releases legacy owners without session records and keeps the rest", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const orphan = "ses_orphanRel01"
+        const kept = "ses_orphanKeep01"
+        const journalled = "ses_orphanJrn01"
+        for (const sessionID of [orphan, kept, journalled]) {
+          await makeLegacyRepo(scope.id, sessionID)
+          await SnapshotStore.write(StoragePath.snapshotOwner(scope.id, sessionID), {
+            version: 2,
+            backend: "legacy",
+          })
+        }
+        await Storage.write(StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(kept)), {
+          id: kept,
+          scope: { directory: "/tmp/storage-route-fixture" },
+          title: "kept",
+          version: "test",
+          time: { created: Date.now(), updated: Date.now() },
+        })
+        await SnapshotStore.write(StoragePath.snapshotMigration(scope.id, journalled), {
+          version: 2,
+          phase: "inventoried",
+        })
+
+        await SnapshotMaintenance.releaseOrphanOwners()
+
+        expect(await SnapshotStore.owner(scope.id, orphan)).toBeUndefined()
+        expect(await SnapshotStore.owner(scope.id, kept)).toBeDefined()
+        expect(await SnapshotStore.owner(scope.id, journalled)).toBeDefined()
+        for (const sessionID of [orphan, kept, journalled])
+          expect(await Bun.file(path.join(SnapshotStore.legacyRepository(scope.id, sessionID), "HEAD")).exists()).toBe(
+            true,
+          )
       },
     })
   })
