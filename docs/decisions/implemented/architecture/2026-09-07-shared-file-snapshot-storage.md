@@ -22,6 +22,8 @@ Status: implemented
 
 持久对象和引用显式配置 Git fsync，登记与作业启用 Storage durable 写入。首次初始化与引用落盘增加延迟；容量收益必须分别报告对象、索引与引用开销。目录 fsync 在支持的平台执行，不能把进程中断测试解释为全部平台的断电耐久性验证。进程身份以统一 UTC 解析，避免不同时区把活租约误判为 PID 复用。[Git GC](https://git-scm.com/docs/git-gc)的时间宽限不足以替代跨进程互斥。
 
+并发维护进程启动时，配置 schema 的发布也使用既有跨进程文件锁，避免 Windows 在进入运行锁竞争前因并发 copyfile 失败。
+
 ## Consequences
 
 行为测试覆盖共享去重、会话访问隔离、多工作区索引、历史恢复、分叉后删除原会话、删除中断恢复、JSON 缺失对象提示、无 refs 与 alternates、未知对象保留、迁移检查点重跑、packed-refs 合并和跨进程租约。独立基准使用临时 home，并明确区分当前流水线下的存储后端比较和旧版二进制性能比较。布局与使用规则见[存储参考](../../../reference/storage-and-paths.md)和[工作区架构](../../../architecture/workspace-and-files.md)。
