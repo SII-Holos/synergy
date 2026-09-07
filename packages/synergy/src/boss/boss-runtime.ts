@@ -21,13 +21,13 @@ import { SessionNav } from "../session/nav"
 /**
  * Runtime Boss Mode provisioning.
  *
- * When `experimental.boss_mode` is enabled, one runtime boss session is
+ * When `boss.enabled` is enabled, one runtime boss session is
  * created (idempotently) per enabled Feishu account, in home scope, with a
  * `scope:boss` endpoint key so all Feishu messages for that account route to
  * it. The boss receives a one-time "world overview" briefing (sessions,
  * projects, agenda, memory, experience, identity text) delivered as a steer
  * message with a deduplicated deliveryKey, and — when
- * `experimental.boss_briefing_interval_days` is set — an Agenda item
+ * `boss.briefingIntervalDays` is set — an Agenda item
  * periodically re-injects a refresh instruction so the boss can re-perceive
  * its world after compaction.
  *
@@ -94,7 +94,7 @@ export namespace BossRuntime {
    */
   export async function ensure(): Promise<void> {
     const config = await Config.current().catch(() => undefined)
-    const enabled = config?.experimental?.boss_mode === true
+    const enabled = config?.boss?.enabled === true
     // Reconcile: start from an empty routing map so removed accounts (or a
     // disabled mode) never leave stale entries behind. Re-provisioning is
     // idempotent per account (existing endpoint sessions are reused).
@@ -171,7 +171,7 @@ export namespace BossRuntime {
    */
   export async function openSession(): Promise<string> {
     const config = await Config.current().catch(() => undefined)
-    if (config?.experimental?.boss_mode !== true) {
+    if (config?.boss?.enabled !== true) {
       throw new BossSessionOpenError("Boss Mode is disabled")
     }
     // Only provision routable sessions when none are registered yet and the
@@ -442,7 +442,7 @@ export namespace BossRuntime {
   /** Register or update one periodic briefing Agenda item per boss account. */
   async function syncBriefingSchedule(): Promise<void> {
     const config = await Config.current().catch(() => undefined)
-    const days = config?.experimental?.boss_briefing_interval_days
+    const days = config?.boss?.briefingIntervalDays
     if (!days) {
       await removeBriefingSchedule()
       return

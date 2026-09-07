@@ -3,12 +3,20 @@ import { cmd } from "./cmd"
 import { UI } from "../../util/ui"
 import { Engine } from "@/stats"
 import type { StatsSnapshot, ProgressCallback } from "@/stats"
+import { RolloutQuery } from "@/session/rollout/query"
 
 export const StatsCommand = cmd({
   command: "stats",
   describe: "show token usage and cost statistics",
   builder: (yargs: Argv) => {
     return yargs
+      .option("run", { type: "string", describe: "Show one run and its descendant accounting" })
+      .option("compare", {
+        type: "string",
+        array: true,
+        nargs: 2,
+        describe: "Compare two runs without inferring task quality",
+      })
       .option("days", {
         describe: "show stats for the last N days (default: all time)",
         type: "number",
@@ -36,6 +44,14 @@ export const StatsCommand = cmd({
       })
   },
   handler: async (args) => {
+    if (args.run || args.compare) {
+      if (args.run && args.compare) throw new Error("Use either --run or --compare")
+      const result = args.run
+        ? await RolloutQuery.find(args.run)
+        : await Promise.all(args.compare!.map((id) => RolloutQuery.find(id)))
+      console.log(JSON.stringify(Array.isArray(result) ? RolloutQuery.compare(result[0], result[1]) : result, null, 2))
+      return
+    }
     const onProgress: ProgressCallback = (event) => {
       if (args.json) return
       const pct = event.total > 0 ? Math.round((event.current / event.total) * 100) : 0
@@ -156,12 +172,22 @@ export function displayStats(snapshot: StatsSnapshot, toolLimit?: number, modelL
   topBorder()
   renderHeader("TOKENS & COST")
   divider()
-  console.log(renderRow("Total Cost", `$${tokenCost.cost.toFixed(2)}`))
+  console.log(renderRow("Known API Estimate", `$${tokenCost.cost.toFixed(2)}`))
+  if (tokenCost.accounting) {
+    const accounting = tokenCost.accounting
+    console.log(renderRow("Unpriced API Attempts", accounting.apiEstimate.unknown.toString()))
+    console.log(renderRow("Unobserved Calls", accounting.unobservedCalls.toString()))
+    console.log(renderRow("Subscription API Equivalent", `$${accounting.subscriptionEquivalent.known.toFixed(4)}`))
+    console.log(renderRow("Unknown Subscription Estimates", accounting.subscriptionEquivalent.unknown.toString()))
+    console.log(renderRow("Historical Calculation", `$${accounting.legacy.cost.toFixed(4)}`))
+    for (const [currency, amount] of Object.entries(accounting.reported.currencies))
+      console.log(renderRow(`Provider Reported (${currency})`, amount.toFixed(4)))
+  }
   console.log(renderRow("Avg Cost/Turn", `$${tokenCost.avgCostPerTurn.toFixed(4)}`))
   console.log(renderRow("Daily Cost", `$${tokenCost.dailyCost.toFixed(2)}`))
   console.log(renderRow("Input Tokens", formatNumber(tokenCost.tokens.input)))
   console.log(renderRow("Output Tokens", formatNumber(tokenCost.tokens.output)))
-  console.log(renderRow("Reasoning Tokens", formatNumber(tokenCost.tokens.reasoning)))
+  console.log(renderRow("Reasoning (included in output)", formatNumber(tokenCost.tokens.reasoning)))
   console.log(renderRow("Cache Read", formatNumber(tokenCost.tokens.cache.read)))
   console.log(renderRow("Cache Write", formatNumber(tokenCost.tokens.cache.write)))
   console.log(renderRow("Cache Hit Rate", `${(tokenCost.cacheHitRate * 100).toFixed(1)}%`))
@@ -185,7 +211,7 @@ export function displayStats(snapshot: StatsSnapshot, toolLimit?: number, modelL
       console.log(renderRow("  Messages", m.messages.toLocaleString()))
       console.log(renderRow("  Input Tokens", formatNumber(m.tokens.input)))
       console.log(renderRow("  Output Tokens", formatNumber(m.tokens.output)))
-      console.log(renderRow("  Cost", `$${m.cost.toFixed(4)}`))
+      console.log(renderRow("  Known API Estimate", `$${m.cost.toFixed(4)}`))
       console.log(renderRow("  Avg Response", `${m.avgResponseMs.toFixed(0)}ms`))
       divider()
     }
@@ -207,7 +233,7 @@ export function displayStats(snapshot: StatsSnapshot, toolLimit?: number, modelL
       console.log(renderRow(a.agent, ""))
       console.log(renderRow("  Messages", a.messages.toLocaleString()))
       console.log(renderRow("  Sessions", a.sessions.toLocaleString()))
-      console.log(renderRow("  Cost", `$${a.cost.toFixed(4)}`))
+      console.log(renderRow("  Known API Estimate", `$${a.cost.toFixed(4)}`))
       console.log(renderRow("  Subagent Calls", a.subagentInvocations.toLocaleString()))
       divider()
     }

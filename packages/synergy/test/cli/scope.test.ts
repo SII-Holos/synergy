@@ -4,9 +4,10 @@ import { Scope } from "../../src/scope"
 import { tmpdir } from "../fixture/fixture"
 
 async function runSend(args: string[], env?: Record<string, string>) {
+  await using runtime = await tmpdir()
   const proc = Bun.spawn([process.execPath, "--conditions=browser", "src/index.ts", "send", ...args], {
     cwd: import.meta.dir + "/../..",
-    env: { ...process.env, ...env },
+    env: { ...process.env, SYNERGY_HOME: runtime.path, ...env },
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
@@ -58,7 +59,7 @@ describe("send --scope", () => {
 
     const result = await runSend(["--scope", "local-missing", "hello"], { SYNERGY_CWD: launch.path })
 
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(2)
     expect(result.output).toContain("Scope not found: local-missing")
     expect((await Scope.list()).some((scope) => scope.worktree === launch.path)).toBe(false)
   })
@@ -81,7 +82,7 @@ describe("send --scope", () => {
       SYNERGY_CWD: launch.path,
     })
 
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(2)
     expect(result.output).toContain("Scope not found: remote-missing")
     expect(received.scopeID).toBe("remote-missing")
     expect((await Scope.list()).some((scope) => scope.worktree === launch.path)).toBe(false)

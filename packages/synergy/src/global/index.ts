@@ -1,9 +1,9 @@
+import { randomUUID } from "crypto"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import fs from "fs/promises"
 import fsSync from "fs"
 import path from "path"
 import { pathToFileURL } from "url"
-import { randomUUID } from "crypto"
 import os from "os"
 import { Filesystem } from "../util/filesystem"
 import { assertIsolatedTestHome } from "./test-home-guard"
@@ -123,73 +123,76 @@ export namespace Global {
       return pathToFileURL(path.join(root(), "schema", "config.schema.json")).href
     },
   }
-}
 
-await Promise.all([
-  fs.mkdir(Global.Path.root, { recursive: true }),
-  fs.mkdir(Global.Path.data, { recursive: true }),
-  fs.mkdir(Global.Path.auth, { recursive: true }),
-  fs.mkdir(Global.Path.config, { recursive: true }),
-  fs.mkdir(Global.Path.state, { recursive: true }),
-  fs.mkdir(Global.Path.log, { recursive: true }),
-  fs.mkdir(Global.Path.bin, { recursive: true }),
-  fs.mkdir(Global.Path.assets, { recursive: true }),
-  fs.mkdir(Global.Path.media, { recursive: true }),
-  fs.mkdir(Global.Path.embeddingModels, { recursive: true }),
-  fs.mkdir(Global.Path.schema, { recursive: true }),
-])
+  export async function initialize(options: { cache?: boolean } = {}) {
+    await Promise.all([
+      fs.mkdir(Global.Path.root, { recursive: true }),
+      fs.mkdir(Global.Path.data, { recursive: true }),
+      fs.mkdir(Global.Path.auth, { recursive: true }),
+      fs.mkdir(Global.Path.config, { recursive: true }),
+      fs.mkdir(Global.Path.state, { recursive: true }),
+      fs.mkdir(Global.Path.log, { recursive: true }),
+      fs.mkdir(Global.Path.bin, { recursive: true }),
+      fs.mkdir(Global.Path.assets, { recursive: true }),
+      fs.mkdir(Global.Path.media, { recursive: true }),
+      fs.mkdir(Global.Path.embeddingModels, { recursive: true }),
+      fs.mkdir(Global.Path.schema, { recursive: true }),
+    ])
 
-// Copy bundled config schema to ~/.synergy/schema/ so editors can resolve file:// $schema URLs.
-// Checked on every startup to keep the schema in sync with the installed synergy version.
-{
-  const bundled = (() => {
-    const execDir = path.dirname(fsSync.realpathSync(process.execPath))
-    const candidates = [
-      path.resolve(execDir, "../schema/config.schema.json"),
-      path.resolve(execDir, "../../schema/config.schema.json"),
-      path.resolve(import.meta.dirname, "../../schema/config.schema.json"),
-    ]
-    return candidates.find((candidate) => fsSync.existsSync(candidate))
-  })()
-  if (bundled) {
-    // Identical-content boots skip the lock entirely; competing publishers
-    // serialize under the schema lock and publish through a same-volume
-    // rename so readers never observe a partial schema file.
-    const bundledContents = await fs.readFile(bundled, "utf8")
-    const current = await fs.readFile(Global.Path.configSchema, "utf8").catch(() => undefined)
-    if (current !== bundledContents) {
-      await withFileLock({ directory: path.join(Global.Path.schema, ".locks"), key: "config-schema" }, async () => {
-        const published = await fs.readFile(Global.Path.configSchema, "utf8").catch(() => undefined)
-        if (published === bundledContents) return
-        const temporaryPath = `${Global.Path.configSchema}.${randomUUID()}.tmp`
-        try {
-          await fs.copyFile(bundled, temporaryPath)
-          await fs.rename(temporaryPath, Global.Path.configSchema)
-        } finally {
-          await fs.rm(temporaryPath, { force: true }).catch(() => {})
+    // Copy bundled config schema to ~/.synergy/schema/ so editors can resolve file:// $schema URLs.
+    // Checked on every startup to keep the schema in sync with the installed synergy version.
+    {
+      const bundled = (() => {
+        const execDir = path.dirname(fsSync.realpathSync(process.execPath))
+        const candidates = [
+          path.resolve(execDir, "../schema/config.schema.json"),
+          path.resolve(execDir, "../../schema/config.schema.json"),
+          path.resolve(import.meta.dirname, "../../schema/config.schema.json"),
+        ]
+        return candidates.find((candidate) => fsSync.existsSync(candidate))
+      })()
+      if (bundled) {
+        // Identical-content boots skip the lock entirely; competing publishers
+        // serialize under the schema lock and publish through a same-volume
+        // rename so readers never observe a partial schema file.
+        const bundledContents = await fs.readFile(bundled, "utf8")
+        const current = await fs.readFile(Global.Path.configSchema, "utf8").catch(() => undefined)
+        if (current !== bundledContents) {
+          await withFileLock({ directory: path.join(Global.Path.schema, ".locks"), key: "config-schema" }, async () => {
+            const published = await fs.readFile(Global.Path.configSchema, "utf8").catch(() => undefined)
+            if (published === bundledContents) return
+            const temporaryPath = `${Global.Path.configSchema}.${randomUUID()}.tmp`
+            try {
+              await fs.copyFile(bundled, temporaryPath)
+              await fs.rename(temporaryPath, Global.Path.configSchema)
+            } finally {
+              await fs.rm(temporaryPath, { force: true }).catch(() => {})
+            }
+          })
         }
-      })
+      }
+    }
+
+    if (options.cache === false) return
+    const CACHE_VERSION = "15"
+
+    const version = await Bun.file(path.join(Global.Path.cache, "version"))
+      .text()
+      .catch(() => "0")
+
+    if (version !== CACHE_VERSION) {
+      try {
+        const contents = await fs.readdir(Global.Path.cache)
+        await Promise.all(
+          contents.map((item) =>
+            fs.rm(path.join(Global.Path.cache, item), {
+              recursive: true,
+              force: true,
+            }),
+          ),
+        )
+      } catch (e) {}
+      await Bun.file(path.join(Global.Path.cache, "version")).write(CACHE_VERSION)
     }
   }
-}
-
-const CACHE_VERSION = "15"
-
-const version = await Bun.file(path.join(Global.Path.cache, "version"))
-  .text()
-  .catch(() => "0")
-
-if (version !== CACHE_VERSION) {
-  try {
-    const contents = await fs.readdir(Global.Path.cache)
-    await Promise.all(
-      contents.map((item) =>
-        fs.rm(path.join(Global.Path.cache, item), {
-          recursive: true,
-          force: true,
-        }),
-      ),
-    )
-  } catch (e) {}
-  await Bun.file(path.join(Global.Path.cache, "version")).write(CACHE_VERSION)
 }

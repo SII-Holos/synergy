@@ -57,7 +57,7 @@ const FEISHU_CFG: Record<string, unknown> = {
       },
     },
   },
-  experimental: { boss_mode: true },
+  boss: { enabled: true },
 }
 
 const FEISHU_ONE: Record<string, unknown> = {
@@ -69,7 +69,7 @@ const FEISHU_ONE: Record<string, unknown> = {
       accounts: { acct1: { appId: "a", appSecret: "b" } },
     },
   },
-  experimental: { boss_mode: true },
+  boss: { enabled: true },
 }
 
 async function withHomeScope<T>(fn: () => Promise<T>): Promise<T> {
@@ -77,7 +77,7 @@ async function withHomeScope<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 describe("BossRuntime", () => {
-  test("ensure() does nothing when boss_mode is disabled", async () => {
+  test("ensure() does nothing when enabled is disabled", async () => {
     await withHomeScope(async () => {
       stubConfig({})
       await BossRuntime.ensure()
@@ -164,7 +164,7 @@ describe("BossRuntime", () => {
 
   test("refreshIdentity delivers a versioned briefing with a new deliveryKey", async () => {
     await withHomeScope(async () => {
-      stubConfig({ ...FEISHU_ONE, experimental: { boss_mode: true, boss_identity_text: "我是同事小飞" } })
+      stubConfig({ ...FEISHU_ONE, boss: { enabled: true, identityText: "我是同事小飞" } })
       await BossRuntime.ensure()
       const sessionID = BossRuntime.bossSessionForAccount("acct1")!
 
@@ -198,9 +198,9 @@ describe("BossRuntime", () => {
     })
   })
 
-  test("periodic briefing agenda item is created per account when boss_briefing_interval_days is set", async () => {
+  test("periodic briefing agenda item is created per account when briefingIntervalDays is set", async () => {
     await withHomeScope(async () => {
-      stubConfig({ ...FEISHU_CFG, experimental: { boss_mode: true, boss_briefing_interval_days: 7 } })
+      stubConfig({ ...FEISHU_CFG, boss: { enabled: true, briefingIntervalDays: 7 } })
       await BossRuntime.ensure()
       const { AgendaStore } = await import("../../src/agenda/store")
       const item = await AgendaStore.get("home", BossRuntime.briefingAgendaID("acct1")).catch(() => undefined)
@@ -216,7 +216,7 @@ describe("BossRuntime", () => {
 
   test("rescheduleBriefing updates each account's agenda item to the new interval", async () => {
     await withHomeScope(async () => {
-      stubConfig({ ...FEISHU_ONE, experimental: { boss_mode: true, boss_briefing_interval_days: 7 } })
+      stubConfig({ ...FEISHU_ONE, boss: { enabled: true, briefingIntervalDays: 7 } })
       await BossRuntime.ensure()
       const { AgendaStore } = await import("../../src/agenda/store")
       const itemID = BossRuntime.briefingAgendaID("acct1")
@@ -225,7 +225,7 @@ describe("BossRuntime", () => {
       expect(before!.triggers).toContainEqual({ type: "every", interval: "7d" })
 
       // Interval change re-registers the same per-account item with the new cadence.
-      stubConfig({ ...FEISHU_ONE, experimental: { boss_mode: true, boss_briefing_interval_days: 3 } })
+      stubConfig({ ...FEISHU_ONE, boss: { enabled: true, briefingIntervalDays: 3 } })
       await BossRuntime.rescheduleBriefing()
       const after = await AgendaStore.get("home", itemID).catch(() => undefined)
       expect(after).toBeDefined()
@@ -234,7 +234,7 @@ describe("BossRuntime", () => {
     })
   })
 
-  test("openSession() throws BossSessionOpenError when boss_mode is disabled", async () => {
+  test("openSession() throws BossSessionOpenError when enabled is disabled", async () => {
     await withHomeScope(async () => {
       stubConfig({})
       await expect(BossRuntime.openSession()).rejects.toThrow("Boss Mode is disabled")
@@ -243,7 +243,7 @@ describe("BossRuntime", () => {
 
   test("openSession() creates a channel-less local boss session when no routable account exists", async () => {
     await withHomeScope(async () => {
-      stubConfig({ experimental: { boss_mode: true } })
+      stubConfig({ boss: { enabled: true } })
       const sessionID = await BossRuntime.openSession()
       const session = await Session.get(sessionID)
       expect(session).toBeDefined()
@@ -269,7 +269,7 @@ describe("BossRuntime", () => {
 
   test("openSession() skips the greeting kickoff when no model is available", async () => {
     await withHomeScope(async () => {
-      stubConfig({ experimental: { boss_mode: true } })
+      stubConfig({ boss: { enabled: true } })
       Provider.defaultModel = mock(async () => {
         throw new Error("no model")
       }) as typeof Provider.defaultModel
@@ -289,7 +289,7 @@ describe("BossRuntime", () => {
 
   test("openSession() queues one greeting kickoff task and wakes the session when a model is available", async () => {
     await withHomeScope(async () => {
-      stubConfig({ experimental: { boss_mode: true } })
+      stubConfig({ boss: { enabled: true } })
       Provider.defaultModel = mock(async () => ({
         providerID: "test",
         modelID: "model",
@@ -321,7 +321,7 @@ describe("BossRuntime", () => {
 
   test("openSession() does not kick off a session that already has a conversation root", async () => {
     await withHomeScope(async () => {
-      stubConfig({ experimental: { boss_mode: true } })
+      stubConfig({ boss: { enabled: true } })
       Provider.defaultModel = mock(async () => ({
         providerID: "test",
         modelID: "model",

@@ -601,3 +601,54 @@ describe("signalAbort", () => {
     }
   })
 })
+
+test("a late recording failure cannot cancel a later root sharing the same loop lease", () => {
+  const sessionID = "ses_root_recording_ownership"
+  SessionManager.unregisterRuntime(sessionID)
+  const lease = SessionManager.acquire(sessionID)!
+  try {
+    expect(SessionManager.signalAbort(sessionID, { rootID: "root_a" })).toBe("not_owner")
+    expect(SessionManager.bindRootTask(lease, "root_a")).toBe(true)
+    expect(SessionManager.bindRootTask(lease, "root_b")).toBe(true)
+    expect(SessionManager.signalAbort(sessionID, { rootID: "root_a" })).toBe("not_owner")
+    expect(lease.signal.aborted).toBe(false)
+    expect(SessionManager.signalAbort(sessionID, { rootID: "root_b" })).toBe("signaled")
+    expect(lease.signal.aborted).toBe(true)
+  } finally {
+    SessionManager.unregisterRuntime(sessionID)
+  }
+})
+
+test("runtime shutdown refuses new loops and waits for current cleanup", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const session = await Session.create({})
+      const started = Promise.withResolvers<void>()
+      const cleanup = Promise.withResolvers<void>()
+      let finished = false
+      const running = SessionManager.run(session.id, async () => {
+        started.resolve()
+        await cleanup.promise
+        finished = true
+      })
+      await started.promise
+      SessionManager.closeAdmission()
+      try {
+        expect(() => SessionManager.acquire("new-session")).toThrow("shutting down")
+        const drained = SessionManager.drain()
+        await Bun.sleep(1)
+        expect(finished).toBe(false)
+        cleanup.resolve()
+        await drained
+        expect(finished).toBe(true)
+        await running
+      } finally {
+        cleanup.resolve()
+        await running
+        SessionManager.openAdmission()
+      }
+    },
+  })
+})

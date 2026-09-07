@@ -1,3 +1,9 @@
+import { Experiment } from "@/config/experiment"
+import { RolloutContext } from "./rollout/context"
+import { RolloutLifecycle } from "./rollout/lifecycle"
+import { RolloutLedger } from "./rollout/ledger"
+import { RolloutTool } from "./rollout/tool"
+import { findRecordingError } from "./rollout/error"
 import path from "path"
 import z from "zod"
 import { Identifier } from "../id/id"
@@ -105,7 +111,7 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
     providerID: model.providerID,
   }
   await Session.updateMessage(msg)
-  const part: MessageV2.Part = {
+  const part: MessageV2.ToolPart = {
     type: "tool",
     id: Identifier.ascending("part"),
     messageID: msg.id,
@@ -123,169 +129,249 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
     },
   }
   await Session.updatePart(part)
-  const sh = Shell.preferred()
-  const shellName = (process.platform === "win32" ? path.win32.basename(sh, ".exe") : path.basename(sh)).toLowerCase()
+  const session = await Session.get(input.sessionID)
+  const owner = RolloutLifecycle.owner(session)
+  const configuration = await RolloutLifecycle.configuration(session, userMsg.id, undefined, model)
+  const segment = await RolloutLifecycle.start(session, userMsg, [userPart])
+  SessionManager.bindRootTask(lease, userMsg.id)
+  let status: "completed" | "failed" | "cancelled" = "failed"
+  let failure: unknown
+  try {
+    return await Experiment.provide(configuration, () =>
+      RolloutContext.provide({ owner, runID: userMsg.id, signal: abort }, () =>
+        RolloutTool.execute(
+          {
+            owner,
+            runID: userMsg.id,
+            messageID: msg.id,
+            toolCallID: part.callID,
+            tool: "bash",
+            args: { command: input.command },
+          },
+          async () => {
+            const evidence = await RolloutTool.openProcess(crypto.randomUUID())
+            const sh = Shell.preferred()
+            const shellName = (
+              process.platform === "win32" ? path.win32.basename(sh, ".exe") : path.basename(sh)
+            ).toLowerCase()
 
-  const invocations: Record<string, { args: string[] }> = {
-    nu: {
-      args: ["-c", input.command],
-    },
-    fish: {
-      args: ["-c", input.command],
-    },
-    zsh: {
-      args: [
-        "-c",
-        "-l",
-        `
+            const invocations: Record<string, { args: string[] }> = {
+              nu: {
+                args: ["-c", input.command],
+              },
+              fish: {
+                args: ["-c", input.command],
+              },
+              zsh: {
+                args: [
+                  "-c",
+                  "-l",
+                  `
           [[ -f ~/.zshenv ]] && source ~/.zshenv >/dev/null 2>&1 || true
           [[ -f "\${ZDOTDIR:-$HOME}/.zshrc" ]] && source "\${ZDOTDIR:-$HOME}/.zshrc" >/dev/null 2>&1 || true
           eval ${JSON.stringify(input.command)}
         `,
-      ],
-    },
-    bash: {
-      args: [
-        "-c",
-        "-l",
-        `
+                ],
+              },
+              bash: {
+                args: [
+                  "-c",
+                  "-l",
+                  `
           shopt -s expand_aliases
           [[ -f ~/.bashrc ]] && source ~/.bashrc >/dev/null 2>&1 || true
           eval ${JSON.stringify(input.command)}
         `,
-      ],
-    },
-    // Windows cmd
-    cmd: {
-      args: ["/c", input.command],
-    },
-    // Windows PowerShell
-    powershell: {
-      args: ["-NoProfile", "-Command", input.command],
-    },
-    pwsh: {
-      args: ["-NoProfile", "-Command", input.command],
-    },
-    // Fallback: any shell that doesn't match those above
-    //  - No -l, for max compatibility
-    "": {
-      args: ["-c", `${input.command}`],
-    },
-  }
+                ],
+              },
+              // Windows cmd
+              cmd: {
+                args: ["/c", input.command],
+              },
+              // Windows PowerShell
+              powershell: {
+                args: ["-NoProfile", "-Command", input.command],
+              },
+              pwsh: {
+                args: ["-NoProfile", "-Command", input.command],
+              },
+              // Fallback: any shell that doesn't match those above
+              //  - No -l, for max compatibility
+              "": {
+                args: ["-c", `${input.command}`],
+              },
+            }
 
-  const matchingInvocation = invocations[shellName] ?? invocations[""]
-  const args = matchingInvocation?.args
+            const matchingInvocation = invocations[shellName] ?? invocations[""]
+            const args = matchingInvocation?.args
 
-  const processEnv = {
-    ...process.env,
-    TERM: "dumb",
-  }
-  const windowsProcessJob = WindowsProcessJob.prepare({ command: sh, args, env: processEnv })
-  const unixInvocation = Shell.prepareOwnedProcessGroup({ command: sh, args })
-  let proc: ReturnType<typeof spawn>
-  let windowsProcessOwner: WindowsProcessJob.Owner | undefined
-  try {
-    proc = spawn(windowsProcessJob?.command ?? unixInvocation.command, windowsProcessJob?.args ?? unixInvocation.args, {
-      cwd: ScopeContext.current.directory,
-      detached: process.platform !== "win32",
-      stdio: ["ignore", "pipe", "pipe"],
-      env: windowsProcessJob?.env ?? processEnv,
-    })
-    if (windowsProcessJob) windowsProcessOwner = await windowsProcessJob.activate(proc)
+            const processEnv = {
+              ...process.env,
+              TERM: "dumb",
+            }
+            const windowsProcessJob = WindowsProcessJob.prepare({ command: sh, args, env: processEnv })
+            const unixInvocation = Shell.prepareOwnedProcessGroup({ command: sh, args })
+            let proc: ReturnType<typeof spawn>
+            let windowsProcessOwner: WindowsProcessJob.Owner | undefined
+            try {
+              proc = spawn(
+                windowsProcessJob?.command ?? unixInvocation.command,
+                windowsProcessJob?.args ?? unixInvocation.args,
+                {
+                  cwd: ScopeContext.current.directory,
+                  detached: process.platform !== "win32",
+                  stdio: ["ignore", "pipe", "pipe"],
+                  env: windowsProcessJob?.env ?? processEnv,
+                },
+              )
+              if (windowsProcessJob) windowsProcessOwner = await windowsProcessJob.activate(proc)
+            } catch (error) {
+              windowsProcessJob?.cleanup()
+              await evidence.finish({ interrupted: true, exitCode: null, signal: null })
+              throw error
+            }
+
+            let output = ""
+
+            let pending = Promise.resolve()
+            let recordingFailure: unknown
+            let backpressured = 0
+            function append(channel: "stdout" | "stderr", chunk: Buffer) {
+              const stream = channel === "stdout" ? proc.stdout : proc.stderr
+              stream?.pause()
+              backpressured++
+              pending = pending
+                .then(async () => {
+                  if (recordingFailure) return
+                  await evidence.append(channel, chunk)
+                  output = (output + chunk.toString()).slice(-32_000)
+                  if (part.state.status === "running") {
+                    part.state.metadata = { ...part.state.metadata, output, description: "" }
+                    await Session.updatePart(part)
+                  }
+                })
+                .catch((error) => {
+                  recordingFailure = error
+                  void kill().catch((error) => {
+                    recordingFailure ??= error
+                  })
+                })
+                .finally(() => {
+                  backpressured--
+                  stream?.resume()
+                })
+            }
+            const stdout = (chunk: Buffer) => append("stdout", chunk)
+            const stderr = (chunk: Buffer) => append("stderr", chunk)
+            proc.stdout?.on("data", stdout)
+            proc.stderr?.on("data", stderr)
+
+            let aborted = false
+            const terminate = async (allowExitedParent = false) => {
+              if (windowsProcessOwner) {
+                windowsProcessOwner.terminateOrRelease()
+                windowsProcessOwner = undefined
+                return
+              }
+              await Shell.killTree(proc, { exited: () => exited, allowExitedParent })
+            }
+            let exited = false
+            const closed = ChildProcessClose.wait(proc, {
+              isBackpressured: () => backpressured > 0,
+              onExit() {
+                exited = true
+              },
+              onDrainTimeout() {
+                return terminate(true)
+              },
+            })
+
+            const kill = () => terminate()
+
+            if (abort.aborted) {
+              aborted = true
+              await kill()
+            }
+
+            const abortHandler = () => {
+              aborted = true
+              void kill().catch((error) => {
+                recordingFailure ??= error
+              })
+            }
+
+            abort.addEventListener("abort", abortHandler, { once: true })
+
+            let completion: ChildProcessClose.Result | undefined
+            try {
+              completion = await closed
+              await pending
+              if (recordingFailure) throw recordingFailure
+            } finally {
+              try {
+                await pending
+                await evidence.finish({
+                  interrupted: aborted || !!recordingFailure || !!completion?.drainTimedOut || !completion,
+                  exitCode: completion?.code ?? null,
+                  signal: completion?.signal ?? null,
+                  pid: proc.pid,
+                })
+              } finally {
+                abort.removeEventListener("abort", abortHandler)
+                proc.stdout?.off("data", stdout)
+                proc.stderr?.off("data", stderr)
+                Shell.releaseOwnedProcessGroup(proc)
+                if (windowsProcessOwner) {
+                  try {
+                    windowsProcessOwner.terminateOrRelease()
+                    windowsProcessOwner = undefined
+                  } catch {}
+                }
+                windowsProcessJob?.cleanup()
+              }
+            }
+
+            if (aborted) {
+              output += "\n\n" + ["<metadata>", deriveShellAbortReason(abort.reason), "</metadata>"].join("\n")
+            }
+            msg.time.completed = Date.now()
+            msg.finish = "stop"
+            await Session.updateMessage(msg)
+            if (part.state.status === "running") {
+              part.state = {
+                status: "completed",
+                time: {
+                  ...part.state.time,
+                  end: Date.now(),
+                },
+                input: part.state.input,
+                title: "",
+                metadata: {
+                  ...part.state.metadata,
+                  output,
+                  description: "",
+                },
+                output,
+              }
+              await Session.updatePart(part)
+            }
+            status = aborted ? "cancelled" : completion?.code === 0 ? "completed" : "failed"
+            return { info: msg, parts: [part] }
+          },
+          () => SessionManager.signalAbort(input.sessionID, { rootID: userMsg.id }),
+        ),
+      ),
+    )
   } catch (error) {
-    windowsProcessJob?.cleanup()
-    throw error
-  }
-
-  let output = ""
-
-  const appendOutput = (chunk: Buffer) => {
-    output += chunk.toString()
-    if (part.state.status === "running") {
-      part.state.metadata = {
-        ...part.state.metadata,
-        output: output,
-        description: "",
-      }
-      Session.updatePart(part)
-    }
-  }
-
-  proc.stdout?.on("data", appendOutput)
-  proc.stderr?.on("data", appendOutput)
-
-  let aborted = false
-  const terminate = async (allowExitedParent = false) => {
-    if (windowsProcessOwner) {
-      windowsProcessOwner.terminateOrRelease()
-      windowsProcessOwner = undefined
-      return
-    }
-    await Shell.killTree(proc, { exited: () => exited, allowExitedParent })
-  }
-  let exited = false
-  const closed = ChildProcessClose.wait(proc, {
-    onExit() {
-      exited = true
-    },
-    onDrainTimeout() {
-      return terminate(true)
-    },
-  })
-
-  const kill = () => terminate()
-
-  if (abort.aborted) {
-    aborted = true
-    await kill()
-  }
-
-  const abortHandler = () => {
-    aborted = true
-    void kill()
-  }
-
-  abort.addEventListener("abort", abortHandler, { once: true })
-
-  try {
-    await closed
+    failure = findRecordingError(error) ?? error
+    if (abort.aborted) status = "cancelled"
+    throw failure
   } finally {
-    abort.removeEventListener("abort", abortHandler)
-    proc.stdout?.off("data", appendOutput)
-    proc.stderr?.off("data", appendOutput)
-    Shell.releaseOwnedProcessGroup(proc)
-    if (windowsProcessOwner) {
-      try {
-        windowsProcessOwner.terminateOrRelease()
-        windowsProcessOwner = undefined
-      } catch {}
+    try {
+      await RolloutLedger.finishSegment(segment, status)
+      await RolloutLedger.finishRun(owner, userMsg.id, status)
+    } catch (error) {
+      throw findRecordingError(failure) ?? error
     }
-    windowsProcessJob?.cleanup()
   }
-
-  if (aborted) {
-    output += "\n\n" + ["<metadata>", deriveShellAbortReason(abort.reason), "</metadata>"].join("\n")
-  }
-  msg.time.completed = Date.now()
-  msg.finish = "stop"
-  await Session.updateMessage(msg)
-  if (part.state.status === "running") {
-    part.state = {
-      status: "completed",
-      time: {
-        ...part.state.time,
-        end: Date.now(),
-      },
-      input: part.state.input,
-      title: "",
-      metadata: {
-        ...part.state.metadata,
-        output,
-        description: "",
-      },
-      output,
-    }
-    await Session.updatePart(part)
-  }
-  return { info: msg, parts: [part] }
 }

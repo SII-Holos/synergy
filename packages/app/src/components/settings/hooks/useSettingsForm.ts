@@ -165,30 +165,23 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     logLevel: cfg.logLevel ?? UI_DEFAULTS.logLevel,
     performanceEnabled:
       (cfg.observability?.performance?.enabled ?? cfg.observability?.enabled ?? true) === false ? "false" : "true",
-    coauthorReminder: cfg.experimental?.coauthor_reminder !== false ? "true" : "false",
-    bossMode: cfg.experimental?.boss_mode === true ? "true" : "false",
-    bossIdentityText: cfg.experimental?.boss_identity_text ?? "",
-    bossBriefingIntervalDays:
-      cfg.experimental?.boss_briefing_interval_days != null ? String(cfg.experimental.boss_briefing_interval_days) : "",
-    bossPersonaPreset: cfg.experimental?.boss_persona
-      ? cfg.experimental.boss_persona.preset
-      : UI_DEFAULTS.bossPersonaPreset,
+    coauthorReminder: cfg.prompt?.coauthorReminder !== false ? "true" : "false",
+    bossMode: cfg.boss?.enabled === true ? "true" : "false",
+    bossIdentityText: cfg.boss?.identityText ?? "",
+    bossBriefingIntervalDays: cfg.boss?.briefingIntervalDays != null ? String(cfg.boss.briefingIntervalDays) : "",
+    bossPersonaPreset: cfg.boss?.persona ? cfg.boss.persona.preset : UI_DEFAULTS.bossPersonaPreset,
     bossPersonaFormality:
-      cfg.experimental?.boss_persona?.preset === "custom"
-        ? String(cfg.experimental.boss_persona.formality)
-        : UI_DEFAULTS.bossPersonaFormality,
+      cfg.boss?.persona?.preset === "custom" ? String(cfg.boss.persona.formality) : UI_DEFAULTS.bossPersonaFormality,
     bossPersonaConciseness:
-      cfg.experimental?.boss_persona?.preset === "custom"
-        ? String(cfg.experimental.boss_persona.conciseness)
+      cfg.boss?.persona?.preset === "custom"
+        ? String(cfg.boss.persona.conciseness)
         : UI_DEFAULTS.bossPersonaConciseness,
     bossPersonaProactiveness:
-      cfg.experimental?.boss_persona?.preset === "custom"
-        ? String(cfg.experimental.boss_persona.proactiveness)
+      cfg.boss?.persona?.preset === "custom"
+        ? String(cfg.boss.persona.proactiveness)
         : UI_DEFAULTS.bossPersonaProactiveness,
     bossPersonaWarmth:
-      cfg.experimental?.boss_persona?.preset === "custom"
-        ? String(cfg.experimental.boss_persona.warmth)
-        : UI_DEFAULTS.bossPersonaWarmth,
+      cfg.boss?.persona?.preset === "custom" ? String(cfg.boss.persona.warmth) : UI_DEFAULTS.bossPersonaWarmth,
   })
 
   params.setSettings("email", {

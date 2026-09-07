@@ -38,6 +38,13 @@ export function registerCortexSessionRuntime() {
         .filter((task) => task.status === "queued" || task.status === "running")
         .map((task) => ({ id: task.id, description: task.description })),
     reconcileParentNotifications: (scopeID) => Cortex.reconcileParentNotifications(scopeID),
+    cancelAndDrainTask: async (taskID) => {
+      const task = Cortex.get(taskID)
+      await Cortex.cancel(taskID)
+      if (task) await Cortex.cancelAll(task.sessionID)
+      await Cortex.drain(taskID)
+    },
+    drain: () => Cortex.drain(),
     cancelAllForParent: async (parentSessionID) => {
       await Cortex.cancelAll(parentSessionID)
     },

@@ -118,6 +118,7 @@ export namespace ToolRegistry {
               ctx.ask({ ...input, metadata: input.metadata ?? {} }),
           }
           const raw = await def.execute(args as any, pluginCtx)
+          await ctx.captureResult?.(raw)
           return normalizePluginResult(raw, initCtx?.agent)
         },
       }),
@@ -179,6 +180,7 @@ export namespace ToolRegistry {
             scopeId: ScopeContext.current.scope.id,
             directory: ScopeContext.current.directory,
           })
+          await ctx.captureResult?.(raw)
           return normalizePluginResult(raw, initCtx?.agent)
         },
       }),
@@ -215,7 +217,7 @@ export namespace ToolRegistry {
   }
 
   const toolProviders = new Map<string, ToolProvider>()
-  export type ToolProvider = () => Tool.Info[]
+  export type ToolProvider = () => Tool.Info[] | Promise<Tool.Info[]>
 
   /** Product domains register tool providers under a stable source id;
    * `all()` drains them alongside the static builtin list. */
@@ -286,7 +288,7 @@ export namespace ToolRegistry {
     }).catch(() => undefined)
     if (codexAccess) builtin.push(OpenAIImageGenTool, OpenAIImageEditTool)
 
-    const provided = [...toolProviders.values()].flatMap((provider) => provider())
+    const provided = (await Promise.all([...toolProviders.values()].map((provider) => provider()))).flat()
     return [...builtin, ...provided, ...custom]
   }
 

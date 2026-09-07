@@ -1,51 +1,16 @@
-// L4 assembly: load built-in product registrations before any command runs
-import "./product-registration"
+import { Global } from "./global"
+import { builtinCommands } from "./cli/commands"
+import { installedPluginCliMetadata } from "./plugin/cli-metadata"
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
-import { SendCommand } from "./cli/cmd/run"
-import { GenerateCommand } from "./cli/cmd/generate"
 import { Log } from "./util/log"
-import { AuthCommand } from "./cli/cmd/auth"
-import { AgentCommand } from "./cli/cmd/agent"
-import { UpgradeCommand } from "./cli/cmd/upgrade"
-import { UninstallCommand } from "./cli/cmd/uninstall"
-import { ModelsCommand } from "./cli/cmd/models"
 import { UI } from "./util/ui"
 import { Installation } from "./global/installation"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
-import { FormatError, FormatUnknownError } from "./cli/error"
-import { ServerCommand } from "./cli/cmd/server"
-import { DebugCommand } from "./cli/cmd/debug"
-import { StatsCommand } from "./cli/cmd/stats"
-import { McpCommand } from "./cli/cmd/mcp"
-import { ExportCommand } from "./cli/cmd/export"
-import { ImportCommand } from "./cli/cmd/import"
-import { AcpCommand } from "./cli/cmd/acp"
 import { EOL } from "os"
-import { WebCommand } from "./cli/cmd/web"
-import { SessionCommand } from "./cli/cmd/session"
-import { ChannelCommand } from "./cli/cmd/channel"
-import { HolosCommand } from "./cli/cmd/holos"
-import { ConfigCommand } from "./cli/cmd/config"
-import { LibraryCommand } from "./cli/cmd/library"
-import { EmbedCommand } from "./cli/cmd/embed"
-import { StartCommand } from "./cli/cmd/start"
-import { StopCommand } from "./cli/cmd/stop"
-import { StatusCommand } from "./cli/cmd/status"
-import { LogsCommand } from "./cli/cmd/logs"
-import { DoctorCommand } from "./cli/cmd/doctor"
-import { DiagnosticsCommand } from "./cli/cmd/diagnostics"
-import { BrowserCommand } from "./cli/cmd/browser"
 
-import { PluginCommand } from "./cli/cmd/plugin"
-import { DataCommand, MigrateCommand } from "./cli/cmd/data"
-import { MigrationCommand } from "./cli/cmd/migration"
-import { ConfigDomain } from "./config/domain"
 import { parse as parseJsonc } from "jsonc-parser"
 import { Flag } from "./flag/flag"
-import { Scope } from "./scope"
-import { ScopeContext } from "./scope/context"
-import { contributions, getLoadedPlugins } from "./plugin/loader"
 import { createPluginCliCommandModule } from "./plugin/cli-command"
 
 async function flushCliOutput() {
@@ -53,7 +18,7 @@ async function flushCliOutput() {
 }
 
 function printUnhandledFailure(kind: string, error: unknown) {
-  const detail = FormatUnknownError(error)
+  const detail = error instanceof Error ? error.stack : String(error)
   const logfile = (() => {
     try {
       return Log.file()
@@ -101,8 +66,11 @@ const cli = yargs(hideBin(process.argv))
     choices: ["DEBUG", "INFO", "WARN", "ERROR"],
   })
   .middleware(async (opts) => {
+    if (informational) return
+    if (!["send", "server"].includes(selectedCommand ?? "server")) await Global.initialize({ cache: false })
     let configLogLevel: string | undefined
     try {
+      const { ConfigDomain } = await import("./config/domain")
       const configText = await Bun.file(ConfigDomain.filepath("general"))
         .text()
         .catch(() => "")
@@ -137,71 +105,36 @@ const cli = yargs(hideBin(process.argv))
   })
   .usage("\n" + UI.logo())
   .completion("completion", "generate shell completion script")
-  .command(AcpCommand)
-  .command(McpCommand)
-  .command(SendCommand)
-  .command(GenerateCommand)
-  .command(DebugCommand)
-  .command(AuthCommand)
-  .command(AgentCommand)
-  .command(UpgradeCommand)
-  .command(UninstallCommand)
-  .command(ServerCommand)
-  .command(WebCommand)
-  .command(ModelsCommand)
-  .command(StatsCommand)
-  .command(ExportCommand)
-  .command(ImportCommand)
-  .command(SessionCommand)
-  .command(ChannelCommand)
-  .command(HolosCommand)
-  .command(ConfigCommand)
-  .command(LibraryCommand)
-  .command(EmbedCommand)
-  .command(StartCommand)
-  .command(StopCommand)
-  .command(StatusCommand)
-  .command(LogsCommand)
-  .command(DiagnosticsCommand)
-  .command(PluginCommand)
-  .command(DataCommand)
-  .command(DoctorCommand)
-  .command(BrowserCommand)
 
-  .command(MigrateCommand)
-  .command(MigrationCommand)
-
-type YargsCommandMetadata = {
-  getInternalMethods(): {
-    getCommandInstance(): { getCommands(): string[] }
-  }
+const informational = process.argv.some((arg) => ["--help", "-h", "--version", "-v"].includes(arg))
+const requestedCommand = firstPositionalArg()
+const selectedCommand = requestedCommand ?? (informational ? undefined : "server")
+if (!informational && selectedCommand !== "send") await import("./product-registration")
+for (const entry of builtinCommands) {
+  const names = (Array.isArray(entry.command) ? entry.command : [entry.command]).map((name) => name.split(" ")[0])
+  cli.command(
+    names.includes(selectedCommand ?? "")
+      ? await entry.load()
+      : { command: entry.command, describe: entry.describe, handler() {} },
+  )
 }
 
-async function registerPluginCliCommands() {
-  const directory = Flag.SYNERGY_CWD || process.cwd()
-  const scope = (await Scope.fromDirectory(directory, { persist: false })).scope
-  await ScopeContext.provide({
-    scope,
-    async fn() {
-      const commandMetadata = cli as typeof cli & YargsCommandMetadata
-      const registered = new Set(commandMetadata.getInternalMethods().getCommandInstance().getCommands())
-      const plugins = [...(await getLoadedPlugins())].sort((left, right) => left.id.localeCompare(right.id))
-      for (const plugin of plugins) {
-        if (contributions(plugin, "cli.command").length === 0) continue
-        if (registered.has(plugin.id)) throw new Error(`Plugin CLI namespace ${plugin.id} conflicts with Synergy`)
-        registered.add(plugin.id)
-        cli.command(
-          createPluginCliCommandModule({
-            plugin,
-            resolveScope: async () => (await Scope.fromDirectory(directory)).scope,
-          }),
-        )
-      }
-    },
-  })
+const registered = new Set(
+  builtinCommands.flatMap((entry) =>
+    (Array.isArray(entry.command) ? entry.command : [entry.command]).map((name) => name.split(" ")[0]),
+  ),
+)
+const directory = Flag.SYNERGY_CWD || process.cwd()
+for (const plugin of await installedPluginCliMetadata()) {
+  if (registered.has(plugin.id)) throw new Error(`Plugin CLI namespace ${plugin.id} conflicts with Synergy`)
+  registered.add(plugin.id)
+  cli.command(
+    createPluginCliCommandModule({
+      plugin,
+      resolveScope: async () => (await (await import("./scope")).Scope.fromDirectory(directory)).scope,
+    }),
+  )
 }
-
-await registerPluginCliCommands()
 
 // Installed plugin commands are registered from generated manifest metadata.
 
@@ -212,18 +145,20 @@ cli
       msg?.startsWith("Not enough non-option arguments") ||
       msg?.startsWith("Invalid values:")
     ) {
-      cli.showHelp("log")
-    } else if (err) {
-      console.error(err)
-    } else if (msg) {
-      console.error(msg)
+      cli.showHelp("error")
     }
-    process.exit(1)
+    throw err ?? new Error(msg || "Command failed")
   })
   .strict()
 
 function firstPositionalArg() {
-  for (const arg of process.argv.slice(2)) {
+  const args = process.argv.slice(2)
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]
+    if (arg === "--log-level") {
+      index++
+      continue
+    }
     if (!arg.startsWith("-")) return arg
   }
   return
@@ -274,13 +209,17 @@ try {
     })
   }
   Log.Default.error("fatal", data)
+  const { FormatError } = await import("./cli/error")
   const formatted = FormatError(e)
   if (formatted) UI.error(formatted)
   if (formatted === undefined) {
     UI.error("Unexpected error, check log file at " + Log.file() + " for more details" + EOL)
     console.error(e)
   }
-  process.exitCode = 1
+  if (firstPositionalArg() === "send") {
+    const { findRecordingError } = await import("./session/rollout/error")
+    process.exitCode = findRecordingError(e) ? 5 : process.exitCode || 2
+  } else process.exitCode = 1
 } finally {
   if (!isLongRunningCommand()) {
     await flushCliOutput()

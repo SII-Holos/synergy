@@ -141,6 +141,8 @@ Holos is optional. Connect an agent from the Web account surface or run `synergy
 
 See the [CLI reference](docs/reference/cli.md), [configuration reference](docs/reference/configuration.md), and [release notes](https://github.com/SII-Holos/synergy/releases) for complete setup and runtime details.
 
+For headless tasks, versioned experiment settings, durable execution evidence and cost comparisons, see [Rollout execution](docs/reference/rollout.md).
+
 ## Product Surfaces
 
 | Surface            | Purpose                                                                                                                               |

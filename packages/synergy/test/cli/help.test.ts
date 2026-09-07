@@ -19,6 +19,26 @@ async function cliHelp(args: string[], env?: Record<string, string>) {
 }
 
 describe("product CLI help", () => {
+  test("help and version leave broken configuration, caches and migration state untouched", async () => {
+    await using tmp = await tmpdir()
+    const cache = `${tmp.path}/.synergy/cache`
+    const config = `${tmp.path}/.synergy/config/synergy.d/120-runtime.jsonc`
+    await Bun.write(`${cache}/version`, "outdated")
+    await Bun.write(`${cache}/keep`, "sentinel")
+    await Bun.write(config, "{ invalid }")
+    await Bun.write(`${tmp.path}/.synergy/plugin.lock`, "{ invalid }")
+    const files = () =>
+      Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: tmp.path, onlyFiles: true, dot: true })).then((files) =>
+        files.sort(),
+      )
+    const before = await files()
+    for (const args of [["--help"], ["send", "--help"], ["--version"]])
+      await cliHelp(args, { SYNERGY_HOME: tmp.path, SYNERGY_CWD: tmp.path })
+    expect(await files()).toEqual(before)
+    expect(await Bun.file(`${cache}/version`).text()).toBe("outdated")
+    expect(await Bun.file(`${cache}/keep`).text()).toBe("sentinel")
+    expect(await Bun.file(config).text()).toBe("{ invalid }")
+  })
   test("snapshot maintenance exposes scope selection and explicit collection controls", async () => {
     const group = await cliHelp(["data", "snapshots", "--help"])
     for (const action of ["inspect", "check", "migrate", "compact"]) expect(group).toContain(action)

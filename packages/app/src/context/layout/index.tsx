@@ -389,7 +389,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       navPending.add(key)
       try {
         const request = rootNavRequest(category, ROOT_NAV_SECTION_LIMIT, cursor, {
-          includeBackgroundChildren: globalSync.data.config.experimental?.boss_mode === true,
+          includeBackgroundChildren: globalSync.data.config.boss?.enabled === true,
         })
         const res =
           request.source === "global"
@@ -592,7 +592,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           pageLimit: NAV_REFRESH_PAGE_LIMIT,
           fetchPage: async (limit, cursor) => {
             const request = rootNavRequest(category, limit, cursor, {
-              includeBackgroundChildren: globalSync.data.config.experimental?.boss_mode === true,
+              includeBackgroundChildren: globalSync.data.config.boss?.enabled === true,
             })
             const response =
               request.source === "global"

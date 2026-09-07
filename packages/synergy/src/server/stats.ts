@@ -20,7 +20,7 @@ export const StatsRoute = new Hono()
     describeRoute({
       summary: "Get stats snapshot",
       description:
-        "Get the full stats snapshot. Returns cached snapshot if available, otherwise computes incrementally. Use ?recompute=true to force a full recompute from scratch.",
+        "Get the full stats snapshot after incrementally refreshing changed session and rollout records. Use ?recompute=true to force a full recompute from scratch.",
       operationId: "global.stats.get",
       responses: {
         200: {

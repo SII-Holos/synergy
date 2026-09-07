@@ -1,3 +1,4 @@
+import { ProviderPricing } from "@/provider/pricing"
 import os from "os"
 import path from "path"
 import z from "zod"
@@ -8,6 +9,9 @@ import { Config } from "../config/config"
 import { Global } from "../global"
 import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
 import { loadEmbeddingTransformersRuntime } from "./embedding-runtime"
+import { RolloutOperation } from "@/session/rollout/operation"
+import { RolloutTransport } from "@/session/rollout/transport"
+import { RolloutContext } from "@/session/rollout/context"
 
 export interface LocalExtractor {
   (input: string, options: { pooling: "mean"; normalize: true }): Promise<{ data: Float32Array }>
@@ -383,21 +387,42 @@ export namespace Embedding {
     const resolved = await resolveModel()
     input.signal?.throwIfAborted()
 
-    let vector: number[]
-    if (resolved.mode === "local") {
-      const result = await resolved.extractor(input.text, { pooling: "mean", normalize: true })
-      input.signal?.throwIfAborted()
-      vector = Array.from(result.data)
-    } else {
-      const timeout = AbortSignal.timeout(TIMEOUT_MS)
-      const abortSignal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout
-      const { embedding } = await embed({
-        model: resolved.model,
-        value: input.text,
-        abortSignal,
-      })
-      vector = embedding as number[]
-    }
+    const vector = await RolloutOperation.execute(
+      {
+        purpose: "embedding",
+        kind: "embedding",
+        execution: resolved.mode === "local" ? "local" : "provider",
+        model: {
+          providerID: resolved.mode === "local" ? "local" : "embedding",
+          modelID: resolved.modelID,
+          sdk: resolved.mode === "local" ? "transformers" : "@ai-sdk/openai-compatible",
+          pricing: resolved.mode === "local" ? null : resolved.pricing,
+        },
+        request: { text: input.text, sourceID: input.id },
+      },
+      async () => {
+        if (resolved.mode === "local") {
+          const result = await resolved.extractor(input.text, { pooling: "mean", normalize: true })
+          input.signal?.throwIfAborted()
+          const value = Array.from(result.data)
+          return { value, response: { vector: value } }
+        }
+        const timeout = AbortSignal.timeout(TIMEOUT_MS)
+        const signals = [input.signal, RolloutContext.current()?.signal, timeout].filter(
+          (signal): signal is AbortSignal => !!signal,
+        )
+        const result = await embed({
+          model: resolved.model,
+          value: input.text,
+          abortSignal: AbortSignal.any(signals),
+        })
+        return {
+          value: result.embedding,
+          response: { vector: result.embedding },
+          usage: JSON.parse(JSON.stringify(result.usage)),
+        }
+      },
+    )
 
     return {
       id: input.id,
@@ -568,11 +593,18 @@ export namespace Embedding {
         name: "embedding",
         baseURL,
         apiKey: ec.apiKey,
+        fetch: RolloutTransport.sdkFetch,
       })
       return {
         mode: "remote" as const,
         model: provider.textEmbeddingModel(modelName),
         modelID: modelName,
+        pricing: ProviderPricing.resolve({
+          providerID: "embedding",
+          modelID: modelName,
+          cost: ec.cost,
+          source: "configuration",
+        }),
       }
     }
 

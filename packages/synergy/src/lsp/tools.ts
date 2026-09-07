@@ -1,5 +1,5 @@
 import { ToolRegistry } from "../tool/registry"
-import { Flag } from "@/flag/flag"
+import { Config } from "@/config/config"
 import { LspTool } from "./tools/lsp"
 
 /**
@@ -12,5 +12,5 @@ export function registerLspTools(): void {
   if (registered) return
   registered = true
 
-  ToolRegistry.registerToolProvider("lsp", () => (Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []))
+  ToolRegistry.registerToolProvider("lsp", async () => ((await Config.current()).toolExposure?.lsp ? [LspTool] : []))
 }

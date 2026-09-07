@@ -1,6 +1,7 @@
 import { SnapshotLifecycle } from "./snapshot-lifecycle"
 import { SnapshotRecords } from "./snapshot-records"
 import z from "zod"
+import { gunzipSync } from "node:zlib"
 import { Bus } from "@/bus"
 import { Scope } from "@/scope"
 import { ScopeContext } from "@/scope/context"
@@ -96,7 +97,7 @@ export namespace SessionImport {
 
   export function parse(data: ArrayBuffer | Uint8Array): SessionExport.Report {
     const bytes = data instanceof Uint8Array ? data : new Uint8Array(data)
-    const body = isGzip(bytes) ? Bun.gunzipSync(toArrayBuffer(bytes)) : bytes
+    const body = isGzip(bytes) ? gunzipSync(bytes, { maxOutputLength: 64 * 1024 * 1024 }) : bytes
     let raw: unknown
     try {
       raw = JSON.parse(new TextDecoder().decode(body))
@@ -130,16 +131,47 @@ export namespace SessionImport {
     throw new Error("Unsupported session import format")
   }
 
-  export async function fromBuffer(data: ArrayBuffer | Uint8Array): Promise<Result> {
-    return fromReport(parse(data))
+  export async function fromBlob(blob: Blob): Promise<Result> {
+    const header = new Uint8Array(await blob.slice(0, 4).arrayBuffer())
+    if (header[0] === 0x50 && header[1] === 0x4b) {
+      const { RolloutArchive } = await import("./rollout/archive")
+      return RolloutArchive.restore(blob)
+    }
+    if (blob.size > 64 * 1024 * 1024) throw new Error("Session transcript exceeds import size limit")
+    return fromReport(parse(await blob.arrayBuffer()))
   }
 
-  export async function fromReport(report: SessionExport.Report): Promise<Result> {
+  export async function fromBuffer(data: ArrayBuffer | Uint8Array): Promise<Result> {
+    return fromBlob(new Blob([data instanceof Uint8Array ? toArrayBuffer(data) : data]))
+  }
+
+  export function validateScope(report: SessionExport.Report) {
+    checkScopeMismatch(report, ScopeContext.current.scope)
+  }
+
+  export async function fromReport(
+    report: SessionExport.Report,
+    options: { sessionIDs?: Map<string, string>; rollout?: boolean } = {},
+  ): Promise<Result> {
     if (report.sessions.length === 0) throw new Error("Session import report does not contain any sessions")
 
     const scope = ScopeContext.current.scope
     checkScopeMismatch(report, scope)
     const warnings = collectDirectoryWarnings(report, scope)
+    if (
+      !options.rollout &&
+      report.sessions.some((session) =>
+        session.messages.some((message) =>
+          message.parts.some(
+            (part) => part.type === "tool" && part.state.status === "completed" && part.state.outputArtifact,
+          ),
+        ),
+      )
+    ) {
+      warnings.push(
+        "This transcript does not contain rollout artifact files; unavailable originals are marked as missing.",
+      )
+    }
     if (warnings.length > 0) {
       for (const warning of warnings) {
         log.warn(warning)
@@ -147,7 +179,8 @@ export namespace SessionImport {
     }
 
     const scopeID = Identifier.asScopeID(scope.id)
-    const idMap = new Map(report.sessions.map((data) => [data.info.id, Identifier.descending("session")]))
+    const idMap =
+      options.sessionIDs ?? new Map(report.sessions.map((data) => [data.info.id, Identifier.descending("session")]))
     const ordered = orderSessions(report)
     const imported: ImportedSession[] = []
     let messageCount = 0
@@ -192,7 +225,7 @@ export namespace SessionImport {
         messageCount++
 
         for (const part of message.parts) {
-          await Session.updatePart(remapPart(part, sessionID, message.info.id, idMap))
+          await Session.updatePart(remapPart(part, sessionID, message.info.id, idMap, options.rollout))
         }
       }
 
@@ -328,6 +361,7 @@ export namespace SessionImport {
     if (info.role === "assistant") {
       return {
         ...info,
+        accounting: info.accounting?.kind === "imported" ? info.accounting : MessageV2.copyAccounting(info, "imported"),
         sessionID,
         metadata,
       }
@@ -355,6 +389,7 @@ export namespace SessionImport {
     sessionID: string,
     messageID: string,
     idMap: Map<string, string>,
+    rollout = false,
   ): MessageV2.Part {
     const next = {
       ...part,
@@ -368,6 +403,25 @@ export namespace SessionImport {
       next.state = {
         ...next.state,
         metadata: remapSessionIDs(next.state.metadata, idMap) as Record<string, any>,
+      }
+      if (!rollout && next.state.status === "completed" && next.state.outputArtifact) {
+        next.state = {
+          ...next.state,
+          metadata: { ...next.state.metadata, rolloutImportMissingOutput: next.state.outputArtifact },
+          outputArtifact: undefined,
+        }
+      }
+    }
+    if (!rollout) {
+      const attachments =
+        next.type === "attachment"
+          ? [next]
+          : next.type === "tool" && next.state.status === "completed"
+            ? (next.state.attachments ?? [])
+            : []
+      for (const attachment of attachments) {
+        attachment.artifact = undefined
+        attachment.localPath = undefined
       }
     }
     return next

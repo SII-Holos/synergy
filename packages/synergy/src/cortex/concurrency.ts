@@ -214,7 +214,7 @@ export namespace CortexConcurrency {
     return value
   }
 
-  function desiredGlobalLimit(): number {
+  export function desiredGlobalLimit(): number {
     return envNumber(process.env.SYNERGY_CORTEX_GLOBAL_CONCURRENCY) ?? configuredGlobalLimit ?? DEFAULT_GLOBAL_LIMIT
   }
 

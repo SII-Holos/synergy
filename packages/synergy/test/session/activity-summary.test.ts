@@ -10,6 +10,8 @@ import { ActivitySummary } from "../../src/session/activity-summary"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionEvent } from "../../src/session/event"
 import { tmpdir } from "../fixture/fixture"
+import { SessionManager } from "../../src/session/manager"
+import { RolloutRecordingError } from "../../src/session/rollout/error"
 
 const originalAgentCall = AgentCall.text
 const originalConfigCurrent = Config.current
@@ -96,6 +98,73 @@ async function addCompletedRead(sessionID: string, messageID: string, id: string
 }
 
 describe("ActivitySummary", () => {
+  test("attributes delayed summary calls to the source task instead of the latest task", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        setDisplay("balanced")
+        const calls: AgentCall.TextInput[] = []
+        AgentCall.text = mock(async (input) => {
+          calls.push(input)
+          return { text: '{"groups":[{"steps":[0,0],"summary":"Read file"}]}', model: {} as never }
+        })
+        ActivitySummary.init()
+        const { session, user, assistant } = await createTurn(tmp.path)
+        await Session.updateMessage({ ...user, system: "ROOT_ONLY_SYSTEM", variant: "root-only-variant" })
+        await Session.updateMessage({
+          ...user,
+          id: Identifier.ascending("message"),
+          rootID: undefined,
+          time: { created: Date.now() },
+        })
+        await addCompletedRead(session.id, assistant.id, "old-task-read")
+        await Bus.publish(SessionEvent.Idle, { sessionID: session.id })
+        await ActivitySummary.idle(session.id)
+        expect(calls).toHaveLength(1)
+        expect(calls[0].user?.id).toBe(user.id)
+        expect(calls[0].sessionId).toBe(session.id)
+        expect(calls[0].user?.system).toBeUndefined()
+        expect(calls[0].user?.variant).toBeUndefined()
+      },
+    })
+  })
+
+  test("does not turn recording failure into successful fallback metadata", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        setDisplay("balanced")
+        const started = Promise.withResolvers<void>()
+        const release = Promise.withResolvers<void>()
+        AgentCall.text = mock(async () => {
+          started.resolve()
+          await release.promise
+          throw new RolloutRecordingError({ message: "disk full" })
+        })
+        ActivitySummary.init()
+        const { session, assistant } = await createTurn(tmp.path)
+        const lease = SessionManager.acquire(session.id)
+        if (!lease) throw new Error("Expected execution lease")
+        SessionManager.bindRootTask(lease, assistant.rootID ?? assistant.parentID)
+        try {
+          await addCompletedRead(session.id, assistant.id, "failed-recording-read")
+          await Bus.publish(SessionEvent.Idle, { sessionID: session.id })
+          await started.promise
+          const idle = ActivitySummary.idle(session.id)
+          release.resolve()
+          await expect(idle).rejects.toMatchObject({ name: "RolloutRecordingError" })
+          expect(lease.signal.aborted).toBe(true)
+          expect((await storedAssistant(session.id, assistant.id))?.metadata?.activity).toBeUndefined()
+        } finally {
+          release.resolve()
+          await SessionManager.release(lease)
+        }
+      },
+    })
+  })
+
   test("applies assistant activity metadata only when the expected sequence is current", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

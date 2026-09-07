@@ -1,3 +1,4 @@
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import type { StatsSnapshot } from "@ericsanchezok/synergy-sdk"
 import { formatCompact, formatCost } from "./use-stats"
 import { S } from "./stats-i18n"
@@ -58,7 +59,7 @@ export const TOOL_METRICS: RankingMetric[] = [
 
 export function totalTokenValue(snapshot: StatsSnapshot): number {
   const tokens = snapshot.tokenCost.tokens
-  return tokens.input + tokens.output + tokens.reasoning + tokens.cache.read + tokens.cache.write
+  return ModelLimit.totalTokens(tokens)
 }
 
 export function buildOverviewMetrics(snapshot: StatsSnapshot, i18n: I18n): OverviewMetric[] {
@@ -82,7 +83,9 @@ export function buildOverviewMetrics(snapshot: StatsSnapshot, i18n: I18n): Overv
       id: "cost",
       label: i18n._(S.overviewLabelCost.id),
       value: formatCost(snapshot.tokenCost.cost),
-      hint: i18n._(S.overviewHintCostPerDay.id, { cost: formatCost(snapshot.tokenCost.dailyCost) }),
+      hint: snapshot.tokenCost.accounting
+        ? i18n._(S.accountingUnknown.id, { count: snapshot.tokenCost.accounting.apiEstimate.unknown })
+        : i18n._(S.overviewHintCostPerDay.id, { cost: formatCost(snapshot.tokenCost.dailyCost) }),
     },
     {
       id: "tokens",
@@ -109,15 +112,14 @@ export function buildOverviewMetrics(snapshot: StatsSnapshot, i18n: I18n): Overv
 
 export function buildModelRows(snapshot: StatsSnapshot, i18n: I18n): RankingRow[] {
   return snapshot.models.models.map((item) => {
-    const tokens =
-      item.tokens.input + item.tokens.output + item.tokens.reasoning + item.tokens.cache.read + item.tokens.cache.write
+    const tokens = ModelLimit.totalTokens(item.tokens)
     return {
       id: `${item.providerID}/${item.modelID}`,
       label: item.modelID,
       primary: item.providerID,
       secondary: i18n._(S.modelAvgMs.id, { avg: String(Math.round(item.avgResponseMs)) }),
       values: {
-        messages: item.messages,
+        messages: item.accounting ? item.accounting.calls + item.accounting.legacy.messages : item.messages,
         tokens,
         cost: item.cost,
       },

@@ -1,4 +1,5 @@
 import { SessionPluginHooks } from "../session/plugin-hooks"
+import { read as readLock } from "./lockfile"
 import { Plugin } from "./index"
 
 /**
@@ -7,6 +8,17 @@ import { Plugin } from "./index"
  * product domain. Loaded through src/product-registration.ts.
  */
 export function registerPluginSessionHooks() {
+  SessionPluginHooks.registerInstalled(async () => {
+    const lock = await readLock()
+    return Object.entries(lock.plugins)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([id, entry]) => ({
+        id,
+        version: entry.version,
+        generation: entry.generation,
+        manifestHash: entry.manifestHash,
+      }))
+  })
   SessionPluginHooks.registerTrigger((point, input, initial, options) => Plugin.trigger(point, input, initial, options))
   SessionPluginHooks.registerTriggerForPlugin((pluginId, pluginGeneration, point, input, initial) =>
     Plugin.triggerForPlugin(pluginId, pluginGeneration, point, input, initial),

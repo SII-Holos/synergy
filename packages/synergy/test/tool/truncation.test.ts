@@ -122,7 +122,7 @@ describe("Truncate", () => {
     })
   })
 
-  describe("cleanup", () => {
+  describe("retention", () => {
     const DAY_MS = 24 * 60 * 60 * 1000
     let oldFile: string
     let recentFile: string
@@ -132,7 +132,7 @@ describe("Truncate", () => {
       await fs.unlink(recentFile).catch(() => {})
     })
 
-    test("deletes files older than 7 days and preserves recent files", async () => {
+    test("preserves old output when another result is externalized", async () => {
       await fs.mkdir(Truncate.DIR, { recursive: true })
 
       // Create an old file (10 days ago)
@@ -149,12 +149,10 @@ describe("Truncate", () => {
       await Bun.write(Bun.file(recentFile), "recent content")
       await fs.utimes(recentFile, new Date(recentTimestamp), new Date(recentTimestamp))
 
-      await Truncate.cleanup()
+      await Truncate.output("new output".repeat(100), { maxBytes: 10 })
 
-      // Old file should be deleted
-      expect(await Bun.file(oldFile).exists()).toBe(false)
+      expect(await Bun.file(oldFile).text()).toBe("old content")
 
-      // Recent file should still exist
       expect(await Bun.file(recentFile).exists()).toBe(true)
     })
   })

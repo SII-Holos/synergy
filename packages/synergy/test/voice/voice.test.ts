@@ -179,3 +179,33 @@ describe("voice runtime", () => {
     })
   })
 })
+
+test("speech fallback never repeats a call after the SDK wraps a recording failure", async () => {
+  const { RolloutRecordingError } = await import("../../src/session/rollout/error")
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      await writeVoiceFragment({ tts: { model: "test" } })
+      await Config.reload("global")
+      let calls = 0
+      Voice.setClientFactoryForTest((() => ({
+        speech: () => ({
+          specificationVersion: "v2",
+          provider: "openai",
+          modelId: "test",
+          async doGenerate() {
+            calls++
+            throw new Error("SDK retry failed", { cause: new RolloutRecordingError({ message: "disk full" }) })
+          },
+        }),
+      })) as unknown as typeof createOpenAI)
+      try {
+        await expect(Voice.speak({ text: "hi" })).rejects.toMatchObject({ name: "RolloutRecordingError" })
+        expect(calls).toBe(1)
+      } finally {
+        Voice.resetClientFactoryForTest()
+      }
+    },
+  })
+})

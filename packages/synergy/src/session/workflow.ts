@@ -6,6 +6,7 @@ import { SessionManager } from "./manager"
 import { SessionAbort } from "./abort"
 import { WorkflowPromptRegistry } from "./workflow-prompt-registry"
 import { WorkflowKindRegistry } from "./workflow-kind-registry"
+import { isActiveLightLoopWorkflow } from "./light-loop-state"
 
 type BlueprintLoopSource = "user" | "lattice" | "plugin"
 
@@ -26,7 +27,7 @@ function activeLoopStatus(status: string): boolean {
 async function activeBlueprintLoop(session: Session.Info) {
   const loopID = session.blueprint?.loopID
   if (!loopID) return undefined
-  const loop = await SessionBlueprintState.getLoop(ScopeContext.current.scope.id, loopID)
+  const loop = await SessionBlueprintState.getLoop(session.scope.id, loopID)
   if (!loop || !activeLoopStatus(loop.status)) return undefined
   return loop
 }
@@ -42,6 +43,14 @@ function workflowLock(sessionID: string) {
 }
 
 export namespace SessionWorkflowService {
+  export async function hasPendingExecution(session: Session.Info) {
+    if (await activeBlueprintLoop(session)) return true
+    if (isActiveLightLoopWorkflow(session.workflow)) return true
+    const kind = WorkflowKindRegistry.effectiveKind(session.workflow)
+    if (!kind || kind === "plan" || kind === "lightloop") return false
+    const contribution = WorkflowPromptRegistry.get(kind)
+    return contribution?.isActive ? contribution.isActive(session) : true
+  }
   /** Serialize competing workflow changes across core and registered domains. */
   export function lock(sessionID: string) {
     return workflowLock(sessionID)

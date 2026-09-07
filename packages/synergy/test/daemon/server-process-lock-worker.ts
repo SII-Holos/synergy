@@ -32,6 +32,8 @@ while (!(await Bun.file(startPath).exists())) await Bun.sleep(2)
 
 try {
   const acquired = await ServerProcessLock.acquire()
+  const { Global } = await import("../../src/global")
+  await Global.initialize({ cache: false })
   const lock = await ServerProcessLock.read()
   await fs.appendFile(resultPath, `${JSON.stringify({ id, acquired: true, ownerToken: lock?.ownerToken })}\n`)
   while (!(await Bun.file(releasePath).exists())) await Bun.sleep(2)

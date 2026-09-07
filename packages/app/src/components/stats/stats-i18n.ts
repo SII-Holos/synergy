@@ -2,9 +2,20 @@
  *  Translate at use time via `useLocale().i18n._(descriptor)`. */
 
 export const S = {
+  accountingUnknown: {
+    id: "app.stats.accounting.unknown",
+    message:
+      "{count, plural, =0 {All API estimates available} one {# API call has unknown cost} other {# API calls have unknown cost}}",
+  },
+  accountingDetail: {
+    id: "app.stats.accounting.detail",
+    message:
+      "API estimate subtotal: {api}. Subscription API equivalent: {subscription} ({unknown, plural, one {# unknown call} other {# unknown calls}}). Historical recorded amount: {legacy}. These are not actual billing charges.",
+  },
   // ── token-ring.tsx ──────────────────────────────────────────────────
   tokenInput: { id: "app.stats.token.label.input", message: "Input" },
-  tokenOutput: { id: "app.stats.token.label.output", message: "Output" },
+  tokenOutput: { id: "app.stats.token.label.output", message: "Other output" },
+  tokenOutputNote: { id: "app.stats.token.note.output", message: "Output excluding the reasoning subset" },
   tokenReasoning: { id: "app.stats.token.label.reasoning", message: "Reasoning" },
   tokenCacheRead: { id: "app.stats.token.label.cacheRead", message: "Cache read" },
   tokenCacheReadNote: { id: "app.stats.token.note.cacheRead", message: "Prompt tokens reused from cache" },
@@ -92,9 +103,9 @@ export const S = {
   // ── daily-trend.tsx ─────────────────────────────────────────────────
   dailyTitle: { id: "app.stats.daily.title", message: "Daily Trend" },
   dailySubtitle: { id: "app.stats.daily.subtitle", message: "Cost and token volume over time" },
-  dailyCostLabel: { id: "app.stats.daily.axis.cost", message: "Cost ($)" },
+  dailyCostLabel: { id: "app.stats.daily.axis.cost", message: "Known cost ($)" },
   dailyTokensLabel: { id: "app.stats.daily.axis.tokens", message: "Tokens" },
-  dailyTooltipCost: { id: "app.stats.daily.tooltip.cost", message: "Cost: {value}" },
+  dailyTooltipCost: { id: "app.stats.daily.tooltip.cost", message: "Known cost: {value}" },
   dailyTooltipTokens: { id: "app.stats.daily.tooltip.tokens", message: "Tokens: {value}" },
   dailyPeakCost: { id: "app.stats.daily.peak.cost", message: "Highest cost" },
   dailyPeakVolume: { id: "app.stats.daily.peak.volume", message: "Highest volume" },
@@ -123,7 +134,7 @@ export const S = {
 
   rankMetricCalls: { id: "app.stats.rank.metric.calls", message: "Calls" },
   rankMetricTokens: { id: "app.stats.rank.metric.tokens", message: "Tokens" },
-  rankMetricCost: { id: "app.stats.rank.metric.cost", message: "Cost" },
+  rankMetricCost: { id: "app.stats.rank.metric.cost", message: "Known cost" },
   rankMetricMessages: { id: "app.stats.rank.metric.messages", message: "Messages" },
   rankMetricSessions: { id: "app.stats.rank.metric.sessions", message: "Sessions" },
   rankMetricLatency: { id: "app.stats.rank.metric.latency", message: "Latency" },
@@ -173,7 +184,7 @@ export const S = {
   // ── model.ts — overview label descriptors (translate at use-site) ───
   overviewLabelSessions: { id: "app.stats.overview.label.sessions", message: "Sessions" },
   overviewLabelTurns: { id: "app.stats.overview.label.turns", message: "Turns" },
-  overviewLabelCost: { id: "app.stats.overview.label.cost", message: "Cost" },
+  overviewLabelCost: { id: "app.stats.overview.label.cost", message: "Known cost" },
   overviewLabelTokens: { id: "app.stats.overview.label.tokens", message: "Tokens" },
   overviewLabelLinesAdded: { id: "app.stats.overview.label.linesAdded", message: "Lines Added" },
   overviewLabelProjects: { id: "app.stats.overview.label.projects", message: "Projects" },
@@ -196,7 +207,7 @@ export const S = {
   toolNoSuccessSecondary: { id: "app.stats.tool.noSuccessSecondary", message: "{avg}ms avg" },
 
   // ── daily-trend.tsx — chart/legend labels ───────────────────────────
-  dailyCostLegend: { id: "app.stats.daily.legend.cost", message: "Cost" },
+  dailyCostLegend: { id: "app.stats.daily.legend.cost", message: "Known cost" },
   dailyTokensLegend: { id: "app.stats.daily.legend.tokens", message: "Tokens" },
 
   // ── hourly-heatmap.tsx — unit labels ────────────────────────────────

@@ -256,7 +256,7 @@ describe("delegated subagent with DAG context (integration)", () => {
 
           const completed = await Cortex.waitFor(task.id, 10)
           expect(completed?.status).toBe("completed")
-          await Bun.sleep(20)
+          await Cortex.drain(task.id)
 
           const node = (await Dag.get(parentSession.id)).find((n) => n.id === "structured-node")
           expect(node?.status).toBe("completed")

@@ -2,7 +2,7 @@
 
 /**
  * Generates docs/reference/cli.md from the static CLI registration in
- * packages/synergy/src/main.ts and the command modules reachable from it.
+ * packages/synergy/src/cli/commands.ts and the command modules reachable from it.
  * Deterministic; supports --check for freshness.
  */
 
@@ -10,7 +10,7 @@ import path from "node:path"
 import { readFile } from "node:fs/promises"
 import { findAssign, findBlock, isFresh, REPO_ROOT, stringLiteral, writeGenerated } from "./shared"
 
-const MAIN = path.join(REPO_ROOT, "packages/synergy/src/main.ts")
+const MAIN = path.join(REPO_ROOT, "packages/synergy/src/cli/commands.ts")
 const CLI_ROOT = path.join(REPO_ROOT, "packages/synergy/src/cli")
 const OUT = path.join(REPO_ROOT, "docs/reference/cli.md")
 const GENERATOR = "gen-cli-reference.ts"
@@ -88,14 +88,17 @@ export function parseCommandBlocks(source: string): CommandBlock[] {
 async function commandRegistrations(): Promise<CliCommand[]> {
   const main = await readFile(MAIN, "utf8")
   const commands: CliCommand[] = []
-  for (const match of main.matchAll(/\.command\((\w+)\)/g)) {
-    const moduleName = match[1]!
-    const importMatch = main.match(new RegExp(`import\\s*\\{[^}]*\\b${moduleName}\\b[^}]*\\}\\s*from\\s*"([^"]+)"`))
-    const modulePath = importMatch ? await resolveModuleFile(path.dirname(MAIN), importMatch[1]!) : null
+  for (const match of main.matchAll(
+    /\{\s*command:\s*([\s\S]*?)load:\s*async\s*\(\)\s*=>\s*\(await import\("([^"]+)"\)\)\.(\w+)/g,
+  )) {
+    const definition = match[1]!
+    const name = stringLiteral(definition.split(",")[0]!.trim()) ?? definition.match(/"([^"]+)"/)?.[1]
+    if (!name) continue
+    const modulePath = await resolveModuleFile(path.dirname(MAIN), match[2]!)
     commands.push({
-      name: moduleName.replace(/Command$/, "").toLowerCase(),
-      module: moduleName,
-      describe: null,
+      name: name.split(" ")[0]!,
+      module: match[3]!,
+      describe: findAssign(definition, "describe"),
       file: modulePath ? path.relative(REPO_ROOT, modulePath) : "(unresolved)",
     })
   }
@@ -151,7 +154,7 @@ export async function generate(): Promise<string> {
   return [
     "# CLI Reference",
     "",
-    "Generated from the CLI registration in `packages/synergy/src/main.ts`. Concept and lifecycle guidance lives in [CLI guide](cli-guide.md); use `synergy --help` or `synergy <command> --help` for the exact options of the installed version.",
+    "Generated from the CLI registration in `packages/synergy/src/cli/commands.ts`. Concept and lifecycle guidance lives in [CLI guide](cli-guide.md); use `synergy --help` or `synergy <command> --help` for the exact options of the installed version.",
     "",
     "## Commands",
     "",

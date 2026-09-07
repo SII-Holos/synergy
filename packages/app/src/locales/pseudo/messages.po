@@ -7685,6 +7685,16 @@ msgstr ""
 
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.stats.accounting.detail"
+msgstr ""
+
+#. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.stats.accounting.unknown"
+msgstr ""
+
+#. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.stats.agent.delegatedRuns"
 msgstr ""
 
@@ -8306,6 +8316,11 @@ msgstr ""
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.stats.token.note.cacheWrite"
+msgstr ""
+
+#. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.stats.token.note.output"
 msgstr ""
 
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.

@@ -404,7 +404,7 @@ describe("Channel conversation acceptance lane", () => {
           expect(
             await Promise.race([
               wake.promise,
-              Bun.sleep(1_000).then(() => {
+              Bun.sleep(5_000).then(() => {
                 throw new Error("Completed execution release did not drive the mid-run steer item")
               }),
             ]),

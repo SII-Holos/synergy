@@ -14,7 +14,7 @@ describe("startup schema publish", () => {
     await fs.writeFile(
       scriptPath,
       `const { Global } = await import(${JSON.stringify(pathToFileURL(globalModulePath).href)})\n` +
-        `if (!Global.Path.configSchema) process.exit(1)\n`,
+        `await Global.initialize({ cache: false })\nif (!Global.Path.configSchema) process.exit(1)\n`,
     )
 
     try {

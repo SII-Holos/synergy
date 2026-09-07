@@ -1,3 +1,4 @@
+import { StoragePath } from "../../src/storage/path"
 import { describe, expect, spyOn, test } from "bun:test"
 import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
@@ -83,14 +84,23 @@ describe("session_read", () => {
           agent: "synergy",
           model: { providerID: "test", modelID: "test" },
         })) as MessageV2.User
-        await Session.updatePart({
+        const brokenPart = {
           id: Identifier.ascending("part"),
           sessionID: session.id,
           messageID: corrupt.id,
           type: "attachment",
           mime: "application/octet-stream",
           url: "data:broken",
-        })
+        }
+        await Storage.write(
+          StoragePath.messagePart(
+            Identifier.asScopeID(session.scope.id),
+            Identifier.asSessionID(session.id),
+            Identifier.asMessageID(corrupt.id),
+            Identifier.asPartID(brokenPart.id),
+          ),
+          brokenPart,
+        )
 
         using release = spyOn(SessionMemoryPressure, "signalRelease").mockImplementation(() => {})
         const tool = await SessionReadTool.init()

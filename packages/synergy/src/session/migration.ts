@@ -1,3 +1,4 @@
+import { RolloutMigration } from "./rollout/migration"
 import { $ } from "bun"
 import path from "path"
 import fs from "fs/promises"
@@ -2500,6 +2501,8 @@ export const migrations: Migration[] = [
       await SessionNav.rebuildAllNavIndexes(progress)
     },
   },
+  RolloutMigration.migration,
+
   {
     id: "20260907-snapshot-shared-store",
     dependsOn: ["20260619-snapshot-per-session"],

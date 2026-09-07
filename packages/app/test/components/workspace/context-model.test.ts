@@ -132,7 +132,7 @@ describe("buildContextPanelModel", () => {
       contextWindow: 1_000,
       remainingInputTokens: 200,
       contextPercentage: 75,
-      latestCallTotalTokens: 700,
+      latestCallTotalTokens: 640,
     })
     expect(model.breakdownRows.map((row) => [row.key, row.estimatedTokens, row.attributedTokens, row.percent])).toEqual(
       [
@@ -185,7 +185,7 @@ describe("buildContextPanelModel", () => {
       exactInputTokens: 700,
       outputTokens: 70,
       reasoningTokens: 30,
-      latestCallTotalTokens: 800,
+      latestCallTotalTokens: 770,
       cacheReadTokens: 90,
       cacheWriteTokens: 10,
       latestCallCost: "USD 0.42",

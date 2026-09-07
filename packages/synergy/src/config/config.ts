@@ -1,3 +1,6 @@
+import { AsyncLocalStorage } from "node:async_hooks"
+import { LegacyExecutionConfig } from "./legacy-execution"
+import { Experiment } from "./experiment"
 import { Log } from "../util/log"
 import path from "path"
 import os from "os"
@@ -26,6 +29,7 @@ import { Lock } from "../util/lock"
 
 export namespace Config {
   const log = Log.create({ service: "config" })
+  const strictExecution = new AsyncLocalStorage<boolean>()
   const CONFIG_SCHEMA = Global.Path.configSchemaUrl
   // ── Schema re-exports from ./schema.ts ──
 
@@ -132,7 +136,7 @@ export namespace Config {
 
   /**
    * Normalize an MCP server config by applying defaults and legacy timeout
-   * compatibility. Callers should pass `config.experimental?.mcp_timeout` and
+   * compatibility. Callers should pass `config.mcpDefaults?.callTimeout` and
    * `config.mcpDefaults` to fill missing timeouts.
    */
   export function normalizeMcp(server: Mcp, defaults?: McpDefaults, defaultCallTimeoutMs?: number): Mcp {
@@ -207,7 +211,7 @@ export namespace Config {
 
   export const state = ScopedState.create(loadStateValue)
 
-  type StateValue = { config: Info; directories: string[] }
+  type StateValue = { config: Info; directories: string[]; sources?: Record<string, Experiment.Source> }
 
   // Last-good memory per scope: when a fresh load fails, keep serving the
   // most recently loaded configuration instead of wiping runtime state.
@@ -262,6 +266,19 @@ export namespace Config {
     // Load remote/well-known config first as the base layer (lowest precedence)
     // This allows organizations to provide default configs that users can override
     let result: Info = {}
+    const sources: Record<string, Experiment.Source> = {}
+    function mark(value: unknown, source: Experiment.Source, prefix = "", defaults = false) {
+      if (value === undefined) return
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        if (!defaults || sources[prefix] === undefined) sources[prefix] = source
+        return
+      }
+      for (const [key, item] of Object.entries(value)) mark(item, source, prefix ? `${prefix}.${key}` : key, defaults)
+    }
+    function merge(source: Info, layer: Experiment.Source) {
+      mark(source, layer)
+      result = mergeConfigConcatArrays(result, source)
+    }
 
     // Inject env vars synchronously (before any fetch/await)
     for (const [key, value] of Object.entries(auth)) {
@@ -291,23 +308,11 @@ export namespace Config {
 
     // Merge fetched configs as base layer (lowest precedence)
     for (const cfg of fetchedConfigs) {
-      if (cfg) result = mergeConfigConcatArrays(result, cfg)
+      if (cfg) merge(cfg, "remote_base")
     }
 
     // Global user config overrides remote config
-    result = mergeConfigConcatArrays(result, await global())
-
-    // Custom config path overrides global
-    if (Flag.SYNERGY_CONFIG) {
-      result = mergeConfigConcatArrays(result, await loadFile(Flag.SYNERGY_CONFIG))
-      log.debug("loaded custom config", { path: Flag.SYNERGY_CONFIG })
-    }
-
-    // Inline config content has highest precedence
-    if (Flag.SYNERGY_CONFIG_CONTENT) {
-      result = mergeConfigConcatArrays(result, JSON.parse(Flag.SYNERGY_CONFIG_CONTENT))
-      log.debug("loaded custom config from SYNERGY_CONFIG_CONTENT")
-    }
+    merge(strictExecution.getStore() ? await loadDomainDirectory(Global.Path.config) : await global(), "global_config")
 
     result.agent = result.agent || {}
     result.plugin = result.plugin || []
@@ -336,9 +341,12 @@ export namespace Config {
     for (const dir of unique(directories)) {
       if (dir.endsWith(".synergy") || dir === Flag.SYNERGY_CONFIG_DIR) {
         const fragmentDir = path.join(dir, "synergy.d")
-        const fragments = await loadFragments(fragmentDir)
+        const fragments = await loadFragments(fragmentDir, { strict: strictExecution.getStore() })
         for (const fragment of fragments) {
-          result = mergeConfigConcatArrays(result, fragment as Info) as Info
+          merge(
+            Info.parse(LegacyExecutionConfig.migrate(fragment)),
+            dir === Flag.SYNERGY_CONFIG_DIR ? "explicit_file" : "project_config",
+          )
         }
         // Re-apply defaults after fragment merge (fragment widens result type)
         result.agent ??= {}
@@ -365,6 +373,18 @@ export namespace Config {
 
     result.agent ??= {}
     result.plugin ??= []
+
+    // Custom config path overrides global
+    if (Flag.SYNERGY_CONFIG) {
+      merge(await loadFile(Flag.SYNERGY_CONFIG), "explicit_file")
+      log.debug("loaded custom config", { path: Flag.SYNERGY_CONFIG })
+    }
+
+    // Inline config content has highest precedence
+    if (Flag.SYNERGY_CONFIG_CONTENT) {
+      merge(Info.parse(LegacyExecutionConfig.migrate(JSON.parse(Flag.SYNERGY_CONFIG_CONTENT))), "inline_config")
+      log.debug("loaded custom config from SYNERGY_CONFIG_CONTENT")
+    }
 
     if (Flag.SYNERGY_PERMISSION) {
       result.permission = mergeDeep(result.permission ?? {}, JSON.parse(Flag.SYNERGY_PERMISSION))
@@ -422,19 +442,15 @@ export namespace Config {
 
     if (!result.keybinds) result.keybinds = Info.shape.keybinds.parse({})
 
-    // Apply flag overrides for compaction settings
-    if (Flag.SYNERGY_DISABLE_AUTOCOMPACT) {
-      result.compaction = { ...result.compaction, auto: false }
-    }
-    if (Flag.SYNERGY_DISABLE_PRUNE) {
-      result.compaction = { ...result.compaction, prune: false }
-    }
+    merge(LegacyExecutionConfig.environment(), "legacy_environment")
 
     const config = Info.parse(result)
+    mark(config, "default", "", true)
 
     return {
       config,
       directories,
+      sources,
     }
   }
   /**
@@ -476,6 +492,7 @@ export namespace Config {
       log.debug("loaded remote config from well-known", { url: key })
       return loaded
     } catch (error) {
+      if (strictExecution.getStore()) throw error
       log.warn("failed to parse remote config, skipping", {
         url: key,
         error: error instanceof Error ? error.message : String(error),
@@ -607,6 +624,7 @@ export namespace Config {
           clearIssueForPath(filepath)
         }
       } catch (error) {
+        if (strictExecution.getStore()) throw error
         await quarantineDomainFile(domain.id, filepath, error)
       }
     }
@@ -950,7 +968,7 @@ export namespace Config {
     }
 
     const errors: JsoncParseError[] = []
-    const data = parseJsonc(text, errors, { allowTrailingComma: true })
+    const data = LegacyExecutionConfig.migrate(parseJsonc(text, errors, { allowTrailingComma: true }))
     if (errors.length) {
       const lines = text.split("\n")
       const errorDetails = errors
@@ -989,6 +1007,8 @@ export namespace Config {
       }
       return result
     }
+
+    if (strictExecution.getStore()) throw new InvalidError({ path: configFilepath, issues: parsed.error.issues })
 
     // Partial recovery: remove invalid sections / section entries and retry.
     // This allows Synergy to start with usable config even when individual
@@ -1130,8 +1150,18 @@ export namespace Config {
   export function resetDiagnostics() {
     issues = []
   }
+  export async function resolveExecutionDetails() {
+    return strictExecution.run(true, async () => {
+      const { config, sources } = await loadStateValueInner()
+      return { config, sources: sources ?? {} }
+    })
+  }
+  export async function resolveExecution() {
+    return (await resolveExecutionDetails()).config
+  }
+
   export async function current() {
-    return state().then((x) => x.config)
+    return state().then((x) => Experiment.apply(x.config))
   }
 
   export async function forScope(scope: Scope) {

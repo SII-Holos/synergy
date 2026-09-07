@@ -21,6 +21,7 @@ import { Bus } from "@/bus"
 import { AgentCall } from "@/agent/call"
 import { LoopJob } from "./loop-job"
 import { SessionProgress } from "./progress"
+import { RolloutRecordingError } from "./rollout/error"
 import { SessionHistory } from "./history"
 
 export namespace SessionSummary {
@@ -150,6 +151,10 @@ export namespace SessionSummary {
         try {
           await summarizeNow(current, abort)
         } catch (error) {
+          if (RolloutRecordingError.isInstance(error)) {
+            SessionManager.signalAbort(sessionID, { rootID: current.messageID })
+            throw error
+          }
           if (abort.aborted && abort.reason instanceof DOMException && abort.reason.name === "TimeoutError") {
             await markPendingSummaryTimedOut(current)
           }
@@ -191,8 +196,13 @@ export namespace SessionSummary {
       }),
       messageSummary,
     ])
-    const failed = settled.find((result): result is PromiseRejectedResult => result.status === "rejected")
-    if (failed) throw failed.reason
+    throwRejected(settled)
+  }
+
+  function throwRejected(results: PromiseSettledResult<unknown>[]) {
+    const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected")
+    const failure = failures.find((result) => RolloutRecordingError.isInstance(result.reason)) ?? failures[0]
+    if (failure) throw failure.reason
   }
 
   async function summarizeSession(input: {
@@ -447,6 +457,10 @@ export namespace SessionSummary {
             },
           ],
         }).catch((error) => {
+          if (RolloutRecordingError.isInstance(error)) {
+            SessionManager.signalAbort(input.sessionID, { rootID: input.messageID })
+            throw error
+          }
           if (input.abort.aborted) throw abortError(input.abort)
           log.error("failed to generate summary title", { error })
           return undefined
@@ -483,6 +497,10 @@ export namespace SessionSummary {
             },
           ],
         }).catch((error) => {
+          if (RolloutRecordingError.isInstance(error)) {
+            SessionManager.signalAbort(input.sessionID, { rootID: input.messageID })
+            throw error
+          }
           if (input.abort.aborted) throw abortError(input.abort)
           log.error("failed to generate summary body", { error })
           return undefined
@@ -490,10 +508,9 @@ export namespace SessionSummary {
         return result?.text
       }
 
-      const [title, body] = await Promise.all([
-        abortable(generateTitle(), input.abort),
-        abortable(generateBody(), input.abort),
-      ])
+      const results = await Promise.allSettled([generateTitle(), generateBody()])
+      throwRejected(results)
+      const [title, body] = results.map((result) => (result.status === "fulfilled" ? result.value : undefined))
       if (!title && !body) return
       await updateSummary(
         { sessionID: input.sessionID, messageID: input.messageID },

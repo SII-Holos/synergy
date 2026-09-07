@@ -1302,6 +1302,7 @@ test("model cost defaults to zero when not specified", async () => {
     fn: async () => {
       const providers = await Provider.list()
       const model = providers["test-provider"].models["test-model"]
+      expect(model.pricing).toBeNull()
       expect(model.cost.input).toBe(0)
       expect(model.cost.output).toBe(0)
       expect(model.cost.cache.read).toBe(0)
@@ -1710,6 +1711,13 @@ test("model with custom cost values", async () => {
     fn: async () => {
       const providers = await Provider.list()
       const model = providers["test-provider"].models["test-model"]
+      expect(model.pricing?.rates).toEqual({
+        input: 5,
+        output: 15,
+        cacheRead: 2.5,
+        cacheWrite: 7.5,
+        cacheWrite1h: null,
+      })
       expect(model.cost.input).toBe(5)
       expect(model.cost.output).toBe(15)
       expect(model.cost.cache.read).toBe(2.5)

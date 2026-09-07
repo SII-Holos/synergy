@@ -1,8 +1,13 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, describe, expect, mock, test, spyOn } from "bun:test"
 import { Agent } from "../../src/agent/agent"
+import { AgentTurn } from "../../src/session/agent-turn"
+import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { AgentCall } from "../../src/agent/call"
 import { Provider } from "../../src/provider/provider"
 import { LLM } from "../../src/session/llm"
+import { Session } from "../../src/session"
+import { Scope } from "../../src/scope"
+import { ScopeContext } from "../../src/scope/context"
 
 const originalAgentGet = Agent.get
 const originalAgentModel = Agent.getAvailableModel
@@ -145,6 +150,28 @@ describe("AgentCall", () => {
     await expect(pending).rejects.toMatchObject({ code: "cancelled" })
   })
 
+  test("drains a late-starting stream before returning a timeout", async () => {
+    installAgent()
+    let disposed = false
+    let attribution: Parameters<typeof AgentTurn.stream>[0]["recording"]
+    using stream = spyOn(AgentTurn, "stream").mockImplementation(async (input) => {
+      attribution = input.recording
+      await new Promise<void>((resolve) =>
+        input.abort.addEventListener("abort", () => setTimeout(resolve, 10), { once: true }),
+      )
+      return {
+        fullStream: (async function* () {})(),
+        usage: Promise.resolve(undefined),
+        dispose: async () => {
+          disposed = true
+        },
+      }
+    })
+    await expect(call({ timeoutMs: 20 })).rejects.toMatchObject({ code: "timeout" })
+    expect(disposed).toBe(true)
+    expect((await RolloutLedger.getRun(attribution!.owner, attribution!.runID)).status).toBe("cancelled")
+  })
+
   test("does not keep the process alive while a call timeout is pending", async () => {
     installAgent()
     let callTimer: { hasRef?: () => boolean } | undefined
@@ -246,18 +273,15 @@ describe("AgentCall", () => {
     expect(smallOverride).toBe(false)
   })
 
-  test("forwards sessionId and userMetadata to the synthesized user", async () => {
+  test("rejects a session call without its causal root instead of inventing a user", async () => {
     installAgent()
-    let streamInput: Record<string, unknown> | undefined
-    ;(LLM.stream as any) = mock(async (input: Record<string, unknown>) => {
-      streamInput = input
+    let started = false
+    ;(LLM.stream as any) = mock(async () => {
+      started = true
       return { textStream: (async function* () {})() }
     })
-    await call({ sessionId: "ses_test", userMetadata: { source: "integration:github" } })
-    expect(streamInput?.sessionID).toBe("ses_test")
-    expect((streamInput?.user as { metadata?: unknown } | undefined)?.metadata).toEqual({
-      source: "integration:github",
-    })
+    await expect(call({ sessionId: "session" })).rejects.toMatchObject({ code: "invalid_owner" })
+    expect(started).toBe(false)
   })
 
   test("returns usage and the resolved model", async () => {

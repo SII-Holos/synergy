@@ -1,3 +1,4 @@
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { For, createMemo } from "solid-js"
 import { Doughnut } from "solid-chartjs"
 import { Chart as ChartJS, ArcElement, Tooltip, DoughnutController } from "chart.js"
@@ -38,7 +39,7 @@ function tokenValue(tokens: StatsSnapshot["tokenCost"]["tokens"], key: TokenKey)
     case "input":
       return tokens.input
     case "output":
-      return tokens.output
+      return ModelLimit.nonReasoningOutput(tokens)
     case "reasoning":
       return tokens.reasoning
     case "cacheRead":
@@ -106,7 +107,7 @@ export function TokenRing(props: { tokens: StatsSnapshot["tokenCost"]["tokens"];
     const colors = theme().series
     return [
       { key: "input", label: i18n._(S.tokenInput.id), color: colors[0]! },
-      { key: "output", label: i18n._(S.tokenOutput.id), color: colors[1]! },
+      { key: "output", label: i18n._(S.tokenOutput.id), note: i18n._(S.tokenOutputNote.id), color: colors[1]! },
       { key: "reasoning", label: i18n._(S.tokenReasoning.id), color: colors[2]! },
       {
         key: "cacheRead",

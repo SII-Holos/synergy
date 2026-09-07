@@ -12,22 +12,22 @@ async function runShutdownProbe(): Promise<ShutdownProbe> {
   const script = String.raw`
     const { Log } = await import("./src/util/log")
     Log.init({ print: false })
-    const [{ Server }, { GlobalRuntime }, { AgentTurn }, { PolicyWorker }, { ToolScheduler }] = await Promise.all([
+    const [{ Server }, { RuntimeHandle }, { AgentTurn }, { PolicyWorker }, { ToolScheduler }] = await Promise.all([
       import("./src/server/server"),
-      import("./src/server/global-runtime"),
+      import("./src/server/runtime-handle"),
       import("./src/session/agent-turn"),
       import("./src/enforcement/policy-worker"),
       import("./src/session/tool-scheduler"),
     ])
     const origin = "http://localhost:5173"
-    Server.beginShutdown()
+    const runtime = await RuntimeHandle.open({ mode: "oneshot", network: { hostname: "127.0.0.1", port: 0 } })
+    runtime.closeAdmission()
     const response = await Server.App().request("/global/health")
     const crossOrigin = await Server.App().request("/global/health", { headers: { origin } })
     const preflight = await Server.App().request("/global/health", {
       method: "OPTIONS",
       headers: { origin, "access-control-request-method": "GET" },
     })
-    GlobalRuntime.closeAdmission()
     const capture = async (run) => {
       try {
         await run()
@@ -53,6 +53,7 @@ async function runShutdownProbe(): Promise<ShutdownProbe> {
         capture(() => ToolScheduler.dispatch({})),
       ]),
     }
+    await runtime.close()
     await Bun.write(Bun.stdout, JSON.stringify(result))
     process.exit(0)
   `

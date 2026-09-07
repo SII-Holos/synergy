@@ -142,6 +142,7 @@ describe("ToolResolver observability", () => {
         fn: () =>
           ObservabilityContext.withContextAsync({ traceId, spanId: `parent_${id}` }, async () => {
             const executions = new Map<string, Promise<any>>()
+            const started = Promise.withResolvers<void>()
             const tools = await ToolResolver.resolveWithAvailability({
               agent: allowAllAgent,
               model,
@@ -153,6 +154,7 @@ describe("ToolResolver observability", () => {
                   description: "Waits for the test gate",
                   inputSchema: { type: "object", properties: {}, additionalProperties: false },
                   async execute() {
+                    started.resolve()
                     await gate.promise
                     return { title: id, output: "done" }
                   },
@@ -162,7 +164,7 @@ describe("ToolResolver observability", () => {
               includeMCP: false,
             })
             const execution = (tools.executionTools[id] as any).execute({}, { toolCallId: `call_${id}` })
-            await Bun.sleep(10)
+            await Promise.race([started.promise, execution])
             return { execution, scopeID: scope.id }
           }),
       })
@@ -232,7 +234,7 @@ const model = {
 function minimalProcessor(executions: Map<string, Promise<any>>) {
   const callbacks = new Map<string, Promise<unknown>>()
   return {
-    message: { id: "msg_tool_obs" },
+    message: { id: "msg_tool_obs", rootID: "msg_tool_obs_root", parentID: "msg_tool_obs_root" },
     partFromToolCall: () => undefined,
     executeOnce: <T>(id: string, execute: () => Promise<T>) => {
       const existing = callbacks.get(id)

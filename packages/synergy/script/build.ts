@@ -11,6 +11,7 @@ const __dirname = path.dirname(__filename)
 const dir = path.resolve(__dirname, "..")
 
 process.chdir(dir)
+const buildCommit = (await $`git rev-parse --verify HEAD`.quiet().nothrow()).text().trim()
 
 import pkg from "../package.json"
 import { Script } from "./script-identity"
@@ -188,6 +189,7 @@ for (const item of targets) {
       },
       entrypoints: ["./src/index.ts", "./src/channel/provider/feishu/svg-raster-worker.ts"],
       define: {
+        SYNERGY_COMMIT: JSON.stringify(/^[a-f0-9]{40,64}$/.test(buildCommit) ? buildCommit : ""),
         SYNERGY_VERSION: `'${Script.version}'`,
         SYNERGY_CHANNEL: `'${Script.channel}'`,
         SYNERGY_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",

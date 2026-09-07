@@ -97,6 +97,7 @@ export namespace ConfigDomain {
       "project_doc_fallback_filenames",
       "project_doc_max_bytes",
       "category",
+      "prompt",
     ]),
     def("commands", "70-commands.jsonc", "Commands", ["command"]),
     def("permissions", "80-permissions.jsonc", "Permissions", [
@@ -122,7 +123,8 @@ export namespace ConfigDomain {
       "lspDiagnostics",
       "question",
       "compaction",
-      "experimental",
+      "boss",
+      "toolExposure",
       "observability",
     ]),
     def("voice", "125-voice.jsonc", "Voice", ["voice"]),

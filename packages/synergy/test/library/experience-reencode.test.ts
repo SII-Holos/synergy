@@ -492,9 +492,11 @@ describe.serial("ExperienceReencode bounded session loading", () => {
         expect(embeddingSignal).toBeInstanceOf(AbortSignal)
         expect(modelUser).toMatchObject({
           id: expect.any(String),
-          sessionID: session.id,
+          sessionID: expect.any(String),
           role: "user",
+          metadata: { sourceSessionID: session.id, sourceMessageID: expect.any(String) },
         })
+        expect(modelUser?.sessionID).not.toBe(session.id)
       },
     })
   })
@@ -582,9 +584,11 @@ describe.serial("ExperienceReencode bounded session loading", () => {
         expect(LibraryDB.Experience.get("missing-user-message")?.intent).toBe("Bounded maintenance reencode")
         expect(modelUser).toMatchObject({
           id: expect.any(String),
-          sessionID: session.id,
+          sessionID: expect.any(String),
           role: "user",
+          metadata: { sourceSessionID: session.id, sourceMessageID: expect.any(String) },
         })
+        expect(modelUser?.sessionID).not.toBe(session.id)
       },
     })
   })

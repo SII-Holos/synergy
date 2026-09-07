@@ -392,7 +392,7 @@ export namespace LLM {
         wallMs: timeout.providerWallMs,
       }),
       params,
-      telemetryEnabled: cfg.experimental?.openTelemetry,
+      telemetryEnabled: cfg.observability?.modelSpans,
     }
   }
 
