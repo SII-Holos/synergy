@@ -33,3 +33,5 @@ Conversations give up inline syntax coloring and large expanded bodies in exchan
 Budgets constrain retained caches and inline presentation, not total process heap: active message payloads, explicit panel contents, worker engines, in-flight results, and other application state remain separate owners. These fixes address reproduced retention and rendering defects; they do not establish the cause of an untraced minified TypeError or prove that all long-running renderer crashes are eliminated.
 
 Behavioral coverage checks closed/open/closed renderer lifetimes, bounded Unicode previews, locale-reactive panel actions, complete recorded patch selection, global cache eviction, oversize rejection, and string promotion capacity.
+
+The preview wrapper runs through the real Solid compiler in `basic-tool-lifecycle.dom.test.ts`. Bun attributes its coverage to the emitted Vite fixture, so the exact TSX wrapper is listed in the coverage exemption manifest with that reason. The pure preview model remains measured by direct unit tests; package coverage thresholds remain unchanged.
