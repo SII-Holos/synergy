@@ -333,10 +333,6 @@
         {
           "glob": "src/commands/publish-market.ts",
           "reason": "not exercised by the unit suite; requires full runtime or external service"
-        },
-        {
-          "glob": "src/testing.ts",
-          "reason": "real-host browser acceptance helper exercised by test/plugin-ui5; package Bun coverage does not include the root production-host suite"
         }
       ]
     },

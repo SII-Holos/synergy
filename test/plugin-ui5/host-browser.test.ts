@@ -105,7 +105,13 @@ test("functional plugin commands, events, settings and resource close guards wor
     stage = "start isolated host"
     preview = await startPluginPreview({
       artifacts: installed,
-      command: [process.execPath, path.resolve(import.meta.dir, "../../packages/synergy/src/index.ts")],
+      command: [
+        process.execPath,
+        path.resolve(import.meta.dir, "../../packages/synergy/src/index.ts"),
+        "--print-logs",
+        "--log-level",
+        "DEBUG",
+      ],
     })
     stage = "approve fixture plugins"
     await approvePreviewPlugins(preview)
@@ -149,6 +155,10 @@ test("functional plugin commands, events, settings and resource close guards wor
     await page.getByRole("button", { name: "Close note", exact: true }).click()
     expect(diagnostics.errors.map((error) => error.message)).toEqual([])
   } catch (error) {
+    if (preview) {
+      const log = await Bun.file(path.join(preview.home, "host.log")).text()
+      console.error(log.slice(-16000).replaceAll(preview.home, "<preview>").replaceAll(process.cwd(), "<checkout>"))
+    }
     throw new AggregateError(
       [error, ...(diagnostics?.errors ?? [])],
       `Real-host functional acceptance failed at: ${stage}`,
