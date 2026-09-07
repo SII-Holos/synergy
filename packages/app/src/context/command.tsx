@@ -246,7 +246,8 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
     return {
       register(cb: () => CommandOption[]) {
         const results = createMemo(cb)
-        setRegistrations((arr) => [results, ...arr])
+        // Publish only committed pages: transition tValue can overwrite an old page's cleanup.
+        onMount(() => setRegistrations((arr) => [results, ...arr]))
         onCleanup(() => {
           setRegistrations((arr) => arr.filter((x) => x !== results))
         })
