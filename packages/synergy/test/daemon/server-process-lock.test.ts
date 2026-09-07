@@ -38,12 +38,12 @@ describe("ServerProcessLock", () => {
       // worker can be spawned and readied before the competition begins;
       // readiness is bounded as one phase deadline, not a sum of per-worker
       // waits (see docs/postmortem/0006).
-      children.push(...spawnFleet(count, workerPath, env))
+      await spawnFleet(count, workerPath, env, children)
       await waitReady(children, readyPath)
 
       await Bun.write(startPath, "go\n")
 
-      const results = await waitForResults(resultPath, count, 50_000, "Lock workers did not finish competing")
+      const results = await waitForResults(resultPath, count, "Lock workers did not finish competing")
 
       const acquired = results.filter((result) => result.acquired)
       expect(acquired).toHaveLength(1)
@@ -367,12 +367,12 @@ describe("ServerProcessLock", () => {
         }),
       )
 
-      children.push(...spawnFleet(count, workerPath, env))
+      await spawnFleet(count, workerPath, env, children)
       await waitReady(children, readyPath)
 
       await Bun.write(startPath, "go\n")
 
-      const results = await waitForResults(resultPath, count, 50_000, "Lock workers did not finish stale replacement")
+      const results = await waitForResults(resultPath, count, "Lock workers did not finish stale replacement")
 
       expect(results.filter((result) => result.acquired)).toHaveLength(1)
       expect(results.filter((result) => result.error)).toHaveLength(0)
@@ -392,16 +392,18 @@ describe("ServerProcessLock", () => {
     try {
       const crashWorkerPath = path.join(home, "crash-worker.ts")
       await fs.writeFile(crashWorkerPath, "process.exit(2)\n")
-
-      children.push(
-        ...spawnFleet(1, crashWorkerPath, {
+      await spawnFleet(
+        1,
+        crashWorkerPath,
+        {
           ...process.env,
           SYNERGY_HOME: home,
           LOCK_READY_PATH: readyPath,
           LOCK_START_PATH: path.join(home, "start"),
           LOCK_RESULT_PATH: path.join(home, "result.log"),
           LOCK_RELEASE_PATH: path.join(home, "release"),
-        }),
+        },
+        children,
       )
 
       let error: unknown

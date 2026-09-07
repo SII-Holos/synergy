@@ -2,6 +2,7 @@ import fs from "fs/promises"
 import fsSync from "fs"
 import path from "path"
 import { pathToFileURL } from "url"
+import { randomUUID } from "crypto"
 import os from "os"
 import { Filesystem } from "../util/filesystem"
 import { assertIsolatedTestHome } from "./test-home-guard"
@@ -150,7 +151,29 @@ await Promise.all([
     return candidates.find((candidate) => fsSync.existsSync(candidate))
   })()
   if (bundled) {
-    await fs.copyFile(bundled, Global.Path.configSchema)
+    // Startup syncs the schema on every boot, but concurrent startups into
+    // one home (a server racing the daemon lock, or a process fleet) used to
+    // die on a Windows EBUSY from overlapping copyfile calls onto the same
+    // destination. Skip the copy when the destination already matches, and
+    // publish through a same-volume rename so a concurrent publisher wins
+    // atomically; a loser's failed replace-rename is harmless when the
+    // destination already holds the identical bundled schema.
+    const bundledContents = await fs.readFile(bundled, "utf8")
+    const current = await fs.readFile(Global.Path.configSchema, "utf8").catch(() => undefined)
+    if (current !== bundledContents) {
+      const temporaryPath = `${Global.Path.configSchema}.${randomUUID()}.tmp`
+      try {
+        await fs.copyFile(bundled, temporaryPath)
+        try {
+          await fs.rename(temporaryPath, Global.Path.configSchema)
+        } catch (error) {
+          const published = await fs.readFile(Global.Path.configSchema, "utf8").catch(() => undefined)
+          if (published !== bundledContents) throw error
+        }
+      } finally {
+        await fs.rm(temporaryPath, { force: true }).catch(() => {})
+      }
+    }
   }
 }
 
