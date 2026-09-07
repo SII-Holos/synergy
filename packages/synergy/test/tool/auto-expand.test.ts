@@ -41,7 +41,7 @@ const allowAllAgent = {
 function runtimeProcessor() {
   const callbacks = new Map<string, Promise<unknown>>()
   return {
-    message: { id: "message_test" },
+    message: { id: "message_test", rootID: "msg_root", parentID: "msg_root" },
     partFromToolCall: () => undefined,
     updateToolCallState: async () => {},
     executeOnce<T>(callID: string, execute: () => Promise<T>) {
