@@ -81,6 +81,11 @@ test("custom composer submits once and a running response survives switching to 
     )
     await approvePreviewPlugins(preview)
     const page = await browser.newPage()
+    await page.addInitScript(() => {
+      HTMLMediaElement.prototype.play = async () => {
+        throw new DOMException("Audio output is unavailable", "NotSupportedError")
+      }
+    })
     page.setDefaultTimeout(20000)
     await page.addInitScript(
       (server) =>
