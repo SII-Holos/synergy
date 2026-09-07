@@ -208,6 +208,8 @@ See [Knowledge: Embedding Model](../product/knowledge.md#embedding-model) for th
 | `synergy migrate [--target <path>]`                 | Backward-compatible alias for the interactive data-move workflow                                                   |
 | `synergy migration status\|run\|rollback\|generate` | Inspect and manage versioned schema/data migrations                                                                |
 
+`synergy data snapshots inspect` reports logical bytes, filesystem allocation, and storage ownership. `check` validates objects and historical roots. `migrate` imports registered legacy repositories; `compact` packs shared objects while preserving unreachable contents. Both default to dry-run and require `--apply` to execute. Non-pruning compaction preserves interrupted import packs under explicit unknown-object refs before releasing their import protection. Only `compact --apply --prune` collects unreferenced objects, after integrity and recovery checks. All four accept `--scope <id>` and `--json`; JSON results contain `ok`, `results`, and an optional structured `error`. Failed checks or execution return a nonzero exit status. Busy maintenance leaves the running instance untouched.
+
 Use the data commands for supported relocation and merge workflows. Copying individual JSON files while the server is running can violate indexes and atomic update assumptions.
 
 `synergy stats --json` emits the complete snapshot; `--recompute` rebuilds its derived digests and buckets, while `--days`, `--tools`, and `--models` change the displayed view. The accepted `--project` option currently recomputes but does not filter the installation-wide result. See [Activity and Statistics](../product/activity-and-statistics.md).

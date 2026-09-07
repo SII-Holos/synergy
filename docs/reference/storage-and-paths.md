@@ -117,18 +117,19 @@ Plugin-scoped credentials live separately at `data/plugin/<plugin-id>/auth.json`
 
 ## Browser, Worktrees, and Artifacts
 
-| Path                      | Content                                                    |
-| ------------------------- | ---------------------------------------------------------- |
-| `data/browser/sessions/`  | canonical Browser session/page metadata                    |
-| `data/browser/profiles/`  | persistent browser profiles and storage state              |
-| `data/browser/uploads/`   | owner-scoped upload staging                                |
-| `data/browser/downloads/` | browser downloads grouped by Scope                         |
-| `data/browser/chromium/`  | managed Chromium assets                                    |
-| `data/worktree/`          | Synergy-managed worktree metadata/resources                |
-| `data/snapshot/`          | file snapshots used by history/file restoration            |
-| `data/tool-output/`       | large tool outputs externalized from message records       |
-| `data/assets/`            | product/plugin assets                                      |
-| `data/media/`             | generated or captured media, including Browser screenshots |
+| Path                      | Content                                                                 |
+| ------------------------- | ----------------------------------------------------------------------- |
+| `data/browser/sessions/`  | canonical Browser session/page metadata                                 |
+| `data/browser/profiles/`  | persistent browser profiles and storage state                           |
+| `data/browser/uploads/`   | owner-scoped upload staging                                             |
+| `data/browser/downloads/` | browser downloads grouped by Scope                                      |
+| `data/browser/chromium/`  | managed Chromium assets                                                 |
+| `data/worktree/`          | Synergy-managed worktree metadata/resources                             |
+| `data/snapshot/`          | registered legacy file snapshot repositories pending migration          |
+| `data/snapshot-v2/`       | Scope object stores, historical roots, owners, and maintenance journals |
+| `data/tool-output/`       | large tool outputs externalized from message records                    |
+| `data/assets/`            | product/plugin assets                                                   |
+| `data/media/`             | generated or captured media, including Browser screenshots              |
 
 Archiving or deleting a session disposes its live Browser runtime, but persisted Browser state follows its own lifecycle and migration rules.
 
@@ -174,3 +175,11 @@ Project worktrees may also be managed beneath a project-local Synergy area. Perm
 Stop the server before raw filesystem backup or relocation. For supported selective movement, use `synergy data pack`, `merge`, `move`, and `set-home`. Use session export/import for portable session artifacts.
 
 Never include `data/auth/` in a public diagnostics bundle, issue attachment, or repository commit.
+
+## File snapshot persistence
+
+`data/snapshot-v2/<scope>/store.git` holds self-contained Git objects and all historical retention refs. `repository.json` records object format; `owners/<session>.json` selects `legacy`, `shared`, or the permanent deletion tombstone. `migrations/<session>.json` and `deletions/<session>.json` are durable recovery state. Scope `leases.json`, the root `leases.json`, and `.locks/` coordinate processes and are regenerated rather than merged into archives. `format.json` marks the installed layout version.
+
+`cache/snapshot-index/<scope>/<session>/<workspace-hash>/index` is rebuildable working state. It can be removed independently of historical objects. The workspace hash uses its canonical filesystem path. Legacy owners resolve only to `data/snapshot/<scope>/<session>` until explicit migration switches their ownership; unknown and reclaimed repositories remain intact and are reported separately.
+
+JSON session export does not contain file objects. Complete `data pack`, `move`, and `merge` preserve file history through the snapshot domain's object/ref transfer. Owner-backend or maintenance-record conflicts abort that data transfer so the source remains available for resolution. These commands acquire offline ownership and never stop a running server. Migration changes are not backward-readable by an older runtime after shared snapshots have been captured.

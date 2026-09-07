@@ -4,7 +4,7 @@ import path from "path"
 import fs from "fs/promises"
 import { Snapshot } from "../../src/session/snapshot"
 import { ScopeContext } from "../../src/scope/context"
-import { Global } from "../../src/global"
+import { SnapshotStore } from "../../src/session/snapshot-store"
 import { tmpdir } from "../fixture/fixture"
 import { Identifier } from "../../src/id/id"
 
@@ -13,13 +13,12 @@ function fakeSessionID(): string {
 }
 
 describe("Snapshot per-session isolation", () => {
-  test("track() with different sessionIDs produces hashes in separate git repos", async () => {
+  test("track() retains independent session ownership in a shared repository", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const scopeID = ScopeContext.current.scope.id
-        const snapshotRoot = Global.Path.snapshot
         const sessionA = fakeSessionID()
         const sessionB = fakeSessionID()
 
@@ -33,18 +32,10 @@ describe("Snapshot per-session isolation", () => {
         expect(hashB).toBeTruthy()
         expect(hashA).not.toBe(hashB)
 
-        const repoA = path.join(snapshotRoot, scopeID, sessionA)
-        const repoB = path.join(snapshotRoot, scopeID, sessionB)
-        const statA = await fs.stat(repoA)
-        const statB = await fs.stat(repoB)
-        expect(statA.isDirectory()).toBe(true)
-        expect(statB.isDirectory()).toBe(true)
-
-        const catB = await $`git --git-dir ${repoB} cat-file -t ${hashA!}`.quiet().nothrow()
-        expect(catB.exitCode).not.toBe(0)
-
-        const catA = await $`git --git-dir ${repoA} cat-file -t ${hashB!}`.quiet().nothrow()
-        expect(catA.exitCode).not.toBe(0)
+        expect(await SnapshotStore.owns(scopeID, sessionA, hashA!)).toBe(true)
+        expect(await SnapshotStore.owns(scopeID, sessionB, hashB!)).toBe(true)
+        expect(await SnapshotStore.owns(scopeID, sessionB, hashA!)).toBe(false)
+        expect(await SnapshotStore.owns(scopeID, sessionA, hashB!)).toBe(false)
       },
     })
   })
@@ -106,15 +97,14 @@ describe("Snapshot per-session isolation", () => {
     })
   })
 
-  test("first track() call per session creates a new git repo", async () => {
+  test("first track() initializes the Scope object store", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const scopeID = ScopeContext.current.scope.id
-        const snapshotRoot = Global.Path.snapshot
         const sessionID = fakeSessionID()
-        const repoPath = path.join(snapshotRoot, scopeID, sessionID)
+        const repoPath = SnapshotStore.repository(scopeID)
 
         await expect(fs.stat(repoPath)).rejects.toThrow()
 
@@ -131,7 +121,7 @@ describe("Snapshot per-session isolation", () => {
     })
   })
 
-  test("patch() with a hash from another session's repo returns empty files", async () => {
+  test("patch() with a hash from another session returns empty files", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -151,7 +141,7 @@ describe("Snapshot per-session isolation", () => {
     })
   })
 
-  test("diff() with a hash from another session's repo returns empty string", async () => {
+  test("diff() with a hash from another session returns empty string", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -171,15 +161,14 @@ describe("Snapshot per-session isolation", () => {
     })
   })
 
-  test("multiple track() calls within the same session accumulate in that session's repo", async () => {
+  test("multiple track() calls within the same session retain all of that session’s trees", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const scopeID = ScopeContext.current.scope.id
-        const snapshotRoot = Global.Path.snapshot
         const sessionID = fakeSessionID()
-        const repoPath = path.join(snapshotRoot, scopeID, sessionID)
+        const repoPath = SnapshotStore.repository(scopeID)
 
         await Bun.write(path.join(tmp.path, "first.txt"), "first content")
         const hash1 = await Snapshot.track(sessionID)
