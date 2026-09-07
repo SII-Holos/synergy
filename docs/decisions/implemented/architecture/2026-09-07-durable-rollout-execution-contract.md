@@ -50,3 +50,5 @@ Behavioral coverage uses temporary Scope/storage, local deterministic provider s
 File snapshots use the owning snapshot archive/lease contracts during rollout ZIP transfer. Fork and import retain both file objects and rollout originals; explicit deletion releases each domain only after its references are removed. The integration preserves concurrent schema publication inside explicit runtime initialization.
 
 Public Cortex cancellation remains non-blocking after durable status publication. Explicit task drainage is reserved for rollout finalization and runtime shutdown, including descendants, so ordinary cancellation does not wait on processors while final evidence cannot race resource disposal.
+
+Experience maintenance that has only stored content and no original user message records an independent Scope operation with source session/message metadata. It must not fabricate a session root to satisfy attribution; normal encoding with an actual triggering user retains session ownership.
