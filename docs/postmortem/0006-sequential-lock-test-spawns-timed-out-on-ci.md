@@ -21,6 +21,7 @@ The failure recurred across three pushed commits on 2026-09-04/05 while every lo
 - 2026-09-05 02:02 — #1317 merges; its own dev push fails with the same signature as the only Test failure.
 - 2026-09-05 05:21 — #1318's dev push fails again, same signature, 1798 of 1799 tests passing.
 - 2026-09-05 ~09:00 — PR #1324 investigation reads the spawn loop against the budget: the per-worker waits are caps but the phase is a sum. Workers park on `startPath`, so spawning them concurrently is race-free. Fix: spawn all workers up front, poll one shared ready set against a 60s deadline, raise the whole-test budget to 150s. Both competition tests (24- and 16-worker) get the same shape; local run completes both well inside the budget (9 pass, 4.1s file wall time).
+- 2026-09-06 06:02–11:37 (UTC) — three more dev pushes (#1327, #1328, #1329) fail Windows Checks in the same suite: the shared 60s ready deadline expires with most workers already up (15/16, 23/24, 19/24 ready), the unbounded cleanup await stretches each failure to the full 150s test budget, and the reported "timed out after 150000ms" masks the deadline error that sits a few lines higher in the log. The identical lock code passes #1326 (02:12) and #1330 (11:37) on the same runner image within hours of the failures — load-dependent startup tail, not a regression.
 
 ## Root cause
 
@@ -35,6 +36,7 @@ The spawn loop's per-worker deadline bounded each step, but the test budget boun
 
 - PR #1324 (`9019eb80d`): both competition tests spawn every worker before waiting, poll a single shared ready set against a 60s deadline, and carry 150s per-test budgets above the worst observed CI startup; the `afterEach` reaper still bounds orphan cleanup.
 - The decision record for the test-batching work (`docs/decisions/implemented/testing/2026-09-04-coverage-main-batch-sharding.md`) states the durable pattern for future worker-per-process suites: spawn-then-poll, with phase budgets sized to worst-case total startup.
+- 2026-09-07 lock-fleet harness (`packages/synergy/test/daemon/lock-fleet.ts`): readiness is one 90s phase deadline sized above the worst observed CI tail (60s expired 5 workers short), a worker that exits before reporting ready fails the wait immediately with its exit code, and failure cleanup kills the fleet before awaiting exits behind a 20s grace so a failure lands well inside the 150s budget as the harness's own error. Decision record: [Lock-fleet phase budgets and bounded cleanup](../decisions/implemented/testing/2026-09-07-lock-fleet-phase-budgets-and-bounded-cleanup.md).
 
 ## Lessons
 
@@ -42,3 +44,4 @@ The spawn loop's per-worker deadline bounded each step, but the test budget boun
 - Read the failing phase before theorizing about the failing name. "A hook timed out" after a test-budget expiry describes cleanup of orphaned work, not the mechanism the test names.
 - Green-on-rerun reduces visible failures, not underlying probability. Track flake recurrences per pushed commit, not per CI attempt, before classifying a failure as rare.
 - Subprocess fleets that park on a gate file should spawn all workers first and poll one ready set: startup parallelizes, and the shared deadline bounds total startup instead of summing it.
+- A failure path must not wait unboundedly on what it just failed to bound: when a deadline throws, kill the orphaned work first and await it behind a grace cap, or the cleanup converts a fast internal error into a full-budget timeout that hides the cause.
