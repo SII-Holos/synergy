@@ -129,8 +129,9 @@ export function ToolResultBody(props: {
           charsReceived={charsAnimated()}
           hideDetails={props.hideDetails}
           defaultOpen={props.defaultOpen}
-          sessionId={props.sessionId}
-          messageId={props.messageId}
+          partId={props.part.id}
+          sessionId={props.sessionId ?? props.part.sessionID}
+          messageId={props.messageId ?? props.part.messageID}
           attachments={completed()?.attachments}
         />
       }

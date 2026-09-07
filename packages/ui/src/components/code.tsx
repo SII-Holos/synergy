@@ -1,3 +1,4 @@
+import { highlightInputAllowed } from "../pierre/cache-budget"
 import {
   type FileContents,
   File,
@@ -86,15 +87,19 @@ export function Code<T>(props: CodeProps<T>) {
     "renderRange",
   ])
 
-  const file = createMemo(
-    () =>
-      new File<T>(
-        {
-          ...createDefaultOptions<T>("unified"),
-          ...others,
-        },
-        getWorkerPool("unified"),
-      ),
+  const fileContents = createMemo(() => local.file, undefined, { equals: sameFileContents })
+  const highlighted = createMemo(() => highlightInputAllowed(fileContents().contents))
+
+  const file = createMemo(() =>
+    highlighted()
+      ? new File<T>(
+          {
+            ...createDefaultOptions<T>("unified"),
+            ...others,
+          },
+          getWorkerPool("unified"),
+        )
+      : undefined,
   )
 
   const getRoot = () => {
@@ -137,7 +142,7 @@ export function Code<T>(props: CodeProps<T>) {
     if (side) range.side = side
     if (endSide && side && endSide !== side) range.endSide = endSide
 
-    file().setSelectedLines(range)
+    file()?.setSelectedLines(range)
   }
 
   // Value-stable gates: streaming projections rebuild wrapper objects around
@@ -145,20 +150,26 @@ export function Code<T>(props: CodeProps<T>) {
   // churn from re-running the render effect, which would otherwise wipe and
   // rebuild the pierre view on every projection (same pattern as
   // DiffPatch.patchText).
-  const fileContents = createMemo(() => local.file, undefined, { equals: sameFileContents })
   const renderRange = createMemo(() => local.renderRange, undefined, { equals: sameRenderRange })
 
   createEffect(() => {
     const current = file()
 
     onCleanup(() => {
-      current.cleanUp()
+      current?.cleanUp()
     })
   })
 
   createEffect(() => {
     container.innerHTML = ""
-    file().render({
+    const current = file()
+    if (!current) {
+      const plain = document.createElement("pre")
+      plain.textContent = fileContents().contents
+      container.replaceChildren(plain)
+      return
+    }
+    current.render({
       file: fileContents(),
       lineAnnotations: local.annotations,
       containerWrapper: container,
@@ -167,7 +178,7 @@ export function Code<T>(props: CodeProps<T>) {
   })
 
   createEffect(() => {
-    file().setSelectedLines(local.selectedLines ?? null)
+    file()?.setSelectedLines(local.selectedLines ?? null)
   })
 
   createEffect(() => {

@@ -1,17 +1,14 @@
 import { ANCHORED_CHIP_DESC } from "./tool-title-descriptors"
 
 import { createMemo, For, Show } from "solid-js"
-import { Dynamic } from "solid-js/web"
 import { useLingui } from "@lingui/solid"
-import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
-import { useCodeComponent } from "../context/code"
 import { BasicTool } from "./basic-tool"
 import { ToolTextOutput } from "./tool-output-text"
 import { DiagnosticsDisplay, getDiagnostics, getDirectory, type ToolProps } from "./message-part"
 import { ToolDiffPreview, type ToolDiffPreviewFileDiff } from "./tool/diff-preview"
 import { hasSaveFileContentInput, saveFilePreviewDiff } from "./tool/save-file-preview"
-import { DiffPatchGate } from "./diff-patch"
+import { ToolFilePreview, ToolPatchPreview } from "./tool/content-preview"
 
 type FileDiff = ToolDiffPreviewFileDiff
 
@@ -222,7 +219,6 @@ function operationCounts(operations: string[]): string[] {
 
 export function AnchoredViewTool(props: ToolProps) {
   const { _ } = useLingui()
-  const codeComponent = useCodeComponent()
   const ranges = () => (props.metadata?.ranges ?? []) as RangeInfo[]
   const primaryRange = () => {
     if (ranges().length > 0) return undefined
@@ -241,14 +237,9 @@ export function AnchoredViewTool(props: ToolProps) {
   ]
 
   // Full contents are only available when the file fits the snapshot cap;
-  // oversized/binary files keep the raw text output fallback.
+  // oversized/binary files preview the recorded tool output.
   const content = () => props.metadata?.content as string | undefined
   const hasContent = () => typeof content() === "string" && content()!.length > 0
-  const file = () => ({
-    name: pathFromProps(props) || "file",
-    contents: content() ?? "",
-    cacheKey: (props.metadata?.tag as string | undefined) || checksum(content() ?? ""),
-  })
 
   return (
     <BasicTool
@@ -275,40 +266,28 @@ export function AnchoredViewTool(props: ToolProps) {
           { label: _(summaryLabelTagDescriptor), value: props.metadata?.tag },
         ]}
       />
-      <Show when={hasContent()} fallback={<RawOutput output={props.output} />}>
-        <Show when={ranges().length > 0}>
-          <For each={ranges()}>
+      <Show when={hasContent()} fallback={<ToolFilePreview path={pathFromProps(props)} content={props.output ?? ""} />}>
+        <Show
+          when={ranges().length > 0}
+          fallback={
+            <ToolFilePreview
+              path={pathFromProps(props)}
+              content={content()!}
+              offset={props.metadata?.offset}
+              limit={props.metadata?.limit}
+            />
+          }
+        >
+          <For each={ranges().slice(0, 3)}>
             {(range) => (
-              <div data-component="view-content">
-                <Dynamic
-                  component={codeComponent}
-                  file={file()}
-                  renderRange={{
-                    startingLine: range.offset ?? 0,
-                    totalLines: range.limit ?? Infinity,
-                    bufferBefore: 0,
-                    bufferAfter: 0,
-                  }}
-                  overflow="scroll"
-                />
-              </div>
+              <ToolFilePreview
+                path={pathFromProps(props)}
+                content={content()!}
+                offset={range.offset}
+                limit={range.limit}
+              />
             )}
           </For>
-        </Show>
-        <Show when={ranges().length === 0}>
-          <div data-component="view-content">
-            <Dynamic
-              component={codeComponent}
-              file={file()}
-              renderRange={{
-                startingLine: (props.metadata?.offset as number | undefined) ?? 0,
-                totalLines: (props.metadata?.limit as number | undefined) ?? Infinity,
-                bufferBefore: 0,
-                bufferAfter: 0,
-              }}
-              overflow="scroll"
-            />
-          </div>
         </Show>
       </Show>
     </BasicTool>
@@ -411,7 +390,14 @@ export function AnchoredReviseTool(props: ToolProps) {
       <Show when={filediff()} fallback={<RawOutput output={props.output} />}>
         {(diff) => {
           const patch = () => (props.metadata?.diff as string | undefined) ?? (diff().preview as string | undefined)
-          return <DiffPatchGate patch={patch()} diffStyle="unified" fallback={<ToolDiffPreview diff={diff()} />} />
+          return (
+            <ToolPatchPreview
+              tool={props}
+              path={filePath()}
+              patch={patch()}
+              fallback={<ToolDiffPreview diff={diff()} />}
+            />
+          )
         }}
       </Show>
     </BasicTool>
@@ -457,7 +443,14 @@ export function AnchoredResolveConflictsTool(props: ToolProps) {
       <Show when={filediff()} fallback={<RawOutput output={props.output} />}>
         {(diff) => {
           const patch = () => (props.metadata?.diff as string | undefined) ?? (diff().preview as string | undefined)
-          return <DiffPatchGate patch={patch()} diffStyle="unified" fallback={<ToolDiffPreview diff={diff()} />} />
+          return (
+            <ToolPatchPreview
+              tool={props}
+              path={filePath()}
+              patch={patch()}
+              fallback={<ToolDiffPreview diff={diff()} />}
+            />
+          )
         }}
       </Show>
     </BasicTool>
@@ -466,7 +459,6 @@ export function AnchoredResolveConflictsTool(props: ToolProps) {
 
 export function AnchoredSaveTool(props: ToolProps) {
   const { _ } = useLingui()
-  const codeComponent = useCodeComponent()
   const filePath = () => pathFromProps(props)
   const content = () => (props.input.content ?? "") as string
   const isOverwrite = () => props.metadata?.exists === true
@@ -506,18 +498,21 @@ export function AnchoredSaveTool(props: ToolProps) {
         fallback={
           <Show when={hasContentInput()} fallback={<RawOutput output={props.output} />}>
             <div data-component="write-content">
-              <Dynamic
-                component={codeComponent}
-                file={{ name: filePath() || "file", contents: content(), cacheKey: checksum(content()) }}
-                overflow="scroll"
-              />
+              <ToolFilePreview path={filePath()} content={content()} />
             </div>
           </Show>
         }
       >
         {(diff) => {
           const patch = () => (props.metadata?.diff as string | undefined) ?? (diff().preview as string | undefined)
-          return <DiffPatchGate patch={patch()} diffStyle="unified" fallback={<ToolDiffPreview diff={diff()} />} />
+          return (
+            <ToolPatchPreview
+              tool={props}
+              path={filePath()}
+              patch={patch()}
+              fallback={<ToolDiffPreview diff={diff()} />}
+            />
+          )
         }}
       </Show>
     </BasicTool>

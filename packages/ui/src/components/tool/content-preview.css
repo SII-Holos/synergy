@@ -1,0 +1,18 @@
+[data-component="tool-content-preview"] {
+  min-width: 0;
+  max-width: 100%;
+
+  > pre {
+    max-height: 240px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-small);
+    color: var(--text-base);
+  }
+
+  > button {
+    max-width: 100%;
+  }
+}
