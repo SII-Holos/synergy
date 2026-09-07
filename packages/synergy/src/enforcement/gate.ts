@@ -947,6 +947,14 @@ export namespace EnforcementGate {
     function classify(toolName: string, args: Record<string, any>): ClassifyResult {
       const caps: Capability[] = []
 
+      if (["computer_apps", "computer_observe", "computer_action"].includes(toolName)) {
+        caps.push({
+          class:
+            toolName === "computer_apps" || toolName === "computer_observe" ? "computer_observe" : "computer_interact",
+          nonBypassable: true,
+        })
+      }
+
       // Sensitive path candidates are classified before generic path ownership
       // so secret roots/candidates get profile-aware handling instead of a
       // blanket .synergy/.env hard boundary.
@@ -1688,6 +1696,15 @@ export namespace EnforcementGate {
         amendment = undefined
       }
 
+      const computerDenied =
+        profileId !== "full_access" &&
+        capabilities.some((cap) => cap.class === "computer_observe" || cap.class === "computer_interact")
+      if (computerDenied) {
+        decision = "deny"
+        deniedCapClass = capabilities.find((cap) => cap.class.startsWith("computer_"))?.class
+        amendment = undefined
+      }
+
       // Approval cache: if the profile says "ask" but the capability was
       // previously approved for this session, skip the prompt.
       if (decision === "ask") {
@@ -1706,6 +1723,13 @@ export namespace EnforcementGate {
           permanent: false,
           matchedPermission: "protected_op",
           guidance: "Retry after the Policy worker has recovered.",
+        }
+      } else if (computerDenied) {
+        refusal = {
+          reason: "Computer Use requires Full Access mode.",
+          permanent: true,
+          matchedPermission: deniedCapClass ?? "computer_interact",
+          guidance: "Enable Full Access for this task before using Computer Use.",
         }
       } else if (decision === "deny") {
         const isAutonomous = profileId === "autonomous"

@@ -27,6 +27,21 @@ export interface SynergyCapabilityDefinition {
 }
 
 export const SYNERGY_CAPABILITY_DETAILS: Record<string, SynergyCapabilityDefinition> = {
+  computer_observe: {
+    category: "platform",
+    severity: "high",
+    title: "Observe desktop applications",
+    description:
+      "Can enumerate native applications and read screenshots and accessibility information in Full Access mode.",
+    nonBypassable: true,
+  },
+  computer_interact: {
+    category: "platform",
+    severity: "high",
+    title: "Control desktop applications",
+    description: "Can operate observed native application windows using background input in Full Access mode.",
+    nonBypassable: true,
+  },
   shell_read: {
     category: "runtime",
     severity: "low",
@@ -351,6 +366,8 @@ export const SYNERGY_PROFILE_CAPABILITIES = [
   "protected_op",
   "session_state",
   "browser_interact",
+  "computer_observe",
+  "computer_interact",
   "browser_inspect",
   "browser_eval_readonly",
   "browser_eval_trusted",

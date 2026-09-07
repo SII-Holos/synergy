@@ -178,6 +178,7 @@ function serverProcess(input: {
   hostname: string
   printLogs?: boolean
   browserHostSecret?: string
+  computerHostSecret?: string
 }): DevProcessSpec {
   const dirs = directories(input.repoRoot)
   const command = [
@@ -200,6 +201,7 @@ function serverProcess(input: {
     env: {
       SYNERGY_CWD: process.env.SYNERGY_CWD ?? input.launchCwd,
       SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: input.browserHostSecret,
+      SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET: input.computerHostSecret,
     },
     waitUrl: `${url}/global/health`,
     waitTimeoutMs: null,
@@ -234,7 +236,9 @@ function desktopProcess(input: {
   appPort?: number
   appHostname?: string
   browserServerUrl?: string
+  computerServerUrl?: string
   browserHostSecret?: string
+  computerHostSecret?: string
 }): DevProcessSpec {
   const dirs = directories(input.repoRoot)
   const env: Record<string, string | undefined> = {
@@ -242,7 +246,9 @@ function desktopProcess(input: {
     SYNERGY_DESKTOP_CHANNEL: "dev",
     SYNERGY_DESKTOP_SERVER_MODE: input.mode,
     SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: input.browserHostSecret,
+    SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET: input.computerHostSecret,
     SYNERGY_BROWSER_BROKER_SERVER_URL: input.browserServerUrl,
+    SYNERGY_COMPUTER_BROKER_SERVER_URL: input.computerServerUrl,
   }
   if (input.mode === "external")
     env.SYNERGY_DESKTOP_APP_URL = appUrl(input.appHostname ?? DEFAULT_HOSTNAME, input.appPort ?? DEFAULT_APP_PORT)
@@ -291,6 +297,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
   const parsed = parseArgs(rest)
   const dirs = directories(repoRoot)
   const browserHostSecret = randomBytes(32).toString("hex")
+  const computerHostSecret = process.env.SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET ?? randomBytes(32).toString("hex")
 
   if (command === "prepare") {
     return {
@@ -323,6 +330,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
           hostname,
           printLogs: boolFlag(parsed.flags, "print-logs"),
           browserHostSecret,
+          computerHostSecret,
         }),
       ],
       requiredPorts: [{ label: "server", port, host: displayHost(hostname) }],
@@ -365,6 +373,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
               hostname,
               printLogs: boolFlag(parsed.flags, "print-logs"),
               browserHostSecret,
+              computerHostSecret,
             }),
           ]),
       appProcess({ repoRoot, bunPath, appPort, attachUrl, hostname }),
@@ -399,7 +408,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
           cwd: dirs.app,
           env: { SYNERGY_APP_BUILD_KIND: "local" },
         },
-        desktopProcess({ repoRoot, bunPath, mode: "managed", browserHostSecret }),
+        desktopProcess({ repoRoot, bunPath, mode: "managed", browserHostSecret, computerHostSecret }),
       ]
       return {
         kind: "run",
@@ -430,6 +439,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
               hostname,
               printLogs: boolFlag(parsed.flags, "print-logs"),
               browserHostSecret,
+              computerHostSecret,
             }),
           ]),
       appProcess({ repoRoot, bunPath, appPort, attachUrl, hostname }),
@@ -440,7 +450,9 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
         appPort,
         appHostname: hostname,
         browserServerUrl: attach ? undefined : attachUrl,
+        computerServerUrl: attach ? undefined : attachUrl,
         browserHostSecret: attach ? undefined : browserHostSecret,
+        computerHostSecret: attach ? undefined : computerHostSecret,
       }),
     ]
     return {

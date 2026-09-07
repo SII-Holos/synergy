@@ -6,7 +6,7 @@ Load `change-browser-runtime` for native Browser or Browser-host/WebRTC work and
 
 ## Keep Desktop a Host
 
-- Desktop owns Electron lifecycle, the managed/local server process, preload IPC, native dialogs/clipboard/shell, window state/chrome, updates, and native Browser presentation. It does not own a parallel session, permission, or Browser page model.
+- Desktop owns Electron lifecycle, the managed/local server process, preload IPC, native dialogs/clipboard/shell, window state/chrome, updates, native Browser presentation, and the private native Computer driver. It does not own a parallel session, permission, or Browser page model.
 - Keep `contextIsolation: true`, `nodeIntegration: false`, and renderer sandboxing. Expose narrow typed preload methods; validate every IPC payload in the main process and keep privileged Electron objects out of the renderer.
 - Preserve production URL/navigation, permission, external-link, download, and window-creation policy. Do not replace blocked navigation with a permissive fallback.
 - Keep external-server development mode and packaged managed-server mode distinct. Never stop or reuse the runtime carrying the current task.
@@ -19,3 +19,5 @@ Load `change-browser-runtime` for native Browser or Browser-host/WebRTC work and
 Run `bun run typecheck` and the focused test under `test/`, then `bun run desktop:test`. For Browser changes, run `test:runtime` and the relevant core/Web tests. Exercise the affected external or managed mode through an isolated home, and finish with root `bun run quality:quick`.
 
 Update the Browser architecture, Web product contract, or Desktop release runbook when their durable behavior changes.
+
+For native Computer changes, read [Native Computer Use](../../docs/architecture/computer-use.md); run `bun test test/computer/*.test.ts` and verify exact-window background actions in an isolated Desktop. `bun run test:coverage` includes both top-level and Computer suites and is the root coverage manifest entry point.

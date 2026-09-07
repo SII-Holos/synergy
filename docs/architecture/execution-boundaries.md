@@ -211,3 +211,7 @@ These restrictions are evaluated before the tool implementation. A permissive co
 - Sensitive values are never sent raw to SmartAllow.
 - Worktree isolation protects writes and execution outside the active worktree.
 - A workflow or agent restriction can remove a tool even when the control profile would allow its capability.
+
+## Native Computer eligibility
+
+`computer_observe` and `computer_interact` require the `full_access` profile, including window discovery and screenshots. Ordinary permission rules and session approvals cannot enable these capabilities in another profile. Native OS permissions and app-specific background support remain runtime prerequisites. See [Native Computer Use](computer-use.md).
