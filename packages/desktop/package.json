@@ -13,7 +13,7 @@
   "main": "./dist/main.js",
   "scripts": {
     "build": "bun run desktop:build",
-    "desktop:build": "bun build src/main.ts --outfile dist/main.js --target=node --external electron && bun build src/preload.ts --outfile dist/preload.cjs --target=node --format=cjs --external electron && bun run browser-host:build",
+    "desktop:build": "bun build src/main.ts --outfile dist/main.js --target=node --external electron && bun build src/preload.ts --outfile dist/preload.cjs --target=node --format=cjs --external electron && bun build src/pet-preload.ts --outfile dist/pet-preload.cjs --target=node --format=cjs --external electron && bun run browser-host:build",
     "browser-host:build": "bun build src/browser-host-main.ts --outfile dist/browser-host-main.js --target=node --external electron",
     "browser-host:dev": "bun run browser-host:build && electron dist/browser-host-main.js",
     "browser-host:dist": "bun run browser-host:build && electron-builder --config electron-builder.browser-host.json --publish=never",
@@ -34,11 +34,13 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@types/jsdom": "21.1.7",
     "@types/node": "catalog:",
     "@types/unzipper": "0.10.11",
     "electron": "42.5.0",
     "electron-builder": "26.15.7",
     "electron-builder-squirrel-windows": "26.15.7",
+    "jsdom": "25.0.1",
     "typescript": "catalog:",
     "unzipper": "^0.12.3"
   }

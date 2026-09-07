@@ -197,11 +197,29 @@ export class MockElectronWindow extends EventEmitter {
   menuBarVisible: boolean | null = null
   title = ""
   sizes: Array<{ width: number; height: number }> = []
+  alwaysOnTop = false
+  skipTaskbar = false
+  resizable = true
+  shown = false
+  position: [number, number] = [0, 0]
+  bounds: { x: number; y: number; width: number; height: number } = {
+    x: 0,
+    y: 0,
+    width: 800,
+    height: 600,
+  }
   readonly webContents: MockElectronWebContents
 
   constructor(readonly options: Record<string, unknown>) {
     super()
     this.webContents = new MockElectronWebContents()
+    if (typeof options.x === "number" && typeof options.y === "number") {
+      this.position = [options.x, options.y]
+      this.bounds = { ...this.bounds, x: options.x, y: options.y }
+    }
+    if (typeof options.width === "number" && typeof options.height === "number") {
+      this.bounds = { ...this.bounds, width: options.width, height: options.height }
+    }
   }
 
   isDestroyed() {
@@ -234,6 +252,41 @@ export class MockElectronWindow extends EventEmitter {
 
   setSize(width: number, height: number) {
     this.sizes.push({ width, height })
+    this.bounds = { ...this.bounds, width, height }
+  }
+
+  setAlwaysOnTop(flag: boolean, _level?: string) {
+    this.alwaysOnTop = flag
+  }
+
+  setSkipTaskbar(flag: boolean) {
+    this.skipTaskbar = flag
+  }
+
+  setResizable(flag: boolean) {
+    this.resizable = flag
+  }
+
+  setPosition(x: number, y: number) {
+    this.position = [x, y]
+    this.bounds = { ...this.bounds, x, y }
+  }
+
+  getPosition(): [number, number] {
+    return [...this.position]
+  }
+
+  setBounds(bounds: { x: number; y: number; width: number; height: number }) {
+    this.bounds = { ...bounds }
+    this.position = [bounds.x, bounds.y]
+  }
+
+  getBounds() {
+    return { ...this.bounds }
+  }
+
+  show() {
+    this.shown = true
   }
 }
 
