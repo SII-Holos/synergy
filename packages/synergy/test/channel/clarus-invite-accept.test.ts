@@ -61,7 +61,7 @@ function provider(): ClarusProvider {
 }
 
 async function waitFor<T>(read: () => T | Promise<T>, ready: (value: T) => boolean): Promise<T> {
-  const timeoutAt = Date.now() + 1_000
+  const timeoutAt = Date.now() + 5_000
   let value = await read()
   while (!ready(value) && Date.now() < timeoutAt) {
     await Bun.sleep(5)

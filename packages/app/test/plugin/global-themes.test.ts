@@ -21,6 +21,7 @@ const THEME_B: PluginThemeDefinition = {
 function assets(themes: PluginThemeDefinition[] = [], errors: PluginUIAssetError[] = []): PluginUIAssets {
   return {
     themes: new Map(themes.map((theme) => [theme.id, theme])),
+    skins: new Map(),
     icons: new Map(),
     stylesheets: new Map(),
     errors,

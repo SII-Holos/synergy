@@ -1470,19 +1470,7 @@ msgstr "搜索命令"
 msgid "app.command.title"
 msgstr "命令"
 
-#. * Bridge Plugin API 4 host.confirm(Promise<boolean>) onto the App ConfirmDialog.
- *
- * title and message pass through from the plugin — they are plugin author content.
- * confirmLabel and cancelLabel are host chrome; the plugin may override confirmLabel
- * with its own content.
-msgid "app.common.cancel"
-msgstr "取消"
-
-#. * Bridge Plugin API 4 host.confirm(Promise<boolean>) onto the App ConfirmDialog.
- *
- * title and message pass through from the plugin — they are plugin author content.
- * confirmLabel and cancelLabel are host chrome; the plugin may override confirmLabel
- * with its own content.
+#. js-lingui-explicit-id
 msgid "app.common.confirm"
 msgstr "确认"
 
@@ -6658,6 +6646,42 @@ msgid "app.plugin.settings.stateOn"
 msgstr "开启"
 
 #. js-lingui-explicit-id
+msgid "app.plugin.shell.preference.description"
+msgstr "选择此服务器的工作台和页面呈现方式。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.shell.preference.recovery"
+msgstr "安全界面模式已启用。若插件出现故障，请先选择默认工作台，再正常重启。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.shell.preference.restart"
+msgstr "正常重启"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.shell.preference.title"
+msgstr "工作台"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.shell.preference.unavailable"
+msgstr "{shell}（不可用）"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.skin.preference.default"
+msgstr "默认外观"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.skin.preference.description"
+msgstr "选择字体、纹理和界面样式。你保存的字体设置优先。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.skin.preference.title"
+msgstr "皮肤"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.skin.preference.unavailable"
+msgstr "{skin}（不可用）"
+
+#. js-lingui-explicit-id
 msgid "app.plugin.surface.noBuiltinNav"
 msgstr "没有为 {id} 注册内置导航界面。"
 
@@ -6676,6 +6700,34 @@ msgstr "页面不可用"
 #. js-lingui-explicit-id
 msgid "app.plugin.surface.pluginPageUnavailable"
 msgstr "插件页面不可用"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.ui.available"
+msgstr "界面已就绪"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.ui.diagnostics"
+msgstr "插件界面"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.ui.failed"
+msgstr "界面错误"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.ui.incompatible"
+msgstr "界面不兼容"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.ui.loading"
+msgstr "正在加载界面"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.ui.outletMissing"
+msgstr "当前工作台未呈现"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.ui.registered"
+msgstr "界面已注册"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.verified.ariaLabel"
@@ -12634,6 +12686,10 @@ msgstr "返回最新消息"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.conversation.withdraw"
 msgstr "撤回"
+
+#. js-lingui-explicit-id
+msgid "session.decisions.label"
+msgstr "会话需要确认"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -20419,3 +20475,15 @@ msgstr "最小化"
 #. js-lingui-explicit-id
 msgid "window.restore"
 msgstr "恢复"
+
+#. js-lingui-explicit-id
+msgid "workbench.discard.action"
+msgstr "放弃更改"
+
+#. js-lingui-explicit-id
+msgid "workbench.discard.description"
+msgstr "{title} 中的更改尚未保存。"
+
+#. js-lingui-explicit-id
+msgid "workbench.discard.title"
+msgstr "放弃未保存的更改？"

@@ -115,9 +115,14 @@ describe("plugin UI asset loading", () => {
     expect(result.errors[0]?.message).toContain('does not match contribution id "theme"')
   })
 
-  test("collects the sibling stylesheet of the UI artifact when present", async () => {
+  test("loads explicitly declared stylesheets without assuming a sibling filename", async () => {
     const input = contribution("styled")
-    input.uiArtifact = { entry: "ui/index.js", sha256: "abc" }
+    input.uiArtifact = {
+      apiVersion: "5.0",
+      entry: "ui/index.js",
+      sha256: "a".repeat(64),
+      resources: [{ kind: "stylesheet", entry: "ui/panel.css", sha256: "a".repeat(64) }],
+    }
     const requested: string[] = []
     const result = await loadPluginUIAssets([input], {
       serverUrl,
@@ -127,28 +132,35 @@ describe("plugin UI asset loading", () => {
         return Response.json({ ...synergyTheme, id: "theme" })
       },
     })
-    expect(result.stylesheets.get("styled")).toBe("ui/index.css")
-    expect(requested).toContain(`${serverUrl}/plugin/assets/styled/generation-one/ui/index.css`)
+    expect(result.stylesheets.get("styled")).toEqual(["ui/panel.css"])
+    expect(requested).toContain(`${serverUrl}/plugin/assets/styled/generation-one/ui/panel.css`)
     expect(result.errors).toEqual([])
   })
 
-  test("skips the stylesheet when the UI bundle has no sibling CSS", async () => {
+  test("does not probe undeclared stylesheets", async () => {
     const input = contribution("plain")
-    input.uiArtifact = { entry: "ui/index.js", sha256: "abc" }
+    input.uiArtifact = { apiVersion: "5.0", entry: "ui/index.js", sha256: "a".repeat(64), resources: [] }
+    const requested: string[] = []
     const result = await loadPluginUIAssets([input], {
       serverUrl,
-      fetcher: async (url) =>
-        url.endsWith(".css")
-          ? new Response("not found", { status: 404 })
-          : Response.json({ ...synergyTheme, id: "theme" }),
+      fetcher: async (url) => {
+        requested.push(url)
+        return Response.json({ ...synergyTheme, id: "theme" })
+      },
     })
     expect(result.stylesheets.size).toBe(0)
     expect(result.errors).toEqual([])
+    expect(requested.some((url) => url.endsWith(".css"))).toBe(false)
   })
 
   test("reports stylesheet load failures without dropping theme or icon assets", async () => {
     const input = contribution("broken-css")
-    input.uiArtifact = { entry: "ui/index.js", sha256: "abc" }
+    input.uiArtifact = {
+      apiVersion: "5.0",
+      entry: "ui/index.js",
+      sha256: "a".repeat(64),
+      resources: [{ kind: "stylesheet", entry: "ui/index.css", sha256: "a".repeat(64) }],
+    }
     input.contributions.push({ kind: "ui.icon", id: "mark", path: "./mark.svg" })
     const result = await loadPluginUIAssets([input], {
       serverUrl,
@@ -164,9 +176,9 @@ describe("plugin UI asset loading", () => {
   })
 
   test("injects the stylesheet link into the document head and removes it on dispose", () => {
-    const dispose = injectPluginStylesheet("https://example.test/proxy/4096/plugin/assets/demo/gen/ui/index.css")
+    const dispose = injectPluginStylesheet("data:text/css,/*ui/index.css*/", "a".repeat(64))
     const links = [...document.head.querySelectorAll("link[rel='stylesheet']")]
-    const injected = links.find((link) => link.getAttribute("href")?.endsWith("ui/index.css"))
+    const injected = links.find((link) => link.getAttribute("href")?.endsWith("ui/index.css*/"))
     expect(injected).toBeDefined()
     expect(injected!.getAttribute("rel")).toBe("stylesheet")
 
@@ -177,9 +189,9 @@ describe("plugin UI asset loading", () => {
   test("dispose is idempotent and does not remove unrelated stylesheets", () => {
     const unrelated = document.createElement("link")
     unrelated.rel = "stylesheet"
-    unrelated.href = "https://example.test/app.css"
+    unrelated.href = "data:text/css,/*unrelated*/"
     document.head.appendChild(unrelated)
-    const dispose = injectPluginStylesheet("https://example.test/proxy/4096/plugin/assets/demo/gen/ui/index.css")
+    const dispose = injectPluginStylesheet("data:text/css,/*ui/index.css*/", "a".repeat(64))
     dispose()
     dispose()
     expect(document.head.contains(unrelated)).toBe(true)

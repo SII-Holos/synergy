@@ -106,7 +106,7 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
           })
           if (!notification || notification.type !== "turn-complete") break
           try {
-            completionPlayer?.play()
+            void completionPlayer?.play().catch(() => {})
           } catch {}
           append({
             ...base,
@@ -132,7 +132,7 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
           })
           if (!notification || notification.type !== "error") break
           try {
-            errorPlayer?.play()
+            void errorPlayer?.play().catch(() => {})
           } catch {}
           append({
             ...base,

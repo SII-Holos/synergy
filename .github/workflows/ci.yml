@@ -108,7 +108,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -142,6 +142,9 @@ jobs:
         run: |
           bun run --cwd packages/app build
           bun packages/app/script/private-http-smoke.ts
+
+      - name: Run plugin UI contracts against the production host
+        run: bun run plugin-ui:test
 
       - name: Run release contract tests
         run: bun run release:test

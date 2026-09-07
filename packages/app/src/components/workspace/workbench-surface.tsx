@@ -1,3 +1,4 @@
+import { useExtensionOutlet } from "@ericsanchezok/synergy-ui/context/extension-outlet"
 import { ErrorBoundary, For, Show, Suspense, createEffect, createMemo, onCleanup, onMount } from "solid-js"
 import { Trans, useLingui } from "@lingui/solid"
 import type { Component } from "solid-js"
@@ -290,6 +291,7 @@ function Launcher(props: {
 }
 
 export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
+  useExtensionOutlet(`workbench.${props.surface}`)
   const lingui = useLingui()
   const dialog = useDialog()
   const workbench = useWorkbenchPanels()
@@ -433,6 +435,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
 
   return (
     <div
+      data-ui-part="resource-panel"
       class="workbench-surface"
       classList={{
         "workbench-surface--side": isSide(),

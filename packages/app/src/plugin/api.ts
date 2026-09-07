@@ -1,4 +1,4 @@
-import type { PluginManifestContribution } from "@ericsanchezok/synergy-plugin"
+import type { PluginManifestContribution, PluginUIArtifact } from "@ericsanchezok/synergy-plugin"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 
@@ -10,16 +10,20 @@ export interface PluginContribution {
   scopeId: string
   capabilities: string[]
   contributions: PluginManifestContribution[]
-  uiArtifact?: { entry: string; sha256: string }
+  uiArtifact?: PluginUIArtifact
 }
 
-export async function fetchUIContributions(serverUrl: string, scopeKey: string): Promise<PluginContribution[]> {
+export async function fetchUIContributions(
+  serverUrl: string,
+  scopeKey: string,
+  signal?: AbortSignal,
+): Promise<PluginContribution[]> {
   const sdk = createSynergyClient({
     baseUrl: serverUrl,
     throwOnError: true,
     ...(isHomeScope(scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }),
   })
-  const response = await sdk.plugin.listUiContributions()
+  const response = await sdk.plugin.listUiContributions(undefined, { signal })
   return (response.data ?? []) as PluginContribution[]
 }
 

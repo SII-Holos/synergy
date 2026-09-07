@@ -138,6 +138,7 @@ export function getToastConfig(): ToastConfig | undefined {
 }
 
 export interface ToastOptions {
+  onClose?: () => void
   type?: ToastType
   title?: string
   description?: string
@@ -168,6 +169,7 @@ export function showToast(options: ToastOptions): number {
   const resolvedDuration = options.duration ?? toastConfig?.durationOverrides?.[type]
   const iconName = options.icon ?? defaultIconForType(type)
   return toaster.show((props) => {
+    onCleanup(() => options.onClose?.())
     const { _ } = useLingui()
     const [countdown, setCountdown] = createSignal("")
     const duration = resolvedDuration ?? DEFAULT_TOAST_DURATION_MS

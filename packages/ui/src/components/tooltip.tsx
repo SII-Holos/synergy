@@ -1,3 +1,5 @@
+import { useOverlayLayer } from "../context/overlay-layer"
+import { PortalStyleOwner } from "../context/ui-style"
 import { Tooltip as KobalteTooltip } from "@kobalte/core/tooltip"
 import { children, createSignal, Match, onCleanup, onMount, splitProps, Switch, type JSX } from "solid-js"
 import { attachFocusListeners } from "./tooltip-focus"
@@ -30,6 +32,7 @@ export function TooltipKeybind(props: TooltipKeybindProps) {
 }
 
 export function Tooltip(props: TooltipProps) {
+  const layer = useOverlayLayer()
   const [open, setOpen] = createSignal(false)
   const [local, others] = splitProps(props, ["children", "class", "inactive"])
 
@@ -57,11 +60,13 @@ export function Tooltip(props: TooltipProps) {
           <KobalteTooltip.Trigger as={"div"} data-component="tooltip-trigger" class={local.class}>
             {c()}
           </KobalteTooltip.Trigger>
-          <KobalteTooltip.Portal>
-            <KobalteTooltip.Content data-component="tooltip" data-placement={props.placement}>
-              {others.value}
-              {/* <KobalteTooltip.Arrow data-slot="tooltip-arrow" /> */}
-            </KobalteTooltip.Content>
+          <KobalteTooltip.Portal mount={layer()}>
+            <PortalStyleOwner>
+              <KobalteTooltip.Content data-component="tooltip" data-placement={props.placement}>
+                {others.value}
+                {/* <KobalteTooltip.Arrow data-slot="tooltip-arrow" /> */}
+              </KobalteTooltip.Content>
+            </PortalStyleOwner>
           </KobalteTooltip.Portal>
         </KobalteTooltip>
       </Match>

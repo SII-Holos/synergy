@@ -1,3 +1,4 @@
+import { PluginUIDiagnostics } from "../components/plugin-ui-diagnostics"
 import { pluginMarketplace } from "@/locales/messages"
 import { translateDescriptor } from "@/locales/translate"
 import { createMemo, createResource, createSignal, For, Show } from "solid-js"
@@ -554,6 +555,7 @@ export function PluginDetailDialog(props: {
                   />
                 </section>
 
+                <PluginUIDiagnostics pluginId={props.pluginId} />
                 <Show when={developmentInstallation()}>
                   {(installation) => (
                     <section class="plugin-detail-section">

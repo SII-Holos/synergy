@@ -1,7 +1,7 @@
 import {
   EXECUTABLE_CONTRIBUTION_KINDS,
   hasTrustedUIComponent,
-  type PluginManifestContribution,
+  PluginManifestContribution,
   type PluginManifestType,
 } from "@ericsanchezok/synergy-plugin"
 
@@ -27,27 +27,70 @@ export class ContributionAdapterRegistry {
     this.#adapters.set(adapter.kind, adapter)
   }
 
-  registerPlugin(pluginId: string, manifest: PluginManifestType) {
-    this.unregisterPlugin(pluginId)
-    const registrations: PluginContributionRegistration[] = []
-    const disposers: Array<() => void> = []
-    for (const contribution of manifest.contributions) {
+  validatePlugin(pluginId: string, manifest: PluginManifestType) {
+    return manifest.contributions.map((contribution) => {
       const adapter = this.#adapters.get(contribution.kind)
       if (!adapter) throw new Error(`No contribution adapter registered for ${contribution.kind}`)
       const registration = { pluginId, manifest, contribution }
       adapter.validate(registration)
-      const dispose = adapter.register?.(registration)
-      if (dispose) disposers.push(dispose)
-      registrations.push(registration)
+      return registration
+    })
+  }
+
+  registerPlugin(pluginId: string, manifest: PluginManifestType) {
+    const registrations = this.validatePlugin(pluginId, manifest)
+    const previous = this.#registrations.get(pluginId)
+    try {
+      this.unregisterPlugin(pluginId)
+      this.#install(pluginId, registrations)
+    } catch (error) {
+      if (previous) {
+        try {
+          this.#install(pluginId, previous)
+        } catch (rollback) {
+          throw new AggregateError([error, rollback], "Contribution registration and restoration failed")
+        }
+      }
+      throw error
+    }
+  }
+
+  #install(pluginId: string, registrations: PluginContributionRegistration[]) {
+    const disposers: Array<() => void> = []
+    try {
+      for (const registration of registrations) {
+        const dispose = this.#adapters.get(registration.contribution.kind)?.register?.(registration)
+        if (dispose) disposers.push(dispose)
+      }
+    } catch (error) {
+      const errors = [error]
+      for (const dispose of disposers.reverse()) {
+        try {
+          dispose()
+        } catch (cleanup) {
+          errors.push(cleanup)
+        }
+      }
+      if (errors.length > 1) throw new AggregateError(errors, "Contribution registration cleanup failed")
+      throw error
     }
     this.#registrations.set(pluginId, registrations)
     this.#disposers.set(pluginId, disposers)
   }
 
   unregisterPlugin(pluginId: string) {
-    for (const dispose of this.#disposers.get(pluginId) ?? []) dispose()
+    const disposers = this.#disposers.get(pluginId) ?? []
     this.#disposers.delete(pluginId)
     this.#registrations.delete(pluginId)
+    const errors: unknown[] = []
+    for (const dispose of disposers.reverse()) {
+      try {
+        dispose()
+      } catch (error) {
+        errors.push(error)
+      }
+    }
+    if (errors.length) throw new AggregateError(errors, "Contribution cleanup failed")
   }
 
   list<Kind extends PluginManifestContribution["kind"]>(pluginId: string, kind: Kind) {
@@ -62,32 +105,7 @@ export class ContributionAdapterRegistry {
 
 export const pluginContributionAdapters = new ContributionAdapterRegistry()
 
-const kinds: PluginManifestContribution["kind"][] = [
-  "operation",
-  "event",
-  "tool",
-  "hook",
-  "cli.command",
-  "agent",
-  "skill",
-  "mcp",
-  "authProvider",
-  "ui.workbenchPanel",
-  "ui.navigationItem",
-  "ui.messageRenderer",
-  "ui.composerAction",
-  "ui.composerExtension",
-  "ui.selectionExtension",
-  "ui.textAction",
-  "ui.messageSlot",
-  "ui.settings",
-  "ui.slot",
-  "ui.theme",
-  "ui.icon",
-  "lifecycle.install",
-  "lifecycle.upgrade",
-  "lifecycle.uninstall",
-]
+const kinds = PluginManifestContribution.options.map((schema) => schema.shape.kind.value)
 
 for (const kind of kinds) {
   pluginContributionAdapters.add({

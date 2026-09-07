@@ -175,7 +175,8 @@ describe("server request scope boundaries", () => {
     const pluginDir = path.join(tmp.path, "plugin")
     const assetPath = path.join(pluginDir, "ui", "index.js")
     await fs.mkdir(path.dirname(assetPath), { recursive: true })
-    await Bun.write(assetPath, "export const panel = true\n")
+    const assetSource = "export const panel = true\n"
+    await Bun.write(assetPath, assetSource)
 
     const originalGetLoaded = Plugin.getLoaded
     const originalGet = Plugin.get
@@ -193,7 +194,15 @@ describe("server request scope boundaries", () => {
           { kind: "event", id: "research.graph.changed" },
           { kind: "tool", id: "internal-tool" },
         ],
-        artifacts: { generation: "generation-one", ui: { entry: "ui/index.js", sha256: "test" } },
+        artifacts: {
+          generation: "generation-one",
+          ui: {
+            apiVersion: "5.0",
+            entry: "ui/index.js",
+            sha256: new Bun.CryptoHasher("sha256").update(assetSource).digest("hex"),
+            resources: [],
+          },
+        },
       },
     } as any
     ;(Plugin as any).getLoaded = async () => [fake]

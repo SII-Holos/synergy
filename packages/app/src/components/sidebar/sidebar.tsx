@@ -1,3 +1,4 @@
+import { useExtensionOutlet } from "@ericsanchezok/synergy-ui/context/extension-outlet"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show, type JSX } from "solid-js"
 import { FlipList } from "./flip-list"
 import { shouldOpenProjectDisclosure } from "./project-disclosure"
@@ -82,6 +83,7 @@ function sessionIconClassList(visual?: { tone?: string; pulse?: boolean }) {
 }
 
 export function Sidebar(props: SidebarProps) {
+  useExtensionOutlet("navigation.sidebar")
   const layout = useLayout()
   const globalSync = useGlobalSync()
   const globalSDK = useGlobalSDK()
@@ -343,6 +345,7 @@ export function Sidebar(props: SidebarProps) {
 
   return (
     <div
+      data-ui-part="navigation"
       classList={{
         "sb-root": true,
         "sb-collapsed": !isExpanded(),

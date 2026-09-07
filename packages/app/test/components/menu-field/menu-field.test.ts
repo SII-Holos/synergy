@@ -12,7 +12,7 @@ let fixtureDirectory: string
 
 beforeAll(async () => {
   fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".menu-field-fixture-"))
-  const menuFieldPath = path.resolve(import.meta.dir, "../../../src/components/menu-field/MenuField.tsx")
+  const menuFieldPath = path.resolve(import.meta.dir, "../../../../ui/src/components/menu-field.tsx")
 
   await Promise.all([
     Bun.write(
@@ -54,12 +54,13 @@ beforeAll(async () => {
   server = await createServer({
     configFile: false,
     root: fixtureDirectory,
+    optimizeDeps: { entries: [path.join(fixtureDirectory, "main.ts")] },
     plugins: [solidPlugin()],
     server: {
       host: "127.0.0.1",
-      port: 5202,
+      port: 0,
       strictPort: true,
-      fs: { allow: [path.resolve(import.meta.dir, "../../..")] },
+      fs: { allow: [path.resolve(import.meta.dir, "../../../..")] },
     },
   })
   await server.listen()

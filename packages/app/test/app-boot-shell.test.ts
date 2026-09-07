@@ -6,6 +6,7 @@ const app = await Bun.file(new URL("../src/app.tsx", import.meta.url)).text()
 const themeContext = await Bun.file(new URL("../../ui/src/theme/context.tsx", import.meta.url)).text()
 const globalSync = await Bun.file(new URL("../src/context/global-sync.tsx", import.meta.url)).text()
 const css = await Bun.file(new URL("../src/index.css", import.meta.url)).text()
+const defaultSession = await Bun.file(new URL("../src/plugin/default-session.tsx", import.meta.url)).text()
 const sessionPage = await Bun.file(new URL("../src/pages/session.tsx", import.meta.url)).text()
 const desktopThemeSync = await Bun.file(
   new URL("../src/components/app-shell/desktop-theme-sync.tsx", import.meta.url),
@@ -129,7 +130,7 @@ describe("app boot shell", () => {
     expect(sessionPage).toContain(
       'class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger"',
     )
-    expect(sessionPage).toContain(
+    expect(defaultSession).toContain(
       'class="synergy-workbench-canvas relative bg-background-stronger size-full overflow-hidden flex flex-col"',
     )
   })

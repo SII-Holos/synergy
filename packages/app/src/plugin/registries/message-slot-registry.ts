@@ -3,7 +3,7 @@ import type { MessageSlotProps } from "@ericsanchezok/synergy-ui/message-slots"
 import { SlotRegistry, type SlotEntryBase } from "../slot-registry"
 
 export interface MessageSlotEntry extends SlotEntryBase {
-  slot: "message.before" | "message.after" | "message.actions"
+  slot: import("@ericsanchezok/synergy-plugin").PluginMessageSlot
   roles?: Array<"user" | "assistant">
   loader?: () => Promise<{ default: Component<MessageSlotProps> }>
 }

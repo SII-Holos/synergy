@@ -216,7 +216,7 @@ export default definePlugin({
       expect(entry.homepage).toBe("https://example.com/registry-entry")
       expect(entry.author).toEqual({ name: "Jane Doe", email: "jane@example.com" })
       expect(entry.keywords).toEqual(["beta", "synergy-plugin"])
-      expect(entry.compatibility).toEqual({ synergy: ">=3.1.0" })
+      expect(entry.compatibility).toEqual({ synergy: ">=3.0.23 >=3.1.0" })
       expect(entry.verified).toBe(false)
       expect(entry.official).toBe(false)
       expect(entry.versions[0].apiVersion).toBe("4.0")

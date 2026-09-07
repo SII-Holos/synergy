@@ -36,16 +36,17 @@ function resolveContent(content: ConfirmContent, translate: I18n["_"]): string {
   return typeof content === "string" ? content : translateDescriptor(content, { _: translate })
 }
 
-export function ConfirmDialog(props: ConfirmOptions) {
+export function ConfirmDialog(props: ConfirmOptions & { close?: () => void }) {
   const { _ } = useLingui()
   const dialogContext = useDialog()
   const [pending, setPending] = createSignal(false)
   let settled = false
+  const close = () => (props.close ?? dialogContext.close)()
 
   function dismiss() {
     if (pending() || settled) return
     settled = true
-    dialogContext.close()
+    close()
     props.onDismiss?.()
   }
 
@@ -55,7 +56,7 @@ export function ConfirmDialog(props: ConfirmOptions) {
     try {
       await props.onConfirm()
       settled = true
-      dialogContext.close()
+      close()
       props.onConfirmed?.()
     } catch (error) {
       showToast({
@@ -69,6 +70,7 @@ export function ConfirmDialog(props: ConfirmOptions) {
 
   return (
     <Dialog
+      dismissible={!pending()}
       title={resolveContent(props.title, _)}
       description={resolveContent(props.description, _)}
       class="confirm-dialog"
@@ -117,12 +119,42 @@ export function ConfirmDialog(props: ConfirmOptions) {
 export function useConfirm() {
   const dialogContext = useDialog()
 
+  function show(options: ConfirmOptions) {
+    let confirmed = false
+    let dismissed = false
+    let id: string | undefined
+    const dismiss = () => {
+      if (confirmed || dismissed) return
+      dismissed = true
+      options.onDismiss?.()
+    }
+    id = dialogContext.push(
+      () => (
+        <ConfirmDialog
+          {...options}
+          close={() => dialogContext.close(id)}
+          onConfirm={async () => {
+            await options.onConfirm()
+            confirmed = true
+          }}
+          onDismiss={dismiss}
+        />
+      ),
+      dismiss,
+      { protected: true },
+    )
+    return id
+  }
+
   return {
-    show(options: ConfirmOptions) {
-      dialogContext.push(() => <ConfirmDialog {...options} />)
+    show,
+    ask(options: Omit<ConfirmOptions, "onConfirm" | "onConfirmed" | "onDismiss">): Promise<boolean> {
+      return new Promise((resolve) =>
+        show({ ...options, onConfirm() {}, onConfirmed: () => resolve(true), onDismiss: () => resolve(false) }),
+      )
     },
-    close() {
-      dialogContext.close()
+    close(id?: string) {
+      dialogContext.close(id)
     },
   }
 }

@@ -1,5 +1,5 @@
 import { createMemo, createResource, createSignal, For, Show } from "solid-js"
-import { MenuField } from "../menu-field/MenuField"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"

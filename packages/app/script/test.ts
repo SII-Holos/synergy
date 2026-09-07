@@ -9,12 +9,17 @@ const root = path.resolve(import.meta.dir, "..")
 // sibling suite's freshly launched browser. Run every Chromium suite serially
 // after the main batch to keep their processes alive.
 const playwrightIsolated = [
+  "test/plugin/components.dom.test.ts",
+  "test/plugin/overlays.dom.test.ts",
+  "test/plugin/skin.dom.test.ts",
+  "test/components/prompt-input/editor.dom.test.ts",
   "test/components/app-shell/mobile-drawer-drag-region.test.tsx",
   "test/components/app-shell/mobile-drawer-root.test.tsx",
   "test/components/dialog/model-selector-layout.test.ts",
   "test/components/file-workbench/scrollbar-dark.test.ts",
   "test/components/file-workbench/selection.test.ts",
   "test/components/file-workbench/open-in-browser.dom.test.ts",
+  "test/components/file-workbench/html-preview.dom.test.ts",
   "test/components/file-workbench/explorer-restore.dom.test.ts",
   "test/components/attachment-workbench/pdf-preview.dom.test.ts",
   "test/components/library/filter-menu-surface.test.ts",
@@ -36,6 +41,8 @@ const playwrightIsolated = [
   "test/components/scopes/session-row.dom.test.tsx",
   "test/components/sidebar/session-draft-badge.dom.test.tsx",
   "test/components/sidebar/sidebar-attention-notice.dom.test.tsx",
+  "test/components/sidebar/channel-sidebar-layout.test.ts",
+  "test/components/workspace/browser/browser-recovery-state.test.tsx",
   "test/pages/fatal-error.dom.test.tsx",
 ]
 
@@ -45,6 +52,8 @@ await runBatchedTests({
   isolated: playwrightIsolated,
   isolatedTimeoutMs: 120000,
   browserOnly: [
+    "test/plugin/shell-surface.test.ts",
+    "test/plugin/shell-preference.test.ts",
     "test/components/note/document-editor-core.test.ts",
     "test/components/terminal/dispose-reentrancy.test.ts",
     "test/components/workspace/builtin-workbench-panels.test.ts",

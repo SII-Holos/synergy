@@ -1,3 +1,4 @@
+import { parseSkin } from "@ericsanchezok/synergy-plugin/skin"
 import path from "path"
 import fs from "fs"
 import { fileURLToPath, pathToFileURL } from "url"
@@ -117,7 +118,20 @@ export async function readPluginManifest(pluginDir: string): Promise<PluginManif
   const envelope = PluginManifestEnvelope.parse(raw)
   assertPluginCompatibility(envelope)
   const manifest = PluginManifestV4.parse(raw)
-  for (const [kind, artifact] of Object.entries({ runtime: manifest.artifacts.runtime, ui: manifest.artifacts.ui })) {
+  const artifacts = [
+    { kind: "runtime", artifact: manifest.artifacts.runtime },
+    { kind: "ui", artifact: manifest.artifacts.ui },
+    ...(manifest.artifacts.ui?.resources ?? []).map((artifact) => ({ kind: "ui resource", artifact })),
+    ...manifest.contributions.flatMap((item) =>
+      item.kind === "ui.skin"
+        ? [
+            { kind: "Skin", artifact: { entry: item.path, sha256: item.sha256 } },
+            ...item.assets.map((artifact) => ({ kind: "Skin resource", artifact })),
+          ]
+        : [],
+    ),
+  ]
+  for (const { kind, artifact } of artifacts) {
     if (!artifact) continue
     const artifactPath = path.resolve(pluginDir, artifact.entry)
     if (!isPathContained(pluginDir, artifactPath))
@@ -125,8 +139,18 @@ export async function readPluginManifest(pluginDir: string): Promise<PluginManif
     if (!fs.existsSync(artifactPath) || !fs.statSync(artifactPath).isFile()) {
       throw new Error(`Plugin ${kind} artifact not found: ${artifact.entry}`)
     }
+    if (!isPathContained(await fs.promises.realpath(pluginDir), await fs.promises.realpath(artifactPath)))
+      throw new Error(`Plugin ${kind} artifact escapes its package: ${artifact.entry}`)
     const actual = sha256File(artifactPath)
     if (actual !== artifact.sha256) throw new Error(`Plugin ${kind} artifact integrity mismatch: ${artifact.entry}`)
+  }
+  for (const item of manifest.contributions) {
+    if (item.kind !== "ui.skin") continue
+    const skin = parseSkin(await Bun.file(path.join(pluginDir, item.path)).json())
+    if (skin.id !== item.id) throw new Error(`Skin ID does not match contribution ${item.id}`)
+    const paths = new Set(Object.values(skin.assets).map((asset) => asset.path))
+    if (paths.size !== item.assets.length || item.assets.some((asset) => !paths.has(asset.entry)))
+      throw new Error(`Skin ${item.id} resource manifest does not match its definition`)
   }
   return manifest
 }

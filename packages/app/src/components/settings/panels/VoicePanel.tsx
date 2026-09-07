@@ -10,7 +10,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { requestErrorMessage } from "@/utils/error"
 import { PasswordField } from "../components/PasswordField"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
-import { SettingRow } from "../components/SettingRow"
+import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
 import {
   buildVoiceConfigPatch,
   emptyVoiceDraft,

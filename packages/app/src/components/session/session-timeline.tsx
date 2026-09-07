@@ -4,7 +4,7 @@ import type { UserMessage } from "@ericsanchezok/synergy-sdk/client"
 import "./session-timeline.css"
 
 interface SessionTimelineProps {
-  messages: () => UserMessage[]
+  messages: () => readonly UserMessage[]
   currentMessage?: () => UserMessage | undefined
   onMessageSelect: (message: UserMessage) => void
   bottomOffset?: () => number

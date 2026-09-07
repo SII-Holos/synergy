@@ -103,7 +103,7 @@ type PromptSubmitInput = {
   frontendCommands: Accessor<SlashUiCommand[]>
   working: Accessor<boolean>
   abort: () => void
-  editor: () => HTMLDivElement
+  editor: () => HTMLDivElement | undefined
   queueScroll: () => void
   onWorktreeUnavailable: () => void
   beforeSubmit: () => Promise<void>
@@ -116,167 +116,65 @@ export function usePromptSubmit(input: PromptSubmitInput) {
   const globalSync = useGlobalSync()
   const platform = usePlatform()
   const local = useLocal()
-  const prompt = usePrompt()
+  const promptContext = usePrompt()
   const sessionTransition = useSessionTransition()
   const params = useParams()
   const { i18n } = useLocale()
 
   return async (event: Event) => {
     event.preventDefault()
-    const isNewSession = !params.id
+    const binding = promptContext.capture()
+    const prompt = binding.draft
+    const initialSessionId = params.id
+    let releaseSubmit: (() => void) | undefined
+    try {
+      const isNewSession = !params.id
 
-    if (input.props.sessionTransitionPending) {
-      showToast({
-        type: "warning",
-        title: i18n._(PI.submitTransitionPendingTitle),
-        description: i18n._(PI.submitTransitionPendingDesc),
-      })
-      return
-    }
-    const newSessionSubmitLease = acquireNewSessionSubmitLock({
-      isNewSession,
-      pending: input.newSessionSubmitPending,
-      setPending: input.setNewSessionSubmitPending,
-    })
-    if (!newSessionSubmitLease) {
-      showToast({
-        type: "warning",
-        title: i18n._(PI.submitInProgress),
-        description: i18n._(PI.submitInProgressDesc),
-      })
-      return
-    }
-    const releaseNewSessionSubmit = newSessionSubmitLease.release
-
-    const capture = () => {
-      const currentPrompt = prompt.current()
-      const text = currentPrompt.map((part) => ("content" in part && part.type === "text" ? part.content : "")).join("")
-      const currentContext = { items: prompt.context.items() }
-      return {
-        currentPrompt,
-        text,
-        attachments: input.uploadedAttachments().slice(),
-        notes: input.noteAttachments().slice(),
-        sessions: input.sessionAttachments().slice(),
-        mode: input.store.mode,
-        currentContext,
-        draftSnapshot: createPromptDraftSnapshot({ prompt: currentPrompt, context: currentContext }),
-        failureRestoreSnapshot: createSubmitFailureRestoreSnapshot({ prompt: currentPrompt, context: currentContext }),
-      }
-    }
-    let {
-      currentPrompt,
-      text,
-      attachments,
-      notes,
-      sessions,
-      mode,
-      currentContext,
-      draftSnapshot,
-      failureRestoreSnapshot,
-    } = capture()
-    const restoreInput = (options?: { focus?: boolean }) => {
-      prompt.set(failureRestoreSnapshot.prompt, inlineLength(failureRestoreSnapshot.prompt))
-      prompt.context.set(failureRestoreSnapshot.context)
-      input.setStore("mode", mode)
-      input.setStore("popover", null)
-
-      if (options?.focus === false) return
-      requestAnimationFrame(() => {
-        const editor = input.editor()
-        if (!editor?.isConnected) return
-        editor.focus()
-        setCursorPosition(editor, inlineLength(failureRestoreSnapshot.prompt))
-        input.queueScroll()
-      })
-    }
-    let slashIntent = resolveSlashCommandIntent({
-      text,
-      backendCommands: sync.data.command,
-      uiCommands: input.frontendCommands(),
-    })
-
-    const blueprintSlot = input.localArmedLoop()
-    let submitIntent = resolvePromptSubmitIntent({
-      text,
-      working: input.working(),
-      hasBlueprintSlot: !!blueprintSlot,
-    })
-    if (submitIntent === "abort") {
-      releaseNewSessionSubmit()
-      input.abort()
-      return
-    }
-    if (submitIntent === "blocked") {
-      if (input.pendingLightLoop()) {
+      if (input.props.sessionTransitionPending) {
         showToast({
           type: "warning",
-          title: i18n._(PI.submitLightLoopTitle),
-          description: i18n._(PI.submitLightLoopDesc),
+          title: i18n._(PI.submitTransitionPendingTitle),
+          description: i18n._(PI.submitTransitionPendingDesc),
         })
-        releaseNewSessionSubmit()
         return
       }
-      const hasContextOnlyInput =
-        attachments.length > 0 ||
-        notes.length > 0 ||
-        sessions.length > 0 ||
-        currentContext.items.length > 0 ||
-        currentPrompt.some((part) => part.type === "file")
-      if (hasContextOnlyInput) {
+      const newSessionSubmitLease = acquireNewSessionSubmitLock({
+        isNewSession,
+        pending: input.newSessionSubmitPending,
+        setPending: input.setNewSessionSubmitPending,
+      })
+      if (!newSessionSubmitLease) {
         showToast({
           type: "warning",
-          title: i18n._(PI.submitAddMessage),
-          description: i18n._(PI.submitAddMessageDesc),
+          title: i18n._(PI.submitInProgress),
+          description: i18n._(PI.submitInProgressDesc),
         })
+        return
       }
-      releaseNewSessionSubmit()
-      return
-    }
-    if (input.pendingLightLoop() && !blueprintSlot && mode !== "normal") {
-      showToast({
-        type: "warning",
-        title: i18n._(PI.submitNormalMessage),
-        description: i18n._(PI.submitNormalMessageDesc),
-      })
-      releaseNewSessionSubmit()
-      return
-    }
-    const pendingLightLoopSlashBlock =
-      input.pendingLightLoop() && !blueprintSlot ? getPendingLightLoopSlashBlock(slashIntent) : undefined
-    if (pendingLightLoopSlashBlock) {
-      showToast({
-        type: "warning",
-        title: translateDescriptor(pendingLightLoopSlashBlock.title, i18n),
-        description: translateDescriptor(pendingLightLoopSlashBlock.description, i18n),
-      })
-      releaseNewSessionSubmit()
-      return
-    }
+      releaseSubmit = newSessionSubmitLease.release
 
-    const runsBeforeSubmit = shouldRunComposerBeforeSubmit({
-      intent: submitIntent,
-      mode,
-      slashKind: slashIntent.kind,
-      hasBlueprintSlot: !!blueprintSlot,
-      pendingLightLoop: input.pendingLightLoop(),
-    })
-    if (runsBeforeSubmit) {
-      const completed = await runComposerPreflight({
-        beforeSubmit: input.beforeSubmit,
-        restore: restoreInput,
-        onNonAbortError: (error) =>
-          showToast({
-            type: "error",
-            title: i18n._(PI.submitInterceptFailed),
-            description: errorMessage(error),
+      const capture = () => {
+        const currentPrompt = prompt.current()
+        const text = currentPrompt
+          .map((part) => ("content" in part && part.type === "text" ? part.content : ""))
+          .join("")
+        const currentContext = { items: prompt.context.items() }
+        return {
+          currentPrompt,
+          text,
+          attachments: input.uploadedAttachments().slice(),
+          notes: input.noteAttachments().slice(),
+          sessions: input.sessionAttachments().slice(),
+          mode: input.store.mode,
+          currentContext,
+          draftSnapshot: createPromptDraftSnapshot({ prompt: currentPrompt, context: currentContext }),
+          failureRestoreSnapshot: createSubmitFailureRestoreSnapshot({
+            prompt: currentPrompt,
+            context: currentContext,
           }),
-      })
-      if (!completed) {
-        releaseNewSessionSubmit()
-        return
+        }
       }
-      ;({
+      let {
         currentPrompt,
         text,
         attachments,
@@ -286,918 +184,1032 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         currentContext,
         draftSnapshot,
         failureRestoreSnapshot,
-      } = capture())
-      slashIntent = resolveSlashCommandIntent({
+      } = capture()
+      let restoreRevision = prompt.revision()
+      const restoreInput = (options?: { focus?: boolean }) => {
+        if (!prompt.restoreIfUnchanged(restoreRevision, failureRestoreSnapshot)) return
+        if (!binding.isCurrent()) return
+        input.setStore("mode", mode)
+        input.setStore("popover", null)
+
+        if (options?.focus === false) return
+        requestAnimationFrame(() => {
+          const editor = input.editor()
+          if (!binding.isCurrent() || !editor?.isConnected) return
+          editor.focus()
+          setCursorPosition(editor, inlineLength(failureRestoreSnapshot.prompt))
+          input.queueScroll()
+        })
+      }
+      let slashIntent = resolveSlashCommandIntent({
         text,
         backendCommands: sync.data.command,
         uiCommands: input.frontendCommands(),
       })
-      submitIntent = resolvePromptSubmitIntent({
+
+      const blueprintSlot = input.localArmedLoop()
+      let submitIntent = resolvePromptSubmitIntent({
         text,
         working: input.working(),
         hasBlueprintSlot: !!blueprintSlot,
       })
-      if (submitIntent !== "message") {
-        releaseNewSessionSubmit()
+      if (submitIntent === "abort") {
+        input.abort()
         return
       }
-    }
-    if (
-      !shouldAllowPromptSubmit({
+      if (submitIntent === "blocked") {
+        if (input.pendingLightLoop()) {
+          showToast({
+            type: "warning",
+            title: i18n._(PI.submitLightLoopTitle),
+            description: i18n._(PI.submitLightLoopDesc),
+          })
+          return
+        }
+        const hasContextOnlyInput =
+          attachments.length > 0 ||
+          notes.length > 0 ||
+          sessions.length > 0 ||
+          currentContext.items.length > 0 ||
+          currentPrompt.some((part) => part.type === "file")
+        if (hasContextOnlyInput) {
+          showToast({
+            type: "warning",
+            title: i18n._(PI.submitAddMessage),
+            description: i18n._(PI.submitAddMessageDesc),
+          })
+        }
+        return
+      }
+      if (input.pendingLightLoop() && !blueprintSlot && mode !== "normal") {
+        showToast({
+          type: "warning",
+          title: i18n._(PI.submitNormalMessage),
+          description: i18n._(PI.submitNormalMessageDesc),
+        })
+        return
+      }
+      const pendingLightLoopSlashBlock =
+        input.pendingLightLoop() && !blueprintSlot ? getPendingLightLoopSlashBlock(slashIntent) : undefined
+      if (pendingLightLoopSlashBlock) {
+        showToast({
+          type: "warning",
+          title: translateDescriptor(pendingLightLoopSlashBlock.title, i18n),
+          description: translateDescriptor(pendingLightLoopSlashBlock.description, i18n),
+        })
+        return
+      }
+
+      const runsBeforeSubmit = shouldRunComposerBeforeSubmit({
         intent: submitIntent,
-        variantReady: local.model.variant.ready(),
-        requiresVariant: mode === "normal" && !blueprintSlot,
+        mode,
+        slashKind: slashIntent.kind,
+        hasBlueprintSlot: !!blueprintSlot,
+        pendingLightLoop: input.pendingLightLoop(),
       })
-    ) {
-      releaseNewSessionSubmit()
-      return
-    }
-
-    const currentModel = local.model.current()
-    const currentAgent = local.agent.current()
-    if (!currentModel || !currentAgent) {
-      showToast({
-        type: "warning",
-        title: i18n._(PI.submitSelectAgent),
-        description: i18n._(PI.submitSelectAgentDesc),
-      })
-      releaseNewSessionSubmit()
-      return
-    }
-
-    const selectedVariant = local.model.variant.current()
-    const selectedModel = {
-      modelID: currentModel.id,
-      providerID: currentModel.provider.id,
-    }
-    input.addToHistory(currentPrompt, mode)
-    input.setStore("historyIndex", -1)
-    input.setStore("savedPrompt", null)
-
-    const projectDirectory = sdk.directory
-    const currentScopeKey = sdk.scopeKey
-    // Capture (and disarm) workflow state armed on the new-session composer
-    // before navigation can reset it; applied once the session exists.
-    const armedPlan = isNewSession && input.pendingPlan()
-    if (armedPlan) input.clearPendingPlan()
-    const armedLattice = isNewSession ? input.pendingLattice() : null
-    if (armedLattice) input.clearPendingLattice()
-    const armedLightLoop = input.pendingLightLoop()
-    const armedBoss = input.pendingBoss()
-    if (armedBoss) input.clearPendingBoss()
-    const fileAttachmentsForInstructions = currentPrompt.filter(
-      (part): part is FileAttachmentPart => part.type === "file",
-    )
-    const armedLightLoopInstructions = armedLightLoop
-      ? buildLightLoopInstructions({
+      if (runsBeforeSubmit) {
+        const completed = await runComposerPreflight({
+          beforeSubmit: async () => {
+            try {
+              await input.beforeSubmit()
+            } finally {
+              restoreRevision = prompt.revision()
+            }
+          },
+          restore: restoreInput,
+          onNonAbortError: (error) =>
+            showToast({
+              type: "error",
+              title: i18n._(PI.submitInterceptFailed),
+              description: errorMessage(error),
+            }),
+        })
+        if (!completed || !binding.isCurrent()) {
+          return
+        }
+        ;({
+          currentPrompt,
           text,
-          uploads: attachments,
+          attachments,
           notes,
           sessions,
-          fileAttachments: fileAttachmentsForInstructions,
-          contextItems: currentContext.items,
-        })
-      : undefined
-    if (armedLightLoop && !armedLightLoopInstructions && !blueprintSlot) {
-      showToast({
-        type: "warning",
-        title: i18n._(PI.submitLightLoopTitle),
-        description: i18n._(PI.submitLightLoopDesc),
-      })
-      releaseNewSessionSubmit()
-      return
-    }
-    if (armedLightLoop && blueprintSlot) input.clearPendingLightLoop()
-    const workspaceSelection = input.props.newSessionWorkspaceSelection ?? { mode: "current" as const }
-    const worktreeWorkspaceSelection = isWorktreeWorkspaceSelection(workspaceSelection) ? workspaceSelection : undefined
-    const newSessionRecovery: NewSessionRecovery | undefined = isNewSession
-      ? {
-          draft: draftSnapshot,
           mode,
-          workspaceSelection,
-          controlProfile: input.selectedControlProfile(),
-          plan: armedPlan,
-          lattice: armedLattice,
-          lightLoop: armedLightLoop,
-          boss: armedBoss,
-          blueprintSlot,
-          agent: currentAgent.name,
-          model: selectedModel,
-          variant: selectedVariant,
-          autoSubmit: false,
-        }
-      : undefined
-    const publishNewSessionTransition = (
-      sessionID: string,
-      progress: SessionTransitionProgress | null,
-      actions?: SessionTransitionActions,
-      handoff?: SessionTransitionHandoff,
-    ) => {
-      input.props.onNewSessionTransitionChange?.({ sessionID, progress, actions, handoff })
-    }
-    const updateNewSessionWorktreeProgress = (sessionID: string, stage: "workspace" | "message") => {
-      if (!worktreeWorkspaceSelection) return
-      publishNewSessionTransition(
-        sessionID,
-        createNewSessionWorkspaceProgress({ selection: worktreeWorkspaceSelection, stage }),
-      )
-    }
-    let sessionScopeKey = currentScopeKey
-    let sessionCreateScopeKey = currentScopeKey
-
-    const resolveSessionClient = (scopeKey: string) => {
-      sessionScopeKey = scopeKey
-      if (scopeKey !== currentScopeKey) {
-        globalSync.ensureScopeState(scopeKey)
-        return createSynergyClient({
-          baseUrl: sdk.url,
-          fetch: platform.fetch,
-          directory: scopeKey,
-          throwOnError: true,
+          currentContext,
+          draftSnapshot,
+          failureRestoreSnapshot,
+        } = capture())
+        slashIntent = resolveSlashCommandIntent({
+          text,
+          backendCommands: sync.data.command,
+          uiCommands: input.frontendCommands(),
         })
+        submitIntent = resolvePromptSubmitIntent({
+          text,
+          working: input.working(),
+          hasBlueprintSlot: !!blueprintSlot,
+        })
+        if (submitIntent !== "message") {
+          return
+        }
       }
-      return sdk.client
-    }
-    let client = resolveSessionClient(
-      isNewSession && !sdk.isHome
-        ? (input.props.newSessionCanonicalDirectory ?? projectDirectory ?? currentScopeKey)
-        : currentScopeKey,
-    )
-    if (isNewSession && !sdk.isHome) {
-      sessionCreateScopeKey = input.props.newSessionCanonicalDirectory ?? projectDirectory ?? currentScopeKey
-    }
-
-    let createdSessionForSubmit = false
-    const persistCreatedSessionFailure = (sessionID: string, title: string, message: string) => {
-      if (!createdSessionForSubmit || !newSessionRecovery) return false
-      const actions = createNewSessionRecoveryActions({
-        recovery: newSessionRecovery,
-        setRecovery: (recovery) => sessionTransition.setRecovery(currentScopeKey, recovery),
-        deleteSession: async () => {
-          await client.session.delete({ sessionID }).catch(() => undefined)
-        },
-        clearTransition: () => publishNewSessionTransition(sessionID, null),
-        navigateToComposer: () => navigate(`/${base64Encode(currentScopeKey)}/session`, { replace: true }),
-      })
-      const progress = worktreeWorkspaceSelection
-        ? createNewSessionWorkspaceErrorProgress({ title, message })
-        : createNewSessionTransitionErrorProgress({ title, message })
-      publishNewSessionTransition(sessionID, progress, actions)
-      return true
-    }
-    const failCreatedSessionSetup = (sessionID: string, title: string, message: string) => {
-      persistCreatedSessionFailure(sessionID, title, message)
-      releaseNewSessionSubmit()
-    }
-    const sessionStartFailureMessage = (message: string) =>
-      createdSessionForSubmit ? `${i18n._(PI.submitSessionNotStarted)} ${message}` : message
-
-    let session: (typeof sync.session.get extends (...args: any[]) => infer R ? R : never) | null | undefined =
-      params.id ? sync.session.get(params.id) : undefined
-    if (!session && isNewSession) {
-      session = await client.session
-        .create({
-          controlProfile: input.selectedControlProfile(),
-          workspace: { mode: "current" },
+      if (
+        !shouldAllowPromptSubmit({
+          intent: submitIntent,
+          variantReady: local.model.variant.ready(),
+          requiresVariant: mode === "normal" && !blueprintSlot,
         })
-        .then((x) => x.data ?? undefined)
-        .catch((err) => {
-          releaseNewSessionSubmit()
-          showToast({
-            type: "error",
-            title: i18n._(PI.submitFailedStart),
-            description: errorMessage(err),
+      ) {
+        return
+      }
+
+      const currentModel = local.model.current()
+      const currentAgent = local.agent.current()
+      if (!currentModel || !currentAgent) {
+        showToast({
+          type: "warning",
+          title: i18n._(PI.submitSelectAgent),
+          description: i18n._(PI.submitSelectAgentDesc),
+        })
+        return
+      }
+
+      const selectedVariant = local.model.variant.current()
+      const selectedModel = {
+        modelID: currentModel.id,
+        providerID: currentModel.provider.id,
+      }
+      input.addToHistory(currentPrompt, mode)
+      input.setStore("historyIndex", -1)
+      input.setStore("savedPrompt", null)
+
+      const projectDirectory = sdk.directory
+      const currentScopeKey = sdk.scopeKey
+      // Capture (and disarm) workflow state armed on the new-session composer
+      // before navigation can reset it; applied once the session exists.
+      const armedPlan = isNewSession && input.pendingPlan()
+      if (armedPlan) input.clearPendingPlan()
+      const armedLattice = isNewSession ? input.pendingLattice() : null
+      if (armedLattice) input.clearPendingLattice()
+      const armedLightLoop = input.pendingLightLoop()
+      const armedBoss = input.pendingBoss()
+      if (armedBoss) input.clearPendingBoss()
+      const fileAttachmentsForInstructions = currentPrompt.filter(
+        (part): part is FileAttachmentPart => part.type === "file",
+      )
+      const armedLightLoopInstructions = armedLightLoop
+        ? buildLightLoopInstructions({
+            text,
+            uploads: attachments,
+            notes,
+            sessions,
+            fileAttachments: fileAttachmentsForInstructions,
+            contextItems: currentContext.items,
           })
-          return null
+        : undefined
+      if (armedLightLoop && !armedLightLoopInstructions && !blueprintSlot) {
+        showToast({
+          type: "warning",
+          title: i18n._(PI.submitLightLoopTitle),
+          description: i18n._(PI.submitLightLoopDesc),
         })
-      if (session === null) return
-      if (session) {
-        createdSessionForSubmit = true
-        client = resolveSessionClient(sessionCreateScopeKey)
-        local.handoffNewSessionIntent(session.id)
-        if (selectedVariant) {
-          local.model.variant.setForSession(session.id, selectedVariant, selectedModel, sessionScopeKey)
-        }
-        input.props.onNewSessionWorkspaceSelectionReset?.()
+        return
+      }
+      if (armedLightLoop && blueprintSlot) input.clearPendingLightLoop()
+      const workspaceSelection = input.props.newSessionWorkspaceSelection ?? { mode: "current" as const }
+      const worktreeWorkspaceSelection = isWorktreeWorkspaceSelection(workspaceSelection)
+        ? workspaceSelection
+        : undefined
+      const newSessionRecovery: NewSessionRecovery | undefined = isNewSession
+        ? {
+            draft: draftSnapshot,
+            mode,
+            workspaceSelection,
+            controlProfile: input.selectedControlProfile(),
+            plan: armedPlan,
+            lattice: armedLattice,
+            lightLoop: armedLightLoop,
+            boss: armedBoss,
+            blueprintSlot,
+            agent: currentAgent.name,
+            model: selectedModel,
+            variant: selectedVariant,
+            autoSubmit: false,
+          }
+        : undefined
+      const publishNewSessionTransition = (
+        sessionID: string,
+        progress: SessionTransitionProgress | null,
+        actions?: SessionTransitionActions,
+        handoff?: SessionTransitionHandoff,
+      ) => {
+        input.props.onNewSessionTransitionChange?.({ sessionID, progress, actions, handoff })
+      }
+      const updateNewSessionWorktreeProgress = (sessionID: string, stage: "workspace" | "message") => {
+        if (!worktreeWorkspaceSelection) return
         publishNewSessionTransition(
-          session.id,
-          worktreeWorkspaceSelection
-            ? createNewSessionWorkspaceProgress({ selection: worktreeWorkspaceSelection, stage: "workspace" })
-            : createNewSessionTransitionProgress(),
+          sessionID,
+          createNewSessionWorkspaceProgress({ selection: worktreeWorkspaceSelection, stage }),
         )
-        navigate(`/${base64Encode(sessionScopeKey)}/session/${session.id}`)
+      }
+      let sessionScopeKey = currentScopeKey
+      let sessionCreateScopeKey = currentScopeKey
 
-        if (worktreeWorkspaceSelection) {
-          try {
-            if (worktreeWorkspaceSelection.mode === "create") {
-              const result = await client.worktree.create({
-                directory: sessionCreateScopeKey,
-                worktreeCreateInput: {
+      const resolveSessionClient = (scopeKey: string) => {
+        sessionScopeKey = scopeKey
+        if (scopeKey !== currentScopeKey) {
+          globalSync.ensureScopeState(scopeKey)
+          return createSynergyClient({
+            baseUrl: sdk.url,
+            fetch: platform.fetch,
+            directory: scopeKey,
+            throwOnError: true,
+          })
+        }
+        return sdk.client
+      }
+      let client = resolveSessionClient(
+        isNewSession && !sdk.isHome
+          ? (input.props.newSessionCanonicalDirectory ?? projectDirectory ?? currentScopeKey)
+          : currentScopeKey,
+      )
+      if (isNewSession && !sdk.isHome) {
+        sessionCreateScopeKey = input.props.newSessionCanonicalDirectory ?? projectDirectory ?? currentScopeKey
+      }
+
+      let createdSessionForSubmit = false
+      const persistCreatedSessionFailure = (sessionID: string, title: string, message: string) => {
+        if (!createdSessionForSubmit || !newSessionRecovery) return false
+        const actions = createNewSessionRecoveryActions({
+          recovery: newSessionRecovery,
+          setRecovery: (recovery) => sessionTransition.setRecovery(currentScopeKey, recovery),
+          deleteSession: async () => {
+            await client.session.delete({ sessionID }).catch(() => undefined)
+          },
+          clearTransition: () => publishNewSessionTransition(sessionID, null),
+          navigateToComposer: () => navigate(`/${base64Encode(currentScopeKey)}/session`, { replace: true }),
+        })
+        const progress = worktreeWorkspaceSelection
+          ? createNewSessionWorkspaceErrorProgress({ title, message })
+          : createNewSessionTransitionErrorProgress({ title, message })
+        publishNewSessionTransition(sessionID, progress, actions)
+        return true
+      }
+      const failCreatedSessionSetup = (sessionID: string, title: string, message: string) => {
+        persistCreatedSessionFailure(sessionID, title, message)
+      }
+      const sessionStartFailureMessage = (message: string) =>
+        createdSessionForSubmit ? `${i18n._(PI.submitSessionNotStarted)} ${message}` : message
+
+      let session: (typeof sync.session.get extends (...args: any[]) => infer R ? R : never) | null | undefined =
+        initialSessionId ? sync.session.get(initialSessionId) : undefined
+      if (!session && isNewSession) {
+        session = await client.session
+          .create({
+            controlProfile: input.selectedControlProfile(),
+            workspace: { mode: "current" },
+          })
+          .then((x) => x.data ?? undefined)
+          .catch((err) => {
+            showToast({
+              type: "error",
+              title: i18n._(PI.submitFailedStart),
+              description: errorMessage(err),
+            })
+            return null
+          })
+        if (session === null) return
+        if (session) {
+          createdSessionForSubmit = true
+          client = resolveSessionClient(sessionCreateScopeKey)
+          local.handoffNewSessionIntent(session.id)
+          if (selectedVariant) {
+            local.model.variant.setForSession(session.id, selectedVariant, selectedModel, sessionScopeKey)
+          }
+          input.props.onNewSessionWorkspaceSelectionReset?.()
+          publishNewSessionTransition(
+            session.id,
+            worktreeWorkspaceSelection
+              ? createNewSessionWorkspaceProgress({ selection: worktreeWorkspaceSelection, stage: "workspace" })
+              : createNewSessionTransitionProgress(),
+          )
+          if (binding.isCurrent()) navigate(`/${base64Encode(sessionScopeKey)}/session/${session.id}`)
+
+          if (worktreeWorkspaceSelection) {
+            try {
+              if (worktreeWorkspaceSelection.mode === "create") {
+                const result = await client.worktree.create({
+                  directory: sessionCreateScopeKey,
+                  worktreeCreateInput: {
+                    sessionID: session.id,
+                    bind: true,
+                  },
+                })
+                const setupFailure = worktreeSetupFailureMessage(result.data)
+                if (setupFailure) throw new Error(setupFailure)
+              } else {
+                await client.worktree.enter({
+                  directory: sessionCreateScopeKey,
                   sessionID: session.id,
-                  bind: true,
-                },
+                  worktreeEnterInput: { target: worktreeWorkspaceSelection.target },
+                })
+              }
+              updateNewSessionWorktreeProgress(session.id, "message")
+            } catch (err) {
+              const message = errorMessage(err)
+              showToast({
+                type: "error",
+                title: i18n._(PI.submitFailedWorktree),
+                description: sessionStartFailureMessage(message),
               })
-              const setupFailure = worktreeSetupFailureMessage(result.data)
-              if (setupFailure) throw new Error(setupFailure)
-            } else {
-              await client.worktree.enter({
-                directory: sessionCreateScopeKey,
-                sessionID: session.id,
-                worktreeEnterInput: { target: worktreeWorkspaceSelection.target },
-              })
+              failCreatedSessionSetup(session.id, i18n._(PI.submitFailedWorktree), message)
+              return
             }
-            updateNewSessionWorktreeProgress(session.id, "message")
-          } catch (err) {
+          }
+        }
+      }
+      if (!session && initialSessionId) {
+        await sync.session.sync(initialSessionId)
+        session = sync.session.get(initialSessionId)
+      }
+      if (!session) {
+        return
+      }
+      if (isNewSession && session.controlProfile !== input.selectedControlProfile()) {
+        session = await client.session
+          .update({ sessionID: session.id, controlProfile: input.selectedControlProfile() })
+          .then((x) => x.data ?? session)
+          .catch(() => session)
+      }
+      if (!session) {
+        return
+      }
+      const failSessionSetup = (sessionID: string, title: string, message: string) => {
+        failCreatedSessionSetup(sessionID, title, message)
+      }
+      if (blueprintSlot && (session.workflow?.kind === "plan" || session.workflow?.kind === "lightloop")) {
+        const sessionID = session.id
+        const fallbackSession = session
+        const workflowName = session.workflow.kind === "plan" ? "Plan" : "Light Loop"
+        session = await client.workflow.session
+          .set({ id: sessionID, workflowSetInput: { kind: "none" } })
+          .then((x) => x.data ?? fallbackSession)
+          .catch(async (err) => {
             const message = errorMessage(err)
             showToast({
               type: "error",
-              title: i18n._(PI.submitFailedWorktree),
+              title: i18n._({ ...PI.submitFailedExitWorkflow, values: { workflow: workflowName } }),
               description: sessionStartFailureMessage(message),
             })
-            failCreatedSessionSetup(session.id, i18n._(PI.submitFailedWorktree), message)
-            return
-          }
-        }
+            failSessionSetup(
+              sessionID,
+              i18n._({ ...PI.submitFailedExitWorkflow, values: { workflow: workflowName } }),
+              message,
+            )
+            return undefined
+          })
+        if (!session) return
       }
-    }
-    if (!session && params.id) {
-      await sync.session.sync(params.id)
-      session = sync.session.get(params.id)
-    }
-    if (!session) {
-      releaseNewSessionSubmit()
-      return
-    }
-    if (isNewSession && session.controlProfile !== input.selectedControlProfile()) {
-      session = await client.session
-        .update({ sessionID: session.id, controlProfile: input.selectedControlProfile() })
-        .then((x) => x.data ?? session)
-        .catch(() => session)
-    }
-    if (!session) {
-      releaseNewSessionSubmit()
-      return
-    }
-    const failSessionSetup = (sessionID: string, title: string, message: string) => {
-      failCreatedSessionSetup(sessionID, title, message)
-    }
-    if (blueprintSlot && (session.workflow?.kind === "plan" || session.workflow?.kind === "lightloop")) {
-      const sessionID = session.id
-      const fallbackSession = session
-      const workflowName = session.workflow.kind === "plan" ? "Plan" : "Light Loop"
-      session = await client.workflow.session
-        .set({ id: sessionID, workflowSetInput: { kind: "none" } })
-        .then((x) => x.data ?? fallbackSession)
-        .catch(async (err) => {
-          const message = errorMessage(err)
-          showToast({
-            type: "error",
-            title: i18n._({ ...PI.submitFailedExitWorkflow, values: { workflow: workflowName } }),
-            description: sessionStartFailureMessage(message),
+      if (!blueprintSlot && armedPlan && !armedLattice && !armedLightLoop && session.workflow?.kind !== "plan") {
+        const sessionID = session.id
+        const fallbackSession = session
+        session = await client.workflow.session
+          .set({ id: sessionID, workflowSetInput: { kind: "plan" } })
+          .then((x) => x.data ?? fallbackSession)
+          .catch(async (err) => {
+            const message = errorMessage(err)
+            showToast({
+              type: "error",
+              title: i18n._(PI.submitFailedTogglePlan),
+              description: sessionStartFailureMessage(message),
+            })
+            failSessionSetup(sessionID, i18n._(PI.submitFailedTogglePlan), message)
+            return undefined
           })
-          failSessionSetup(
-            sessionID,
-            i18n._({ ...PI.submitFailedExitWorkflow, values: { workflow: workflowName } }),
-            message,
-          )
-          return undefined
-        })
-      if (!session) return
-    }
-    if (!blueprintSlot && armedPlan && !armedLattice && !armedLightLoop && session.workflow?.kind !== "plan") {
-      const sessionID = session.id
-      const fallbackSession = session
-      session = await client.workflow.session
-        .set({ id: sessionID, workflowSetInput: { kind: "plan" } })
-        .then((x) => x.data ?? fallbackSession)
-        .catch(async (err) => {
-          const message = errorMessage(err)
-          showToast({
-            type: "error",
-            title: i18n._(PI.submitFailedTogglePlan),
-            description: sessionStartFailureMessage(message),
-          })
-          failSessionSetup(sessionID, i18n._(PI.submitFailedTogglePlan), message)
-          return undefined
-        })
-      if (!session) return
-    }
-    if (armedLattice && session.workflow?.kind !== "lattice") {
-      const sessionID = session.id
-      const fallbackSession = session
-      session = await client.workflow.session
-        .set({
-          id: sessionID,
-          workflowSetInput: {
-            kind: "lattice",
-            mode: armedLattice.mode,
-            maxModelCalls: armedLattice.maxModelCalls,
-          },
-        })
-        .then((x) => x.data ?? fallbackSession)
-        .catch(async (err) => {
-          const message = errorMessage(err)
-          showToast({
-            type: "error",
-            title: i18n._(PI.submitFailedEnableLattice),
-            description: sessionStartFailureMessage(message),
-          })
-          failSessionSetup(sessionID, i18n._(PI.submitFailedEnableLattice), message)
-          return undefined
-        })
-      if (!session) return
-    }
-    let enabledLightLoopForSubmit: { sessionID: string } | undefined
-    if (!blueprintSlot && armedLightLoop && !armedLattice && session.workflow?.kind !== "lightloop") {
-      const sessionID = session.id
-      const fallbackSession = session
-      session = await client.workflow.session
-        .set({
-          id: sessionID,
-          workflowSetInput: { kind: "lightloop", instructions: armedLightLoopInstructions! },
-        })
-        .then((x) => {
-          enabledLightLoopForSubmit = { sessionID }
-          return x.data ?? fallbackSession
-        })
-        .catch(async (err) => {
-          const message = errorMessage(err)
-          showToast({
-            type: "error",
-            title: i18n._(PI.submitFailedLightLoop),
-            description: sessionStartFailureMessage(message),
-          })
-          failSessionSetup(sessionID, i18n._(PI.submitFailedLightLoop), message)
-          return undefined
-        })
-      if (!session) return
-    }
-    if (armedBoss && !blueprintSlot && session.workflow?.kind !== "boss") {
-      const sessionID = session.id
-      const fallbackSession = session
-      session = await client.workflow.session
-        .set({ id: sessionID, workflowSetInput: { kind: "boss" } })
-        .then((x) => {
-          input.onBossEnabled()
-          return x.data ?? fallbackSession
-        })
-        .catch(async (err) => {
-          const message = errorMessage(err)
-          showToast({
-            type: "error",
-            title: i18n._(PI.submitFailedEnableBoss),
-            description: sessionStartFailureMessage(message),
-          })
-          failSessionSetup(sessionID, i18n._(PI.submitFailedEnableBoss), message)
-          return undefined
-        })
-      if (!session) return
-    }
-    const activeSession = session!
-
-    const model = selectedModel
-    const agent = currentAgent.name
-    const variant = selectedVariant
-    const clearInput = () => {
-      prompt.resetDraft()
-      input.setStore("mode", "normal")
-      input.setStore("popover", null)
-      input.setLocalArmedLoop(null)
-    }
-
-    const failActiveSessionSubmit = (title: string, message: string, options?: { focus?: boolean }) => {
-      const persisted = persistCreatedSessionFailure(activeSession.id, title, message)
-      releaseNewSessionSubmit()
-      if (!persisted) restoreInput(options)
-    }
-
-    const rollbackLightLoopForSubmit = async () => {
-      if (!enabledLightLoopForSubmit) return
-      await client.workflow.session
-        .set({
-          id: enabledLightLoopForSubmit.sessionID,
-          workflowSetInput: { kind: "none" },
-        })
-        .catch(() => undefined)
-    }
-
-    const finishNewSessionTransition = () => {
-      if (!createdSessionForSubmit) return
-      const progress = worktreeWorkspaceSelection
-        ? createNewSessionWorkspaceSuccessProgress({ selection: worktreeWorkspaceSelection })
-        : createNewSessionTransitionSuccessProgress()
-      publishNewSessionTransition(activeSession.id, progress, {
-        dismiss: () => publishNewSessionTransition(activeSession.id, null),
-      })
-    }
-
-    const handoffNewSessionMessage = (input: { messageID: string; itemID?: string; acceptedAt: number }) => {
-      if (!createdSessionForSubmit) return
-      const accepted = worktreeWorkspaceSelection
-        ? createNewSessionWorkspaceAcceptedProgress({ selection: worktreeWorkspaceSelection })
-        : createNewSessionTransitionAcceptedProgress()
-      const success = worktreeWorkspaceSelection
-        ? createNewSessionWorkspaceSuccessProgress({ selection: worktreeWorkspaceSelection })
-        : createNewSessionTransitionSuccessProgress()
-      publishNewSessionTransition(activeSession.id, accepted, undefined, {
-        ...input,
-        accepted,
-        workspaceSelection,
-        success,
-      })
-    }
-
-    if (blueprintSlot && mode === "normal") {
-      input.setBlueprintLoading(true)
-      let createdLoopID: string | undefined
-      try {
-        const userText = text.trim()
-        let loopID: string
-        if (blueprintSlot.type === "pending") {
-          const result = await sdk.client.blueprint.loop.create({
-            blueprintLoopCreateInput: {
-              noteID: blueprintSlot.noteID,
-              title: blueprintSlot.title,
-              sessionID: activeSession.id,
-              runMode: blueprintSlot.runMode,
-              executionAgent: agent,
-              model,
+        if (!session) return
+      }
+      if (armedLattice && session.workflow?.kind !== "lattice") {
+        const sessionID = session.id
+        const fallbackSession = session
+        session = await client.workflow.session
+          .set({
+            id: sessionID,
+            workflowSetInput: {
+              kind: "lattice",
+              mode: armedLattice.mode,
+              maxModelCalls: armedLattice.maxModelCalls,
             },
           })
-          const loop = result.data
-          if (!loop?.id) throw new Error("Loop creation returned no data")
-          loopID = loop.id
-          createdLoopID = loop.id
-        } else {
-          loopID = blueprintSlot.loopID
-        }
+          .then((x) => x.data ?? fallbackSession)
+          .catch(async (err) => {
+            const message = errorMessage(err)
+            showToast({
+              type: "error",
+              title: i18n._(PI.submitFailedEnableLattice),
+              description: sessionStartFailureMessage(message),
+            })
+            failSessionSetup(sessionID, i18n._(PI.submitFailedEnableLattice), message)
+            return undefined
+          })
+        if (!session) return
+      }
+      let enabledLightLoopForSubmit: { sessionID: string } | undefined
+      if (!blueprintSlot && armedLightLoop && !armedLattice && session.workflow?.kind !== "lightloop") {
+        const sessionID = session.id
+        const fallbackSession = session
+        session = await client.workflow.session
+          .set({
+            id: sessionID,
+            workflowSetInput: { kind: "lightloop", instructions: armedLightLoopInstructions! },
+          })
+          .then((x) => {
+            enabledLightLoopForSubmit = { sessionID }
+            return x.data ?? fallbackSession
+          })
+          .catch(async (err) => {
+            const message = errorMessage(err)
+            showToast({
+              type: "error",
+              title: i18n._(PI.submitFailedLightLoop),
+              description: sessionStartFailureMessage(message),
+            })
+            failSessionSetup(sessionID, i18n._(PI.submitFailedLightLoop), message)
+            return undefined
+          })
+        if (!session) return
+      }
+      if (armedBoss && !blueprintSlot && session.workflow?.kind !== "boss") {
+        const sessionID = session.id
+        const fallbackSession = session
+        session = await client.workflow.session
+          .set({ id: sessionID, workflowSetInput: { kind: "boss" } })
+          .then((x) => {
+            input.onBossEnabled()
+            return x.data ?? fallbackSession
+          })
+          .catch(async (err) => {
+            const message = errorMessage(err)
+            showToast({
+              type: "error",
+              title: i18n._(PI.submitFailedEnableBoss),
+              description: sessionStartFailureMessage(message),
+            })
+            failSessionSetup(sessionID, i18n._(PI.submitFailedEnableBoss), message)
+            return undefined
+          })
+        if (!session) return
+      }
+      const activeSession = session!
 
+      const model = selectedModel
+      const agent = currentAgent.name
+      const variant = selectedVariant
+      const clearInput = () => {
+        if (prompt.revision() !== restoreRevision) return
+        prompt.resetDraft()
+        restoreRevision = prompt.revision()
+        if (!binding.isCurrent() && params.id !== activeSession.id) return
+        input.setStore("mode", "normal")
+        input.setStore("popover", null)
+        input.setLocalArmedLoop(null)
+      }
+
+      const failActiveSessionSubmit = (title: string, message: string, options?: { focus?: boolean }) => {
+        const persisted = persistCreatedSessionFailure(activeSession.id, title, message)
+        if (!persisted) restoreInput(options)
+      }
+
+      const rollbackLightLoopForSubmit = async () => {
+        if (!enabledLightLoopForSubmit) return
+        await client.workflow.session
+          .set({
+            id: enabledLightLoopForSubmit.sessionID,
+            workflowSetInput: { kind: "none" },
+          })
+          .catch(() => undefined)
+      }
+
+      const finishNewSessionTransition = () => {
+        if (!createdSessionForSubmit) return
+        const progress = worktreeWorkspaceSelection
+          ? createNewSessionWorkspaceSuccessProgress({ selection: worktreeWorkspaceSelection })
+          : createNewSessionTransitionSuccessProgress()
+        publishNewSessionTransition(activeSession.id, progress, {
+          dismiss: () => publishNewSessionTransition(activeSession.id, null),
+        })
+      }
+
+      const handoffNewSessionMessage = (input: { messageID: string; itemID?: string; acceptedAt: number }) => {
+        if (!createdSessionForSubmit) return
+        const accepted = worktreeWorkspaceSelection
+          ? createNewSessionWorkspaceAcceptedProgress({ selection: worktreeWorkspaceSelection })
+          : createNewSessionTransitionAcceptedProgress()
+        const success = worktreeWorkspaceSelection
+          ? createNewSessionWorkspaceSuccessProgress({ selection: worktreeWorkspaceSelection })
+          : createNewSessionTransitionSuccessProgress()
+        publishNewSessionTransition(activeSession.id, accepted, undefined, {
+          ...input,
+          accepted,
+          workspaceSelection,
+          success,
+        })
+      }
+
+      if (blueprintSlot && mode === "normal") {
+        input.setBlueprintLoading(true)
+        let createdLoopID: string | undefined
+        try {
+          const userText = text.trim()
+          let loopID: string
+          if (blueprintSlot.type === "pending") {
+            const result = await sdk.client.blueprint.loop.create({
+              blueprintLoopCreateInput: {
+                noteID: blueprintSlot.noteID,
+                title: blueprintSlot.title,
+                sessionID: activeSession.id,
+                runMode: blueprintSlot.runMode,
+                executionAgent: agent,
+                model,
+              },
+            })
+            const loop = result.data
+            if (!loop?.id) throw new Error("Loop creation returned no data")
+            loopID = loop.id
+            createdLoopID = loop.id
+          } else {
+            loopID = blueprintSlot.loopID
+          }
+
+          clearInput()
+          await sdk.client.blueprint.loop.start({ id: loopID, userPrompt: userText || undefined })
+          finishNewSessionTransition()
+        } catch (err) {
+          const message = errorMessage(err)
+          if (createdLoopID) {
+            await sdk.client.blueprint.loop.cancel({ id: createdLoopID }).catch(() => undefined)
+          }
+          showToast({
+            type: "error",
+            title: i18n._(PI.submitFailedBlueprint),
+            description: sessionStartFailureMessage(message),
+          })
+          failActiveSessionSubmit(i18n._(PI.submitFailedBlueprint), message)
+        } finally {
+          input.setBlueprintLoading(false)
+        }
+        return
+      }
+
+      if (mode === "shell") {
         clearInput()
-        await sdk.client.blueprint.loop.start({ id: loopID, userPrompt: userText || undefined })
-        finishNewSessionTransition()
-        releaseNewSessionSubmit()
-      } catch (err) {
-        const message = errorMessage(err)
-        if (createdLoopID) {
-          await sdk.client.blueprint.loop.cancel({ id: createdLoopID }).catch(() => undefined)
-        }
-        showToast({
-          type: "error",
-          title: i18n._(PI.submitFailedBlueprint),
-          description: sessionStartFailureMessage(message),
-        })
-        failActiveSessionSubmit(i18n._(PI.submitFailedBlueprint), message)
-      } finally {
-        input.setBlueprintLoading(false)
-      }
-      return
-    }
-
-    if (mode === "shell") {
-      clearInput()
-      client.session
-        .shell({
-          sessionID: activeSession.id,
-          agent,
-          model,
-          command: text,
-        })
-        .then(() => {
-          finishNewSessionTransition()
-          releaseNewSessionSubmit()
-        })
-        .catch(async (err) => {
-          const message = errorMessage(err)
-          showToast({
-            type: "error",
-            title: i18n._(PI.submitFailedShell),
-            description: sessionStartFailureMessage(message),
+        await client.session
+          .shell({
+            sessionID: activeSession.id,
+            agent,
+            model,
+            command: text,
           })
-          failActiveSessionSubmit(i18n._(PI.submitFailedShell), message)
-        })
-      return
-    }
-
-    if (slashIntent.kind === "backend-prompt" || slashIntent.kind === "backend-action") {
-      clearInput()
-      sendSessionCommand({
-        client,
-        sessionID: activeSession.id,
-        command: slashIntent.command,
-        arguments: slashIntent.arguments,
-        agent,
-        model,
-        variant,
-        attachments,
-        notes,
-        sessions,
-      })
-        .then(() => {
-          finishNewSessionTransition()
-          releaseNewSessionSubmit()
-          if (armedLightLoop) input.clearPendingLightLoop()
-        })
-        .catch(async (err) => {
-          const message = errorMessage(err)
-          await rollbackLightLoopForSubmit()
-          showToast({
-            type: "error",
-            title: i18n._(PI.submitFailedCommand),
-            description: sessionStartFailureMessage(message),
+          .then(() => {
+            finishNewSessionTransition()
           })
-          failActiveSessionSubmit(i18n._(PI.submitFailedCommand), message)
-        })
-      return
-    }
-
-    const toAbsolutePath = (path: string) =>
-      path.startsWith("/")
-        ? path
-        : ((sync.data.path.directory || projectDirectory || globalSync.data.paths.home) + "/" + path).replace("//", "/")
-
-    const getSessionPreviewData = async (attachment: SessionAttachmentPart) => {
-      const [childStore] = globalSync.ensureScopeState(attachment.directory)
-      const cachedMessages = childStore.message[attachment.sessionId]
-      if (cachedMessages !== undefined) {
-        return {
-          messages: cachedMessages,
-          getParts: (messageID: string) => childStore.part[messageID] ?? [],
-        }
+          .catch(async (err) => {
+            const message = errorMessage(err)
+            showToast({
+              type: "error",
+              title: i18n._(PI.submitFailedShell),
+              description: sessionStartFailureMessage(message),
+            })
+            failActiveSessionSubmit(i18n._(PI.submitFailedShell), message)
+          })
+        return
       }
 
-      const response = await client.session.messages({
-        directory: attachment.directory,
-        sessionID: attachment.sessionId,
-        limit: SESSION_PREVIEW_MAX_MESSAGES,
-      })
-      const items = (response.data ?? []).filter((item) => !!item?.info?.id)
-      const messages = items
-        .map((item) => item.info)
-        .filter((message) => !!message?.id)
-        .slice()
-        .sort((a, b) => a.id.localeCompare(b.id))
-      const partsByMessage = new Map(items.map((item) => [item.info.id, item.parts]))
-      return {
-        messages,
-        getParts: (messageID: string) => partsByMessage.get(messageID) ?? [],
-      }
-    }
-
-    const createSessionAttachmentPart = async (attachment: SessionAttachmentPart) => {
-      let content = formatSessionReference(attachment)
-      try {
-        const preview = await getSessionPreviewData(attachment)
-        content = formatSessionPreview({
-          attachment,
-          sessionMessages: preview.messages,
-          getParts: preview.getParts,
-        })
-      } catch {}
-
-      return {
-        id: Identifier.ascending("part"),
-        type: "attachment" as const,
-        mime: "text/plain",
-        url: `data:text/plain;base64,${base64Encode(content)}`,
-        filename: `${attachment.title || "session"}.session.txt`,
-        model: { mode: "content" as const, text: content },
-        metadata: {
-          kind: "session",
-          sessionId: attachment.sessionId,
-          directory: attachment.directory,
-          title: attachment.title || "Untitled",
-          updatedAt: attachment.updatedAt,
-        },
-      }
-    }
-
-    const sessionAttachmentParts = await Promise.all(sessions.map(createSessionAttachmentPart))
-
-    const fileAttachments = currentPrompt.filter((part) => part.type === "file") as FileAttachmentPart[]
-
-    const fileAttachmentParts = fileAttachments.map((attachment) => {
-      const absolute = toAbsolutePath(attachment.path)
-      const query = attachment.selection
-        ? `?start=${attachment.selection.startLine}&end=${attachment.selection.endLine}`
-        : ""
-      return {
-        id: Identifier.ascending("part"),
-        type: "attachment" as const,
-        mime: "text/plain",
-        url: `file://${absolute}${query}`,
-        filename: getFilename(attachment.path),
-        model: { mode: "content" as const },
-        source: {
-          type: "file" as const,
-          text: {
-            value: attachment.content,
-            start: attachment.start,
-            end: attachment.end,
-          },
-          path: absolute,
-        },
-      }
-    })
-
-    const usedUrls = new Set(fileAttachmentParts.map((part) => part.url))
-
-    const contextFileParts: Array<{
-      id: string
-      type: "attachment"
-      mime: string
-      url: string
-      filename?: string
-      model: { mode: "content" }
-    }> = []
-
-    const addContextFile = (path: string, selection?: FileSelection) => {
-      const absolute = toAbsolutePath(path)
-      const query = selection ? `?start=${selection.startLine}&end=${selection.endLine}` : ""
-      const url = `file://${absolute}${query}`
-      if (usedUrls.has(url)) return
-      usedUrls.add(url)
-      contextFileParts.push({
-        id: Identifier.ascending("part"),
-        type: "attachment",
-        mime: "text/plain",
-        url,
-        filename: getFilename(path),
-        model: { mode: "content" },
-      })
-    }
-
-    for (const item of prompt.context.items()) {
-      if (item.type !== "file") continue
-      addContextFile(item.path, item.selection)
-    }
-
-    const uploadedAttachmentParts = attachments.map(createUploadedAttachmentInputPart)
-
-    const noteAttachmentParts = notes.map((attachment) => ({
-      id: Identifier.ascending("part"),
-      type: "attachment" as const,
-      mime: "text/plain",
-      url: `data:text/plain;base64,${base64Encode(formatNoteContent(attachment))}`,
-      filename: `${attachment.title || "Untitled"}.md`,
-      model: { mode: "content" as const, text: formatNoteContent(attachment) },
-      metadata: {
-        kind: "note",
-        noteId: attachment.noteId,
-        title: attachment.title || "Untitled",
-      },
-    }))
-
-    const queueing = input.working()
-    const messageID = queueing ? undefined : Identifier.ascending("message")
-    const textPart = {
-      id: Identifier.ascending("part"),
-      type: "text" as const,
-      text: inlineText(currentPrompt),
-    }
-    const requestParts = [
-      textPart,
-      ...fileAttachmentParts,
-      ...contextFileParts,
-      ...uploadedAttachmentParts,
-      ...noteAttachmentParts,
-      ...sessionAttachmentParts,
-    ]
-
-    const optimisticParts = messageID
-      ? (requestParts.map((part) => ({
-          ...part,
+      if (slashIntent.kind === "backend-prompt" || slashIntent.kind === "backend-action") {
+        clearInput()
+        await sendSessionCommand({
+          client,
           sessionID: activeSession.id,
-          messageID,
-        })) as unknown as Part[])
-      : []
-
-    const userMessageMetadata = {
-      promptDraft: draftSnapshot,
-    }
-
-    const optimisticMessage: Message | undefined = messageID
-      ? createOptimisticUserMessage({
-          id: messageID,
-          sessionID: activeSession.id,
-          created: Date.now(),
+          command: slashIntent.command,
+          arguments: slashIntent.arguments,
           agent,
           model,
           variant,
-          metadata: userMessageMetadata,
+          attachments,
+          notes,
+          sessions,
         })
-      : undefined
-
-    const [syncStore, setSyncStore] =
-      sessionScopeKey === currentScopeKey ? [sync.data, sync.set] : globalSync.ensureScopeState(sessionScopeKey)
-
-    const addOptimisticMessage = () => {
-      if (!messageID || !optimisticMessage) return
-      const metadata = syncStore.messageWindow[activeSession.id]
-      const current: MessageWindowState<Message> = {
-        messages: syncStore.message[activeSession.id] ?? [],
-        mode: metadata?.mode ?? "latest",
-        pendingLatest: metadata?.pendingLatest ?? false,
-        pendingLatestIds: metadata?.pendingLatestIds ?? [],
-        tailMissingLatest: metadata?.tailMissingLatest ?? false,
+          .then(() => {
+            finishNewSessionTransition()
+            if (armedLightLoop) input.clearPendingLightLoop()
+          })
+          .catch(async (err) => {
+            const message = errorMessage(err)
+            await rollbackLightLoopForSubmit()
+            showToast({
+              type: "error",
+              title: i18n._(PI.submitFailedCommand),
+              description: sessionStartFailureMessage(message),
+            })
+            failActiveSessionSubmit(i18n._(PI.submitFailedCommand), message)
+          })
+        return
       }
-      const existing = current.messages.some((message) => message.id === messageID)
-      const result = reconcileMessage(current, optimisticMessage)
-      const visible = result.window.messages.some((message) => message.id === messageID)
-      globalSync.invalidateResource(sessionScopeKey, activeSession.id, "message")
-      setSyncStore(
-        produce((draft) => {
-          for (const droppedID of result.droppedIds) delete draft.part[droppedID]
-          draft.message[activeSession.id] = result.window.messages
-          draft.messageWindow[activeSession.id] = {
-            nextCursor: metadata?.nextCursor ?? null,
-            hasMore: metadata?.hasMore ?? false,
-            total: nextMessageWindowTotal({
-              total: metadata?.total ?? current.messages.length,
-              existing,
-              visible,
-            }),
-            mode: result.window.mode,
-            pendingLatest: result.window.pendingLatest,
-            pendingLatestIds: result.window.pendingLatestIds,
-            tailMissingLatest: result.window.tailMissingLatest,
-          }
-          if (visible) {
-            draft.part[messageID] = optimisticParts
-              .filter((part) => !!part?.id)
-              .slice()
-              .sort((a, b) => a.id.localeCompare(b.id))
-          }
-        }),
-      )
-    }
 
-    const handoffAcceptedOptimisticMessage = (canonicalID: string) => {
-      if (!messageID) return
-      const messages = syncStore.message[activeSession.id]
-      if (!messages) return
-      const metadata = syncStore.messageWindow[activeSession.id]
-      const result = handoffOptimisticMessage({
-        current: {
+      const toAbsolutePath = (path: string) =>
+        path.startsWith("/")
+          ? path
+          : ((sync.data.path.directory || projectDirectory || globalSync.data.paths.home) + "/" + path).replace(
+              "//",
+              "/",
+            )
+
+      const getSessionPreviewData = async (attachment: SessionAttachmentPart) => {
+        const [childStore] = globalSync.ensureScopeState(attachment.directory)
+        const cachedMessages = childStore.message[attachment.sessionId]
+        if (cachedMessages !== undefined) {
+          return {
+            messages: cachedMessages,
+            getParts: (messageID: string) => childStore.part[messageID] ?? [],
+          }
+        }
+
+        const response = await client.session.messages({
+          directory: attachment.directory,
+          sessionID: attachment.sessionId,
+          limit: SESSION_PREVIEW_MAX_MESSAGES,
+        })
+        const items = (response.data ?? []).filter((item) => !!item?.info?.id)
+        const messages = items
+          .map((item) => item.info)
+          .filter((message) => !!message?.id)
+          .slice()
+          .sort((a, b) => a.id.localeCompare(b.id))
+        const partsByMessage = new Map(items.map((item) => [item.info.id, item.parts]))
+        return {
+          messages,
+          getParts: (messageID: string) => partsByMessage.get(messageID) ?? [],
+        }
+      }
+
+      const createSessionAttachmentPart = async (attachment: SessionAttachmentPart) => {
+        let content = formatSessionReference(attachment)
+        try {
+          const preview = await getSessionPreviewData(attachment)
+          content = formatSessionPreview({
+            attachment,
+            sessionMessages: preview.messages,
+            getParts: preview.getParts,
+          })
+        } catch {}
+
+        return {
+          id: Identifier.ascending("part"),
+          type: "attachment" as const,
+          mime: "text/plain",
+          url: `data:text/plain;base64,${base64Encode(content)}`,
+          filename: `${attachment.title || "session"}.session.txt`,
+          model: { mode: "content" as const, text: content },
+          metadata: {
+            kind: "session",
+            sessionId: attachment.sessionId,
+            directory: attachment.directory,
+            title: attachment.title || "Untitled",
+            updatedAt: attachment.updatedAt,
+          },
+        }
+      }
+
+      const sessionAttachmentParts = await Promise.all(sessions.map(createSessionAttachmentPart))
+
+      const fileAttachments = currentPrompt.filter((part) => part.type === "file") as FileAttachmentPart[]
+
+      const fileAttachmentParts = fileAttachments.map((attachment) => {
+        const absolute = toAbsolutePath(attachment.path)
+        const query = attachment.selection
+          ? `?start=${attachment.selection.startLine}&end=${attachment.selection.endLine}`
+          : ""
+        return {
+          id: Identifier.ascending("part"),
+          type: "attachment" as const,
+          mime: "text/plain",
+          url: `file://${absolute}${query}`,
+          filename: getFilename(attachment.path),
+          model: { mode: "content" as const },
+          source: {
+            type: "file" as const,
+            text: {
+              value: attachment.content,
+              start: attachment.start,
+              end: attachment.end,
+            },
+            path: absolute,
+          },
+        }
+      })
+
+      const usedUrls = new Set(fileAttachmentParts.map((part) => part.url))
+
+      const contextFileParts: Array<{
+        id: string
+        type: "attachment"
+        mime: string
+        url: string
+        filename?: string
+        model: { mode: "content" }
+      }> = []
+
+      const addContextFile = (path: string, selection?: FileSelection) => {
+        const absolute = toAbsolutePath(path)
+        const query = selection ? `?start=${selection.startLine}&end=${selection.endLine}` : ""
+        const url = `file://${absolute}${query}`
+        if (usedUrls.has(url)) return
+        usedUrls.add(url)
+        contextFileParts.push({
+          id: Identifier.ascending("part"),
+          type: "attachment",
+          mime: "text/plain",
+          url,
+          filename: getFilename(path),
+          model: { mode: "content" },
+        })
+      }
+
+      for (const item of prompt.context.items()) {
+        if (item.type !== "file") continue
+        addContextFile(item.path, item.selection)
+      }
+
+      const uploadedAttachmentParts = attachments.map(createUploadedAttachmentInputPart)
+
+      const noteAttachmentParts = notes.map((attachment) => ({
+        id: Identifier.ascending("part"),
+        type: "attachment" as const,
+        mime: "text/plain",
+        url: `data:text/plain;base64,${base64Encode(formatNoteContent(attachment))}`,
+        filename: `${attachment.title || "Untitled"}.md`,
+        model: { mode: "content" as const, text: formatNoteContent(attachment) },
+        metadata: {
+          kind: "note",
+          noteId: attachment.noteId,
+          title: attachment.title || "Untitled",
+        },
+      }))
+
+      const queueing = input.working()
+      const messageID = queueing ? undefined : Identifier.ascending("message")
+      const textPart = {
+        id: Identifier.ascending("part"),
+        type: "text" as const,
+        text: inlineText(currentPrompt),
+      }
+      const requestParts = [
+        textPart,
+        ...fileAttachmentParts,
+        ...contextFileParts,
+        ...uploadedAttachmentParts,
+        ...noteAttachmentParts,
+        ...sessionAttachmentParts,
+      ]
+
+      const optimisticParts = messageID
+        ? (requestParts.map((part) => ({
+            ...part,
+            sessionID: activeSession.id,
+            messageID,
+          })) as unknown as Part[])
+        : []
+
+      const userMessageMetadata = {
+        promptDraft: draftSnapshot,
+      }
+
+      const optimisticMessage: Message | undefined = messageID
+        ? createOptimisticUserMessage({
+            id: messageID,
+            sessionID: activeSession.id,
+            created: Date.now(),
+            agent,
+            model,
+            variant,
+            metadata: userMessageMetadata,
+          })
+        : undefined
+
+      const [syncStore, setSyncStore] =
+        sessionScopeKey === currentScopeKey ? [sync.data, sync.set] : globalSync.ensureScopeState(sessionScopeKey)
+
+      const addOptimisticMessage = () => {
+        if (!messageID || !optimisticMessage) return
+        const metadata = syncStore.messageWindow[activeSession.id]
+        const current: MessageWindowState<Message> = {
+          messages: syncStore.message[activeSession.id] ?? [],
+          mode: metadata?.mode ?? "latest",
+          pendingLatest: metadata?.pendingLatest ?? false,
+          pendingLatestIds: metadata?.pendingLatestIds ?? [],
+          tailMissingLatest: metadata?.tailMissingLatest ?? false,
+        }
+        const existing = current.messages.some((message) => message.id === messageID)
+        const result = reconcileMessage(current, optimisticMessage)
+        const visible = result.window.messages.some((message) => message.id === messageID)
+        globalSync.invalidateResource(sessionScopeKey, activeSession.id, "message")
+        setSyncStore(
+          produce((draft) => {
+            for (const droppedID of result.droppedIds) delete draft.part[droppedID]
+            draft.message[activeSession.id] = result.window.messages
+            draft.messageWindow[activeSession.id] = {
+              nextCursor: metadata?.nextCursor ?? null,
+              hasMore: metadata?.hasMore ?? false,
+              total: nextMessageWindowTotal({
+                total: metadata?.total ?? current.messages.length,
+                existing,
+                visible,
+              }),
+              mode: result.window.mode,
+              pendingLatest: result.window.pendingLatest,
+              pendingLatestIds: result.window.pendingLatestIds,
+              tailMissingLatest: result.window.tailMissingLatest,
+            }
+            if (visible) {
+              draft.part[messageID] = optimisticParts
+                .filter((part) => !!part?.id)
+                .slice()
+                .sort((a, b) => a.id.localeCompare(b.id))
+            }
+          }),
+        )
+      }
+
+      const handoffAcceptedOptimisticMessage = (canonicalID: string) => {
+        if (!messageID) return
+        const messages = syncStore.message[activeSession.id]
+        if (!messages) return
+        const metadata = syncStore.messageWindow[activeSession.id]
+        const result = handoffOptimisticMessage({
+          current: {
+            messages,
+            mode: metadata?.mode ?? "latest",
+            pendingLatest: metadata?.pendingLatest ?? false,
+            pendingLatestIds: metadata?.pendingLatestIds ?? [],
+            tailMissingLatest: metadata?.tailMissingLatest ?? false,
+          },
+          optimisticParts: syncStore.part[messageID],
+          canonicalParts: syncStore.part[canonicalID],
+          optimisticID: messageID,
+          canonicalID,
+          total: metadata?.total ?? messages.length,
+        })
+        globalSync.invalidateResource(sessionScopeKey, activeSession.id, "message")
+        setSyncStore(
+          produce((draft) => {
+            draft.message[activeSession.id] = result.window.messages
+            delete draft.part[messageID]
+            if (result.canonicalParts) draft.part[canonicalID] = result.canonicalParts
+            if (metadata) {
+              draft.messageWindow[activeSession.id] = {
+                ...metadata,
+                total: result.total,
+                pendingLatest: result.window.pendingLatest,
+                pendingLatestIds: result.window.pendingLatestIds,
+              }
+            }
+          }),
+        )
+      }
+
+      const removeOptimisticMessage = () => {
+        if (!messageID) return
+        const messages = syncStore.message[activeSession.id]
+        if (!messages) return
+        const metadata = syncStore.messageWindow[activeSession.id]
+        const current: MessageWindowState<Message> = {
           messages,
           mode: metadata?.mode ?? "latest",
           pendingLatest: metadata?.pendingLatest ?? false,
           pendingLatestIds: metadata?.pendingLatestIds ?? [],
           tailMissingLatest: metadata?.tailMissingLatest ?? false,
-        },
-        optimisticParts: syncStore.part[messageID],
-        canonicalParts: syncStore.part[canonicalID],
-        optimisticID: messageID,
-        canonicalID,
-        total: metadata?.total ?? messages.length,
-      })
-      globalSync.invalidateResource(sessionScopeKey, activeSession.id, "message")
-      setSyncStore(
-        produce((draft) => {
-          draft.message[activeSession.id] = result.window.messages
-          delete draft.part[messageID]
-          if (result.canonicalParts) draft.part[canonicalID] = result.canonicalParts
-          if (metadata) {
-            draft.messageWindow[activeSession.id] = {
-              ...metadata,
-              total: result.total,
-              pendingLatest: result.window.pendingLatest,
-              pendingLatestIds: result.window.pendingLatestIds,
-            }
-          }
-        }),
-      )
-    }
-
-    const removeOptimisticMessage = () => {
-      if (!messageID) return
-      const messages = syncStore.message[activeSession.id]
-      if (!messages) return
-      const metadata = syncStore.messageWindow[activeSession.id]
-      const current: MessageWindowState<Message> = {
-        messages,
-        mode: metadata?.mode ?? "latest",
-        pendingLatest: metadata?.pendingLatest ?? false,
-        pendingLatestIds: metadata?.pendingLatestIds ?? [],
-        tailMissingLatest: metadata?.tailMissingLatest ?? false,
-      }
-      const pending = current.pendingLatestIds.includes(messageID)
-      const result = removeMessageFromWindow(current, messageID)
-      const removed = result.messages.length !== messages.length
-      globalSync.invalidateResource(sessionScopeKey, activeSession.id, "message")
-      setSyncStore(
-        produce((draft) => {
-          draft.message[activeSession.id] = result.messages
-          delete draft.part[messageID]
-          if (metadata) {
-            draft.messageWindow[activeSession.id] = {
-              ...metadata,
-              total: removed ? nextMessageWindowTotalAfterRemoval({ total: metadata.total, pending }) : metadata.total,
-              pendingLatest: result.pendingLatest,
-              pendingLatestIds: result.pendingLatestIds,
-            }
-          }
-        }),
-      )
-    }
-
-    clearInput()
-    let optimisticAdded = false
-    if (!queueing) {
-      addOptimisticMessage()
-      optimisticAdded = true
-    }
-
-    const wsConnected = sdk.connected()
-    const inboxRequest = globalSync.captureResourceRequest(sessionScopeKey, activeSession.id, "inbox")
-
-    client.session
-      .input({
-        sessionID: activeSession.id,
-        agent,
-        model,
-        ...(messageID ? { messageID } : {}),
-        parts: requestParts,
-        variant,
-        metadata: {
-          promptDraft: draftSnapshot,
-          ...(createdSessionForSubmit ? { sessionTransition: { workspaceSelection } } : {}),
-        },
-      })
-      .then((result) => {
-        const accepted = result.data
-        if (!accepted) throw new Error("Session input returned no acceptance result")
-        if (accepted.status === "queued") {
-          const item = accepted.item
-          // Guard the mutation upsert: the backend may have already consumed
-          // this item (and materialized its message) before the acceptance
-          // response lands, e.g. when the session went idle between enqueue
-          // and response. Re-inserting would resurrect a ghost inbox row.
-          // History-mode windows track unseen canonical arrivals in
-          // pendingLatestIds rather than the messages array, so both count.
-          if (
-            !isInboxItemMaterialized(
-              syncStore.message[activeSession.id],
-              item,
-              isOptimisticMessagePending,
-              syncStore.messageWindow[activeSession.id]?.pendingLatestIds,
-            )
-          ) {
-            globalSync.applyResourceMutationResponse(
-              sessionScopeKey,
-              activeSession.id,
-              "inbox",
-              inboxRequest,
-              result.response?.headers,
-              () => {
-                setSyncStore(
-                  "inbox",
-                  activeSession.id,
-                  reconcile(upsertSessionInboxItem(syncStore.inbox[activeSession.id], item), { key: "id" }),
-                )
-              },
-            )
-          }
         }
-        if (armedLightLoop) input.clearPendingLightLoop()
-        if (accepted.status === "queued" && optimisticAdded) {
-          handoffAcceptedOptimisticMessage(accepted.item.messageID)
-          optimisticAdded = false
-        }
-        handoffNewSessionMessage(
-          accepted.status === "queued"
-            ? {
-                messageID: accepted.item.messageID,
-                itemID: accepted.item.id,
-                acceptedAt: accepted.item.time.created,
+        const pending = current.pendingLatestIds.includes(messageID)
+        const result = removeMessageFromWindow(current, messageID)
+        const removed = result.messages.length !== messages.length
+        globalSync.invalidateResource(sessionScopeKey, activeSession.id, "message")
+        setSyncStore(
+          produce((draft) => {
+            draft.message[activeSession.id] = result.messages
+            delete draft.part[messageID]
+            if (metadata) {
+              draft.messageWindow[activeSession.id] = {
+                ...metadata,
+                total: removed
+                  ? nextMessageWindowTotalAfterRemoval({ total: metadata.total, pending })
+                  : metadata.total,
+                pendingLatest: result.pendingLatest,
+                pendingLatestIds: result.pendingLatestIds,
               }
-            : { messageID: accepted.messageID, acceptedAt: Date.now() },
+            }
+          }),
         )
-        releaseNewSessionSubmit()
-        if (!wsConnected) {
-          showToast({
-            type: "warning",
-            title: i18n._(PI.submitQueued),
-            description: i18n._(PI.submitSentDesc),
+      }
+
+      clearInput()
+      let optimisticAdded = false
+      if (!queueing) {
+        addOptimisticMessage()
+        optimisticAdded = true
+      }
+
+      const wsConnected = sdk.connected()
+      const inboxRequest = globalSync.captureResourceRequest(sessionScopeKey, activeSession.id, "inbox")
+
+      await client.session
+        .input({
+          sessionID: activeSession.id,
+          agent,
+          model,
+          ...(messageID ? { messageID } : {}),
+          parts: requestParts,
+          variant,
+          metadata: {
+            promptDraft: draftSnapshot,
+            ...(createdSessionForSubmit ? { sessionTransition: { workspaceSelection } } : {}),
+          },
+        })
+        .then((result) => {
+          const accepted = result.data
+          if (!accepted) throw new Error("Session input returned no acceptance result")
+          if (accepted.status === "queued") {
+            const item = accepted.item
+            // Guard the mutation upsert: the backend may have already consumed
+            // this item (and materialized its message) before the acceptance
+            // response lands, e.g. when the session went idle between enqueue
+            // and response. Re-inserting would resurrect a ghost inbox row.
+            // History-mode windows track unseen canonical arrivals in
+            // pendingLatestIds rather than the messages array, so both count.
+            if (
+              !isInboxItemMaterialized(
+                syncStore.message[activeSession.id],
+                item,
+                isOptimisticMessagePending,
+                syncStore.messageWindow[activeSession.id]?.pendingLatestIds,
+              )
+            ) {
+              globalSync.applyResourceMutationResponse(
+                sessionScopeKey,
+                activeSession.id,
+                "inbox",
+                inboxRequest,
+                result.response?.headers,
+                () => {
+                  setSyncStore(
+                    "inbox",
+                    activeSession.id,
+                    reconcile(upsertSessionInboxItem(syncStore.inbox[activeSession.id], item), { key: "id" }),
+                  )
+                },
+              )
+            }
+          }
+          if (armedLightLoop) input.clearPendingLightLoop()
+          if (accepted.status === "queued" && optimisticAdded) {
+            handoffAcceptedOptimisticMessage(accepted.item.messageID)
+            optimisticAdded = false
+          }
+          handoffNewSessionMessage(
+            accepted.status === "queued"
+              ? {
+                  messageID: accepted.item.messageID,
+                  itemID: accepted.item.id,
+                  acceptedAt: accepted.item.time.created,
+                }
+              : { messageID: accepted.messageID, acceptedAt: Date.now() },
+          )
+          if (!wsConnected) {
+            showToast({
+              type: "warning",
+              title: i18n._(PI.submitQueued),
+              description: i18n._(PI.submitSentDesc),
+            })
+          }
+        })
+        .catch(async (err) => {
+          const failure = promptSubmitFailure(err)
+          await rollbackLightLoopForSubmit()
+          if (optimisticAdded) removeOptimisticMessage()
+          const worktreeUnavailable = failure.kind === "worktree-unavailable"
+          failActiveSessionSubmit(i18n._(PI.submitFailedSend), failure.message, {
+            focus: !worktreeUnavailable,
           })
-        }
-      })
-      .catch(async (err) => {
-        const failure = promptSubmitFailure(err)
-        await rollbackLightLoopForSubmit()
-        if (optimisticAdded) removeOptimisticMessage()
-        const worktreeUnavailable = failure.kind === "worktree-unavailable"
-        failActiveSessionSubmit(i18n._(PI.submitFailedSend), failure.message, {
-          focus: !worktreeUnavailable,
+          if (worktreeUnavailable) {
+            input.onWorktreeUnavailable()
+            return
+          }
+          showToast({
+            type: "error",
+            title: i18n._(PI.submitFailedSend),
+            description: sessionStartFailureMessage(failure.message),
+          })
         })
-        if (worktreeUnavailable) {
-          input.onWorktreeUnavailable()
-          return
-        }
-        showToast({
-          type: "error",
-          title: i18n._(PI.submitFailedSend),
-          description: sessionStartFailureMessage(failure.message),
-        })
-      })
+    } finally {
+      releaseSubmit?.()
+      binding.release()
+    }
   }
 }

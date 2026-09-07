@@ -2,6 +2,7 @@ import z from "zod"
 import { BusEvent } from "../bus/bus-event"
 
 export namespace PluginEvent {
+  export const UIUpdated = BusEvent.define("plugin.ui.updated", z.object({ scopeId: z.string() }))
   export const Published = BusEvent.define(
     "plugin.event",
     z.object({

@@ -178,3 +178,34 @@ describe("ComposerDocumentController", () => {
     expect(attempts).toBe(2)
   })
 })
+
+test("read-only and composing documents reject external edits and submission", async () => {
+  let readOnly = true
+  let text = "original"
+  const controller = new ComposerDocumentController({
+    read: () => ({ text, selection: { start: 0, end: 0 }, mode: "normal" }),
+    editable: () => !readOnly,
+    applyEdits: () => {
+      text = "changed"
+    },
+  })
+  const change = () =>
+    controller.applyEdits({
+      revision: controller.current().revision,
+      edits: [{ range: { start: 0, end: 8 }, text: "changed" }],
+    })
+  try {
+    await expect(change()).rejects.toThrow("read-only")
+    await expect(controller.beforeSubmit()).rejects.toThrow("read-only")
+    readOnly = false
+    controller.setComposing(true)
+    await expect(change()).rejects.toThrow("composition")
+    await expect(controller.beforeSubmit()).rejects.toThrow("composition")
+    expect(text).toBe("original")
+    controller.setComposing(false)
+    await change()
+    expect(text).toBe("changed")
+  } finally {
+    controller.dispose()
+  }
+})

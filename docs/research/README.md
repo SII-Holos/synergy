@@ -54,3 +54,7 @@ Open questions intentionally left for later work included advanced Anthropic TTL
 | `docs/kvcache-validation-result.md`       | Quality, risk, and remaining-uncertainty assessment | Summarized; long form retired |
 
 Current prompt assembly and compaction contracts live in [LLM loop and compaction](../architecture/llm-loop.md). Current provider configuration belongs in [Configuration](../reference/configuration.md); operational performance evidence belongs in [Performance observability](../operations/performance-observability.md).
+
+### UI API 5 frontend performance
+
+[UI API 5 performance acceptance](2026-09-07-plugin-ui5-performance.md) records the same-machine production-build comparison, bounded rendering and plugin request counts for the public frontend extraction.

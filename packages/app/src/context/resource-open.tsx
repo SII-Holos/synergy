@@ -1,3 +1,4 @@
+import { usePluginHost } from "@/plugin/host"
 import { toolReviewSource } from "./tool-review-target"
 import { onCleanup, onMount, type ParentProps } from "solid-js"
 import {
@@ -82,6 +83,7 @@ export function ResourceOpenProvider(props: ParentProps) {
   const file = useFile()
   const sdk = useSDK()
   const workbench = useWorkbenchPanels()
+  const plugins = usePluginHost()
 
   const openToolReview = (target: ToolReviewTarget) => {
     void workbench.openPanel("session-review", {
@@ -161,26 +163,15 @@ export function ResourceOpenProvider(props: ParentProps) {
   }
 
   onMount(() => {
-    const listener = (event: Event) => {
-      const resource = (event as CustomEvent<{ kind: "artifact" | "file"; uri: string }>).detail
-      if (!resource?.uri) return
-      if (resource.kind === "file") {
-        openWorkspaceFile(resource.uri)
-        return
-      }
-      const path = fileUrlPath(resource.uri)
-      if (path) {
-        openWorkspaceFile(path)
-        return
-      }
-      if (/^(https?:|data:|blob:)/i.test(resource.uri)) {
-        openUrl({ url: resource.uri })
-        return
-      }
-      openWorkspaceFile(resource.uri)
-    }
-    window.addEventListener("synergy:plugin-open-resource", listener)
-    onCleanup(() => window.removeEventListener("synergy:plugin-open-resource", listener))
+    onCleanup(
+      plugins.resources.register((resource) => {
+        const path = fileUrlPath(resource.uri)
+        if (path) return openWorkspaceFile(path)
+        if (resource.kind === "file") return openWorkspaceFile(resource.uri)
+        if (/^(https?:|data:|blob:)/i.test(resource.uri)) return openUrl({ url: resource.uri })
+        return openWorkspaceFile(resource.uri)
+      }),
+    )
   })
 
   return (

@@ -3,10 +3,7 @@ import { readFile } from "node:fs/promises"
 import { chromium, type Browser } from "playwright"
 
 const libraryCss = await readFile(new URL("../../../src/components/library/library-panel.css", import.meta.url), "utf8")
-const menuFieldCss = await readFile(
-  new URL("../../../src/components/menu-field/menu-field.css", import.meta.url),
-  "utf8",
-)
+const menuFieldCss = await readFile(new URL("../../../../ui/src/components/menu-field.css", import.meta.url), "utf8")
 const themeCss = await readFile(new URL("../../../../ui/src/styles/theme.generated.css", import.meta.url), "utf8")
 
 let browser: Browser

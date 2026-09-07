@@ -1,4 +1,7 @@
-import z from "zod"
+import { PLUGIN_PAGE_IDS } from "./ui-catalog.js"
+import { z } from "zod"
+import { PluginUICondition } from "./ui-condition.js"
+import { PLUGIN_MENU_LOCATIONS } from "./ui-catalog.js"
 import { PLUGIN_API_4_BASE_SYNERGY_RANGE, PLUGIN_API_VERSION, PLUGIN_MANIFEST_VERSION } from "./version.js"
 import { McpServerConfig } from "./mcp.js"
 import { HOST_OWNED_MESSAGE_TYPES, PLUGIN_MODEL_ROLES } from "./plugin-types.js"
@@ -122,6 +125,26 @@ const AuthProviderContribution = ContributionBase.extend({
   provider: AuthProviderProfile,
 }).strict()
 
+const UICommandContribution = ContributionBase.extend({
+  kind: z.literal("ui.command"),
+  title: z.string().min(1),
+  description: z.string().optional(),
+  category: z.string().optional(),
+  keybind: z.string().optional(),
+  operation: ContributionId,
+  input: z.unknown().optional(),
+  when: PluginUICondition.optional(),
+  enabledWhen: PluginUICondition.optional(),
+}).strict()
+
+const UIMenuContribution = ContributionBase.extend({
+  kind: z.literal("ui.menu"),
+  command: ContributionId,
+  location: z.enum(PLUGIN_MENU_LOCATIONS),
+  order: z.number().int(),
+  when: PluginUICondition.optional(),
+}).strict()
+
 const UIBase = ContributionBase.extend({
   label: z.string().min(1),
   icon: z.string().optional(),
@@ -143,6 +166,12 @@ const WorkbenchPanelContribution = UIBase.extend({
 const NavigationItemContribution = UIBase.extend({
   kind: z.literal("ui.navigationItem"),
   placement: z.enum(["sidebar", "page"]),
+}).strict()
+
+const ShellContribution = UIBase.extend({
+  kind: z.literal("ui.shell"),
+  component: Component,
+  pages: z.partialRecord(z.enum(PLUGIN_PAGE_IDS), Component).optional(),
 }).strict()
 
 const MessageRendererContribution = UIBase.extend({
@@ -213,7 +242,7 @@ const SettingsContribution = UIBase.extend({
 const SlotContribution = UIBase.extend({
   kind: z.literal("ui.slot"),
   slot: z.string().min(1),
-  when: z.object({ session: z.boolean().optional() }).strict().optional(),
+  when: PluginUICondition.optional(),
   component: Component,
 }).strict()
 
@@ -226,6 +255,12 @@ const ThemeContribution = ContributionBase.extend({
     .regex(/\.json$/),
 }).strict()
 
+const SkinContribution = ThemeContribution.extend({
+  kind: z.literal("ui.skin"),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  assets: z.array(z.object({ entry: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict()),
+}).strict()
+
 const IconContribution = ContributionBase.extend({
   kind: z.literal("ui.icon"),
   path: z.string().min(1),
@@ -236,6 +271,9 @@ const LifecycleUpgradeContribution = ContributionBase.extend({ kind: z.literal("
 const LifecycleUninstallContribution = ContributionBase.extend({ kind: z.literal("lifecycle.uninstall") }).strict()
 
 export const PluginManifestContribution = z.discriminatedUnion("kind", [
+  ShellContribution,
+  UICommandContribution,
+  UIMenuContribution,
   OperationContribution,
   EventContribution,
   ToolContribution,
@@ -256,6 +294,7 @@ export const PluginManifestContribution = z.discriminatedUnion("kind", [
   SettingsContribution,
   SlotContribution,
   ThemeContribution,
+  SkinContribution,
   IconContribution,
   LifecycleInstallContribution,
   LifecycleUpgradeContribution,
@@ -264,7 +303,7 @@ export const PluginManifestContribution = z.discriminatedUnion("kind", [
 
 export type PluginManifestContribution = z.infer<typeof PluginManifestContribution>
 
-function trustedUIComponent(contribution: PluginManifestContribution) {
+export function trustedUIComponent(contribution: PluginManifestContribution) {
   if (contribution.kind === "ui.textAction") return contribution.presentation?.component
   if (!contribution.kind.startsWith("ui.") || !("component" in contribution)) return undefined
   return contribution.component
@@ -275,6 +314,20 @@ export function hasTrustedUIComponent(contribution: PluginManifestContribution):
 }
 
 const Artifact = z.object({ entry: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/i) }).strict()
+
+export const PluginUIResource = Artifact.extend({
+  kind: z.enum(["stylesheet", "asset"]),
+})
+export type PluginUIResource = z.infer<typeof PluginUIResource>
+
+export const PluginUIArtifact = Artifact.extend({
+  apiVersion: z
+    .string()
+    .regex(/^\d+\.\d+$/)
+    .optional(),
+  resources: z.array(PluginUIResource).optional(),
+})
+export type PluginUIArtifact = z.infer<typeof PluginUIArtifact>
 
 export const PluginManifestEnvelope = z
   .object({
@@ -311,7 +364,7 @@ export const PluginManifestV4 = z
       .object({
         generation: z.string().min(1),
         runtime: Artifact.optional(),
-        ui: Artifact.optional(),
+        ui: PluginUIArtifact.optional(),
       })
       .strict(),
   })
@@ -351,6 +404,44 @@ export const PluginManifestV4 = z
         })
       }
       ids.add(contributionKey)
+      if (contribution.kind === "ui.shell" && !contribution.requires?.includes("ui.shell")) {
+        context.addIssue({
+          code: "custom",
+          path: ["contributions", contribution.id, "requires"],
+          message: "Shell contributions require ui.shell",
+        })
+      }
+      if (contribution.kind === "ui.command") {
+        if (!contribution.requires?.includes("ui.commands"))
+          context.addIssue({
+            code: "custom",
+            path: ["contributions", contribution.id],
+            message: "UI commands require ui.commands",
+          })
+        if (
+          !manifest.contributions.some(
+            (item) =>
+              item.kind === "operation" &&
+              item.id === contribution.operation &&
+              item.type === "command" &&
+              item.expose.includes("ui"),
+          )
+        )
+          context.addIssue({
+            code: "custom",
+            path: ["contributions", contribution.id],
+            message: `UI-exposed command operation ${contribution.operation} is required`,
+          })
+      }
+      if (
+        contribution.kind === "ui.menu" &&
+        !manifest.contributions.some((item) => item.kind === "ui.command" && item.id === contribution.command)
+      )
+        context.addIssue({
+          code: "custom",
+          path: ["contributions", contribution.id],
+          message: `Undeclared UI command ${contribution.command}`,
+        })
       for (const required of contribution.requires ?? []) {
         if (!capabilities.has(required)) {
           context.addIssue({

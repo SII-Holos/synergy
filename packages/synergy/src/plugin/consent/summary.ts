@@ -6,6 +6,11 @@ const labels: Record<string, { title: string; description: string; category: Per
     description: "Read session metadata and content in the active Scope.",
     category: "session",
   },
+  "session.submit": {
+    title: "Send session messages",
+    description: "Submit the current composer draft through Synergy, including creating a new Session.",
+    category: "session",
+  },
   "session.control": {
     title: "Control sessions",
     description: "Abort or control sessions in the active Scope.",
@@ -74,6 +79,26 @@ const labels: Record<string, { title: string; description: string; category: Per
   "ui.hostActions": {
     title: "Use host navigation",
     description: "Open Synergy sessions, panels, and resources from plugin UI.",
+    category: "ui",
+  },
+  "workbench.read": {
+    title: "Read workbench resources",
+    description: "Read resource tabs and their recoverable state in the active workbench.",
+    category: "ui",
+  },
+  "workbench.write": {
+    title: "Manage workbench resources",
+    description: "Open, move, update and close resource tabs with host close protection.",
+    category: "ui",
+  },
+  "ui.commands": {
+    title: "Register interface commands",
+    description: "Add plugin commands to the command palette, keyboard shortcuts and declared menus.",
+    category: "ui",
+  },
+  "ui.shell": {
+    title: "Replace the workbench",
+    description: "Render the Synergy workbench and selected pages after you choose this shell.",
     category: "ui",
   },
   "composer.read": {

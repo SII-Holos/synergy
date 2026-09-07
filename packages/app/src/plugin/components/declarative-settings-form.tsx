@@ -1,7 +1,7 @@
 import { createSignal, For, Show, createEffect } from "solid-js"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { useLingui } from "@lingui/solid"
-import { SettingRow } from "@/components/settings/components/SettingRow"
+import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
 
 interface DeclarativeSettingsFormProps {
   schema: Record<string, unknown>

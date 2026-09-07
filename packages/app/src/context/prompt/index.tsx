@@ -169,6 +169,7 @@ function createPromptSession(dir: string, id: string | undefined) {
 
   const current = createMemo(() => sanitizePrompt(store.prompt))
   const dirty = createMemo(() => !isPromptEqual(current(), DEFAULT_PROMPT))
+  let revision = 0
 
   createEffect(() => markDraftSession(id, dirty()))
   onCleanup(() => clearLocalDraftMark(id))
@@ -178,6 +179,21 @@ function createPromptSession(dir: string, id: string | undefined) {
     current,
     cursor: createMemo(() => store.cursor),
     dirty,
+    revision: () => revision,
+    restoreIfUnchanged(expectedRevision: number, snapshot: { prompt: Prompt; context: PromptContextSnapshot }) {
+      if (revision !== expectedRevision) return false
+      const next = sanitizePromptContext(snapshot.context)
+      revision++
+      batch(() => {
+        setStore("prompt", sanitizePrompt(snapshot.prompt).map(clonePart))
+        setStore("context", { items: next.items.map((item) => ({ key: keyForContextItem(item), ...item })) })
+        setStore(
+          "cursor",
+          snapshot.prompt.reduce((length, part) => length + ("content" in part ? part.content.length : 0), 0),
+        )
+      })
+      return true
+    },
     context: {
       items: createMemo(() => store.context.items),
       add(item: ContextItem) {
@@ -185,22 +201,27 @@ function createPromptSession(dir: string, id: string | undefined) {
         if (!sanitized) return
         const key = keyForContextItem(sanitized)
         if (store.context.items.find((x) => x.key === key)) return
+        revision++
         setStore("context", "items", (items) => [...items, { key, ...sanitized }])
       },
       set(context: PromptContextSnapshot) {
+        revision++
         const next = sanitizePromptContext(context)
         setStore("context", {
           items: next.items.map((item) => ({ key: keyForContextItem(item), ...item })),
         })
       },
       reset() {
+        revision++
         setStore("context", { items: [] })
       },
       remove(key: string) {
+        revision++
         setStore("context", "items", (items) => items.filter((x) => x.key !== key))
       },
     },
     set(prompt: Prompt, cursorPosition?: number) {
+      revision++
       const next = sanitizePrompt(prompt).map(clonePart)
       batch(() => {
         setStore("prompt", next)
@@ -208,12 +229,14 @@ function createPromptSession(dir: string, id: string | undefined) {
       })
     },
     reset() {
+      revision++
       batch(() => {
         setStore("prompt", clonePrompt(DEFAULT_PROMPT))
         setStore("cursor", 0)
       })
     },
     resetDraft() {
+      revision++
       batch(() => {
         setStore("prompt", clonePrompt(DEFAULT_PROMPT))
         setStore("cursor", 0)
@@ -229,6 +252,7 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
   init: () => {
     const params = useParams()
     const cache = new Map<string, PromptCacheEntry>()
+    const retained = new Map<PromptSession, number>()
 
     const disposeAll = () => {
       for (const entry of cache.values()) {
@@ -239,9 +263,11 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
 
     onCleanup(disposeAll)
 
-    const prune = () => {
+    const prune = (protectedDraft?: PromptSession) => {
       while (cache.size > MAX_PROMPT_SESSIONS) {
-        const first = cache.keys().next().value
+        const first = [...cache.keys()].find(
+          (key) => !retained.has(cache.get(key)!.value) && cache.get(key)!.value !== protectedDraft,
+        )
         if (!first) return
         const entry = cache.get(first)
         entry?.dispose()
@@ -264,13 +290,30 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
       }))
 
       cache.set(key, entry)
-      prune()
+      prune(entry.value)
       return entry.value
     }
 
     const session = createMemo(() => load(params.dir!, params.id))
 
     return {
+      capture() {
+        const draft = session()
+        retained.set(draft, (retained.get(draft) ?? 0) + 1)
+        let released = false
+        return {
+          draft,
+          isCurrent: () => session() === draft,
+          release() {
+            if (released) return
+            released = true
+            const remaining = (retained.get(draft) ?? 1) - 1
+            if (remaining) retained.set(draft, remaining)
+            else retained.delete(draft)
+            prune(session())
+          },
+        }
+      },
       ready: () => session().ready(),
       current: () => session().current(),
       cursor: () => session().cursor(),

@@ -85,6 +85,7 @@ export function createWorkbenchTab(input: {
     title: input.init?.title,
     source: input.init?.source,
     state: input.init?.state,
+    dirty: input.init?.dirty,
   }
 }
 
@@ -104,6 +105,10 @@ function updateWorkbenchTab(tab: WorkbenchPanelTab, init?: WorkbenchPanelTabInit
   }
   if (init.source !== undefined && init.source !== tab.source) {
     next.source = init.source
+    changed = true
+  }
+  if (init.dirty !== undefined && init.dirty !== tab.dirty) {
+    next.dirty = init.dirty
     changed = true
   }
   if (init.state !== undefined && init.state !== tab.state) {

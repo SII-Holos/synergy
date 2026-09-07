@@ -187,3 +187,28 @@ describe("migrateWorkbenchLayout", () => {
     expect(migrateWorkbenchLayout(once)).toEqual(once)
   })
 })
+
+test("versioned resource layouts retain recoverable dirty state and reject malformed dirty flags", () => {
+  const source = {
+    workbenchSurfaces: {
+      session: {
+        side: {
+          tabs: [
+            { id: "old", panelId: "file" },
+            { id: "dirty", panelId: "plugin:resource", dirty: true, state: { draft: "unsaved" } },
+            { id: "malformed", panelId: "file", dirty: "false" },
+          ],
+        },
+      },
+    },
+  }
+  const result = migrateWorkbenchLayout(source) as {
+    version: number
+    workbenchSurfaces: typeof source.workbenchSurfaces
+  }
+  expect(result.version).toBe(1)
+  expect(result.workbenchSurfaces.session.side.tabs[1]).toMatchObject({ dirty: true, state: { draft: "unsaved" } })
+  expect(result.workbenchSurfaces.session.side.tabs[2]?.dirty).toBeUndefined()
+  expect(migrateWorkbenchLayout(result)).toEqual(result)
+  expect(migrateWorkbenchLayout({})).toMatchObject({ version: 1, workbenchSurfaces: {} })
+})

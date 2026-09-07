@@ -111,7 +111,9 @@ beforeAll(async () => {
             turnMessagesFor: (m: AnyMsg) => [m],
             compactionParentIDs: () => [],
           })
-          return createComponent(SessionConversation, {
+          return createComponent(SessionConversation, { context: {
+            onFirstTurnMounted() {},
+            canRewind: () => true,
             get sessionID() { return "ses_1" },
             get paramsDir() { return "dir" },
             get timeline() { return () => timeline() },
@@ -144,7 +146,7 @@ beforeAll(async () => {
             get anchor() { return (id: string) => "anchor-" + id },
             get terminalHeight() { return () => 100 },
             get rollbackActive() { return false },
-          })
+          } })
         }
 
         render(() => createComponent(App), document.querySelector("#root")!)

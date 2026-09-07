@@ -5,6 +5,23 @@ const alpha = { pluginId: "alpha", scopeId: "scope-one" }
 const beta = { pluginId: "beta", scopeId: "scope-one" }
 
 describe("plugin settings drafts", () => {
+  test("exposes save status for each plugin without mixing sibling failures", async () => {
+    const drafts = createPluginSettingsDrafts()
+    drafts.adopt(alpha, { enabled: false })
+    drafts.adopt(beta, { enabled: false })
+    expect(drafts.status(alpha)).toBe("saved")
+    drafts.stage(alpha, { enabled: true })
+    expect(drafts.status(alpha)).toBe("dirty")
+    await drafts.save(async (key, values) => {
+      expect(drafts.status(key)).toBe("saving")
+      throw new Error("save failed")
+    })
+    expect(drafts.status(alpha)).toBe("error")
+    expect(drafts.status(beta)).toBe("saved")
+    drafts.discard()
+    expect(drafts.status(alpha)).toBe("saved")
+  })
+
   test("stages edits without writing and saves only dirty plugins", async () => {
     const drafts = createPluginSettingsDrafts()
     const writes: Array<{ pluginId: string; values: Record<string, unknown> }> = []

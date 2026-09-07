@@ -11,7 +11,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function normalizeSurfaceState(value: unknown): WorkbenchSurfaceLayoutState | undefined {
   if (!isRecord(value)) return undefined
 
-  const tabs = Array.isArray(value.tabs) ? (value.tabs as WorkbenchPanelTab[]) : []
+  const tabs: WorkbenchPanelTab[] = Array.isArray(value.tabs)
+    ? value.tabs.flatMap((tab: unknown) => {
+        if (!isRecord(tab) || typeof tab.id !== "string" || typeof tab.panelId !== "string") return []
+        const { dirty, ...rest } = tab
+        return [{ ...rest, id: tab.id, panelId: tab.panelId, ...(typeof dirty === "boolean" ? { dirty } : {}) }]
+      })
+    : []
   return {
     ...value,
     opened: value.opened === true && tabs.length > 0,
@@ -74,7 +80,7 @@ function normalizeSidebarState(value: unknown): unknown {
 export function migrateWorkbenchLayout(value: unknown): unknown {
   if (!isRecord(value)) return value
 
-  const next: Record<string, unknown> = {}
+  const next: Record<string, unknown> = { version: 1 }
   for (const key of currentLayoutKeys) {
     if (key in value) next[key] = value[key]
   }

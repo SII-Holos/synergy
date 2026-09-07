@@ -41,7 +41,8 @@ export interface SlotEntryBase {
   /** The slot this entry contributes to, e.g. "sidebar.footer". */
   slot: string
   /** Minimal visibility conditions evaluated by the outlet. */
-  when?: { session?: boolean }
+  when?: import("@ericsanchezok/synergy-plugin").PluginUICondition
+  visible?(): boolean
   /** Lazy loader returning the trusted Solid component. Optional when a
    *  domain passes a component directly through its own entry type. */
   loader?: () => Promise<{ default: unknown }>

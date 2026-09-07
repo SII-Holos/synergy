@@ -914,3 +914,7 @@ a {
     transform: translateY(0);
   }
 }
+
+:where([data-plugin-ui]) {
+  display: contents;
+}

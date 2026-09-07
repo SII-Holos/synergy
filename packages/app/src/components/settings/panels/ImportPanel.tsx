@@ -17,7 +17,7 @@ import { overwriteImportConfirm } from "@/components/dialog/confirm-copy"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { requestErrorMessage } from "@/utils/error"
 import { getScopeLabel } from "@/utils/scope"
-import { MenuField } from "../../menu-field/MenuField"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import {
   buildImportApplyParameters,

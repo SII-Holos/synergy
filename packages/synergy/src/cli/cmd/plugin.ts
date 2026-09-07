@@ -1,3 +1,5 @@
+import { PluginPreviewCommand } from "./plugin-preview"
+import { PluginTypegenCommand } from "./plugin-typegen"
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { permissionsHashPayload } from "@ericsanchezok/synergy-plugin/integrity"
 import { PluginRuntimeCommand } from "./plugin-runtime"
@@ -761,6 +763,8 @@ export const PluginCommand = cmd({
       .command(PluginRemoveCommand)
       .command(PluginUpdateCommand)
       .command(PluginBuildCommand)
+      .command(PluginTypegenCommand)
+      .command(PluginPreviewCommand)
       .command(PluginSignCommand)
       .command(PluginPackCommand)
       .command(PluginListCommand)

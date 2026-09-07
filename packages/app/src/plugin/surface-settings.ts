@@ -1,14 +1,20 @@
-import type { PluginSurfaceContext } from "@ericsanchezok/synergy-plugin"
+import type { PluginSurfaceContext, PluginUILifetime } from "@ericsanchezok/synergy-plugin"
 
 type SettingsValues = Record<string, unknown>
 type PluginSettingsClient = {
   plugin: {
-    getConfig(input: { pluginId: string; scopeID: string }): Promise<{ data?: unknown }>
-    updateConfig(input: {
-      pluginId: string
-      scopeID: string
-      pluginConfigUpdate: SettingsValues
-    }): Promise<{ data?: unknown }>
+    getConfig(
+      input: { pluginId: string; scopeID: string },
+      options?: { signal?: AbortSignal },
+    ): Promise<{ data?: unknown }>
+    updateConfig(
+      input: {
+        pluginId: string
+        scopeID: string
+        pluginConfigUpdate: SettingsValues
+      },
+      options?: { signal?: AbortSignal },
+    ): Promise<{ data?: unknown }>
   }
 }
 
@@ -24,22 +30,35 @@ export function createPluginSurfaceSettings(input: {
   scopeId: string
   canWrite?: boolean
   events: EventTarget
+  lifetime?: PluginUILifetime
 }): PluginSurfaceContext["settings"] {
   const values = (value: unknown, fallback: SettingsValues = {}): SettingsValues =>
     value && typeof value === "object" && !Array.isArray(value) ? (value as SettingsValues) : fallback
 
   return {
     async get() {
-      const response = await input.client.plugin.getConfig({ pluginId: input.pluginId, scopeID: input.scopeId })
+      input.lifetime?.signal.throwIfAborted()
+      const response = await input.client.plugin.getConfig(
+        { pluginId: input.pluginId, scopeID: input.scopeId },
+        {
+          signal: input.lifetime?.signal,
+        },
+      )
+      input.lifetime?.signal.throwIfAborted()
       return values(response.data)
     },
     async replace(next) {
+      input.lifetime?.signal.throwIfAborted()
       if (!input.canWrite) throw new Error("Plugin is not approved for settings.write")
-      const response = await input.client.plugin.updateConfig({
-        pluginId: input.pluginId,
-        scopeID: input.scopeId,
-        pluginConfigUpdate: next,
-      })
+      const response = await input.client.plugin.updateConfig(
+        {
+          pluginId: input.pluginId,
+          scopeID: input.scopeId,
+          pluginConfigUpdate: next,
+        },
+        { signal: input.lifetime?.signal },
+      )
+      input.lifetime?.signal.throwIfAborted()
       const saved = values(response.data, next)
       input.events.dispatchEvent(
         new CustomEvent<SettingsEventDetail>("synergy:plugin-config-changed", {
@@ -54,7 +73,8 @@ export function createPluginSurfaceSettings(input: {
           listener(detail.values)
       }
       input.events.addEventListener("synergy:plugin-config-changed", onChange)
-      return () => input.events.removeEventListener("synergy:plugin-config-changed", onChange)
+      const dispose = () => input.events.removeEventListener("synergy:plugin-config-changed", onChange)
+      return input.lifetime ? input.lifetime.onDispose(dispose) : dispose
     },
   }
 }

@@ -454,6 +454,8 @@ import type {
   PluginListGlobalThemeContributionsResponses,
   PluginListUiContributionsErrors,
   PluginListUiContributionsResponses,
+  PluginReloadDevelopmentErrors,
+  PluginReloadDevelopmentResponses,
   PluginRuntimeLogsErrors,
   PluginRuntimeLogsResponses,
   PluginRuntimeStartErrors,
@@ -466,8 +468,6 @@ import type {
   PluginStatusResponses,
   PluginUpdateConfigErrors,
   PluginUpdateConfigResponses,
-  PostPluginDevReloadErrors,
-  PostPluginDevReloadResponses,
   ProviderAuthErrors,
   ProviderAuthGithubIdentityErrors,
   ProviderAuthGithubIdentityResponses,
@@ -11045,6 +11045,49 @@ export class Plugin extends HeyApiClient {
     })
   }
 
+  /**
+   * Replace an installed development plugin with a validated artifact generation
+   */
+  public reloadDevelopment<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      pluginId?: string
+      generation?: string
+      artifactDir?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "pluginId" },
+            { in: "body", key: "generation" },
+            { in: "body", key: "artifactDir" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      PluginReloadDevelopmentResponses,
+      PluginReloadDevelopmentErrors,
+      ThrowOnError
+    >({
+      url: "/plugin/dev/reload",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   runtime = new Runtime({ client: this.client })
 }
 
@@ -12427,44 +12470,6 @@ export class SynergyClient extends HeyApiClient {
   constructor(args?: { client?: Client; key?: string }) {
     super(args)
     SynergyClient.__registry.set(this, args?.key)
-  }
-
-  public postPluginDevReload<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-      pluginId?: string
-      generation?: string
-      artifactDir?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "body", key: "pluginId" },
-            { in: "body", key: "generation" },
-            { in: "body", key: "artifactDir" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<PostPluginDevReloadResponses, PostPluginDevReloadErrors, ThrowOnError>(
-      {
-        url: "/plugin/dev/reload",
-        ...options,
-        ...params,
-        headers: {
-          "Content-Type": "application/json",
-          ...options?.headers,
-          ...params.headers,
-        },
-      },
-    )
   }
 
   global = new Global({ client: this.client })

@@ -5,7 +5,7 @@ export namespace PluginArtifact {
   export const permissionsSummaryFile = "permissions.summary.json"
   export const requiredFiles = [manifestFile, integrityFile, permissionsSummaryFile] as const
   export const assetRoutePrefix = "/plugin/assets"
-  export const allowedAssetRoots = ["dist", "public", "assets", "ui", "themes", "icons"] as const
+  export const allowedAssetRoots = ["dist", "public", "assets", "ui", "themes", "skins", "icons"] as const
 }
 
 export function normalizePluginArtifactPath(filePath: string): string {

@@ -403,7 +403,7 @@ export function SessionTopBar(props: {
             </button>
           </Tooltip>
         </div>
-        <SlotOutlet slot="session.header.actions" session={Boolean(params.id)} />
+        <SlotOutlet slot="session.header.actions" sessionId={params.id} />
       </div>
     </div>
   )

@@ -1,5 +1,11 @@
+import { SkinRoot } from "@/plugin/skin-root"
+import { HostView } from "@/plugin/host-view"
+import { usePluginHost } from "@/plugin/host"
 import { createEffect, createMemo, createSignal, onCleanup, onMount, ParentProps, Show } from "solid-js"
-import { useNavigate, useParams } from "@solidjs/router"
+import { useLocation, useNavigate, useParams } from "@solidjs/router"
+import { type PluginShellService } from "@ericsanchezok/synergy-plugin"
+import { ShellOutlet } from "@/plugin/shell-outlet"
+import { getNavigationByPath } from "@/plugin/registries/navigation-registry"
 import { useLayout } from "@/context/layout"
 import { useLocale } from "@/context/locale"
 import { AP } from "@/app-i18n"
@@ -34,7 +40,8 @@ import {
   desktopWindowNativeChromeActive,
 } from "@/components/app-shell"
 import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
-import { WorkbenchPanelsProvider } from "@/context/workbench"
+import { createWorkbenchService } from "@/plugin/workbench-service"
+import { useWorkbenchPanels } from "@/context/workbench"
 import { SlotOutlet } from "@/plugin/slot-outlet"
 
 export default function Layout(props: ParentProps) {
@@ -429,15 +436,13 @@ export default function Layout(props: ParentProps) {
   })
 
   return (
-    <WorkbenchPanelsProvider>
-      <LayoutContent
-        searchOpen={searchOpen()}
-        onSearchClose={() => setSearchOpen(false)}
-        onSearchOpen={() => setSearchOpen(true)}
-      >
-        {props.children}
-      </LayoutContent>
-    </WorkbenchPanelsProvider>
+    <LayoutContent
+      searchOpen={searchOpen()}
+      onSearchClose={() => setSearchOpen(false)}
+      onSearchOpen={() => setSearchOpen(true)}
+    >
+      {props.children}
+    </LayoutContent>
   )
 }
 
@@ -446,6 +451,21 @@ function LayoutContent(
 ) {
   const layout = useLayout()
   const platform = usePlatform()
+  const location = useLocation()
+  const params = useParams()
+  const pluginHost = usePluginHost()
+  const workbench = createWorkbenchService(useWorkbenchPanels())
+  const route = createMemo(() => props.children)
+  const navigation = createMemo(() => (layout.isDesktop() ? <Sidebar onSearchOpen={props.onSearchOpen} /> : null))
+  const shell: PluginShellService = {
+    page: () => pluginHost.environment.route().page,
+    render(view) {
+      if (view === "navigation") return <HostView render={navigation} />
+      if (view === "route") return <HostView render={route} />
+      if (view === "footer") return <HostView render={() => <SlotOutlet slot="app.footer" />} />
+      throw new Error(`Host view ${view} belongs to the session page`)
+    },
+  }
 
   return (
     <div
@@ -461,17 +481,11 @@ function LayoutContent(
       <DesktopWindowChrome />
       <DesktopNativeTitlebar />
       <ConnectionBanner />
-      <div class="flex-1 min-h-0 min-w-0 flex overflow-hidden">
-        <Show when={layout.isDesktop()}>
-          <Sidebar onSearchOpen={props.onSearchOpen} />
-        </Show>
-        <main class="relative flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col contain-[layout_style_paint]">
-          {props.children}
-        </main>
-      </div>
+      <SkinRoot>
+        <ShellOutlet shell={shell} workbench={workbench} />
+      </SkinRoot>
       <GlobalSearchModal open={props.searchOpen} onClose={props.onSearchClose} />
       <Toast.Region limit={5} swipeDirection="right" pauseOnInteraction={true} />
-      <SlotOutlet slot="app.footer" />
     </div>
   )
 }
