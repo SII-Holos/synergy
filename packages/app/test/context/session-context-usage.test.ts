@@ -158,3 +158,17 @@ describe("context projection revision", () => {
     expect(revision.isCurrent("scope", "session", first)).toBe(false)
   })
 })
+
+test("releases every begun projection in a Scope before any message bucket exists", () => {
+  const revision = createSessionContextProjectionRevision()
+  const first = revision.begin("/repo", "pending")
+  const second = revision.begin("/repo", "another")
+  const neighbor = revision.begin("/repo:variant", "pending")
+  revision.releaseScope("/repo")
+  expect(revision.isCurrent("/repo", "pending", first)).toBe(false)
+  expect(revision.isCurrent("/repo", "another", second)).toBe(false)
+  expect(revision.isCurrent("/repo:variant", "pending", neighbor)).toBe(true)
+  const reopened = revision.begin("/repo", "pending")
+  expect(reopened).not.toBe(first)
+  expect(revision.isCurrent("/repo", "pending", first)).toBe(false)
+})

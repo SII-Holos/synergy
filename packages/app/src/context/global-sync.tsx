@@ -514,13 +514,7 @@ function createGlobalSync() {
   }
 
   function releaseScopeState(scopeKey: string) {
-    const store = children[scopeKey]?.[0]
-    const sessionIDs = new Set([
-      ...Object.keys(store?.message ?? {}),
-      ...Object.keys(store?.messageWindow ?? {}),
-      ...Object.keys(store?.latestContextMessage ?? {}),
-    ])
-    for (const sessionID of sessionIDs) contextProjectionRevision.release(scopeKey, sessionID)
+    contextProjectionRevision.releaseScope(scopeKey)
     delete children[scopeKey]
     watermarks.delete(scopeKey)
     replayInFlight.delete(scopeKey)
@@ -535,11 +529,8 @@ function createGlobalSync() {
       if (messageLru[i].startsWith(`${scopeKey}\n`)) messageLru.splice(i, 1)
     }
     if (activeBucketKey?.startsWith(`${scopeKey}\n`)) activeBucketKey = undefined
-    for (const [key, timer] of inboxRefreshTimers) {
-      if (!key.startsWith(`${scopeKey}:`)) continue
-      clearTimeout(timer)
-      inboxRefreshTimers.delete(key)
-    }
+    for (const timer of inboxRefreshTimers.get(scopeKey)?.values() ?? []) clearTimeout(timer)
+    inboxRefreshTimers.delete(scopeKey)
     const cortexTimer = cortexRefreshTimers.get(scopeKey)
     if (cortexTimer !== undefined) clearTimeout(cortexTimer)
     cortexRefreshTimers.delete(scopeKey)
@@ -805,18 +796,20 @@ function createGlobalSync() {
     })
   }
 
-  const inboxRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  const inboxRefreshTimers = new Map<string, Map<string, ReturnType<typeof setTimeout>>>()
   const cortexRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const terminalCortexStatuses = new Set(["completed", "error", "cancelled"])
 
   function refreshInbox(scopeKey: string, sessionID: string) {
-    const key = `${scopeKey}:${sessionID}`
-    const existing = inboxRefreshTimers.get(key)
+    let timers = inboxRefreshTimers.get(scopeKey)
+    if (!timers) inboxRefreshTimers.set(scopeKey, (timers = new Map()))
+    const existing = timers.get(sessionID)
     if (existing) clearTimeout(existing)
-    inboxRefreshTimers.set(
-      key,
+    timers.set(
+      sessionID,
       setTimeout(() => {
-        inboxRefreshTimers.delete(key)
+        timers.delete(sessionID)
+        if (!timers.size) inboxRefreshTimers.delete(scopeKey)
         const state = children[scopeKey]
         if (!state) return
         const [, setStore] = state
@@ -1812,7 +1805,9 @@ function createGlobalSync() {
     disposed = true
     unsub()
     for (const scopeKey of Object.keys(children)) releaseScopeState(scopeKey)
-    for (const timer of inboxRefreshTimers.values()) clearTimeout(timer)
+    for (const timers of inboxRefreshTimers.values()) {
+      for (const timer of timers.values()) clearTimeout(timer)
+    }
     for (const timer of cortexRefreshTimers.values()) clearTimeout(timer)
     inboxRefreshTimers.clear()
     cortexRefreshTimers.clear()

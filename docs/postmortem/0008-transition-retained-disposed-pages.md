@@ -30,6 +30,7 @@ The previous tests exercised command results, message loading, and reasoning ren
 - [Command lifecycle regression](../../packages/app/test/context/command-lifecycle.dom.test.ts): 100 page switches, reactive commands, duplicate-ID precedence, pending-transition visibility, and final disposal.
 - [Sync lifecycle regression](../../packages/app/test/context/sync-lifecycle.dom.test.ts): unmount releases the lease and aborts the actual message loader's request.
 - [Scope retention tests](../../packages/app/test/context/scope-retention.test.ts) and [GlobalSync lifecycle regression](../../packages/app/test/context/global-sync-lifecycle.dom.test.ts): overlapping leases, bounded background state, reopened instances, and delayed bootstrap/replay/list responses.
+- [Board loader regression](../../packages/app/test/components/kanban/model/board-loader.test.ts): twelve visible Scopes survive the background budget, and leaving panes release requests and leases. Scope timer cleanup distinguishes paths containing colons, and projection cleanup includes sessions with no loaded buckets.
 - [Reasoning transition regression](../../packages/ui/test/components/compact-reasoning-transition.dom.test.ts): real component and Solid control flow with streaming before commit.
 - [Frontend workflow](../../.synergy/skill/develop-frontend/SKILL.md) and [decision record](../decisions/implemented/bug-fix/2026-09-07-transition-lifecycle-retention.md): committed registration, explicit leases, and stale-response rules.
 

@@ -68,12 +68,13 @@ export function invalidateLatestSessionContextUsageMessage<T extends SessionCont
 }
 
 export function createSessionContextProjectionRevision() {
-  const revisions = new Map<string, number>()
+  const revisions = new Map<string, Map<string, number>>()
   let sequence = 0
-  const key = (scopeKey: string, sessionID: string) => `${scopeKey}\0${sessionID}`
   const advance = (scopeKey: string, sessionID: string) => {
     const next = ++sequence
-    revisions.set(key(scopeKey, sessionID), next)
+    let scope = revisions.get(scopeKey)
+    if (!scope) revisions.set(scopeKey, (scope = new Map()))
+    scope.set(sessionID, next)
     return next
   }
 
@@ -81,10 +82,15 @@ export function createSessionContextProjectionRevision() {
     begin: advance,
     invalidate: advance,
     isCurrent(scopeKey: string, sessionID: string, revision: number) {
-      return revisions.get(key(scopeKey, sessionID)) === revision
+      return revisions.get(scopeKey)?.get(sessionID) === revision
+    },
+    releaseScope(scopeKey: string) {
+      revisions.delete(scopeKey)
     },
     release(scopeKey: string, sessionID: string) {
-      revisions.delete(key(scopeKey, sessionID))
+      const scope = revisions.get(scopeKey)
+      scope?.delete(sessionID)
+      if (!scope?.size) revisions.delete(scopeKey)
     },
   }
 }

@@ -18,6 +18,9 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
     export const requests = []
     export const replays = []
     export const lists = []
+    export const inboxRequests = []
+    let inboxReady
+    export const inboxArrived = new Promise(resolve=>inboxReady=resolve)
     let listener
     export const emit = (key,seq)=>listener({name:key,details:{type:"session.status",epoch:"test-epoch",seq,properties:{sessionID:"fixture-session",status:{type:"idle"}}}})
     const ok = data => Promise.resolve({data})
@@ -26,7 +29,7 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
         scope: { bootstrap: () => options.directory.startsWith("background.") ? ok({scopeID:options.directory,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.directory,resolve})) },
         permission: {list:()=>ok([])}, question: {list:()=>ok([])},
         event:{replay:()=>new Promise(resolve=>replays.push(resolve))},
-        session:{list:()=>new Promise(resolve=>lists.push(resolve))},
+        session:{list:()=>new Promise(resolve=>lists.push(resolve)),inbox:()=>{inboxRequests.push(options.directory);inboxReady();return ok([])}},
       }
     }
     export const useGlobalSDK = () => ({connected:()=>false,event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
@@ -52,13 +55,14 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
     import { I18nProvider } from "@lingui/solid"
     import { setupI18n } from "@lingui/core"
     import { GlobalSyncProvider, useGlobalSync } from ${JSON.stringify(globalSync)}
-    import { requests, replays, lists, emit } from ${JSON.stringify(stub)}
+    import { requests, replays, lists, emit, inboxRequests, inboxArrived } from ${JSON.stringify(stub)}
     export function mount(root) {
       let api, ready
       const started = new Promise(resolve=>ready=resolve)
       function Child(){api=useGlobalSync();ready();return <div>ready</div>}
       const dispose=render(()=><I18nProvider i18n={setupI18n({locale:'en',messages:{en:{}}})}><GlobalSyncProvider><Child/></GlobalSyncProvider></I18nProvider>,root)
-      return {started,dispose,requests,emit,replays,lists,api:()=>api,
+      return {started,dispose,requests,emit,replays,lists,inboxRequests,inboxArrived,api:()=>api,
+        seedInbox(key) {api.ensureScopeState(key)[1]("inbox","fixture-session",[{id:"pending"}])},
         complete(index,version) {const request=requests[index];request.resolve({data:{scopeID:request.key,provider:{all:[]},agent:[],config:{version}}})},
         waitComplete(state) {return new Promise(resolve=>createRoot(dispose=>createComputed(()=>{if(state[0].status==='complete'){dispose();resolve()}})))},
       }
@@ -106,13 +110,21 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
       },
     })
     type State = [
-      { status: string; config: { version?: string }; session: unknown[]; session_status: Record<string, unknown> },
+      {
+        status: string
+        config: { version?: string }
+        session: unknown[]
+        session_status: Record<string, unknown>
+        latestContextMessage: Record<string, unknown>
+      },
       unknown,
     ]
     type API = {
       retainScopeState(key: string): { state: State; release(): void }
       peekScopeState(key: string): State | undefined
       ensureScopeState(key: string): State
+      beginContextProjection(key: string, sessionID: string): number
+      setLatestContextMessage(key: string, sessionID: string, message: null, revision: number): void
       failure: unknown
       scope: { loadSessions(key: string): Promise<void> }
     }
@@ -124,6 +136,9 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
         complete(index: number, version: string): void
         requests: unknown[]
         emit(key: string, seq: number): void
+        seedInbox(key: string): void
+        inboxRequests: string[]
+        inboxArrived: Promise<void>
         replays: Array<(value: unknown) => void>
         lists: Array<(value: unknown) => void>
         waitComplete(state: State): Promise<void>
@@ -184,8 +199,34 @@ test("Scope leases protect overlapping pages and reject released bootstrap resul
       expect(api.peekScopeState("background.0")).toBeUndefined()
       expect(api.peekScopeState("background.11")).toBeDefined()
       expect(api.peekScopeState("shared")).toBe(current.state)
+      const pendingRevision = api.beginContextProjection("shared", "never-loaded")
       current.release()
       expect(api.peekScopeState("shared")).toBeUndefined()
+      const latest = api.retainScopeState("shared")
+      api.setLatestContextMessage("shared", "never-loaded", null, pendingRevision)
+      expect(latest.state[0].latestContextMessage["never-loaded"]).toBeUndefined()
+      latest.release()
+      const first = api.retainScopeState("/repo")
+      const neighbor = api.retainScopeState("/repo:variant")
+      h.seedInbox("/repo")
+      h.seedInbox("/repo:variant")
+      h.emit("/repo", 1)
+      h.emit("/repo:variant", 1)
+      first.release()
+      let timeout: ReturnType<typeof setTimeout> | undefined
+      try {
+        await Promise.race([
+          h.inboxArrived,
+          new Promise(
+            (_, reject) =>
+              (timeout = setTimeout(() => reject(new Error("Neighbor Scope inbox timer was cancelled")), 5000)),
+          ),
+        ])
+        expect(h.inboxRequests).toEqual(["/repo:variant"])
+      } finally {
+        clearTimeout(timeout)
+        neighbor.release()
+      }
     } finally {
       h.dispose()
     }
