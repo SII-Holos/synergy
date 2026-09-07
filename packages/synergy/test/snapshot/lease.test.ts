@@ -12,7 +12,7 @@ test("a full-home backup excludes writes to a Scope created after it acquired ow
 
 test("maintenance excludes another process and recovers its abandoned lease", async () => {
   const key = "snapshot-process-" + crypto.randomUUID()
-  const module = new URL("../../src/session/snapshot-lease.ts", import.meta.url).pathname
+  const module = new URL("../../src/session/snapshot-lease.ts", import.meta.url).href
   const child = Bun.spawn(
     [
       process.execPath,

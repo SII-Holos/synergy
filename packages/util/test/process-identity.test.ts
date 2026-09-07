@@ -3,7 +3,7 @@ import { processStartIdentity, ticksToEpochMs, wmicCreationDateToEpochMs } from 
 
 describe("processStartIdentity", () => {
   test("different process timezones agree on a live owner's identity", async () => {
-    const module = new URL("../src/process-identity.ts", import.meta.url).pathname
+    const module = new URL("../src/process-identity.ts", import.meta.url).href
     const identities = await Promise.all(
       ["UTC", "Asia/Shanghai"].map(async (TZ) => {
         const child = Bun.spawn(
