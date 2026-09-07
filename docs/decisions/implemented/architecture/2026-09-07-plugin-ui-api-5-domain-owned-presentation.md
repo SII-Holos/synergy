@@ -12,7 +12,7 @@ UI API 5 versions executable frontend presentation separately from Backend Plugi
 
 Shells replace layout and finite pages and must expose the required extension outlet. Themes own semantic colors; structured Skins own materials and packaged resources. Plugin Kit emits a complete hashed UI graph and scopes CSS through syntax trees. The host validates author-declared UI versions before execution, stages registry generations, preserves a valid generation on failure and offers recovery before loading third-party code.
 
-Authoring preview and acceptance tests run the real production host with explicit fixture approval and isolated homes. Packed templates are exercised through the registered presentation path. The functional and workbench/Skin samples depend only on public packages.
+Authoring preview and acceptance tests run the real production host with explicit fixture approval and isolated homes. Packed templates are exercised through the registered presentation path. The functional and workbench/Skin samples depend only on public packages. Coverage prepares public package import artifacts through the build graph so clean checkouts exercise the same boundaries as normal package tests.
 
 ## Alternatives considered
 
