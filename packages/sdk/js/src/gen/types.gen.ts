@@ -1139,6 +1139,27 @@ export type StorageSnapshotUsage = {
   indexes: StorageSnapshotStatistics
 }
 
+export type StorageSnapshotCleanCandidate = {
+  sessionID: string
+  bytes: number
+  reason: "reclaimed" | "unowned"
+}
+
+export type StorageSnapshotCleanResult = {
+  scopeID: string
+  applied: boolean
+  candidates: Array<StorageSnapshotCleanCandidate>
+  removed: number
+  bytes: number
+  skippedProtected: number
+  errors: Array<string>
+}
+
+export type StorageSnapshotCleanInput = {
+  scopeID?: string
+  apply?: boolean
+}
+
 export type HolosLoginResponse = {
   url: string
 }
@@ -11288,6 +11309,37 @@ export type StorageSnapshotUsageResponses = {
 }
 
 export type StorageSnapshotUsageResponse = StorageSnapshotUsageResponses[keyof StorageSnapshotUsageResponses]
+
+export type StorageSnapshotCleanData = {
+  body: StorageSnapshotCleanInput
+  path?: never
+  query?: never
+  url: "/global/storage/snapshot/clean"
+}
+
+export type StorageSnapshotCleanErrors = {
+  /**
+   * Snapshot storage is busy or failed its integrity check; nothing was reclaimed
+   */
+  409: {
+    message: string
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageSnapshotCleanError = StorageSnapshotCleanErrors[keyof StorageSnapshotCleanErrors]
+
+export type StorageSnapshotCleanResponses = {
+  /**
+   * Per-scope clean report (candidates for dry runs, removals otherwise)
+   */
+  200: Array<StorageSnapshotCleanResult>
+}
+
+export type StorageSnapshotCleanResponse = StorageSnapshotCleanResponses[keyof StorageSnapshotCleanResponses]
 
 export type GlobalDisposeData = {
   body?: never

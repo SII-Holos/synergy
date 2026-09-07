@@ -328,4 +328,93 @@ export namespace SnapshotMaintenance {
       { signal: options.signal },
     )
   }
+
+  export interface CleanCandidate {
+    sessionID: string
+    bytes: number
+    reason: "reclaimed" | "unowned"
+  }
+
+  export interface CleanResult {
+    scopeID: string
+    applied: boolean
+    candidates: CleanCandidate[]
+    removed: number
+    bytes: number
+    skippedProtected: number
+    errors: string[]
+  }
+
+  /** True when a legacy directory may be reclaimed: no owner record and no
+   * session record (`__reclaimed__` scopes hold session records for kept
+   * sessions, so the absence of info.json is the ownership proof there). */
+  async function cleanCandidate(scopeID: string, sessionID: string): Promise<CleanCandidate | undefined> {
+    if (await SnapshotStore.owner(scopeID, sessionID)) return undefined
+    if (scopeID !== "__reclaimed__") {
+      const info = await SnapshotStore.optional<unknown>(
+        StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
+      )
+      if (info !== undefined) return undefined
+    }
+    return {
+      sessionID,
+      bytes: (await statistics(path.join(Global.Path.snapshot, scopeID, sessionID))).bytes,
+      reason: scopeID === "__reclaimed__" ? "reclaimed" : "unowned",
+    }
+  }
+
+  /**
+   * Reclaim retained legacy snapshot directories that nothing owns: no v2
+   * owner record and no session record. The shared store, owner records, and
+   * directories with either record are never touched. Dry run by default;
+   * apply additionally requires the scope integrity check to pass so a
+   * corrupted scope is rejected whole instead of partially reclaimed.
+   */
+  export async function clean(
+    scopeID: string,
+    options: { apply?: boolean; signal?: AbortSignal } = {},
+  ): Promise<CleanResult> {
+    return SnapshotLease.use(
+      scopeID,
+      true,
+      async () => {
+        const result: CleanResult = {
+          scopeID,
+          applied: false,
+          candidates: [],
+          removed: 0,
+          bytes: 0,
+          skippedProtected: 0,
+          errors: [],
+        }
+        for (const entry of await entries(path.join(Global.Path.snapshot, scopeID))) {
+          if (!entry.isDirectory() || !/^[a-zA-Z0-9_-]+$/.test(entry.name)) continue
+          if (!(await Bun.file(path.join(Global.Path.snapshot, scopeID, entry.name, "HEAD")).exists())) continue
+          const candidate = await cleanCandidate(scopeID, entry.name)
+          if (candidate) result.candidates.push(candidate)
+          else result.skippedProtected++
+        }
+        if (!options.apply || result.candidates.length === 0) return result
+        const health = await checkUnlocked(scopeID, options.signal)
+        if (!health.ok) throw new SnapshotStore.StorageError("Snapshot integrity check failed; nothing was reclaimed")
+        result.applied = true
+        for (const candidate of result.candidates) {
+          options.signal?.throwIfAborted()
+          try {
+            await fs.rm(path.join(Global.Path.snapshot, scopeID, candidate.sessionID), {
+              recursive: true,
+              force: true,
+            })
+            await fs.rm(SnapshotStore.cache(scopeID, candidate.sessionID), { recursive: true, force: true })
+            result.removed++
+            result.bytes += candidate.bytes
+          } catch (error) {
+            result.errors.push(`${candidate.sessionID}: ${error instanceof Error ? error.message : String(error)}`)
+          }
+        }
+        return result
+      },
+      { signal: options.signal },
+    )
+  }
 }

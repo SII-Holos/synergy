@@ -41,7 +41,7 @@ describe("product CLI help", () => {
   })
   test("snapshot maintenance exposes scope selection and explicit collection controls", async () => {
     const group = await cliHelp(["data", "snapshots", "--help"])
-    for (const action of ["inspect", "check", "migrate", "compact"]) expect(group).toContain(action)
+    for (const action of ["inspect", "check", "migrate", "compact", "clean"]) expect(group).toContain(action)
     const compact = await cliHelp(["data", "snapshots", "compact", "--help"])
     for (const flag of ["--scope", "--json", "--apply", "--prune"]) expect(compact).toContain(flag)
   })

@@ -1,0 +1,28 @@
+# Decision Record: Snapshot storage usage and orphan cleanup
+
+Status: implemented
+
+## Problem
+
+Shared file snapshot storage ([shared-file-snapshot-storage](../architecture/2026-09-07-shared-file-snapshot-storage.md)) gave each Scope a self-contained object store with owners, migration journals, and deletion tombstones. Two gaps remained. First, none of that state was visible in the Web app: a user could not see how much storage snapshots occupy per Scope or which sessions still sit on legacy repositories. Second — and structurally — legacy directories nobody owns are unreachable by every existing path: `migrate` intentionally skips repositories without confirmed session ownership ("retained unchanged", including the whole `__reclaimed__` scope), `compact` only prunes unreferenced objects inside the shared store, and the deletion lifecycle (`beginDelete`/`completeDelete`) only releases snapshots of permanently deleted sessions. Crash- and scope-migration-leaked legacy directories therefore accumulate forever, and nothing in the layer could ever reclaim them.
+
+## Decision
+
+Visibility and ownerless reclamation ship as increments on top of the shared-storage layer:
+
+- `GET /global/storage/snapshot` (operationId `storage.snapshot.usage`) returns `SnapshotMaintenance.inspect()` verbatim: per-Scope owner counts by backend (legacy/shared/deleted), retained-legacy directory counts (unowned, reclaimed, shared baselines, unregistered), and legacy/shared/index storage statistics. Read-only.
+- `SnapshotMaintenance.clean(scopeID, { apply })` reclaims retained legacy directories that satisfy every guard: the directory name passes the component check, a HEAD file proves it is a real legacy repository, no v2 owner record exists, and no session `info.json` exists (in the `__reclaimed__` scope the absence of a session record is the ownership proof). Each Scope runs under an exclusive `SnapshotLease`; `apply` refuses a Scope whose integrity check fails; dry run is the default. Removal covers only the legacy directory and its rebuildable `cache/snapshot-index` entry — the shared store and owner records are never touched.
+- `synergy data snapshots clean` exposes it through the CLI group with the existing `--scope/--json/--apply` conventions; `--apply` acquires the offline `ServerProcessLock` like every other mutating action. The clean action deliberately skips `registerLegacy`, which would otherwise claim unowned directories immediately before reclaiming them.
+- `POST /global/storage/snapshot/clean` (operationId `storage.snapshot.clean`) mirrors the CLI with `{ scopeID?, apply? }`, defaults to a dry run, and returns 409 when storage is busy or the integrity check fails.
+- The "Storage" settings panel renders the usage report with refresh, hosts a reclaim action (dry run → confirmation dialog → apply → refresh, surfacing 409s), carries the file-snapshot switch moved from General, and its maintenance copy documents the real CLI surface (`inspect | check | migrate | compact | clean`).
+
+## Alternatives considered
+
+- **Age-based purge with retention scheduling.** Built first against the pre-`#1333` per-session layout and discarded: after shared storage landed, per-session deletion is governed by the deletion lifecycle (`beginDelete`/`completeDelete` only release snapshots for permanently deleted sessions), so a time-based purge would either fight that contract or bypass it. Automatic retention (`snapshotRetentionDays`) was dropped with it — reclamation and deletion timing already have an owner.
+- **Leave orphans to `migrate`/`compact`.** Rejected — by design `migrate` retains unowned repositories unchanged and `compact` only reaches shared-store objects, so orphan directories are unreachable by every existing command; this is exactly the vacuum the cleanup closes.
+- **Read-only usage panel only.** Implemented first and kept, but insufficient on its own: visibility without reclamation leaves the accumulation problem open. The reclaim action was added on the same primitives.
+- **Ownerless cleanup outside the lease system.** Rejected — concurrent `track`, `migrate`, and transfer operations rely on the lease exclusion; a cleanup that bypasses it could delete a directory mid-registration or mid-migration.
+
+## Consequences
+
+Legacy directories leaked by crashes or scope migrations are now reclaimable through the CLI, HTTP, or the panel, with a dry-run default and an integrity gate on apply; on installations with large leak footprints this is the difference between a bounded and an unbounded `data/snapshot/`. The ordering contract matters: `clean` only sees directories that `registerLegacy` has not claimed, so orphans should be cleaned before running `migrate`; once registered, a legacy repository becomes migration's responsibility instead. The safety boundary is deliberately conservative — a directory with any owner record or any session record is never a candidate, and a Scope that fails its integrity check is rejected whole rather than partially reclaimed. Web-triggered reclamation goes through the same lease and integrity gates as the CLI, so the panel adds convenience without a second safety story. Age-based retention remains deliberately absent; if wanted later it should build on the deletion lifecycle rather than bypass it.

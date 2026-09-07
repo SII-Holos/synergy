@@ -1645,7 +1645,7 @@
       "get": {
         "operationId": "storage.snapshot.usage",
         "summary": "Report snapshot storage usage",
-        "description": "Per-scope file snapshot storage report: owner counts by backend, retained legacy directories (unowned, reclaimed, shared baselines, unregistered), and legacy/shared/index storage statistics. Maintenance and deletion run through `synergy data snapshots`; this endpoint is read-only.",
+        "description": "Per-scope file snapshot storage report: owner counts by backend, retained legacy directories (unowned, reclaimed, shared baselines, unregistered), and legacy/shared/index storage statistics. Read-only; reclamation is a separate POST.",
         "responses": {
           "200": {
             "description": "Snapshot storage usage per scope",
@@ -1675,6 +1675,70 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.storage.snapshot.usage({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/storage/snapshot/clean": {
+      "post": {
+        "operationId": "storage.snapshot.clean",
+        "summary": "Reclaim unowned legacy snapshot directories",
+        "description": "Reclaim retained legacy snapshot directories with no owner record and no session record, including the __reclaimed__ scope. The shared store and directories with owners are never touched. Dry run by default; apply refuses a scope whose integrity check fails. Conflicts with running maintenance or a corrupted scope return 409.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageSnapshotCleanInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Per-scope clean report (candidates for dry runs, removals otherwise)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StorageSnapshotCleanResult"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Snapshot storage is busy or failed its integrity check; nothing was reclaimed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["message"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.storage.snapshot.clean({\n  ...\n})"
           }
         ]
       }
@@ -30373,6 +30437,73 @@
           }
         },
         "required": ["scopeID", "owners", "retainedLegacy", "legacy", "shared", "indexes"]
+      },
+      "StorageSnapshotCleanCandidate": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "number",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["reclaimed", "unowned"]
+          }
+        },
+        "required": ["sessionID", "bytes", "reason"]
+      },
+      "StorageSnapshotCleanResult": {
+        "type": "object",
+        "properties": {
+          "scopeID": {
+            "type": "string"
+          },
+          "applied": {
+            "type": "boolean"
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageSnapshotCleanCandidate"
+            }
+          },
+          "removed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "bytes": {
+            "type": "number",
+            "minimum": 0
+          },
+          "skippedProtected": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["scopeID", "applied", "candidates", "removed", "bytes", "skippedProtected", "errors"]
+      },
+      "StorageSnapshotCleanInput": {
+        "type": "object",
+        "properties": {
+          "scopeID": {
+            "type": "string"
+          },
+          "apply": {
+            "default": false,
+            "type": "boolean"
+          }
+        }
       },
       "HolosLoginResponse": {
         "type": "object",

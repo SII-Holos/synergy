@@ -18621,8 +18621,56 @@ msgid "settings.stepScale.customValue"
 msgstr "Custom {value}"
 
 #. js-lingui-explicit-id
+msgid "settings.storage.clean.action"
+msgstr "Reclaim"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.busy"
+msgstr "Reclaiming..."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.confirm.description"
+msgstr "{count} snapshots ({bytes}) have no owner record and will be permanently deleted. This cannot be undone."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.confirm.label"
+msgstr "Reclaim"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.confirm.title"
+msgstr "Reclaim unowned snapshots"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.description"
+msgstr "Legacy snapshot directories with no session record, including reclaimed scopes. A dry run is shown before anything is deleted."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.failed.title"
+msgstr "Snapshot cleanup failed"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.nothing"
+msgstr "Nothing to reclaim"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.success.description"
+msgstr "Freed {bytes} from {count}."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.success.title"
+msgstr "Unowned snapshots reclaimed"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.title"
+msgstr "Reclaim unowned snapshots"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.cleanup.title"
+msgstr "Cleanup"
+
+#. js-lingui-explicit-id
 msgid "settings.storage.maintenance.description"
-msgstr "Snapshot migration, compaction, and deletion run through the CLI: synergy data snapshots inspect | migrate | compact | clean. Deletion is only performed for permanently deleted sessions."
+msgstr "Snapshot maintenance runs through the CLI (synergy data snapshots): inspect | check | migrate | compact | clean. migrate moves owned legacy repositories into the shared store, clean reclaims legacy directories that no session owns, and deletion only releases snapshots of permanently deleted sessions."
 
 #. js-lingui-explicit-id
 msgid "settings.storage.maintenance.title"

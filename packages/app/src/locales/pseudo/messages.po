@@ -18621,6 +18621,54 @@ msgid "settings.stepScale.customValue"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.storage.clean.action"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.busy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.confirm.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.confirm.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.confirm.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.failed.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.nothing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.success.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.success.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.cleanup.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.storage.maintenance.description"
 msgstr ""
 

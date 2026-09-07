@@ -107,6 +107,11 @@ manage messaging channels
 verify stored objects and historical snapshot roots
 
 
+## clean
+
+reclaim unowned legacy snapshot directories (dry-run unless --apply)
+
+
 ## compact
 
 pack shared snapshots (dry-run unless --apply)
