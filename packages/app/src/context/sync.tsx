@@ -33,7 +33,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
   init: () => {
     const globalSync = useGlobalSync()
     const sdk = useSDK()
-    const [store, setStore] = globalSync.ensureScopeState(sdk.scopeKey)
+    const scope = globalSync.retainScopeState(sdk.scopeKey)
+    onCleanup(scope.release)
+    const [store, setStore] = scope.state
     const absolute = (path: string) => (store.path.directory + "/" + path).replace("//", "/")
     const chunk = 200
     const inflight = new Map<string, TrackedSessionSync>()
@@ -207,6 +209,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       errorMessage: (error) => requestErrorMessage(error, "Couldn’t load conversation"),
       onState: (sessionID, state) => setMeta("messageLoad", sessionID, state),
     })
+
+    onCleanup(messageLoader.dispose)
 
     const loadMessagePage = (
       sessionID: string,
@@ -520,10 +524,5 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         return store.path.directory
       },
     }
-
-    onCleanup(() => {
-      messageLoader.dispose()
-      globalSync.releaseScopeState(sdk.scopeKey)
-    })
   },
 })

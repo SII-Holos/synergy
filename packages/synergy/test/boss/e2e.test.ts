@@ -127,14 +127,23 @@ describe("Boss Mode end-to-end", () => {
       const boss = await Session.create({})
       await SessionWorkflowService.enableBoss(boss.id)
       const worker = await BossService.spawn(boss.id, { role: "code" })
-      await BossService.assign(boss.id, { sessionID: worker.id, taskID: "t-1", task: "Do it" })
-
-      await SessionWorkflowService.setNone(boss.id)
-      await expect(BossService.status(boss.id)).rejects.toThrow("not part of a Boss Mode tree")
-
-      // Worker keeps its task and remains addressable for cleanup/archive.
-      expect(await SessionInbox.list(worker.id)).toHaveLength(1)
-      expect(worker.workflow?.kind).toBe("boss")
+      // Hold the worker loop while asserting pending work: assign schedules an
+      // asynchronous wake that can otherwise drain the inbox before setNone returns.
+      const lease = SessionManager.acquire(worker.id)
+      expect(lease).toBeDefined()
+      try {
+        await BossService.assign(boss.id, { sessionID: worker.id, taskID: "t-1", task: "Do it" })
+        const before = await SessionInbox.list(worker.id)
+        expect(before).toHaveLength(1)
+        await SessionWorkflowService.setNone(boss.id)
+        await expect(BossService.status(boss.id)).rejects.toThrow("not part of a Boss Mode tree")
+        expect((await SessionInbox.list(worker.id)).map((item) => item.id)).toEqual(before.map((item) => item.id))
+        expect((await Session.get(worker.id)).workflow?.kind).toBe("boss")
+      } finally {
+        await SessionInbox.removeByMode(worker.id, ["task"])
+        await SessionManager.release(lease!, { requestNextWork: false })
+        SessionManager.unregisterRuntime(worker.id)
+      }
     })
   })
 })

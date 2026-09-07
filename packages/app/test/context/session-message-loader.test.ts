@@ -118,3 +118,34 @@ describe("session message loader", () => {
     })
   })
 })
+
+test("releasing a pending session aborts it and cannot collide with a reopened generation", async () => {
+  const first = deferred<string>(),
+    second = deferred<string>()
+  const requests = [first, second]
+  const signals: AbortSignal[] = []
+  const applied: string[] = []
+  const loader = createSessionMessageLoader<string>({
+    request: (_key, signal) => {
+      signals.push(signal)
+      return requests.shift()!.promise
+    },
+    apply: (_key, value) => {
+      applied.push(value)
+    },
+    errorMessage: String,
+  })
+  const old = loader.load("session")
+  loader.release("session")
+  expect(signals[0]!.aborted).toBe(true)
+  expect(loader.state("session").phase).toBe("idle")
+  const current = loader.load("session")
+  first.resolve("old")
+  await old
+  expect(applied).toEqual([])
+  expect(loader.state("session").phase).toBe("loading")
+  second.resolve("new")
+  await current
+  expect(applied).toEqual(["new"])
+  loader.dispose()
+})

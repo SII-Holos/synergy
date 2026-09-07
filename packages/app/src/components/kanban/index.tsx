@@ -113,6 +113,7 @@ export function KanbanPanel() {
   const [loadStates, setLoadStates] = createStore<Record<string, BoardPaneLoadState>>({})
   const boardLoader = createBoardLoader({
     ensureScopeState: (scopeKey) => globalSync.ensureScopeState(scopeKey),
+    retainScopeState: (scopeKey) => globalSync.retainScopeState(scopeKey),
     captureResourceRequest: (scopeKey, sessionID, resource) =>
       globalSync.captureResourceRequest(scopeKey, sessionID, resource),
     capturePartSnapshotRequest: (scopeKey, sessionID) => globalSync.capturePartSnapshotRequest(scopeKey, sessionID),
@@ -131,9 +132,9 @@ export function KanbanPanel() {
     scopeRequest: (scopeKey) =>
       (isHomeScope(scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }) as Record<string, string>,
     scopeReconnectVersion: (scopeKey) => globalSync.scopeReconnectVersion(scopeKey),
-    messagePage: (input) => {
+    messagePage: (input, options) => {
       const client = createSynergyClient({ baseUrl: globalSDK.url, ...input.scopeRequest, throwOnError: true })
-      return client.session.messagePage({ sessionID: input.sessionID, limit: input.limit })
+      return client.session.messagePage({ sessionID: input.sessionID, limit: input.limit }, options)
     },
     plan: planMessagePageApply,
     reconcile: (value, options) => reconcile(value, options) as never,

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { createBoardLoader, type BoardLoaderDeps } from "../../../../src/components/kanban/model/board-loader"
 import type { SyncResourceRequest } from "../../../../src/context/sync-resource-freshness"
 import type { SessionPartSnapshotRequest } from "../../../../src/context/session-part-snapshot-freshness"
+import { createScopeRetention } from "../../../../src/context/scope-retention"
 import { planMessagePageApply } from "../../../../src/context/session-message-page"
 
 function message(id: string, created: number) {
@@ -43,6 +44,7 @@ function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
     bucketSnapshots,
     partActions,
     ensureScopeState,
+    retainScopeState: () => ({ release() {} }),
     captureResourceRequest: (_s, sessionID) => ({ sessionID }) as unknown as SyncResourceRequest,
     capturePartSnapshotRequest: (_s, _sid) => ({ generation: 1, revisions: new Map() }) as SessionPartSnapshotRequest,
     partSnapshotAction: (_s, _sid, messageID) => partActions[messageID] ?? "apply",
@@ -179,4 +181,59 @@ describe("createBoardLoader", () => {
     await new Promise((r) => setTimeout(r, 10))
     expect(deps.messagePages).toEqual([])
   })
+})
+
+test("visible board Scopes survive the inactive budget and release with their final pane", async () => {
+  const resident = new Set<string>()
+  const retention = createScopeRetention((key) => resident.delete(key))
+  const held: { resolve: (value: {}) => void; promise: Promise<{}> }[] = []
+  const signals = new Map<string, AbortSignal>()
+  const deps = makeDeps({
+    ensureScopeState: (key) => {
+      resident.add(key)
+      retention.touch(key)
+      return [{}, () => {}]
+    },
+    retainScopeState: (key) => {
+      const release = retention.retain(key)
+      resident.add(key)
+      return { release }
+    },
+    messagePage: (input, options) => {
+      signals.set(input.sessionID, options.signal)
+      let resolve!: (value: {}) => void
+      const promise = new Promise<{}>((done) => (resolve = done))
+      held.push({ promise, resolve })
+      return promise
+    },
+  })
+  const loader = createBoardLoader(deps)
+  const panes = Array.from({ length: 12 }, (_, i) => ({ scopeKey: "/scope-" + i, sessionID: "session-" + i }))
+  const other = retention.retain(panes[0]!.scopeKey)
+  try {
+    loader.syncPanes([...panes, { scopeKey: panes[0]!.scopeKey, sessionID: "second-pane" }])
+    expect(panes.every((pane) => resident.has(pane.scopeKey))).toBe(true)
+    for (let i = 0; i < 20; i++) deps.ensureScopeState("/background-" + i)
+    expect(panes.every((pane) => resident.has(pane.scopeKey))).toBe(true)
+    loader.syncPanes([{ scopeKey: panes[0]!.scopeKey, sessionID: "second-pane" }])
+    expect(resident.has(panes[0]!.scopeKey)).toBe(true)
+    expect(panes.slice(1).every((pane) => !resident.has(pane.scopeKey))).toBe(true)
+    expect(panes.every((pane) => signals.get(pane.sessionID)?.aborted)).toBe(true)
+    expect(signals.get("second-pane")?.aborted).toBe(false)
+    expect(loader.state(panes[1]!.scopeKey, panes[1]!.sessionID).phase).toBe("idle")
+    loader.syncPanes([])
+    expect(signals.get("second-pane")?.aborted).toBe(true)
+    expect(resident.has(panes[0]!.scopeKey)).toBe(true)
+    other()
+    expect(resident.has(panes[0]!.scopeKey)).toBe(false)
+    loader.syncPanes(panes)
+    loader.dispose()
+    expect(panes.every((pane) => !resident.has(pane.scopeKey))).toBe(true)
+    expect(panes.every((pane) => signals.get(pane.sessionID)?.aborted)).toBe(true)
+  } finally {
+    loader.dispose()
+    other()
+    for (const request of held.values()) request.resolve({})
+    await Promise.all(Array.from(held.values(), (request) => request.promise))
+  }
 })

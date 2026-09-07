@@ -34,6 +34,7 @@ type BoardScopeStore = {
 
 export type BoardLoaderDeps = {
   ensureScopeState: (scopeKey: string) => unknown[]
+  retainScopeState: (scopeKey: string) => { release: () => void }
   captureResourceRequest: (scopeKey: string, sessionID: string, resource: "message") => SyncResourceRequest
   capturePartSnapshotRequest: (scopeKey: string, sessionID: string) => SessionPartSnapshotRequest
   partSnapshotAction: (
@@ -62,11 +63,14 @@ export type BoardLoaderDeps = {
   /** Whether the scope store still holds the message-window snapshot for this
    * session (false after the global-sync LRU evicts the bucket). */
   hasBucketSnapshot: (scopeKey: string, sessionID: string) => boolean
-  messagePage: (input: {
-    scopeRequest: Record<string, string>
-    sessionID: string
-    limit: number
-  }) => Promise<BoardMessagePageResult>
+  messagePage: (
+    input: {
+      scopeRequest: Record<string, string>
+      sessionID: string
+      limit: number
+    },
+    options: { signal: AbortSignal },
+  ) => Promise<BoardMessagePageResult>
   scopeRequest: (scopeKey: string) => Record<string, string>
   plan: typeof planMessagePageApply
   reconcile: (value: unknown, options?: { key: string }) => unknown
@@ -93,11 +97,14 @@ export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
       // Capture part freshness before the request so deltas arriving while the
       // page is in flight supersede this snapshot (mirrors the session loader).
       const partSnapshotRequest = deps.capturePartSnapshotRequest(scopeKey, sessionID)
-      const response = await deps.messagePage({
-        scopeRequest: deps.scopeRequest(scopeKey),
-        sessionID,
-        limit: LIMIT,
-      })
+      const response = await deps.messagePage(
+        {
+          scopeRequest: deps.scopeRequest(scopeKey),
+          sessionID,
+          limit: LIMIT,
+        },
+        { signal },
+      )
       if (signal.aborted) throw new DOMException("Aborted", "AbortError")
       return { response, request, revision, partSnapshotRequest }
     },
@@ -169,9 +176,7 @@ export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
   })
 
   const lastReconnectVersion = new Map<string, number>()
-  // Keys that left the board; reload them the next time they rejoin instead of
-  // trusting a stale phase (their bucket may have been LRU-evicted meanwhile).
-  const dirty = new Set<string>()
+  const scopeLeases = new Map<string, { release: () => void }>()
   let lastPanes = new Set<string>()
   let disposed = false
 
@@ -186,21 +191,31 @@ export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
 
   function syncPanes(panes: { scopeKey: string; sessionID: string }[]) {
     if (disposed) return
+    const wanted = new Set(panes.map((pane) => `${pane.scopeKey}\n${pane.sessionID}`))
+    const wantedScopes = new Set(panes.map((pane) => pane.scopeKey))
+    for (const scopeKey of wantedScopes) {
+      if (!scopeLeases.has(scopeKey)) scopeLeases.set(scopeKey, deps.retainScopeState(scopeKey))
+    }
+    for (const key of lastPanes) {
+      if (!wanted.has(key)) loader.release(key)
+    }
+    for (const [scopeKey, lease] of scopeLeases) {
+      if (wantedScopes.has(scopeKey)) continue
+      lease.release()
+      scopeLeases.delete(scopeKey)
+      lastReconnectVersion.delete(scopeKey)
+    }
+    lastPanes = wanted
     const seen = new Set<string>()
-    const wanted = new Set<string>()
     for (const pane of panes) {
       const key = `${pane.scopeKey}\n${pane.sessionID}`
       if (seen.has(key)) continue
       seen.add(key)
-      wanted.add(key)
       const version = deps.scopeReconnectVersion(pane.scopeKey)
       const last = lastReconnectVersion.get(pane.scopeKey) ?? 0
       if (version > last) {
         lastReconnectVersion.set(pane.scopeKey, version)
         void loader.load(key, { force: true, input: { scopeKey: pane.scopeKey, sessionID: pane.sessionID } })
-      } else if (dirty.has(key)) {
-        dirty.delete(key)
-        load(pane.scopeKey, pane.sessionID)
       } else if (loader.state(key).phase === "idle") {
         // Skip panes that are already loaded/loading; navigation updates must
         // not refetch every visible transcript. Only reconnects force a reload.
@@ -212,13 +227,6 @@ export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
         void loader.load(key, { force: true, input: { scopeKey: pane.scopeKey, sessionID: pane.sessionID } })
       }
     }
-    for (const key of lastPanes) {
-      if (wanted.has(key)) continue
-      const sep = key.indexOf("\n")
-      if (sep === -1) continue
-      dirty.add(key)
-    }
-    lastPanes = wanted
   }
 
   return {
@@ -230,6 +238,10 @@ export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
     dispose() {
       disposed = true
       loader.dispose()
+      for (const lease of scopeLeases.values()) lease.release()
+      scopeLeases.clear()
+      lastPanes.clear()
+      lastReconnectVersion.clear()
     },
     syncPanes,
   }
