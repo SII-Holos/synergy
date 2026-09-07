@@ -49,8 +49,34 @@ const maintenanceTitle = { id: "settings.storage.maintenance.title", message: "M
 const maintenanceDescription = {
   id: "settings.storage.maintenance.description",
   message:
-    "Snapshot maintenance runs through the CLI (synergy data snapshots): inspect | check | migrate | compact | clean. migrate moves owned legacy repositories into the shared store, clean reclaims legacy directories that no session owns, and deletion only releases snapshots of permanently deleted sessions.",
+    "inspect and check run through the CLI (synergy data snapshots). migrate and compact can also run here, each with a dry run first; clean reclaims legacy directories that no session owns.",
 }
+const migrateTitle = { id: "settings.storage.migrate.title", message: "Migrate legacy snapshots" }
+const migrateDescription = {
+  id: "settings.storage.migrate.description",
+  message:
+    "Move legacy snapshot repositories that still have session ownership into the shared object store. A dry run is shown first; repositories without a confirmed session record are skipped and retained.",
+}
+const migrateActionLabel = { id: "settings.storage.migrate.action", message: "Migrate" }
+const migrateBusyLabel = { id: "settings.storage.migrate.busy", message: "Migrating..." }
+const migrateNothingLabel = { id: "settings.storage.migrate.nothing", message: "No legacy snapshots to migrate" }
+const migrateConfirmTitle = { id: "settings.storage.migrate.confirm.title", message: "Migrate legacy snapshots" }
+const migrateConfirmLabel = { id: "settings.storage.migrate.confirm.label", message: "Migrate" }
+const migrateSuccessTitle = { id: "settings.storage.migrate.success.title", message: "Legacy snapshots migrated" }
+const migrateFailedTitle = { id: "settings.storage.migrate.failed.title", message: "Snapshot migration failed" }
+const compactTitle = { id: "settings.storage.compact.title", message: "Pack shared storage" }
+const compactDescription = {
+  id: "settings.storage.compact.description",
+  message:
+    "Repack the shared object store to reclaim space. A dry run is shown first; integrity checks run before anything is rewritten.",
+}
+const compactActionLabel = { id: "settings.storage.compact.action", message: "Pack" }
+const compactBusyLabel = { id: "settings.storage.compact.busy", message: "Packing..." }
+const compactNothingLabel = { id: "settings.storage.compact.nothing", message: "No shared storage to pack" }
+const compactConfirmTitle = { id: "settings.storage.compact.confirm.title", message: "Pack shared storage" }
+const compactConfirmLabel = { id: "settings.storage.compact.confirm.label", message: "Pack" }
+const compactSuccessTitle = { id: "settings.storage.compact.success.title", message: "Shared storage packed" }
+const compactFailedTitle = { id: "settings.storage.compact.failed.title", message: "Snapshot packing failed" }
 
 function ownerSharedSummary(count: number) {
   return {
@@ -114,6 +140,39 @@ function cleanPartialDescription(count: string, first: string) {
   }
 }
 
+function migrateConfirmDescription(count: string) {
+  return {
+    id: "settings.storage.migrate.confirm.description",
+    message:
+      "{count} legacy repositories will move into the shared object store. Each is verified before its old copy is removed.",
+    values: { count },
+  }
+}
+
+function migrateSuccessDescription(migrated: string, skipped: string) {
+  return {
+    id: "settings.storage.migrate.success.description",
+    message: "{migrated} repositories migrated, {skipped} skipped.",
+    values: { migrated, skipped },
+  }
+}
+
+function compactConfirmDescription(bytes: string) {
+  return {
+    id: "settings.storage.compact.confirm.description",
+    message: "The shared store currently holds {bytes}. It will be repacked; integrity checks run first.",
+    values: { bytes },
+  }
+}
+
+function compactSuccessDescription(before: string, after: string) {
+  return {
+    id: "settings.storage.compact.success.description",
+    message: "Shared store: {before} → {after}.",
+    values: { before, after },
+  }
+}
+
 export function StoragePanel(props: {
   general: GeneralStore
   onGeneralChange: <K extends keyof GeneralStore>(key: K, value: GeneralStore[K]) => void
@@ -123,6 +182,7 @@ export function StoragePanel(props: {
   const globalSDK = useGlobalSDK()
   const confirm = useConfirm()
   const [cleaning, setCleaning] = createSignal(false)
+  const [maintenance, setMaintenance] = createSignal<false | "migrate" | "compact">(false)
 
   const [usage, { refetch }] = createResource(async () => {
     const response = await globalSDK.client.storage.snapshot.usage()
@@ -195,6 +255,134 @@ export function StoragePanel(props: {
       showToast({ type: "error", title: _(cleanFailedTitle), description: requestErrorMessage(error) })
     } finally {
       setCleaning(false)
+    }
+  }
+
+  async function migrateLegacy() {
+    if (maintenance()) return
+    setMaintenance("migrate")
+    try {
+      const dry = await globalSDK.client.storage.snapshot.migrate({ storageSnapshotMigrateInput: { apply: false } })
+      if (dry.error) {
+        showToast({ type: "error", title: _(migrateFailedTitle), description: requestErrorMessage(dry.error) })
+        return
+      }
+      const reports = dry.data?.results ?? []
+      const count = reports.reduce(
+        (sum, entry) => sum + entry.results.filter((result) => result.status === "pending").length,
+        0,
+      )
+      if (count === 0) {
+        showToast({ type: "info", title: _(migrateNothingLabel) })
+        return
+      }
+      confirm.show({
+        title: _(migrateConfirmTitle),
+        description: _(migrateConfirmDescription(String(count))),
+        confirmLabel: _(migrateConfirmLabel),
+        tone: "neutral",
+        onConfirm: async () => {
+          const applied = await globalSDK.client.storage.snapshot.migrate({
+            storageSnapshotMigrateInput: { apply: true },
+          })
+          if (applied.error) {
+            showToast({ type: "error", title: _(migrateFailedTitle), description: requestErrorMessage(applied.error) })
+            return
+          }
+          const batch = applied.data ?? { results: [], failures: [] }
+          const migrated = batch.results.reduce(
+            (sum, entry) => sum + entry.results.filter((result) => result.status === "migrated").length,
+            0,
+          )
+          const skipped = batch.results.reduce(
+            (sum, entry) => sum + entry.results.filter((result) => result.status === "skipped").length,
+            0,
+          )
+          const issues = [
+            ...batch.failures.map((entry) => `${entry.scopeID}: ${entry.message}`),
+            ...batch.results.flatMap((entry) =>
+              entry.results
+                .filter((result) => result.status === "failed")
+                .map((result) => `${result.sessionID}: ${result.reason ?? "failed"}`),
+            ),
+          ]
+          if (issues.length > 0)
+            showToast({
+              type: "warning",
+              title: _(migrateFailedTitle),
+              description: _(cleanPartialDescription(String(issues.length), issues[0]!)),
+            })
+          if (migrated > 0)
+            showToast({
+              type: "success",
+              title: _(migrateSuccessTitle),
+              description: _(migrateSuccessDescription(String(migrated), String(skipped))),
+            })
+          await refetch()
+        },
+      })
+    } catch (error) {
+      showToast({ type: "error", title: _(migrateFailedTitle), description: requestErrorMessage(error) })
+    } finally {
+      setMaintenance(false)
+    }
+  }
+
+  async function packStorage() {
+    if (maintenance()) return
+    setMaintenance("compact")
+    try {
+      const dry = await globalSDK.client.storage.snapshot.compact({ storageSnapshotCompactInput: { apply: false } })
+      if (dry.error) {
+        showToast({ type: "error", title: _(compactFailedTitle), description: requestErrorMessage(dry.error) })
+        return
+      }
+      const reports = dry.data?.results ?? []
+      const bytes = reports.reduce((sum, entry) => sum + entry.before.bytes, 0)
+      if (bytes === 0) {
+        showToast({ type: "info", title: _(compactNothingLabel) })
+        return
+      }
+      confirm.show({
+        title: _(compactConfirmTitle),
+        description: _(compactConfirmDescription(formatBytes(bytes))),
+        confirmLabel: _(compactConfirmLabel),
+        tone: "neutral",
+        onConfirm: async () => {
+          const applied = await globalSDK.client.storage.snapshot.compact({
+            storageSnapshotCompactInput: { apply: true },
+          })
+          if (applied.error) {
+            showToast({ type: "error", title: _(compactFailedTitle), description: requestErrorMessage(applied.error) })
+            return
+          }
+          const batch = applied.data ?? { results: [], failures: [] }
+          const before = batch.results.reduce((sum, entry) => sum + entry.before.bytes, 0)
+          const after = batch.results.reduce((sum, entry) => sum + (entry.after?.bytes ?? entry.before.bytes), 0)
+          if (batch.failures.length > 0)
+            showToast({
+              type: "warning",
+              title: _(compactFailedTitle),
+              description: _(
+                cleanPartialDescription(
+                  String(batch.failures.length),
+                  `${batch.failures[0]!.scopeID}: ${batch.failures[0]!.message}`,
+                ),
+              ),
+            })
+          if (batch.results.some((entry) => entry.applied))
+            showToast({
+              type: "success",
+              title: _(compactSuccessTitle),
+              description: _(compactSuccessDescription(formatBytes(before), formatBytes(after))),
+            })
+          await refetch()
+        },
+      })
+    } catch (error) {
+      showToast({ type: "error", title: _(compactFailedTitle), description: requestErrorMessage(error) })
+    } finally {
+      setMaintenance(false)
     }
   }
 
@@ -280,6 +468,24 @@ export function StoragePanel(props: {
       </SettingsSection>
 
       <SettingsSection title={_(maintenanceTitle)}>
+        <SettingRow
+          title={_(migrateTitle)}
+          description={_(migrateDescription)}
+          trailing={
+            <Button size="small" onClick={() => void migrateLegacy()} disabled={maintenance() !== false}>
+              {maintenance() === "migrate" ? _(migrateBusyLabel) : _(migrateActionLabel)}
+            </Button>
+          }
+        />
+        <SettingRow
+          title={_(compactTitle)}
+          description={_(compactDescription)}
+          trailing={
+            <Button size="small" onClick={() => void packStorage()} disabled={maintenance() !== false}>
+              {maintenance() === "compact" ? _(compactBusyLabel) : _(compactActionLabel)}
+            </Button>
+          }
+        />
         <p class="ds-section-hint">{_(maintenanceDescription)}</p>
       </SettingsSection>
     </SettingsPage>

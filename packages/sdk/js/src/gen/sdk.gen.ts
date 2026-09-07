@@ -669,6 +669,12 @@ import type {
   StorageSnapshotCleanErrors,
   StorageSnapshotCleanInput,
   StorageSnapshotCleanResponses,
+  StorageSnapshotCompactErrors,
+  StorageSnapshotCompactInput,
+  StorageSnapshotCompactResponses,
+  StorageSnapshotMigrateErrors,
+  StorageSnapshotMigrateInput,
+  StorageSnapshotMigrateResponses,
   StorageSnapshotUsageErrors,
   StorageSnapshotUsageResponses,
   SynergyLinkTargetCreateErrors,
@@ -4335,6 +4341,62 @@ export class Snapshot extends HeyApiClient {
       ThrowOnError
     >({
       url: "/global/storage/snapshot/clean",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Migrate legacy snapshots into shared storage
+   *
+   * Move owned legacy snapshot repositories into the per-scope shared object store. Dry run by default: reports pending repositories without changing anything. Legacy repositories without a confirmed session record are skipped, not failures. Conflicts with running maintenance return 409.
+   */
+  public migrate<ThrowOnError extends boolean = false>(
+    parameters: {
+      storageSnapshotMigrateInput: StorageSnapshotMigrateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "storageSnapshotMigrateInput", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      StorageSnapshotMigrateResponses,
+      StorageSnapshotMigrateErrors,
+      ThrowOnError
+    >({
+      url: "/global/storage/snapshot/migrate",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Pack shared snapshot storage
+   *
+   * Repack the per-scope shared object store to reclaim space. Dry run by default: reports current statistics without changing anything. Apply verifies integrity first and refuses a corrupted scope; with prune it also collects unreferenced objects after recovery checks. A missing shared store is a no-op. Conflicts with running maintenance return 409.
+   */
+  public compact<ThrowOnError extends boolean = false>(
+    parameters: {
+      storageSnapshotCompactInput: StorageSnapshotCompactInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "storageSnapshotCompactInput", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      StorageSnapshotCompactResponses,
+      StorageSnapshotCompactErrors,
+      ThrowOnError
+    >({
+      url: "/global/storage/snapshot/compact",
       ...options,
       ...params,
       headers: {

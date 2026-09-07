@@ -10,6 +10,7 @@ import { Identifier } from "../../src/id/id"
 import { Session } from "../../src/session"
 import { ScopeContext } from "../../src/scope/context"
 import { SnapshotMaintenance } from "../../src/session/snapshot-maintenance"
+import { SnapshotLifecycle } from "../../src/session/snapshot-lifecycle"
 import { Global } from "../../src/global"
 import { GlobalStorageRoute } from "../../src/server/storage-route"
 import { tmpdir } from "../fixture/fixture"
@@ -50,6 +51,44 @@ interface CleanFailure {
 
 interface CleanBatch {
   results: CleanReport[]
+  failures: CleanFailure[]
+}
+
+interface MigrationResult {
+  sessionID: string
+  status: "pending" | "migrated" | "skipped" | "failed"
+  reason?: string
+  objectsAdded?: number
+}
+
+interface MigrateReport {
+  scopeID: string
+  applied: boolean
+  results: MigrationResult[]
+}
+
+interface CompactStatistics {
+  bytes: number
+  allocatedBytes: number
+  files: number
+}
+
+interface CompactReport {
+  scopeID: string
+  applied: boolean
+  prune: boolean
+  before: CompactStatistics
+  after?: CompactStatistics
+  recoveredObjects?: number
+}
+
+interface MigrateBatch {
+  results: MigrateReport[]
+  failures: CleanFailure[]
+}
+
+interface CompactBatch {
+  results: CompactReport[]
   failures: CleanFailure[]
 }
 
@@ -304,6 +343,166 @@ describe("GlobalStorageRoute", () => {
           expect(await Bun.file(path.join(SnapshotStore.legacyRepository(scope.id, sessionID), "HEAD")).exists()).toBe(
             true,
           )
+      },
+    })
+  })
+
+  test("POST snapshot/migrate defaults to a dry run and reports pending legacy owners", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const pending = "ses_routeMigPend01"
+        await makeLegacyRepo(scope.id, pending)
+        await SnapshotStore.write(StoragePath.snapshotOwner(scope.id, pending), { version: 2, backend: "legacy" })
+
+        const response = await app().request("/global/storage/snapshot/migrate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scopeID: scope.id }),
+        })
+        expect(response.status).toBe(200)
+        const batch = (await response.json()) as MigrateBatch
+        const report = batch.results.find((entry) => entry.scopeID === scope.id)!
+        expect(report.applied).toBe(false)
+        expect(report.results.map((entry) => entry.sessionID)).toEqual([pending])
+        expect(report.results[0]!.status).toBe("pending")
+        expect(await Bun.file(path.join(SnapshotStore.legacyRepository(scope.id, pending), "HEAD")).exists()).toBe(true)
+      },
+    })
+  })
+
+  test("POST snapshot/migrate moves an owned legacy repository into the shared store", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const migrating = "ses_routeMigrate01"
+        await makeLegacyRepo(scope.id, migrating)
+        await SnapshotStore.write(StoragePath.snapshotOwner(scope.id, migrating), { version: 2, backend: "legacy" })
+        await Storage.write(
+          StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(migrating)),
+          {
+            id: migrating,
+            scope: { directory: "/tmp/storage-route-fixture" },
+            title: "migrating",
+            version: "test",
+            time: { created: Date.now(), updated: Date.now() },
+          },
+        )
+
+        const response = await app().request("/global/storage/snapshot/migrate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scopeID: scope.id, apply: true }),
+        })
+        expect(response.status).toBe(200)
+        const batch = (await response.json()) as MigrateBatch
+        const report = batch.results.find((entry) => entry.scopeID === scope.id)!
+        expect(report.applied).toBe(true)
+        expect(report.results.map((entry) => entry.status)).toEqual(["migrated"])
+        expect((await SnapshotStore.owner(scope.id, migrating))?.backend).toBe("shared")
+        expect(await Bun.file(path.join(SnapshotStore.repository(scope.id), "HEAD")).exists()).toBe(true)
+        await expect(fs.access(SnapshotStore.legacyRepository(scope.id, migrating))).rejects.toThrow()
+      },
+    })
+  })
+
+  test("POST snapshot/compact reports shared-store statistics without applying", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const response = await app().request("/global/storage/snapshot/compact", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scopeID: scope.id }),
+        })
+        expect(response.status).toBe(200)
+        const batch = (await response.json()) as CompactBatch
+        const report = batch.results.find((entry) => entry.scopeID === scope.id)!
+        expect(report.applied).toBe(false)
+        expect(report.prune).toBe(false)
+        expect(report.before.files).toBe(0)
+      },
+    })
+  })
+
+  test("POST snapshot/compact apply is a no-op without a shared store", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const response = await app().request("/global/storage/snapshot/compact", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scopeID: scope.id, apply: true }),
+        })
+        expect(response.status).toBe(200)
+        const batch = (await response.json()) as CompactBatch
+        const report = batch.results.find((entry) => entry.scopeID === scope.id)!
+        expect(report.applied).toBe(false)
+      },
+    })
+  })
+  test("POST snapshot/migrate and compact reject an empty scopeID", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const pending = "ses_routeMigPend02"
+        await makeLegacyRepo(scope.id, pending)
+        await SnapshotStore.write(StoragePath.snapshotOwner(scope.id, pending), { version: 2, backend: "legacy" })
+
+        const migrateResponse = await app().request("/global/storage/snapshot/migrate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scopeID: "", apply: true }),
+        })
+        expect(migrateResponse.ok).toBe(false)
+        const compactResponse = await app().request("/global/storage/snapshot/compact", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scopeID: "", apply: true }),
+        })
+        expect(compactResponse.ok).toBe(false)
+        expect(await Bun.file(path.join(SnapshotStore.legacyRepository(scope.id, pending), "HEAD")).exists()).toBe(true)
+      },
+    })
+  })
+
+  test("POST snapshot/compact apply recovers pending deletions before packing", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const deleting = "ses_routeCompactDel01"
+        await makeLegacyRepo(scope.id, deleting)
+        await SnapshotStore.write(StoragePath.snapshotOwner(scope.id, deleting), { version: 2, backend: "legacy" })
+        await Storage.write(StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(deleting)), {
+          id: deleting,
+          scope: { directory: "/tmp/storage-route-fixture" },
+          title: "deleting",
+          version: "test",
+          time: { created: Date.now(), updated: Date.now() },
+        })
+        await SnapshotStore.initializeRepository(scope.id)
+        await SnapshotLifecycle.beginDelete(scope.id, deleting)
+        expect(await SnapshotStore.optional(StoragePath.snapshotDeletion(scope.id, deleting))).toBeDefined()
+
+        const response = await app().request("/global/storage/snapshot/compact", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scopeID: scope.id, apply: true, prune: true }),
+        })
+        expect(response.status).toBe(200)
+        expect(await SnapshotStore.optional(StoragePath.snapshotDeletion(scope.id, deleting))).toBeUndefined()
       },
     })
   })
