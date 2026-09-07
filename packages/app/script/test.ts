@@ -19,6 +19,7 @@ const playwrightIsolated = [
   "test/components/file-workbench/scrollbar-dark.test.ts",
   "test/components/file-workbench/selection.test.ts",
   "test/components/file-workbench/open-in-browser.dom.test.ts",
+  "test/components/file-workbench/html-preview.dom.test.ts",
   "test/components/file-workbench/explorer-restore.dom.test.ts",
   "test/components/attachment-workbench/pdf-preview.dom.test.ts",
   "test/components/library/filter-menu-surface.test.ts",
@@ -40,6 +41,8 @@ const playwrightIsolated = [
   "test/components/scopes/session-row.dom.test.tsx",
   "test/components/sidebar/session-draft-badge.dom.test.tsx",
   "test/components/sidebar/sidebar-attention-notice.dom.test.tsx",
+  "test/components/sidebar/channel-sidebar-layout.test.ts",
+  "test/components/workspace/browser/browser-recovery-state.test.tsx",
   "test/pages/fatal-error.dom.test.tsx",
 ]
 
