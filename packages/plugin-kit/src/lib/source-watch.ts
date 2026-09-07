@@ -7,6 +7,7 @@ function ignored(file: string) {
     parts.some(
       (part) => part === ".git" || part === "dist" || part === "node_modules" || part.startsWith(".synergy-plugin-"),
     ) ||
+    file === "src" ||
     file === `src${path.sep}generated` ||
     file === `src${path.sep}generated${path.sep}plugin-data` ||
     file.startsWith(`src${path.sep}generated${path.sep}plugin-data${path.sep}`)

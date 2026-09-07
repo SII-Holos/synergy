@@ -6,7 +6,6 @@ import { createFixtureProject } from "./fixtures"
 test("watcher follows new asset directories and external dependencies without watching its own output", async () => {
   const project = createFixtureProject("watch-assets")
   const dependency = createFixtureProject("watch-dependency")
-  project.writeFile("src/index.ts", "export {}")
   let changes = 0
   const watcher = watchPluginSources(project.root, () => {
     changes++
@@ -28,13 +27,30 @@ test("watcher follows new asset directories and external dependencies without wa
     project.writeFile("src/generated/plugin-data/index.d.ts", "generated")
     await Bun.sleep(400)
     expect(changes).toBe(3)
+    project.writeFile("src/index.ts", "export {}")
+    await Bun.sleep(400)
+    expect(changes).toBe(4)
     watcher.close()
     project.writeFile("skins/new/texture.svg", "later")
     await Bun.sleep(400)
-    expect(changes).toBe(3)
+    expect(changes).toBe(4)
   } finally {
     watcher.close()
     project.cleanup()
     dependency.cleanup()
+  }
+})
+
+test("watcher observes the first authored file in a new source directory", async () => {
+  const project = createFixtureProject("watch-new-source")
+  let changes = 0
+  const watcher = watchPluginSources(project.root, () => changes++)
+  try {
+    project.writeFile("src/index.ts", "export {}")
+    await Bun.sleep(400)
+    expect(changes).toBe(1)
+  } finally {
+    watcher.close()
+    project.cleanup()
   }
 })
