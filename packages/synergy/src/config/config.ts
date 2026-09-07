@@ -718,7 +718,7 @@ export namespace Config {
     log.info("migrating legacy global config to domain fragments", { source: legacy.source })
     let config: Info
     try {
-      config = await loadFile(legacy.source)
+      config = await loadFile(legacy.source, { stripUnknownKeys: false })
     } catch (error) {
       // Schema errors (e.g. retired keys like `identity` or
       // `holos_friend_reply_model`) are migration signals: the migration
@@ -861,7 +861,7 @@ export namespace Config {
     const sources: string[] = []
     for (const candidate of candidates) {
       if (!(await Bun.file(candidate).exists())) continue
-      migrated = mergeConfigConcatArrays(migrated, await loadFile(candidate))
+      migrated = mergeConfigConcatArrays(migrated, await loadFile(candidate, { stripUnknownKeys: false }))
       sources.push(candidate)
     }
     if (sources.length === 0) return
@@ -884,7 +884,10 @@ export namespace Config {
     }
   }
 
-  async function loadFile(filepath: string, options: { addSchema?: boolean } = {}): Promise<Info> {
+  async function loadFile(
+    filepath: string,
+    options: { addSchema?: boolean; stripUnknownKeys?: boolean } = {},
+  ): Promise<Info> {
     log.info("loading", { path: filepath })
     let text = await Bun.file(filepath)
       .text()
@@ -896,7 +899,11 @@ export namespace Config {
     return load(text, filepath, options)
   }
 
-  async function load(text: string, configFilepath: string, options: { addSchema?: boolean } = {}) {
+  async function load(
+    text: string,
+    configFilepath: string,
+    options: { addSchema?: boolean; stripUnknownKeys?: boolean } = {},
+  ) {
     text = text.replace(/\{env:([^}]+)\}/g, (_, varName) => {
       const value = process.env[varName]
       if (value === undefined) {
@@ -994,6 +1001,24 @@ export namespace Config {
           path: configFilepath,
           issues: parsed.error.issues,
         })
+      }
+      if (issue.path.length === 0 && issue.code === "unrecognized_keys") {
+        // The root schema is strict, so retired top-level keys surface as a
+        // root-level issue that names them via `keys` instead of carrying a
+        // real path. Strip exactly those keys like any recoverable section;
+        // keying the strip on path[0] would delete a bogus "undefined" entry
+        // and quarantine the whole file. Legacy monolithic loads opt out:
+        // a retired root key there is a migration signal, because rewrite
+        // migrations (e.g. identity → embedding/rerank/library) need the
+        // file intact until ensureMigrations() rewrites it.
+        if (options.stripUnknownKeys === false) {
+          throw new InvalidError({
+            path: configFilepath,
+            issues: parsed.error.issues,
+          })
+        }
+        for (const key of issue.keys) stripKeys.add(String(key))
+        continue
       }
       const section = String(issue.path[0])
       stripKeys.add(section)

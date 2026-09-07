@@ -111,6 +111,61 @@ describe("degraded config isolation", () => {
       },
     })
   })
+  test("retired top-level key is stripped and the file stays (no quarantine)", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        // A file restored from a backup after the cleanup migration already
+        // ran still carries the retired `providerCatalog` key. Root-level
+        // unrecognized keys must be stripped like other recoverable sections
+        // instead of quarantining the whole providers file.
+        await fs.mkdir(domainDir(), { recursive: true })
+        await Bun.write(
+          path.join(domainDir(), "20-providers.jsonc"),
+          JSON.stringify({
+            providerCatalog: { sii: { models: { m1: {} } } },
+            provider: { sii: { name: "SII", api: "https://api.sii.example.com", models: { m1: {} } } },
+          }),
+        )
+        await Config.reload("global")
+
+        const config = await Config.current()
+        expect(config.provider?.sii?.name).toBe("SII")
+
+        const files = await listDomainFiles()
+        expect(files).toContain("20-providers.jsonc")
+        expect(files.some((name) => name.startsWith("20-providers.jsonc.invalid-"))).toBe(false)
+      },
+    })
+  })
+
+  test("retired key is stripped alongside an invalid section and the file stays", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await fs.mkdir(domainDir(), { recursive: true })
+        await Bun.write(
+          path.join(domainDir(), "20-providers.jsonc"),
+          JSON.stringify({
+            providerCatalog: { sii: { models: { m1: {} } } },
+            provider: { sii: { name: "SII", api: "https://api.sii.example.com", models: { m1: {} } } },
+            thinking_model: 42,
+          }),
+        )
+        await Config.reload("global")
+
+        const config = await Config.current()
+        expect(config.provider?.sii?.name).toBe("SII")
+        expect(config.thinking_model).toBeUndefined()
+
+        const files = await listDomainFiles()
+        expect(files).toContain("20-providers.jsonc")
+        expect(files.some((name) => name.startsWith("20-providers.jsonc.invalid-"))).toBe(false)
+      },
+    })
+  })
 
   test("reload keeps the previous config when a broken legacy file appears", async () => {
     await using tmp = await tmpdir()
