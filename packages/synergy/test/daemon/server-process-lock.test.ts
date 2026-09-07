@@ -77,6 +77,9 @@ describe("ServerProcessLock", () => {
         await Bun.sleep(10)
       }
 
+      expect(await Bun.file(path.join(home, ".synergy", "schema", "config.schema.json")).json()).toEqual(
+        await Bun.file(path.join(import.meta.dirname, "../../schema/config.schema.json")).json(),
+      )
       const acquired = results.filter((result) => result.acquired)
       expect(acquired).toHaveLength(1)
       expect(acquired[0]?.ownerToken).toEqual(expect.any(String))

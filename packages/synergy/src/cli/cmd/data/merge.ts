@@ -1,3 +1,4 @@
+import { SnapshotArchive } from "../../../session/snapshot-archive"
 import fs from "fs/promises"
 import path from "path"
 import os from "os"
@@ -5,6 +6,7 @@ import * as prompts from "@clack/prompts"
 import { cmd } from "../cmd"
 import { UI } from "../../../util/ui"
 import {
+  archiveExclusions,
   CATEGORIES,
   scanCategories,
   formatSize,
@@ -19,9 +21,9 @@ import {
 } from "./shared"
 
 interface SourceInfo {
-  type: "directory" | "zip"
+  type: "directory" | "archive"
   path: string
-  /** For zip: extracted temp directory. For directory: same as path. */
+  /** For archives: extracted temp directory. For directory: same as path. */
   dataDir: string
   manifest: PackManifest | null
   cleanup?: () => Promise<void>
@@ -45,7 +47,7 @@ export const DataMergeCommand = cmd({
   builder: (yargs) =>
     yargs.positional("source", {
       type: "string",
-      describe: "source directory path or zip file",
+      describe: "source directory path, zip, or tar.gz archive",
       demandOption: true,
     }),
   handler: async (args) => {
@@ -169,6 +171,8 @@ export const DataMergeCommand = cmd({
         }
       }
 
+      await using homes = await SnapshotArchive.lockHomes([source.dataDir, targetRoot])
+
       // Step 4: Execute merge
       UI.empty()
       const errors: string[] = []
@@ -206,10 +210,18 @@ export const DataMergeCommand = cmd({
           spinner.start(`Merging ${subdir}/...`)
 
           try {
-            const result = await copyDirSkipExisting(src, dst, (p) => {
-              const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
-              spinner.message(`Merging ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
-            })
+            if (subdir === "data") await SnapshotArchive.merge(src, dst)
+            const result = await copyDirSkipExisting(
+              src,
+              dst,
+              (p) => {
+                const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
+                spinner.message(`Merging ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
+              },
+              undefined,
+              undefined,
+              archiveExclusions(subdir),
+            )
             const skippedNote = result.skipped > 0 ? ` (${result.skipped} existing files kept)` : ""
             spinner.stop(`Merged ${subdir}/${skippedNote}`)
           } catch (e) {
@@ -238,8 +250,7 @@ export const DataMergeCommand = cmd({
 async function prepareSource(sourceArg: string): Promise<SourceInfo | null> {
   const resolved = path.resolve(sourceArg)
 
-  // Check if it's a zip file
-  if (resolved.endsWith(".zip")) {
+  if (resolved.endsWith(".zip") || resolved.endsWith(".tar.gz") || resolved.endsWith(".tgz")) {
     if (!(await dirExists(resolved))) {
       prompts.log.error(`File not found: ${shortenPath(resolved)}`)
       return null
@@ -249,11 +260,17 @@ async function prepareSource(sourceArg: string): Promise<SourceInfo | null> {
     spinner.start("Extracting archive...")
 
     try {
-      const tmpDir = path.join(os.tmpdir(), `synergy-merge-${Date.now()}`)
-      await fs.mkdir(tmpDir, { recursive: true })
-
-      const { execSync } = await import("child_process")
-      execSync(`unzip -o -q "${resolved}" -d "${tmpDir}"`, { stdio: "pipe" })
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-merge-"))
+      const command = resolved.endsWith(".zip")
+        ? ["unzip", "-o", "-q", resolved, "-d", tmpDir]
+        : ["tar", "-xzf", resolved, "-C", tmpDir]
+      const child = Bun.spawn(command, { stdout: "ignore", stderr: "pipe" })
+      const errors = new Response(child.stderr).text()
+      if ((await child.exited) !== 0) {
+        await fs.rm(tmpDir, { recursive: true, force: true })
+        throw new Error(await errors)
+      }
+      await errors
 
       // Read manifest if it exists
       const manifestPath = path.join(tmpDir, "manifest.json")
@@ -270,7 +287,7 @@ async function prepareSource(sourceArg: string): Promise<SourceInfo | null> {
 
       spinner.stop("Archive extracted")
       return {
-        type: "zip",
+        type: "archive",
         path: resolved,
         dataDir: tmpDir,
         manifest,

@@ -1,3 +1,4 @@
+import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import fs from "fs/promises"
 import fsSync from "fs"
 import path from "path"
@@ -150,7 +151,9 @@ await Promise.all([
     return candidates.find((candidate) => fsSync.existsSync(candidate))
   })()
   if (bundled) {
-    await fs.copyFile(bundled, Global.Path.configSchema)
+    await withFileLock({ directory: path.join(Global.Path.schema, ".locks"), key: "config-schema" }, async () => {
+      await fs.copyFile(bundled, Global.Path.configSchema)
+    })
   }
 }
 

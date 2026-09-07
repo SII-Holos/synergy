@@ -1,3 +1,4 @@
+import { SnapshotLifecycle } from "./snapshot-lifecycle"
 import fs from "fs/promises"
 import path from "path"
 import { Global } from "@/global"
@@ -532,6 +533,7 @@ export namespace SessionRecovery {
   }
 
   async function removeOne(location: Location, report: DeleteReport) {
+    await SnapshotLifecycle.beginDelete(location.scopeID, location.sessionID)
     const scope = Identifier.asScopeID(location.scopeID)
     const sid = Identifier.asSessionID(location.sessionID)
     await removeTarget(
@@ -551,8 +553,7 @@ export namespace SessionRecovery {
     )
     await removeTarget(
       `snapshot:${location.sessionID}`,
-      () =>
-        fs.rm(path.join(Global.Path.snapshot, location.scopeID, location.sessionID), { recursive: true, force: true }),
+      () => SnapshotLifecycle.completeDelete(location.scopeID, location.sessionID),
       report,
     )
   }

@@ -78,8 +78,10 @@ async function queryProcessStartIdentity(pid: number): Promise<string | undefine
   // recycled within that second is not detected. That failure is fail-safe:
   // the stale lock waits out the acquire timeout instead of a live owner
   // being displaced.
-  const result = await execFileAsync("ps", ["-p", String(pid), "-o", "lstart="]).catch(() => ({ stdout: "" }))
-  const startedAt = Date.parse(result.stdout.trim())
+  const result = await execFileAsync("ps", ["-p", String(pid), "-o", "lstart="], {
+    env: { ...process.env, TZ: "UTC", LC_ALL: "C" },
+  }).catch(() => ({ stdout: "" }))
+  const startedAt = Date.parse(result.stdout.trim() + " UTC")
   return Number.isNaN(startedAt) ? undefined : `unix:${startedAt}`
 }
 
