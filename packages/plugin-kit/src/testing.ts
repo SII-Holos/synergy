@@ -9,12 +9,12 @@ export async function approvePreviewPlugins(preview: Preview) {
   for (const plugin of preview.plugins) {
     const { data: review } = await preview.client.api.plugins.getApprovalReview(
       { pluginId: plugin.id },
-      { throwOnError: true },
+      { throwOnError: true, signal: AbortSignal.timeout(15000) },
     )
     if (!review) throw new Error(`Approval review unavailable for ${plugin.id}`)
     await preview.client.api.plugins.approve(
       { target: review.target, reviewToken: review.reviewToken },
-      { throwOnError: true },
+      { throwOnError: true, signal: AbortSignal.timeout(15000) },
     )
   }
 }

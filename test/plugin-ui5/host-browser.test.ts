@@ -84,6 +84,8 @@ test("functional plugin commands, events, settings and resource close guards wor
   let preview: Awaited<ReturnType<typeof startPluginPreview>> | undefined
   const browser = await chromium.launch({ headless: true })
   let diagnostics: { errors: Error[]; dispose(): unknown } | undefined
+  let stage = "build artifacts"
+  const watchdog = setTimeout(() => console.error(`Functional acceptance stalled at: ${stage}`), 75000)
   try {
     const { cp } = await import("node:fs/promises")
     await cp(path.resolve(import.meta.dir, "../../packages/plugin-kit/test/fixtures/ui5-functional"), functional.root, {
@@ -100,10 +102,12 @@ test("functional plugin commands, events, settings and resource close guards wor
       expect(Bun.spawnSync(["tar", "-xzf", archive, "-C", target]).exitCode).toBe(0)
       installed.push(target)
     }
+    stage = "start isolated host"
     preview = await startPluginPreview({
       artifacts: installed,
       command: [process.execPath, path.resolve(import.meta.dir, "../../packages/synergy/src/index.ts")],
     })
+    stage = "approve fixture plugins"
     await approvePreviewPlugins(preview)
     const page = await browser.newPage()
     page.setDefaultTimeout(10000)
@@ -115,10 +119,13 @@ test("functional plugin commands, events, settings and resource close guards wor
         ),
       { server: new URL(preview.url).origin, shell: "acceptance-shell:main" },
     )
+    stage = "load Shell and functional contributions"
     diagnostics = await openPluginPreviewPage(preview, page)
     await page.getByRole("textbox", { name: "Message", exact: true }).waitFor()
+    stage = "command and event update"
     await page.getByRole("button", { name: "Increment example counter", exact: true }).click()
     await page.getByLabel("Example counter").filter({ hasText: "1" }).waitFor()
+    stage = "settings and nested overlay"
     await page.getByRole("button", { name: "Example settings", exact: true }).click()
     await page.getByRole("dialog", { name: "Example settings", exact: true }).waitFor()
     await page.getByRole("textbox", { name: "Display name", exact: true }).fill("Ada")
@@ -128,6 +135,7 @@ test("functional plugin commands, events, settings and resource close guards wor
     await page.keyboard.press("Escape")
     await page.getByRole("button", { name: "Save preferences", exact: true }).click()
     await page.getByRole("dialog", { name: "Example settings", exact: true }).waitFor({ state: "detached" })
+    stage = "resource dirty close guard"
     await page.getByRole("button", { name: "Example note", exact: true }).click()
     await page.getByRole("textbox", { name: "Note text", exact: true }).fill("Unsaved note")
     await page.getByRole("button", { name: "Close note", exact: true }).click()
@@ -135,17 +143,23 @@ test("functional plugin commands, events, settings and resource close guards wor
     await page.keyboard.press("Escape")
     expect(await page.getByRole("textbox", { name: "Note text", exact: true }).inputValue()).toBe("Unsaved note")
     await page.getByRole("button", { name: "Save note", exact: true }).click()
+    stage = "second resource identity"
     await page.getByRole("button", { name: "Second note", exact: true }).click()
     expect(await page.getByRole("textbox", { name: "Note title", exact: true }).inputValue()).toBe("Second note")
     await page.getByRole("button", { name: "Close note", exact: true }).click()
     expect(diagnostics.errors.map((error) => error.message)).toEqual([])
   } catch (error) {
-    throw new AggregateError([error, ...(diagnostics?.errors ?? [])], "Real-host functional acceptance failed")
+    throw new AggregateError(
+      [error, ...(diagnostics?.errors ?? [])],
+      `Real-host functional acceptance failed at: ${stage}`,
+    )
   } finally {
+    stage = "dispose browser and isolated host"
     diagnostics?.dispose()
     await browser.close()
     await preview?.close()
     shell.cleanup()
     functional.cleanup()
+    clearTimeout(watchdog)
   }
 }, 90000)
