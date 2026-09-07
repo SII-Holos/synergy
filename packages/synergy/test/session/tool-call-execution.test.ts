@@ -393,7 +393,7 @@ for (const scenario of [
             userTools: { [toolID]: true },
             includeMCP: scenario.executor === "MCP",
           })
-          const execution = (resolved.executionTools[toolID] as any).execute(
+          const execution: Promise<unknown> = (resolved.executionTools[toolID] as any).execute(
             { query: "evidence" },
             { toolCallId: callID },
           )
