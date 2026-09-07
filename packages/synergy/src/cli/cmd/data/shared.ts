@@ -160,6 +160,13 @@ export async function isDirEmpty(dir: string): Promise<boolean> {
   return entries.length === 0
 }
 
+export function archiveExclusions(directory: string): string[] {
+  if (directory === "data") return ["snapshot", "snapshot-v2"]
+  if (directory === "cache") return ["snapshot-index"]
+  if (directory === "state") return [path.join("daemon", "runtime-lock.json")]
+  return []
+}
+
 export interface CopyProgress {
   copied: number
   skipped: number
@@ -174,6 +181,7 @@ export async function copyDirSkipExisting(
   onProgress?: (progress: CopyProgress) => void,
   rootSrc?: string,
   totalFiles?: number,
+  exclude: string[] = [],
 ): Promise<{ copied: number; skipped: number }> {
   if (!rootSrc) {
     rootSrc = src
@@ -193,6 +201,7 @@ export async function copyDirSkipExisting(
     for (const entry of entries) {
       const srcPath = path.join(currentSrc, entry.name)
       const dstPath = path.join(currentDst, entry.name)
+      if (exclude.includes(path.relative(src, srcPath))) continue
 
       if (entry.isDirectory()) {
         await walk(srcPath, dstPath)

@@ -1673,6 +1673,10 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
+          "glob": "src/components/tool/content-preview.tsx",
+          "reason": "Solid wrapper exercised by basic-tool-lifecycle.dom.test.ts through Vite; Bun coverage attributes the compiled fixture instead of this TSX source. Preview logic remains measured in content-preview-model.ts."
+        },
+        {
           "glob": "src/components/tool/index.ts",
           "reason": "barrel re-export"
         },

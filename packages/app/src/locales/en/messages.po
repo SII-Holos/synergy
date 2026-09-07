@@ -7029,6 +7029,10 @@ msgstr "Select all loaded messages"
 msgid "app.rawMessages.title"
 msgstr "Raw messages"
 
+#. js-lingui-explicit-id
+msgid "app.review.toolUnavailable"
+msgstr "This tool result is no longer available."
+
 #. ── components/scopes/active-zone.tsx ────────────────────────────────
 msgid "app.scopes.activeZone.active"
 msgstr "Active"
@@ -20396,6 +20400,18 @@ msgstr "Unable to copy the toast."
 #. js-lingui-explicit-id
 msgid "ui.toast.copyLabel"
 msgstr "Copy toast"
+
+#. js-lingui-explicit-id
+msgid "ui.toolContent.openFile"
+msgstr "Open current file"
+
+#. js-lingui-explicit-id
+msgid "ui.toolContent.openReview"
+msgstr "Open in Review"
+
+#. js-lingui-explicit-id
+msgid "ui.toolContent.truncated"
+msgstr "Preview shortened."
 
 #. js-lingui-explicit-id
 msgid "ui.turnChangeSummary.hideFiles"

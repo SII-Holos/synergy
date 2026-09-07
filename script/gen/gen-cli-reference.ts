@@ -90,7 +90,7 @@ async function commandRegistrations(): Promise<CliCommand[]> {
   const commands: CliCommand[] = []
   for (const match of main.matchAll(/\.command\((\w+)\)/g)) {
     const moduleName = match[1]!
-    const importMatch = main.match(new RegExp(`import\\s*\\{\\s*${moduleName}\\s*\\}\\s*from\\s*"([^"]+)"`))
+    const importMatch = main.match(new RegExp(`import\\s*\\{[^}]*\\b${moduleName}\\b[^}]*\\}\\s*from\\s*"([^"]+)"`))
     const modulePath = importMatch ? await resolveModuleFile(path.dirname(MAIN), importMatch[1]!) : null
     commands.push({
       name: moduleName.replace(/Command$/, "").toLowerCase(),
@@ -120,8 +120,8 @@ export async function generate(): Promise<string> {
     for (const file of sources) {
       const source = await readFile(file, "utf8").catch(() => "")
       for (const block of parseCommandBlocks(source)) {
-        own.set(block.name, block)
-        blocks.set(block.name, block)
+        if (!own.has(block.name)) own.set(block.name, block)
+        if (!blocks.has(block.name) || file === path.join(REPO_ROOT, command.file)) blocks.set(block.name, block)
       }
     }
     blocksByModule.set(command.name, own)

@@ -113,7 +113,6 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
             .join("\u0000"),
         ] as const,
       openSelectedFile,
-      { defer: true },
     ),
   )
 

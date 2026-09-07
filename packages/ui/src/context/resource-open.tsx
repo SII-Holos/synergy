@@ -24,7 +24,10 @@ export interface ResourceOpenOptions {
   prefer?: "preview" | "workspace" | "external"
 }
 
+export type ToolReviewTarget = { sessionID: string; messageID: string; partID: string; path?: string }
+
 export interface ResourceOpenController {
+  openToolReview?(target: ToolReviewTarget): boolean
   open(resource: OpenableResource, options?: ResourceOpenOptions): boolean
   openAttachment(file: AttachmentFile, options?: ResourceOpenOptions & { serverUrl?: string }): boolean
   resolveWorkspacePath?(path: string | undefined): string | undefined

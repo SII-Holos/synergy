@@ -1,0 +1,15 @@
+diff --git a/dist/worker/WorkerPoolManager.js b/dist/worker/WorkerPoolManager.js
+--- a/dist/worker/WorkerPoolManager.js
++++ b/dist/worker/WorkerPoolManager.js
+@@ -66,2 +66,2 @@
+-		this.fileCache = new LRUMapPkg.LRUMap(options.totalASTLRUCacheSize ?? 100);
+-		this.diffCache = new LRUMapPkg.LRUMap(options.totalASTLRUCacheSize ?? 100);
++		this.fileCache = options.createASTCache?.() ?? new LRUMapPkg.LRUMap(options.totalASTLRUCacheSize ?? 100);
++		this.diffCache = options.createASTCache?.() ?? new LRUMapPkg.LRUMap(options.totalASTLRUCacheSize ?? 100);
+diff --git a/dist/worker/types.d.ts b/dist/worker/types.d.ts
+--- a/dist/worker/types.d.ts
++++ b/dist/worker/types.d.ts
+@@ -0,0 +1 @@
++import LRUMapPkg from "lru_map";
+@@ -107,0 +109 @@
++  createASTCache?: <T>() => LRUMapPkg.LRUMap<string, T>;

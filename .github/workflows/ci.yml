@@ -94,6 +94,7 @@ jobs:
           test/daemon/server-process-lock.test.ts
           test/sandbox/phase3-windows-config.test.ts
           test/session/tool-resolver-bash-profile.test.ts
+          test/global/schema-publish.test.ts
 
       - name: Run util lock tests
         run: bun test --timeout 30000 --cwd packages/util test/fs-lock.test.ts test/process-identity.test.ts

@@ -1,6 +1,7 @@
 import { useLingui } from "@lingui/solid"
 import { createMemo, For, Show } from "solid-js"
 import "./diff-preview.css"
+import { previewToolContent } from "./content-preview-model"
 import { DIFF_DESC } from "../tool-title-descriptors"
 
 export type ToolDiffLineKind = "add" | "delete" | "hunk" | "header" | "note" | "context"
@@ -97,9 +98,14 @@ export function DiffPreview(props: DiffPreviewProps) {
 }
 
 export function ToolDiffPreview(props: { diff: ToolDiffPreviewFileDiff | undefined }) {
+  const diff = createMemo(() => {
+    if (!props.diff) return undefined
+    const preview = previewToolContent(props.diff.preview ?? "")
+    return { ...props.diff, preview: preview.text, truncated: props.diff.truncated || preview.truncated }
+  })
   return (
     <div data-component="edit-content">
-      <DiffPreview diff={props.diff} variant="tool" />
+      <DiffPreview diff={diff()} variant="tool" />
     </div>
   )
 }
