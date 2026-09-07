@@ -1740,6 +1740,128 @@
         ]
       }
     },
+    "/global/storage/snapshot/migrate": {
+      "post": {
+        "operationId": "storage.snapshot.migrate",
+        "summary": "Migrate legacy snapshots into shared storage",
+        "description": "Move owned legacy snapshot repositories into the per-scope shared object store. Dry run by default: reports pending repositories without changing anything. Legacy repositories without a confirmed session record are skipped, not failures. Conflicts with running maintenance return 409.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageSnapshotMigrateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Per-scope migration report (pending repositories for dry runs, outcomes otherwise)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageSnapshotMigrateBatch"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Snapshot storage is busy; nothing was migrated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["message"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.storage.snapshot.migrate({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/storage/snapshot/compact": {
+      "post": {
+        "operationId": "storage.snapshot.compact",
+        "summary": "Pack shared snapshot storage",
+        "description": "Repack the per-scope shared object store to reclaim space. Dry run by default: reports current statistics without changing anything. Apply verifies integrity first and refuses a corrupted scope; with prune it also collects unreferenced objects after recovery checks. A missing shared store is a no-op. Conflicts with running maintenance return 409.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageSnapshotCompactInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Per-scope compaction report (statistics for dry runs, before/after otherwise)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageSnapshotCompactBatch"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Snapshot storage is busy or failed its integrity check; nothing was compacted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["message"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.storage.snapshot.compact({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/dispose": {
       "post": {
         "operationId": "global.dispose",
@@ -30490,7 +30612,7 @@
         },
         "required": ["scopeID", "applied", "candidates", "removed", "bytes", "skippedProtected", "errors"]
       },
-      "StorageSnapshotCleanFailure": {
+      "StorageSnapshotScopeFailure": {
         "type": "object",
         "properties": {
           "scopeID": {
@@ -30514,7 +30636,7 @@
           "failures": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/StorageSnapshotCleanFailure"
+              "$ref": "#/components/schemas/StorageSnapshotScopeFailure"
             }
           }
         },
@@ -30528,6 +30650,137 @@
             "minLength": 1
           },
           "apply": {
+            "default": false,
+            "type": "boolean"
+          }
+        }
+      },
+      "StorageSnapshotMigrationResult": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "migrated", "skipped", "failed"]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "objectsAdded": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["sessionID", "status"]
+      },
+      "StorageSnapshotMigrateResult": {
+        "type": "object",
+        "properties": {
+          "scopeID": {
+            "type": "string"
+          },
+          "applied": {
+            "type": "boolean"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageSnapshotMigrationResult"
+            }
+          }
+        },
+        "required": ["scopeID", "applied", "results"]
+      },
+      "StorageSnapshotMigrateBatch": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageSnapshotMigrateResult"
+            }
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageSnapshotScopeFailure"
+            }
+          }
+        },
+        "required": ["results", "failures"]
+      },
+      "StorageSnapshotMigrateInput": {
+        "type": "object",
+        "properties": {
+          "scopeID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "apply": {
+            "default": false,
+            "type": "boolean"
+          }
+        }
+      },
+      "StorageSnapshotCompactResult": {
+        "type": "object",
+        "properties": {
+          "scopeID": {
+            "type": "string"
+          },
+          "applied": {
+            "type": "boolean"
+          },
+          "prune": {
+            "type": "boolean"
+          },
+          "before": {
+            "$ref": "#/components/schemas/StorageSnapshotStatistics"
+          },
+          "after": {
+            "$ref": "#/components/schemas/StorageSnapshotStatistics"
+          },
+          "recoveredObjects": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["scopeID", "applied", "prune", "before"]
+      },
+      "StorageSnapshotCompactBatch": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageSnapshotCompactResult"
+            }
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageSnapshotScopeFailure"
+            }
+          }
+        },
+        "required": ["results", "failures"]
+      },
+      "StorageSnapshotCompactInput": {
+        "type": "object",
+        "properties": {
+          "scopeID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "apply": {
+            "default": false,
+            "type": "boolean"
+          },
+          "prune": {
             "default": false,
             "type": "boolean"
           }

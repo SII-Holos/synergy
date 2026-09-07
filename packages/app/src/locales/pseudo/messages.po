@@ -18673,11 +18673,99 @@ msgid "settings.storage.cleanup.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.storage.compact.action"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.busy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.confirm.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.confirm.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.confirm.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.failed.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.nothing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.success.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.success.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.storage.maintenance.description"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.storage.maintenance.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.action"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.busy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.confirm.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.confirm.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.confirm.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.failed.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.nothing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.success.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.success.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.title"
 msgstr ""
 
 #. js-lingui-explicit-id

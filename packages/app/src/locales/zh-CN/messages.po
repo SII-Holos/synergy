@@ -18673,12 +18673,100 @@ msgid "settings.storage.cleanup.title"
 msgstr "清理"
 
 #. js-lingui-explicit-id
+msgid "settings.storage.compact.action"
+msgstr "打包"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.busy"
+msgstr "正在打包..."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.confirm.description"
+msgstr "共享存储当前占用 {bytes}。将进行重打包；重写前会先运行完整性检查。"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.confirm.label"
+msgstr "打包"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.confirm.title"
+msgstr "打包共享存储"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.description"
+msgstr "重打包共享对象存储以回收空间。删除前会先展示预演结果；重写任何内容之前都会先运行完整性检查。"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.failed.title"
+msgstr "快照打包失败"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.nothing"
+msgstr "没有可打包的共享存储"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.success.description"
+msgstr "共享存储：{before} → {after}。"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.success.title"
+msgstr "共享存储已打包"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.title"
+msgstr "打包共享存储"
+
+#. js-lingui-explicit-id
 msgid "settings.storage.maintenance.description"
-msgstr "快照维护通过 CLI（synergy data snapshots）执行：inspect | check | migrate | compact | clean。migrate 将有主旧版仓库迁入共享存储，clean 回收无会话拥有的旧版目录，删除仅释放已永久删除会话的快照。"
+msgstr "inspect 与 check 通过 CLI（synergy data snapshots）执行。migrate 与 compact 也可在此运行，均先展示预演结果；clean 回收无会话拥有的旧版目录。"
 
 #. js-lingui-explicit-id
 msgid "settings.storage.maintenance.title"
 msgstr "维护"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.action"
+msgstr "迁移"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.busy"
+msgstr "正在迁移..."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.confirm.description"
+msgstr "{count} 个旧版仓库将移入共享对象存储。每个仓库都会先验证，然后才移除旧副本。"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.confirm.label"
+msgstr "迁移"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.confirm.title"
+msgstr "迁移旧版快照"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.description"
+msgstr "将仍有会话归属的旧版快照仓库移入共享对象存储。删除前会先展示预演结果；无确认会话记录的仓库会被跳过并保留。"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.failed.title"
+msgstr "快照迁移失败"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.nothing"
+msgstr "没有可迁移的旧版快照"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.success.description"
+msgstr "已迁移 {migrated} 个仓库，跳过 {skipped} 个。"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.success.title"
+msgstr "旧版快照已迁移"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.title"
+msgstr "迁移旧版快照"
 
 #. js-lingui-explicit-id
 msgid "settings.storage.page.description"

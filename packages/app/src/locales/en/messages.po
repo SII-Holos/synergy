@@ -18673,12 +18673,100 @@ msgid "settings.storage.cleanup.title"
 msgstr "Cleanup"
 
 #. js-lingui-explicit-id
+msgid "settings.storage.compact.action"
+msgstr "Pack"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.busy"
+msgstr "Packing..."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.confirm.description"
+msgstr "The shared store currently holds {bytes}. It will be repacked; integrity checks run first."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.confirm.label"
+msgstr "Pack"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.confirm.title"
+msgstr "Pack shared storage"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.description"
+msgstr "Repack the shared object store to reclaim space. A dry run is shown first; integrity checks run before anything is rewritten."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.failed.title"
+msgstr "Snapshot packing failed"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.nothing"
+msgstr "No shared storage to pack"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.success.description"
+msgstr "Shared store: {before} → {after}."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.success.title"
+msgstr "Shared storage packed"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.compact.title"
+msgstr "Pack shared storage"
+
+#. js-lingui-explicit-id
 msgid "settings.storage.maintenance.description"
-msgstr "Snapshot maintenance runs through the CLI (synergy data snapshots): inspect | check | migrate | compact | clean. migrate moves owned legacy repositories into the shared store, clean reclaims legacy directories that no session owns, and deletion only releases snapshots of permanently deleted sessions."
+msgstr "inspect and check run through the CLI (synergy data snapshots). migrate and compact can also run here, each with a dry run first; clean reclaims legacy directories that no session owns."
 
 #. js-lingui-explicit-id
 msgid "settings.storage.maintenance.title"
 msgstr "Maintenance"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.action"
+msgstr "Migrate"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.busy"
+msgstr "Migrating..."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.confirm.description"
+msgstr "{count} legacy repositories will move into the shared object store. Each is verified before its old copy is removed."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.confirm.label"
+msgstr "Migrate"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.confirm.title"
+msgstr "Migrate legacy snapshots"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.description"
+msgstr "Move legacy snapshot repositories that still have session ownership into the shared object store. A dry run is shown first; repositories without a confirmed session record are skipped and retained."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.failed.title"
+msgstr "Snapshot migration failed"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.nothing"
+msgstr "No legacy snapshots to migrate"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.success.description"
+msgstr "{migrated} repositories migrated, {skipped} skipped."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.success.title"
+msgstr "Legacy snapshots migrated"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.migrate.title"
+msgstr "Migrate legacy snapshots"
 
 #. js-lingui-explicit-id
 msgid "settings.storage.page.description"
