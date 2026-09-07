@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import type { Argv } from "yargs"
@@ -48,7 +48,14 @@ mock.module(clackModuleURL, () => ({
   multiselect: async () => clackState.multiselectResult,
 }))
 
-afterEach(() => {
+let home: Awaited<ReturnType<typeof tmpdir>> | undefined
+beforeEach(async () => {
+  home = await tmpdir()
+  process.env.SYNERGY_HOME = home.path
+  await fs.mkdir(Global.Path.data, { recursive: true })
+})
+
+afterEach(async () => {
   delete process.env.SYNERGY_HOME
   delete process.env.SHELL
   delete process.env.XDG_CONFIG_HOME
@@ -397,6 +404,15 @@ describe("data shared helpers", () => {
 })
 
 describe("data move command", () => {
+  test("remove-original releases its storage locks without recreating the source home", async () => {
+    const { executeMove } = await import("../../src/cli/cmd/data/move")
+    await using target = await tmpdir()
+    const root = Global.Path.root
+    await Bun.write(path.join(root, "data", "session.json"), "{}")
+    await executeMove({ target: target.path, removeOriginal: true, dryRun: false })
+    expect(await dirExists(root)).toBe(false)
+    expect(await Bun.file(path.join(target.path, ".synergy", "data", "session.json")).text()).toBe("{}")
+  })
   test("dry-run plans a move without touching the target", async () => {
     const { executeMove } = await import("../../src/cli/cmd/data/move")
     await using target = await tmpdir()

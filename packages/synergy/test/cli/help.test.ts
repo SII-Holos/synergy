@@ -19,6 +19,12 @@ async function cliHelp(args: string[], env?: Record<string, string>) {
 }
 
 describe("product CLI help", () => {
+  test("snapshot maintenance exposes scope selection and explicit collection controls", async () => {
+    const group = await cliHelp(["data", "snapshots", "--help"])
+    for (const action of ["inspect", "check", "migrate", "compact"]) expect(group).toContain(action)
+    const compact = await cliHelp(["data", "snapshots", "compact", "--help"])
+    for (const flag of ["--scope", "--json", "--apply", "--prune"]) expect(compact).toContain(flag)
+  })
   test("does not persist the launch directory while discovering plugin commands", async () => {
     await using tmp = await tmpdir()
 

@@ -118,7 +118,13 @@ The exact stages vary by tool, but no write path should create a second unclassi
 
 ## Snapshots, Rollback, and Restore
 
-Session snapshots use an isolated Git object/index area under Synergy data rather than committing to the user's repository. Step snapshots and resulting patches support file-diff display and later restoration.
+File snapshots share one Git object store and reference namespace per Scope under Synergy data. Each session and workspace identity has an independent, rebuildable index. `SnapshotStore` is the sole resolver for registered legacy repositories and the shared store; snapshot readers validate session ownership before using a tree hash. The user's Git repository is not an object-store dependency.
+
+Capture holds a shared Scope lease and an exclusive session index lock, writes objects, and retains `refs/synergy/snapshots/<session>/<tree>` before returning the tree hash. All historical roots remain retained. Fork and JSON import establish destination ownership before publishing copied messages; JSON import reports unavailable file objects as warnings. Archive, compaction of messages, and transcript rollback do not release roots.
+
+Permanent deletion writes a durable deletion job and tombstones the owner before removing canonical session data. Both ordinary removal and recovery removal finish the same cleanup; startup resumes pending jobs. Physical collection occurs only through explicit offline maintenance, under an exclusive Scope lease. Full-home copies also hold a home-wide lease that excludes creation of new snapshot Scopes during the copy. A failed integrity check or unfinished maintenance job blocks collection. Process start identities use a consistent UTC encoding; lease age alone never displaces a live process.
+
+The central `20260907-snapshot-shared-store` migration inventories owners without scanning objects. Explicit maintenance imports missing objects through a streaming SQLite inventory, preserves unknown objects, verifies roots, switches the owner, and then removes the legacy copy. Full-data archives materialize alternates and merge Git objects and references separately from JSON files. See [storage layout](../reference/storage-and-paths.md), [maintenance commands](../reference/cli-guide.md), and [the storage decision](../decisions/implemented/architecture/2026-09-07-shared-file-snapshot-storage.md).
 
 Message rollback changes the effective transcript through history events. It does not modify project files. Restoring files is an explicit operation that checks the selected snapshot/patch records and reports per-file failures. Redo is constrained once newer history makes the rollback ambiguous.
 

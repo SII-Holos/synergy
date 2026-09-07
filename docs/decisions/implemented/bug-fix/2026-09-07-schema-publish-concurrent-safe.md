@@ -12,12 +12,10 @@ The bug hid behind test-harness timeouts for days: the 2026-09-06 Windows CI fai
 
 The boot-time schema sync in `packages/synergy/src/global/index.ts` now:
 
-1. reads the bundled schema and skips all writing when the destination already holds identical contents (the common second-boot path becomes a no-op read);
-2. otherwise copies to a unique `${configSchema}.${uuid}.tmp` sibling and publishes with a same-volume `rename` (atomic replace — readers never observe a partial file);
-3. swallows a failed rename only after re-reading the destination and confirming it already holds the identical bundled contents — the concurrent-publisher-won case; any other failure propagates;
+1. reads the bundled schema and skips all writing when the destination already holds identical contents (the common second-boot path becomes a no-op read outside any lock);
+2. otherwise serializes under the schema file lock (`withFileLock` on `schema/.locks/config-schema`, introduced by the shared file-snapshot-storage work) and re-checks the destination inside the lock, so a concurrent publisher's finished work short-circuits instead of rewriting;
+3. publishes through a unique `${configSchema}.${uuid}.tmp` sibling and a same-volume `rename` (atomic replace — readers never observe a partial file); because publishers are serialized, a failing rename propagates as a real error instead of being swallowed as a lost race;
 4. removes the temp file in a `finally` on every path.
-
-Concurrent publishers therefore converge: exactly one rename needs to win, the rest verify the identical outcome and continue.
 
 ## Alternatives considered
 
@@ -28,4 +26,4 @@ Concurrent publishers therefore converge: exactly one rename needs to win, the r
 
 ## Consequences
 
-Bought: concurrent startups into one home no longer crash on Windows, the identical-content fast path makes routine boots a no-op, and the schema file is never observed half-written. The regression test (`test/global/schema-publish.test.ts`, in the Windows CI step) races four fresh processes per home and asserts uniform exit 0 with the bundled contents published — on the old code it fails on Windows with `EBUSY` and passes everywhere after the fix. Cost: one extra read of the bundled schema per boot, and a rename loser performs one destination re-read; a Windows process holding the schema file open across a version upgrade still fails startup as before — that pre-existing edge now fails at the rename with destination contents available for diagnosis.
+Bought: concurrent startups into one home no longer crash on Windows, the identical-content fast path makes routine boots a no-op outside any lock, and the schema file is never observed half-written. The regression test (`test/global/schema-publish.test.ts`, in the Windows CI step) races four fresh processes per home and asserts uniform exit 0 with the bundled contents published — on the pre-fix code it fails on Windows with `EBUSY` and passes everywhere after the fix. Cost: one extra read of the bundled schema per boot, and a publisher that finds the work already done inside the lock performs one extra destination read; a Windows process holding the schema file open across a version upgrade still fails startup as before — that pre-existing edge now fails at the rename with destination contents available for diagnosis.

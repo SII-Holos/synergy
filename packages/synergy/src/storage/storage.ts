@@ -83,6 +83,7 @@ export namespace Storage {
 
   export interface WriteOptions {
     compact?: boolean
+    durable?: boolean
   }
 
   function serialize(content: unknown, options?: WriteOptions) {
@@ -98,7 +99,7 @@ export namespace Storage {
         const content = await Bun.file(target).json()
         fn(content)
         const serialized = serialize(content, options)
-        await writeJsonAtomic(target, serialized)
+        await writeJsonAtomic(target, serialized, options)
         ObservabilityResources.addWrite(Buffer.byteLength(serialized, "utf8"))
         return content as T
       }),
@@ -112,7 +113,7 @@ export namespace Storage {
       withErrorHandling(async () => {
         using _ = await Lock.write(target)
         const serialized = serialize(content, options)
-        await writeJsonAtomic(target, serialized)
+        await writeJsonAtomic(target, serialized, options)
         ObservabilityResources.addWrite(Buffer.byteLength(serialized, "utf8"))
       }),
     )
@@ -260,7 +261,7 @@ export namespace Storage {
   const ATOMIC_WRITE_RETRY_BASE_MS = 50
   const ATOMIC_WRITE_RETRY_MAX_MS = 200
 
-  export async function writeJsonAtomic(target: string, serialized: string) {
+  export async function writeJsonAtomic(target: string, serialized: string, options?: WriteOptions) {
     await fs.mkdir(path.dirname(target), { recursive: true })
     const tmp = path.join(
       path.dirname(target),
@@ -269,7 +270,23 @@ export namespace Storage {
     for (let attempt = 1; ; attempt++) {
       try {
         await Bun.write(tmp, serialized)
+        if (options?.durable) {
+          const file = await fs.open(tmp, "r+")
+          try {
+            await file.sync()
+          } finally {
+            await file.close()
+          }
+        }
         await fs.rename(tmp, target)
+        if (options?.durable && process.platform !== "win32") {
+          const directory = await fs.open(path.dirname(target), "r")
+          try {
+            await directory.sync()
+          } finally {
+            await directory.close()
+          }
+        }
         return
       } catch (error) {
         if (!isRetryableIOError(error) || attempt >= ATOMIC_WRITE_ATTEMPTS) {
