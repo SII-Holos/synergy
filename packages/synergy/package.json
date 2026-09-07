@@ -71,6 +71,7 @@
     "@ai-sdk/xai": "2.0.42",
     "@clack/prompts": "1.0.0-alpha.1",
     "@ericsanchezok/synergy-browser": "workspace:*",
+    "@ericsanchezok/synergy-computer": "workspace:*",
     "@ericsanchezok/synergy-link-protocol": "workspace:*",
     "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",

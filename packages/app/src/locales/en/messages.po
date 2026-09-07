@@ -9169,6 +9169,18 @@ msgstr "Execute task"
 msgid "classifier.label.web"
 msgstr "Access web"
 
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "computer.title.action"
+msgstr "Act in application"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "computer.title.apps"
+msgstr "Find application windows"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "computer.title.observe"
+msgstr "Observe application"
+
 #. js-lingui-explicit-id
 msgid "confirm.agendaAction.cancel.confirm"
 msgstr "Cancel agenda"

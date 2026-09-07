@@ -1,3 +1,4 @@
+import { getComputerToolPresentation } from "./tool/classifier"
 import {
   Component,
   ErrorBoundary,
@@ -350,6 +351,8 @@ function researchWikiArgs(input: any = {}, metadata: any = {}) {
 }
 
 export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): ToolTriggerInfo {
+  const computer = getComputerToolPresentation(tool, input)
+  if (computer) return computer
   const browser = getBrowserToolInfo(tool, input, metadata)
   if (browser) return browser
   const lattice = getLatticeToolPresentation(tool, input, metadata)

@@ -46,6 +46,7 @@ Architecture documents define current invariants, ownership boundaries, and the 
 - [Cortex and delegated work](architecture/cortex.md)
 - [Workflow engine](architecture/workflows.md)
 - [Browser runtime](architecture/browser-runtime.md)
+- [Native Computer Use](architecture/computer-use.md)
 
 ## Reference
 

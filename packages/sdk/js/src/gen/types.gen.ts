@@ -19540,6 +19540,25 @@ export type BrowserControlResponses = {
 
 export type BrowserControlResponse2 = BrowserControlResponses[keyof BrowserControlResponses]
 
+export type ComputerHostBrokerData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/computer/host/broker"
+}
+
+export type ComputerHostBrokerErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ComputerHostBrokerError = ComputerHostBrokerErrors[keyof ComputerHostBrokerErrors]
+
 export type PluginListGlobalThemeContributionsData = {
   body?: never
   path?: never

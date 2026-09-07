@@ -1,3 +1,4 @@
+import { ComputerRoute } from "./computer-route"
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { GlobalBus } from "@/bus/global"
@@ -1357,6 +1358,7 @@ export namespace Server {
         .route("/voice", VoiceRoute)
         .route("/holos", HolosDataRoute)
         .route("", BrowserRoute)
+        .route("", ComputerRoute)
         .route("/plugin", PluginRoute)
         .route("/api/plugins", ApiPluginRoute)
         .route("/api/plugins", PluginRuntimeRoute)

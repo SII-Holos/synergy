@@ -1520,7 +1520,7 @@
       ]
     },
     "packages/desktop": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+      "command": "bun run test:coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 60,
@@ -1882,6 +1882,15 @@
           "reason": "shared browser UI exercised by App components.dom, overlays.dom, skin.dom and real-host acceptance; package Bun coverage cannot observe browser execution"
         }
       ]
+    },
+    "packages/computer": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 80,
+        "functions": 75
+      },
+      "exempt": []
     }
   }
 }
