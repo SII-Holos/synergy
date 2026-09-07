@@ -34,6 +34,34 @@ async function reset() {
 beforeEach(reset)
 afterEach(reset)
 
+test("error classification reads a bounded prefix and preserves the caller response", async () => {
+  let pulls = 0
+  let classifiedBody: unknown = "unset"
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls++
+        controller.enqueue(new Uint8Array(16 * 1024).fill(120))
+        if (pulls === 100) controller.close()
+      },
+    }),
+    { status: 400 },
+  )
+  const result = await ProviderAuthRecovery.execute({
+    providerID: "test-status",
+    manageStoredCredential: false,
+    request: async () => response,
+    classify: ({ body }) => {
+      classifiedBody = body
+      return undefined
+    },
+  })
+  expect(classifiedBody).toBeUndefined()
+  expect(pulls).toBeLessThan(10)
+  expect(result.bodyUsed).toBe(false)
+  await result.body?.cancel()
+})
+
 test("concurrent credential rejection performs one refresh and each request retries once", async () => {
   await Auth.set("test-refresh", { type: "oauth", access: "old", refresh: "refresh", expires: 9999999999 })
   let refreshes = 0

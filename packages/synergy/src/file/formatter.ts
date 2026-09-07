@@ -2,7 +2,7 @@ import { readableStreamToText } from "bun"
 import { BunProc } from "../util/bun"
 import { ScopeContext } from "../scope/context"
 import { Filesystem } from "../util/filesystem"
-import { Flag } from "@/flag/flag"
+import { Config } from "@/config/config"
 
 export interface Info {
   name: string
@@ -87,7 +87,8 @@ export const oxfmt: Info = {
   },
   extensions: [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"],
   async enabled() {
-    if (!Flag.SYNERGY_EXPERIMENTAL_OXFMT) return false
+    const config = await Config.current()
+    if (!config.formatter || config.formatter.oxfmt?.disabled !== false) return false
     const items = await Filesystem.findUp(
       "package.json",
       ScopeContext.current.directory,

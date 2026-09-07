@@ -21,7 +21,7 @@ export function buildBossContext(session: SessionInfo): string {
  * every boss turn (Layer 2.5, `case "boss"`) when the session is the runtime
  * boss (home scope, `scope:boss` endpoint) or any project boss.
  *
- * `identityText` comes from `experimental.boss_identity_text` (config single
+ * `identityText` comes from `boss.identityText` (config single
  * source, never written to the session); the default colleague persona is
  * used when unset.
  */
@@ -85,7 +85,7 @@ export function buildBossDeliveryHint(delivery: { replyToMessageId?: string; cha
  * Full boss system context for runtime/project bosses: base boss role +
  * identity/discipline block (always present) + standing instructions
  * (project boss created via boss_project). `identityText` is resolved by the
- * caller (invoke.ts) from `experimental.boss_identity_text`; when unset the
+ * caller (invoke.ts) from `boss.identityText`; when unset the
  * default colleague persona is injected instead, so the discipline block is
  * unconditionally present every turn. `instructions` come from
  * `workflow.instructions` (project-boss reporting discipline).

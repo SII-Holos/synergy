@@ -2,6 +2,8 @@
 
 Source development is orchestrated from the repository root with `bun dev`. The installed/product `synergy` CLI is a different surface.
 
+One-shot and persistent-server execution share the runtime lifecycle. [Rollout execution](rollout.md) documents task configuration, durable evidence, import/export and accounting boundaries.
+
 ## Requirements and Preparation
 
 The root manifest pins Bun `1.3.14`. Install that version, then run:

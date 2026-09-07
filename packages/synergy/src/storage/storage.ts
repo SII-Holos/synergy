@@ -84,6 +84,7 @@ export namespace Storage {
   export interface WriteOptions {
     compact?: boolean
     durable?: boolean
+    private?: boolean
   }
 
   function serialize(content: unknown, options?: WriteOptions) {
@@ -119,7 +120,7 @@ export namespace Storage {
     )
   }
 
-  export async function scan(prefix: string[]): Promise<string[]> {
+  export async function scan(prefix: string[], options?: { strict?: boolean }): Promise<string[]> {
     const dir = resolveDir()
     const target = path.join(dir, ...prefix)
     return measureStorage("scan", prefix, async () => {
@@ -129,10 +130,38 @@ export namespace Storage {
           .filter((e) => !isTempFile(e))
           .map((e) => (e.endsWith(".json") ? e.slice(0, -5) : e))
           .sort()
-      } catch {
+      } catch (error) {
+        if (options?.strict && !(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error
         return []
       }
     })
+  }
+
+  export async function writeBinary(key: string[], content: Uint8Array) {
+    const target = path.join(resolveDir(), ...key) + ".bin"
+    return measureStorage("write", key, async () =>
+      withErrorHandling(async () => {
+        using _ = await Lock.write(target)
+        await writeFileAtomic(target, content, { private: true, durable: true })
+        ObservabilityResources.addWrite(content.byteLength)
+      }),
+    )
+  }
+
+  export async function readBinary(key: string[], options?: { maxBytes?: number }): Promise<Uint8Array> {
+    const target = path.join(resolveDir(), ...key) + ".bin"
+    return measureStorage("read", key, async () =>
+      withErrorHandling(async () => {
+        using _ = await Lock.read(target)
+        const file = Bun.file(target)
+        if (options?.maxBytes !== undefined && file.size > options.maxBytes) {
+          throw new Error("Binary record exceeds its byte limit")
+        }
+        const content = await file.bytes()
+        ObservabilityResources.addRead(content.byteLength)
+        return content
+      }),
+    )
   }
 
   export async function removeTree(prefix: string[]) {
@@ -262,21 +291,27 @@ export namespace Storage {
   const ATOMIC_WRITE_RETRY_MAX_MS = 200
 
   export async function writeJsonAtomic(target: string, serialized: string, options?: WriteOptions) {
-    await fs.mkdir(path.dirname(target), { recursive: true })
+    return writeFileAtomic(target, serialized, options)
+  }
+
+  async function writeFileAtomic(target: string, content: string | Uint8Array, options?: WriteOptions) {
+    await fs.mkdir(path.dirname(target), { recursive: true, ...(options?.private ? { mode: 0o700 } : {}) })
     const tmp = path.join(
       path.dirname(target),
       `.tmp-${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
     )
     for (let attempt = 1; ; attempt++) {
       try {
-        await Bun.write(tmp, serialized)
-        if (options?.durable) {
-          const file = await fs.open(tmp, "r+")
+        if (options?.private || options?.durable) {
+          const file = await fs.open(tmp, "w", options.private ? 0o600 : 0o666)
           try {
-            await file.sync()
+            await file.writeFile(content)
+            if (options.durable) await file.sync()
           } finally {
             await file.close()
           }
+        } else {
+          await Bun.write(tmp, content)
         }
         await fs.rename(tmp, target)
         if (options?.durable && process.platform !== "win32") {

@@ -88,6 +88,12 @@ The session index, paged-session index, child-session index, navigation index, m
 
 Lattice stores every v2 run by immutable run ID. A session's `lattice/current` record selects the run shown as current without overwriting older terminal runs; it is a repairable index over canonical Run records. Per-run event files are idempotent, best-effort audit records, not an event-sourced reconstruction of the Run. Run, Step, Blueprint binding, and BlueprintLoop records remain the recovery facts.
 
+## Rollout Artifacts
+
+The rollout artifact store uses `rollout/` beneath its owning session, or `data/operations/<scope>/<operation>/rollout/` for sessionless operations. `artifacts/<id>/info.json` commits the readable byte/chunk count and completeness state; individually addressed chunk descriptors reference owner-local, SHA-256-addressed binary blobs. Payloads are streamed in bounded chunks and verified on read. Interrupted streams retain their committed prefix. Under the same rollout owner, `runs/<run>/info.json` stores run state, `runs/<run>/calls/<call>.json` stores logical calls, and `runs/<run>/attempts/<call>/<attempt>.json` stores actual provider attempts with ordered indices and body references. Private records use owner-only permissions and durable atomic writes; they are separate from public product assets and telemetry retention.
+
+Externalized files in `data/tool-output/` have no age-based expiration. Creating a new tool-output file does not delete older observations.
+
 ## Library Database
 
 Library uses:
@@ -175,6 +181,8 @@ Project worktrees may also be managed beneath a project-local Synergy area. Perm
 Stop the server before raw filesystem backup or relocation. For supported selective movement, use `synergy data pack`, `merge`, `move`, and `set-home`. Use session export/import for portable session artifacts.
 
 Never include `data/auth/` in a public diagnostics bundle, issue attachment, or repository commit.
+
+Rollout runs also own `tools/<executionID>` and `processes/<processID>` metadata through `RolloutLedger`. Tool inputs, original results, returned observations, and channel-framed process streams use the same private artifact store as model evidence. A process record can remain active after an explicitly backgrounded tool returns; exports must preserve its partial stream boundary rather than infer completion from the tool result.
 
 ## File snapshot persistence
 

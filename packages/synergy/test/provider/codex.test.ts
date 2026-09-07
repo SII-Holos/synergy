@@ -225,6 +225,41 @@ test("imports valid Codex CLI auth without sharing the auth file", async () => {
   expect(await CodexProvider.importCodexCliAuth({ codexHome: tmp.path })).toBeUndefined()
 })
 
+test("codex transport archives the body after its final rewrite", async () => {
+  const token = accessToken({ accountID: "acct_archive" })
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-archive",
+    expires: nowSeconds() + 60 * 60,
+  })
+  const { RolloutTransport } = await import("../../src/session/rollout/transport")
+  const events: import("../../src/session/rollout/transport").RolloutTransport.Event[] = []
+  let sent = ""
+  globalThis.fetch = asFetch(async (input, init) => {
+    sent = await new Request(input, init).text()
+    return jsonResponse({ ok: true })
+  })
+  await RolloutTransport.provide(
+    async (event) => {
+      events.push(event)
+    },
+    async () => {
+      const response = await CodexProvider.codexFetch("https://chatgpt.com/backend-api/codex/responses", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: "gpt-5.4-mini", input: "hello", max_output_tokens: 123 }),
+      })
+      await response.text()
+    },
+  )
+  const chunks = events.flatMap((event) => (event.type === "chunk" && event.channel === "request" ? [event.data] : []))
+  expect(Buffer.concat(chunks).toString()).toBe(sent)
+  expect(JSON.parse(sent).max_output_tokens).toBeUndefined()
+  expect(JSON.stringify(events)).not.toContain(token)
+  expect(JSON.stringify(events)).not.toContain("refresh-archive")
+})
+
 test("codexFetch rewrites authorization, Codex headers, session headers, and request body", async () => {
   const token = accessToken({ accountID: "acct_fetch" })
   await Auth.set(CodexProvider.PROVIDER_ID, {

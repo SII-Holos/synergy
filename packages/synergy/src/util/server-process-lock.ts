@@ -16,12 +16,14 @@ export namespace ServerProcessLock {
     processStartIdentity?: string
     command: string[]
     cwd: string
-    mode: "server" | "daemon"
+    mode: "server" | "daemon" | "oneshot"
   }
 
   export class AlreadyRunningError extends Error {
     constructor(readonly lock: LockInfo) {
-      super(`Another Synergy server process is already running (pid ${lock.pid})`)
+      super(
+        `Another Synergy runtime already owns this Home (pid ${lock.pid}); use --attach explicitly or a separate SYNERGY_HOME`,
+      )
       this.name = "AlreadyRunningError"
     }
   }
@@ -51,7 +53,7 @@ export namespace ServerProcessLock {
     error?: string
   }
 
-  export async function acquire(lockPath = DaemonPaths.runtimeLock()) {
+  export async function acquire(lockPath = DaemonPaths.runtimeLock(), mode?: LockInfo["mode"]) {
     await fs.mkdir(nodePath.dirname(lockPath), { recursive: true })
 
     const ownerToken = randomUUID()
@@ -63,7 +65,7 @@ export namespace ServerProcessLock {
       processStartIdentity: identity,
       command: process.argv.slice(),
       cwd: process.cwd(),
-      mode: process.env.SYNERGY_DAEMON === "1" ? "daemon" : "server",
+      mode: mode ?? (process.env.SYNERGY_DAEMON === "1" ? "daemon" : "server"),
     }
 
     for (;;) {
@@ -201,7 +203,7 @@ export namespace ServerProcessLock {
       Array.isArray(lock.command) &&
       lock.command.every((part) => typeof part === "string") &&
       typeof lock.cwd === "string" &&
-      (lock.mode === "server" || lock.mode === "daemon")
+      (lock.mode === "server" || lock.mode === "daemon" || lock.mode === "oneshot")
     )
   }
 

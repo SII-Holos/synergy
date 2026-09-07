@@ -254,20 +254,17 @@ async function parseToolFile(
   let parameters: Array<{ name: string; type: string | null; description: string | null; optional: boolean }> = []
   const identifier = body.match(/parameters\s*:\s*(\w+)\s*,/)?.[1]
   const importedSchema = identifier && source.match(new RegExp(`import\\s*\\{[^}]*\\b${identifier}\\b[^}]*\\}\\s*from`))
-  const paramsBlock = findBlock(body, "parameters", "{", "}")
   if (importedSchema && identifier) {
     parameters = await schemaFields(file, identifier)
-  } else if (paramsBlock) {
-    parameters = parseObjectFields(paramsBlock)
   } else if (/parameters\s*,/.test(body)) {
     const moduleParams = source.match(/const\s+parameters\s*=\s*z[\s\S]*?\.object\(\{/)
     if (moduleParams) {
-      const openIndex = source.indexOf(".object({", moduleParams.index! + moduleParams[0]!.length - 2)
-      if (openIndex > 0) {
-        const objectBlock = findBlock(source.slice(openIndex), "{", "{", "}")
-        if (objectBlock) parameters = parseObjectFields(objectBlock)
-      }
+      const objectBlock = findBlock(source.slice(moduleParams.index), "const parameters", "{", "}")
+      if (objectBlock) parameters = parseObjectFields(objectBlock)
     }
+  } else {
+    const paramsBlock = findBlock(body, "parameters", "{", "}")
+    if (paramsBlock) parameters = parseObjectFields(paramsBlock)
   }
 
   return { id, file: path.relative(REPO_ROOT, file), description, kind: classify(id), parameters }

@@ -7,6 +7,9 @@ import type { LLM } from "../llm"
 import type { ToolCatalog } from "../tool-catalog"
 import type { ContextUsage } from "../context-usage"
 import { AgentTurnProtocol } from "./protocol"
+import type { RolloutSchema } from "../rollout/schema"
+import type { RolloutTransportSchema } from "../rollout/transport-schema"
+import { RolloutRecordingError } from "../rollout/error"
 import { spawnAgentWorkerProcess, type AgentWorkerProcess, type SpawnAgentWorkerProcessOptions } from "./process-host"
 
 export type AgentTurnStreamPart = AgentTurnProtocol.StreamEvent
@@ -14,19 +17,25 @@ export type AgentTurnStreamPart = AgentTurnProtocol.StreamEvent
 export interface AgentTurnInput extends Omit<LLM.StreamInput, "tools" | "memoryTurn" | "prepared"> {
   toolDefinitions: ToolCatalog.Definition[]
   contextUsageProvenance?: ContextUsage.Provenance
+  recording?: { owner: RolloutSchema.Owner; runID: string; purpose: string }
 }
 
-export type AgentTurnWorkerInput = Omit<AgentTurnInput, "abort" | "user" | "agent" | "contextUsageProvenance"> & {
+export type AgentTurnWorkerInput = Omit<
+  AgentTurnInput,
+  "abort" | "user" | "agent" | "contextUsageProvenance" | "recording"
+> & {
   user: Pick<AgentTurnInput["user"], "id">
   agent: Pick<AgentTurnInput["agent"], "name">
   prepared: LLM.PreparedTurn
 }
 
-type AgentTurnPoolInput = Omit<AgentTurnInput, "contextUsageProvenance"> & {
+type AgentTurnPoolInput = Omit<AgentTurnInput, "contextUsageProvenance" | "recording"> & {
   prepared: LLM.PreparedTurn
+  archive?: RolloutTransportSchema.Sink
 }
 
 export interface AgentTurnStream {
+  rollout?: { owner: RolloutSchema.Owner; runID: string; callID: string }
   fullStream: AsyncIterable<AgentTurnStreamPart>
   contextUsageDraft?: Promise<ContextUsage.Draft | undefined>
   usage: Promise<Awaited<LLM.StreamOutput["usage"]> | undefined>
@@ -83,6 +92,13 @@ const RELEASED_REQUEST_TTL_MS = 30_000
 const RELEASED_REQUEST_RING_CAPACITY = 2
 
 interface PoolTask {
+  archive?: RolloutTransportSchema.Sink
+  archiveSequence: number
+  archiving: boolean
+  archiveDrain?: Promise<void>
+  recordingFailure?: unknown
+  released: Promise<void>
+  resolveReleased(): void
   requestId: string
   queuedAt: number
   startedAt?: number
@@ -320,7 +336,7 @@ export class AgentWorkerPool {
     }
 
     const requestId = `agent_turn_${crypto.randomUUID()}`
-    const { abort: _abort, ...turnInput } = input
+    const { abort: _abort, archive, ...turnInput } = input
     const workerInput: AgentTurnWorkerInput = {
       ...turnInput,
       user: { id: input.user.id },
@@ -352,8 +368,14 @@ export class AgentWorkerPool {
         resolveUsage = resolve
       })
       const onAbort = () => this.cancel(requestId, signal.reason)
+      const released = Promise.withResolvers<void>()
       signal.addEventListener("abort", onAbort, { once: true })
       task = {
+        archive,
+        archiveSequence: 0,
+        archiving: false,
+        released: released.promise,
+        resolveReleased: released.resolve,
         requestId,
         queuedAt: Date.now(),
         requestBytes,
@@ -625,6 +647,42 @@ export class AgentWorkerPool {
       this.sendNextChunk(worker, task)
       return
     }
+    if (message.type === "archive") {
+      if (!task.transferCommitted || task.terminal || task.archiving || message.sequence !== task.archiveSequence + 1) {
+        this.terminateForProtocol(worker, "invalid rollout archive sequence")
+        return
+      }
+      task.archiveSequence = message.sequence
+      task.archiving = true
+      task.archiveDrain = (async () => {
+        let failure: unknown
+        try {
+          if (task.recordingFailure) throw task.recordingFailure
+          if (!task.archive) throw new RolloutRecordingError({ message: "Agent turn has no rollout archive owner" })
+          await task.archive(message.event)
+        } catch (error) {
+          failure = RolloutRecordingError.isInstance(error)
+            ? error
+            : new RolloutRecordingError({ message: "Unable to persist worker rollout evidence" }, { cause: error })
+          task.recordingFailure = failure
+        } finally {
+          task.archiving = false
+        }
+        if (worker.task !== task || task.completed) return
+        this.send(worker, {
+          type: "archive-ack",
+          requestId: task.requestId,
+          sequence: message.sequence,
+          ...(failure ? { error: AgentTurnProtocol.serializeError(failure) } : {}),
+        })
+        if (failure) {
+          if (task.started) task.stream.fail(failure)
+          else task.reject(failure)
+          this.cancel(task.requestId, failure)
+        }
+      })()
+      return
+    }
     if (message.type === "chunk-ack") {
       if (task.transferCommitted || message.index !== task.nextChunk - 1) {
         this.terminateForProtocol(worker, "invalid chunk acknowledgement")
@@ -679,7 +737,7 @@ export class AgentWorkerPool {
       }
       task.terminal = true
       task.terminalReason = "error"
-      const error = AgentTurnProtocol.deserializeError(message.error)
+      const error = task.recordingFailure ?? AgentTurnProtocol.deserializeError(message.error)
       if (message.memoryBeforeDispose) {
         this.recordWorkerMemory(worker, message.memoryBeforeDispose, "turn.before_dispose", task)
       }
@@ -691,6 +749,10 @@ export class AgentWorkerPool {
       return
     }
     if (message.type === "complete") {
+      if (task.archiving || task.recordingFailure) {
+        this.terminateForProtocol(worker, "turn completed without committed rollout evidence")
+        return
+      }
       if (!task.started) {
         this.terminateForProtocol(worker, "turn completed before start")
         return
@@ -740,6 +802,7 @@ export class AgentWorkerPool {
         task.resolveUsage(undefined)
       }
       task.completed = true
+      task.resolveReleased()
       task.removeAbortListener()
     }
     if (!this.stopping && !worker.stopping) {
@@ -848,6 +911,7 @@ export class AgentWorkerPool {
   }
 
   private finishTask(worker: PoolWorker, task: PoolTask, reason: string, drain = true): void {
+    task.resolveReleased()
     if (task.completed) return
     task.completed = true
     task.removeAbortListener()
@@ -1088,6 +1152,8 @@ export class AgentWorkerPool {
     if (!task.terminal && !task.completed) {
       this.cancel(task.requestId, new DOMException("Agent turn consumer disposed", "AbortError"))
     }
+    await task.released
+    await task.archiveDrain
   }
 
   private sweepHealth(now = Date.now()): void {

@@ -3,6 +3,7 @@ import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { errors } from "./error"
 import { SessionExport } from "../session/session-export"
+import { RolloutArchive } from "../session/rollout/archive"
 import { SessionImport } from "../session/session-import"
 
 export const SessionExportRoute = new Hono()
@@ -43,7 +44,13 @@ export const SessionExportRoute = new Hono()
       description: "Generate and download exported session data for a session and all its subsessions.",
       operationId: "session.export.download",
       responses: {
-        200: { description: "Session export as gzipped JSON" },
+        200: {
+          description: "Session export as gzipped JSON or self-contained rollout ZIP",
+          content: {
+            "application/zip": { schema: { type: "string", format: "binary" } },
+            "application/gzip": { schema: { type: "string", format: "binary" } },
+          },
+        },
         ...errors(400, 404),
       },
     }),
@@ -56,12 +63,21 @@ export const SessionExportRoute = new Hono()
     validator(
       "query",
       z.object({
+        format: z.enum(["json", "rollout"]).default("json"),
+        run: z.string().optional(),
         mode: SessionExport.Mode.default("standard").meta({ description: "Export detail level" }),
       }),
     ),
     async (c) => {
       const { sessionID } = c.req.valid("param")
-      const { mode } = c.req.valid("query")
+      const { mode, format, run } = c.req.valid("query")
+      if (format === "rollout")
+        return c.body(RolloutArchive.stream({ sessionID, runID: run }), 200, {
+          "Content-Type": "application/zip",
+          "Content-Disposition": 'attachment; filename="rollout.zip"',
+          "Content-Encoding": "identity",
+        })
+      if (run) return c.json({ message: "run requires rollout format" }, 400)
       const report = await SessionExport.generate({ sessionID, mode })
       const json = JSON.stringify(report)
       const compressed = Bun.gzipSync(Buffer.from(json))
@@ -78,7 +94,7 @@ export const SessionExportRoute = new Hono()
     "/import",
     describeRoute({
       summary: "Import session data",
-      description: "Import a Synergy session export JSON or gzipped JSON file into the current scope.",
+      description: "Import a Synergy rollout ZIP, session export JSON, or gzipped JSON file into the current scope.",
       operationId: "session.import",
       responses: {
         200: {
@@ -97,7 +113,7 @@ export const SessionExportRoute = new Hono()
       const { file } = c.req.valid("form")
       if (!(file instanceof File)) return c.json({ message: "Missing file field" }, 400)
       try {
-        const result = await SessionImport.fromBuffer(await file.arrayBuffer())
+        const result = await SessionImport.fromBlob(file)
         return c.json(result)
       } catch (error) {
         return c.json({ message: error instanceof Error ? error.message : String(error) }, 400)

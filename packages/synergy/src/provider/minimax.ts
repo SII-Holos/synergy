@@ -1,3 +1,4 @@
+import { RolloutTransport } from "@/session/rollout/transport"
 import { Auth } from "./api-key"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin/auth"
@@ -236,7 +237,7 @@ export namespace MiniMaxProvider {
           const token = await resolveToken({ providerID })
           const headers = new Headers(init?.headers)
           headers.set("Authorization", `Bearer ${token}`)
-          return fetch(input, { ...init, headers })
+          return RolloutTransport.fetch(fetch, input, { ...init, headers })
         },
         refresh: (auth) => refreshAuth(auth, fetch, providerID),
         classify: classifyError,

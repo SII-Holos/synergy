@@ -4,8 +4,6 @@ import type { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
 import type { RuntimeInvocationContextData } from "../plugin-runtime/protocol"
 import type { LoadedPlugin } from "./loader"
-import { ensureRuntime, getPlugin } from "./loader"
-import { pluginRuntimeManager } from "./runtime"
 
 export type PluginCliCommand = Extract<PluginManifestType["contributions"][number], { kind: "cli.command" }>
 
@@ -29,7 +27,7 @@ interface PluginCliWriter {
 }
 
 export function createPluginCliCommandModule(input: {
-  plugin: LoadedPlugin
+  plugin: Pick<LoadedPlugin, "id" | "manifest">
   resolveScope: () => Promise<Scope>
   invoke?: InvokePluginCliCommand
   stdout?: PluginCliWriter
@@ -101,7 +99,11 @@ interface PluginCliCommandServices {
   }): Promise<unknown>
 }
 
-function defaultServices(): PluginCliCommandServices {
+async function defaultServices(): Promise<PluginCliCommandServices> {
+  const [{ ensureRuntime, getPlugin }, { pluginRuntimeManager }] = await Promise.all([
+    import("./loader"),
+    import("./runtime"),
+  ])
   return {
     scope: { id: ScopeContext.current.scope.id, directory: ScopeContext.current.directory },
     getPlugin,
@@ -117,8 +119,9 @@ export async function invokePluginCliCommand(
     args: Record<string, unknown>
     signal?: AbortSignal
   },
-  services: PluginCliCommandServices = defaultServices(),
+  injected?: PluginCliCommandServices,
 ): Promise<PluginCliCommandResult> {
+  const services = injected ?? (await defaultServices())
   const plugin = await services.getPlugin(input.pluginId)
   if (!plugin) throw new Error(`Plugin not found: ${input.pluginId}`)
   if (!plugin.enabledScopes.has(services.scope.id)) {

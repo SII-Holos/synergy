@@ -7633,6 +7633,16 @@ msgstr "未命名"
 
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.stats.accounting.detail"
+msgstr "API 估算小计：{api}。订阅 API 等价估算：{subscription}（{unknown, plural, other {# 次调用未知}}）。历史记录金额：{legacy}。这些数值不代表实际账单扣款。"
+
+#. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.stats.accounting.unknown"
+msgstr "{count, plural, =0 {API 调用费用估算齐全} other {# 次 API 调用的费用未知}}"
+
+#. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.stats.agent.delegatedRuns"
 msgstr "{count} 次委派运行"
 
@@ -7758,7 +7768,7 @@ msgstr "总体变动的组成细分"
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.stats.daily.axis.cost"
-msgstr "成本 ($)"
+msgstr "已知费用 ($)"
 
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -7772,7 +7782,7 @@ msgstr "暂无每日活动"
 
 #. ── daily-trend.tsx — chart/legend labels ───────────────────────────
 msgid "app.stats.daily.legend.cost"
-msgstr "成本"
+msgstr "已知费用"
 
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -7821,7 +7831,7 @@ msgstr "每日趋势"
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.stats.daily.tooltip.cost"
-msgstr "成本：{value}"
+msgstr "已知费用：{value}"
 
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -8001,7 +8011,7 @@ msgstr "净增 {count}"
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.stats.overview.label.cost"
-msgstr "成本"
+msgstr "已知费用"
 
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -8111,7 +8121,7 @@ msgstr "调用"
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.stats.rank.metric.cost"
-msgstr "成本"
+msgstr "已知费用"
 
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -8234,7 +8244,7 @@ msgstr "输入"
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.stats.token.label.output"
-msgstr "输出"
+msgstr "其他输出"
 
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -8255,6 +8265,11 @@ msgstr "从缓存复用的提示 Token"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.stats.token.note.cacheWrite"
 msgstr "已存储以供复用的提示 Token"
+
+#. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.stats.token.note.output"
+msgstr "不包含推理子集的输出"
 
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

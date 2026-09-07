@@ -11,6 +11,7 @@ import os from "node:os"
 import path from "node:path"
 
 declare global {
+  const SYNERGY_COMMIT: string
   const SYNERGY_VERSION: string
   const SYNERGY_CHANNEL: string
   const SYNERGY_SANDBOX_HELPER_SHA256: string
@@ -420,6 +421,7 @@ export namespace Installation {
     await $`${process.execPath} --version`.nothrow().quiet().text()
   }
 
+  export const COMMIT = typeof SYNERGY_COMMIT === "string" && SYNERGY_COMMIT ? SYNERGY_COMMIT : null
   export const VERSION = typeof SYNERGY_VERSION === "string" ? SYNERGY_VERSION : "local"
   export const CHANNEL = typeof SYNERGY_CHANNEL === "string" ? SYNERGY_CHANNEL : "local"
   export const USER_AGENT = `synergy/${CHANNEL}/${VERSION}/${Flag.SYNERGY_CLIENT}`

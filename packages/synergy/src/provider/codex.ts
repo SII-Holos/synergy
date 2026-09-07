@@ -11,6 +11,7 @@ import type { ProviderProfile } from "./profile"
 import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin/auth"
 import { AccountUsage } from "./usage"
 import { ProviderAuthRecovery } from "./auth-recovery"
+import { RolloutTransport } from "@/session/rollout/transport"
 import {
   CODEX_PROVIDER_ID,
   applyReplaySplice,
@@ -797,7 +798,7 @@ export namespace CodexProvider {
             // The body is always re-supplied as a string on `requestInit`, so
             // the original Request's own stream is never consumed by fetch and
             // the same input can be reused for the replay fallback.
-            return fetch(input, requestInit)
+            return RolloutTransport.fetch(fetch, input, requestInit)
           }
 
           const rewritten = rewriteCodexBody(rawBody)
@@ -820,6 +821,7 @@ export namespace CodexProvider {
               providerID,
               status: response.status,
             })
+            await response.body?.cancel()
             return attempt(rewriteCodexBody(rawBody))
           }
           return response
@@ -873,7 +875,7 @@ export namespace CodexProvider {
           accountID: chatGPTAccountID(access),
           originator: "codex_cli_rs",
         })
-        return fetchFn(`${baseURL()}/responses`, {
+        return RolloutTransport.fetch(fetchFn, `${baseURL()}/responses`, {
           method: "POST",
           headers,
           body: JSON.stringify(

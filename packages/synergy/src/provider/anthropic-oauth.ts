@@ -1,3 +1,4 @@
+import { RolloutTransport } from "@/session/rollout/transport"
 import { Auth } from "./api-key"
 import { AccountUsage } from "./usage"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
@@ -242,7 +243,7 @@ export namespace AnthropicOAuthProvider {
           headers.delete("x-api-key")
           headers.delete("X-Api-Key")
           for (const [key, value] of Object.entries(requestHeaders(token!))) headers.set(key, value)
-          return fetch(input, { ...init, headers })
+          return RolloutTransport.fetch(fetch, input, { ...init, headers })
         },
         refresh: (auth) => refreshAuth(auth, fetch, providerID),
         classify: classifyError,

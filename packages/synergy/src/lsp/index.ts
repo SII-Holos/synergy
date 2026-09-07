@@ -11,7 +11,6 @@ import { Config } from "../config/config"
 import { spawn } from "child_process"
 import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
-import { Flag } from "@/flag/flag"
 import { LSPPid } from "./pid"
 import { Shell } from "../util/shell"
 import { LSPSchema } from "./schema"
@@ -53,26 +52,11 @@ export namespace LSP {
     })
   export type DocumentSymbol = z.infer<typeof DocumentSymbol>
 
-  const filterExperimentalServers = (servers: Record<string, LSPServer.Info>) => {
-    if (Flag.SYNERGY_EXPERIMENTAL_LSP_TY) {
-      // If experimental flag is enabled, disable pyright
-      if (servers["pyright"]) {
-        log.info("LSP server pyright is disabled because SYNERGY_EXPERIMENTAL_LSP_TY is enabled")
-        delete servers["pyright"]
-      }
-    } else {
-      // If experimental flag is disabled, disable ty
-      if (servers["ty"]) {
-        delete servers["ty"]
-      }
-    }
-  }
-
   // Idle reaping (issue #350 D3/H4): a language-server subprocess (tsserver,
   // etc.) can hold hundreds of MB and previously lived until the process exited.
   // Each client is stamped on use; a per-scope sweeper shuts down clients idle
   // beyond the timeout. Reaping is transparent — getClients re-spawns on the
-  // next request. Disabled with SYNERGY_DISABLE_LSP_REAP.
+  // next request. Controlled by execution.lspIdleReap.
   const lastUsedAt = new WeakMap<LSPClient.Info, number>()
   const worktreeClients = new WeakSet<LSPClient.Info>()
   const LSP_IDLE_MS = 30 * 60 * 1000
@@ -117,15 +101,30 @@ export namespace LSP {
         servers[server.id] = server
       }
 
-      filterExperimentalServers(servers)
+      if (cfg.lsp?.ty?.disabled !== false) delete servers.ty
 
       for (const [name, item] of Object.entries(cfg.lsp ?? {})) {
-        const existing = servers[name]
+        const existing = servers[name] ?? Object.values(LSPServer).find((server) => server.id === name)
         if (item.disabled) {
           log.info(`LSP server ${name} is disabled`)
           delete servers[name]
           continue
         }
+        if (!item.command) {
+          if (!existing) throw new Error(`LSP server ${name} requires a command`)
+          if (item.env) throw new Error(`LSP server ${name} requires an explicit command to override its environment`)
+          servers[name] = {
+            ...existing,
+            extensions: item.extensions ?? existing.extensions,
+            async spawn(root) {
+              const spawned = await existing.spawn(root)
+              if (!spawned) return spawned
+              return { ...spawned, initialization: { ...spawned.initialization, ...item.initialization } }
+            },
+          }
+          continue
+        }
+        const command = item.command
         servers[name] = {
           ...existing,
           id: name,
@@ -133,7 +132,7 @@ export namespace LSP {
           extensions: item.extensions ?? existing?.extensions ?? [],
           spawn: async (root) => {
             return {
-              process: spawn(item.command[0], item.command.slice(1), {
+              process: spawn(command[0], command.slice(1), {
                 cwd: root,
                 detached: process.platform !== "win32",
                 env: {
@@ -153,15 +152,16 @@ export namespace LSP {
           .join(", "),
       })
 
-      const sweeper = Flag.SYNERGY_DISABLE_LSP_REAP
-        ? undefined
-        : setInterval(() => {
-            const now = Date.now()
-            for (const client of [...clients]) {
-              if (now - (lastUsedAt.get(client) ?? now) < clientIdleMs(client)) continue
-              void reapClient(clients, client, "idle")
-            }
-          }, LSP_SWEEP_MS)
+      const sweeper =
+        cfg.execution?.lspIdleReap === false
+          ? undefined
+          : setInterval(() => {
+              const now = Date.now()
+              for (const client of [...clients]) {
+                if (now - (lastUsedAt.get(client) ?? now) < clientIdleMs(client)) continue
+                void reapClient(clients, client, "idle")
+              }
+            }, LSP_SWEEP_MS)
       sweeper?.unref()
 
       return {

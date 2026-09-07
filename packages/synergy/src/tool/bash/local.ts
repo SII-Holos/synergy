@@ -1,3 +1,4 @@
+import type { RolloutProcess } from "@/session/rollout/process"
 import { spawn } from "child_process"
 import * as fs from "node:fs"
 import { fileURLToPath } from "url"
@@ -452,7 +453,9 @@ export const LocalBashBackend = {
       cleanupExecutionArtifacts()
       throw error
     }
+    let evidence: RolloutProcess.Writer | undefined
     try {
+      evidence = await ctx.openProcessEvidence?.(regProc.id)
       await trace("bash.process.registered", {
         processId: regProc.id,
       })
@@ -559,6 +562,7 @@ export const LocalBashBackend = {
         }
       }
     } catch (e: unknown) {
+      await evidence?.finish({ interrupted: true, exitCode: null, signal: null })
       ProcessRegistry.remove(regProc.id)
       cleanupExecutionArtifacts()
       await trace(
@@ -650,8 +654,8 @@ export const LocalBashBackend = {
         : `The command was interrupted: command timed out after ${params.timeoutSeconds}s.`
 
     const releaseChildReferences = () => {
-      child.stdout?.off("data", append)
-      child.stderr?.off("data", append)
+      child.stdout?.off("data", appendStdout)
+      child.stderr?.off("data", appendStderr)
       ProcessRegistry.setTerminator(regProc, undefined)
       if (ownsUnixProcessGroup) Shell.releaseOwnedProcessGroup(child)
       if (windowsProcessOwner) {
@@ -698,8 +702,36 @@ export const LocalBashBackend = {
     if (windowsProcessOwner) {
       ProcessRegistry.setTerminator(regProc, terminateWindowsOwner)
     }
-    child.stdout?.on("data", append)
-    child.stderr?.on("data", append)
+    let outputPending = Promise.resolve()
+    let pendingWrites = 0
+    let recordingFailure: Error | undefined
+    const receive = (channel: RolloutProcess.Channel, chunk: Buffer) => {
+      if (recordingFailure) return
+      if (!evidence) {
+        append(chunk)
+        return
+      }
+      const stream = channel === "stdout" ? child.stdout : child.stderr
+      stream?.pause()
+      pendingWrites++
+      outputPending = outputPending
+        .then(async () => {
+          await evidence!.append(channel, chunk)
+          append(chunk)
+        })
+        .catch((error: unknown) => {
+          recordingFailure ??= error instanceof Error ? error : new Error(String(error))
+          void kill().catch((error) => log.warn("failed to stop process after recording failure", { error }))
+        })
+        .finally(() => {
+          pendingWrites--
+          stream?.resume()
+        })
+    }
+    const appendStdout = (chunk: Buffer) => receive("stdout", chunk)
+    const appendStderr = (chunk: Buffer) => receive("stderr", chunk)
+    child.stdout?.on("data", appendStdout)
+    child.stderr?.on("data", appendStderr)
 
     const finishClose = (code: number | null, signal: NodeJS.Signals | null, drainTimedOut: boolean) => {
       if (finalized) return
@@ -730,6 +762,7 @@ export const LocalBashBackend = {
     }
 
     void ChildProcessClose.wait(child, {
+      isBackpressured: () => pendingWrites > 0,
       onExit(code, signal) {
         exited = true
         ProcessRegistry.markExitObserved(regProc, {
@@ -747,10 +780,26 @@ export const LocalBashBackend = {
         if (regProc.backgrounded || allowsDetachedDaemons(ctx)) return
         return ProcessRegistry.terminate(regProc, { allowExitedParent: true })
       },
-    }).then(
-      (result) => finishClose(result.code, result.signal, result.drainTimedOut),
-      (error) => finishError(error instanceof Error ? error : new Error(String(error))),
-    )
+    })
+      .then(
+        async (result) => {
+          await outputPending
+          await evidence?.finish({
+            interrupted: result.drainTimedOut || aborted || timedOut,
+            exitCode: result.code,
+            signal: result.signal,
+            pid: child.pid,
+          })
+          if (recordingFailure) throw recordingFailure
+          finishClose(result.code, result.signal, result.drainTimedOut)
+        },
+        async (error: unknown) => {
+          await outputPending
+          await evidence?.finish({ interrupted: true, exitCode: null, signal: null, pid: child.pid })
+          throw error
+        },
+      )
+      .catch((error: unknown) => finishError(error instanceof Error ? error : new Error(String(error))))
 
     await trace("process.spawn", {
       processId: regProc.id,

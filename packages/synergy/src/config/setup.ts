@@ -13,6 +13,9 @@ import { BunProc } from "../util/bun"
 import { Env } from "../util/env"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import { embed, generateText, type ModelMessage } from "ai"
+import { RolloutOperation } from "@/session/rollout/operation"
+import { RolloutTransport } from "@/session/rollout/transport"
+import { RolloutRecordingError } from "@/session/rollout/error"
 import { mergeDeep } from "remeda"
 import z from "zod"
 import path from "path"
@@ -1036,15 +1039,38 @@ export namespace ConfigSetup {
 
       const transformed = ProviderTransform.message(messages, model)
 
-      await generateText({
-        model: runtimeModel,
-        messages: transformed,
-        maxOutputTokens: 8,
-        temperature: 0,
-        providerOptions,
-        headers: ProviderSessionHeader.forRequest({ model, providerOptions: target.provider?.options }),
-        abortSignal: AbortSignal.timeout(options?.requireImageInput ? 60_000 : 12_000),
-      })
+      await RolloutOperation.execute(
+        {
+          independent: true,
+          purpose: "model.validation",
+          kind: "chat",
+          model: {
+            providerID: model.providerID,
+            modelID: model.id,
+            sdk: model.api.npm,
+            pricing: model.pricing ?? null,
+          },
+          request: JSON.parse(
+            JSON.stringify({ messages: transformed, maxOutputTokens: 8, temperature: 0, providerOptions }),
+          ),
+        },
+        async () => {
+          const result = await generateText({
+            model: runtimeModel,
+            messages: transformed,
+            maxOutputTokens: 8,
+            temperature: 0,
+            providerOptions,
+            headers: ProviderSessionHeader.forRequest({ model, providerOptions: target.provider?.options }),
+            abortSignal: AbortSignal.timeout(options?.requireImageInput ? 60_000 : 12_000),
+          })
+          return {
+            value: undefined,
+            response: JSON.parse(JSON.stringify(result.response)),
+            usage: JSON.parse(JSON.stringify(result.usage)),
+          }
+        },
+      )
 
       return withTiming(startedAt, {
         valid: true,
@@ -1054,6 +1080,7 @@ export namespace ConfigSetup {
           : `${label} passed a live probe`,
       })
     } catch (error) {
+      if (RolloutRecordingError.isInstance(error)) throw error
       const raw = error instanceof Error ? error.message : `${label} failed the live probe`
       const message = formatProbeError(raw, value, label)
       return withTiming(startedAt, {
@@ -1103,13 +1130,30 @@ export namespace ConfigSetup {
         name: "config-embedding-probe",
         apiKey: input.apiKey,
         baseURL: input.baseURL,
+        fetch: RolloutTransport.sdkFetch,
       })
       const model = sdk.textEmbeddingModel(input.model)
-      const result = await embed({
-        model,
-        value: "ping",
-        abortSignal: AbortSignal.timeout(12_000),
-      })
+      const result = await RolloutOperation.execute(
+        {
+          independent: true,
+          purpose: "embedding.validation",
+          kind: "embedding",
+          model: { providerID: "embedding", modelID: input.model, sdk: "@ai-sdk/openai-compatible", pricing: null },
+          request: { value: "ping" },
+        },
+        async () => {
+          const result = await embed({
+            model,
+            value: "ping",
+            abortSignal: AbortSignal.timeout(12_000),
+          })
+          return {
+            value: result,
+            response: { vector: result.embedding },
+            usage: JSON.parse(JSON.stringify(result.usage)),
+          }
+        },
+      )
 
       if (!result.embedding || result.embedding.length === 0) {
         return withTiming(startedAt, {
@@ -1125,6 +1169,7 @@ export namespace ConfigSetup {
         message: `Embedding model passed a live probe`,
       })
     } catch (error) {
+      if (RolloutRecordingError.isInstance(error)) throw error
       return withTiming(startedAt, {
         valid: false,
         mode: "live",
@@ -1153,51 +1198,69 @@ export namespace ConfigSetup {
         top_n: 1,
       }
 
-      const endpoints = ["/rerank", "/v1/rerank"]
-      let lastError = ""
+      const perform = async (): Promise<FieldValidationResult> => {
+        const endpoints = ["/rerank", "/v1/rerank"]
+        let lastError = ""
 
-      for (const endpoint of endpoints) {
-        const response = await fetch(baseURL + endpoint, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${input.apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(12_000),
-        }).catch((error) => {
-          lastError = error instanceof Error ? error.message : String(error)
-          return undefined
+        for (const endpoint of endpoints) {
+          const response = await RolloutTransport.fetch(fetch, baseURL + endpoint, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${input.apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(12_000),
+          }).catch((error) => {
+            if (RolloutRecordingError.isInstance(error)) throw error
+            lastError = error instanceof Error ? error.message : String(error)
+            return undefined
+          })
+
+          if (!response) continue
+          if (response.ok) {
+            await response.arrayBuffer()
+            return withTiming(startedAt, {
+              valid: true,
+              mode: "live",
+              message: "Rerank model passed a live probe",
+            })
+          }
+
+          const text = await response.text()
+          lastError = `${response.status}${text ? `: ${text.slice(0, 160)}` : ""}`
+          if (response.status !== 404) {
+            return withTiming(startedAt, {
+              valid: false,
+              mode: "live",
+              message: `Rerank probe failed (${lastError})`,
+            })
+          }
+        }
+
+        return withTiming(startedAt, {
+          valid: false,
+          mode: "unsupported",
+          message: lastError
+            ? `Real rerank probe is not supported by this endpoint (${lastError})`
+            : "Real rerank probe is not supported by this endpoint",
         })
-
-        if (!response) continue
-        if (response.ok) {
-          return withTiming(startedAt, {
-            valid: true,
-            mode: "live",
-            message: "Rerank model passed a live probe",
-          })
-        }
-
-        const text = await response.text().catch(() => "")
-        lastError = `${response.status}${text ? `: ${text.slice(0, 160)}` : ""}`
-        if (response.status !== 404) {
-          return withTiming(startedAt, {
-            valid: false,
-            mode: "live",
-            message: `Rerank probe failed (${lastError})`,
-          })
-        }
       }
-
-      return withTiming(startedAt, {
-        valid: false,
-        mode: "unsupported",
-        message: lastError
-          ? `Real rerank probe is not supported by this endpoint (${lastError})`
-          : "Real rerank probe is not supported by this endpoint",
-      })
+      return await RolloutOperation.execute(
+        {
+          independent: true,
+          purpose: "rerank.validation",
+          kind: "rerank",
+          model: { providerID: "rerank", modelID: input.model, sdk: "@ai-sdk/openai-compatible", pricing: null },
+          request: body,
+        },
+        async () => {
+          const value = await perform()
+          return { value, response: JSON.parse(JSON.stringify(value)) }
+        },
+      )
     } catch (error) {
+      if (RolloutRecordingError.isInstance(error)) throw error
       return withTiming(startedAt, {
         valid: false,
         mode: "live",

@@ -54,6 +54,40 @@ describe("util.token.estimate", () => {
 })
 
 describe("session.getUsage", () => {
+  test("does not bill reasoning tokens twice when they are included in output", () => {
+    const model = createModel({
+      context: 100_000,
+      output: 32_000,
+      cost: { input: 3, output: 15, cache: { read: 0, write: 0 } },
+    })
+    model.api.npm = "@ai-sdk/openai"
+    const result = Session.getUsage({
+      model,
+      usage: { inputTokens: 1000, outputTokens: 500, reasoningTokens: 100, totalTokens: 1500 },
+    })
+
+    expect(result.tokens.output).toBe(500)
+    expect(result.tokens.reasoning).toBe(100)
+    expect(result.cost).toBe(0.0105)
+  })
+
+  test("includes separately reported Google reasoning in normalized output", () => {
+    const model = createModel({
+      context: 100_000,
+      output: 32_000,
+      cost: { input: 3, output: 15, cache: { read: 0, write: 0 } },
+    })
+    model.api.npm = "@ai-sdk/google"
+    const result = Session.getUsage({
+      model,
+      usage: { inputTokens: 1000, outputTokens: 400, reasoningTokens: 100, totalTokens: 1500 },
+    })
+
+    expect(result.tokens.output).toBe(500)
+    expect(result.tokens.reasoning).toBe(100)
+    expect(result.cost).toBe(0.0105)
+  })
+
   test("ModelLimit.usableInput uses full context for shared-context models", () => {
     expect(ModelLimit.usableInput({ context: 202_752, output: 32_768 })).toBe(202_752)
   })
@@ -987,7 +1021,7 @@ describe("session.compaction.selectPartsToPrune", () => {
     }
     expect(persisted?.type).toBe("tool")
     if (persisted?.type === "tool" && persisted.state.status === "completed") {
-      expect(persisted.state.output).toBe("")
+      expect(persisted.state.output).toBe("x".repeat(300_000))
       expect(persisted.state.time.compacted).toBeNumber()
     }
   })

@@ -1,6 +1,8 @@
+import { RolloutRecordingError } from "./rollout/error"
 import { BusEvent } from "@/bus/bus-event"
 import path from "path"
 import z from "zod"
+import { RolloutSchema } from "./rollout/schema"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessage, type UIMessage } from "ai"
 import { ProviderModelUnavailableError } from "@/provider/model-unavailable-error"
@@ -249,6 +251,7 @@ export namespace MessageV2 {
 
   export const AttachmentPart = PartBase.extend({
     type: z.literal("attachment"),
+    artifact: RolloutSchema.ArtifactRef.optional(),
     mime: z.string(),
     filename: z.string().optional(),
     url: z.string(),
@@ -302,6 +305,7 @@ export namespace MessageV2 {
 
   export const StepFinishPart = PartBase.extend({
     type: z.literal("step-finish"),
+    accounting: RolloutSchema.MessageAccounting.optional(),
     reason: z.string(),
     snapshot: z.string().optional(),
     cost: z.number(),
@@ -370,6 +374,7 @@ export namespace MessageV2 {
       input: z.record(z.string(), z.any()),
       output: z.string(),
       outputBytes: z.number().int().nonnegative().optional(),
+      outputArtifact: RolloutSchema.ArtifactRef.optional(),
       outputTruncated: z.boolean().optional(),
       title: z.string(),
       metadata: z.record(z.string(), z.any()),
@@ -661,6 +666,7 @@ export namespace MessageV2 {
     }),
     error: z
       .discriminatedUnion("name", [
+        RolloutRecordingError.Schema,
         AuthError.Schema,
         NamedError.Unknown.Schema,
         OutputLengthError.Schema,
@@ -683,6 +689,7 @@ export namespace MessageV2 {
       root: z.string(),
     }),
     summary: z.boolean().optional(),
+    accounting: RolloutSchema.MessageAccounting.optional(),
     cost: z.number(),
     tokens: z.object({
       input: z.number(),
@@ -700,6 +707,21 @@ export namespace MessageV2 {
     ref: "AssistantMessage",
   })
   export type Assistant = z.infer<typeof Assistant>
+
+  export function copyAccounting(info: Assistant, kind: "inherited" | "imported"): Assistant["accounting"] {
+    const previous = info.accounting
+    return {
+      kind,
+      source:
+        previous?.kind === "inherited" || previous?.kind === "imported"
+          ? previous.source
+          : {
+              sessionID: info.sessionID,
+              messageID: info.id,
+              callIDs: previous?.kind === "rollout" ? previous.callIDs : [],
+            },
+    }
+  }
 
   export const Info = z.discriminatedUnion("role", [User, Assistant]).meta({
     ref: "Message",
@@ -1689,6 +1711,8 @@ export namespace MessageV2 {
 
   export function fromError(e: unknown, ctx: { providerID: string; modelID?: string }) {
     switch (true) {
+      case RolloutRecordingError.isInstance(e):
+        return e.toObject()
       case e instanceof DOMException && e.name === "AbortError":
         return new MessageV2.AbortedError(
           { message: e.message },

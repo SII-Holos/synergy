@@ -72,6 +72,7 @@ export namespace SessionManager {
     lease: LoopLease
     controller: AbortController
     phase: LoopPhase
+    rootID?: string
     /** Set when the abort came from an explicit user action; release then schedules the pending-work drive. */
     recoverQueuedTasks?: boolean
   }
@@ -109,6 +110,18 @@ export namespace SessionManager {
   }
 
   const runtimes = new Map<string, SessionRuntime>()
+  const running = new Set<Promise<void>>()
+  let accepting = true
+
+  export function closeAdmission() {
+    accepting = false
+  }
+  export function openAdmission() {
+    accepting = true
+  }
+  export async function drain() {
+    while (running.size) await Promise.all([...running])
+  }
 
   // A session's scope is immutable for its lifetime, so the sessionID -> scopeID
   // mapping can be cached permanently. This removes the two per-delta disk reads
@@ -335,6 +348,8 @@ export namespace SessionManager {
     const runtime = getRuntime(sessionID)
     if (!lease || lease.sessionID !== sessionID || !runtime || !owns(runtime, lease)) throw new BusyError(sessionID)
     let completed = false
+    const completion = Promise.withResolvers<void>()
+    running.add(completion.promise)
 
     try {
       const session = await requireSession(sessionID)
@@ -375,17 +390,23 @@ export namespace SessionManager {
       completed = true
       return result
     } finally {
-      if (options?.releaseLease !== false) {
-        // Capture before finish(): release() aborts the controller and clears
-        // the owner. signal.aborted alone cannot distinguish a user abort from
-        // internal cancellation (Boss/Lattice/Cortex abort before removing
-        // inbox items), so only an abort that marked recoverQueuedTasks may
-        // drive pending-work recovery — release cannot race that cleanup.
-        const runtime = getRuntime(sessionID)
-        const recoverQueuedTasks = !!runtime?.owner && owns(runtime, lease) && runtime.owner.recoverQueuedTasks === true
-        await finish(lease, {
-          requestNextWork: completed || recoverQueuedTasks || options?.requestNextWorkOnFailure !== false,
-        })
+      try {
+        if (options?.releaseLease !== false) {
+          // Capture before finish(): release() aborts the controller and clears
+          // the owner. signal.aborted alone cannot distinguish a user abort from
+          // internal cancellation (Boss/Lattice/Cortex abort before removing
+          // inbox items), so only an abort that marked recoverQueuedTasks may
+          // drive pending-work recovery — release cannot race that cleanup.
+          const runtime = getRuntime(sessionID)
+          const recoverQueuedTasks =
+            !!runtime?.owner && owns(runtime, lease) && runtime.owner.recoverQueuedTasks === true
+          await finish(lease, {
+            requestNextWork: completed || recoverQueuedTasks || options?.requestNextWorkOnFailure !== false,
+          })
+        }
+      } finally {
+        running.delete(completion.promise)
+        completion.resolve()
       }
     }
   }
@@ -415,6 +436,7 @@ export namespace SessionManager {
   }
 
   export function acquire(sessionID: string): LoopLease | undefined {
+    if (!accepting) throw new Error("Synergy runtime is shutting down")
     const runtime = registerRuntime(sessionID)
     if (occupied(runtime)) return undefined
 
@@ -438,13 +460,24 @@ export namespace SessionManager {
     return runtime.owner!.phase === "running"
   }
 
-  export type AbortOutcome = "not_found" | "idle" | "signaled" | "already_stopping"
+  export function bindRootTask(lease: LoopLease, rootID: string) {
+    const runtime = getRuntime(lease.sessionID)
+    if (!runtime || !owns(runtime, lease) || runtime.owner!.phase === "stopping") return false
+    runtime.owner!.rootID = rootID
+    return true
+  }
 
-  export function signalAbort(sessionID: string, options?: { recoverQueuedTasks?: boolean }): AbortOutcome {
+  export type AbortOutcome = "not_found" | "idle" | "signaled" | "already_stopping" | "not_owner"
+
+  export function signalAbort(
+    sessionID: string,
+    options?: { recoverQueuedTasks?: boolean; rootID?: string },
+  ): AbortOutcome {
     const runtime = getRuntime(sessionID)
     if (!runtime) return "not_found"
     const owner = runtime.owner
     if (!owner) return "idle"
+    if (options?.rootID && owner.rootID !== options.rootID) return "not_owner"
     // First abort wins. An internal cancellation (Boss/Lattice/Cortex) aborts
     // before removing its own inbox items; a later abort arriving while that
     // cleanup is in flight must not re-enable the release drive, or it would
@@ -481,7 +514,7 @@ export namespace SessionManager {
       log.warn("failed to emit session update after release", { sessionID: lease.sessionID, error })
     })
 
-    if (options.requestNextWork !== false) {
+    if (accepting && options.requestNextWork !== false) {
       const { SessionDrive } = await import("./drive")
       await SessionDrive.request(lease.sessionID, "release")
     }

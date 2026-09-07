@@ -86,6 +86,10 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "test/provider/catalog-stability.test.ts",
   "test/provider/proxy.test.ts",
   "test/server/nav-global-routes.test.ts",
+  // Runtime startup must configure pools before any sibling suite has created them.
+  "test/server/runtime-handle.test.ts",
+  // Global statistics scan all stored sessions, including sibling suites' intentionally partial fixtures.
+  "test/stats/engine.test.ts",
   "test/server/plugin-official-install.test.ts",
   "test/server/plugin-registry-routes.test.ts",
   "test/server/skill-route.test.ts",

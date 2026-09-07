@@ -1,4 +1,5 @@
 import z from "zod"
+import { RolloutAccounting } from "@/session/rollout/accounting"
 
 // ---------------------------------------------------------------------------
 // Shared primitives
@@ -48,6 +49,7 @@ export type OverviewStats = z.infer<typeof OverviewStats>
 export const TokenCostStats = z.object({
   tokens: TokenBreakdown,
   cost: z.number(),
+  accounting: RolloutAccounting.Summary.optional(),
   cacheHitRate: z.number(),
   avgCostPerTurn: z.number(),
   avgTokensPerTurn: z.number(),
@@ -67,6 +69,7 @@ export const ModelUsage = z.object({
   turns: z.number(),
   tokens: TokenBreakdown,
   cost: z.number(),
+  accounting: RolloutAccounting.Summary.optional(),
   avgResponseMs: z.number(),
 })
 export type ModelUsage = z.infer<typeof ModelUsage>
@@ -86,6 +89,7 @@ export const AgentUsage = z.object({
   sessions: z.number(),
   tokens: TokenBreakdown,
   cost: z.number(),
+  accounting: RolloutAccounting.Summary.optional(),
   subagentInvocations: z.number(),
 })
 export type AgentUsage = z.infer<typeof AgentUsage>
@@ -177,6 +181,7 @@ export const DailyBucket = z.object({
   turns: z.number(),
   tokens: TokenBreakdown,
   cost: z.number(),
+  accounting: RolloutAccounting.Summary.optional(),
   additions: z.number(),
   deletions: z.number(),
   files: z.number(),
@@ -229,6 +234,7 @@ export const SessionDigest = z.object({
   scopeID: z.string(),
   created: z.number(),
   updated: z.number(),
+  rolloutRevision: z.number().int().nonnegative().optional(),
   archived: z.number().optional(),
   pinned: z.boolean(),
   parentID: z.string().optional(),
@@ -249,6 +255,7 @@ export const SessionDigest = z.object({
   messages: z.number(),
   tokens: TokenBreakdown,
   cost: z.number(),
+  accounting: RolloutAccounting.Summary.optional(),
 
   /** model key (providerID/modelID) → { messages, tokens, cost, totalResponseMs } */
   modelUsage: z.record(
@@ -257,6 +264,7 @@ export const SessionDigest = z.object({
       messages: z.number(),
       tokens: TokenBreakdown,
       cost: z.number(),
+      accounting: RolloutAccounting.Summary.optional(),
       totalResponseMs: z.number(),
     }),
   ),
@@ -268,6 +276,7 @@ export const SessionDigest = z.object({
       messages: z.number(),
       tokens: TokenBreakdown,
       cost: z.number(),
+      accounting: RolloutAccounting.Summary.optional(),
     }),
   ),
 
@@ -297,6 +306,18 @@ export const SessionDigest = z.object({
   durationMs: z.number(),
 })
 export type SessionDigest = z.infer<typeof SessionDigest>
+
+export const OperationDigest = SessionDigest.pick({
+  scopeID: true,
+  created: true,
+  updated: true,
+  tokens: true,
+  cost: true,
+  accounting: true,
+  modelUsage: true,
+  agentUsage: true,
+}).extend({ operationID: z.string(), rolloutRevision: z.number().int().nonnegative(), turns: z.literal(0) })
+export type OperationDigest = z.infer<typeof OperationDigest>
 
 // ---------------------------------------------------------------------------
 // Watermark — tracks incremental scan progress

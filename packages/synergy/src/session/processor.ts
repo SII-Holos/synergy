@@ -1,3 +1,6 @@
+import { RolloutLedger } from "./rollout/ledger"
+import { RolloutAccounting } from "./rollout/accounting"
+import { RolloutRecordingError } from "./rollout/error"
 import { MessageV2 } from "./message-v2"
 import { Log } from "@/util/log"
 import { Identifier } from "@/id/id"
@@ -811,6 +814,7 @@ export namespace SessionProcessor {
       dispose,
       async process(streamInput: ProcessInput) {
         log.info("process")
+        let recordingFailure: InstanceType<typeof RolloutRecordingError> | undefined
         const turnTraceId = ObservabilityContext.current().traceId ?? Observability.traceId("turn")
         const autoExpandedByTool = new Map<string, ToolResolver.AutoExpandedTool>()
         const resolveAutoExpand = async (toolName: string): Promise<ToolResolver.AutoExpandedTool | undefined> => {
@@ -883,7 +887,7 @@ export namespace SessionProcessor {
           messageID: input.assistantMessage.id,
           agent: input.assistantMessage.agent,
         })
-        const shouldBreak = (await Config.current()).experimental?.continue_loop_on_deny !== true
+        const shouldBreak = (await Config.current()).execution?.continueOnDeny !== true
         try {
           while (true) {
             let streamAborted = false
@@ -916,6 +920,15 @@ export namespace SessionProcessor {
                 ...agentTurnInput
               } = streamInput
               const stream = await AgentTurn.stream(agentTurnInput)
+              const rollout = stream.rollout
+              const stepFinishes: MessageV2.StepFinishPart[] = []
+              if (rollout) {
+                const previous = input.assistantMessage.accounting
+                input.assistantMessage.accounting = {
+                  kind: "rollout",
+                  callIDs: [...new Set([...(previous?.kind === "rollout" ? previous.callIDs : []), rollout.callID])],
+                }
+              }
               SessionManager.setExecutionPhase(input.sessionID, "running_agent")
               streamInput.memoryTurn?.streamStarted()
               SessionMemoryPressure.probe("processor.after_llm_stream", {
@@ -981,6 +994,7 @@ export namespace SessionProcessor {
               }
 
               try {
+                if (rollout) await Session.updateMessage(input.assistantMessage)
                 for await (const value of stream.fullStream) {
                   input.abort.throwIfAborted()
                   switch (value.type) {
@@ -1353,11 +1367,16 @@ export namespace SessionProcessor {
                       break
 
                     case "finish-step": {
-                      const usage = Session.getUsage({
-                        model: input.model,
-                        usage: value.usage,
-                        metadata: value.providerMetadata,
-                      })
+                      const stepAccounting = rollout
+                        ? await RolloutLedger.summarizeCalls(rollout.owner, rollout.runID, [rollout.callID])
+                        : undefined
+                      const usage = stepAccounting
+                        ? RolloutAccounting.project(stepAccounting)
+                        : Session.getUsage({
+                            model: input.model,
+                            usage: value.usage,
+                            metadata: value.providerMetadata,
+                          })
                       ObservabilityMetrics.record({
                         name: "llm.tokens.input",
                         value: usage.tokens.input,
@@ -1398,7 +1417,7 @@ export namespace SessionProcessor {
                           totalInput: ModelLimit.actualInput(usage.tokens),
                         }
                       }
-                      await Session.updatePart({
+                      const step = await Session.updatePart({
                         id: Identifier.ascending("part"),
                         reason: value.finishReason,
                         snapshot: await Snapshot.track(input.sessionID, input.abort),
@@ -1407,7 +1426,11 @@ export namespace SessionProcessor {
                         type: "step-finish",
                         tokens: usage.tokens,
                         cost: usage.cost,
+                        accounting: rollout
+                          ? { kind: "rollout", callIDs: [rollout.callID], summary: stepAccounting }
+                          : undefined,
                       })
+                      if (step.type === "step-finish") stepFinishes.push(step)
                       await Session.updateMessage(input.assistantMessage)
                       if (snapshot) {
                         const patch = await Snapshot.patch(snapshot, input.sessionID, {
@@ -1514,15 +1537,35 @@ export namespace SessionProcessor {
                 ObservabilitySpans.end(llmSpan, { status: "error", error })
                 throw error
               } finally {
-                await stream.dispose()
-                streamInput.memoryTurn?.streamDisposed()
-                flushChunkMetrics()
-                currentText = undefined
-                reasoningMap = {}
-                SessionMemoryPressure.probe("processor.after_full_stream", {
-                  sessionID: input.sessionID,
-                  messageID: input.assistantMessage.id,
-                })
+                try {
+                  await stream.dispose()
+                } finally {
+                  streamInput.memoryTurn?.streamDisposed()
+                  flushChunkMetrics()
+                  currentText = undefined
+                  reasoningMap = {}
+                  SessionMemoryPressure.probe("processor.after_full_stream", {
+                    sessionID: input.sessionID,
+                    messageID: input.assistantMessage.id,
+                  })
+                }
+                if (rollout && input.assistantMessage.accounting?.kind === "rollout") {
+                  const current = await RolloutLedger.summarizeCalls(rollout.owner, rollout.runID, [rollout.callID])
+                  for (const step of stepFinishes)
+                    await Session.updatePart({
+                      ...step,
+                      ...RolloutAccounting.project(current),
+                      accounting: { kind: "rollout", callIDs: [rollout.callID], summary: current },
+                    })
+                  const summary = await RolloutLedger.summarizeCalls(
+                    rollout.owner,
+                    rollout.runID,
+                    input.assistantMessage.accounting.callIDs,
+                  )
+                  Object.assign(input.assistantMessage, RolloutAccounting.project(summary))
+                  input.assistantMessage.accounting.summary = summary
+                  await Session.updateMessage(input.assistantMessage)
+                }
               }
               agentTurnInput.system?.splice(0)
               agentTurnInput.lateSystem?.splice(0)
@@ -1609,8 +1652,9 @@ export namespace SessionProcessor {
                 }),
               )
               SessionManager.setExecutionPhase(input.sessionID, "waiting_background")
-            } catch (e: any) {
-              fastAbort = isFastAbort(input.abort, e)
+            } catch (e: unknown) {
+              if (RolloutRecordingError.isInstance(e)) recordingFailure = e
+              fastAbort = !!recordingFailure || isFastAbort(input.abort, e)
               if (SessionMemoryIncident.isOutOfMemory(e)) {
                 await SessionMemoryIncident.capture({
                   error: e,
@@ -1787,6 +1831,7 @@ export namespace SessionProcessor {
               sessionID: input.sessionID,
               messageID: input.assistantMessage.id,
             })
+            if (recordingFailure) throw recordingFailure
             if (blocked) return "stop"
             if (input.assistantMessage.error) return "stop"
             return "continue"

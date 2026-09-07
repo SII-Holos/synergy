@@ -117,6 +117,7 @@ export namespace ExperienceEncoder {
     const ctx: AgentContext = {
       sessionID,
       userMsg: userInfo,
+      sourceMessageID: userMessageID,
       model,
       learning: effectiveLearning,
       signal,
@@ -157,6 +158,7 @@ export namespace ExperienceEncoder {
 
     const ctx: AgentContext = {
       sessionID,
+      sourceMessageID: userMessageID,
       model,
       learning: effectiveLearning,
       signal,
@@ -518,6 +520,7 @@ export namespace ExperienceEncoder {
   interface AgentContext {
     sessionID: string
     userMsg?: MessageV2.User
+    sourceMessageID?: string
     model: Provider.Model | undefined
     learning: Required<Config.Learning>
     signal?: AbortSignal
@@ -538,7 +541,13 @@ export namespace ExperienceEncoder {
       const result = await AgentCall.text({
         agent: agentName,
         user: ctx.userMsg,
-        sessionId: ctx.sessionID,
+        sessionId: ctx.userMsg ? ctx.sessionID : undefined,
+        userMetadata: ctx.userMsg
+          ? undefined
+          : {
+              sourceSessionID: ctx.sessionID,
+              ...(ctx.sourceMessageID ? { sourceMessageID: ctx.sourceMessageID } : {}),
+            },
         fallbackModel: ctx.model,
         messages: [{ role: "user", content }],
         signal: ctx.signal,

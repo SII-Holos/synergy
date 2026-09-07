@@ -173,9 +173,10 @@ async function writeFixture(): Promise<string> {
   const body = [
     'import { test, expect } from "bun:test"',
     `import { Global } from ${JSON.stringify(path.join(packagesSynergy, "src/global/index.ts"))}`,
-    "test('guard contract', () => {",
+    "test('guard contract', async () => {",
     "  // Referencing Global retains the import so the guard runs at module eval.",
     "  expect(Global.Path.root).toBeTruthy()",
+    "  await Global.initialize({ cache: false })",
     "})",
     "",
   ].join("\n")

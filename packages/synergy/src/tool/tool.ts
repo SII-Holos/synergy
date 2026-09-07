@@ -1,3 +1,4 @@
+import type { RolloutProcess } from "../session/rollout/process"
 import z from "zod"
 import type { MessageV2 } from "../session/message-v2"
 import type { Agent } from "../agent/agent"
@@ -41,6 +42,8 @@ export namespace Tool {
     agent: string
     abort: AbortSignal
     callID?: string
+    captureResult?(result: unknown): Promise<void>
+    openProcessEvidence?(id: string): Promise<RolloutProcess.Writer>
     extra?: { [key: string]: any }
     metadata(input: { title?: string; metadata?: M }): void
     ask(input: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">): Promise<void>
@@ -130,6 +133,7 @@ export namespace Tool {
             )
           }
           const result = await execute(parsed, ctx)
+          await ctx.captureResult?.(result)
           validateAttachmentResult(id, result)
           if (result.metadata.truncated !== undefined) {
             return result

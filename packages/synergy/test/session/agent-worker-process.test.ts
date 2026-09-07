@@ -5,6 +5,11 @@ import path from "path"
 import { spawnAgentWorkerProcess } from "../../src/session/agent-turn/process-host"
 import { AgentTurnProtocol } from "../../src/session/agent-turn/protocol"
 import { Scope } from "../../src/scope"
+import { ScopeContext } from "../../src/scope/context"
+import { AgentWorkerPool, DEFAULT_AGENT_WORKER_POOL_OPTIONS } from "../../src/session/agent-turn/worker-pool"
+import { RolloutCall } from "../../src/session/rollout/call"
+import { RolloutLedger } from "../../src/session/rollout/ledger"
+import { RolloutArtifact } from "../../src/session/rollout/artifact"
 
 test("Agent worker subprocess completes the IPC handshake and shuts down", async () => {
   let resolveReady!: () => void
@@ -225,6 +230,9 @@ function spawnWindowWorker(home: string): WindowWorker {
         const parsed = AgentTurnProtocol.parseWorkerToHost(typeof message === "string" ? JSON.parse(message) : message)
         AgentTurnProtocol.assertIpcFrameBound(parsed)
         messages.push(parsed)
+        if (parsed.type === "archive") {
+          child.send({ type: "archive-ack", requestId: parsed.requestId, sequence: parsed.sequence })
+        }
         for (let index = waiters.length - 1; index >= 0; index--) {
           const waiter = waiters[index]
           if (!waiter.predicate(parsed)) continue
@@ -355,6 +363,143 @@ function streamingEnvelope(port: number): AgentTurnProtocol.TurnEnvelope {
     },
   } as unknown as AgentTurnProtocol.TurnEnvelope
 }
+
+test(
+  "real worker archives SDK retries and exact provider request and response bytes",
+  async () => {
+    const requests: string[] = []
+    const rawResponse =
+      [
+        {
+          id: "response",
+          choices: [{ index: 0, delta: { role: "assistant", content: "hello" }, finish_reason: null }],
+        },
+        {
+          id: "response",
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 },
+        },
+      ]
+        .map((value) => `data: ${JSON.stringify(value)}\n\n`)
+        .join("") + "data: [DONE]\n\n"
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        requests.push(await request.text())
+        if (requests.length === 1)
+          return Response.json({ error: { message: "temporary", type: "server_error" } }, { status: 503 })
+        return new Response(rawResponse, {
+          headers: { "content-type": "text/event-stream", "x-request-id": "test-response" },
+        })
+      },
+    })
+    const pool = new AgentWorkerPool({ ...DEFAULT_AGENT_WORKER_POOL_OPTIONS, size: 1, minIdle: 0 })
+    const id = crypto.randomUUID()
+    const owner = { kind: "operation" as const, scopeID: Scope.home().id, operationID: id }
+    try {
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          const envelope = streamingEnvelope(server.port!)
+          const stream = await RolloutCall.stream(
+            {
+              owner,
+              runID: id,
+              purpose: "test",
+              request: JSON.parse(JSON.stringify({ messages: envelope.input.messages })),
+              model: {
+                providerID: "fake-local",
+                modelID: "fake-model",
+                sdk: "@ai-sdk/openai-compatible",
+                pricing: null,
+              },
+            },
+            (archive) =>
+              pool.run({
+                ...envelope.input,
+                retries: 1,
+                abort: new AbortController().signal,
+                archive,
+              } as unknown as Parameters<AgentWorkerPool["run"]>[0]),
+          )
+          const events = []
+          for await (const event of stream.fullStream) events.push(event)
+          await stream.dispose()
+          expect(events.some((event) => event.type === "text-delta" && event.text === "hello")).toBe(true)
+        },
+      })
+      expect(requests.length).toBe(2)
+      const [call] = await RolloutLedger.calls(owner, id)
+      const attempts = await RolloutLedger.attempts(owner, id, call.id)
+      expect(attempts.map((attempt) => attempt.httpStatus)).toEqual([503, 200])
+      expect(attempts.map((attempt) => attempt.status)).toEqual(["failed", "completed"])
+      expect(call.transportCaptured).toBe(true)
+      expect(call.sdkUsage).toMatchObject({ inputTokens: 5, outputTokens: 1 })
+      expect(attempts[1].usage).toMatchObject({
+        protocol: "openai",
+        input: { total: 5, cacheRead: null },
+        output: { total: 1 },
+      })
+      expect(attempts[0].estimate?.total).toBeNull()
+      expect(attempts[1].estimate?.total).toBeNull()
+      async function read(artifactID: string) {
+        const chunks: Uint8Array[] = []
+        for await (const bytes of RolloutArtifact.read(owner, artifactID)) chunks.push(bytes)
+        return Buffer.concat(chunks).toString()
+      }
+      expect(await read(attempts[0].request.id)).toBe(requests[0])
+      expect(await read(attempts[1].request.id)).toBe(requests[1])
+      expect(await read(attempts[1].response!.id)).toBe(rawResponse)
+      expect(attempts[1].responseHeaders).toEqual({ "x-request-id": "test-response" })
+      expect(JSON.stringify(attempts)).not.toContain("test-key")
+    } finally {
+      await pool.stop()
+      await server.stop(true)
+    }
+  },
+  { timeout: 30_000 },
+)
+
+test(
+  "real worker cannot send inference or SDK retries after archive rejection",
+  async () => {
+    let requests = 0
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        requests++
+        return new Response("unexpected")
+      },
+    })
+    const pool = new AgentWorkerPool({ ...DEFAULT_AGENT_WORKER_POOL_OPTIONS, size: 1, minIdle: 0 })
+    try {
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          const stream = await pool.run({
+            ...streamingEnvelope(server.port!).input,
+            retries: 2,
+            abort: new AbortController().signal,
+            archive: async () => {
+              throw new Error("disk full")
+            },
+          } as unknown as Parameters<AgentWorkerPool["run"]>[0])
+          await expect(
+            (async () => {
+              for await (const event of stream.fullStream) void event
+            })(),
+          ).rejects.toMatchObject({ name: "RolloutRecordingError" })
+          await stream.dispose()
+        },
+      })
+      expect(requests).toBe(0)
+    } finally {
+      await pool.stop()
+      await server.stop(true)
+    }
+  },
+  { timeout: 15_000 },
+)
 
 test(
   "runner pauses on the unacknowledged byte window, resumes on ack-window, and abort releases the waiter",

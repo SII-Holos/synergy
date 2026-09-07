@@ -22,6 +22,87 @@ export type BadRequestError = {
   success: false
 }
 
+export type RolloutAccountingSummary = {
+  version: 1
+  calls: number
+  importedCalls: number
+  localCalls: number
+  attempts: number
+  unobservedCalls: number
+  journalGaps: number
+  legacy: {
+    cost: number
+    messages: number
+  }
+  tokens: {
+    input: {
+      known: number
+      unknown: number
+      total: number | null
+    }
+    uncached: {
+      known: number
+      unknown: number
+      total: number | null
+    }
+    cacheRead: {
+      known: number
+      unknown: number
+      total: number | null
+    }
+    cacheWrite: {
+      known: number
+      unknown: number
+      total: number | null
+    }
+    output: {
+      known: number
+      unknown: number
+      total: number | null
+    }
+    reasoning: {
+      known: number
+      unknown: number
+      total: number | null
+    }
+    total: {
+      known: number
+      unknown: number
+      total: number | null
+    }
+  }
+  apiEstimate: {
+    known: number
+    unknown: number
+    total: number | null
+  }
+  subscriptionEquivalent: {
+    known: number
+    unknown: number
+    total: number | null
+  }
+  reported: {
+    currencies: {
+      [key: string]: number
+    }
+    unreported: number
+  }
+  units: {
+    [key: string]: {
+      known: number
+      unknown: number
+      total: number | null
+    }
+  }
+  cacheWrites: {
+    [key: string]: {
+      known: number
+      unknown: number
+      total: number | null
+    }
+  }
+}
+
 export type StatsSnapshot = {
   overview: {
     totalSessions: number
@@ -45,6 +126,7 @@ export type StatsSnapshot = {
       }
     }
     cost: number
+    accounting?: RolloutAccountingSummary
     cacheHitRate: number
     avgCostPerTurn: number
     avgTokensPerTurn: number
@@ -67,6 +149,7 @@ export type StatsSnapshot = {
         }
       }
       cost: number
+      accounting?: RolloutAccountingSummary
       avgResponseMs: number
     }>
   }
@@ -85,6 +168,7 @@ export type StatsSnapshot = {
         }
       }
       cost: number
+      accounting?: RolloutAccountingSummary
       subagentInvocations: number
     }>
     totalSubagentCalls: number
@@ -144,6 +228,7 @@ export type StatsSnapshot = {
         }
       }
       cost: number
+      accounting?: RolloutAccountingSummary
       additions: number
       deletions: number
       files: number
@@ -1666,6 +1751,60 @@ export type Model = {
           field: "reasoning_content" | "reasoning_details"
         }
   }
+  pricing?: {
+    version: 1
+    currency: "USD"
+    unitTokens: 1000000
+    source: {
+      kind: "catalog" | "configuration" | "mixed"
+      providerID: string
+      modelID: string
+    }
+    capturedAt: number
+    rates: {
+      input: number | null
+      output: number | null
+      cacheRead: number | null
+      cacheWrite: number | null
+      cacheWrite1h: number | null
+    }
+    over200K?: {
+      input: number | null
+      output: number | null
+      cacheRead: number | null
+      cacheWrite: number | null
+      cacheWrite1h: number | null
+    }
+    contextTiers?: Array<{
+      above: number
+      rates: {
+        input: number | null
+        output: number | null
+        cacheRead: number | null
+        cacheWrite: number | null
+        cacheWrite1h: number | null
+      }
+    }>
+    units?: {
+      audio_seconds?: {
+        price: number
+        per: number
+      }
+      audio_input_tokens?: {
+        price: number
+        per: number
+      }
+      audio_output_tokens?: {
+        price: number
+        per: number
+      }
+      characters?: {
+        price: number
+        per: number
+      }
+    }
+    raw: unknown
+  } | null
   cost: {
     input: number
     output: number
@@ -2532,16 +2671,90 @@ export type ProviderConfig = {
             field: "reasoning_content" | "reasoning_details"
           }
       cost?: {
-        input: number
-        output: number
+        input?: number
+        output?: number
         cache_read?: number
         cache_write?: number
+        cache_write_1h?: number
         context_over_200k?: {
-          input: number
-          output: number
+          input?: number
+          output?: number
           cache_read?: number
           cache_write?: number
+          cache_write_1h?: number
         }
+        tiers?: Array<{
+          input?: number
+          output?: number
+          cache_read?: number
+          cache_write?: number
+          cache_write_1h?: number
+          tier: {
+            type: "context"
+            size: number
+          }
+        }>
+        units?: {
+          audio_seconds?: {
+            price: number
+            per: number
+          }
+          audio_input_tokens?: {
+            price: number
+            per: number
+          }
+          audio_output_tokens?: {
+            price: number
+            per: number
+          }
+          characters?: {
+            price: number
+            per: number
+          }
+        }
+        input_audio?: number
+        output_audio?: number
+        reasoning?: number
+        [key: string]:
+          | unknown
+          | number
+          | {
+              input?: number
+              output?: number
+              cache_read?: number
+              cache_write?: number
+              cache_write_1h?: number
+            }
+          | Array<{
+              input?: number
+              output?: number
+              cache_read?: number
+              cache_write?: number
+              cache_write_1h?: number
+              tier: {
+                type: "context"
+                size: number
+              }
+            }>
+          | {
+              audio_seconds?: {
+                price: number
+                per: number
+              }
+              audio_input_tokens?: {
+                price: number
+                per: number
+              }
+              audio_output_tokens?: {
+                price: number
+                per: number
+              }
+              characters?: {
+                price: number
+                per: number
+              }
+            }
+          | undefined
       }
       limit?: {
         context: number
@@ -2634,6 +2847,52 @@ export type LocalEmbeddingConfig = {
  */
 export type EmbeddingConfig = {
   /**
+   * Explicit model prices in USD: token rates per million, unit rates per declared quantity
+   */
+  cost?: {
+    input?: number
+    output?: number
+    cache_read?: number
+    cache_write?: number
+    cache_write_1h?: number
+    context_over_200k?: {
+      input?: number
+      output?: number
+      cache_read?: number
+      cache_write?: number
+      cache_write_1h?: number
+    }
+    tiers?: Array<{
+      input?: number
+      output?: number
+      cache_read?: number
+      cache_write?: number
+      cache_write_1h?: number
+      tier: {
+        type: "context"
+        size: number
+      }
+    }>
+    units?: {
+      audio_seconds?: {
+        price: number
+        per: number
+      }
+      audio_input_tokens?: {
+        price: number
+        per: number
+      }
+      audio_output_tokens?: {
+        price: number
+        per: number
+      }
+      characters?: {
+        price: number
+        per: number
+      }
+    }
+  }
+  /**
    * Base URL for the embedding API
    */
   baseURL?: string
@@ -2653,6 +2912,52 @@ export type EmbeddingConfig = {
  */
 export type RerankConfig = {
   /**
+   * Explicit model prices in USD: token rates per million, unit rates per declared quantity
+   */
+  cost?: {
+    input?: number
+    output?: number
+    cache_read?: number
+    cache_write?: number
+    cache_write_1h?: number
+    context_over_200k?: {
+      input?: number
+      output?: number
+      cache_read?: number
+      cache_write?: number
+      cache_write_1h?: number
+    }
+    tiers?: Array<{
+      input?: number
+      output?: number
+      cache_read?: number
+      cache_write?: number
+      cache_write_1h?: number
+      tier: {
+        type: "context"
+        size: number
+      }
+    }>
+    units?: {
+      audio_seconds?: {
+        price: number
+        per: number
+      }
+      audio_input_tokens?: {
+        price: number
+        per: number
+      }
+      audio_output_tokens?: {
+        price: number
+        per: number
+      }
+      characters?: {
+        price: number
+        per: number
+      }
+    }
+  }
+  /**
    * Base URL for the rerank API
    */
   baseURL?: string
@@ -2670,6 +2975,52 @@ export type RerankConfig = {
  * Speech-to-text service configuration
  */
 export type VoiceSttConfig = {
+  /**
+   * Explicit model prices in USD: token rates per million, unit rates per declared quantity
+   */
+  cost?: {
+    input?: number
+    output?: number
+    cache_read?: number
+    cache_write?: number
+    cache_write_1h?: number
+    context_over_200k?: {
+      input?: number
+      output?: number
+      cache_read?: number
+      cache_write?: number
+      cache_write_1h?: number
+    }
+    tiers?: Array<{
+      input?: number
+      output?: number
+      cache_read?: number
+      cache_write?: number
+      cache_write_1h?: number
+      tier: {
+        type: "context"
+        size: number
+      }
+    }>
+    units?: {
+      audio_seconds?: {
+        price: number
+        per: number
+      }
+      audio_input_tokens?: {
+        price: number
+        per: number
+      }
+      audio_output_tokens?: {
+        price: number
+        per: number
+      }
+      characters?: {
+        price: number
+        per: number
+      }
+    }
+  }
   /**
    * Base URL for the speech-to-text API (OpenAI-compatible)
    */
@@ -2692,6 +3043,52 @@ export type VoiceSttConfig = {
  * Text-to-speech service configuration
  */
 export type VoiceTtsConfig = {
+  /**
+   * Explicit model prices in USD: token rates per million, unit rates per declared quantity
+   */
+  cost?: {
+    input?: number
+    output?: number
+    cache_read?: number
+    cache_write?: number
+    cache_write_1h?: number
+    context_over_200k?: {
+      input?: number
+      output?: number
+      cache_read?: number
+      cache_write?: number
+      cache_write_1h?: number
+    }
+    tiers?: Array<{
+      input?: number
+      output?: number
+      cache_read?: number
+      cache_write?: number
+      cache_write_1h?: number
+      tier: {
+        type: "context"
+        size: number
+      }
+    }>
+    units?: {
+      audio_seconds?: {
+        price: number
+        per: number
+      }
+      audio_input_tokens?: {
+        price: number
+        per: number
+      }
+      audio_output_tokens?: {
+        price: number
+        per: number
+      }
+      characters?: {
+        price: number
+        per: number
+      }
+    }
+  }
   /**
    * Base URL for the text-to-speech API (OpenAI-compatible)
    */
@@ -3425,6 +3822,10 @@ export type SandboxConfig = {
  */
 export type ObservabilityConfig = {
   /**
+   * Record AI SDK model spans (default: false)
+   */
+  modelSpans?: boolean
+  /**
    * Enable local indexed observability events, spans, metrics, issues, and diagnostics (default: true)
    */
   enabled?: boolean
@@ -3768,6 +4169,10 @@ export type Config = {
    */
   cortex?: {
     /**
+     * Tools excluded from delegated agents
+     */
+    primaryOnlyTools?: Array<string>
+    /**
      * Maximum number of Cortex subagent tasks that may run concurrently (default: 8)
      */
     maxConcurrentTasks?: number
@@ -3776,6 +4181,18 @@ export type Config = {
    * Process isolation, worker recycling, and bounded execution scheduling
    */
   execution?: {
+    /**
+     * Continue the loop after a denied tool call (default: false)
+     */
+    continueOnDeny?: boolean
+    messageCache?: {
+      enabled?: boolean
+      verify?: boolean
+    }
+    /**
+     * Reap idle language servers (default: true)
+     */
+    lspIdleReap?: boolean
     /**
      * Maximum number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)
      */
@@ -4034,7 +4451,7 @@ export type Config = {
               disabled: true
             }
           | {
-              command: Array<string>
+              command?: Array<string>
               extensions?: Array<string>
               disabled?: boolean
               env?: {
@@ -4111,47 +4528,23 @@ export type Config = {
      */
     codexRemote?: boolean
   }
-  experimental?: {
-    /**
-     * Enable the batch tool
-     */
-    batch_tool?: boolean
-    /**
-     * Include the git commit Co-authored-by footer reminder in agent prompts
-     */
-    coauthor_reminder?: boolean
-    /**
-     * Enable OpenTelemetry spans for AI SDK calls (using the 'experimental_telemetry' flag)
-     */
-    openTelemetry?: boolean
-    /**
-     * Tools that should only be available to primary agents.
-     */
-    primary_tools?: Array<string>
-    /**
-     * Continue the agent loop when a tool call is denied
-     */
-    continue_loop_on_deny?: boolean
-    /**
-     * Timeout in milliseconds for model context protocol (MCP) requests
-     */
-    mcp_timeout?: number
+  boss?: {
     /**
      * Enable Runtime Boss Mode: auto-provision a home-scope runtime boss session and route all Feishu messages to it
      */
-    boss_mode?: boolean
+    enabled?: boolean
     /**
      * Optional colleague identity description injected into the runtime boss session
      */
-    boss_identity_text?: string | null
+    identityText?: string | null
     /**
      * Re-inject the versioned world-overview briefing every N days (default: disabled)
      */
-    boss_briefing_interval_days?: number | null
+    briefingIntervalDays?: number | null
     /**
-     * Colleague persona preset for the runtime boss: a built-in personality (project_manager or ops_assistant) or a custom blend of four 0..1 traits. Pass null to clear. When unset, boss_identity_text (legacy) or the default colleague identity is used.
+     * Colleague persona preset for the runtime boss: a built-in personality (project_manager or ops_assistant) or a custom blend of four 0..1 traits. Pass null to clear. When unset, identityText (legacy) or the default colleague identity is used.
      */
-    boss_persona?:
+    persona?:
       | {
           preset: "project_manager"
         }
@@ -4166,6 +4559,18 @@ export type Config = {
           warmth: number
         }
       | null
+  }
+  prompt?: {
+    /**
+     * Include the git coauthor reminder in agent prompts (default: true)
+     */
+    coauthorReminder?: boolean
+  }
+  toolExposure?: {
+    /**
+     * Expose the LSP tool; permission checks still apply (default: false)
+     */
+    lsp?: boolean
   }
   /**
    * Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.
@@ -4316,6 +4721,7 @@ export type SessionCortexDelegation = {
   executionRole?: "primary" | "delegated_subagent"
   startedAt: number
   completedAt?: number
+  settledAt?: number
   status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
   model?: {
     providerID: string
@@ -4370,6 +4776,7 @@ export type SessionCortexDelegation = {
     cacheReadTokens: number
     cacheWriteTokens: number
     cost: number
+    accounting?: RolloutAccountingSummary
   }
 }
 
@@ -4693,6 +5100,7 @@ export type CortexTask = {
     cacheReadTokens: number
     cacheWriteTokens: number
     cost: number
+    accounting?: RolloutAccountingSummary
   }
 }
 
@@ -5235,6 +5643,653 @@ export type SessionNavResponse = {
   total: number
 }
 
+export type RolloutArtifactRef = {
+  version: 1
+  id: string
+  mediaType: string
+  bytes: number
+  chunks: number
+  sha256: string | null
+  status: "partial" | "complete"
+}
+
+export type ExperimentOverrides = {
+  compaction?: {
+    /**
+     * Enable automatic compaction when context is full (default: true)
+     */
+    auto?: boolean
+    /**
+     * Enable pruning of old tool outputs (default: true)
+     */
+    prune?: boolean
+    /**
+     * Fraction of usable context that triggers auto-compaction (default: 0.85)
+     */
+    overflowThreshold?: number
+    /**
+     * Maximum number of historical images to send as base64 per request (older images replaced with text placeholders). Default: 8.
+     */
+    maxHistoryImages?: number
+    /**
+     * Enable Codex Remote Compaction V2 for openai-codex sessions: request an opaque server-side compaction artifact alongside the local text summary and replay it on later same-model turns (default: false).
+     */
+    codexRemote?: boolean
+  }
+  prompt?: {
+    /**
+     * Include the git coauthor reminder in agent prompts (default: true)
+     */
+    coauthorReminder?: boolean
+  }
+  toolExposure?: {
+    /**
+     * Expose the LSP tool; permission checks still apply (default: false)
+     */
+    lsp?: boolean
+  }
+  /**
+   * Include LSP diagnostics after file-writing tools complete (default: true)
+   */
+  lspWriteDiagnostics?: boolean
+  /**
+   * Severity and scope policy for diagnostics returned after file-writing tools
+   */
+  lspDiagnostics?: {
+    severity?: "error" | "warning"
+    scope?: "delta" | "file" | "project"
+  }
+  /**
+   * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5
+   */
+  model?: string
+  /**
+   * Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model.
+   */
+  nano_model?: string
+  /**
+   * Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model.
+   */
+  mini_model?: string
+  /**
+   * Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model.
+   */
+  mid_model?: string
+  /**
+   * Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set.
+   */
+  thinking_model?: string
+  /**
+   * Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set.
+   */
+  long_context_model?: string
+  /**
+   * Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set.
+   */
+  creative_model?: string
+  /**
+   * Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability.
+   */
+  vision_model?: string
+  /**
+   * Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.
+   */
+  role_variant?: {
+    [key: string]: string
+  }
+  execution?: {
+    /**
+     * Continue the loop after a denied tool call (default: false)
+     */
+    continueOnDeny?: boolean
+    messageCache?: {
+      enabled?: boolean
+      verify?: boolean
+    }
+  }
+  cortex?: {
+    /**
+     * Tools excluded from delegated agents
+     */
+    primaryOnlyTools?: Array<string>
+  }
+}
+
+export type ExperimentRuntime = {
+  lsp?:
+    | false
+    | {
+        [key: string]:
+          | {
+              disabled: true
+            }
+          | {
+              command?: Array<string>
+              extensions?: Array<string>
+              disabled?: boolean
+              env?: {
+                [key: string]: string
+              }
+              initialization?: {
+                [key: string]: unknown
+              }
+            }
+      }
+  formatter?:
+    | false
+    | {
+        [key: string]: {
+          disabled?: boolean
+          command?: Array<string>
+          environment?: {
+            [key: string]: string
+          }
+          extensions?: Array<string>
+        }
+      }
+  execution?: {
+    /**
+     * Reap idle language servers (default: true)
+     */
+    lspIdleReap?: boolean
+    /**
+     * Maximum number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)
+     */
+    agentWorkers?: number
+    /**
+     * Minimum number of idle Agent workers kept warm (default: 0; cannot exceed agentWorkers)
+     */
+    agentWorkerMinIdle?: number
+    /**
+     * Time an excess idle Agent worker remains warm before retirement (default: 60000)
+     */
+    agentWorkerIdleTimeoutMs?: number
+    /**
+     * Maximum queued Agent turns waiting for a worker (default: 256)
+     */
+    agentQueueMax?: number
+    /**
+     * Maximum aggregate queued Agent-turn payload size in MiB (default: 256)
+     */
+    agentQueueMaxMb?: number
+    /**
+     * Turns completed before an Agent worker is recycled (default: 64)
+     */
+    agentWorkerMaxTurns?: number
+    /**
+     * Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 3072)
+     */
+    agentWorkerMaxRssMb?: number
+    /**
+     * Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 2048)
+     */
+    agentWorkerMaxHeapMb?: number
+    /**
+     * Recycle idle Agent workers after post-GC memory grows beyond their warm baseline (default: Linux only)
+     */
+    agentWorkerIdleBaselineRecycle?: boolean
+    /**
+     * Allowed post-GC RSS growth above an Agent worker's warm idle baseline in MiB (default: 256)
+     */
+    agentWorkerIdleBaselineRssGrowthMb?: number
+    /**
+     * Allowed post-GC external-memory growth above an Agent worker's warm idle baseline in MiB (default: 128)
+     */
+    agentWorkerIdleBaselineExternalGrowthMb?: number
+    /**
+     * Grace period before terminating an Agent worker that ignores cancellation (default: 5000)
+     */
+    agentCancelGraceMs?: number
+    /**
+     * Maximum time without an Agent worker heartbeat before forced replacement (default: 45000)
+     */
+    agentHeartbeatTimeoutMs?: number
+    /**
+     * Number of isolated Policy workers (default: min(2, available CPUs - 1), at least 1)
+     */
+    policyWorkers?: number
+    /**
+     * Maximum queued Policy classifications waiting for a worker (default: 256)
+     */
+    policyQueueMax?: number
+    /**
+     * Maximum aggregate queued Policy-classification payload size in MiB (default: 64)
+     */
+    policyQueueMaxMb?: number
+    /**
+     * Maximum total time for a Policy classification before conservative fallback (default: 1000)
+     */
+    policyTimeoutMs?: number
+    /**
+     * Classifications completed before a Policy worker is recycled (default: 512)
+     */
+    policyWorkerMaxRequests?: number
+    /**
+     * RSS threshold in MiB for terminating or recycling a Policy worker (default: 512)
+     */
+    policyWorkerMaxRssMb?: number
+    /**
+     * Heap-used threshold in MiB for terminating or recycling a Policy worker (default: 256)
+     */
+    policyWorkerMaxHeapMb?: number
+    /**
+     * Shutdown grace period before terminating a Policy worker (default: 25)
+     */
+    policyCancelGraceMs?: number
+    /**
+     * Maximum time without a Policy worker heartbeat before forced replacement (default: 15000)
+     */
+    policyHeartbeatTimeoutMs?: number
+    /**
+     * Maximum process-wide concurrent ToolTasks (default: twice available CPUs, bounded to 4-32)
+     */
+    toolConcurrency?: number
+    /**
+     * Maximum queued ToolTasks waiting for execution capacity (default: 32 per tool slot)
+     */
+    toolQueueMax?: number
+    /**
+     * Maximum aggregate queued ToolTask input size in MiB (default: 128)
+     */
+    toolQueueMaxMb?: number
+    /**
+     * Grace period for active ToolTasks during runtime shutdown (default: 3000)
+     */
+    toolCancelGraceMs?: number
+    /**
+     * Optional concurrency limits for each Tool Executor class
+     */
+    toolExecutorConcurrency?: {
+      [key: string]: number
+    }
+  }
+  cortex?: {
+    /**
+     * Maximum number of Cortex subagent tasks that may run concurrently (default: 8)
+     */
+    maxConcurrentTasks?: number
+  }
+}
+
+export type ExperimentSnapshot = {
+  version: 1
+  label: string
+  capturedAt: number
+  fingerprint: string
+  effective: ExperimentOverrides
+  overrides: ExperimentOverrides
+  runtime: ExperimentRuntime
+  sources: {
+    [key: string]:
+      | "default"
+      | "remote_base"
+      | "global_config"
+      | "project_config"
+      | "explicit_file"
+      | "inline_config"
+      | "legacy_environment"
+      | "resolved_configuration"
+      | "experiment"
+      | "explicit_command"
+  }
+}
+
+export type RolloutRunRecord = {
+  version: 1
+  id: string
+  owner:
+    | {
+        kind: "session"
+        scopeID: string
+        sessionID: string
+      }
+    | {
+        kind: "operation"
+        scopeID: string
+        operationID: string
+      }
+  started: number
+  ended?: number
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+  recording: "partial" | "complete" | "failed"
+  input?: RolloutArtifactRef
+  attachments?: Array<RolloutArtifactRef>
+  configuration?: ExperimentSnapshot
+  provenance?: {
+    version: 1
+    capturedAt: number
+    code: {
+      version: string
+      commit: string | null
+      checkout: {
+        commit: string
+        dirty: boolean
+        statusSha256: string
+        trackedDiffSha256: string
+      } | null
+    }
+    workspace: {
+      commit: string
+      dirty: boolean
+      statusSha256: string
+      trackedDiffSha256: string
+    } | null
+    installedPlugins: Array<{
+      id: string
+      version: string
+      generation: string
+      manifestHash: string
+    }>
+  }
+  initialHistory?: {
+    messages: number
+    sha256: string
+  }
+  source?: {
+    owner:
+      | {
+          kind: "session"
+          scopeID: string
+          sessionID: string
+        }
+      | {
+          kind: "operation"
+          scopeID: string
+          operationID: string
+        }
+    runID: string
+  }
+  cancelRequestedAt?: number
+  parent?: {
+    owner:
+      | {
+          kind: "session"
+          scopeID: string
+          sessionID: string
+        }
+      | {
+          kind: "operation"
+          scopeID: string
+          operationID: string
+        }
+    runID: string | null
+    messageID: string
+  }
+}
+
+export type RolloutCallRecord = {
+  version: 1
+  source?: {
+    owner:
+      | {
+          kind: "session"
+          scopeID: string
+          sessionID: string
+        }
+      | {
+          kind: "operation"
+          scopeID: string
+          operationID: string
+        }
+    runID: string
+    callID: string
+  }
+  id: string
+  runID: string
+  owner:
+    | {
+        kind: "session"
+        scopeID: string
+        sessionID: string
+      }
+    | {
+        kind: "operation"
+        scopeID: string
+        operationID: string
+      }
+  purpose: string
+  kind?: "chat" | "embedding" | "rerank" | "transcription" | "speech"
+  execution?: "provider" | "local" | "external"
+  parentCallID?: string
+  agent?: string
+  model: {
+    providerID: string
+    modelID: string
+    sdk: string
+    pricing: {
+      version: 1
+      currency: "USD"
+      unitTokens: 1000000
+      source: {
+        kind: "catalog" | "configuration" | "mixed"
+        providerID: string
+        modelID: string
+      }
+      capturedAt: number
+      rates: {
+        input: number | null
+        output: number | null
+        cacheRead: number | null
+        cacheWrite: number | null
+        cacheWrite1h: number | null
+      }
+      over200K?: {
+        input: number | null
+        output: number | null
+        cacheRead: number | null
+        cacheWrite: number | null
+        cacheWrite1h: number | null
+      }
+      contextTiers?: Array<{
+        above: number
+        rates: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+      }>
+      units?: {
+        audio_seconds?: {
+          price: number
+          per: number
+        }
+        audio_input_tokens?: {
+          price: number
+          per: number
+        }
+        audio_output_tokens?: {
+          price: number
+          per: number
+        }
+        characters?: {
+          price: number
+          per: number
+        }
+      }
+      raw: unknown
+    } | null
+  }
+  started: number
+  ended?: number
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+  request: RolloutArtifactRef
+  response?: RolloutArtifactRef
+  sdkUsage: unknown | null
+  transportCaptured: boolean
+  error?: string
+}
+
+export type RolloutAttemptRecord = {
+  version: 1
+  id: string
+  callID: string
+  runID: string
+  owner:
+    | {
+        kind: "session"
+        scopeID: string
+        sessionID: string
+      }
+    | {
+        kind: "operation"
+        scopeID: string
+        operationID: string
+      }
+  index: number
+  url: string
+  method: string
+  started: number
+  ended?: number
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+  request: RolloutArtifactRef
+  response?: RolloutArtifactRef
+  httpStatus?: number
+  usage?: {
+    version: 1
+    protocol: "openai" | "anthropic" | "google" | "unknown"
+    raw: unknown | null
+    input: {
+      total: number | null
+      uncached: number | null
+      cacheRead: number | null
+      cacheWrite: number | null
+    }
+    output: {
+      total: number | null
+      reasoning: number | null
+    }
+    cacheWrites: {
+      [key: string]: number | null
+    }
+    units: Array<{
+      unit: "audio_input_tokens" | "audio_output_tokens" | "audio_seconds" | "characters"
+      quantity: number | null
+    }>
+    billing: "tokens" | "units" | "unknown"
+    serviceTier?: string
+    reported: {
+      amount: number
+      currency: string
+      source: string
+    } | null
+    complete: boolean
+  }
+  estimate?: {
+    version: 1
+    currency: "USD" | null
+    basis: "api_price_estimate" | "subscription_api_equivalent"
+    total: number | null
+    known: number
+    missing: Array<string>
+  }
+  responseHeaders?: {
+    [key: string]: string
+  }
+  error?: string
+}
+
+export type RolloutToolExecutionRecord = {
+  version: 1
+  id: string
+  owner:
+    | {
+        kind: "session"
+        scopeID: string
+        sessionID: string
+      }
+    | {
+        kind: "operation"
+        scopeID: string
+        operationID: string
+      }
+  runID: string
+  messageID: string
+  toolCallID: string
+  tool: string
+  started: number
+  ended?: number
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+  input: RolloutArtifactRef
+  authorization?: RolloutArtifactRef
+  rawResult?: RolloutArtifactRef
+  observation?: RolloutArtifactRef
+  error?: string
+}
+
+export type RolloutSnapshot = {
+  version: 1
+  owner:
+    | {
+        kind: "session"
+        scopeID: string
+        sessionID: string
+      }
+    | {
+        kind: "operation"
+        scopeID: string
+        operationID: string
+      }
+  revision: number
+  gaps: Array<number>
+  runs: Array<RolloutRunRecord>
+  segments: Array<{
+    version: 1
+    id: string
+    owner:
+      | {
+          kind: "session"
+          scopeID: string
+          sessionID: string
+        }
+      | {
+          kind: "operation"
+          scopeID: string
+          operationID: string
+        }
+    runID: string
+    started: number
+    ended?: number
+    status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+  }>
+  calls: Array<RolloutCallRecord>
+  attempts: Array<RolloutAttemptRecord>
+  tools: Array<RolloutToolExecutionRecord>
+  processes: Array<{
+    version: 1
+    id: string
+    owner:
+      | {
+          kind: "session"
+          scopeID: string
+          sessionID: string
+        }
+      | {
+          kind: "operation"
+          scopeID: string
+          operationID: string
+        }
+    runID: string
+    toolExecutionID: string
+    started: number
+    ended?: number
+    status: "running" | "completed" | "interrupted" | "failed"
+    stream: RolloutArtifactRef
+    pid?: number
+    exitCode?: number | null
+    signal?: string | null
+  }>
+}
+
+export type RolloutResult = {
+  version: 1
+  run: RolloutRunRecord
+  snapshots: Array<RolloutSnapshot>
+  accounting: RolloutAccountingSummary
+  elapsedMs: number
+}
+
 export type SessionChildCursor = {
   lastActivityAt: number
   id: string
@@ -5488,6 +6543,7 @@ export type SessionInboxItem = {
       | {
           id?: string
           type: "attachment"
+          artifact?: RolloutArtifactRef
           mime: string
           filename?: string
           url: string
@@ -5556,6 +6612,13 @@ export type WorktreeUnavailableError = {
   }
 }
 
+export type ExperimentFile = {
+  version: 1
+  label: string
+  overrides?: ExperimentOverrides
+  runtime?: ExperimentRuntime
+}
+
 export type TextPartInput = {
   id?: string
   type: "text"
@@ -5574,6 +6637,7 @@ export type TextPartInput = {
 export type AttachmentPartInput = {
   id?: string
   type: "attachment"
+  artifact?: RolloutArtifactRef
   mime: string
   filename?: string
   url: string
@@ -5636,6 +6700,13 @@ export type UserMessage = {
   origin?: OriginUser
   metadata?: {
     [key: string]: unknown
+  }
+}
+
+export type RolloutRecordingError = {
+  name: "RolloutRecordingError"
+  data: {
+    message: string
   }
 }
 
@@ -5717,6 +6788,7 @@ export type AssistantMessage = {
     completed?: number
   }
   error?:
+    | RolloutRecordingError
     | ProviderAuthError
     | UnknownError
     | MessageOutputLengthError
@@ -5734,6 +6806,24 @@ export type AssistantMessage = {
     root: string
   }
   summary?: boolean
+  accounting?:
+    | {
+        kind: "rollout"
+        callIDs: Array<string>
+        summary?: RolloutAccountingSummary
+      }
+    | {
+        kind: "legacy"
+        calculation: "session-v0"
+      }
+    | {
+        kind: "inherited" | "imported"
+        source: {
+          sessionID: string
+          messageID: string
+          callIDs: Array<string>
+        }
+      }
   cost: number
   tokens: {
     input: number
@@ -5837,6 +6927,7 @@ export type AttachmentPart = {
   sessionID: string
   messageID: string
   type: "attachment"
+  artifact?: RolloutArtifactRef
   mime: string
   filename?: string
   url: string
@@ -5893,6 +6984,7 @@ export type ToolStateCompleted = {
   }
   output: string
   outputBytes?: number
+  outputArtifact?: RolloutArtifactRef
   outputTruncated?: boolean
   title: string
   metadata: {
@@ -5949,6 +7041,24 @@ export type StepFinishPart = {
   sessionID: string
   messageID: string
   type: "step-finish"
+  accounting?:
+    | {
+        kind: "rollout"
+        callIDs: Array<string>
+        summary?: RolloutAccountingSummary
+      }
+    | {
+        kind: "legacy"
+        calculation: "session-v0"
+      }
+    | {
+        kind: "inherited" | "imported"
+        source: {
+          sessionID: string
+          messageID: string
+          callIDs: Array<string>
+        }
+      }
   reason: string
   snapshot?: string
   cost: number
@@ -8542,6 +9652,20 @@ export type HolosAuth = {
 
 export type Auth = OAuth | ApiAuth | WellKnownAuth | HolosAuth
 
+export type EventInstallationUpdated = {
+  type: "installation.updated"
+  properties: {
+    version: string
+  }
+}
+
+export type EventInstallationUpdateAvailable = {
+  type: "installation.update-available"
+  properties: {
+    version: string
+  }
+}
+
 export type EventScopeUpdated = {
   type: "scope.updated"
   properties: Scope
@@ -8628,15 +9752,6 @@ export type EventConfigUpdated = {
   type: "config.updated"
   properties: {
     scope: "global" | "project"
-    changedFields: Array<string>
-  }
-}
-
-export type EventRuntimeReloaded = {
-  type: "runtime.reloaded"
-  properties: {
-    executed: Array<RuntimeReloadTarget>
-    cascaded: Array<RuntimeReloadTarget>
     changedFields: Array<string>
   }
 }
@@ -8728,25 +9843,20 @@ export type EventSessionTurnEnd = {
   }
 }
 
-export type EventInstallationUpdated = {
-  type: "installation.updated"
-  properties: {
-    version: string
-  }
-}
-
-export type EventInstallationUpdateAvailable = {
-  type: "installation.update-available"
-  properties: {
-    version: string
-  }
-}
-
 export type EventSessionInboxUpdated = {
   type: "session.inbox.updated"
   properties: {
     sessionID: string
     items: Array<SessionInboxItem>
+  }
+}
+
+export type EventRuntimeReloaded = {
+  type: "runtime.reloaded"
+  properties: {
+    executed: Array<RuntimeReloadTarget>
+    cascaded: Array<RuntimeReloadTarget>
+    changedFields: Array<string>
   }
 }
 
@@ -9183,6 +10293,8 @@ export type EventGlobalDisposed = {
 }
 
 export type Event =
+  | EventInstallationUpdated
+  | EventInstallationUpdateAvailable
   | EventScopeUpdated
   | EventScopeRemoved
   | EventScopeRuntimeDisposed
@@ -9195,7 +10307,6 @@ export type Event =
   | EventMessagePartUpdated
   | EventMessagePartRemoved
   | EventConfigUpdated
-  | EventRuntimeReloaded
   | EventPermissionAsked
   | EventPermissionReplied
   | EventSessionUpdated
@@ -9207,9 +10318,8 @@ export type Event =
   | EventSessionIdle
   | EventSessionTurnStart
   | EventSessionTurnEnd
-  | EventInstallationUpdated
-  | EventInstallationUpdateAvailable
   | EventSessionInboxUpdated
+  | EventRuntimeReloaded
   | EventFileEdited
   | EventTodoUpdated
   | EventDagUpdated
@@ -9477,6 +10587,7 @@ export type GlobalStatsProgressResponses = {
           }
         }
         cost: number
+        accounting?: RolloutAccountingSummary
         cacheHitRate: number
         avgCostPerTurn: number
         avgTokensPerTurn: number
@@ -9499,6 +10610,7 @@ export type GlobalStatsProgressResponses = {
             }
           }
           cost: number
+          accounting?: RolloutAccountingSummary
           avgResponseMs: number
         }>
       }
@@ -9517,6 +10629,7 @@ export type GlobalStatsProgressResponses = {
             }
           }
           cost: number
+          accounting?: RolloutAccountingSummary
           subagentInvocations: number
         }>
         totalSubagentCalls: number
@@ -9576,6 +10689,7 @@ export type GlobalStatsProgressResponses = {
             }
           }
           cost: number
+          accounting?: RolloutAccountingSummary
           additions: number
           deletions: number
           files: number
@@ -12372,6 +13486,123 @@ export type SessionIndexResponses = {
 
 export type SessionIndexResponse = SessionIndexResponses[keyof SessionIndexResponses]
 
+export type SessionCancelRunData = {
+  body?: never
+  path: {
+    sessionID: string
+    runID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/run/{runID}/cancel"
+}
+
+export type SessionCancelRunErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionCancelRunError = SessionCancelRunErrors[keyof SessionCancelRunErrors]
+
+export type SessionCancelRunResponses = {
+  /**
+   * Cancelled or already terminal run
+   */
+  200: RolloutRunRecord
+}
+
+export type SessionCancelRunResponse = SessionCancelRunResponses[keyof SessionCancelRunResponses]
+
+export type SessionRunResultData = {
+  body?: never
+  path: {
+    sessionID: string
+    runID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/run/{runID}/result"
+}
+
+export type SessionRunResultErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionRunResultError = SessionRunResultErrors[keyof SessionRunResultErrors]
+
+export type SessionRunResultResponses = {
+  /**
+   * Rollout result
+   */
+  200: RolloutResult
+}
+
+export type SessionRunResultResponse = SessionRunResultResponses[keyof SessionRunResultResponses]
+
+export type SessionRunData = {
+  body?: never
+  path: {
+    sessionID: string
+    runID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/run/{runID}"
+}
+
+export type SessionRunErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionRunError = SessionRunErrors[keyof SessionRunErrors]
+
+export type SessionRunResponses = {
+  /**
+   * Durable run
+   */
+  200: RolloutRunRecord
+}
+
+export type SessionRunResponse = SessionRunResponses[keyof SessionRunResponses]
+
 export type SessionListData = {
   body?: never
   path?: never
@@ -12990,6 +14221,7 @@ export type SessionInboxResponse = SessionInboxResponses[keyof SessionInboxRespo
 
 export type SessionInputData = {
   body?: {
+    experiment?: ExperimentFile
     messageID?: string
     model?: {
       providerID: string
@@ -13296,6 +14528,7 @@ export type SessionMessagesResponse = SessionMessagesResponses[keyof SessionMess
 
 export type SessionPromptData = {
   body?: {
+    experiment?: ExperimentFile
     messageID?: string
     model?: {
       providerID: string
@@ -13590,6 +14823,7 @@ export type PartUpdateResponse = PartUpdateResponses[keyof PartUpdateResponses]
 
 export type SessionPromptAsyncData = {
   body?: {
+    experiment?: ExperimentFile
     messageID?: string
     model?: {
       providerID: string
@@ -13654,6 +14888,7 @@ export type SessionPromptAsyncResponse = SessionPromptAsyncResponses[keyof Sessi
 
 export type SessionCommandData = {
   body?: {
+    experiment?: ExperimentFile
     messageID?: string
     agent?: string
     model?: string
@@ -13663,6 +14898,7 @@ export type SessionCommandData = {
     parts?: Array<{
       id?: string
       type: "attachment"
+      artifact?: RolloutArtifactRef
       mime: string
       filename?: string
       url: string
@@ -14239,6 +15475,8 @@ export type SessionExportDownloadData = {
   query?: {
     directory?: string
     scopeID?: string
+    format?: "json" | "rollout"
+    run?: string
     mode?: SessionExportMode
   }
   url: "/session/{sessionID}/export"
@@ -14263,10 +15501,12 @@ export type SessionExportDownloadError = SessionExportDownloadErrors[keyof Sessi
 
 export type SessionExportDownloadResponses = {
   /**
-   * Session export as gzipped JSON
+   * Session export as gzipped JSON or self-contained rollout ZIP
    */
-  200: unknown
+  200: Blob | File
 }
+
+export type SessionExportDownloadResponse = SessionExportDownloadResponses[keyof SessionExportDownloadResponses]
 
 export type SessionImportData = {
   body?: {

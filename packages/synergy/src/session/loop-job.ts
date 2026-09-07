@@ -1,3 +1,5 @@
+import { RolloutRecordingError } from "./rollout/error"
+import { AsyncLocalStorage } from "node:async_hooks"
 import { MessageV2 } from "./message-v2"
 import type { Info } from "./types"
 import { Log } from "../util/log"
@@ -67,7 +69,10 @@ export namespace LoopJob {
     job: RegisteredBackgroundJob
     payload: JobInstance
     payloadBytes: number
-    sessionID?: string
+    sessionID: string
+    rootID: string
+    abort: AbortSignal
+    resume: ReturnType<typeof AsyncLocalStorage.snapshot>
   }
 
   interface BackgroundState {
@@ -76,11 +81,14 @@ export namespace LoopJob {
     startedAt: number
     current: BackgroundRun
     pending?: BackgroundRun
+    completion: Promise<void>
   }
 
   const registry = new Map<string, RegisteredJob>()
   const signals = new Map<string, Signal>()
   const background = new Map<string, BackgroundState>()
+  const failures = new Map<string, InstanceType<typeof RolloutRecordingError>>()
+  const ownerKey = (sessionID: string, rootID: string) => `${sessionID}:${rootID}`
   let backgroundSequence = 0
   const DEFAULT_BACKGROUND_TIMEOUT_MS = 180_000
 
@@ -119,6 +127,8 @@ export namespace LoopJob {
   }
 
   export async function execute(instances: JobInstance[], ctx: Context): Promise<FlowResult> {
+    const failure = failures.get(ownerKey(ctx.sessionID, ctx.lastUser.rootID ?? ctx.lastUser.id))
+    if (failure) throw failure
     const nonBlocking: { instance: JobInstance; job: RegisteredBackgroundJob }[] = []
     const blocking: { instance: JobInstance; job: BlockingJob }[] = []
     for (const instance of instances) {
@@ -138,7 +148,7 @@ export namespace LoopJob {
         log.error("failed to capture background job", { type: instance.type, error })
         continue
       }
-      scheduleBackground(job, payload, ctx.sessionID)
+      scheduleBackground(job, payload, ctx)
     }
     let flow: FlowResult = "pass"
     for (const { instance, job } of blocking) {
@@ -149,15 +159,39 @@ export namespace LoopJob {
     return flow
   }
 
-  function scheduleBackground(job: RegisteredBackgroundJob, payload: JobInstance, fallbackSessionID: string) {
-    const sessionID = typeof payload.sessionID === "string" ? payload.sessionID : fallbackSessionID
+  export async function drain(sessionID: string, rootID?: string) {
+    while (true) {
+      const owned = [...background.values()].filter(
+        (state) => state.current.sessionID === sessionID && (rootID === undefined || state.current.rootID === rootID),
+      )
+      if (!owned.length) break
+      const settled = await Promise.allSettled(owned.map((state) => state.completion))
+      const rejected = settled.find((result) => result.status === "rejected")
+      if (rejected?.status === "rejected") throw rejected.reason
+    }
+    let failure: InstanceType<typeof RolloutRecordingError> | undefined
+    for (const [key, error] of failures) {
+      if (rootID === undefined ? key.startsWith(`${sessionID}:`) : key === ownerKey(sessionID, rootID)) {
+        failure ??= error
+        failures.delete(key)
+      }
+    }
+    if (failure) throw failure
+  }
+
+  function scheduleBackground(job: RegisteredBackgroundJob, payload: JobInstance, ctx: Context) {
+    const sessionID = ctx.sessionID
+    const rootID = ctx.lastUser.rootID ?? ctx.lastUser.id
     const coalescingKey = job.key?.(payload)
-    const key = coalescingKey === undefined ? `${job.type}:run:${++backgroundSequence}` : `${job.type}:${coalescingKey}`
+    const key = `${ownerKey(sessionID, rootID)}:${job.type}:${coalescingKey ?? `run:${++backgroundSequence}`}`
     const run = {
       job,
       payload,
       payloadBytes: estimatePayloadBytes(payload),
       sessionID,
+      rootID,
+      abort: ctx.abort,
+      resume: AsyncLocalStorage.snapshot(),
     }
     const current = background.get(key)
     if (current) {
@@ -174,10 +208,12 @@ export namespace LoopJob {
       key,
       startedAt: Date.now(),
       current: run,
+      completion: Promise.resolve(),
     }
     background.set(key, state)
     recordMetric("session.loop_job.background.active", activeCount(job.type), "count", job.type, sessionID)
-    void runBackground(state)
+    state.completion = runBackground(state)
+    void state.completion.catch((error) => log.error("background job finalization failed", { type: job.type, error }))
   }
 
   async function runBackground(state: BackgroundState) {
@@ -194,6 +230,13 @@ export namespace LoopJob {
       } catch (error) {
         outcome = error instanceof DOMException && error.name === "TimeoutError" ? "timeout" : "error"
         log.error("job failed", { type: state.type, outcome, error })
+        if (RolloutRecordingError.isInstance(error)) {
+          failures.set(ownerKey(run.sessionID, run.rootID), error)
+          const { SessionManager } = await import("./manager")
+          SessionManager.signalAbort(run.sessionID, { rootID: run.rootID })
+          state.pending = undefined
+          break
+        }
       } finally {
         recordMetric(
           "session.loop_job.background.duration",
@@ -225,16 +268,14 @@ export namespace LoopJob {
       timeoutMs,
     )
     timeout.unref()
-    let onAbort: (() => void) | undefined
-    const aborted = new Promise<never>((_, reject) => {
-      onAbort = () => reject(controller.signal.reason)
-      controller.signal.addEventListener("abort", onAbort, { once: true })
-    })
+    const signal = AbortSignal.any([controller.signal, run.abort])
     try {
-      return await Promise.race([run.job.execute(run.payload, controller.signal), aborted])
+      signal.throwIfAborted()
+      const result = await run.resume(() => run.job.execute(run.payload, signal))
+      signal.throwIfAborted()
+      return result
     } finally {
       clearTimeout(timeout)
-      if (onAbort) controller.signal.removeEventListener("abort", onAbort)
     }
   }
 

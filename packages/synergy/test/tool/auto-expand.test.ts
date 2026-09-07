@@ -41,7 +41,7 @@ const allowAllAgent = {
 function runtimeProcessor() {
   const callbacks = new Map<string, Promise<unknown>>()
   return {
-    message: { id: "message_test" },
+    message: { id: "message_test", rootID: "msg_root", parentID: "msg_root" },
     partFromToolCall: () => undefined,
     updateToolCallState: async () => {},
     executeOnce<T>(callID: string, execute: () => Promise<T>) {
@@ -471,7 +471,7 @@ async function runAutoExpandTurn(input: {
     ;(Session.updateMessage as any) = mock(async (message: any) => message)
     ;(Session.updateAssistantContextUsage as any) = mock(async () => {})
     ;(Session.updateLastExchange as any) = mock(async () => {})
-    ;(Config.current as any) = mock(async () => ({ experimental: {}, timeout: { tool: { default_sec: 60 } } }))
+    ;(Config.current as any) = mock(async () => ({ timeout: { tool: { default_sec: 60 } } }))
     ;(Plugin.trigger as any) = mock(async (_name: string, _context: unknown, value: unknown) => value)
     ;(ExperienceEncoder.onComplete as any) = mock(() => {})
     ;(Bus.publish as any) = mock(async () => {})

@@ -68,11 +68,21 @@ describe("Cortex non-blocking cancel", () => {
             ])
             if (operation === "cancelAll") expect(cancelled).toBe(count)
             expect(settled).toBe(0)
+            let drained = false
+            const drainage = Cortex.drain(tasks[0].id).then(() => {
+              drained = true
+            })
+            await new Promise<void>((resolve) => setImmediate(resolve))
+            expect(drained).toBe(false)
             for (const task of tasks) {
               expect(Cortex.get(task.id)?.status).toBe("cancelled")
               expect((await Session.get(task.sessionID)).cortex?.status).toBe("cancelled")
             }
             expect(CortexConcurrency.status().developer?.running).toBe(0)
+            release.resolve()
+            await drainage
+            expect(drained).toBe(true)
+            expect(settled).toBe(count)
           } finally {
             clearTimeout(timer)
             release.resolve()

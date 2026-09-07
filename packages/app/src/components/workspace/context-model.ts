@@ -80,7 +80,7 @@ function latestTokenMessage(messages: Message[]): AssistantMessage | undefined {
     if (isSessionContextUsageBarrier(message)) return true
     if (message.contextUsage) return true
     const input = ModelLimit.actualInput(message.tokens)
-    return input + message.tokens.output + message.tokens.reasoning > 0
+    return input + message.tokens.output > 0
   })
 }
 
@@ -161,9 +161,7 @@ export function buildContextPanelModel(input: {
   const outputTokens = latest?.tokens.output ?? null
   const reasoningTokens = latest?.tokens.reasoning ?? null
   const latestCallTotalTokens =
-    exactInputTokens !== null && outputTokens !== null && reasoningTokens !== null
-      ? exactInputTokens + outputTokens + reasoningTokens
-      : null
+    exactInputTokens !== null && outputTokens !== null ? exactInputTokens + outputTokens : null
   const catalogUsableInput = ModelLimit.usableInput(catalogModel?.limit)
   const usableInputLimit = snapshot?.usableInputLimit ?? (catalogUsableInput > 0 ? catalogUsableInput : null)
   const contextWindow = snapshot?.contextLimit ?? catalogModel?.limit?.context ?? null
@@ -174,7 +172,13 @@ export function buildContextPanelModel(input: {
   const remainingInputTokens =
     exactInputTokens !== null && usableInputLimit !== null ? Math.max(0, usableInputLimit - exactInputTokens) : null
   const loadedMessagesCost = input.messages.reduce(
-    (sum, message) => sum + (message.role === "assistant" ? message.cost : 0),
+    (sum, message) =>
+      sum +
+      (message.role === "assistant" &&
+      message.accounting?.kind !== "inherited" &&
+      message.accounting?.kind !== "imported"
+        ? message.cost
+        : 0),
     0,
   )
   const effectiveMessages = input.messages.filter((message) => message.includeInContext !== false)
