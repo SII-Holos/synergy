@@ -18642,7 +18642,7 @@ msgstr "Reclaim unowned snapshots"
 
 #. js-lingui-explicit-id
 msgid "settings.storage.clean.description"
-msgstr "Legacy snapshot directories with no session record, including reclaimed scopes. A dry run is shown before anything is deleted."
+msgstr "Legacy snapshot directories with no session record, including reclaimed scopes. A dry run is shown first; before deleting, each scope must also pass an integrity check."
 
 #. js-lingui-explicit-id
 msgid "settings.storage.clean.failed.title"

@@ -31,7 +31,7 @@ const cleanTitle = { id: "settings.storage.clean.title", message: "Reclaim unown
 const cleanDescription = {
   id: "settings.storage.clean.description",
   message:
-    "Legacy snapshot directories with no session record, including reclaimed scopes. A dry run is shown before anything is deleted.",
+    "Legacy snapshot directories with no session record, including reclaimed scopes. A dry run is shown first; before deleting, each scope must also pass an integrity check.",
 }
 const cleanActionLabel = { id: "settings.storage.clean.action", message: "Reclaim" }
 const cleanBusyLabel = { id: "settings.storage.clean.busy", message: "Reclaiming..." }

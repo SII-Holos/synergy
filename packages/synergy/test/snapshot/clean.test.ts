@@ -8,6 +8,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { Identifier } from "../../src/id/id"
+import { Global } from "../../src/global"
 import { Session } from "../../src/session"
 import { tmpdir } from "../fixture/fixture"
 
@@ -59,6 +60,45 @@ describe("snapshot clean", () => {
         expect(applied.applied).toBe(true)
         expect(applied.removed).toBe(1)
         await expect(fs.access(SnapshotStore.legacyRepository("__reclaimed__", reclaimed))).rejects.toThrow()
+      },
+    })
+  })
+
+  test("__reclaimed__ legacy directories with session records are never candidates", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        await fs.rm(path.join(Global.Path.snapshot, "__reclaimed__"), { recursive: true, force: true })
+        await Storage.removeTree(["sessions", Identifier.asScopeID("__reclaimed__")])
+        const kept = "ses_cleanKeptRc01"
+        const recordless = "ses_cleanRcOrph01"
+        await makeLegacyRepo("__reclaimed__", kept)
+        await makeLegacyRepo("__reclaimed__", recordless)
+        await Storage.write(
+          StoragePath.sessionInfo(Identifier.asScopeID("__reclaimed__"), Identifier.asSessionID(kept)),
+          {
+            id: kept,
+            scope: { directory: "/tmp/snapshot-clean-fixture" },
+            title: "kept reclaimed session",
+            version: "test",
+            time: { created: Date.now(), updated: Date.now() },
+          },
+        )
+
+        const dry = await SnapshotMaintenance.clean("__reclaimed__")
+        expect(dry.applied).toBe(false)
+        expect(dry.candidates.map((entry) => entry.sessionID)).toEqual([recordless])
+        expect(dry.candidates[0]!.reason).toBe("reclaimed")
+        expect(dry.skippedProtected).toBe(1)
+
+        const applied = await SnapshotMaintenance.clean("__reclaimed__", { apply: true })
+        expect(applied.removed).toBe(1)
+        expect(await Bun.file(path.join(SnapshotStore.legacyRepository("__reclaimed__", kept), "HEAD")).exists()).toBe(
+          true,
+        )
+        await expect(fs.access(SnapshotStore.legacyRepository("__reclaimed__", recordless))).rejects.toThrow()
       },
     })
   })

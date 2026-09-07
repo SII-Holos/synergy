@@ -345,17 +345,20 @@ export namespace SnapshotMaintenance {
     errors: string[]
   }
 
-  /** True when a legacy directory may be reclaimed: no owner record and no
-   * session record (`__reclaimed__` scopes hold session records for kept
-   * sessions, so the absence of info.json is the ownership proof there). */
+  /**
+   * True when a legacy directory may be reclaimed: no owner record AND no
+   * session record. The session-record check applies to every scope
+   * identically — `__reclaimed__` scopes hold session records for kept
+   * sessions, so the absence of info.json is required there too. The
+   * "reclaimed" reason labels record-less candidates inside `__reclaimed__`
+   * only; it never bypasses the record checks.
+   */
   async function cleanCandidate(scopeID: string, sessionID: string): Promise<CleanCandidate | undefined> {
     if (await SnapshotStore.owner(scopeID, sessionID)) return undefined
-    if (scopeID !== "__reclaimed__") {
-      const info = await SnapshotStore.optional<unknown>(
-        StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
-      )
-      if (info !== undefined) return undefined
-    }
+    const info = await SnapshotStore.optional<unknown>(
+      StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
+    )
+    if (info !== undefined) return undefined
     return {
       sessionID,
       bytes: (await statistics(path.join(Global.Path.snapshot, scopeID, sessionID))).bytes,

@@ -9,6 +9,7 @@ import { StoragePath } from "../../src/storage/path"
 import { Identifier } from "../../src/id/id"
 import { Session } from "../../src/session"
 import { ScopeContext } from "../../src/scope/context"
+import { Global } from "../../src/global"
 import { GlobalStorageRoute } from "../../src/server/storage-route"
 import { tmpdir } from "../fixture/fixture"
 
@@ -148,6 +149,49 @@ describe("GlobalStorageRoute", () => {
         })
         expect(response.status).toBe(409)
         expect(await Bun.file(path.join(SnapshotStore.legacyRepository(scope.id, orphan), "HEAD")).exists()).toBe(true)
+      },
+    })
+  })
+
+  test("POST snapshot/clean keeps __reclaimed__ directories that have session records", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        await fs.rm(path.join(Global.Path.snapshot, "__reclaimed__"), { recursive: true, force: true })
+        await Storage.removeTree(["sessions", Identifier.asScopeID("__reclaimed__")])
+        const kept = "ses_routeKeptRc01"
+        const recordless = "ses_routeRcOrph01"
+        await makeLegacyRepo("__reclaimed__", kept)
+        await makeLegacyRepo("__reclaimed__", recordless)
+        await Storage.write(
+          StoragePath.sessionInfo(Identifier.asScopeID("__reclaimed__"), Identifier.asSessionID(kept)),
+          {
+            id: kept,
+            scope: { directory: "/tmp/storage-route-fixture" },
+            title: "kept reclaimed session",
+            version: "test",
+            time: { created: Date.now(), updated: Date.now() },
+          },
+        )
+
+        const applied = await app().request("/global/storage/snapshot/clean", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scopeID: "__reclaimed__", apply: true }),
+        })
+        expect(applied.status).toBe(200)
+        const reports = (await applied.json()) as CleanReport[]
+        const report = reports.find((entry) => entry.scopeID === "__reclaimed__")!
+        expect(report.applied).toBe(true)
+        expect(report.candidates.map((entry) => entry.sessionID)).toEqual([recordless])
+        expect(report.removed).toBe(1)
+        expect(report.skippedProtected).toBe(1)
+        expect(await Bun.file(path.join(SnapshotStore.legacyRepository("__reclaimed__", kept), "HEAD")).exists()).toBe(
+          true,
+        )
+        await expect(fs.access(SnapshotStore.legacyRepository("__reclaimed__", recordless))).rejects.toThrow()
       },
     })
   })

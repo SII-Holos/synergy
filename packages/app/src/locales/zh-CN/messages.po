@@ -18642,7 +18642,7 @@ msgstr "回收无主快照"
 
 #. js-lingui-explicit-id
 msgid "settings.storage.clean.description"
-msgstr "无会话记录的旧版快照目录（包括已回收的 scope）。删除前会先展示预演结果。"
+msgstr "无会话记录的旧版快照目录（包括已回收的 scope）。删除前会先展示预演结果；实际删除前，每个 scope 还必须通过完整性检查。"
 
 #. js-lingui-explicit-id
 msgid "settings.storage.clean.failed.title"
