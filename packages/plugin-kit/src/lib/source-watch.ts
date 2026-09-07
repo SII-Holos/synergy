@@ -7,11 +7,21 @@ function ignored(file: string) {
     parts.some(
       (part) => part === ".git" || part === "dist" || part === "node_modules" || part.startsWith(".synergy-plugin-"),
     ) ||
-    file === "src" ||
-    file === `src${path.sep}generated` ||
     file === `src${path.sep}generated${path.sep}plugin-data` ||
     file.startsWith(`src${path.sep}generated${path.sep}plugin-data${path.sep}`)
   )
+}
+
+function hasAuthoredFiles(root: string, relative: string): boolean {
+  try {
+    return fs.readdirSync(path.join(root, relative), { withFileTypes: true }).some((entry) => {
+      const file = path.join(relative, entry.name)
+      if (ignored(file)) return false
+      return !entry.isDirectory() || hasAuthoredFiles(root, file)
+    })
+  } catch {
+    return true
+  }
 }
 
 export function watchPluginSources(root: string, changed: () => void) {
@@ -23,7 +33,10 @@ export function watchPluginSources(root: string, changed: () => void) {
     timer = setTimeout(changed, 200)
   }
   const watcher = fs.watch(root, { recursive: true }, (_event, filename) => {
-    if (!filename || !ignored(filename.toString())) schedule()
+    const file = filename?.toString()
+    if (file && ignored(file)) return
+    if ((file === "src" || file === `src${path.sep}generated`) && !hasAuthoredFiles(root, file)) return
+    schedule()
   })
   let previous = new Set<string>()
   const dependencies = new Map<string, { watcher: fs.FSWatcher; names: Set<string> }>()
