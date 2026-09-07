@@ -1,3 +1,4 @@
+import { RolloutRecordingError } from "./rollout/error"
 import type { NamedError } from "@ericsanchezok/synergy-util/error"
 import { MessageV2 } from "./message-v2"
 
@@ -59,6 +60,7 @@ export namespace SessionRetry {
   }
 
   export function retryable(error: ReturnType<NamedError["toObject"]>) {
+    if (RolloutRecordingError.isInstance(error)) return undefined
     const rawMessage = typeof error?.data?.message === "string" ? error.data.message : ""
     if (/Agent worker exited/.test(rawMessage)) return "Agent worker restarted"
 

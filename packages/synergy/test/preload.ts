@@ -88,6 +88,8 @@ delete process.env["CEREBRAS_API_KEY"]
 delete process.env["SAMBANOVA_API_KEY"]
 
 // Now safe to import from src/
+const { Global } = await import("../src/global")
+await Global.initialize()
 const { Log } = await import("../src/util/log")
 const { AgentTurn } = await import("../src/session/agent-turn")
 const { runInProcessStream } = await import("../src/session/agent-turn/in-process")

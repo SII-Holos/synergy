@@ -697,7 +697,7 @@ class McpSupervisorImpl {
       }
       const name = PluginId.mcpServerKey(pluginId, serverKey)
       if (userMcp[serverKey] !== undefined || userMcp[name] !== undefined) continue
-      const config = Config.normalizeMcp(parsed.data, cfg.mcpDefaults, cfg.experimental?.mcp_timeout)
+      const config = Config.normalizeMcp(parsed.data, cfg.mcpDefaults, cfg.mcpDefaults?.callTimeout)
       staged.push(this.createHandle(name, config, "plugin", pluginId))
     }
     return staged
@@ -786,7 +786,7 @@ class McpSupervisorImpl {
         }
         continue
       }
-      const config = Config.normalizeMcp(mcp as Config.Mcp, cfg.mcpDefaults, cfg.experimental?.mcp_timeout)
+      const config = Config.normalizeMcp(mcp as Config.Mcp, cfg.mcpDefaults, cfg.mcpDefaults?.callTimeout)
       const handle = this.createHandle(key, config, "config")
       this.handles.set(key, handle)
       this.applyStartupPolicy(handle)
@@ -796,7 +796,7 @@ class McpSupervisorImpl {
     // stub owns the name and suppresses the builtin.
     const staged = collectBuiltinMcpServers(cfg.mcp as Record<string, unknown> | undefined)
     for (const { name, config } of staged) {
-      const normalized = Config.normalizeMcp(config, cfg.mcpDefaults, cfg.experimental?.mcp_timeout)
+      const normalized = Config.normalizeMcp(config, cfg.mcpDefaults, cfg.mcpDefaults?.callTimeout)
       const handle = this.createHandle(name, normalized, "builtin")
       this.handles.set(name, handle)
       this.applyStartupPolicy(handle)

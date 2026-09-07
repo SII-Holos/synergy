@@ -1,5 +1,8 @@
+import { RolloutSnapshot } from "@/session/rollout/snapshot"
+import { OperationDigest } from "./types"
 import z from "zod"
-import { Session } from "@/session"
+import { Lock } from "@/util/lock"
+import { RolloutJournal } from "@/session/rollout/journal"
 import type { Info as SessionInfo } from "@/session/types"
 import { Scope } from "@/scope"
 import { Storage } from "@/storage/storage"
@@ -8,14 +11,7 @@ import { Identifier } from "@/id/id"
 import { Aggregator } from "./aggregator"
 import { StatsStorage } from "./storage"
 import { Rollup } from "./rollup"
-import type {
-  SessionDigest,
-  StatsWatermark,
-  StatsSnapshot,
-  DailyBucket,
-  TokenBreakdown,
-  ProgressCallback,
-} from "./types"
+import type { StatsWatermark, StatsSnapshot, ProgressCallback } from "./types"
 
 export namespace Engine {
   // -----------------------------------------------------------------------
@@ -27,7 +23,44 @@ export namespace Engine {
    * update digests + daily buckets, recompute snapshot.
    */
   export async function update(onProgress?: ProgressCallback): Promise<StatsSnapshot> {
-    const watermark = await StatsStorage.getWatermark()
+    return refresh(false, onProgress)
+  }
+
+  async function operationDigests() {
+    const result: OperationDigest[] = []
+    const retained = new Set<string>()
+    for (const scopeID of await Storage.scan(["operations"], { strict: true })) {
+      for (const operationID of await Storage.scan(["operations", scopeID], { strict: true })) {
+        const owner = { kind: "operation" as const, scopeID, operationID }
+        const revision = (await RolloutJournal.head(owner)).committed
+        if (!revision) continue
+        const key = StoragePath.statsOperation(scopeID, operationID)
+        retained.add(key.join("/"))
+        const cached = await Storage.read(key).catch((error) => {
+          if (error instanceof Storage.NotFoundError) return undefined
+          throw error
+        })
+        const parsed = OperationDigest.safeParse(cached)
+        if (parsed.success && parsed.data.rolloutRevision === revision) {
+          result.push(parsed.data)
+          continue
+        }
+        const digest = Aggregator.operation(await RolloutSnapshot.read(owner, { revision }))
+        await Storage.write(key, digest)
+        result.push(digest)
+      }
+    }
+    for (const scopeID of await Storage.scan(StoragePath.statsOperations(), { strict: true }))
+      for (const id of await Storage.scan([...StoragePath.statsOperations(), scopeID], { strict: true })) {
+        const key = StoragePath.statsOperation(scopeID, id)
+        if (!retained.has(key.join("/"))) await Storage.remove(key)
+      }
+    return result
+  }
+
+  async function refresh(full: boolean, onProgress?: ProgressCallback): Promise<StatsSnapshot> {
+    using lock = await Lock.write("stats-update")
+    const watermark = full ? undefined : await StatsStorage.getWatermark()
 
     onProgress?.({ phase: "scan", current: 0, total: 1, message: "Scanning sessions..." })
     const allSessions = await getAllSessions()
@@ -40,7 +73,21 @@ export namespace Engine {
       const currentMap = new Map(allSessions.map((s) => [s.id, s]))
 
       // Sessions that are new or updated since watermark
-      newOrUpdated = allSessions.filter((s) => !knownSet.has(s.id) || s.time.updated > watermark.lastUpdated)
+      newOrUpdated = []
+      for (let offset = 0; offset < allSessions.length; offset += 20) {
+        const batch = allSessions.slice(offset, offset + 20)
+        const changed = await Promise.all(
+          batch.map(async (session) => {
+            if (!knownSet.has(session.id) || session.time.updated > watermark.lastUpdated) return true
+            const [digest, revision] = await Promise.all([
+              StatsStorage.getDigest(session.id),
+              RolloutJournal.head({ kind: "session", scopeID: session.scope.id, sessionID: session.id }),
+            ])
+            return digest?.rolloutRevision !== revision.committed
+          }),
+        )
+        newOrUpdated.push(...batch.filter((_, index) => changed[index]))
+      }
 
       // Sessions that were known but no longer exist
       deletedIDs = watermark.sessionIDs.filter((id) => !currentMap.has(id))
@@ -53,10 +100,6 @@ export namespace Engine {
     const freshDigests = await Aggregator.digestAll(newOrUpdated, (current, total) => {
       onProgress?.({ phase: "digest", current, total, message: `Digesting sessions ${current}/${total}...` })
     })
-
-    // Update daily buckets incrementally
-    onProgress?.({ phase: "bucket", current: 0, total: 1, message: "Updating daily buckets..." })
-    await updateDailyBuckets(freshDigests, deletedIDs)
 
     // Write new/updated digests
     for (const d of freshDigests) {
@@ -79,36 +122,39 @@ export namespace Engine {
       sessionIDs: allSessions.map((s) => s.id),
       lastFullScanAt: Date.now(),
     }
-    await StatsStorage.setWatermark(newWatermark)
 
     // Compute and store snapshot
-    const snapshot = Rollup.snapshot(allDigests, maxUpdated)
+    const snapshot = Rollup.snapshot(allDigests, maxUpdated, await operationDigests())
+    onProgress?.({
+      phase: "bucket",
+      current: 0,
+      total: snapshot.timeSeries.days.length,
+      message: "Updating daily buckets...",
+    })
+    const days = new Set(snapshot.timeSeries.days.map((day) => day.day))
+    for (const day of snapshot.timeSeries.days) await StatsStorage.setDailyBucket(day.day, day)
+    for (const day of await StatsStorage.listDailyKeys()) {
+      if (!days.has(day)) await Storage.remove(StoragePath.statsDaily(day))
+    }
     await StatsStorage.setSnapshot(snapshot)
+    await StatsStorage.setWatermark(newWatermark)
 
     onProgress?.({ phase: "snapshot", current: 1, total: 1, message: "Done" })
     return snapshot
   }
 
   /**
-   * Get current stats snapshot (returns cached if available, otherwise computes).
+   * Refresh changed session and rollout digests before returning the snapshot.
    */
   export async function get(onProgress?: ProgressCallback): Promise<StatsSnapshot> {
-    const existing = await StatsStorage.getSnapshot()
-    if (!existing) return update(onProgress)
-    if (Array.isArray((existing.timeSeries as StatsSnapshot["timeSeries"] & { hours?: unknown }).hours)) return existing
-    return recompute(onProgress)
+    return update(onProgress)
   }
 
   /**
    * Force full recompute from scratch (clears all cached stats).
    */
   export async function recompute(onProgress?: ProgressCallback): Promise<StatsSnapshot> {
-    await StatsStorage.setWatermark({
-      lastUpdated: 0,
-      sessionIDs: [],
-      lastFullScanAt: 0,
-    })
-    return update(onProgress)
+    return refresh(true, onProgress)
   }
 
   // -----------------------------------------------------------------------
@@ -143,85 +189,5 @@ export namespace Engine {
     }
 
     return sessions
-  }
-
-  async function updateDailyBuckets(freshDigests: SessionDigest[], deletedIDs: string[]): Promise<void> {
-    // Load old digests for sessions being updated (to subtract their contribution)
-    const oldDigests: SessionDigest[] = []
-    for (const d of freshDigests) {
-      const old = await StatsStorage.getDigest(d.sessionID)
-      if (old) oldDigests.push(old)
-    }
-
-    // Also load old digests for deleted sessions
-    for (const id of deletedIDs) {
-      const old = await StatsStorage.getDigest(id)
-      if (old) oldDigests.push(old)
-    }
-
-    // Collect all affected days
-    const affectedDays = new Set<string>()
-
-    // Subtract old contributions
-    for (const old of oldDigests) {
-      const day = dayKey(old.created)
-      affectedDays.add(day)
-      const existing = await StatsStorage.getDailyBucket(day)
-      if (existing) {
-        const subtracted = subtractFromBucket(existing, old)
-        await StatsStorage.setDailyBucket(day, subtracted)
-      }
-    }
-
-    // Add new contributions
-    for (const fresh of freshDigests) {
-      const day = dayKey(fresh.created)
-      affectedDays.add(day)
-      const existing = await StatsStorage.getDailyBucket(day)
-      const incoming = Rollup.sessionToDailyBucket(fresh)
-      const merged = Rollup.mergeDailyBucket(existing, incoming)
-      await StatsStorage.setDailyBucket(day, merged)
-    }
-
-    // Clean up empty buckets (zero sessions after subtraction)
-    for (const day of affectedDays) {
-      const bucket = await StatsStorage.getDailyBucket(day)
-      if (bucket && bucket.sessions <= 0 && bucket.turns <= 0) {
-        await Storage.remove(StoragePath.statsDaily(day))
-      }
-    }
-  }
-
-  function subtractFromBucket(bucket: DailyBucket, digest: SessionDigest): DailyBucket {
-    const sub = Rollup.sessionToDailyBucket(digest)
-    return {
-      day: bucket.day,
-      sessions: bucket.sessions - sub.sessions,
-      turns: bucket.turns - sub.turns,
-      tokens: subtractTokens(bucket.tokens, sub.tokens),
-      cost: bucket.cost - sub.cost,
-      additions: bucket.additions - sub.additions,
-      deletions: bucket.deletions - sub.deletions,
-      files: bucket.files - sub.files,
-      toolCalls: bucket.toolCalls - sub.toolCalls,
-      errors: bucket.errors - sub.errors,
-    }
-  }
-
-  function subtractTokens(a: TokenBreakdown, b: TokenBreakdown): TokenBreakdown {
-    return {
-      input: a.input - b.input,
-      output: a.output - b.output,
-      reasoning: a.reasoning - b.reasoning,
-      cache: {
-        read: a.cache.read - b.cache.read,
-        write: a.cache.write - b.cache.write,
-      },
-    }
-  }
-
-  function dayKey(timestamp: number): string {
-    const d = new Date(timestamp)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
   }
 }

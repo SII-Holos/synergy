@@ -46,7 +46,7 @@ describe("Storage.writeJsonAtomic concurrent-write safety", () => {
     const realWrite: typeof Bun.write = Bun.write.bind(Bun)
     const impl = (async (destination: unknown, data: unknown) => {
       const dest = String(destination)
-      if (dest.includes(".tmp-")) seen.add(dest)
+      if (path.dirname(dest) === dir && path.basename(dest).startsWith(".tmp-")) seen.add(dest)
       return realWrite(destination as never, data as never)
     }) as unknown as typeof Bun.write
     using _write = spyOn(Bun, "write").mockImplementation(impl)

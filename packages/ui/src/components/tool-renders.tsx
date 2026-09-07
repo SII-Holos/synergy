@@ -108,3 +108,5 @@ export * from "./tool/renders/browser"
 export * from "./tool/renders/anysearch"
 export * from "./tool/renders/scholight"
 export * from "./tool/renders/batch"
+
+export * from "./tool/renders/computer"

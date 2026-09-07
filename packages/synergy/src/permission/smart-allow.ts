@@ -1,3 +1,6 @@
+import { MessageV2 } from "@/session/message-v2"
+import { SessionManager } from "@/session/manager"
+import { record, RolloutRecordingError } from "@/session/rollout/error"
 import { AgentCall } from "@/agent/call"
 import type { Capability } from "@/enforcement/gate"
 import { Log } from "@/util/log"
@@ -21,6 +24,7 @@ export namespace SmartAllow {
 
   export interface ClassifyInput {
     sessionID?: string
+    rootID?: string
     tool: string
     args: Record<string, any>
     capabilities: string[]
@@ -206,6 +210,10 @@ export namespace SmartAllow {
       if (result) session.cache.set(key, result)
       return result
     } catch (err) {
+      if (RolloutRecordingError.isInstance(err)) {
+        if (input.sessionID) SessionManager.signalAbort(input.sessionID, { rootID: input.rootID })
+        throw err
+      }
       log.warn("smart allow call failed, falling through", {
         error: err instanceof Error ? err.message : String(err),
       })
@@ -214,20 +222,25 @@ export namespace SmartAllow {
   }
 
   async function callClassifier(input: ClassifyInput): Promise<Classification | undefined> {
-    try {
-      const { text } = await AgentCall.text({
-        agent: "smart-allow",
-        messages: [{ role: "user", content: buildPrompt(input) }],
-        sessionId: input.sessionID,
-        timeoutMs: 10_000,
-        retries: 0,
-        maxOutputChars: 1_000,
-        small: false,
-      })
-      return parseClassification(text)
-    } catch {
-      return undefined
-    }
+    const user = input.sessionID
+      ? await record(async () => {
+          if (!input.rootID) throw new Error("A session classifier requires its source root")
+          const source = await MessageV2.get({ sessionID: input.sessionID!, messageID: input.rootID })
+          if (source.info.role !== "user") throw new Error("Classifier source is not a user task")
+          return { ...source.info, system: undefined, variant: undefined }
+        })
+      : undefined
+    const { text } = await AgentCall.text({
+      agent: "smart-allow",
+      messages: [{ role: "user", content: buildPrompt(input) }],
+      sessionId: input.sessionID,
+      user,
+      timeoutMs: 10_000,
+      retries: 0,
+      maxOutputChars: 1_000,
+      small: false,
+    })
+    return parseClassification(text)
   }
 
   function parseClassification(text: string): Classification | undefined {

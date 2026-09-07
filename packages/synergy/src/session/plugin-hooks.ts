@@ -6,6 +6,15 @@
  * delivery passes the initial value through unchanged.
  */
 export namespace SessionPluginHooks {
+  export type Installed = { id: string; version: string; generation: string; manifestHash: string }
+  let installedFn: (() => Promise<Installed[]>) | undefined
+  export function registerInstalled(value: () => Promise<Installed[]>) {
+    installedFn = value
+  }
+  export function installed(): Promise<Installed[]> {
+    return installedFn?.() ?? Promise.resolve([])
+  }
+
   export interface TriggerOptions {
     sessionId?: string
     signal?: AbortSignal

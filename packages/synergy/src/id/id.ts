@@ -40,6 +40,7 @@ export namespace Identifier {
     lattice_action: "lta",
     lattice_effect: "lfe",
     history: "hst",
+    rollout_call: "rca",
   } as const
 
   export function schema(prefix: keyof typeof prefixes) {

@@ -13,7 +13,7 @@ type ConfigObject = Record<string, unknown>
  * Files must match the FragmentName pattern: NN-name.jsonc
  * They are loaded in numeric sort order (by the two-digit prefix).
  */
-export async function loadFragments(dir: string): Promise<ConfigObject[]> {
+export async function loadFragments(dir: string, options: { strict?: boolean } = {}): Promise<ConfigObject[]> {
   try {
     await fs.access(dir)
   } catch {
@@ -38,6 +38,10 @@ export async function loadFragments(dir: string): Promise<ConfigObject[]> {
       const errors: ParseError[] = []
       const parsed = parseJsonc(text, errors, { allowTrailingComma: true })
       if (errors.length) {
+        if (options.strict)
+          throw new Error(
+            `Invalid config fragment ${filepath}: ${errors.map((error) => printParseErrorCode(error.error)).join(", ")}`,
+          )
         log.warn("failed to parse config fragment, skipping", {
           path: filepath,
           errors: errors.map((error) => printParseErrorCode(error.error)),
@@ -46,8 +50,9 @@ export async function loadFragments(dir: string): Promise<ConfigObject[]> {
       }
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         results.push(parsed)
-      }
+      } else if (options.strict) throw new Error(`Config fragment ${filepath} must contain an object`)
     } catch (err) {
+      if (options.strict) throw err
       log.warn("failed to load config fragment, skipping", {
         path: filepath,
         error: err instanceof Error ? err.message : String(err),

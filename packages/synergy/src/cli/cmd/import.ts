@@ -6,10 +6,10 @@ import { EOL } from "os"
 
 export const ImportCommand = cmd({
   command: "import <file>",
-  describe: "import session data from JSON or JSON.GZ export file",
+  describe: "import a session transcript or rollout ZIP",
   builder: (yargs: Argv) => {
     return yargs.positional("file", {
-      describe: "path to JSON file",
+      describe: "path to JSON, JSON.GZ, or rollout ZIP file",
       type: "string",
       demandOption: true,
     })
@@ -18,13 +18,11 @@ export const ImportCommand = cmd({
     await withScopeContext(process.cwd(), async () => {
       const file = Bun.file(args.file)
       if (!(await file.exists())) {
-        process.stdout.write(`File not found: ${args.file}`)
-        process.stdout.write(EOL)
-        return
+        throw new Error(`File not found: ${args.file}`)
       }
 
       try {
-        const result = await SessionImport.fromBuffer(await file.arrayBuffer())
+        const result = await SessionImport.fromBlob(file)
         process.stdout.write(
           `Imported session: ${result.rootSessionID} (${result.sessionCount} session${
             result.sessionCount === 1 ? "" : "s"

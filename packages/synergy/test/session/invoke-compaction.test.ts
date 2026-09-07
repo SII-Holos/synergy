@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test, mock } from "bun:test"
+import { afterAll, beforeAll, describe, expect, test, mock, spyOn } from "bun:test"
 import { Session } from "../../src/session"
 import { SessionInvoke } from "../../src/session/invoke"
 import { SessionProcessor } from "../../src/session/processor"
@@ -17,6 +17,10 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { SessionCompaction } from "../../src/session/compaction"
 import { Embedding } from "../../src/vector/embedding"
 import { Plugin } from "../../src/plugin"
+import { CodexProvider } from "../../src/provider/codex"
+import { RolloutTransport } from "../../src/session/rollout/transport"
+import { RolloutLedger } from "../../src/session/rollout/ledger"
+import { Storage } from "../../src/storage/storage"
 import { Turn } from "../../src/session/turn"
 
 Log.init({ print: false })
@@ -171,6 +175,8 @@ async function filterNewestFirst(messages: MessageV2.WithParts[]) {
 }
 
 async function runCompactionProcessCase(input: {
+  providerID?: string
+  beforeLocal?: () => Promise<void>
   auto?: boolean
   error?: MessageV2.Assistant["error"]
   text?: string
@@ -179,6 +185,7 @@ async function runCompactionProcessCase(input: {
   modelLimit?: { context: number; output: number }
 }) {
   await using tmp = await tmpdir({ git: true })
+  const scope = await tmp.scope()
 
   const originalGetModel = Provider.getModel
   const originalGetAgent = Agent.get
@@ -219,6 +226,7 @@ async function runCompactionProcessCase(input: {
         process: mock(async (processInput: SessionProcessor.ProcessInput) => {
           processUserVariant = processInput.user.variant
           processMaxOutputTokens = processInput.maxOutputTokens
+          await input.beforeLocal?.()
           if (input.thrownError) throw input.thrownError
           if (input.text) {
             const now = Date.now()
@@ -241,7 +249,7 @@ async function runCompactionProcessCase(input: {
     })
 
     return await ScopeContext.provide({
-      scope: await tmp.scope(),
+      scope,
       fn: async () => {
         const session = await Session.create({})
         const user = await Session.updateMessage({
@@ -249,7 +257,7 @@ async function runCompactionProcessCase(input: {
           role: "user",
           sessionID: session.id,
           agent: "synergy",
-          model: { providerID: "test-provider", modelID: "test-model" },
+          model: { providerID: input.providerID ?? "test-provider", modelID: "test-model" },
           time: { created: Date.now() },
           ...(input.variant ? { variant: input.variant } : {}),
         })
@@ -291,7 +299,13 @@ async function runCompactionProcessCase(input: {
         const root = after.find((message) => message.info.id === user.id)
         if (!root) throw new Error("compaction root was not persisted")
 
+        const calls =
+          input.providerID === CodexProvider.PROVIDER_ID
+            ? await RolloutLedger.calls({ kind: "session", scopeID: scope.id, sessionID: session.id }, user.id)
+            : []
         return {
+          calls,
+          messages: after,
           result,
           thrown,
           attempt,
@@ -1447,5 +1461,81 @@ describe.serial("SessionInvoke preflight compaction", () => {
         expect.objectContaining({ type: "compaction_recovery", mechanical: true, validated: false }),
       ]),
     )
+  })
+})
+
+describe("remote compaction rollout", () => {
+  test("awaits remote evidence and attributes the call to the source root", async () => {
+    using config = spyOn(Config, "current").mockResolvedValue({ compaction: { codexRemote: true } } as Config.Info)
+    let finished = false
+    using remote = spyOn(CodexProvider, "requestRemoteCompactionV2").mockImplementation(async (input) => {
+      const response = await RolloutTransport.fetch(
+        async (request) => {
+          await (request as Request).text()
+          return Response.json({ summary: "opaque" })
+        },
+        "https://provider.test/compact",
+        { method: "POST", body: JSON.stringify(input.items) },
+      )
+      await response.json()
+      finished = true
+      return {
+        compactionItem: { type: "compaction", encrypted_content: "opaque" },
+        usage: { input: 5, output: 2, cacheRead: 0, totalTokens: 7 },
+      }
+    })
+    const observed = await runCompactionProcessCase({ providerID: CodexProvider.PROVIDER_ID, text: "Local summary" })
+    expect(observed.thrown).toBeUndefined()
+    expect(finished).toBe(true)
+    expect(observed.calls).toHaveLength(1)
+    expect(observed.calls[0]).toMatchObject({
+      runID: observed.root.info.id,
+      purpose: "remote_compaction",
+      status: "completed",
+      transportCaptured: true,
+    })
+    expect(observed.attempt.info.metadata?.remoteCompaction).toMatchObject({ summaryText: "Local summary" })
+    expect(
+      observed.messages.filter((message) => message.info.role === "assistant" && message.info.mode === "compaction"),
+    ).toHaveLength(1)
+  })
+
+  test("cancels and drains remote work when the local summary fails", async () => {
+    using config = spyOn(Config, "current").mockResolvedValue({ compaction: { codexRemote: true } } as Config.Info)
+    const started = Promise.withResolvers<void>()
+    let settled = false
+    using remote = spyOn(CodexProvider, "requestRemoteCompactionV2").mockImplementation(async (input) => {
+      started.resolve()
+      try {
+        await new Promise<never>((_resolve, reject) => {
+          if (input.signal?.aborted) return reject(input.signal.reason)
+          input.signal?.addEventListener("abort", () => reject(input.signal?.reason), { once: true })
+        })
+        throw new Error("unreachable")
+      } finally {
+        settled = true
+      }
+    })
+    const error = new Error("local summary failed")
+    const observed = await runCompactionProcessCase({
+      providerID: CodexProvider.PROVIDER_ID,
+      beforeLocal: () => started.promise,
+      thrownError: error,
+    })
+    expect(observed.thrown).toBe(error)
+    expect(settled).toBe(true)
+    expect(observed.calls[0].status).toBe("cancelled")
+  })
+
+  test("does not downgrade a remote recording failure to optional metadata", async () => {
+    using config = spyOn(Config, "current").mockResolvedValue({ compaction: { codexRemote: true } } as Config.Info)
+    using write = spyOn(Storage, "writeBinary").mockRejectedValue(new Error("disk full"))
+    using remote = spyOn(CodexProvider, "requestRemoteCompactionV2").mockImplementation(async () => {
+      throw new Error("must not issue request")
+    })
+    const observed = await runCompactionProcessCase({ providerID: CodexProvider.PROVIDER_ID, text: "Local summary" })
+    expect(observed.thrown).toMatchObject({ name: "RolloutRecordingError" })
+    expect(remote).not.toHaveBeenCalled()
+    expect(observed.result).toBeUndefined()
   })
 })

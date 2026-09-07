@@ -118,7 +118,7 @@ function toolContext(sessionID: string): Tool.Context {
 function runtimeProcessor() {
   const callbacks = new Map<string, Promise<unknown>>()
   return {
-    message: { id: "message_test" },
+    message: { id: "message_test", parentID: "msg_root", rootID: "msg_root" },
     partFromToolCall: () => undefined,
     updateToolCallState: async () => {},
     executeOnce<T>(callID: string, execute: () => Promise<T>) {
@@ -447,7 +447,7 @@ describe("tool exposure", () => {
         const outcome = Promise.withResolvers<any>()
         const callbacks = new Map<string, Promise<unknown>>()
         const processor = {
-          message: { id: "message_test" },
+          message: { id: "message_test", parentID: "msg_root", rootID: "msg_root" },
           partFromToolCall: () => undefined,
           updateToolCallState: async () => {},
           executeOnce: <T>(callID: string, execute: () => Promise<T>) => {
@@ -1154,7 +1154,7 @@ describe("tool exposure", () => {
         const executions = new Map<string, Promise<any>>()
         const callbacks = new Map<string, Promise<unknown>>()
         const processor = {
-          message: { id: "message_test" },
+          message: { id: "message_test", parentID: "msg_root", rootID: "msg_root" },
           partFromToolCall: () => undefined,
           executeOnce: <T>(id: string, execute: () => Promise<T>) => {
             const existing = callbacks.get(id)

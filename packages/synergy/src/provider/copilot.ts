@@ -1,3 +1,4 @@
+import { RolloutTransport } from "@/session/rollout/transport"
 import { Auth } from "./api-key"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin/auth"
@@ -296,7 +297,7 @@ export namespace CopilotProvider {
           headers.set("User-Agent", USER_AGENT)
           headers.set("Editor-Version", EDITOR_VERSION)
           headers.set("Copilot-Integration-Id", "vscode-chat")
-          return fetch(input, { ...init, headers })
+          return RolloutTransport.fetch(fetch, input, { ...init, headers })
         },
         refresh: (auth) => refreshAuth(providerID, auth),
         recoverWithoutCredential: async () => {

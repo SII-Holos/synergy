@@ -79,7 +79,7 @@ export namespace MCP {
   async function resolveMcpTimeout(serverName?: string): Promise<number> {
     const server = serverName ? await resolveServer(serverName) : undefined
     if (server) return server.config.listTimeout ?? server.config.timeout ?? DEFAULT_TIMEOUT
-    return (await Config.current()).experimental?.mcp_timeout ?? DEFAULT_TIMEOUT
+    return (await Config.current()).mcpDefaults?.callTimeout ?? DEFAULT_TIMEOUT
   }
 
   async function convertMcpTool(
@@ -150,7 +150,7 @@ export namespace MCP {
       if (!handle || handle.source !== "config") return undefined
       return {
         name,
-        config: Config.normalizeMcp(configured as Config.Mcp, cfg.mcpDefaults, cfg.experimental?.mcp_timeout),
+        config: Config.normalizeMcp(configured as Config.Mcp, cfg.mcpDefaults, cfg.mcpDefaults?.callTimeout),
         source: "config",
         status: mapStatus(handle),
         identity: handle.identity,
@@ -180,7 +180,7 @@ export namespace MCP {
       if (!handle || handle.source !== "config") continue
       servers.set(name, {
         name,
-        config: Config.normalizeMcp(configured as Config.Mcp, cfg.mcpDefaults, cfg.experimental?.mcp_timeout),
+        config: Config.normalizeMcp(configured as Config.Mcp, cfg.mcpDefaults, cfg.mcpDefaults?.callTimeout),
         source: "config",
         status: mapStatus(handle),
         identity: handle.identity,
@@ -263,7 +263,7 @@ export namespace MCP {
   export async function add(name: string, mcp: Config.Mcp) {
     ensureStarted()
     const cfg = await Config.current()
-    const server = Config.normalizeMcp(mcp, cfg.mcpDefaults, cfg.experimental?.mcp_timeout)
+    const server = Config.normalizeMcp(mcp, cfg.mcpDefaults, cfg.mcpDefaults?.callTimeout)
     const handle = McpSupervisor.add(name, server)
     return { status: mapStatus(handle) }
   }
@@ -337,7 +337,7 @@ export namespace MCP {
     await McpSupervisor.ready()
     const result: ToolEntry[] = []
     toolCallTimeouts.clear()
-    const callTimeout = (await Config.current()).experimental?.mcp_timeout
+    const callTimeout = (await Config.current()).mcpDefaults?.callTimeout
 
     for (const handle of McpSupervisor.getAll()) {
       if (mapStatus(handle).status !== "connected") continue

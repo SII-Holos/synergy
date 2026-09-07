@@ -19,6 +19,7 @@ description: Add or modify Synergy durable state, JSON storage keys, SQLite tabl
 2. Keep independently updated or streamed records independently addressable. Do not rewrite a whole session or collection for one leaf update.
 3. Update derived indexes and events in the same owner transaction/lifecycle as the canonical write.
 4. Preserve the atomic-write transient-retry contract: `Storage` write+rename retries `EPERM`/`EACCES`/`EBUSY` (classified by `isRetryableIOError`) so Windows sharing violations do not fail persistence, permanent errors fail fast, and temp files are removed (with the same transient retry) on the failure path. Do not bypass `Storage` with a bare rename; extend `test/storage/storage-retry.test.ts` when changing write-path failure behavior.
+5. Authoritative rollout evidence uses private, durable Storage writes and the bounded `RolloutArtifact` stream store. Keep progress independently committed, verify content hashes, and preserve partial observations. Do not replace its persistence failures with diagnostic warnings, empty data, or successful completion; propagate `RolloutRecordingError` so execution admission can stop.
 
 ### SQLite and other domain stores
 
@@ -37,7 +38,7 @@ description: Add or modify Synergy durable state, JSON storage keys, SQLite tabl
 
 ## File Snapshot Storage
 
-Use `SnapshotStore` for backend resolution, `SnapshotLifecycle` for copied/deleted ownership, and `SnapshotMaintenance` for offline migration and collection. Hold the Scope lease for all object/ref transactions and the session lock for mutable indexes. Publish refs before message hashes; remove canonical session records before releasing their refs. Preserve every historical root across archive, transcript rollback, and message compaction. Full-data copies must use `SnapshotArchive` for snapshot directories, never generic copy-skip-existing. Test packed refs, alternates without refs, unknown objects, checkpoint interruptions, and cross-process exclusion. Run `bun script/benchmark-snapshots.ts` from `packages/synergy` for an isolated storage-backend comparison; distinguish that measurement from old-binary timing or production capacity estimates.
+Use `SnapshotStore` for backend resolution, `SnapshotLifecycle` for copied/deleted ownership, and `SnapshotMaintenance` for offline migration and collection. Hold the Scope lease for all object/ref transactions and the session lock for mutable indexes. Publish refs before message hashes; remove canonical session records before releasing their refs. Preserve every historical root across archive, transcript rollback, and message compaction. Full-data copies must use `SnapshotArchive` for snapshot directories, never generic copy-skip-existing. Rollout ZIP export/import uses its session-scoped object transfer under Scope leases; retain imported roots before publishing message references. Test packed refs, alternates without refs, unknown objects, checkpoint interruptions, and cross-process exclusion. Run `bun script/benchmark-snapshots.ts` from `packages/synergy` for an isolated storage-backend comparison; distinguish that measurement from old-binary timing or production capacity estimates.
 
 ## Verify
 

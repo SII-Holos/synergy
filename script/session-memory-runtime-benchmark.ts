@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, stat, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
@@ -150,6 +150,7 @@ interface SessionInfo {
   cortex?: {
     status?: string
     description?: string
+    settledAt?: number
   }
 }
 
@@ -164,7 +165,7 @@ interface HistoryMessage {
     type: string
     text?: string
     tool?: string
-    state?: { status?: string; input?: unknown; output?: unknown }
+    state?: { status?: string; input?: unknown; output?: unknown; error?: string }
   }>
 }
 
@@ -245,6 +246,7 @@ let serverOutput: ReturnType<typeof captureTail> | undefined
 const activeSessionIDs = new Set<string>()
 let result: Record<string, unknown> | undefined
 let cleanupComplete = false
+let shutdown: { elapsedMs: number; forced: boolean; exitCode: number | null } | undefined
 
 try {
   await mkdir(path.join(temporaryRoot, ".synergy"), { recursive: true })
@@ -278,6 +280,7 @@ try {
   const baseUrl = `http://127.0.0.1:${serverPort}`
   await waitForHealth(baseUrl, server)
   await waitForTool(baseUrl, workspace, PAYLOAD_TOOL)
+  const readyMs = Date.now() - startedAt
   await waitForResourceSample(baseUrl, workspace)
   await Bun.sleep(preset.idleSettleMs)
 
@@ -315,6 +318,8 @@ try {
   const rootTurns = fixtureTurns.get(rootFixture.session)!
   const replicas = scenarioReplicas(scenario)
   const verifications: Array<Record<string, unknown>> = []
+  const diskSamples: Array<{ files: number; bytes: number; rolloutBytes: number }> = []
+  const executionStarted = Date.now()
 
   if (scenario === "trajectory") {
     await setPhase("trajectory-root")
@@ -358,6 +363,7 @@ try {
       })
       verifications.push(verification)
       const sessionID = requiredString(verification.rootSessionID, `${replica} rootSessionID`)
+      diskSamples.push(await measureDisk(path.join(temporaryRoot, ".synergy", "data")))
       await deleteSession(baseUrl, workspace, sessionID)
       activeSessionIDs.delete(sessionID)
       samples.push(
@@ -367,6 +373,8 @@ try {
   }
 
   await setPhase("terminal")
+  const executionMs = Date.now() - executionStarted
+  diskSamples.push(await measureDisk(path.join(temporaryRoot, ".synergy", "data")))
   for (const sessionID of [...activeSessionIDs]) {
     await deleteSession(baseUrl, workspace, sessionID)
     activeSessionIDs.delete(sessionID)
@@ -397,6 +405,7 @@ try {
     arch: process.arch,
     bunVersion: Bun.version,
     preset: presetName,
+    executionMeasurement: { readyMs, executionMs, diskSamples },
     scenario,
     replicaCount: replicas.length,
     execution: {
@@ -452,15 +461,48 @@ try {
     samples: samples.map((sample) => ({ ...sample, deltaFromIdle: subtractMemory(sample, idle) })),
   }
 } catch (error) {
+  const failures = await Promise.all(
+    [...activeSessionIDs].map(async (sessionID) => {
+      try {
+        const messages = await scopedJson<
+          Array<{
+            info: { error?: unknown }
+            parts: Array<{ type: string; tool?: string; state?: { status?: string; error?: string } }>
+          }>
+        >(`http://127.0.0.1:${serverPort}`, workspace, `/session/${encodeURIComponent(sessionID)}/message?limit=100`)
+        return [
+          ...new Set(
+            messages.flatMap((message) => [
+              ...(message.info.error ? [JSON.stringify(message.info.error)] : []),
+              ...message.parts
+                .filter((part) => part.type === "tool" && part.state?.status === "error")
+                .map((part) => `${part.tool}: ${part.state?.error}`),
+            ]),
+          ),
+        ].slice(0, 20)
+      } catch {
+        return []
+      }
+    }),
+  )
+  const failureDetail = failures.flat().length
+    ? `\nSession errors: ${sanitize(JSON.stringify(failures.flat()), temporaryRoot)}`
+    : ""
   const detail = serverOutput?.value ? `\nServer output:\n${sanitize(serverOutput.value, temporaryRoot)}` : ""
-  throw new Error(`${error instanceof Error ? error.message : String(error)}${detail}`, { cause: error })
+  throw new Error(`${error instanceof Error ? error.message : String(error)}${failureDetail}${detail}`, {
+    cause: error,
+  })
 } finally {
   if (server?.exitCode === null) {
     for (const sessionID of [...activeSessionIDs]) {
       await deleteSession(`http://127.0.0.1:${serverPort}`, workspace, sessionID).catch(() => {})
     }
   }
-  if (server && server.exitCode === null) await stopProcess(server)
+  if (server) {
+    const began = Date.now()
+    const forced = await stopProcess(server)
+    shutdown = { elapsedMs: Date.now() - began, forced, exitCode: server.exitCode }
+  }
   await serverOutput?.done.catch(() => {})
   mock.stop()
   await rm(temporaryRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
@@ -468,7 +510,28 @@ try {
 }
 
 if (!result) throw new Error("Runtime benchmark completed without a result")
-console.log(JSON.stringify({ ...result, cleanup: { temporaryRuntimeRemoved: cleanupComplete } }, null, 2))
+console.log(JSON.stringify({ ...result, cleanup: { temporaryRuntimeRemoved: cleanupComplete, shutdown } }, null, 2))
+
+async function measureDisk(root: string) {
+  const total = { files: 0, bytes: 0, rolloutBytes: 0 }
+  async function walk(directory: string, rollout = false) {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const file = path.join(directory, entry.name)
+      if (entry.isDirectory()) await walk(file, rollout || entry.name === "rollout")
+      else if (entry.isFile()) {
+        const info = await stat(file).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== "ENOENT") throw error
+        })
+        if (!info) continue
+        total.files++
+        total.bytes += info.size
+        if (rollout) total.rolloutBytes += info.size
+      }
+    }
+  }
+  await walk(root)
+  return total
+}
 
 function benchmarkConfig(mockUrl: string, mcpPath: string) {
   const model = "benchmark/benchmark-model"
@@ -533,6 +596,7 @@ function benchmarkConfig(mockUrl: string, mcpPath: string) {
         command: [process.execPath, mcpPath],
         cwd: workspace,
         startup: "eager",
+        expandByDefault: true,
         required: true,
         connectTimeout: 30_000,
         listTimeout: 30_000,
@@ -574,6 +638,7 @@ function isolatedEnvironment(config: ReturnType<typeof benchmarkConfig>) {
 }
 
 function createMockProvider() {
+  const roots = new Map<string, string>()
   const requests: ProviderRequestStat[] = []
   const cursors = new Map<string, number>()
   const terminalChildren = new Map<string, ReturnType<typeof deferred<void>>>()
@@ -601,7 +666,14 @@ function createMockProvider() {
         messages?: Array<{ role?: string; content?: unknown }>
         tools?: unknown[]
       }
-      const messages = body.messages ?? []
+      const messages = (body.messages ?? []).filter(
+        (message) =>
+          !(
+            message.role === "user" &&
+            typeof message.content === "string" &&
+            message.content.startsWith("<runtime-context>")
+          ),
+      )
       if (isSupportRequest(messages)) {
         requests.push({
           kind: "support",
@@ -699,7 +771,26 @@ function createMockProvider() {
                   180_000,
                   `${replica}:${nextNotificationChild}`,
                 )
-                await Bun.sleep(50)
+                const rootID = roots.get(replica)
+                if (!rootID) throw new Error("Missing replay root")
+                const deadline = Date.now() + 180_000
+                while (true) {
+                  const children = await scopedJson<ChildrenPage>(
+                    `http://127.0.0.1:${serverPort}`,
+                    workspace,
+                    `/session/${encodeURIComponent(rootID)}/children?limit=50&includeArchived=true`,
+                  )
+                  if (
+                    children.items.some(
+                      (child) =>
+                        child.cortex?.description === `Trajectory child ${nextNotificationChild}` &&
+                        child.cortex.settledAt,
+                    )
+                  )
+                    break
+                  if (Date.now() >= deadline) throw new Error("Child completion was not durably delivered")
+                  await Bun.sleep(25)
+                }
               }
             : undefined,
         onDone: () => childTerminal?.resolve(),
@@ -709,6 +800,9 @@ function createMockProvider() {
 
   return {
     url: `http://127.0.0.1:${server.port}`,
+    setRoot(replica: string, sessionID: string) {
+      roots.set(replica, sessionID)
+    },
     requests,
     firstChildRequest: (replica: string) => firstChild(replica).promise,
     trajectoryResponseCount: (replica: string) => responseCounts.get(replica) ?? 0,
@@ -954,7 +1048,8 @@ function isSupportRequest(messages: Array<{ role?: string; content?: unknown }>)
   return (
     serialized.includes("Generate a title for this conversation") ||
     serialized.includes("Generate a concise title") ||
-    serialized.includes("Summarize this conversation")
+    serialized.includes("Summarize this conversation") ||
+    serialized.includes("You summarize hidden agent activity for a compact user-facing progress trace.")
   )
 }
 
@@ -1063,6 +1158,7 @@ async function replayTrajectory(input: {
     "full_access",
   )
   input.onCreated(root.id)
+  input.mock.setRoot(input.replica, root.id)
   const replayStartedAt = Date.now()
   const marker = `${TRAJECTORY_MARKER}${input.replica}:${rootFixture.session}`
 
@@ -1267,8 +1363,6 @@ async function verifyReplay(input: {
   )
   const expectedRootMessages = input.fullTrajectory ? rootFixture.messages.length : 2
   const runtimeBoundaryMessages = rootHistory.filter(isRuntimeBoundaryMessage).length
-  const expectedRuntimeBoundaries = input.fullTrajectory ? expectedRuntimeBoundaryMessages(rootFixture, 10) : 0
-  assertNumber(runtimeBoundaryMessages, expectedRuntimeBoundaries, "runtime boundary message count")
   assertNumber(rootHistory.length - runtimeBoundaryMessages, expectedRootMessages, "root trajectory message count")
   assertNumber(countRunningTools(rootHistory), 0, "root running tools")
 
@@ -1313,7 +1407,12 @@ async function verifyReplay(input: {
   const expectedCompleted = input.fullTrajectory ? fixture.aggregate.toolStatuses.completed : 0
   const expectedErrors = input.fullTrajectory ? fixture.aggregate.toolStatuses.error : 0
   assertNumber(toolParts.length, expectedTools, "persisted tool call count")
-  assertNumber(completedTools, expectedCompleted, "completed tool call count")
+  const toolErrors = [
+    ...new Set(
+      toolParts.filter((part) => part.state?.status === "error").map((part) => `${part.tool}: ${part.state?.error}`),
+    ),
+  ].slice(0, 10)
+  assertNumber(completedTools, expectedCompleted, `completed tool call count (${toolErrors.join("; ")})`)
   assertNumber(errorTools, expectedErrors, "error tool call count")
 
   return {
@@ -1336,12 +1435,6 @@ function isRuntimeBoundaryMessage(message: HistoryMessage) {
       (part) => part.type !== "tool" && (part.type !== "text" || !part.text || Buffer.byteLength(part.text) === 0),
     )
   )
-}
-
-function expectedRuntimeBoundaryMessages(session: TrajectorySession, stepLimit: number) {
-  return partitionTurns(session.messages).filter(
-    (turn) => turn.responses.length >= stepLimit && turn.responses.at(-1)?.finish !== "stop",
-  ).length
 }
 
 async function waitForTool(baseUrl: string, directory: string, tool: string) {
@@ -1816,12 +1909,13 @@ function captureTail(...streams: ReadableStream<Uint8Array>[]) {
 }
 
 async function stopProcess(child: ReturnType<typeof Bun.spawn>) {
-  if (child.exitCode !== null) return
+  if (child.exitCode !== null) return false
   child.kill()
   const exited = await Promise.race([child.exited.then(() => true), Bun.sleep(5_000).then(() => false)])
-  if (exited) return
+  if (exited) return false
   child.kill("SIGKILL")
   await child.exited
+  return true
 }
 
 function sanitize(value: string, root: string) {

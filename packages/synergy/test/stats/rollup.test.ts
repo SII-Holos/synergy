@@ -78,6 +78,8 @@ describe("stats rollup", () => {
 
   test("computes token cost dimensions including cache hit rate", () => {
     const snapshot = Rollup.snapshot([digest()], 0)
+    expect(snapshot.tokenCost.dailyTokens).toBe(175)
+    expect(snapshot.tokenCost.avgTokensPerTurn).toBe(175 / 4)
     expect(snapshot.tokenCost.tokens.input).toBe(100)
     expect(snapshot.tokenCost.tokens.output).toBe(50)
     expect(snapshot.tokenCost.tokens.reasoning).toBe(10)

@@ -1,3 +1,6 @@
+import type { OperationDigest } from "./types"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
+import { RolloutAccounting } from "@/session/rollout/accounting"
 import type {
   AgentStats,
   AgentUsage,
@@ -44,7 +47,7 @@ export namespace Rollup {
   }
 
   function totalTokens(t: TokenBreakdown): number {
-    return t.input + t.output + t.reasoning + t.cache.read + t.cache.write
+    return ModelLimit.totalTokens(t)
   }
 
   function dayKey(timestamp: number): string {
@@ -108,7 +111,7 @@ export namespace Rollup {
   // Dimension 2 — Tokens & Cost
   // -----------------------------------------------------------------------
 
-  function computeTokenCost(digests: SessionDigest[]): TokenCostStats {
+  function computeTokenCost(digests: Array<SessionDigest | OperationDigest>): TokenCostStats {
     const tokens = digests.reduce((acc, d) => addTokens(acc, d.tokens), { ...ZERO_TOKENS })
     const cost = digests.reduce((s, d) => s + d.cost, 0)
     const turns = digests.reduce((s, d) => s + d.turns, 0)
@@ -119,6 +122,7 @@ export namespace Rollup {
     return {
       tokens,
       cost,
+      accounting: RolloutAccounting.merge(digests.flatMap((d) => (d.accounting ? [d.accounting] : []))),
       cacheHitRate: cacheTotal > 0 ? tokens.cache.read / cacheTotal : 0,
       avgCostPerTurn: turns > 0 ? cost / turns : 0,
       avgTokensPerTurn: turns > 0 ? total / turns : 0,
@@ -131,22 +135,28 @@ export namespace Rollup {
   // Dimension 3 — By Model
   // -----------------------------------------------------------------------
 
-  function computeModels(digests: SessionDigest[]): ModelStats {
+  function computeModels(digests: Array<SessionDigest | OperationDigest>): ModelStats {
     const map = new Map<string, ModelUsage>()
     for (const d of digests) {
       for (const [key, usage] of Object.entries(d.modelUsage)) {
         const existing = map.get(key)
         if (existing) {
+          const previousCalls = existing.accounting
+            ? existing.accounting.calls + existing.accounting.legacy.messages
+            : existing.messages
+          const incomingCalls = usage.accounting
+            ? usage.accounting.calls + usage.accounting.legacy.messages
+            : usage.messages
+          const responseMs = existing.avgResponseMs * previousCalls + usage.totalResponseMs
           existing.messages += usage.messages
           existing.turns += usage.messages
           existing.tokens = addTokens(existing.tokens, usage.tokens)
           existing.cost += usage.cost
-          existing.avgResponseMs =
-            existing.messages > 0
-              ? (existing.avgResponseMs * (existing.messages - 1) +
-                  usage.totalResponseMs / Math.max(1, usage.messages)) /
-                existing.messages
-              : 0
+          existing.accounting = RolloutAccounting.merge([
+            existing.accounting ?? RolloutAccounting.empty(),
+            usage.accounting ?? RolloutAccounting.empty(),
+          ])
+          existing.avgResponseMs = previousCalls + incomingCalls > 0 ? responseMs / (previousCalls + incomingCalls) : 0
         } else {
           const [providerID, modelID] = key.split("/")
           map.set(key, {
@@ -156,7 +166,13 @@ export namespace Rollup {
             turns: usage.messages,
             tokens: { ...usage.tokens, cache: { ...usage.tokens.cache } },
             cost: usage.cost,
-            avgResponseMs: usage.messages > 0 ? usage.totalResponseMs / usage.messages : 0,
+            accounting: usage.accounting,
+            avgResponseMs:
+              usage.totalResponseMs /
+              Math.max(
+                1,
+                usage.accounting ? usage.accounting.calls + usage.accounting.legacy.messages : usage.messages,
+              ),
           })
         }
       }
@@ -169,13 +185,13 @@ export namespace Rollup {
   // Dimension 4 — By Agent
   // -----------------------------------------------------------------------
 
-  function computeAgents(digests: SessionDigest[]): AgentStats {
+  function computeAgents(digests: Array<SessionDigest | OperationDigest>): AgentStats {
     const map = new Map<string, AgentUsage>()
     const sessionAgents = new Map<string, Set<string>>()
     let totalSubagentCalls = 0
 
     for (const d of digests) {
-      if (d.parentID) totalSubagentCalls++
+      if ("parentID" in d && d.parentID) totalSubagentCalls++
 
       for (const [agent, usage] of Object.entries(d.agentUsage)) {
         const existing = map.get(agent)
@@ -183,6 +199,10 @@ export namespace Rollup {
           existing.messages += usage.messages
           existing.tokens = addTokens(existing.tokens, usage.tokens)
           existing.cost += usage.cost
+          existing.accounting = RolloutAccounting.merge([
+            existing.accounting ?? RolloutAccounting.empty(),
+            usage.accounting ?? RolloutAccounting.empty(),
+          ])
         } else {
           map.set(agent, {
             agent,
@@ -190,12 +210,15 @@ export namespace Rollup {
             sessions: 0,
             tokens: { ...usage.tokens, cache: { ...usage.tokens.cache } },
             cost: usage.cost,
+            accounting: usage.accounting,
             subagentInvocations: 0,
           })
         }
 
-        if (!sessionAgents.has(d.sessionID)) sessionAgents.set(d.sessionID, new Set())
-        sessionAgents.get(d.sessionID)!.add(agent)
+        if ("sessionID" in d) {
+          if (!sessionAgents.has(d.sessionID)) sessionAgents.set(d.sessionID, new Set())
+          sessionAgents.get(d.sessionID)!.add(agent)
+        }
       }
     }
 
@@ -210,7 +233,7 @@ export namespace Rollup {
     // Subagent invocations: for each session that IS a subagent (has parentID),
     // credit its agent
     for (const d of digests) {
-      if (d.parentID) {
+      if ("parentID" in d && d.parentID) {
         // The agent of this subagent session
         const topAgent = Object.keys(d.agentUsage)[0]
         if (topAgent) {
@@ -363,6 +386,10 @@ export namespace Rollup {
         existing.turns += d.turns
         existing.tokens = addTokens(existing.tokens, d.tokens)
         existing.cost += d.cost
+        existing.accounting = RolloutAccounting.merge([
+          existing.accounting ?? RolloutAccounting.empty(),
+          d.accounting ?? RolloutAccounting.empty(),
+        ])
         existing.additions += d.additions
         existing.deletions += d.deletions
         existing.files += d.files
@@ -377,6 +404,7 @@ export namespace Rollup {
           turns: d.turns,
           tokens: { ...d.tokens, cache: { ...d.tokens.cache } },
           cost: d.cost,
+          accounting: d.accounting,
           additions: d.additions,
           deletions: d.deletions,
           files: d.files,
@@ -403,17 +431,44 @@ export namespace Rollup {
   // Full snapshot
   // -----------------------------------------------------------------------
 
-  export function snapshot(digests: SessionDigest[], watermark: number): StatsSnapshot {
+  export function snapshot(
+    digests: SessionDigest[],
+    watermark: number,
+    operations: OperationDigest[] = [],
+  ): StatsSnapshot {
+    const usage = [...digests, ...operations]
+    const timeSeries = computeTimeSeries(digests)
+    const days = new Map(timeSeries.days.map((day) => [day.day, day]))
+    for (const operation of operations) {
+      const day = dayKey(operation.created)
+      days.set(
+        day,
+        mergeDailyBucket(days.get(day), {
+          day,
+          sessions: 0,
+          turns: 0,
+          tokens: operation.tokens,
+          cost: operation.cost,
+          accounting: operation.accounting,
+          additions: 0,
+          deletions: 0,
+          files: 0,
+          toolCalls: 0,
+          errors: 0,
+        }),
+      )
+    }
+    timeSeries.days = [...days.values()].sort((a, b) => a.day.localeCompare(b.day))
     return {
       overview: computeOverview(digests),
-      tokenCost: computeTokenCost(digests),
-      models: computeModels(digests),
-      agents: computeAgents(digests),
+      tokenCost: computeTokenCost(usage),
+      models: computeModels(usage),
+      agents: computeAgents(usage),
       tools: computeTools(digests),
       codeChanges: computeCodeChanges(digests),
       lifecycle: computeLifecycle(digests),
       channels: computeChannels(digests),
-      timeSeries: computeTimeSeries(digests),
+      timeSeries,
       computedAt: Date.now(),
       watermark,
     }
@@ -431,6 +486,10 @@ export namespace Rollup {
       turns: existing.turns + incoming.turns,
       tokens: addTokens(existing.tokens, incoming.tokens),
       cost: existing.cost + incoming.cost,
+      accounting: RolloutAccounting.merge([
+        existing.accounting ?? RolloutAccounting.empty(),
+        incoming.accounting ?? RolloutAccounting.empty(),
+      ]),
       additions: existing.additions + incoming.additions,
       deletions: existing.deletions + incoming.deletions,
       files: existing.files + incoming.files,
@@ -451,6 +510,7 @@ export namespace Rollup {
       turns: d.turns,
       tokens: { ...d.tokens, cache: { ...d.tokens.cache } },
       cost: d.cost,
+      ...(d.accounting ? { accounting: d.accounting } : {}),
       additions: d.additions,
       deletions: d.deletions,
       files: d.files,

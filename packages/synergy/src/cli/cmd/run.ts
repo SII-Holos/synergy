@@ -4,16 +4,14 @@ import path from "path"
 import { UI } from "../../util/ui"
 import { cmd } from "./cmd"
 import { Flag } from "../../flag/flag"
-import { withScopeContext } from "../scope"
-import { Command } from "../../command/command"
 import { EOL } from "os"
-import { select } from "@clack/prompts"
+import { select, multiselect, text, isCancel } from "@clack/prompts"
 import { createSynergyClient, type ControlProfileId, type SynergyClient } from "@ericsanchezok/synergy-sdk"
-import { Server } from "../../server/server"
-import { runMigrations } from "../../migration"
-import { Provider } from "../../provider/provider"
+import { parseModelID } from "../../provider/model-id"
 import { readPipedStdin } from "../stdin"
-import { waitForLightLoopFinish } from "../lightloop"
+import { Experiment } from "../../config/experiment"
+import { Identifier } from "../../id/id"
+import { findRecordingError } from "../../session/rollout/error"
 
 const TOOL: Record<string, [string, string]> = {
   todowrite: ["Todo", UI.Style.TEXT_WARNING_BOLD],
@@ -130,6 +128,17 @@ export const SendCommand = cmd({
         type: "string",
         describe: "agent to use",
       })
+      .option("experiment", { type: "string", describe: "Versioned experiment configuration file" })
+      .option("non-interactive", {
+        type: "boolean",
+        default: false,
+        describe: "Fail explicitly if the task requires user input or permission",
+      })
+      .option("timeout", {
+        type: "number",
+        default: 21600,
+        describe: "Task timeout in seconds, including descendants and cleanup",
+      })
       .option("format", {
         type: "string",
         choices: ["default", "json"],
@@ -167,6 +176,10 @@ export const SendCommand = cmd({
   },
   handler: async (args) => {
     const directory = Flag.SYNERGY_CWD || process.cwd()
+    if (!Number.isFinite(args.timeout) || args.timeout <= 0) throw new Error("--timeout must be positive")
+    const experiment = args.experiment
+      ? Experiment.File.parse(await Bun.file(path.resolve(directory, args.experiment)).json())
+      : undefined
     let message = [...args.message, ...(args["--"] || [])]
       .map((arg) => (arg.includes(" ") ? `"${arg.replace(/"/g, '\\"')}"` : arg))
       .join(" ")
@@ -180,12 +193,10 @@ export const SendCommand = cmd({
         const file = Bun.file(resolvedPath)
         const stats = await file.stat().catch(() => {})
         if (!stats) {
-          UI.error(`File not found: ${filePath}`)
-          process.exit(1)
+          throw new Error(`File not found: ${filePath}`)
         }
         if (!(await file.exists())) {
-          UI.error(`File not found: ${filePath}`)
-          process.exit(1)
+          throw new Error(`File not found: ${filePath}`)
         }
 
         const stat = await file.stat()
@@ -209,252 +220,284 @@ export const SendCommand = cmd({
     }
 
     if (message.trim().length === 0 && !args.command) {
-      UI.error("You must provide a message or a command")
-      process.exit(1)
+      throw new Error("You must provide a message or a command")
     }
 
     if (args.workflow === "lightloop" && args.command) {
-      UI.error("--workflow lightloop cannot be combined with --command")
-      process.exit(1)
+      throw new Error("--workflow lightloop cannot be combined with --command")
     }
 
     const execute = async (sdk: SynergyClient, sessionID: string) => {
-      const printEvent = (color: string, type: string, title: string) => {
-        UI.println(
-          color + `|`,
-          UI.Style.TEXT_NORMAL + UI.Style.TEXT_DIM + ` ${type.padEnd(7, " ")}`,
-          "",
-          UI.Style.TEXT_NORMAL + title,
+      const nonInteractive = args["non-interactive"] || !process.stdin.isTTY || args.format === "json"
+      const streamAbort = new AbortController()
+      const submitted = Promise.withResolvers<void>()
+      let runID: string | undefined
+      let sequence = 0
+      let stopReason: "cancelled" | "timeout" | "interaction_required" | undefined
+      let streamFailure: unknown
+      let cancellation: Promise<unknown> | undefined
+      let commandPending = false
+      const requestStop = (reason: NonNullable<typeof stopReason>) => {
+        stopReason ??= reason
+        if (runID && !cancellation) {
+          const id = runID
+          cancellation = (async () => {
+            const deadline = Date.now() + 10_000
+            while (true) {
+              const response = await sdk.session.cancelRun({ sessionID, runID: id })
+              if (!response.error) return response.data
+              if (response.response.status !== 404 || !commandPending || Date.now() >= deadline) throw response.error
+              await Bun.sleep(25)
+            }
+          })()
+          void cancellation.catch((error) => {
+            streamFailure ??= error
+          })
+        }
+      }
+      const onInterrupt = () => requestStop("cancelled")
+      process.once("SIGINT", onInterrupt)
+      process.once("SIGTERM", onInterrupt)
+      const timer = setTimeout(() => requestStop("timeout"), args.timeout * 1000)
+      timer.unref()
+      const output = (type: string, data: Record<string, unknown> = {}) => {
+        if (args.format !== "json") return false
+        process.stdout.write(
+          JSON.stringify({
+            version: 1,
+            seq: ++sequence,
+            type,
+            timestamp: Date.now(),
+            sessionID,
+            runID: runID ?? null,
+            ...data,
+          }) + EOL,
         )
+        return true
       }
-
-      const outputJsonEvent = (type: string, data: any) => {
-        if (args.format === "json") {
-          process.stdout.write(JSON.stringify({ type, timestamp: Date.now(), sessionID, ...data }) + EOL)
-          return true
+      const descendants = new Set([sessionID])
+      async function belongs(id: string, tool?: { messageID: string }): Promise<boolean> {
+        if (!runID) return false
+        if (id === sessionID && tool) {
+          const { data } = await sdk.session.message(
+            { sessionID: id, messageID: tool.messageID },
+            { throwOnError: true },
+          )
+          return (data.info.rootID ?? (data.info.role === "assistant" ? data.info.parentID : data.info.id)) === runID
         }
-        return false
+        if (descendants.has(id)) return true
+        const { data } = await sdk.session.runResult({ sessionID, runID }, { throwOnError: true })
+        for (const snapshot of data.snapshots)
+          if (snapshot.owner.kind === "session") descendants.add(snapshot.owner.sessionID)
+        return descendants.has(id)
       }
-
-      const events = await sdk.event.subscribe()
-      let errorMsg: string | undefined
-      const eventProcessor = (async () => {
-        for await (const event of events.stream) {
-          if (event.type === "message.part.updated") {
-            const part = event.properties.part
-            if (part.sessionID !== sessionID) continue
-
-            if (part.type === "tool" && part.state.status === "completed") {
-              if (outputJsonEvent("tool_use", { part })) continue
-              const [tool, color] = TOOL[part.tool] ?? [part.tool, UI.Style.TEXT_INFO_BOLD]
-              const title =
-                part.state.title ||
-                (Object.keys(part.state.input).length > 0 ? JSON.stringify(part.state.input) : "Unknown")
-              printEvent(color, tool, title)
-              if (part.tool === "bash" && part.state.output?.trim()) {
-                UI.println()
-                UI.println(part.state.output)
+      let eventProcessor = Promise.resolve()
+      try {
+        const events = await sdk.event.subscribe({}, { signal: streamAbort.signal })
+        eventProcessor = (async () => {
+          for await (const event of events.stream) {
+            await submitted.promise
+            if (event.type === "message.part.updated") {
+              const part = event.properties.part
+              if (part.sessionID !== sessionID) continue
+              if (part.type === "tool" && part.state.status === "completed") {
+                if (output("tool_use", { part })) continue
+                const [tool, color] = TOOL[part.tool] ?? [part.tool, UI.Style.TEXT_INFO_BOLD]
+                UI.println(
+                  color + "|",
+                  UI.Style.TEXT_NORMAL + ` ${tool} `,
+                  part.state.title || JSON.stringify(part.state.input),
+                )
+                if (part.tool === "bash" && part.state.output?.trim()) UI.println(part.state.output)
               }
+              if (part.type === "step-start") output("step_start", { part })
+              if (part.type === "step-finish")
+                output("step_finish", {
+                  part,
+                  callIDs: part.accounting?.kind === "rollout" ? part.accounting.callIDs : [],
+                })
+              if (part.type === "text" && part.time?.end && !output("text", { part }))
+                process.stdout.write((process.stdout.isTTY ? UI.markdown(part.text) : part.text) + EOL)
             }
-
-            if (part.type === "step-start") {
-              if (outputJsonEvent("step_start", { part })) continue
+            if (event.type === "session.error" && event.properties.sessionID === sessionID) {
+              if (!output("error", { error: event.properties.error }))
+                UI.error(errorMessage(event.properties.error) ?? "Task error")
             }
-
-            if (part.type === "step-finish") {
-              if (outputJsonEvent("step_finish", { part })) continue
+            if (
+              event.type === "permission.asked" &&
+              (await belongs(event.properties.sessionID, event.properties.tool))
+            ) {
+              const permission = event.properties
+              if (nonInteractive) {
+                output("interaction_required", {
+                  interaction: "permission",
+                  requestID: permission.id,
+                  ownerSessionID: permission.sessionID,
+                })
+                requestStop("interaction_required")
+                await sdk.permission.respond(
+                  { sessionID: permission.sessionID, permissionID: permission.id, response: "reject" },
+                  { throwOnError: true },
+                )
+                continue
+              }
+              const answer = await select({
+                message: `Permission required: ${permission.permission} (${permission.patterns.join(", ")})`,
+                options: [
+                  { value: "once", label: "Allow once" },
+                  { value: "reject", label: "Reject" },
+                ],
+              })
+              await sdk.permission.respond(
+                {
+                  sessionID: permission.sessionID,
+                  permissionID: permission.id,
+                  response: isCancel(answer) ? "reject" : answer,
+                },
+                { throwOnError: true },
+              )
             }
-
-            if (part.type === "text" && part.time?.end) {
-              if (outputJsonEvent("text", { part })) continue
-              const isPiped = !process.stdout.isTTY
-              if (!isPiped) UI.println()
-              process.stdout.write((isPiped ? part.text : UI.markdown(part.text)) + EOL)
-              if (!isPiped) UI.println()
+            if (event.type === "question.asked" && (await belongs(event.properties.sessionID, event.properties.tool))) {
+              const question = event.properties
+              if (nonInteractive) {
+                output("interaction_required", {
+                  interaction: "question",
+                  requestID: question.id,
+                  ownerSessionID: question.sessionID,
+                })
+                requestStop("interaction_required")
+                await sdk.question.reject({ requestID: question.id }, { throwOnError: true })
+                continue
+              }
+              const answers: string[][] = []
+              for (const item of question.questions) {
+                const options = item.options.map((option) => ({
+                  value: option.label,
+                  label: option.label,
+                  hint: option.description,
+                }))
+                const answer = options.length
+                  ? item.multiple
+                    ? await multiselect({ message: item.question, options })
+                    : await select({ message: item.question, options })
+                  : await text({ message: item.question })
+                if (isCancel(answer)) {
+                  requestStop("cancelled")
+                  break
+                }
+                answers.push(Array.isArray(answer) ? answer : [answer])
+              }
+              if (!stopReason) await sdk.question.reply({ requestID: question.id, answers }, { throwOnError: true })
             }
           }
-
-          if (event.type === "session.error") {
-            const props = event.properties
-            if (props.sessionID !== sessionID || !props.error) continue
-            const error = props.error as Record<string, unknown>
-            const err = errorMessage(error) ?? String(error.name)
-            errorMsg = errorMsg ? errorMsg + EOL + err : err
-            // The server converts a terminal executor error into the durable
-            // "failed" Light Loop status, so the wait loop observes it through
-            // the workflow state instead of aborting here. Non-fatal errors
-            // (e.g. an attachment read failure) must not kill a recoverable
-            // loop, so the event is only reported, never used to cancel.
-            if (outputJsonEvent("error", { error: props.error })) continue
-            UI.error(err)
-          }
-
-          if (event.type === "session.idle" && event.properties.sessionID === sessionID) {
-            // Light Loop reviews run as Cortex children; the parent session goes
-            // idle while the reviewer runs, and a rejected review resumes the
-            // executor. The end of the attempt is decided from the workflow.
-            if (args.workflow === "lightloop") continue
-            break
-          }
-
-          if (event.type === "permission.asked") {
-            const permission = event.properties
-            if (permission.sessionID !== sessionID) continue
-            const result = await select({
-              message: `Permission required: ${permission.permission} (${permission.patterns.join(", ")})`,
-              options: [
-                { value: "once", label: "Allow once" },
-                { value: "reject", label: "Reject" },
-              ],
-              initialValue: "once",
-            }).catch(() => "reject")
-            const response = (result.toString().includes("cancel") ? "reject" : result) as "once" | "reject"
-            await sdk.permission.respond({
-              sessionID,
-              permissionID: permission.id,
-              response,
+        })().catch((error) => {
+          if (streamAbort.signal.aborted) return
+          streamFailure = error
+          requestStop("cancelled")
+        })
+        if (args.agent) {
+          const { data } = await sdk.app.agents({}, { throwOnError: true })
+          const agent = data.find((item) => item.name === args.agent)
+          if (!agent || agent.mode === "subagent") throw new Error(`Primary agent not found: ${args.agent}`)
+        }
+        if (args.workflow === "lightloop")
+          await sdk.workflow.session.set(
+            { id: sessionID, workflowSetInput: { kind: "lightloop", instructions: message } },
+            { throwOnError: true },
+          )
+        if (args.command) {
+          runID = Identifier.ascending("message")
+          commandPending = true
+          submitted.resolve()
+          if (stopReason) requestStop(stopReason)
+          await sdk.session
+            .command(
+              {
+                sessionID,
+                messageID: runID,
+                agent: args.agent,
+                model: args.model,
+                command: args.command,
+                arguments: message,
+                variant: args.variant,
+                experiment,
+              },
+              { throwOnError: true },
+            )
+            .finally(() => {
+              commandPending = false
             })
-          }
-        }
-      })()
-
-      // Validate agent if specified
-      const resolvedAgent = await (async () => {
-        if (!args.agent) return undefined
-        const result = await sdk.app.agents({}, { throwOnError: true })
-        const agent = result.data.find((item) => item.name === args.agent)
-        if (!agent) {
-          UI.println(
-            UI.Style.TEXT_WARNING_BOLD + "!",
-            UI.Style.TEXT_NORMAL,
-            `agent "${args.agent}" not found. Falling back to default agent`,
-          )
-          return undefined
-        }
-        if (agent.mode === "subagent") {
-          UI.println(
-            UI.Style.TEXT_WARNING_BOLD + "!",
-            UI.Style.TEXT_NORMAL,
-            `agent "${args.agent}" is a subagent, not a primary agent. Falling back to default agent`,
-          )
-          return undefined
-        }
-        return args.agent
-      })()
-
-      // Enable the Light Loop workflow before the first prompt so the user
-      // message is projected with the Light Loop contract and the agent can
-      // call loop_stop. The hard timeout covers the whole attempt, including
-      // the first executor turn, so it starts before the workflow enable and
-      // the prompt is submitted asynchronously (a blocking prompt would put
-      // the timeout out of reach during the first turn).
-      const lightLoopStartedAt = Date.now()
-      if (args.workflow === "lightloop") {
-        const setResult = await sdk.workflow.session.set({
-          id: sessionID,
-          workflowSetInput: { kind: "lightloop", instructions: message },
-        })
-        if (setResult.error) {
-          throw new Error(errorMessage(setResult.error) ?? "Failed to enable Light Loop workflow")
-        }
-      }
-
-      if (args.command) {
-        await sdk.session.command({
-          sessionID,
-          agent: resolvedAgent,
-          model: args.model,
-          command: args.command,
-          arguments: message,
-          variant: args.variant,
-        })
-      } else {
-        const modelParam = args.model ? Provider.parseModel(args.model) : undefined
-        const promptParts = [...fileParts, { type: "text", text: message }]
-        if (args.workflow === "lightloop") {
-          // Submit asynchronously so the hard timeout (started above, before
-          // the workflow enable) also bounds the first executor turn. The
-          // blocking prompt route would otherwise hold this call open for the
-          // whole first turn, making the timeout unreachable.
-          const promptResult = await sdk.session.promptAsync({
-            sessionID,
-            agent: resolvedAgent,
-            model: modelParam,
-            variant: args.variant,
-            parts: promptParts,
-          })
-          if (promptResult.error) {
-            throw new Error(errorMessage(promptResult.error) ?? "Failed to submit Light Loop prompt")
-          }
         } else {
-          await sdk.session.prompt({
-            sessionID,
-            agent: resolvedAgent,
-            model: modelParam,
-            variant: args.variant,
-            parts: promptParts,
-          })
-        }
-      }
-
-      if (args.workflow === "lightloop") {
-        // The parent session goes idle while the reviewer runs and again after
-        // a rejected review resumes the executor, so session.idle cannot end
-        // the attempt. Poll the workflow until it reaches a terminal state, is
-        // cleared by approval, or is replaced by another workflow.
-        const outcome = await waitForLightLoopFinish(sdk, sessionID, {
-          startedAt: lightLoopStartedAt,
-        })
-
-        const terminalFailure = outcome.status !== undefined && outcome.status !== "completed"
-        if (terminalFailure || outcome.timedOut || outcome.replaced || outcome.clearedWithoutRecord) {
-          // Stop the host-owned workflow before exiting so a later benchmark
-          // attempt is not contaminated by a still-running loop (with
-          // --attach) or a durable active workflow resumed on next startup.
-          await sdk.workflow.session.cancelLightloop({ id: sessionID }).catch(() => undefined)
-        }
-
-        if (args.format === "json") {
-          process.stdout.write(
-            JSON.stringify({
-              type: "lightloop_finish",
-              timestamp: Date.now(),
+          const { data } = await sdk.session.input(
+            {
               sessionID,
-              status: outcome.status,
-              elapsedMs: outcome.elapsedMs,
-              timedOut: outcome.timedOut,
-              aborted: outcome.aborted,
-              replaced: outcome.replaced,
-              clearedWithoutRecord: outcome.clearedWithoutRecord,
-            }) + EOL,
+              agent: args.agent,
+              model: args.model ? parseModelID(args.model) : undefined,
+              variant: args.variant,
+              experiment,
+              parts: [...fileParts, { type: "text", text: message }],
+            },
+            { throwOnError: true },
           )
+          runID = data.status === "queued" ? data.item.messageID : data.messageID
         }
-
-        if (outcome.timedOut) {
-          UI.error("Light Loop workflow timed out")
-          process.exit(1)
+        output("run_started")
+        submitted.resolve()
+        if (stopReason) requestStop(stopReason)
+        while (true) {
+          if (streamFailure) throw streamFailure
+          if (cancellation) await cancellation
+          const { data: run } = await sdk.session.run({ sessionID, runID }, { throwOnError: true })
+          if (run.status !== "running") break
+          await Bun.sleep(250)
         }
-        if (outcome.aborted && errorMsg) {
-          UI.error(errorMsg)
-          process.exit(1)
+        const { data: result } = await sdk.session.runResult({ sessionID, runID }, { throwOnError: true })
+        const exitCode =
+          result.run.recording === "failed"
+            ? 5
+            : stopReason === "interaction_required"
+              ? 4
+              : stopReason === "timeout"
+                ? 3
+                : result.run.status === "cancelled"
+                  ? 130
+                  : result.run.status !== "completed"
+                    ? 2
+                    : 0
+        output("result", {
+          result: { run: result.run, accounting: result.accounting, elapsedMs: result.elapsedMs },
+          outcome: stopReason ?? result.run.status,
+          exitCode,
+        })
+        process.exitCode = exitCode
+        if (exitCode && args.format !== "json")
+          UI.error(`Run ended: ${stopReason ?? result.run.status} (${result.run.recording} recording)`)
+      } catch (error) {
+        if (runID) {
+          requestStop("cancelled")
+          if (cancellation) await cancellation.catch(() => {})
         }
-        if (outcome.replaced) {
-          UI.error("Light Loop workflow was replaced by another workflow")
-          process.exit(1)
-        }
-        if (outcome.clearedWithoutRecord) {
-          UI.error("Light Loop workflow was cleared without a terminal record")
-          process.exit(1)
-        }
-        if (terminalFailure) {
-          UI.error(`Light Loop ended with status: ${outcome.status}`)
-          process.exit(1)
-        }
-        return
+        const exitCode = findRecordingError(error)
+          ? 5
+          : stopReason === "timeout"
+            ? 3
+            : stopReason === "interaction_required"
+              ? 4
+              : 2
+        process.exitCode = exitCode
+        output("failed", {
+          error: errorMessage(error) ?? (error instanceof Error ? error.message : String(error)),
+          exitCode,
+        })
+        throw error
+      } finally {
+        clearTimeout(timer)
+        process.removeListener("SIGINT", onInterrupt)
+        process.removeListener("SIGTERM", onInterrupt)
+        submitted.resolve()
+        streamAbort.abort()
+        await eventProcessor
       }
-
-      await eventProcessor
-      if (errorMsg) process.exit(1)
     }
 
     if (args.attach) {
@@ -473,19 +516,26 @@ export const SendCommand = cmd({
       })
 
       if (!sessionID) {
-        UI.error("Session not found")
-        process.exit(1)
+        throw new Error("Session not found")
       }
 
       await execute(sdk, sessionID)
-      process.exit(0)
+      return
     }
 
+    const { RuntimeHandle } = await import("../../server/runtime-handle")
+    const { withScopeContext } = await import("../scope")
+    const { Command } = await import("../../command/command")
+    await using runtime = await RuntimeHandle.open({
+      mode: "oneshot",
+      experiment,
+      reporter: args.format === "json" ? { summary() {} } : undefined,
+      network: { port: args.port ?? 0, hostname: "127.0.0.1" },
+    })
     await withScopeContext(
       directory,
       async () => {
-        await runMigrations({ output: "silent" })
-        const server = Server.listen({ port: args.port ?? 0, hostname: "127.0.0.1" })
+        const server = runtime.server
         const sdk = createSynergyClient({
           baseUrl: `http://${server.hostname}:${server.port}`,
           ...(args.scope ? { scopeID: args.scope } : { directory }),
@@ -494,9 +544,7 @@ export const SendCommand = cmd({
         if (args.command) {
           const exists = await Command.get(args.command)
           if (!exists) {
-            server.stop()
-            UI.error(`Command "${args.command}" not found`)
-            process.exit(1)
+            throw new Error(`Command "${args.command}" not found`)
           }
         }
 
@@ -509,14 +557,10 @@ export const SendCommand = cmd({
         })
 
         if (!sessionID) {
-          server.stop()
-          UI.error("Session not found")
-          process.exit(1)
+          throw new Error("Session not found")
         }
 
         await execute(sdk, sessionID)
-        server.stop(true)
-        process.exit(0)
       },
       args.scope,
     )

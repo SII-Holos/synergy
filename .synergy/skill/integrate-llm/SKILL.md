@@ -18,7 +18,7 @@ Do not choose by convenience. If users or parent agents must inspect, resume, ca
 
 ## Sessionless Internal-Agent Calls
 
-Text-only sessionless callers use `AgentCall.text()` without creating a durable session or persisting the inference exchange. Title/turn summary, SmartAllow classification, agent generation, GitHub classification, and Experience encoding all use the external `AgentTurn` worker boundary. Product code must not add a direct `LLM.stream()` caller outside `session/agent-turn/runner.ts`; setup/provider bootstrap probes are the only narrow direct AI SDK exception.
+Text-only sessionless callers use `AgentCall.text()` without creating a durable session. The Control Plane records call intent, semantic requests, consumed stream events, and SDK usage under the owning session or a Scope operation. Provider transport attempts are captured separately at the final built-in fetch boundary, with worker chunks committed by the Control Plane before acknowledgement. Preserve explicit completeness status; semantic events alone do not prove transport capture. Title/turn summary, SmartAllow classification, agent generation, GitHub classification, and Experience encoding all use the external `AgentTurn` worker boundary. Product code must not add a direct `LLM.stream()` caller outside `session/agent-turn/runner.ts`; setup/provider bootstrap probes are the only narrow direct AI SDK exception.
 
 For every sessionless call:
 
@@ -31,6 +31,10 @@ For every sessionless call:
 7. Parse and validate structured output with Zod or an equivalent explicit schema. Define whether timeout, unavailable model, malformed output, or provider error fails soft or propagates.
 8. Test model-role fallback, timeout/cancellation, stream disposal, parsing, redaction, and failure semantics without making a live provider call.
 9. Treat any `MessageV2.User.variant` on a reused source or root envelope as durable root-execution metadata. A `small: true` sessionless call must neither validate nor apply it; the call uses `ProviderTransform.smallOptions()` for its target model.
+
+Asynchronous derived work must carry the identity of its persisted source task, not resolve whichever task happens to be latest when the queue runs. Keep root-only prompt and model overrides out of attribution-only envelopes. Propagate `RolloutRecordingError` through optional-result fallback paths so the owning task stops and retains its failed recording state. Pass the original root ID to recording-error cancellation; a delayed auxiliary failure must not cancel a newer root in the same session.
+
+Control Plane operations that consume non-streaming results use `RolloutCall.execute()` around the actual provider operation, preserving the same intent, transport-attempt, and terminal commit contract as streaming calls. Drain parallel owned calls before returning and preserve recording failures ahead of secondary cancellation errors.
 
 A sessionless call does not create session history, Cortex progress, completion notices, or Experience lineage. Do not imply those properties in UI or events.
 
@@ -95,3 +99,7 @@ Treat streamed tool argument deltas as transport/progress data, not canonical to
 ## Handoff
 
 Report why the operation is sessionless, existing-session, Cortex, or bootstrap; the agent/model role; timeout/retry/tool/output policy; persistence and visibility; redaction; and verification.
+
+Capture provider service-tier metadata when available; unresolved nonstandard pricing must remain unknown. Preserve live authorization evidence before side effects and inherit task snapshots during request preparation, including independent non-chat operations.
+
+Public task cancellation must return after durable cancellation without waiting on held processors. Use explicit Cortex drainage for rollout finalization and runtime shutdown, and test both boundaries with controlled pending calls instead of timing sleeps.

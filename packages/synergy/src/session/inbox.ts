@@ -571,12 +571,16 @@ export namespace SessionInbox {
   }
 
   export async function enqueueUser(input: InvokeInput): Promise<Item> {
+    const { RolloutLifecycle } = await import("./rollout/lifecycle")
     const itemID = Identifier.ascending("inbox")
     const messageID = Identifier.ascending("message")
     const { messageID: _queuedMessageID, ...queuedInput } = input
     const summarized = summarizeParts(input.parts)
     const origin = MessageV2.originFromMetadata(input.metadata)
     const mode: ItemMode = input.noReply === true ? "steer" : "task"
+    if (mode === "task")
+      await RolloutLifecycle.configuration(await Session.get(input.sessionID), messageID, input.experiment, input.model)
+    else if (input.experiment) throw new Error("Experiment configuration requires a root task")
     const item: StoredItem = {
       id: itemID,
       sessionID: input.sessionID,

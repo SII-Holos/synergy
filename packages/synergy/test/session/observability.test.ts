@@ -6,7 +6,7 @@ import { ObservabilityStore } from "../../src/observability/store"
 import { ObservabilityContext } from "../../src/observability/context"
 import { Plugin } from "../../src/plugin"
 import { Session } from "../../src/session"
-import { LLM } from "../../src/session/llm"
+import { AgentTurn } from "../../src/session/agent-turn"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionProcessor } from "../../src/session/processor"
 import { SessionMemoryIncident } from "../../src/session/memory-incident"
@@ -86,7 +86,7 @@ async function runStreamScenario(
   stream: () => AsyncGenerator<Record<string, unknown>>,
   context?: { traceId: string; spanId: string },
 ) {
-  const originalStream = LLM.stream
+  const originalStream = AgentTurn.stream
   const originalUpdatePart = Session.updatePart
   const originalUpdatePartDelta = Session.updatePartDelta
   const originalParts = MessageV2.parts
@@ -112,11 +112,15 @@ async function runStreamScenario(
     ;(MessageV2.parts as any) = mock(async () => [...parts.values()])
     ;(Session.updateMessage as any) = mock(async (message: MessageV2.Assistant) => message)
     ;(Session.updateLastExchange as any) = mock(async () => {})
-    ;(Config.current as any) = mock(async () => ({ experimental: {}, timeout: { tool: { default_sec: 60 } } }))
+    ;(Config.current as any) = mock(async () => ({ timeout: { tool: { default_sec: 60 } } }))
     ;(Plugin.trigger as any) = mock(async (_name: string, _context: unknown, value: unknown) => value)
     ;(ExperienceEncoder.onComplete as any) = mock(() => {})
     ;(Bus.publish as any) = mock(async () => {})
-    ;(LLM.stream as any) = mock(async () => ({ fullStream: stream() }))
+    ;(AgentTurn.stream as any) = mock(async () => ({
+      fullStream: stream(),
+      usage: Promise.resolve(undefined),
+      async dispose() {},
+    }))
 
     const processor = SessionProcessor.create({
       assistantMessage: {
@@ -142,7 +146,7 @@ async function runStreamScenario(
     else await process()
   } finally {
     TimeoutConfig.invalidate()
-    ;(LLM.stream as any) = originalStream
+    ;(AgentTurn.stream as any) = originalStream
     ;(Session.updatePart as any) = originalUpdatePart
     ;(Session.updatePartDelta as any) = originalUpdatePartDelta
     ;(MessageV2.parts as any) = originalParts

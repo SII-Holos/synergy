@@ -1,28 +1,23 @@
 // L4 assembly: load built-in product registrations before any core registry use
 import "../product-registration"
-import { ensureMigrations } from "../migration"
+import { RuntimeHandle } from "./runtime-handle"
 import { Server } from "./server"
 import { Installation } from "../global/installation"
 import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
-import { ScopeRuntime } from "../scope/runtime"
 import { Scope } from "../scope"
-import { ProcessRegistry } from "../process/registry"
 import { Config } from "../config/config"
 import { Log } from "../util/log"
 import * as ChannelTypes from "../channel/types"
 import { Provider } from "../provider/provider"
 import { DaemonLogRotate } from "../daemon/log-rotate"
-import { ServerProcessLock } from "../util/server-process-lock"
 import { StartupReporter } from "../cli/startup-reporter"
 import { Flag } from "../flag/flag"
-import { GlobalRuntime } from "./global-runtime"
-import { Observability, ObservabilityResources, ObservabilityStore } from "../observability"
-import { Session } from "../session"
+import { Observability } from "../observability"
 import { Plugin } from "../plugin"
 import { PluginSpec } from "../util/plugin-spec"
 import { watchManagedParent } from "../util/managed-parent"
-import { configureRuntimeEndpoint, peekRuntimeEndpointGeneration } from "../util/runtime-endpoint"
+import { peekRuntimeEndpointGeneration } from "../util/runtime-endpoint"
 
 const log = Log.create({ service: "server-runtime" })
 
@@ -42,23 +37,14 @@ export interface RuntimeOptions {
 }
 export async function run(options: RuntimeOptions) {
   const reporter = options.printBanner ? StartupReporter.create() : undefined
-  const migration = await ensureMigrations({
-    output: "silent",
-    reporter: reporter
-      ? {
-          summary: (summary) => reporter.migration(summary),
-        }
-      : undefined,
+  await using handle = await RuntimeHandle.open({
+    mode: "server",
+    network: options.network,
+    reporter: reporter ? { summary: (summary) => reporter.migration(summary) } : undefined,
   })
-  reporter?.migration(migration)
-
-  const processLock = await ServerProcessLock.acquire()
-  // The telemetry worker may only start after migrations release the inline
-  // write connection; the module-level store.open() ran earlier and no-oped.
-  ObservabilityStore.releaseMigrationConnection()
-  ObservabilityStore.markRuntimeReady()
-  ObservabilityStore.open()
-  ObservabilityStore.interruptRunningSpans({ reason: "previous_runtime_ended" })
+  const server = handle.server
+  reporter?.migration(handle.migration)
+  registerShutdown(handle)
   await Observability.cleanup().catch(() => {})
   await Observability.emit("server.start", {
     data: {
@@ -70,28 +56,8 @@ export async function run(options: RuntimeOptions) {
     },
   })
 
-  // Holos login: intentionally skipped at CLI startup.
-  // Users can log in via Web UI sidebar Holos panel or 'synergy holos login'.
-  // We intentionally skip the CLI startup entrypoint for now and keep standalone startup here.
-  // try {
-  //   await HolosStartup.resolveIdentity(options.interactive)
-  // } catch (error) {
-  //   log.warn("holos identity resolution failed, launching in standalone mode", {
-  //     error: error instanceof Error ? error : new Error(String(error)),
-  //     interactive: options.interactive,
-  //   })
-  // }
-
-  Server.mountApp()
-  const server = Server.listen(options.network)
-  configureRuntimeEndpoint({
-    hostname: server.hostname ?? options.network.hostname,
-    port: server.port ?? options.network.port,
-  })
-  registerShutdown(server, processLock.release)
   const statuses: StartupReporter.StatusRow[] = []
 
-  await GlobalRuntime.start()
   // Deliver install lifecycles queued by CLI installs that ran outside a host process.
   // Runs after the plugin catalog is loaded and before the runtime.started broadcast so the
   // broadcast itself serves as the catch-up notification for plugins delivered here.
@@ -352,140 +318,39 @@ function displayUrl(hostname: string, port: number) {
   return url.toString().replace(/\/$/, "")
 }
 
-function registerShutdown(
-  server: { stop: (closeActiveConnections?: boolean) => Promise<void> },
-  releaseLock: () => Promise<void>,
-) {
+function registerShutdown(handle: RuntimeHandle.Handle) {
   let shuttingDown = false
   let stopWatchingParent = () => {}
-
   const gracefulShutdown = async (signal: string) => {
     if (shuttingDown) {
-      await Observability.emit("shutdown.force_exit", {
-        level: "error",
-        data: { signal, reason: "duplicate signal" },
-      })
+      Log.flush()
       process.exit(1)
-      return
     }
-
     shuttingDown = true
-    Server.beginShutdown()
-    GlobalRuntime.closeAdmission()
+    handle.closeAdmission()
     stopWatchingParent()
-    log.info("received signal, shutting down gracefully", { signal })
-    await Observability.emit("shutdown.signal", {
-      data: {
-        signal,
-        pid: process.pid,
-      },
-    })
-
-    let phase = "start"
-
-    const forceExitTimeout = setTimeout(() => {
-      void (async () => {
-        log.warn("graceful shutdown timed out, forcing exit")
-        await Observability.emit("shutdown.force_exit", {
-          level: "error",
-          data: {
-            signal,
-            phase,
-            reason: "timeout",
-          },
-        })
-        await releaseLock().catch(() => {})
-        Log.flush()
-        process.exit(1)
-      })()
-    }, GlobalRuntime.shutdownTimeoutMs())
-    forceExitTimeout.unref()
-
+    DaemonLogRotate.stop()
+    log.info("shutting down", { signal })
+    const deadline = setTimeout(() => {
+      log.error("runtime cleanup timed out", { signal })
+      Log.flush()
+      process.exit(1)
+    }, handle.shutdownTimeoutMs)
+    deadline.unref()
+    let exitCode = 0
     try {
-      phase = "stop log rotate"
-      await Observability.emit("shutdown.phase", { data: { phase } })
-      DaemonLogRotate.stop()
-
-      phase = "kill running processes"
-      await Observability.emit("shutdown.phase", { data: { phase } })
-      await ProcessRegistry.killAllRunning()
-
-      phase = "flush session parts"
-      await Observability.emit("shutdown.phase", { data: { phase } })
-      await Session.flushPartWrites().catch((error) => {
-        log.warn("failed to flush session part writes", { error })
-      })
-
-      phase = "stop global runtime"
-      await Observability.emit("shutdown.phase", { data: { phase } })
-      await GlobalRuntime.stop()
-
-      phase = "dispose scopes"
-      await Observability.emit("shutdown.phase", { data: { phase } })
-      await ScopeRuntime.disposeAll()
-
-      phase = "server stop"
-      await Observability.emit("shutdown.phase", { data: { phase } })
-      try {
-        await server.stop(true)
-      } finally {
-        // Clear the runtime endpoint only after the server has stopped so plugins can still
-        // read it while their runtimes are being drained and stopped above.
-        configureRuntimeEndpoint(undefined)
-      }
-
-      phase = "release lock"
-      await Observability.emit("shutdown.phase", { data: { phase } })
-      await releaseLock()
-
-      phase = "complete"
-      await Observability.emit("server.stop", { data: { signal, pid: process.pid } })
+      await handle.close()
     } catch (error) {
-      log.error("error during graceful shutdown", { error })
-      await Observability.emit("shutdown.error", {
-        level: "error",
-        data: {
-          signal,
-          phase,
-          error:
-            error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
-        },
-      })
+      exitCode = 1
+      log.error("runtime cleanup failed", { error })
+    } finally {
+      clearTimeout(deadline)
+      Log.flush()
     }
-
-    if (phase !== "complete") {
-      try {
-        phase = "release lock"
-        await Observability.emit("shutdown.phase", { data: { phase, afterError: true } })
-        await releaseLock()
-      } catch (error) {
-        log.error("failed to release server process lock", { error })
-        await Observability.emit("shutdown.error", {
-          level: "error",
-          data: {
-            signal,
-            phase,
-            error:
-              error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
-          },
-        })
-      }
-    }
-
-    ObservabilityStore.interruptRunningSpans({ reason: "runtime_shutdown" })
-    ObservabilityResources.stop()
-    await Observability.flush().catch((error) => {
-      log.warn("failed to flush observability during shutdown", { error })
-    })
-    ObservabilityStore.close()
-
-    clearTimeout(forceExitTimeout)
-    Log.flush()
-    process.exit(0)
+    process.exit(exitCode)
   }
-
-  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"))
-  process.on("SIGINT", () => gracefulShutdown("SIGINT"))
+  process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"))
+  process.on("SIGINT", () => void gracefulShutdown("SIGINT"))
   stopWatchingParent = watchManagedParent({
     expectedParentPid: process.env.SYNERGY_DESKTOP_PARENT_PID,
     onParentExit: () => void gracefulShutdown("desktop-parent-exit"),

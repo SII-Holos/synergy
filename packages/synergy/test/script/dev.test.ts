@@ -62,10 +62,15 @@ describe("dev orchestrator planner", () => {
       SYNERGY_DESKTOP_SERVER_MODE: "external",
       SYNERGY_DESKTOP_APP_URL: "http://127.0.0.1:3000",
       SYNERGY_BROWSER_BROKER_SERVER_URL: "http://127.0.0.1:4096",
+      SYNERGY_COMPUTER_BROKER_SERVER_URL: "http://127.0.0.1:4096",
     })
     expect(plan.processes[2]?.env?.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET).toBe(
       plan.processes[0]?.env?.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET,
     )
+    const secret = plan.processes[0]?.env?.SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET
+    expect(secret).toMatch(/^[a-f0-9]{64}$/)
+    expect(plan.processes[2]?.env?.SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET).toBe(secret)
+    expect(plan.processes[1]?.env?.SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET).toBeUndefined()
   })
 
   test("does not register a native broker when Desktop attaches to a remote server", () => {
@@ -75,6 +80,8 @@ describe("dev orchestrator planner", () => {
     expect(plan.requiredServers).toEqual(["https://remote.example"])
     expect(plan.processes[1]?.env?.SYNERGY_BROWSER_BROKER_SERVER_URL).toBeUndefined()
     expect(plan.processes[1]?.env?.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET).toBeUndefined()
+    expect(plan.processes[1]?.env?.SYNERGY_COMPUTER_BROKER_SERVER_URL).toBeUndefined()
+    expect(plan.processes[1]?.env?.SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET).toBeUndefined()
   })
 
   test("plans managed desktop with install and app build when dependencies are missing", () => {

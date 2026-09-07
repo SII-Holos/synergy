@@ -1776,12 +1776,20 @@ describe("SessionInvoke coauthor reminder prompt", () => {
   })
 
   test("omits the coauthor reminder when explicitly disabled", async () => {
-    await using tmp = await tmpdir({ git: true })
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (directory) => {
+        await Bun.write(
+          `${directory}/.synergy/synergy.d/60-agents.jsonc`,
+          JSON.stringify({ prompt: { coauthorReminder: false } }),
+        )
+      },
+    })
     let activeSessionID = ""
     let systemPrompt = ""
     let lateSystemPrompt = ""
     const restore = installBasicLoopMocks({
-      config: { experimental: { coauthor_reminder: false } },
+      config: { prompt: { coauthorReminder: false } },
       onProcess: async (input) => {
         systemPrompt = input.system.join("\n")
         lateSystemPrompt = input.lateSystem?.join("\n") ?? ""

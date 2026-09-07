@@ -1,3 +1,5 @@
+import { Experiment } from "../config/experiment"
+import { DEFAULT_AGENT_WORKER_POOL_OPTIONS } from "../session/agent-turn/worker-pool"
 import path from "path"
 import { existsSync } from "fs"
 import z from "zod"
@@ -187,9 +189,6 @@ export namespace RuntimeReload {
     if (requested.includes("tool_registry") || requested.includes("all")) {
       warnings.push(BUILTIN_SOURCE_RESTART_WARNING)
     }
-    if (changedFields.has("experimental") && !executedSet.has("mcp")) {
-      warnings.push("experimental.mcp_timeout changes do not currently trigger MCP.reload() automatically")
-    }
 
     const result: Result = {
       success: failed.length === 0,
@@ -344,6 +343,7 @@ export namespace RuntimeReload {
         }
         if (resolvedScope === "global" && changedFields.includes("cortex")) {
           CortexConcurrency.configure(result.config.cortex?.maxConcurrentTasks)
+          Experiment.updateRuntime({ cortex: { maxConcurrentTasks: CortexConcurrency.desiredGlobalLimit() } })
         }
         if (
           resolvedScope === "global" &&
@@ -351,6 +351,11 @@ export namespace RuntimeReload {
           oldConfig.execution?.agentWorkers !== result.config.execution?.agentWorkers
         ) {
           AgentTurn.resize(result.config.execution?.agentWorkers)
+          Experiment.updateRuntime({
+            execution: {
+              agentWorkers: result.config.execution?.agentWorkers ?? DEFAULT_AGENT_WORKER_POOL_OPTIONS.size,
+            },
+          })
           ctx.liveApplied.add("execution.agentWorkers")
         }
         if (resolvedScope === "global" && changedFields.includes("embedding")) {
@@ -398,18 +403,18 @@ export namespace RuntimeReload {
           }
         }
         // Runtime Boss Mode: react to experimental toggle / identity text / briefing interval changes.
-        if (resolvedScope === "global" && changedFields.includes("experimental")) {
-          const oldExp = oldConfig.experimental ?? {}
-          const newExp = result.config.experimental ?? {}
-          if (oldExp.boss_mode !== newExp.boss_mode) {
+        if (resolvedScope === "global" && changedFields.includes("boss")) {
+          const oldBoss = oldConfig.boss ?? {}
+          const newBoss = result.config.boss ?? {}
+          if (oldBoss.enabled !== newBoss.enabled) {
             try {
               const { BossRuntime } = await import("../boss/boss-runtime")
-              await BossRuntime.sync(newExp.boss_mode === true)
+              await BossRuntime.sync(newBoss.enabled === true)
             } catch (err) {
               ctx.warnings.push(`Failed to sync runtime boss mode: ${err instanceof Error ? err.message : String(err)}`)
             }
           }
-          if (newExp.boss_mode === true && oldExp.boss_identity_text !== newExp.boss_identity_text) {
+          if (newBoss.enabled === true && oldBoss.identityText !== newBoss.identityText) {
             try {
               const { BossRuntime } = await import("../boss/boss-runtime")
               await BossRuntime.refreshIdentity({ versioned: true })
@@ -420,8 +425,8 @@ export namespace RuntimeReload {
             }
           }
           if (
-            newExp.boss_mode === true &&
-            JSON.stringify(oldExp.boss_persona ?? null) !== JSON.stringify(newExp.boss_persona ?? null)
+            newBoss.enabled === true &&
+            JSON.stringify(oldBoss.persona ?? null) !== JSON.stringify(newBoss.persona ?? null)
           ) {
             try {
               const { BossRuntime } = await import("../boss/boss-runtime")
@@ -432,7 +437,7 @@ export namespace RuntimeReload {
               )
             }
           }
-          if (newExp.boss_mode === true && oldExp.boss_briefing_interval_days !== newExp.boss_briefing_interval_days) {
+          if (newBoss.enabled === true && oldBoss.briefingIntervalDays !== newBoss.briefingIntervalDays) {
             try {
               const { BossRuntime } = await import("../boss/boss-runtime")
               await BossRuntime.rescheduleBriefing()
@@ -452,7 +457,7 @@ export namespace RuntimeReload {
           if (JSON.stringify(oldAccounts) !== JSON.stringify(newAccounts)) {
             try {
               const { BossRuntime } = await import("../boss/boss-runtime")
-              await BossRuntime.sync(result.config.experimental?.boss_mode === true)
+              await BossRuntime.sync(result.config.boss?.enabled === true)
             } catch (err) {
               ctx.warnings.push(
                 `Failed to sync runtime boss mode after channel change: ${err instanceof Error ? err.message : String(err)}`,
@@ -642,6 +647,7 @@ export namespace RuntimeReload {
     if (
       changed.has("default_agent") ||
       changed.has("instructions") ||
+      changed.has("prompt") ||
       changed.has("project_doc_fallback_filenames") ||
       changed.has("project_doc_max_bytes")
     ) {
@@ -653,7 +659,7 @@ export namespace RuntimeReload {
     if (changed.has("tools")) {
       cascaded.push("tool_registry")
     }
-    if (changed.has("mcp")) {
+    if (changed.has("mcp") || changed.has("mcpDefaults")) {
       cascaded.push("mcp", "command")
     }
     if (changed.has("lsp")) {
@@ -674,7 +680,7 @@ export namespace RuntimeReload {
     if (changed.has("command")) {
       cascaded.push("command")
     }
-    if (changed.has("experimental")) {
+    if (changed.has("toolExposure")) {
       cascaded.push("tool_registry")
     }
     if (changed.has("timeout")) {
@@ -728,7 +734,7 @@ export namespace RuntimeReload {
 
   // P12: Debounce per scope rather than per file.
   // Multiple file changes within the same scope during the debounce window
-  let debounceTimers = new Map<
+  const debounceTimers = new Map<
     string,
     { timer: ReturnType<typeof setTimeout>; targets: Set<Target>; files: Set<string> }
   >()
@@ -745,31 +751,35 @@ export namespace RuntimeReload {
     const mergedFiles = existing?.files ?? new Set<string>()
     if (file) mergedFiles.add(file)
 
-    const timer = setTimeout(async () => {
-      debounceTimers.delete(key)
-      const finalTargets = [...mergedTargets]
-      if (finalTargets.length === 0) return
-      reloadLog.info("auto-reloading", { scope, targets: finalTargets })
-      try {
-        const result = await reload(
-          {
-            targets: finalTargets,
-            scope,
-            reason: `auto-reload: file changed in ${scope} scope`,
-          },
-          // Pass the changed file paths so Config.reload can skip
-          // command/agent markdown scans unaffected by domain edits.
-          { files: [...mergedFiles] },
-        )
-        reloadLog.info("auto-reload complete", {
-          executed: result.executed,
-          cascaded: result.cascaded,
-          warnings: result.warnings,
-        })
-      } catch (err) {
-        reloadLog.error("auto-reload failed", { error: err instanceof Error ? err : new Error(String(err)) })
-      }
-    }, DEFAULT_DEBOUNCE_MS)
+    const timer = setTimeout(
+      () =>
+        trackAutoReload(async () => {
+          debounceTimers.delete(key)
+          const finalTargets = [...mergedTargets]
+          if (finalTargets.length === 0) return
+          reloadLog.info("auto-reloading", { scope, targets: finalTargets })
+          try {
+            const result = await reload(
+              {
+                targets: finalTargets,
+                scope,
+                reason: `auto-reload: file changed in ${scope} scope`,
+              },
+              // Pass the changed file paths so Config.reload can skip
+              // command/agent markdown scans unaffected by domain edits.
+              { files: [...mergedFiles] },
+            )
+            reloadLog.info("auto-reload complete", {
+              executed: result.executed,
+              cascaded: result.cascaded,
+              warnings: result.warnings,
+            })
+          } catch (err) {
+            reloadLog.error("auto-reload failed", { error: err instanceof Error ? err : new Error(String(err)) })
+          }
+        }),
+      DEFAULT_DEBOUNCE_MS,
+    )
 
     debounceTimers.set(key, { timer, targets: mergedTargets, files: mergedFiles })
   }
@@ -792,20 +802,35 @@ export namespace RuntimeReload {
       reloadLog.info("could not detect scope for file, skipping", { file: event.file })
       return
     }
-    debounceReload(event.file, scope, targets)
+    if (autoReloadStarted) debounceReload(event.file, scope, targets)
   }
 
   let autoReloadStarted = false
-
+  const pendingAutoReloads = new Set<Promise<void>>()
+  function trackAutoReload(action: () => Promise<void>) {
+    const pending = action()
+      .catch((error) => {
+        reloadLog.error("auto-reload failed", { error })
+      })
+      .finally(() => pendingAutoReloads.delete(pending))
+    pendingAutoReloads.add(pending)
+  }
+  function receiveConfigEvent(event: { payload?: { type?: string; properties?: unknown } }) {
+    if (!autoReloadStarted || event.payload?.type !== "global.config.file.changed") return
+    const properties = event.payload.properties as { file: string; event: string } | undefined
+    if (properties) trackAutoReload(() => handleGlobalConfigEvent(properties))
+  }
   export function startAutoReload() {
     if (autoReloadStarted) return
     autoReloadStarted = true
-    GlobalBus.on("event", (event) => {
-      if (event.payload?.type !== "global.config.file.changed") return
-      const properties = event.payload.properties as { file: string; event: string } | undefined
-      if (!properties) return
-      void handleGlobalConfigEvent(properties)
-    })
+    GlobalBus.on("event", receiveConfigEvent)
     reloadLog.info("auto-reload listener started")
+  }
+  export async function stopAutoReload() {
+    autoReloadStarted = false
+    GlobalBus.off("event", receiveConfigEvent)
+    for (const { timer } of debounceTimers.values()) clearTimeout(timer)
+    debounceTimers.clear()
+    await Promise.all([...pendingAutoReloads])
   }
 }

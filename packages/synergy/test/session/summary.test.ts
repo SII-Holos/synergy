@@ -1,5 +1,8 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, describe, expect, mock, test, spyOn } from "bun:test"
 import path from "path"
+import { AgentCall } from "../../src/agent/call"
+import { RolloutRecordingError } from "../../src/session/rollout/error"
+import { SessionManager } from "../../src/session/manager"
 import { Identifier } from "../../src/id/id"
 import { LLM } from "../../src/session/llm"
 import { Provider } from "../../src/provider/provider"
@@ -1339,5 +1342,57 @@ describe("SessionSummary", () => {
         await Session.remove(session.id)
       },
     })
+  })
+})
+
+test("summary propagates recording failure after draining its parallel model calls", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const session = await Session.create({})
+      const turn = await createTurn({
+        sessionID: session.id,
+        directory: tmp.path,
+        index: 90,
+        text: "Summarize this",
+        finish: "stop",
+      })
+      installTestModel()
+      using diff = spyOn(Snapshot, "diffSummary").mockResolvedValue([turn.diff])
+      const bodyStarted = Promise.withResolvers<void>()
+      const releaseBody = Promise.withResolvers<void>()
+      const failure = new RolloutRecordingError({ message: "disk full" })
+      using call = spyOn(AgentCall, "text").mockImplementation(async (input) => {
+        if (input.agent === "title") {
+          await bodyStarted.promise
+          throw failure
+        }
+        bodyStarted.resolve()
+        await releaseBody.promise
+        throw new DOMException("Cancelled", "AbortError")
+      })
+      const lease = SessionManager.acquire(session.id)
+      if (!lease) throw new Error("Expected execution lease")
+      SessionManager.bindRootTask(lease, turn.user.id)
+      let finished = false
+      const result = SessionSummary.summarize({ sessionID: session.id, messageID: turn.user.id }).then(
+        () => {
+          finished = true
+          return undefined
+        },
+        (error) => {
+          finished = true
+          return error
+        },
+      )
+      await bodyStarted.promise
+      await Promise.resolve()
+      expect(finished).toBe(false)
+      releaseBody.resolve()
+      expect(await result).toBe(failure)
+      expect(lease.signal.aborted).toBe(true)
+      await SessionManager.release(lease, { requestNextWork: false })
+    },
   })
 })

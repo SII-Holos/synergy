@@ -5,6 +5,7 @@ import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
 import { Log } from "../util/log"
 import { LatticeController } from "./controller"
+import { ScopeStartup } from "../scope/startup"
 
 export namespace LatticeRuntime {
   const log = Log.create({ service: "lattice.runtime" })
@@ -26,7 +27,7 @@ export namespace LatticeRuntime {
         if (!event.properties.changed.includes("content") && !event.properties.changed.includes("archived")) return
         run(() => LatticeController.onBlueprintChanged(event.properties.scopeID, event.properties.note.id))
       })
-      const ready = LatticeController.reconcileScope(scope.id, true)
+      const ready = ScopeStartup.resident() ? LatticeController.reconcileScope(scope.id, true) : Promise.resolve()
       return { ready, unsubscribeLoop, unsubscribeNote }
     },
     async (current) => {

@@ -13,6 +13,7 @@ export namespace ChildProcessClose {
     child: ChildProcess,
     options: {
       drainGraceMs?: number
+      isBackpressured?: () => boolean
       onExit?: (code: number | null, signal: NodeJS.Signals | null) => void
       onDrainTimeout?: () => void | Promise<void>
     } = {},
@@ -22,6 +23,7 @@ export namespace ChildProcessClose {
       let settled = false
       let drainTimer: ReturnType<typeof setTimeout> | undefined
       let drainTimeoutRunning = false
+      let backpressured = false
       let exit: Pick<Result, "code" | "signal"> | undefined
 
       const cleanup = () => {
@@ -52,7 +54,20 @@ export namespace ChildProcessClose {
           finish({ ...exit, drainTimedOut: false })
           return
         }
+        scheduleDrainTimeout()
+      }
+      const scheduleDrainTimeout = () => {
         drainTimer = setTimeout(() => {
+          if (options.isBackpressured?.()) {
+            backpressured = true
+            scheduleDrainTimeout()
+            return
+          }
+          if (backpressured) {
+            backpressured = false
+            scheduleDrainTimeout()
+            return
+          }
           drainTimeoutRunning = true
           void (async () => {
             try {

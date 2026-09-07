@@ -372,7 +372,7 @@ describe("settings config patch", () => {
     })
   })
 
-  test("coauthor reminder defaults on without materializing experimental config", () => {
+  test("coauthor reminder defaults on without materializing prompt config", () => {
     const state = defaultSettingsState("enter")
 
     expect(
@@ -380,11 +380,11 @@ describe("settings config patch", () => {
         cfg: {} as Config,
         state,
         originalMcps: {},
-      }).experimental,
+      }).prompt,
     ).toBeUndefined()
   })
 
-  test("coauthor reminder can be disabled in experimental config", () => {
+  test("coauthor reminder can be disabled in prompt config", () => {
     const state = defaultSettingsState("enter")
     state.runtime.coauthorReminder = "false"
 
@@ -393,8 +393,8 @@ describe("settings config patch", () => {
         cfg: {} as Config,
         state,
         originalMcps: {},
-      }).experimental,
-    ).toEqual({ coauthor_reminder: false })
+      }).prompt,
+    ).toEqual({ coauthorReminder: false })
   })
 
   test("coauthor reminder can be re-enabled from explicit false", () => {
@@ -403,14 +403,14 @@ describe("settings config patch", () => {
 
     expect(
       buildPatch({
-        cfg: { experimental: { coauthor_reminder: false } } as Config,
+        cfg: { prompt: { coauthorReminder: false } } as Config,
         state,
         originalMcps: {},
-      }).experimental,
-    ).toEqual({ coauthor_reminder: true })
+      }).prompt,
+    ).toEqual({ coauthorReminder: true })
   })
 
-  test("boss mode defaults off without materializing experimental config", () => {
+  test("boss mode defaults off without materializing boss config", () => {
     const state = defaultSettingsState("enter")
 
     expect(
@@ -418,11 +418,11 @@ describe("settings config patch", () => {
         cfg: {} as Config,
         state,
         originalMcps: {},
-      }).experimental,
+      }).boss,
     ).toBeUndefined()
   })
 
-  test("boss mode fields materialize in experimental config when enabled", () => {
+  test("boss mode fields materialize in boss config when enabled", () => {
     const state = defaultSettingsState("enter")
     state.runtime.bossMode = "true"
     state.runtime.bossIdentityText = "Ops lead"
@@ -433,11 +433,11 @@ describe("settings config patch", () => {
         cfg: {} as Config,
         state,
         originalMcps: {},
-      }).experimental,
+      }).boss,
     ).toEqual({
-      boss_mode: true,
-      boss_identity_text: "Ops lead",
-      boss_briefing_interval_days: 7,
+      enabled: true,
+      identityText: "Ops lead",
+      briefingIntervalDays: 7,
     })
   })
 
@@ -450,21 +450,21 @@ describe("settings config patch", () => {
     expect(
       buildPatch({
         cfg: {
-          experimental: {
-            boss_mode: true,
-            boss_identity_text: "Ops lead",
-            boss_briefing_interval_days: 7,
+          boss: {
+            enabled: true,
+            identityText: "Ops lead",
+            briefingIntervalDays: 7,
           },
         } as Config,
         state,
         originalMcps: {},
-      }).experimental,
+      }).boss,
     ).toEqual({
-      boss_mode: false,
+      enabled: false,
       // Explicit null clears the stored value: the SDK JSON serializer drops
       // undefined keys, so undefined would never reach the server merge.
-      boss_identity_text: null,
-      boss_briefing_interval_days: null,
+      identityText: null,
+      briefingIntervalDays: null,
     })
   })
 
@@ -477,23 +477,23 @@ describe("settings config patch", () => {
     expect(
       buildPatch({
         cfg: {
-          experimental: {
-            boss_mode: false,
-            boss_identity_text: undefined,
-            boss_briefing_interval_days: undefined,
+          boss: {
+            enabled: false,
+            identityText: undefined,
+            briefingIntervalDays: undefined,
           },
         } as Config,
         state,
         originalMcps: {},
-      }).experimental,
+      }).boss,
     ).toEqual({
-      boss_mode: true,
-      boss_identity_text: "Ops lead",
-      boss_briefing_interval_days: 7,
+      enabled: true,
+      identityText: "Ops lead",
+      briefingIntervalDays: 7,
     })
   })
 
-  test("does not re-save unchanged boss mode experimental config", () => {
+  test("does not re-save unchanged boss mode boss config", () => {
     const state = defaultSettingsState("enter")
     state.runtime.bossMode = "true"
     state.runtime.bossIdentityText = "Ops lead"
@@ -502,16 +502,16 @@ describe("settings config patch", () => {
     expect(
       buildPatch({
         cfg: {
-          experimental: {
-            boss_mode: true,
-            boss_identity_text: "Ops lead",
-            boss_briefing_interval_days: 7,
+          boss: {
+            enabled: true,
+            identityText: "Ops lead",
+            briefingIntervalDays: 7,
           },
         } as Config,
         state,
         originalMcps: {},
       }),
-    ).not.toHaveProperty("experimental")
+    ).not.toHaveProperty("boss")
   })
 
   test("omits invalid boss briefing interval values instead of emitting them", () => {
@@ -524,8 +524,8 @@ describe("settings config patch", () => {
         cfg: {} as Config,
         state,
         originalMcps: {},
-      }).experimental,
-    ).toEqual({ boss_mode: true })
+      }).boss,
+    ).toEqual({ enabled: true })
 
     state.runtime.bossBriefingIntervalDays = "-3"
     expect(
@@ -533,8 +533,8 @@ describe("settings config patch", () => {
         cfg: {} as Config,
         state,
         originalMcps: {},
-      }).experimental,
-    ).toEqual({ boss_mode: true })
+      }).boss,
+    ).toEqual({ enabled: true })
 
     state.runtime.bossBriefingIntervalDays = "abc"
     expect(
@@ -542,11 +542,11 @@ describe("settings config patch", () => {
         cfg: {} as Config,
         state,
         originalMcps: {},
-      }).experimental,
-    ).toEqual({ boss_mode: true })
+      }).boss,
+    ).toEqual({ enabled: true })
   })
 
-  test("boss persona preset materializes in experimental config when selected", () => {
+  test("boss persona preset materializes in boss config when selected", () => {
     const state = defaultSettingsState("enter")
     state.runtime.bossMode = "true"
     state.runtime.bossPersonaPreset = "project_manager"
@@ -556,10 +556,10 @@ describe("settings config patch", () => {
         cfg: {} as Config,
         state,
         originalMcps: {},
-      }).experimental,
+      }).boss,
     ).toEqual({
-      boss_mode: true,
-      boss_persona: { preset: "project_manager" },
+      enabled: true,
+      persona: { preset: "project_manager" },
     })
   })
 
@@ -576,9 +576,9 @@ describe("settings config patch", () => {
         cfg: {} as Config,
         state,
         originalMcps: {},
-      }).experimental,
+      }).boss,
     ).toEqual({
-      boss_persona: {
+      persona: {
         preset: "custom",
         formality: 0.9,
         conciseness: 0.25,
@@ -599,9 +599,9 @@ describe("settings config patch", () => {
         cfg: {} as Config,
         state,
         originalMcps: {},
-      }).experimental,
+      }).boss,
     ).toEqual({
-      boss_persona: {
+      persona: {
         preset: "custom",
         formality: 0.5,
         conciseness: 0.5,
@@ -618,15 +618,15 @@ describe("settings config patch", () => {
     expect(
       buildPatch({
         cfg: {
-          experimental: {
-            boss_persona: { preset: "ops_assistant" },
+          boss: {
+            persona: { preset: "ops_assistant" },
           },
         } as Config,
         state,
         originalMcps: {},
-      }).experimental,
+      }).boss,
     ).toEqual({
-      boss_persona: null,
+      persona: null,
     })
   })
 
@@ -639,7 +639,7 @@ describe("settings config patch", () => {
       state,
       originalMcps: {},
     })
-    expect(patch).not.toHaveProperty("experimental")
+    expect(patch).not.toHaveProperty("boss")
   })
 
   test("does not re-emit an unchanged boss persona", () => {
@@ -648,14 +648,14 @@ describe("settings config patch", () => {
 
     const patch = buildPatch({
       cfg: {
-        experimental: {
-          boss_persona: { preset: "ops_assistant" },
+        boss: {
+          persona: { preset: "ops_assistant" },
         },
       } as Config,
       state,
       originalMcps: {},
     })
-    expect(patch).not.toHaveProperty("experimental")
+    expect(patch).not.toHaveProperty("boss")
   })
 
   test("boss name never materializes in the config patch", () => {
@@ -668,7 +668,7 @@ describe("settings config patch", () => {
       state,
       originalMcps: {},
     })
-    expect(patch.experimental).not.toHaveProperty("boss_name")
+    expect(patch.boss).not.toHaveProperty("boss_name")
   })
   test("does not re-save unchanged sandbox config when enabled is already explicit", () => {
     const state = defaultSettingsState("enter")

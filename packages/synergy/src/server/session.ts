@@ -19,6 +19,11 @@ import { Dag } from "../session/dag"
 import { Snapshot } from "../session/snapshot"
 import { SnapshotSchema } from "../session/snapshot-schema"
 import { Agent } from "../agent/agent"
+import { Provider } from "../provider/provider"
+import { RolloutLedger } from "../session/rollout/ledger"
+import { RolloutLifecycle } from "../session/rollout/lifecycle"
+import { RolloutSchema } from "../session/rollout/schema"
+import { RolloutQuery } from "../session/rollout/query"
 import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
 import { ObservabilityRedaction } from "@/observability/redaction"
@@ -51,6 +56,8 @@ async function assertSessionWorkspaceAvailable(sessionID: string) {
 }
 
 async function submitInput(input: InvokeInput): Promise<SessionInbox.InputResult> {
+  if (input.model) await Provider.getModel(input.model.providerID, input.model.modelID)
+  if (input.agent && !(await Agent.get(input.agent))) throw new Error(`Agent not found: ${input.agent}`)
   if (input.noReply === true && !SessionManager.isRunning(input.sessionID)) {
     const messageID = input.messageID ?? Identifier.ascending("message")
     SessionInvoke.invoke({ ...input, messageID }).catch((error) => {
@@ -72,6 +79,80 @@ async function submitInput(input: InvokeInput): Promise<SessionInbox.InputResult
 }
 
 export const SessionRoute = new Hono()
+  .post(
+    "/:sessionID/run/:runID/cancel",
+    describeRoute({
+      summary: "Cancel one task and drain its execution",
+      description:
+        "Close admission for this run, cancel its descendants, and await durable terminal records without cancelling an unrelated session root.",
+      operationId: "session.cancelRun",
+      tags: ["Session"],
+      responses: {
+        200: {
+          description: "Cancelled or already terminal run",
+          content: { "application/json": { schema: resolver(RolloutSchema.RunRecord) } },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator(
+      "param",
+      z.object({ sessionID: Identifier.schema("session"), runID: z.string().regex(/^[a-zA-Z0-9_-]+$/) }),
+    ),
+    async (c) => {
+      const { sessionID, runID } = c.req.valid("param")
+      return c.json(await RolloutLifecycle.cancel(sessionID, runID))
+    },
+  )
+  .get(
+    "/:sessionID/run/:runID/result",
+    describeRoute({
+      summary: "Read a task trajectory and accounting",
+      description:
+        "Read a fixed journal boundary for each related run, including descendant calls and separate reported and estimated costs.",
+      operationId: "session.runResult",
+      tags: ["Session"],
+      responses: {
+        200: {
+          description: "Rollout result",
+          content: { "application/json": { schema: resolver(RolloutQuery.Result) } },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator(
+      "param",
+      z.object({ sessionID: Identifier.schema("session"), runID: z.string().regex(/^[a-zA-Z0-9_-]+$/) }),
+    ),
+    async (c) => {
+      const { sessionID, runID } = c.req.valid("param")
+      return c.json(await RolloutQuery.tree(RolloutLifecycle.owner(await Session.get(sessionID)), runID))
+    },
+  )
+  .get(
+    "/:sessionID/run/:runID",
+    describeRoute({
+      summary: "Get durable task execution status",
+      description: "Read the persisted run status after execution, descendant delivery, and auxiliary work settle.",
+      operationId: "session.run",
+      tags: ["Session"],
+      responses: {
+        200: {
+          description: "Durable run",
+          content: { "application/json": { schema: resolver(RolloutSchema.RunRecord) } },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator(
+      "param",
+      z.object({ sessionID: Identifier.schema("session"), runID: z.string().regex(/^[a-zA-Z0-9_-]+$/) }),
+    ),
+    async (c) => {
+      const { sessionID, runID } = c.req.valid("param")
+      return c.json(await RolloutLedger.getRun(RolloutLifecycle.owner(await Session.get(sessionID)), runID))
+    },
+  )
   .get(
     "/",
     describeRoute({
@@ -1245,14 +1326,21 @@ export const SessionRoute = new Hono()
       const sessionID = c.req.valid("param").sessionID
       const body = c.req.valid("json")
       const command = await Command.require(body.command)
+      const messageID = body.messageID ?? Identifier.ascending("message")
+      await RolloutLifecycle.configuration(
+        await Session.get(sessionID),
+        messageID,
+        body.experiment,
+        body.model ? Provider.parseModel(body.model) : undefined,
+      )
       if (command.kind === "action") {
         SessionManager.assertIdle(sessionID)
-        await SessionInvoke.command({ ...body, sessionID })
+        await SessionInvoke.command({ ...body, sessionID, messageID })
         return c.body(null, 204)
       }
       // Prompt commands are fire-and-forget because they may run a full model loop.
       // Keep errors visible in logs instead of silently swallowing them.
-      SessionInvoke.command({ ...body, sessionID }).catch((error) => {
+      SessionInvoke.command({ ...body, sessionID, messageID }).catch((error) => {
         log.error("failed to execute async command", { command: body.command, sessionID, error })
       })
       return c.body(null, 204)

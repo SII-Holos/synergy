@@ -73,3 +73,23 @@ describe("ChildProcessClose", () => {
     },
   )
 })
+
+test.skipIf(process.platform === "win32")(
+  "does not expire the drain window while the recorder owns backpressure",
+  async () => {
+    const child = spawn("/bin/sh", ["-c", "(sleep 0.05; printf data) &"], { stdio: ["ignore", "pipe", "pipe"] })
+    let writing = true
+    const resumed = setTimeout(() => {
+      writing = false
+      child.stdout?.resume()
+      child.stderr?.resume()
+    }, 60)
+    try {
+      const result = await ChildProcessClose.wait(child, { drainGraceMs: 10, isBackpressured: () => writing })
+      expect(result.drainTimedOut).toBe(false)
+    } finally {
+      clearTimeout(resumed)
+      child.kill()
+    }
+  },
+)

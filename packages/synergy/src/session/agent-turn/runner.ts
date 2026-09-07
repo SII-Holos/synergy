@@ -7,10 +7,14 @@ import { AgentTurnProtocol } from "./protocol"
 import { AgentStreamEventCoalescer } from "./stream-event-coalescer"
 import type { AgentTurnWorkerInput } from "./worker-pool"
 import { clearReplayPlan } from "@/provider/codex-compaction"
+import { RolloutTransport } from "../rollout/transport"
 
 type AgentSDKStreamPart = LLM.StreamOutput["fullStream"] extends AsyncIterable<infer Part> ? Part : never
 
 interface ActiveTurn {
+  archiveSequence: number
+  archivePending: Promise<void>
+  archiveWaiter?: { sequence: number; resolve(): void; reject(error: unknown): void }
   requestId: string
   controller: AbortController
   windowWaiter: (() => void) | undefined
@@ -129,6 +133,22 @@ async function sendEvents(turn: ActiveTurn, events: AgentSDKStreamPart[]): Promi
   }
 }
 
+function sendArchive(turn: ActiveTurn, event: RolloutTransport.Event): Promise<void> {
+  turn.archivePending = turn.archivePending.then(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const sequence = ++turn.archiveSequence
+        turn.archiveWaiter = {
+          sequence,
+          resolve,
+          reject,
+        }
+        send({ type: "archive", requestId: turn.requestId, sequence, event })
+      }),
+  )
+  return turn.archivePending
+}
+
 async function streamEvents(turn: ActiveTurn, stream: AsyncIterable<AgentSDKStreamPart>): Promise<void> {
   const coalescer = new AgentStreamEventCoalescer<AgentSDKStreamPart>()
   for await (const value of stream) {
@@ -167,22 +187,26 @@ async function executeTurn(turn: ActiveTurn, envelope: AgentTurnProtocol.TurnEnv
     await ScopeContext.provide({
       scope: envelope.scope,
       workspace: envelope.workspace,
-      fn: async () => {
-        const tools = ToolCatalog.modelTools(input.toolDefinitions) as Record<string, AITool>
-        const stream = await LLM.stream({
-          ...input,
-          abort: turn.controller.signal,
-          tools,
-          messages: input.messages as ModelMessage[],
-        })
-        send({
-          type: "started",
-          requestId: turn.requestId,
-        })
-        ownedStream = LLM.takeFullStream(stream)
-        await streamEvents(turn, ownedStream.stream)
-        usage = await stream.usage.catch(() => undefined)
-      },
+      fn: () =>
+        RolloutTransport.provide(
+          (event) => sendArchive(turn, event),
+          async () => {
+            const tools = ToolCatalog.modelTools(input.toolDefinitions) as Record<string, AITool>
+            const stream = await LLM.stream({
+              ...input,
+              abort: turn.controller.signal,
+              tools,
+              messages: input.messages as ModelMessage[],
+            })
+            send({
+              type: "started",
+              requestId: turn.requestId,
+            })
+            ownedStream = LLM.takeFullStream(stream)
+            await streamEvents(turn, ownedStream.stream)
+            usage = await stream.usage.catch(() => undefined)
+          },
+        ),
     })
     turns++
     result = {
@@ -206,6 +230,9 @@ async function executeTurn(turn: ActiveTurn, envelope: AgentTurnProtocol.TurnEnv
   if (typeof sessionID === "string" && sessionID) clearReplayPlan(sessionID)
   const memoryBeforeDispose = memory()
   await ownedStream?.dispose().catch(() => {})
+  await turn.archivePending.catch((error) => {
+    result = { type: "error", requestId: turn.requestId, error: AgentTurnProtocol.serializeError(error) }
+  })
   turn.windowWaiter?.()
   turn.windowWaiter = undefined
   return {
@@ -221,6 +248,8 @@ async function run(requestId: string, envelope: AgentTurnProtocol.TurnEnvelope |
     return
   }
   const turn: ActiveTurn = {
+    archiveSequence: 0,
+    archivePending: Promise.resolve(),
     requestId,
     controller: new AbortController(),
     windowWaiter: undefined,
@@ -248,6 +277,18 @@ process.on("message", (raw: unknown) => {
     return
   }
   const message = parsed.data
+  if (message.type === "archive-ack") {
+    if (!active || active.requestId !== message.requestId) return
+    const waiter = active.archiveWaiter
+    if (!waiter || waiter.sequence !== message.sequence) {
+      active.controller.abort(new Error("Invalid rollout archive acknowledgement"))
+      return
+    }
+    active.archiveWaiter = undefined
+    if (message.error) waiter.reject(AgentTurnProtocol.deserializeError(message.error))
+    else waiter.resolve()
+    return
+  }
   if (message.type === "run-start") {
     if (active || pending) {
       reject(message.requestId, new Error("Agent worker already owns a turn transfer"))

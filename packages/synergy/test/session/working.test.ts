@@ -1,3 +1,5 @@
+import { Storage } from "../../src/storage/storage"
+import { StoragePath } from "../../src/storage/path"
 import { describe, expect, mock, test } from "bun:test"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
@@ -843,14 +845,23 @@ describe("SessionWorking", () => {
             model: { providerID: "test-provider", modelID: "test-model" },
             time: { created: Date.now() },
           })
-          await Session.updatePart({
+          const brokenPart = {
             id: Identifier.ascending("part"),
             sessionID: corrupt.id,
             messageID: user.id,
             type: "attachment",
             mime: "application/octet-stream",
             url: "data:broken",
-          })
+          }
+          await Storage.write(
+            StoragePath.messagePart(
+              Identifier.asScopeID(corrupt.scope.id),
+              Identifier.asSessionID(corrupt.id),
+              Identifier.asMessageID(user.id),
+              Identifier.asPartID(brokenPart.id),
+            ),
+            brokenPart,
+          )
           await Session.update(corrupt.id, (draft) => {
             draft.pendingReply = true
           })

@@ -4,7 +4,7 @@
   "productName": "Synergy",
   "icon": "build/icon.png",
   "asar": true,
-  "asarUnpack": ["**/*.node"],
+  "asarUnpack": ["**/*.node", "**/*.dylib"],
   "afterPack": "script/after-pack.cjs",
   "directories": {
     "buildResources": "build",
@@ -73,7 +73,14 @@
         }
       ],
       "LSApplicationCategoryType": "public.app-category.developer-tools"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "build/computer",
+        "to": "computer"
+      }
+    ],
+    "binaries": ["Contents/Resources/computer/cua-driver"]
   },
   "dmg": {
     "sign": false,

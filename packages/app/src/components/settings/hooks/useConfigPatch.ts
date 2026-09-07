@@ -311,36 +311,36 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
   const timeout = buildTimeoutPatch(cfg, runtime)
   if (timeout.changed) patch.timeout = timeout.value
 
-  const experimental: Record<string, unknown> = {}
+  const boss: NonNullable<Config["boss"]> = {}
   const coauthorReminder = runtime.coauthorReminder === "true"
-  const currentCoauthorReminder = cfg.experimental?.coauthor_reminder !== false
-  if (coauthorReminder !== currentCoauthorReminder) experimental.coauthor_reminder = coauthorReminder
+  const currentCoauthorReminder = cfg.prompt?.coauthorReminder !== false
+  if (coauthorReminder !== currentCoauthorReminder) patch.prompt = { ...cfg.prompt, coauthorReminder }
 
   const bossMode = runtime.bossMode === "true"
-  const currentBossMode = cfg.experimental?.boss_mode === true
-  if (bossMode !== currentBossMode) experimental.boss_mode = bossMode
+  const currentBossMode = cfg.boss?.enabled === true
+  if (bossMode !== currentBossMode) boss.enabled = bossMode
 
   // Clearing an optional value must send null (not undefined): the SDK JSON
   // serializer drops undefined keys, so undefined would never reach the
   // server and the stored value would survive the merge. Schema fields are
   // nullable to accept the explicit clear.
   const bossIdentityText = runtime.bossIdentityText.trim() === "" ? null : runtime.bossIdentityText
-  const currentBossIdentityText = cfg.experimental?.boss_identity_text
+  const currentBossIdentityText = cfg.boss?.identityText
   // Explicit null clears a stored value (the SDK JSON serializer drops
   // undefined keys, so undefined would keep the old value server-side), but a
   // null clear is only meaningful when the server actually has a value —
-  // otherwise the null would materialize an empty experimental block.
+  // otherwise the null would materialize an empty boss block.
   if (
     bossIdentityText !== currentBossIdentityText &&
     (bossIdentityText !== null || currentBossIdentityText !== undefined)
   ) {
-    experimental.boss_identity_text = bossIdentityText
+    boss.identityText = bossIdentityText
   }
 
   const bossBriefingIntervalRaw = runtime.bossBriefingIntervalDays.trim()
   const bossBriefingIntervalDays =
     bossBriefingIntervalRaw === "" ? null : positiveInteger(runtime.bossBriefingIntervalDays)
-  const currentBossBriefingIntervalDays = cfg.experimental?.boss_briefing_interval_days
+  const currentBossBriefingIntervalDays = cfg.boss?.briefingIntervalDays
   // Invalid input (undefined) carries no change intent; null clears a stored
   // value; an explicit number always materializes.
   if (
@@ -348,10 +348,10 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
     bossBriefingIntervalDays !== currentBossBriefingIntervalDays &&
     (bossBriefingIntervalDays !== null || currentBossBriefingIntervalDays !== undefined)
   ) {
-    experimental.boss_briefing_interval_days = bossBriefingIntervalDays
+    boss.briefingIntervalDays = bossBriefingIntervalDays
   }
 
-  const currentBossPersona = cfg.experimental?.boss_persona
+  const currentBossPersona = cfg.boss?.persona
   const nextBossPersona = bossPersonaFromRuntime(runtime)
   // null is the only value that removes a stored persona, and a null clear is
   // meaningful only when the server actually holds a value (undefined would
@@ -362,11 +362,11 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
     (nextBossPersona !== null || hasCurrentBossPersona) &&
     JSON.stringify(nextBossPersona) !== JSON.stringify(currentBossPersona ?? null)
   ) {
-    experimental.boss_persona = nextBossPersona
+    boss.persona = nextBossPersona
   }
 
-  if (Object.keys(experimental).length) {
-    patch.experimental = { ...(cfg.experimental ?? {}), ...experimental }
+  if (Object.keys(boss).length) {
+    patch.boss = { ...cfg.boss, ...boss }
   }
 
   const watcherIgnore = parseList(runtime.watcherIgnore)
@@ -630,7 +630,7 @@ function buildSkillsPatch(cfg: Config, state: SettingsState, patch: Record<strin
 
 /** Materialize the runtime boss persona draft. null clears a stored persona;
  * undefined means the draft carries no valid intent and nothing is emitted. */
-function bossPersonaFromRuntime(runtime: SettingsState["runtime"]): Record<string, unknown> | null | undefined {
+function bossPersonaFromRuntime(runtime: SettingsState["runtime"]): NonNullable<Config["boss"]>["persona"] {
   const { bossPersonaPreset } = runtime
   if (bossPersonaPreset === "none") return null
   if (bossPersonaPreset === "custom") {

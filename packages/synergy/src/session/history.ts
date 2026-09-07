@@ -7,7 +7,7 @@ import { ScopeContext } from "@/scope/context"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { fn } from "@/util/fn"
-import { Flag } from "@/flag/flag"
+import { Config } from "@/config/config"
 import { Log } from "@/util/log"
 import { MessageV2 } from "./message-v2"
 import { SessionMessageCache } from "./message-cache"
@@ -322,9 +322,10 @@ export namespace SessionHistory {
   }
 
   export async function modelMessages(input: { sessionID: string; onLoadParts?: (messageID: string) => void }) {
-    const useCache = !Flag.SYNERGY_DISABLE_MESSAGE_CACHE
+    const policy = (await Config.current()).execution?.messageCache
+    const useCache = policy?.enabled !== false
     let cached = useCache ? SessionMessageCache.get(input.sessionID) : undefined
-    if (cached && Flag.SYNERGY_VERIFY_MESSAGE_CACHE) {
+    if (cached && policy?.verify) {
       const disk = await loadModelMessages(input)
       if (JSON.stringify(disk) !== JSON.stringify(cached)) {
         log.error("session model message cache diverged from disk; falling back", { sessionID: input.sessionID })

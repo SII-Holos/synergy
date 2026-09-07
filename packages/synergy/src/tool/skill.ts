@@ -82,6 +82,14 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
       if (params.reference) {
         const content = await entry.reference(params.reference)
         if (!content) throw new Error(`Reference "${params.reference}" not found in skill "${params.name}".`)
+        await ctx.captureResult?.({
+          content,
+          source: entry.source,
+          scope: entry.scope,
+          directory: entry.directory,
+          reference: params.reference,
+          sha256: new Bun.CryptoHasher("sha256").update(content).digest("hex"),
+        })
         return {
           title: `Loaded reference: ${params.name}/${params.reference}`,
           output: content.trim(),
@@ -110,7 +118,16 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
       if (entry.unsupported.length > 0) {
         parts.push("", "**Unsupported**:", ...entry.unsupported.map((item) => `- ${item}`))
       }
-      parts.push("", (await entry.content()).trim())
+      const content = await entry.content()
+      await ctx.captureResult?.({
+        content,
+        source: entry.source,
+        scope: entry.scope,
+        directory: entry.directory,
+        references,
+        sha256: new Bun.CryptoHasher("sha256").update(content).digest("hex"),
+      })
+      parts.push("", content.trim())
       return {
         title: `Loaded skill: ${entry.name}`,
         output: parts.join("\n"),

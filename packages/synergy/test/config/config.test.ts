@@ -2254,7 +2254,7 @@ test("experimental.mcp_timeout does not break config loading", async () => {
     fn: async () => {
       const config = await Config.current()
       expect(config.mcp?.mymcp).toBeDefined()
-      expect(config.experimental?.mcp_timeout).toBe(60000)
+      expect(config.mcpDefaults?.callTimeout).toBe(60000)
     },
   })
 })

@@ -1,4 +1,8 @@
 async function bootstrap(): Promise<void> {
+  if (process.argv.some((arg) => arg.startsWith("__") && arg.endsWith("-runner"))) {
+    const { Global } = await import("./global")
+    await Global.initialize({ cache: false })
+  }
   if (process.argv.includes("__browser-playwright-runtime-check")) {
     const { PlaywrightRuntime } = await import("./browser/playwright-runtime.js")
     console.log(`Playwright Core ${PlaywrightRuntime.version()}`)

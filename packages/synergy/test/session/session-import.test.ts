@@ -70,6 +70,50 @@ async function writeExchange(sessionID: string, text: string, metadata?: Record<
 }
 
 describe("SessionImport", () => {
+  test("marks missing originals when importing a transcript without its artifact files", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const source = await Session.create({})
+        await writeExchange(source.id, "test")
+        const messages = await Session.messages({ sessionID: source.id })
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          sessionID: source.id,
+          messageID: messages[1].info.id,
+          type: "tool",
+          tool: "read",
+          callID: "test-call",
+          state: {
+            status: "completed",
+            input: {},
+            output: "x".repeat(50_000),
+            title: "read",
+            metadata: {},
+            time: { start: 1, end: 2 },
+          },
+        })
+        const report = await SessionExport.generate({ sessionID: source.id, mode: "full" })
+        await Session.remove(source.id)
+        const imported = await SessionImport.fromReport(report)
+        try {
+          expect(imported.warnings.some((warning) => warning.includes("artifact"))).toBe(true)
+          const parts = (await Session.messages({ sessionID: imported.rootSessionID })).flatMap(
+            (message) => message.parts,
+          )
+          const tool = parts.find((part) => part.type === "tool")
+          if (!tool || tool.type !== "tool" || tool.state.status !== "completed")
+            throw new Error("Expected imported tool")
+          expect(tool.state.metadata.rolloutImportMissingOutput).toBeDefined()
+          expect(tool.state.outputArtifact?.id).not.toBe(tool.state.metadata.rolloutImportMissingOutput.id)
+        } finally {
+          await Session.remove(imported.rootSessionID)
+        }
+      },
+    })
+  })
+
   test("imports gzipped full export reports with session tree data and indexes", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

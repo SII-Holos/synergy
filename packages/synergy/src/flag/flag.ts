@@ -4,12 +4,10 @@ export namespace Flag {
   export const SYNERGY_CONFIG_DIR = process.env["SYNERGY_CONFIG_DIR"]
   export const SYNERGY_CONFIG_CONTENT = process.env["SYNERGY_CONFIG_CONTENT"]
   export const SYNERGY_DISABLE_AUTOUPDATE = truthy("SYNERGY_DISABLE_AUTOUPDATE")
-  export const SYNERGY_DISABLE_PRUNE = truthy("SYNERGY_DISABLE_PRUNE")
   export const SYNERGY_DISABLE_TERMINAL_TITLE = truthy("SYNERGY_DISABLE_TERMINAL_TITLE")
   export const SYNERGY_PERMISSION = process.env["SYNERGY_PERMISSION"]
   export const SYNERGY_DISABLE_DEFAULT_PLUGINS = truthy("SYNERGY_DISABLE_DEFAULT_PLUGINS")
   export const SYNERGY_DISABLE_LSP_DOWNLOAD = truthy("SYNERGY_DISABLE_LSP_DOWNLOAD")
-  export const SYNERGY_DISABLE_AUTOCOMPACT = truthy("SYNERGY_DISABLE_AUTOCOMPACT")
   export const SYNERGY_DISABLE_MODELS_FETCH = truthy("SYNERGY_DISABLE_MODELS_FETCH")
   export const SYNERGY_DISABLE_FILEWATCHER = truthy("SYNERGY_DISABLE_FILEWATCHER")
   export const SYNERGY_DISABLE_CLAUDE_CODE = truthy("SYNERGY_DISABLE_CLAUDE_CODE")
@@ -21,19 +19,6 @@ export namespace Flag {
   export const SYNERGY_CLIENT = process.env["SYNERGY_CLIENT"] ?? "cli"
   export const SYNERGY_CWD = process.env["SYNERGY_CWD"]
   export const SYNERGY_BUG_REPORT_URL = process.env["SYNERGY_BUG_REPORT_URL"]
-  // Experimental
-  export const SYNERGY_EXPERIMENTAL = truthy("SYNERGY_EXPERIMENTAL")
-  export const SYNERGY_EXPERIMENTAL_OXFMT = SYNERGY_EXPERIMENTAL || truthy("SYNERGY_EXPERIMENTAL_OXFMT")
-  export const SYNERGY_EXPERIMENTAL_LSP_TY = truthy("SYNERGY_EXPERIMENTAL_LSP_TY")
-  export const SYNERGY_EXPERIMENTAL_LSP_TOOL = SYNERGY_EXPERIMENTAL || truthy("SYNERGY_EXPERIMENTAL_LSP_TOOL")
-  // Escape hatch for the loop-scoped in-memory session message cache (#350 D2).
-  export const SYNERGY_DISABLE_MESSAGE_CACHE = truthy("SYNERGY_DISABLE_MESSAGE_CACHE")
-  // Escape hatch for idle LSP client reaping (#350 D3).
-  export const SYNERGY_DISABLE_LSP_REAP = truthy("SYNERGY_DISABLE_LSP_REAP")
-  // Cross-check the message cache against a fresh disk read on every read and
-  // fall back to disk on mismatch. For tests/soak; off by default.
-  export const SYNERGY_VERIFY_MESSAGE_CACHE = truthy("SYNERGY_VERIFY_MESSAGE_CACHE")
-
   function truthy(key: string) {
     const value = process.env[key]?.toLowerCase()
     return value === "true" || value === "1"
