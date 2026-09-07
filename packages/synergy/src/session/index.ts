@@ -1,3 +1,5 @@
+import { SnapshotLifecycle } from "./snapshot-lifecycle"
+import { SnapshotRecords } from "./snapshot-records"
 import { Decimal } from "decimal.js"
 import z from "zod"
 import { type LanguageModelUsage, type ProviderMetadata } from "ai"
@@ -557,35 +559,40 @@ export namespace Session {
           title: source.title,
         },
       })
-      const messageMap = new Map<string, string>()
-      for (const msg of msgs) {
-        // "before" stops at the target message (exclusive); "through" copies
-        // the target message and stops after it (inclusive).
-        if (forkPoint && msg.info.id === forkPoint && !includeForkPoint) break
-        const id = Identifier.ascending("message")
-        messageMap.set(msg.info.id, id)
-        const cloned = await updateMessage({
-          ...msg.info,
-          sessionID: session.id,
-          id,
-          ...("parentID" in msg.info && typeof msg.info.parentID === "string"
-            ? { parentID: messageMap.get(msg.info.parentID) ?? msg.info.parentID }
-            : {}),
+      const selected = forkPoint
+        ? msgs.slice(0, msgs.findIndex((msg) => msg.info.id === forkPoint) + (includeForkPoint ? 1 : 0))
+        : msgs
+      try {
+        await SnapshotLifecycle.adopt({
+          scopeID: source.scope.id,
+          sourceSessionID: source.id,
+          targetSessionID: session.id,
+          workspace: source.workspace?.path ?? ScopeContext.current.directory,
+          hashes: selected.flatMap((msg) => msg.parts.flatMap(SnapshotRecords.partRoots)),
         })
-
-        for (const part of msg.parts) {
-          await updatePart({
-            ...part,
-            id: Identifier.ascending("part"),
-            messageID: cloned.id,
+        const messageMap = new Map<string, string>()
+        for (const msg of selected) {
+          const id = Identifier.ascending("message")
+          messageMap.set(msg.info.id, id)
+          const cloned = await updateMessage({
+            ...msg.info,
             sessionID: session.id,
+            id,
+            ...("parentID" in msg.info && typeof msg.info.parentID === "string"
+              ? { parentID: messageMap.get(msg.info.parentID) ?? msg.info.parentID }
+              : {}),
           })
+
+          for (const part of msg.parts) {
+            await updatePart({
+              ...part,
+              id: Identifier.ascending("part"),
+              messageID: cloned.id,
+              sessionID: session.id,
+            })
+          }
         }
 
-        if (includeForkPoint && forkPoint && msg.info.id === forkPoint) break
-      }
-
-      try {
         session = await applyWorkspaceSelection(session.id, input.workspace)
       } catch (error) {
         await remove(session.id)
@@ -1072,6 +1079,7 @@ export namespace Session {
       for (const child of await children(sessionID)) {
         await removeInternal(child.id, removed)
       }
+      await SnapshotLifecycle.beginDelete(scope.id, sessionID)
       await SessionProjectHealth.detachWorktreeSession(sessionID).catch((error) => {
         log.warn("failed to detach worktree during session removal", { sessionID, error })
       })
@@ -1087,6 +1095,7 @@ export namespace Session {
       if (session.parentID) await removeChildIndexEntry(scope.id, session.parentID, sessionID)
       await SessionSearchIndex.removeRecords(scopeID, canonicalSessionID)
       await removeChildIndex(scope.id, sessionID)
+      await SnapshotLifecycle.completeDelete(scope.id, sessionID)
       removed.push(session)
     } catch (e) {
       log.error(e)

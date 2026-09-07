@@ -1,3 +1,4 @@
+import { SnapshotLifecycle } from "../session/snapshot-lifecycle"
 import { Log } from "@/util/log"
 import { Format } from "@/file/format"
 import { FileWatcher } from "@/file/watcher"
@@ -67,6 +68,7 @@ export namespace ScopeStartup {
     {
       name: "session-recovery",
       init: async (scope) => {
+        await SnapshotLifecycle.recover(scope.id)
         await SessionRecovery.reconcileRuntimeState({ scopeID: scope.id, apply: true }).catch((error) => {
           log.warn("session runtime recovery failed", { scopeID: scope.id, error })
         })

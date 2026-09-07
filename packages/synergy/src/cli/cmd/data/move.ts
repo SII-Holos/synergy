@@ -1,3 +1,4 @@
+import { SnapshotArchive } from "../../../session/snapshot-archive"
 import fs from "fs/promises"
 import path from "path"
 import os from "os"
@@ -5,8 +6,8 @@ import * as prompts from "@clack/prompts"
 import { cmd } from "../cmd"
 import { UI } from "../../../util/ui"
 import { Global } from "../../../global"
-import { ServerProcessLock } from "../../../util/server-process-lock"
 import {
+  archiveExclusions,
   CATEGORIES,
   scanCategories,
   formatSize,
@@ -154,28 +155,7 @@ export async function executeMove(opts: MoveOptions) {
     return
   }
 
-  // Step 4: Check running server
-  const lock = await ServerProcessLock.read().catch(() => undefined)
-  if (lock && isPidAlive(lock.pid)) {
-    prompts.log.warn(
-      `Synergy server is running (pid ${lock.pid}). Moving data while running may produce inconsistent results.`,
-    )
-    const stopFirst = await prompts.confirm({
-      message: "Stop the running server before continuing?",
-      initialValue: true,
-    })
-    if (stopFirst === true) {
-      try {
-        process.kill(lock.pid, "SIGTERM")
-        await Bun.sleep(2000)
-        prompts.log.info("Server stopped")
-      } catch {
-        prompts.log.error("Failed to stop server. Please stop it manually and retry.")
-        prompts.outro("Move aborted")
-        return
-      }
-    }
-  }
+  await using homes = await SnapshotArchive.lockHomes([sourceRoot, targetPath])
 
   // Step 5: Handle library.db if core is selected
   let libraryStrategy: LibraryConflictStrategy = "skip"
@@ -265,10 +245,18 @@ export async function executeMove(opts: MoveOptions) {
       spinner.start(`Moving ${subdir}/ (${formatSize(catSize)})...`)
 
       try {
-        const result = await copyDirSkipExisting(src, dst, (p) => {
-          const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
-          spinner.message(`Moving ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
-        })
+        if (subdir === "data") await SnapshotArchive.merge(src, dst)
+        const result = await copyDirSkipExisting(
+          src,
+          dst,
+          (p) => {
+            const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
+            spinner.message(`Moving ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
+          },
+          undefined,
+          undefined,
+          archiveExclusions(subdir),
+        )
         const skippedNote = result.skipped > 0 ? ` (${result.skipped} existing files kept)` : ""
         spinner.stop(`Moved ${subdir}/${skippedNote}`)
       } catch (e) {
@@ -314,15 +302,6 @@ export async function executeMove(opts: MoveOptions) {
   prompts.log.info("Restart any running synergy servers to use the new location")
 
   prompts.outro("Done")
-}
-
-function isPidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch {
-    return false
-  }
 }
 
 async function scanDir(dir: string): Promise<{ size: number }> {

@@ -19,6 +19,19 @@ async function tempFiles(root: string[]): Promise<string[]> {
 }
 
 describe("Storage atomic write transient-failure retry", () => {
+  test("durable write failure leaves the previous record intact", async () => {
+    const root = keyRoot()
+    const key = [...root, "durable"]
+    await Storage.write(key, { phase: "old" })
+    const realOpen = fs.open.bind(fs)
+    using _open = spyOn(fs, "open").mockImplementation((async (file, ...args) => {
+      if (String(file).includes(".tmp-")) throw errnoError("ENOSPC")
+      return realOpen(file, ...args)
+    }) as typeof fs.open)
+    await expect(Storage.write(key, { phase: "new" }, { durable: true })).rejects.toMatchObject({ code: "ENOSPC" })
+    expect(await Storage.read<{ phase: string }>(key)).toEqual({ phase: "old" })
+    expect(await tempFiles(root)).toEqual([])
+  })
   test("retries a transient EPERM on rename and persists the payload", async () => {
     const root = keyRoot()
     const realRename: typeof fs.rename = fs.rename.bind(fs)
