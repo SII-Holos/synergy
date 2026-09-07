@@ -1,6 +1,10 @@
+import { ProviderPricing } from "@/provider/pricing"
 import z from "zod"
 import { Log } from "../util/log"
 import { Config } from "../config/config"
+import { RolloutOperation } from "@/session/rollout/operation"
+import { RolloutTransport } from "@/session/rollout/transport"
+import { RolloutContext } from "@/session/rollout/context"
 
 export namespace Rerank {
   const log = Log.create({ service: "vector.rerank" })
@@ -27,36 +31,56 @@ export namespace Rerank {
     using _ = log.time("rerank", { documents: input.documents.length, topN: input.topN })
     const resolved = await resolveConfig()
 
-    const response = await fetch(`${resolved.baseURL}/rerank`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${resolved.apiKey}`,
+    const request = {
+      model: resolved.model,
+      query: input.query,
+      documents: input.documents,
+      top_n: input.topN ?? input.documents.length,
+      return_documents: false,
+    }
+    return RolloutOperation.execute(
+      {
+        purpose: "rerank",
+        kind: "rerank",
+        model: {
+          providerID: "rerank",
+          modelID: resolved.model,
+          sdk: "@ai-sdk/openai-compatible",
+          pricing: resolved.pricing,
+        },
+        request,
       },
-      body: JSON.stringify({
-        model: resolved.model,
-        query: input.query,
-        documents: input.documents,
-        top_n: input.topN ?? input.documents.length,
-        return_documents: false,
-      }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    })
+      async () => {
+        const response = await RolloutTransport.fetch(fetch, `${resolved.baseURL}/rerank`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${resolved.apiKey}`,
+          },
+          body: JSON.stringify(request),
+          signal: AbortSignal.any([
+            AbortSignal.timeout(TIMEOUT_MS),
+            ...(RolloutContext.current()?.signal ? [RolloutContext.current()!.signal!] : []),
+          ]),
+        })
 
-    if (!response.ok) {
-      const body = await response.text().catch(() => "")
-      throw new Error(`Rerank API error ${response.status}: ${body}`)
-    }
+        if (!response.ok) {
+          const body = await response.text()
+          throw new Error(`Rerank API error ${response.status}: ${body}`)
+        }
 
-    const data = (await response.json()) as {
-      results: Array<{ index: number; relevance_score: number; document?: { text: string } }>
-    }
+        const data = (await response.json()) as {
+          results: Array<{ index: number; relevance_score: number; document?: { text: string } }>
+        }
 
-    return data.results.map((r) => ({
-      index: r.index,
-      relevanceScore: r.relevance_score,
-      document: r.document?.text,
-    }))
+        const value = data.results.map((r) => ({
+          index: r.index,
+          relevanceScore: r.relevance_score,
+          document: r.document?.text,
+        }))
+        return { value, response: JSON.parse(JSON.stringify(data)) }
+      },
+    )
   }
 
   async function resolveConfig() {
@@ -74,6 +98,16 @@ export namespace Rerank {
       )
     }
 
-    return { baseURL, apiKey, model }
+    return {
+      baseURL,
+      apiKey,
+      model,
+      pricing: ProviderPricing.resolve({
+        providerID: "rerank",
+        modelID: model,
+        cost: rerankConfig?.cost,
+        source: "configuration",
+      }),
+    }
   }
 }

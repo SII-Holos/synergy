@@ -1,3 +1,4 @@
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { createMemo, createSignal, Match, Show, Switch } from "solid-js"
 import { Line } from "solid-chartjs"
 import {
@@ -32,7 +33,7 @@ type DailyPoint = {
 type RangeDef = { label: string; value: Range }
 
 function totalTokens(tokens: StatsSnapshot["timeSeries"]["days"][number]["tokens"]): number {
-  return tokens.input + tokens.output + tokens.reasoning + tokens.cache.read + tokens.cache.write
+  return ModelLimit.totalTokens(tokens)
 }
 
 function formatTokenValue(value: number): string {

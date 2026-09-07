@@ -235,7 +235,7 @@
       "get": {
         "operationId": "global.stats.get",
         "summary": "Get stats snapshot",
-        "description": "Get the full stats snapshot. Returns cached snapshot if available, otherwise computes incrementally. Use ?recompute=true to force a full recompute from scratch.",
+        "description": "Get the full stats snapshot after incrementally refreshing changed session and rollout records. Use ?recompute=true to force a full recompute from scratch.",
         "responses": {
           "200": {
             "description": "Stats snapshot",
@@ -403,6 +403,9 @@
                             "cost": {
                               "type": "number"
                             },
+                            "accounting": {
+                              "$ref": "#/components/schemas/RolloutAccountingSummary"
+                            },
                             "cacheHitRate": {
                               "type": "number"
                             },
@@ -479,6 +482,9 @@
                                   "cost": {
                                     "type": "number"
                                   },
+                                  "accounting": {
+                                    "$ref": "#/components/schemas/RolloutAccountingSummary"
+                                  },
                                   "avgResponseMs": {
                                     "type": "number"
                                   }
@@ -543,6 +549,9 @@
                                   },
                                   "cost": {
                                     "type": "number"
+                                  },
+                                  "accounting": {
+                                    "$ref": "#/components/schemas/RolloutAccountingSummary"
                                   },
                                   "subagentInvocations": {
                                     "type": "number"
@@ -745,6 +754,9 @@
                                   },
                                   "cost": {
                                     "type": "number"
+                                  },
+                                  "accounting": {
+                                    "$ref": "#/components/schemas/RolloutAccountingSummary"
                                   },
                                   "additions": {
                                     "type": "number"
@@ -6157,6 +6169,276 @@
         ]
       }
     },
+    "/session/{sessionID}/run/{runID}/cancel": {
+      "post": {
+        "operationId": "session.cancelRun",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "runID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Cancel one task and drain its execution",
+        "description": "Close admission for this run, cancel its descendants, and await durable terminal records without cancelling an unrelated session root.",
+        "tags": ["Session"],
+        "responses": {
+          "200": {
+            "description": "Cancelled or already terminal run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RolloutRunRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.cancelRun({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/run/{runID}/result": {
+      "get": {
+        "operationId": "session.runResult",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "runID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Read a task trajectory and accounting",
+        "description": "Read a fixed journal boundary for each related run, including descendant calls and separate reported and estimated costs.",
+        "tags": ["Session"],
+        "responses": {
+          "200": {
+            "description": "Rollout result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RolloutResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.runResult({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/run/{runID}": {
+      "get": {
+        "operationId": "session.run",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "runID",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Get durable task execution status",
+        "description": "Read the persisted run status after execution, descendant delivery, and auxiliary work settle.",
+        "tags": ["Session"],
+        "responses": {
+          "200": {
+            "description": "Durable run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RolloutRunRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.run({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session": {
       "get": {
         "operationId": "session.list",
@@ -7638,6 +7920,9 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "experiment": {
+                    "$ref": "#/components/schemas/ExperimentFile"
+                  },
                   "messageID": {
                     "type": "string",
                     "pattern": "^msg.*"
@@ -8307,6 +8592,9 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "experiment": {
+                    "$ref": "#/components/schemas/ExperimentFile"
+                  },
                   "messageID": {
                     "type": "string",
                     "pattern": "^msg.*"
@@ -8949,6 +9237,9 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "experiment": {
+                    "$ref": "#/components/schemas/ExperimentFile"
+                  },
                   "messageID": {
                     "type": "string",
                     "pattern": "^msg.*"
@@ -9100,6 +9391,9 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "experiment": {
+                    "$ref": "#/components/schemas/ExperimentFile"
+                  },
                   "messageID": {
                     "type": "string",
                     "pattern": "^msg.*"
@@ -9132,6 +9426,9 @@
                             "type": {
                               "type": "string",
                               "const": "attachment"
+                            },
+                            "artifact": {
+                              "$ref": "#/components/schemas/RolloutArtifactRef"
                             },
                             "mime": {
                               "type": "string"
@@ -10374,6 +10671,22 @@
           },
           {
             "in": "query",
+            "name": "format",
+            "schema": {
+              "default": "json",
+              "type": "string",
+              "enum": ["json", "rollout"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "run",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "mode",
             "schema": {
               "$ref": "#/components/schemas/SessionExportMode"
@@ -10384,7 +10697,21 @@
         "description": "Generate and download exported session data for a session and all its subsessions.",
         "responses": {
           "200": {
-            "description": "Session export as gzipped JSON"
+            "description": "Session export as gzipped JSON or self-contained rollout ZIP",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/gzip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
           },
           "400": {
             "description": "Bad request",
@@ -10445,7 +10772,7 @@
           }
         ],
         "summary": "Import session data",
-        "description": "Import a Synergy session export JSON or gzipped JSON file into the current scope.",
+        "description": "Import a Synergy rollout ZIP, session export JSON, or gzipped JSON file into the current scope.",
         "responses": {
           "200": {
             "description": "Imported session data",
@@ -25950,6 +26277,415 @@
         },
         "required": ["data", "errors", "success"]
       },
+      "RolloutAccountingSummary": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "calls": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "importedCalls": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "localCalls": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "attempts": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "unobservedCalls": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "journalGaps": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "legacy": {
+            "type": "object",
+            "properties": {
+              "cost": {
+                "type": "number"
+              },
+              "messages": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["cost", "messages"],
+            "additionalProperties": false
+          },
+          "tokens": {
+            "type": "object",
+            "properties": {
+              "input": {
+                "type": "object",
+                "properties": {
+                  "known": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "unknown": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "total": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["known", "unknown", "total"],
+                "additionalProperties": false
+              },
+              "uncached": {
+                "type": "object",
+                "properties": {
+                  "known": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "unknown": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "total": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["known", "unknown", "total"],
+                "additionalProperties": false
+              },
+              "cacheRead": {
+                "type": "object",
+                "properties": {
+                  "known": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "unknown": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "total": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["known", "unknown", "total"],
+                "additionalProperties": false
+              },
+              "cacheWrite": {
+                "type": "object",
+                "properties": {
+                  "known": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "unknown": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "total": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["known", "unknown", "total"],
+                "additionalProperties": false
+              },
+              "output": {
+                "type": "object",
+                "properties": {
+                  "known": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "unknown": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "total": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["known", "unknown", "total"],
+                "additionalProperties": false
+              },
+              "reasoning": {
+                "type": "object",
+                "properties": {
+                  "known": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "unknown": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "total": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["known", "unknown", "total"],
+                "additionalProperties": false
+              },
+              "total": {
+                "type": "object",
+                "properties": {
+                  "known": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "unknown": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "total": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["known", "unknown", "total"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["input", "uncached", "cacheRead", "cacheWrite", "output", "reasoning", "total"],
+            "additionalProperties": false
+          },
+          "apiEstimate": {
+            "type": "object",
+            "properties": {
+              "known": {
+                "type": "number",
+                "minimum": 0
+              },
+              "unknown": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "total": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["known", "unknown", "total"],
+            "additionalProperties": false
+          },
+          "subscriptionEquivalent": {
+            "type": "object",
+            "properties": {
+              "known": {
+                "type": "number",
+                "minimum": 0
+              },
+              "unknown": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "total": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["known", "unknown", "total"],
+            "additionalProperties": false
+          },
+          "reported": {
+            "type": "object",
+            "properties": {
+              "currencies": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "unreported": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["currencies", "unreported"],
+            "additionalProperties": false
+          },
+          "units": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "known": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "unknown": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "total": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": ["known", "unknown", "total"],
+              "additionalProperties": false
+            }
+          },
+          "cacheWrites": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "known": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "unknown": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "total": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": ["known", "unknown", "total"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "version",
+          "calls",
+          "importedCalls",
+          "localCalls",
+          "attempts",
+          "unobservedCalls",
+          "journalGaps",
+          "legacy",
+          "tokens",
+          "apiEstimate",
+          "subscriptionEquivalent",
+          "reported",
+          "units",
+          "cacheWrites"
+        ],
+        "additionalProperties": false
+      },
       "StatsSnapshot": {
         "type": "object",
         "properties": {
@@ -26029,6 +26765,9 @@
               "cost": {
                 "type": "number"
               },
+              "accounting": {
+                "$ref": "#/components/schemas/RolloutAccountingSummary"
+              },
               "cacheHitRate": {
                 "type": "number"
               },
@@ -26105,6 +26844,9 @@
                     "cost": {
                       "type": "number"
                     },
+                    "accounting": {
+                      "$ref": "#/components/schemas/RolloutAccountingSummary"
+                    },
                     "avgResponseMs": {
                       "type": "number"
                     }
@@ -26161,6 +26903,9 @@
                     },
                     "cost": {
                       "type": "number"
+                    },
+                    "accounting": {
+                      "$ref": "#/components/schemas/RolloutAccountingSummary"
                     },
                     "subagentInvocations": {
                       "type": "number"
@@ -26363,6 +27108,9 @@
                     },
                     "cost": {
                       "type": "number"
+                    },
+                    "accounting": {
+                      "$ref": "#/components/schemas/RolloutAccountingSummary"
                     },
                     "additions": {
                       "type": "number"
@@ -30998,6 +31746,318 @@
             },
             "required": ["temperature", "reasoning", "attachment", "toolcall", "input", "output", "interleaved"]
           },
+          "pricing": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "number",
+                    "const": 1
+                  },
+                  "currency": {
+                    "type": "string",
+                    "const": "USD"
+                  },
+                  "unitTokens": {
+                    "type": "number",
+                    "const": 1000000
+                  },
+                  "source": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": ["catalog", "configuration", "mixed"]
+                      },
+                      "providerID": {
+                        "type": "string"
+                      },
+                      "modelID": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["kind", "providerID", "modelID"]
+                  },
+                  "capturedAt": {
+                    "type": "number"
+                  },
+                  "rates": {
+                    "type": "object",
+                    "properties": {
+                      "input": {
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "output": {
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "cacheRead": {
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "cacheWrite": {
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "cacheWrite1h": {
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["input", "output", "cacheRead", "cacheWrite", "cacheWrite1h"],
+                    "additionalProperties": false
+                  },
+                  "over200K": {
+                    "type": "object",
+                    "properties": {
+                      "input": {
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "output": {
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "cacheRead": {
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "cacheWrite": {
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "cacheWrite1h": {
+                        "anyOf": [
+                          {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["input", "output", "cacheRead", "cacheWrite", "cacheWrite1h"],
+                    "additionalProperties": false
+                  },
+                  "contextTiers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "above": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "rates": {
+                          "type": "object",
+                          "properties": {
+                            "input": {
+                              "anyOf": [
+                                {
+                                  "type": "number",
+                                  "minimum": 0
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "output": {
+                              "anyOf": [
+                                {
+                                  "type": "number",
+                                  "minimum": 0
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "cacheRead": {
+                              "anyOf": [
+                                {
+                                  "type": "number",
+                                  "minimum": 0
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "cacheWrite": {
+                              "anyOf": [
+                                {
+                                  "type": "number",
+                                  "minimum": 0
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "cacheWrite1h": {
+                              "anyOf": [
+                                {
+                                  "type": "number",
+                                  "minimum": 0
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": ["input", "output", "cacheRead", "cacheWrite", "cacheWrite1h"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": ["above", "rates"]
+                    }
+                  },
+                  "units": {
+                    "type": "object",
+                    "properties": {
+                      "audio_seconds": {
+                        "type": "object",
+                        "properties": {
+                          "price": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "per": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          }
+                        },
+                        "required": ["price", "per"],
+                        "additionalProperties": false
+                      },
+                      "audio_input_tokens": {
+                        "type": "object",
+                        "properties": {
+                          "price": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "per": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          }
+                        },
+                        "required": ["price", "per"],
+                        "additionalProperties": false
+                      },
+                      "audio_output_tokens": {
+                        "type": "object",
+                        "properties": {
+                          "price": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "per": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          }
+                        },
+                        "required": ["price", "per"],
+                        "additionalProperties": false
+                      },
+                      "characters": {
+                        "type": "object",
+                        "properties": {
+                          "price": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "per": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          }
+                        },
+                        "required": ["price", "per"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "raw": {}
+                },
+                "required": ["version", "currency", "unitTokens", "source", "capturedAt", "rates", "raw"],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "cost": {
             "type": "object",
             "properties": {
@@ -32633,37 +33693,177 @@
                   "type": "object",
                   "properties": {
                     "input": {
-                      "type": "number"
+                      "type": "number",
+                      "minimum": 0
                     },
                     "output": {
-                      "type": "number"
+                      "type": "number",
+                      "minimum": 0
                     },
                     "cache_read": {
-                      "type": "number"
+                      "type": "number",
+                      "minimum": 0
                     },
                     "cache_write": {
-                      "type": "number"
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cache_write_1h": {
+                      "type": "number",
+                      "minimum": 0
                     },
                     "context_over_200k": {
                       "type": "object",
                       "properties": {
                         "input": {
-                          "type": "number"
+                          "type": "number",
+                          "minimum": 0
                         },
                         "output": {
-                          "type": "number"
+                          "type": "number",
+                          "minimum": 0
                         },
                         "cache_read": {
-                          "type": "number"
+                          "type": "number",
+                          "minimum": 0
                         },
                         "cache_write": {
-                          "type": "number"
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "cache_write_1h": {
+                          "type": "number",
+                          "minimum": 0
                         }
                       },
-                      "required": ["input", "output"]
+                      "additionalProperties": false
+                    },
+                    "tiers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "input": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "output": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "cache_read": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "cache_write": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "cache_write_1h": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "tier": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "context"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991
+                              }
+                            },
+                            "required": ["type", "size"],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": ["tier"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "units": {
+                      "type": "object",
+                      "properties": {
+                        "audio_seconds": {
+                          "type": "object",
+                          "properties": {
+                            "price": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "per": {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            }
+                          },
+                          "required": ["price", "per"],
+                          "additionalProperties": false
+                        },
+                        "audio_input_tokens": {
+                          "type": "object",
+                          "properties": {
+                            "price": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "per": {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            }
+                          },
+                          "required": ["price", "per"],
+                          "additionalProperties": false
+                        },
+                        "audio_output_tokens": {
+                          "type": "object",
+                          "properties": {
+                            "price": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "per": {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            }
+                          },
+                          "required": ["price", "per"],
+                          "additionalProperties": false
+                        },
+                        "characters": {
+                          "type": "object",
+                          "properties": {
+                            "price": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "per": {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            }
+                          },
+                          "required": ["price", "per"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "input_audio": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "output_audio": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "reasoning": {
+                      "type": "number",
+                      "minimum": 0
                     }
                   },
-                  "required": ["input", "output"]
+                  "additionalProperties": {}
                 },
                 "limit": {
                   "type": "object",
@@ -32849,6 +34049,171 @@
         "description": "Embedding model configuration. When absent, a local model is used automatically.",
         "type": "object",
         "properties": {
+          "cost": {
+            "description": "Explicit model prices in USD: token rates per million, unit rates per declared quantity",
+            "type": "object",
+            "properties": {
+              "input": {
+                "type": "number",
+                "minimum": 0
+              },
+              "output": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cache_read": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cache_write": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cache_write_1h": {
+                "type": "number",
+                "minimum": 0
+              },
+              "context_over_200k": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "output": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "cache_read": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "cache_write": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "cache_write_1h": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              },
+              "tiers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "output": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cache_read": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cache_write": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cache_write_1h": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "tier": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "context"
+                        },
+                        "size": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": ["type", "size"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["tier"],
+                  "additionalProperties": false
+                }
+              },
+              "units": {
+                "type": "object",
+                "properties": {
+                  "audio_seconds": {
+                    "type": "object",
+                    "properties": {
+                      "price": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "per": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": ["price", "per"],
+                    "additionalProperties": false
+                  },
+                  "audio_input_tokens": {
+                    "type": "object",
+                    "properties": {
+                      "price": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "per": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": ["price", "per"],
+                    "additionalProperties": false
+                  },
+                  "audio_output_tokens": {
+                    "type": "object",
+                    "properties": {
+                      "price": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "per": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": ["price", "per"],
+                    "additionalProperties": false
+                  },
+                  "characters": {
+                    "type": "object",
+                    "properties": {
+                      "price": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "per": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": ["price", "per"],
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
           "baseURL": {
             "description": "Base URL for the embedding API",
             "type": "string"
@@ -32871,6 +34236,171 @@
         "description": "Rerank model for memory retrieval refinement. Disabled when not configured.",
         "type": "object",
         "properties": {
+          "cost": {
+            "description": "Explicit model prices in USD: token rates per million, unit rates per declared quantity",
+            "type": "object",
+            "properties": {
+              "input": {
+                "type": "number",
+                "minimum": 0
+              },
+              "output": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cache_read": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cache_write": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cache_write_1h": {
+                "type": "number",
+                "minimum": 0
+              },
+              "context_over_200k": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "output": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "cache_read": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "cache_write": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "cache_write_1h": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              },
+              "tiers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "output": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cache_read": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cache_write": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cache_write_1h": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "tier": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "context"
+                        },
+                        "size": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": ["type", "size"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["tier"],
+                  "additionalProperties": false
+                }
+              },
+              "units": {
+                "type": "object",
+                "properties": {
+                  "audio_seconds": {
+                    "type": "object",
+                    "properties": {
+                      "price": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "per": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": ["price", "per"],
+                    "additionalProperties": false
+                  },
+                  "audio_input_tokens": {
+                    "type": "object",
+                    "properties": {
+                      "price": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "per": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": ["price", "per"],
+                    "additionalProperties": false
+                  },
+                  "audio_output_tokens": {
+                    "type": "object",
+                    "properties": {
+                      "price": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "per": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": ["price", "per"],
+                    "additionalProperties": false
+                  },
+                  "characters": {
+                    "type": "object",
+                    "properties": {
+                      "price": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "per": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": ["price", "per"],
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
           "baseURL": {
             "description": "Base URL for the rerank API",
             "type": "string"
@@ -32890,6 +34420,171 @@
         "description": "Speech-to-text service configuration",
         "type": "object",
         "properties": {
+          "cost": {
+            "description": "Explicit model prices in USD: token rates per million, unit rates per declared quantity",
+            "type": "object",
+            "properties": {
+              "input": {
+                "type": "number",
+                "minimum": 0
+              },
+              "output": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cache_read": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cache_write": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cache_write_1h": {
+                "type": "number",
+                "minimum": 0
+              },
+              "context_over_200k": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "output": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "cache_read": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "cache_write": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "cache_write_1h": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              },
+              "tiers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "output": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cache_read": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cache_write": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cache_write_1h": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "tier": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "context"
+                        },
+                        "size": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": ["type", "size"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["tier"],
+                  "additionalProperties": false
+                }
+              },
+              "units": {
+                "type": "object",
+                "properties": {
+                  "audio_seconds": {
+                    "type": "object",
+                    "properties": {
+                      "price": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "per": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": ["price", "per"],
+                    "additionalProperties": false
+                  },
+                  "audio_input_tokens": {
+                    "type": "object",
+                    "properties": {
+                      "price": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "per": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": ["price", "per"],
+                    "additionalProperties": false
+                  },
+                  "audio_output_tokens": {
+                    "type": "object",
+                    "properties": {
+                      "price": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "per": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": ["price", "per"],
+                    "additionalProperties": false
+                  },
+                  "characters": {
+                    "type": "object",
+                    "properties": {
+                      "price": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "per": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": ["price", "per"],
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
           "baseURL": {
             "description": "Base URL for the speech-to-text API (OpenAI-compatible)",
             "type": "string"
@@ -32913,6 +34608,171 @@
         "description": "Text-to-speech service configuration",
         "type": "object",
         "properties": {
+          "cost": {
+            "description": "Explicit model prices in USD: token rates per million, unit rates per declared quantity",
+            "type": "object",
+            "properties": {
+              "input": {
+                "type": "number",
+                "minimum": 0
+              },
+              "output": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cache_read": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cache_write": {
+                "type": "number",
+                "minimum": 0
+              },
+              "cache_write_1h": {
+                "type": "number",
+                "minimum": 0
+              },
+              "context_over_200k": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "output": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "cache_read": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "cache_write": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "cache_write_1h": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              },
+              "tiers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "output": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cache_read": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cache_write": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "cache_write_1h": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "tier": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "context"
+                        },
+                        "size": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": ["type", "size"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["tier"],
+                  "additionalProperties": false
+                }
+              },
+              "units": {
+                "type": "object",
+                "properties": {
+                  "audio_seconds": {
+                    "type": "object",
+                    "properties": {
+                      "price": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "per": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": ["price", "per"],
+                    "additionalProperties": false
+                  },
+                  "audio_input_tokens": {
+                    "type": "object",
+                    "properties": {
+                      "price": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "per": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": ["price", "per"],
+                    "additionalProperties": false
+                  },
+                  "audio_output_tokens": {
+                    "type": "object",
+                    "properties": {
+                      "price": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "per": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": ["price", "per"],
+                    "additionalProperties": false
+                  },
+                  "characters": {
+                    "type": "object",
+                    "properties": {
+                      "price": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "per": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": ["price", "per"],
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
           "baseURL": {
             "description": "Base URL for the text-to-speech API (OpenAI-compatible)",
             "type": "string"
@@ -33979,6 +35839,10 @@
         "description": "Local logs, indexed telemetry, and diagnostics settings",
         "type": "object",
         "properties": {
+          "modelSpans": {
+            "description": "Record AI SDK model spans (default: false)",
+            "type": "boolean"
+          },
           "enabled": {
             "description": "Enable local indexed observability events, spans, metrics, issues, and diagnostics (default: true)",
             "type": "boolean"
@@ -34488,6 +36352,13 @@
             "description": "Cortex task scheduling configuration",
             "type": "object",
             "properties": {
+              "primaryOnlyTools": {
+                "description": "Tools excluded from delegated agents",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
               "maxConcurrentTasks": {
                 "description": "Maximum number of Cortex subagent tasks that may run concurrently (default: 8)",
                 "type": "integer",
@@ -34501,6 +36372,26 @@
             "description": "Process isolation, worker recycling, and bounded execution scheduling",
             "type": "object",
             "properties": {
+              "continueOnDeny": {
+                "description": "Continue the loop after a denied tool call (default: false)",
+                "type": "boolean"
+              },
+              "messageCache": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "verify": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "lspIdleReap": {
+                "description": "Reap idle language servers (default: true)",
+                "type": "boolean"
+              },
               "agentWorkers": {
                 "description": "Maximum number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)",
                 "type": "integer",
@@ -34987,6 +36878,7 @@
                       "type": "object",
                       "properties": {
                         "command": {
+                          "minItems": 1,
                           "type": "array",
                           "items": {
                             "type": "string"
@@ -35017,8 +36909,7 @@
                           },
                           "additionalProperties": {}
                         }
-                      },
-                      "required": ["command"]
+                      }
                     }
                   ]
                 }
@@ -35130,43 +37021,14 @@
               }
             }
           },
-          "experimental": {
+          "boss": {
             "type": "object",
             "properties": {
-              "batch_tool": {
-                "description": "Enable the batch tool",
-                "type": "boolean"
-              },
-              "coauthor_reminder": {
-                "description": "Include the git commit Co-authored-by footer reminder in agent prompts",
-                "type": "boolean"
-              },
-              "openTelemetry": {
-                "description": "Enable OpenTelemetry spans for AI SDK calls (using the 'experimental_telemetry' flag)",
-                "type": "boolean"
-              },
-              "primary_tools": {
-                "description": "Tools that should only be available to primary agents.",
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "continue_loop_on_deny": {
-                "description": "Continue the agent loop when a tool call is denied",
-                "type": "boolean"
-              },
-              "mcp_timeout": {
-                "description": "Timeout in milliseconds for model context protocol (MCP) requests",
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
-              },
-              "boss_mode": {
+              "enabled": {
                 "description": "Enable Runtime Boss Mode: auto-provision a home-scope runtime boss session and route all Feishu messages to it",
                 "type": "boolean"
               },
-              "boss_identity_text": {
+              "identityText": {
                 "description": "Optional colleague identity description injected into the runtime boss session",
                 "anyOf": [
                   {
@@ -35177,7 +37039,7 @@
                   }
                 ]
               },
-              "boss_briefing_interval_days": {
+              "briefingIntervalDays": {
                 "description": "Re-inject the versioned world-overview briefing every N days (default: disabled)",
                 "anyOf": [
                   {
@@ -35190,8 +37052,8 @@
                   }
                 ]
               },
-              "boss_persona": {
-                "description": "Colleague persona preset for the runtime boss: a built-in personality (project_manager or ops_assistant) or a custom blend of four 0..1 traits. Pass null to clear. When unset, boss_identity_text (legacy) or the default colleague identity is used.",
+              "persona": {
+                "description": "Colleague persona preset for the runtime boss: a built-in personality (project_manager or ops_assistant) or a custom blend of four 0..1 traits. Pass null to clear. When unset, identityText (legacy) or the default colleague identity is used.",
                 "anyOf": [
                   {
                     "anyOf": [
@@ -35252,7 +37114,28 @@
                   }
                 ]
               }
-            }
+            },
+            "additionalProperties": false
+          },
+          "prompt": {
+            "type": "object",
+            "properties": {
+              "coauthorReminder": {
+                "description": "Include the git coauthor reminder in agent prompts (default: true)",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "toolExposure": {
+            "type": "object",
+            "properties": {
+              "lsp": {
+                "description": "Expose the LSP tool; permission checks still apply (default: false)",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
           },
           "pluginConfig": {
             "description": "Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.",
@@ -35693,6 +37576,9 @@
           "completedAt": {
             "type": "number"
           },
+          "settledAt": {
+            "type": "number"
+          },
           "status": {
             "type": "string",
             "enum": ["queued", "running", "completed", "error", "cancelled", "interrupted"]
@@ -35878,6 +37764,9 @@
               },
               "cost": {
                 "type": "number"
+              },
+              "accounting": {
+                "$ref": "#/components/schemas/RolloutAccountingSummary"
               }
             },
             "required": [
@@ -36861,6 +38750,9 @@
               },
               "cost": {
                 "type": "number"
+              },
+              "accounting": {
+                "$ref": "#/components/schemas/RolloutAccountingSummary"
               }
             },
             "required": [
@@ -38275,6 +40167,2180 @@
         },
         "required": ["items", "nextCursor", "total"]
       },
+      "RolloutArtifactRef": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "mediaType": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "chunks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["partial", "complete"]
+          }
+        },
+        "required": ["version", "id", "mediaType", "bytes", "chunks", "sha256", "status"],
+        "additionalProperties": false
+      },
+      "ExperimentOverrides": {
+        "default": {},
+        "type": "object",
+        "properties": {
+          "compaction": {
+            "type": "object",
+            "properties": {
+              "auto": {
+                "description": "Enable automatic compaction when context is full (default: true)",
+                "type": "boolean"
+              },
+              "prune": {
+                "description": "Enable pruning of old tool outputs (default: true)",
+                "type": "boolean"
+              },
+              "overflowThreshold": {
+                "description": "Fraction of usable context that triggers auto-compaction (default: 0.85)",
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 1
+              },
+              "maxHistoryImages": {
+                "description": "Maximum number of historical images to send as base64 per request (older images replaced with text placeholders). Default: 8.",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "codexRemote": {
+                "description": "Enable Codex Remote Compaction V2 for openai-codex sessions: request an opaque server-side compaction artifact alongside the local text summary and replay it on later same-model turns (default: false).",
+                "type": "boolean"
+              }
+            }
+          },
+          "prompt": {
+            "type": "object",
+            "properties": {
+              "coauthorReminder": {
+                "description": "Include the git coauthor reminder in agent prompts (default: true)",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "toolExposure": {
+            "type": "object",
+            "properties": {
+              "lsp": {
+                "description": "Expose the LSP tool; permission checks still apply (default: false)",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "lspWriteDiagnostics": {
+            "description": "Include LSP diagnostics after file-writing tools complete (default: true)",
+            "type": "boolean"
+          },
+          "lspDiagnostics": {
+            "description": "Severity and scope policy for diagnostics returned after file-writing tools",
+            "type": "object",
+            "properties": {
+              "severity": {
+                "type": "string",
+                "enum": ["error", "warning"]
+              },
+              "scope": {
+                "type": "string",
+                "enum": ["delta", "file", "project"]
+              }
+            }
+          },
+          "model": {
+            "description": "Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5",
+            "type": "string"
+          },
+          "nano_model": {
+            "description": "Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model.",
+            "type": "string"
+          },
+          "mini_model": {
+            "description": "Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model.",
+            "type": "string"
+          },
+          "mid_model": {
+            "description": "Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model.",
+            "type": "string"
+          },
+          "thinking_model": {
+            "description": "Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set.",
+            "type": "string"
+          },
+          "long_context_model": {
+            "description": "Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set.",
+            "type": "string"
+          },
+          "creative_model": {
+            "description": "Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set.",
+            "type": "string"
+          },
+          "vision_model": {
+            "description": "Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability.",
+            "type": "string"
+          },
+          "role_variant": {
+            "description": "Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "execution": {
+            "type": "object",
+            "properties": {
+              "continueOnDeny": {
+                "description": "Continue the loop after a denied tool call (default: false)",
+                "type": "boolean"
+              },
+              "messageCache": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "verify": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "cortex": {
+            "type": "object",
+            "properties": {
+              "primaryOnlyTools": {
+                "description": "Tools excluded from delegated agents",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExperimentRuntime": {
+        "default": {},
+        "type": "object",
+        "properties": {
+          "lsp": {
+            "anyOf": [
+              {
+                "type": "boolean",
+                "const": false
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "disabled": {
+                          "type": "boolean",
+                          "const": true
+                        }
+                      },
+                      "required": ["disabled"]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "command": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "extensions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "disabled": {
+                          "type": "boolean"
+                        },
+                        "env": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        },
+                        "initialization": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "formatter": {
+            "anyOf": [
+              {
+                "type": "boolean",
+                "const": false
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "disabled": {
+                      "type": "boolean"
+                    },
+                    "command": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "environment": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "extensions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "execution": {
+            "type": "object",
+            "properties": {
+              "lspIdleReap": {
+                "description": "Reap idle language servers (default: true)",
+                "type": "boolean"
+              },
+              "agentWorkers": {
+                "description": "Maximum number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 64
+              },
+              "agentWorkerMinIdle": {
+                "description": "Minimum number of idle Agent workers kept warm (default: 0; cannot exceed agentWorkers)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 64
+              },
+              "agentWorkerIdleTimeoutMs": {
+                "description": "Time an excess idle Agent worker remains warm before retirement (default: 60000)",
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 3600000
+              },
+              "agentQueueMax": {
+                "description": "Maximum queued Agent turns waiting for a worker (default: 256)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 32768
+              },
+              "agentQueueMaxMb": {
+                "description": "Maximum aggregate queued Agent-turn payload size in MiB (default: 256)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 4096
+              },
+              "agentWorkerMaxTurns": {
+                "description": "Turns completed before an Agent worker is recycled (default: 64)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 10000
+              },
+              "agentWorkerMaxRssMb": {
+                "description": "Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 3072)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 131072
+              },
+              "agentWorkerMaxHeapMb": {
+                "description": "Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 2048)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 131072
+              },
+              "agentWorkerIdleBaselineRecycle": {
+                "description": "Recycle idle Agent workers after post-GC memory grows beyond their warm baseline (default: Linux only)",
+                "type": "boolean"
+              },
+              "agentWorkerIdleBaselineRssGrowthMb": {
+                "description": "Allowed post-GC RSS growth above an Agent worker's warm idle baseline in MiB (default: 256)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 131072
+              },
+              "agentWorkerIdleBaselineExternalGrowthMb": {
+                "description": "Allowed post-GC external-memory growth above an Agent worker's warm idle baseline in MiB (default: 128)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 131072
+              },
+              "agentCancelGraceMs": {
+                "description": "Grace period before terminating an Agent worker that ignores cancellation (default: 5000)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 60000
+              },
+              "agentHeartbeatTimeoutMs": {
+                "description": "Maximum time without an Agent worker heartbeat before forced replacement (default: 45000)",
+                "type": "integer",
+                "minimum": 30000,
+                "maximum": 300000
+              },
+              "policyWorkers": {
+                "description": "Number of isolated Policy workers (default: min(2, available CPUs - 1), at least 1)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16
+              },
+              "policyQueueMax": {
+                "description": "Maximum queued Policy classifications waiting for a worker (default: 256)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 32768
+              },
+              "policyQueueMaxMb": {
+                "description": "Maximum aggregate queued Policy-classification payload size in MiB (default: 64)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 1024
+              },
+              "policyTimeoutMs": {
+                "description": "Maximum total time for a Policy classification before conservative fallback (default: 1000)",
+                "type": "integer",
+                "minimum": 50,
+                "maximum": 10000
+              },
+              "policyWorkerMaxRequests": {
+                "description": "Classifications completed before a Policy worker is recycled (default: 512)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 100000
+              },
+              "policyWorkerMaxRssMb": {
+                "description": "RSS threshold in MiB for terminating or recycling a Policy worker (default: 512)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16384
+              },
+              "policyWorkerMaxHeapMb": {
+                "description": "Heap-used threshold in MiB for terminating or recycling a Policy worker (default: 256)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 16384
+              },
+              "policyCancelGraceMs": {
+                "description": "Shutdown grace period before terminating a Policy worker (default: 25)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
+              },
+              "policyHeartbeatTimeoutMs": {
+                "description": "Maximum time without a Policy worker heartbeat before forced replacement (default: 15000)",
+                "type": "integer",
+                "minimum": 10000,
+                "maximum": 120000
+              },
+              "toolConcurrency": {
+                "description": "Maximum process-wide concurrent ToolTasks (default: twice available CPUs, bounded to 4-32)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 512
+              },
+              "toolQueueMax": {
+                "description": "Maximum queued ToolTasks waiting for execution capacity (default: 32 per tool slot)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 65536
+              },
+              "toolQueueMaxMb": {
+                "description": "Maximum aggregate queued ToolTask input size in MiB (default: 128)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 4096
+              },
+              "toolCancelGraceMs": {
+                "description": "Grace period for active ToolTasks during runtime shutdown (default: 3000)",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 60000
+              },
+              "toolExecutorConcurrency": {
+                "description": "Optional concurrency limits for each Tool Executor class",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "enum": ["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 512
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "cortex": {
+            "type": "object",
+            "properties": {
+              "maxConcurrentTasks": {
+                "description": "Maximum number of Cortex subagent tasks that may run concurrently (default: 8)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExperimentSnapshot": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "label": {
+            "type": "string"
+          },
+          "capturedAt": {
+            "type": "number"
+          },
+          "fingerprint": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/ExperimentOverrides"
+          },
+          "overrides": {
+            "$ref": "#/components/schemas/ExperimentOverrides"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/ExperimentRuntime"
+          },
+          "sources": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "default",
+                "remote_base",
+                "global_config",
+                "project_config",
+                "explicit_file",
+                "inline_config",
+                "legacy_environment",
+                "resolved_configuration",
+                "experiment",
+                "explicit_command"
+              ]
+            }
+          }
+        },
+        "required": ["version", "label", "capturedAt", "fingerprint", "effective", "overrides", "runtime", "sources"],
+        "additionalProperties": false
+      },
+      "RolloutRunRecord": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "session"
+                  },
+                  "scopeID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "sessionID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  }
+                },
+                "required": ["kind", "scopeID", "sessionID"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "operation"
+                  },
+                  "scopeID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "operationID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  }
+                },
+                "required": ["kind", "scopeID", "operationID"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "started": {
+            "type": "number"
+          },
+          "ended": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["running", "completed", "failed", "cancelled", "interrupted"]
+          },
+          "recording": {
+            "type": "string",
+            "enum": ["partial", "complete", "failed"]
+          },
+          "input": {
+            "$ref": "#/components/schemas/RolloutArtifactRef"
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RolloutArtifactRef"
+            }
+          },
+          "configuration": {
+            "$ref": "#/components/schemas/ExperimentSnapshot"
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "number",
+                "const": 1
+              },
+              "capturedAt": {
+                "type": "number"
+              },
+              "code": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "string"
+                  },
+                  "commit": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "checkout": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "commit": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{40,64}$"
+                          },
+                          "dirty": {
+                            "type": "boolean"
+                          },
+                          "statusSha256": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                          },
+                          "trackedDiffSha256": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                          }
+                        },
+                        "required": ["commit", "dirty", "statusSha256", "trackedDiffSha256"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["version", "commit", "checkout"],
+                "additionalProperties": false
+              },
+              "workspace": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "commit": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{40,64}$"
+                      },
+                      "dirty": {
+                        "type": "boolean"
+                      },
+                      "statusSha256": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      },
+                      "trackedDiffSha256": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$"
+                      }
+                    },
+                    "required": ["commit", "dirty", "statusSha256", "trackedDiffSha256"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "installedPlugins": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "generation": {
+                      "type": "string"
+                    },
+                    "manifestHash": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["id", "version", "generation", "manifestHash"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["version", "capturedAt", "code", "workspace", "installedPlugins"],
+            "additionalProperties": false
+          },
+          "initialHistory": {
+            "type": "object",
+            "properties": {
+              "messages": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": ["messages", "sha256"],
+            "additionalProperties": false
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "owner": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "session"
+                      },
+                      "scopeID": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "sessionID": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      }
+                    },
+                    "required": ["kind", "scopeID", "sessionID"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "operation"
+                      },
+                      "scopeID": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "operationID": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      }
+                    },
+                    "required": ["kind", "scopeID", "operationID"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "runID": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              }
+            },
+            "required": ["owner", "runID"],
+            "additionalProperties": false
+          },
+          "cancelRequestedAt": {
+            "type": "number"
+          },
+          "parent": {
+            "type": "object",
+            "properties": {
+              "owner": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "session"
+                      },
+                      "scopeID": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "sessionID": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      }
+                    },
+                    "required": ["kind", "scopeID", "sessionID"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "operation"
+                      },
+                      "scopeID": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "operationID": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      }
+                    },
+                    "required": ["kind", "scopeID", "operationID"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "runID": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "messageID": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              }
+            },
+            "required": ["owner", "runID", "messageID"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["version", "id", "owner", "started", "status", "recording"],
+        "additionalProperties": false
+      },
+      "RolloutCallRecord": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "owner": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "session"
+                      },
+                      "scopeID": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "sessionID": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      }
+                    },
+                    "required": ["kind", "scopeID", "sessionID"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "operation"
+                      },
+                      "scopeID": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "operationID": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      }
+                    },
+                    "required": ["kind", "scopeID", "operationID"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "runID": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "callID": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              }
+            },
+            "required": ["owner", "runID", "callID"],
+            "additionalProperties": false
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "runID": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "session"
+                  },
+                  "scopeID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "sessionID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  }
+                },
+                "required": ["kind", "scopeID", "sessionID"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "operation"
+                  },
+                  "scopeID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "operationID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  }
+                },
+                "required": ["kind", "scopeID", "operationID"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["chat", "embedding", "rerank", "transcription", "speech"]
+          },
+          "execution": {
+            "type": "string",
+            "enum": ["provider", "local", "external"]
+          },
+          "parentCallID": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              },
+              "sdk": {
+                "type": "string"
+              },
+              "pricing": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "version": {
+                        "type": "number",
+                        "const": 1
+                      },
+                      "currency": {
+                        "type": "string",
+                        "const": "USD"
+                      },
+                      "unitTokens": {
+                        "type": "number",
+                        "const": 1000000
+                      },
+                      "source": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": ["catalog", "configuration", "mixed"]
+                          },
+                          "providerID": {
+                            "type": "string"
+                          },
+                          "modelID": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind", "providerID", "modelID"]
+                      },
+                      "capturedAt": {
+                        "type": "number"
+                      },
+                      "rates": {
+                        "type": "object",
+                        "properties": {
+                          "input": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "output": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cacheRead": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cacheWrite": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cacheWrite1h": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["input", "output", "cacheRead", "cacheWrite", "cacheWrite1h"],
+                        "additionalProperties": false
+                      },
+                      "over200K": {
+                        "type": "object",
+                        "properties": {
+                          "input": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "output": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cacheRead": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cacheWrite": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cacheWrite1h": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["input", "output", "cacheRead", "cacheWrite", "cacheWrite1h"],
+                        "additionalProperties": false
+                      },
+                      "contextTiers": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "above": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "rates": {
+                              "type": "object",
+                              "properties": {
+                                "input": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number",
+                                      "minimum": 0
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "output": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number",
+                                      "minimum": 0
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "cacheRead": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number",
+                                      "minimum": 0
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "cacheWrite": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number",
+                                      "minimum": 0
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "cacheWrite1h": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number",
+                                      "minimum": 0
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": ["input", "output", "cacheRead", "cacheWrite", "cacheWrite1h"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": ["above", "rates"]
+                        }
+                      },
+                      "units": {
+                        "type": "object",
+                        "properties": {
+                          "audio_seconds": {
+                            "type": "object",
+                            "properties": {
+                              "price": {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              "per": {
+                                "type": "number",
+                                "exclusiveMinimum": 0
+                              }
+                            },
+                            "required": ["price", "per"],
+                            "additionalProperties": false
+                          },
+                          "audio_input_tokens": {
+                            "type": "object",
+                            "properties": {
+                              "price": {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              "per": {
+                                "type": "number",
+                                "exclusiveMinimum": 0
+                              }
+                            },
+                            "required": ["price", "per"],
+                            "additionalProperties": false
+                          },
+                          "audio_output_tokens": {
+                            "type": "object",
+                            "properties": {
+                              "price": {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              "per": {
+                                "type": "number",
+                                "exclusiveMinimum": 0
+                              }
+                            },
+                            "required": ["price", "per"],
+                            "additionalProperties": false
+                          },
+                          "characters": {
+                            "type": "object",
+                            "properties": {
+                              "price": {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              "per": {
+                                "type": "number",
+                                "exclusiveMinimum": 0
+                              }
+                            },
+                            "required": ["price", "per"],
+                            "additionalProperties": false
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "raw": {}
+                    },
+                    "required": ["version", "currency", "unitTokens", "source", "capturedAt", "rates", "raw"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["providerID", "modelID", "sdk", "pricing"],
+            "additionalProperties": false
+          },
+          "started": {
+            "type": "number"
+          },
+          "ended": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["running", "completed", "failed", "cancelled", "interrupted"]
+          },
+          "request": {
+            "$ref": "#/components/schemas/RolloutArtifactRef"
+          },
+          "response": {
+            "$ref": "#/components/schemas/RolloutArtifactRef"
+          },
+          "sdkUsage": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "transportCaptured": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "id",
+          "runID",
+          "owner",
+          "purpose",
+          "model",
+          "started",
+          "status",
+          "request",
+          "sdkUsage",
+          "transportCaptured"
+        ],
+        "additionalProperties": false
+      },
+      "RolloutAttemptRecord": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "callID": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "runID": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "session"
+                  },
+                  "scopeID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "sessionID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  }
+                },
+                "required": ["kind", "scopeID", "sessionID"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "operation"
+                  },
+                  "scopeID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "operationID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  }
+                },
+                "required": ["kind", "scopeID", "operationID"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "url": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "started": {
+            "type": "number"
+          },
+          "ended": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["running", "completed", "failed", "cancelled", "interrupted"]
+          },
+          "request": {
+            "$ref": "#/components/schemas/RolloutArtifactRef"
+          },
+          "response": {
+            "$ref": "#/components/schemas/RolloutArtifactRef"
+          },
+          "httpStatus": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "number",
+                "const": 1
+              },
+              "protocol": {
+                "type": "string",
+                "enum": ["openai", "anthropic", "google", "unknown"]
+              },
+              "raw": {
+                "anyOf": [
+                  {},
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "input": {
+                "type": "object",
+                "properties": {
+                  "total": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "uncached": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "cacheRead": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "cacheWrite": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["total", "uncached", "cacheRead", "cacheWrite"]
+              },
+              "output": {
+                "type": "object",
+                "properties": {
+                  "total": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "reasoning": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": ["total", "reasoning"]
+              },
+              "cacheWrites": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "units": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "unit": {
+                      "type": "string",
+                      "enum": ["audio_input_tokens", "audio_output_tokens", "audio_seconds", "characters"]
+                    },
+                    "quantity": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": ["unit", "quantity"],
+                  "additionalProperties": false
+                }
+              },
+              "billing": {
+                "type": "string",
+                "enum": ["tokens", "units", "unknown"]
+              },
+              "serviceTier": {
+                "type": "string"
+              },
+              "reported": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "amount": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "currency": {
+                        "type": "string",
+                        "pattern": "^[A-Z]{3}$"
+                      },
+                      "source": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["amount", "currency", "source"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "complete": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "version",
+              "protocol",
+              "raw",
+              "input",
+              "output",
+              "cacheWrites",
+              "units",
+              "billing",
+              "reported",
+              "complete"
+            ],
+            "additionalProperties": false
+          },
+          "estimate": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "number",
+                "const": 1
+              },
+              "currency": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "USD"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "basis": {
+                "type": "string",
+                "enum": ["api_price_estimate", "subscription_api_equivalent"]
+              },
+              "total": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "known": {
+                "type": "number",
+                "minimum": 0
+              },
+              "missing": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["version", "currency", "basis", "total", "known", "missing"],
+            "additionalProperties": false
+          },
+          "responseHeaders": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "id",
+          "callID",
+          "runID",
+          "owner",
+          "index",
+          "url",
+          "method",
+          "started",
+          "status",
+          "request"
+        ],
+        "additionalProperties": false
+      },
+      "RolloutToolExecutionRecord": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "session"
+                  },
+                  "scopeID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "sessionID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  }
+                },
+                "required": ["kind", "scopeID", "sessionID"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "operation"
+                  },
+                  "scopeID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "operationID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  }
+                },
+                "required": ["kind", "scopeID", "operationID"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "runID": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "messageID": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$"
+          },
+          "toolCallID": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "started": {
+            "type": "number"
+          },
+          "ended": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["running", "completed", "failed", "cancelled", "interrupted"]
+          },
+          "input": {
+            "$ref": "#/components/schemas/RolloutArtifactRef"
+          },
+          "authorization": {
+            "$ref": "#/components/schemas/RolloutArtifactRef"
+          },
+          "rawResult": {
+            "$ref": "#/components/schemas/RolloutArtifactRef"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/RolloutArtifactRef"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "id",
+          "owner",
+          "runID",
+          "messageID",
+          "toolCallID",
+          "tool",
+          "started",
+          "status",
+          "input"
+        ],
+        "additionalProperties": false
+      },
+      "RolloutSnapshot": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "session"
+                  },
+                  "scopeID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "sessionID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  }
+                },
+                "required": ["kind", "scopeID", "sessionID"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "operation"
+                  },
+                  "scopeID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  },
+                  "operationID": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  }
+                },
+                "required": ["kind", "scopeID", "operationID"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RolloutRunRecord"
+            }
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "version": {
+                  "type": "number",
+                  "const": 1
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "owner": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "session"
+                        },
+                        "scopeID": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9_-]+$"
+                        },
+                        "sessionID": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9_-]+$"
+                        }
+                      },
+                      "required": ["kind", "scopeID", "sessionID"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "operation"
+                        },
+                        "scopeID": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9_-]+$"
+                        },
+                        "operationID": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9_-]+$"
+                        }
+                      },
+                      "required": ["kind", "scopeID", "operationID"],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "runID": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9_-]+$"
+                },
+                "started": {
+                  "type": "number"
+                },
+                "ended": {
+                  "type": "number"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["running", "completed", "failed", "cancelled", "interrupted"]
+                }
+              },
+              "required": ["version", "id", "owner", "runID", "started", "status"],
+              "additionalProperties": false
+            }
+          },
+          "calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RolloutCallRecord"
+            }
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RolloutAttemptRecord"
+            }
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RolloutToolExecutionRecord"
+            }
+          },
+          "processes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "version": {
+                  "type": "number",
+                  "const": 1
+                },
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9_-]+$"
+                },
+                "owner": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "session"
+                        },
+                        "scopeID": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9_-]+$"
+                        },
+                        "sessionID": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9_-]+$"
+                        }
+                      },
+                      "required": ["kind", "scopeID", "sessionID"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "operation"
+                        },
+                        "scopeID": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9_-]+$"
+                        },
+                        "operationID": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9_-]+$"
+                        }
+                      },
+                      "required": ["kind", "scopeID", "operationID"],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "runID": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9_-]+$"
+                },
+                "toolExecutionID": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "started": {
+                  "type": "number"
+                },
+                "ended": {
+                  "type": "number"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["running", "completed", "interrupted", "failed"]
+                },
+                "stream": {
+                  "$ref": "#/components/schemas/RolloutArtifactRef"
+                },
+                "pid": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "exitCode": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "signal": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": ["version", "id", "owner", "runID", "toolExecutionID", "started", "status", "stream"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "version",
+          "owner",
+          "revision",
+          "gaps",
+          "runs",
+          "segments",
+          "calls",
+          "attempts",
+          "tools",
+          "processes"
+        ],
+        "additionalProperties": false
+      },
+      "RolloutResult": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "run": {
+            "$ref": "#/components/schemas/RolloutRunRecord"
+          },
+          "snapshots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RolloutSnapshot"
+            }
+          },
+          "accounting": {
+            "$ref": "#/components/schemas/RolloutAccountingSummary"
+          },
+          "elapsedMs": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": ["version", "run", "snapshots", "accounting", "elapsedMs"],
+        "additionalProperties": false
+      },
       "SessionChildCursor": {
         "type": "object",
         "properties": {
@@ -38881,6 +42947,9 @@
                           "type": "string",
                           "const": "attachment"
                         },
+                        "artifact": {
+                          "$ref": "#/components/schemas/RolloutArtifactRef"
+                        },
                         "mime": {
                           "type": "string"
                         },
@@ -39081,6 +43150,28 @@
         },
         "required": ["name", "data"]
       },
+      "ExperimentFile": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "overrides": {
+            "$ref": "#/components/schemas/ExperimentOverrides"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/ExperimentRuntime"
+          }
+        },
+        "required": ["version", "label"],
+        "additionalProperties": false
+      },
       "TextPartInput": {
         "type": "object",
         "properties": {
@@ -39132,6 +43223,9 @@
           "type": {
             "type": "string",
             "const": "attachment"
+          },
+          "artifact": {
+            "$ref": "#/components/schemas/RolloutArtifactRef"
           },
           "mime": {
             "type": "string"
@@ -39326,6 +43420,25 @@
           }
         },
         "required": ["id", "sessionID", "role", "time", "agent", "model"]
+      },
+      "RolloutRecordingError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "RolloutRecordingError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "ProviderAuthError": {
         "type": "object",
@@ -39547,6 +43660,9 @@
           "error": {
             "anyOf": [
               {
+                "$ref": "#/components/schemas/RolloutRecordingError"
+              },
+              {
                 "$ref": "#/components/schemas/ProviderAuthError"
               },
               {
@@ -39598,6 +43714,79 @@
           },
           "summary": {
             "type": "boolean"
+          },
+          "accounting": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "rollout"
+                  },
+                  "callIDs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-zA-Z0-9_-]+$"
+                    }
+                  },
+                  "summary": {
+                    "$ref": "#/components/schemas/RolloutAccountingSummary"
+                  }
+                },
+                "required": ["kind", "callIDs"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "legacy"
+                  },
+                  "calculation": {
+                    "type": "string",
+                    "const": "session-v0"
+                  }
+                },
+                "required": ["kind", "calculation"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": ["inherited", "imported"]
+                  },
+                  "source": {
+                    "type": "object",
+                    "properties": {
+                      "sessionID": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "messageID": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "callIDs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9_-]+$"
+                        }
+                      }
+                    },
+                    "required": ["sessionID", "messageID", "callIDs"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["kind", "source"],
+                "additionalProperties": false
+              }
+            ]
           },
           "cost": {
             "type": "number"
@@ -39966,6 +44155,9 @@
             "type": "string",
             "const": "attachment"
           },
+          "artifact": {
+            "$ref": "#/components/schemas/RolloutArtifactRef"
+          },
           "mime": {
             "type": "string"
           },
@@ -40111,6 +44303,9 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
+          },
+          "outputArtifact": {
+            "$ref": "#/components/schemas/RolloutArtifactRef"
           },
           "outputTruncated": {
             "type": "boolean"
@@ -40279,6 +44474,79 @@
           "type": {
             "type": "string",
             "const": "step-finish"
+          },
+          "accounting": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "rollout"
+                  },
+                  "callIDs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-zA-Z0-9_-]+$"
+                    }
+                  },
+                  "summary": {
+                    "$ref": "#/components/schemas/RolloutAccountingSummary"
+                  }
+                },
+                "required": ["kind", "callIDs"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "legacy"
+                  },
+                  "calculation": {
+                    "type": "string",
+                    "const": "session-v0"
+                  }
+                },
+                "required": ["kind", "calculation"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": ["inherited", "imported"]
+                  },
+                  "source": {
+                    "type": "object",
+                    "properties": {
+                      "sessionID": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "messageID": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$"
+                      },
+                      "callIDs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9_-]+$"
+                        }
+                      }
+                    },
+                    "required": ["sessionID", "messageID", "callIDs"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["kind", "source"],
+                "additionalProperties": false
+              }
+            ]
           },
           "reason": {
             "type": "string"
@@ -48223,6 +52491,44 @@
           }
         ]
       },
+      "Event.installation.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "installation.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": ["version"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.installation.update-available": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "installation.update-available"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": ["version"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.scope.updated": {
         "type": "object",
         "properties": {
@@ -48473,40 +52779,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.runtime.reloaded": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "runtime.reloaded"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "executed": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/RuntimeReloadTarget"
-                }
-              },
-              "cascaded": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/RuntimeReloadTarget"
-                }
-              },
-              "changedFields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["executed", "cascaded", "changedFields"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.permission.asked": {
         "type": "object",
         "properties": {
@@ -48749,44 +53021,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.installation.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "installation.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "version": {
-                "type": "string"
-              }
-            },
-            "required": ["version"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.installation.update-available": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "installation.update-available"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "version": {
-                "type": "string"
-              }
-            },
-            "required": ["version"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.session.inbox.updated": {
         "type": "object",
         "properties": {
@@ -48809,6 +53043,40 @@
               }
             },
             "required": ["sessionID", "items"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.runtime.reloaded": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "runtime.reloaded"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "executed": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RuntimeReloadTarget"
+                }
+              },
+              "cascaded": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RuntimeReloadTarget"
+                }
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["executed", "cascaded", "changedFields"]
           }
         },
         "required": ["type", "properties"]
@@ -50031,6 +54299,12 @@
       "Event": {
         "anyOf": [
           {
+            "$ref": "#/components/schemas/Event.installation.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.installation.update-available"
+          },
+          {
             "$ref": "#/components/schemas/Event.scope.updated"
           },
           {
@@ -50067,9 +54341,6 @@
             "$ref": "#/components/schemas/Event.config.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.runtime.reloaded"
-          },
-          {
             "$ref": "#/components/schemas/Event.permission.asked"
           },
           {
@@ -50103,13 +54374,10 @@
             "$ref": "#/components/schemas/Event.session.turn.end"
           },
           {
-            "$ref": "#/components/schemas/Event.installation.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.installation.update-available"
-          },
-          {
             "$ref": "#/components/schemas/Event.session.inbox.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.runtime.reloaded"
           },
           {
             "$ref": "#/components/schemas/Event.file.edited"

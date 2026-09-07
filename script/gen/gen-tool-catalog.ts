@@ -209,18 +209,15 @@ async function parseToolFile(
   const description = await descriptionOf(file, source, body)
 
   let parameters: Array<{ name: string; type: string | null; description: string | null; optional: boolean }> = []
-  const paramsBlock = findBlock(body, "parameters", "{", "}")
-  if (paramsBlock) {
-    parameters = parseObjectFields(paramsBlock)
-  } else if (/parameters\s*,/.test(body)) {
+  if (/parameters\s*,/.test(body)) {
     const moduleParams = source.match(/const\s+parameters\s*=\s*z[\s\S]*?\.object\(\{/)
     if (moduleParams) {
-      const openIndex = source.indexOf(".object({", moduleParams.index! + moduleParams[0]!.length - 2)
-      if (openIndex > 0) {
-        const objectBlock = findBlock(source.slice(openIndex), "{", "{", "}")
-        if (objectBlock) parameters = parseObjectFields(objectBlock)
-      }
+      const objectBlock = findBlock(source.slice(moduleParams.index), "const parameters", "{", "}")
+      if (objectBlock) parameters = parseObjectFields(objectBlock)
     }
+  } else {
+    const paramsBlock = findBlock(body, "parameters", "{", "}")
+    if (paramsBlock) parameters = parseObjectFields(paramsBlock)
   }
 
   return { id, file: path.relative(REPO_ROOT, file), description, kind: classify(id), parameters }

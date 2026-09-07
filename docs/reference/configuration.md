@@ -122,6 +122,7 @@ File: `60-agents.jsonc` · Merge: merge
 | `project_doc_fallback_filenames` | string (optional) | Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory |
 | `project_doc_max_bytes` | number (optional) | Maximum bytes to include from each automatically discovered instruction file (default: 32768; 0 disables automatic discovery) |
 | `category` | string (optional) | Custom category configurations for background tasks. Categories define model and prompt presets. |
+| `prompt` | object (optional) | Include the git coauthor reminder in agent prompts (default: true) |
 
 ## Commands
 
@@ -129,7 +130,7 @@ File: `70-commands.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `command` | string |  |
+| `command` | string (optional) |  |
 
 ## Permissions
 
@@ -185,15 +186,16 @@ File: `120-runtime.jsonc` · Merge: merge
 | `server` | Server.optional (optional) | Server configuration for synergy serve and web commands |
 | `timeout` | number (optional) | Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h) |
 | `cortex` | object (optional) | Cortex task scheduling configuration |
-| `execution` | object (optional) | Maximum queued Agent turns waiting for a worker (default: 256) |
+| `execution` | object (optional) | Time an excess idle Agent worker remains warm before retirement (default: 60000) |
 | `watcher` | object (optional) |  |
 | `formatter` | object (optional) |  |
-| `lsp` | object (optional) |  |
+| `lsp` | boolean (optional) | Expose the LSP tool; permission checks still apply (default: false) |
 | `lspWriteDiagnostics` | boolean (optional) | Include LSP diagnostics after file-writing tools complete (default: true) |
 | `lspDiagnostics` | "error" \| "warning" (optional) | Severity and scope policy for diagnostics returned after file-writing tools |
 | `question` | object (optional) | Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h) |
 | `compaction` | object (optional) | Enable Codex Remote Compaction V2 for openai-codex sessions: request an opaque server-side compaction artifact alongside the local text summary and replay it on later same-model turns (default: false). |
-| `experimental` | object (optional) | Enable Runtime Boss Mode: auto-provision a home-scope runtime boss session and route all Feishu messages to it |
+| `boss` | object (optional) | Re-inject the versioned world-overview briefing every N days (default: disabled) |
+| `toolExposure` | object (optional) | Expose the LSP tool; permission checks still apply (default: false) |
 | `observability` | ObservabilityConfig.optional (optional) | Local logs, indexed telemetry, and diagnostics settings |
 
 ## Voice

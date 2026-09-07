@@ -21,6 +21,13 @@ const log = Log.create({ service: "scope-startup" })
  * by (phase rank, registration rank).
  */
 export namespace ScopeStartup {
+  let runtimeMode: "server" | "oneshot" = "server"
+  export function configure(mode: typeof runtimeMode) {
+    runtimeMode = mode
+  }
+  export function resident() {
+    return runtimeMode === "server"
+  }
   export type Phase = "core" | "workflow" | "surface"
 
   const PHASE_RANK: Record<Phase, number> = { core: 0, workflow: 1, surface: 2 }
@@ -67,13 +74,17 @@ export namespace ScopeStartup {
     {
       name: "session-recovery",
       init: async (scope) => {
+        if (!resident()) return
         await SessionRecovery.reconcileRuntimeState({ scopeID: scope.id, apply: true }).catch((error) => {
           log.warn("session runtime recovery failed", { scopeID: scope.id, error })
         })
       },
     },
     { name: "activity-summary", init: () => ActivitySummary.init() },
-    { name: "resume-pending", init: (scope) => SessionInvoke.resumePending({ scopeID: scope.id }) },
+    {
+      name: "resume-pending",
+      init: (scope) => (resident() ? SessionInvoke.resumePending({ scopeID: scope.id }) : undefined),
+    },
     { name: "format", init: () => Format.init() },
     { name: "file-watcher", init: () => FileWatcher.init() },
   ]

@@ -1,8 +1,6 @@
-import fs from "fs/promises"
 import path from "path"
 import { Global } from "../global"
 import { Identifier } from "../id/id"
-import { lazy } from "../util/lazy"
 import { PermissionNext } from "../permission/next"
 import type { Agent } from "../agent/agent"
 
@@ -10,7 +8,6 @@ export namespace Truncate {
   export const MAX_LINES = 2000
   export const MAX_BYTES = 50 * 1024
   export const DIR = Global.Path.toolOutput
-  const RETENTION_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
   export type Result = { content: string; truncated: false } | { content: string; truncated: true; outputPath: string }
 
@@ -19,25 +16,6 @@ export namespace Truncate {
     maxBytes?: number
     direction?: "head" | "tail"
   }
-
-  export async function cleanup() {
-    // Tool output files are written by output(), so mtime is their creation
-    // time. The tool_* id encodes only the low 36 bits of the epoch (the
-    // create() payload is 48 bits), so decoding the id cannot recover the
-    // full timestamp across the 2^36 ms boundary; retention must use mtime.
-    const cutoff = Date.now() - RETENTION_MS
-    const glob = new Bun.Glob("tool_*")
-    const entries = await Array.fromAsync(glob.scan({ cwd: DIR, onlyFiles: true })).catch(() => [] as string[])
-    for (const entry of entries) {
-      const filepath = path.join(DIR, entry)
-      const stat = await fs.stat(filepath).catch(() => null)
-      if (!stat) continue
-      if (stat.mtimeMs >= cutoff) continue
-      await fs.unlink(filepath).catch(() => {})
-    }
-  }
-
-  const init = lazy(cleanup)
 
   function hasTaskTool(agent?: Agent.Info): boolean {
     if (!agent?.permission) return false
@@ -87,7 +65,6 @@ export namespace Truncate {
     const unit = hitBytes ? "bytes" : "lines"
     const preview = out.join("\n")
 
-    await init()
     const id = Identifier.ascending("tool")
     const filepath = path.join(DIR, id)
     await Bun.write(Bun.file(filepath), text)

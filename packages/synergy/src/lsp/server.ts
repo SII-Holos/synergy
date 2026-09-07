@@ -460,10 +460,6 @@ export namespace LSPServer {
       "pyrightconfig.json",
     ]),
     async spawn(root) {
-      if (!Flag.SYNERGY_EXPERIMENTAL_LSP_TY) {
-        return undefined
-      }
-
       let binary = Bun.which("ty")
 
       const initialization: Record<string, string> = {}

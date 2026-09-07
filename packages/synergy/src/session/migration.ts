@@ -1,3 +1,4 @@
+import { RolloutMigration } from "./rollout/migration"
 import { $ } from "bun"
 import path from "path"
 import fs from "fs/promises"
@@ -2498,6 +2499,7 @@ export const migrations: Migration[] = [
       await SessionNav.rebuildAllNavIndexes(progress)
     },
   },
+  RolloutMigration.migration,
 ]
 
 function canonicalFieldsDiffer(before: any, after: any): boolean {

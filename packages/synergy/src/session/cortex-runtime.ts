@@ -45,6 +45,7 @@ export namespace SessionCortexRuntime {
     activeTaskRows(sessionID: string): Promise<Array<{ id: string; description: string }>>
     reconcileParentNotifications(scopeID?: string): Promise<void>
     cancelAllForParent(parentSessionID: string): Promise<void>
+    cancelTask?(taskID: string): Promise<void>
     pluginTaskSnapshot(
       handle: { taskId: string; sessionId: string },
       delegation: unknown,
@@ -83,6 +84,11 @@ export namespace SessionCortexRuntime {
 
   export async function cancelAllForParent(parentSessionID: string): Promise<void> {
     await provider?.cancelAllForParent(parentSessionID)
+  }
+
+  export async function cancelTask(taskID: string): Promise<void> {
+    if (!provider?.cancelTask) throw new Error("Cortex cancellation runtime is unavailable")
+    await provider.cancelTask(taskID)
   }
 
   export function pluginTaskSnapshot(

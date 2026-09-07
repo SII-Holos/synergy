@@ -1,4 +1,5 @@
 import z from "zod"
+import { RolloutAccounting } from "./rollout/accounting"
 
 /**
  * S9c relocation: the cortex delegation's persisted output/ownership contract
@@ -23,6 +24,7 @@ export namespace SessionCortexContract {
     cacheReadTokens: z.number(),
     cacheWriteTokens: z.number(),
     cost: z.number(),
+    accounting: RolloutAccounting.Summary.optional(),
   })
   export type TaskUsage = z.infer<typeof TaskUsage>
 

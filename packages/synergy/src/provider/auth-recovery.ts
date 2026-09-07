@@ -4,6 +4,8 @@ import { Auth } from "./api-key"
 import { ProviderAuthHealth } from "./auth-health"
 import { ProviderProfile } from "./profile"
 import { Env } from "@/util/env"
+import { RolloutTransport } from "@/session/rollout/transport"
+import { findRecordingError } from "@/session/rollout/error"
 
 export namespace ProviderAuthRecovery {
   type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
@@ -44,12 +46,28 @@ export namespace ProviderAuthRecovery {
   }
 
   async function responseBody(response: Response) {
+    const reader = response.clone().body?.getReader()
+    if (!reader) return undefined
     try {
-      const text = await response.clone().text()
-      if (!text || text.length > 64 * 1024) return undefined
-      return JSON.parse(text)
-    } catch {
+      const chunks: Uint8Array[] = []
+      let size = 0
+      while (true) {
+        const next = await reader.read()
+        if (next.done) break
+        size += next.value.byteLength
+        if (size > 64 * 1024) return undefined
+        chunks.push(next.value)
+      }
+      if (!size) return undefined
+      return JSON.parse(new TextDecoder().decode(Buffer.concat(chunks, size)))
+    } catch (error) {
+      const recordingError = findRecordingError(error)
+      if (recordingError) throw recordingError
       return undefined
+    } finally {
+      // Tee cancellation settles only after the caller consumes or cancels its original branch.
+      void reader.cancel().catch(() => {})
+      reader.releaseLock()
     }
   }
 
@@ -288,6 +306,8 @@ export namespace ProviderAuthRecovery {
       if (failure) await markFailure(input, await selectCredential(input), failure, removalRevision)
       return failure ? finishFailure(input, response, failure) : response
     } catch (error) {
+      const recordingError = findRecordingError(error)
+      if (recordingError) throw recordingError
       const failure = classifiedThrownError(error)
       if (!failure) throw error
       const selected = selectedBeforeRequest ?? (await selectCredential(input))
@@ -318,6 +338,8 @@ export namespace ProviderAuthRecovery {
     try {
       first = await input.request()
     } catch (error) {
+      const recordingError = findRecordingError(error)
+      if (recordingError) throw recordingError
       const failure = classifiedThrownError(error)
       if (!failure) throw error
       const selected = selectedBeforeRequest ?? (await selectCredential(input))
@@ -358,6 +380,8 @@ export namespace ProviderAuthRecovery {
             return retryOnce(input, removalRevision)
           }
         } catch (error) {
+          const recordingError = findRecordingError(error)
+          if (recordingError) throw recordingError
           if (!requiresRelogin(error)) return first
         }
       }
@@ -369,6 +393,8 @@ export namespace ProviderAuthRecovery {
     try {
       refreshed = await refresh(input, selected)
     } catch (error) {
+      const recordingError = findRecordingError(error)
+      if (recordingError) throw recordingError
       if (!requiresRelogin(error)) return first
       const failure = {
         code: (error as { data?: { code?: string } }).data?.code ?? firstFailure.code,
@@ -423,7 +449,7 @@ export namespace ProviderAuthRecovery {
             if (headers.has("x-api-key")) headers.set("x-api-key", key)
             if (headers.has("api-key")) headers.set("api-key", key)
           }
-          return fetchFn(request, { ...init, body: undefined, headers })
+          return RolloutTransport.fetch(fetchFn, request, { ...init, body: undefined, headers })
         },
       })
     }

@@ -1,3 +1,6 @@
+import { Aggregator } from "@/stats/aggregator"
+import { RolloutLifecycle } from "@/session/rollout/lifecycle"
+import { record, RolloutRecordingError } from "@/session/rollout/error"
 import { $ } from "bun"
 
 import { BusyError } from "../session/error"
@@ -118,7 +121,7 @@ export namespace Cortex {
     const config = await Config.current()
     const parent = await Session.get(input.parentSessionID)
     const blockedTools = Array.from(
-      new Set([...(config.experimental?.primary_tools ?? []), ...DEFAULT_SUBAGENT_BLOCKED_TOOLS]),
+      new Set([...(config.cortex?.primaryOnlyTools ?? []), ...DEFAULT_SUBAGENT_BLOCKED_TOOLS]),
     )
 
     const reusableSession =
@@ -572,27 +575,16 @@ export namespace Cortex {
   }
 
   async function taskUsage(sessionID: string): Promise<CortexTypes.TaskUsage> {
-    const messages = await Session.messages({ sessionID, raw: true }).catch(() => [])
-    return messages.reduce<CortexTypes.TaskUsage>(
-      (total, message) => {
-        if (message.info.role !== "assistant") return total
-        total.inputTokens += message.info.tokens.input
-        total.outputTokens += message.info.tokens.output
-        total.reasoningTokens += message.info.tokens.reasoning
-        total.cacheReadTokens += message.info.tokens.cache.read
-        total.cacheWriteTokens += message.info.tokens.cache.write
-        total.cost += message.info.cost
-        return total
-      },
-      {
-        inputTokens: 0,
-        outputTokens: 0,
-        reasoningTokens: 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        cost: 0,
-      },
-    )
+    const digest = await Aggregator.digest(await Session.get(sessionID))
+    return {
+      inputTokens: digest.tokens.input,
+      outputTokens: digest.tokens.output,
+      reasoningTokens: digest.tokens.reasoning,
+      cacheReadTokens: digest.tokens.cache.read,
+      cacheWriteTokens: digest.tokens.cache.write,
+      cost: digest.cost,
+      accounting: digest.accounting,
+    }
   }
 
   function rootMessageID(message: MessageV2.WithParts): string {
@@ -661,20 +653,20 @@ export namespace Cortex {
         taskTimeouts.delete(taskID)
       }
 
-      await Session.update(task.sessionID, (draft) => {
-        if (draft.cortex) {
-          draft.cortex.status = status
-          draft.cortex.completedAt = terminalTask.completedAt
-          draft.cortex.model = terminalTask.model
-          if (error) draft.cortex.error = error
-          if (output) draft.cortex.output = output
-          draft.cortex.launchFailure = options?.launchFailure === true ? true : undefined
-          draft.cortex.usage = terminalTask.usage
-          draft.cortex.notifyParentOnComplete = shouldNotifyParent
-        }
-      }).catch((error) => {
-        log.error("failed to persist terminal task fields", { taskID, error })
-      })
+      await record(() =>
+        Session.update(task.sessionID, (draft) => {
+          if (draft.cortex) {
+            draft.cortex.status = status
+            draft.cortex.completedAt = terminalTask.completedAt
+            draft.cortex.model = terminalTask.model
+            if (error) draft.cortex.error = error
+            if (output) draft.cortex.output = output
+            draft.cortex.launchFailure = options?.launchFailure === true ? true : undefined
+            draft.cortex.usage = terminalTask.usage
+            draft.cortex.notifyParentOnComplete = shouldNotifyParent
+          }
+        }),
+      )
 
       // Cancellation may arrive while usage/session metadata is being
       // persisted. Reconcile once more immediately before the synchronous
@@ -684,16 +676,16 @@ export namespace Cortex {
         terminalTask.error = undefined
         terminalTask.output = undefined
         terminalTask.launchFailure = undefined
-        await Session.update(task.sessionID, (draft) => {
-          if (draft.cortex) {
-            draft.cortex.status = "cancelled"
-            draft.cortex.error = undefined
-            draft.cortex.output = undefined
-            draft.cortex.launchFailure = undefined
-          }
-        }).catch((error) => {
-          log.error("failed to persist task cancellation", { taskID, error })
-        })
+        await record(() =>
+          Session.update(task.sessionID, (draft) => {
+            if (draft.cortex) {
+              draft.cortex.status = "cancelled"
+              draft.cortex.error = undefined
+              draft.cortex.output = undefined
+              draft.cortex.launchFailure = undefined
+            }
+          }),
+        )
       }
 
       if (acquiredTasks.delete(taskID)) {
@@ -719,8 +711,11 @@ export namespace Cortex {
       if (terminalTask.visibility !== "hidden") {
         Bus.publish(Event.TaskCompleted, { task: terminalTask })
       }
+      let deliverySettled = true
       if (shouldNotifyParent) {
         await notifyParentSession(terminalTask).catch((error) => {
+          if (RolloutRecordingError.isInstance(error)) throw error
+          deliverySettled = false
           log.error("failed to notify parent session", {
             taskID,
             parentSessionID: terminalTask.parentSessionID,
@@ -733,12 +728,24 @@ export namespace Cortex {
           tasks: [{ sessionID: terminalTask.sessionID, taskID: terminalTask.id }],
           reason: "cortex-completion",
         }).catch((error) => {
+          if (RolloutRecordingError.isInstance(error)) throw error
+          deliverySettled = false
           log.error("failed to drive parent session after task completion", {
             taskID,
             parentSessionID: terminalTask.parentSessionID,
             error,
           })
         })
+      }
+      if (deliverySettled) {
+        const settled = await record(() =>
+          Session.update(task.sessionID, (draft) => {
+            if (draft.cortex) draft.cortex.settledAt = Date.now()
+          }),
+        )
+        const parent = await RolloutLifecycle.parent(settled)
+        if (parent?.owner.kind === "session" && parent.runID)
+          await RolloutLifecycle.reconcile(parent.owner.sessionID, parent.runID)
       }
       const pluginSnapshot = pluginTaskSnapshotFromTask(terminalTask)
       if (pluginSnapshot) {
@@ -1218,7 +1225,10 @@ export namespace Cortex {
   export async function cancel(taskID: string): Promise<void> {
     const task = tasks.get(taskID)
     if (!task) return
-    if (isTerminal(task.status)) return
+    if (isTerminal(task.status)) {
+      await taskRuns.get(taskID)
+      return
+    }
 
     log.info("cancelling task", { taskID, sessionID: task.sessionID, status: task.status })
     cancellationRequests.add(taskID)
@@ -1226,11 +1236,7 @@ export namespace Cortex {
     await updateTaskStatus(taskID, "cancelled")
 
     const run = taskRuns.get(taskID)
-    // Don't block cancel on processor settle — status is already "cancelled".
-    // The run promise fulfills when the session loop exits (triggered by the
-    // SessionInvoke.cancel call above plus abort signal propagation), after
-    // which the task's finally block in launch() will clean up taskRuns.
-    if (run) run.catch(() => {})
+    if (run) await run
   }
 
   export async function cancelAll(parentSessionID: string): Promise<number> {

@@ -196,6 +196,7 @@ import type {
   ExperienceListSort,
   ExperimentalResourceListErrors,
   ExperimentalResourceListResponses,
+  ExperimentFile,
   FormatterStatusErrors,
   FormatterStatusResponses,
   GlobalAgendaListErrors,
@@ -546,6 +547,7 @@ import type {
   RegistryRefreshErrors,
   RegistryRefreshResponses,
   RewardsInfo,
+  RolloutArtifactRef,
   RuntimeReloadErrors,
   RuntimeReloadResponses,
   RuntimeReloadScope,
@@ -573,6 +575,8 @@ import type {
   SessionAbortResponses,
   SessionAgendaErrors,
   SessionAgendaResponses,
+  SessionCancelRunErrors,
+  SessionCancelRunResponses,
   SessionChildrenErrors,
   SessionChildrenResponses,
   SessionCommandErrors,
@@ -629,6 +633,10 @@ import type {
   SessionRollbackAckResponses,
   SessionRollbackErrors,
   SessionRollbackResponses,
+  SessionRunErrors,
+  SessionRunResponses,
+  SessionRunResultErrors,
+  SessionRunResultResponses,
   SessionShellErrors,
   SessionShellResponses,
   SessionStatusErrors,
@@ -844,7 +852,7 @@ export class Stats extends HeyApiClient {
   /**
    * Get stats snapshot
    *
-   * Get the full stats snapshot. Returns cached snapshot if available, otherwise computes incrementally. Use ?recompute=true to force a full recompute from scratch.
+   * Get the full stats snapshot after incrementally refreshing changed session and rollout records. Use ?recompute=true to force a full recompute from scratch.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -1730,6 +1738,8 @@ export class Export extends HeyApiClient {
       sessionID: string
       directory?: string
       scopeID?: string
+      format?: "json" | "rollout"
+      run?: string
       mode?: SessionExportMode
     },
     options?: Options<never, ThrowOnError>,
@@ -1742,6 +1752,8 @@ export class Export extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "format" },
+            { in: "query", key: "run" },
             { in: "query", key: "mode" },
           ],
         },
@@ -1972,6 +1984,108 @@ export class Session extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<SessionIndexResponses, SessionIndexErrors, ThrowOnError>({
       url: "/session/index",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Cancel one task and drain its execution
+   *
+   * Close admission for this run, cancel its descendants, and await durable terminal records without cancelling an unrelated session root.
+   */
+  public cancelRun<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      runID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "runID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionCancelRunResponses, SessionCancelRunErrors, ThrowOnError>({
+      url: "/session/{sessionID}/run/{runID}/cancel",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read a task trajectory and accounting
+   *
+   * Read a fixed journal boundary for each related run, including descendant calls and separate reported and estimated costs.
+   */
+  public runResult<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      runID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "runID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionRunResultResponses, SessionRunResultErrors, ThrowOnError>({
+      url: "/session/{sessionID}/run/{runID}/result",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get durable task execution status
+   *
+   * Read the persisted run status after execution, descendant delivery, and auxiliary work settle.
+   */
+  public run<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      runID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "runID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionRunResponses, SessionRunErrors, ThrowOnError>({
+      url: "/session/{sessionID}/run/{runID}",
       ...options,
       ...params,
     })
@@ -2539,6 +2653,7 @@ export class Session extends HeyApiClient {
       sessionID: string
       directory?: string
       scopeID?: string
+      experiment?: ExperimentFile
       messageID?: string
       model?: {
         providerID: string
@@ -2569,6 +2684,7 @@ export class Session extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "body", key: "experiment" },
             { in: "body", key: "messageID" },
             { in: "body", key: "model" },
             { in: "body", key: "agent" },
@@ -2788,6 +2904,7 @@ export class Session extends HeyApiClient {
       sessionID: string
       directory?: string
       scopeID?: string
+      experiment?: ExperimentFile
       messageID?: string
       model?: {
         providerID: string
@@ -2818,6 +2935,7 @@ export class Session extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "body", key: "experiment" },
             { in: "body", key: "messageID" },
             { in: "body", key: "model" },
             { in: "body", key: "agent" },
@@ -2956,6 +3074,7 @@ export class Session extends HeyApiClient {
       sessionID: string
       directory?: string
       scopeID?: string
+      experiment?: ExperimentFile
       messageID?: string
       model?: {
         providerID: string
@@ -2986,6 +3105,7 @@ export class Session extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "body", key: "experiment" },
             { in: "body", key: "messageID" },
             { in: "body", key: "model" },
             { in: "body", key: "agent" },
@@ -3022,6 +3142,7 @@ export class Session extends HeyApiClient {
       sessionID: string
       directory?: string
       scopeID?: string
+      experiment?: ExperimentFile
       messageID?: string
       agent?: string
       model?: string
@@ -3031,6 +3152,7 @@ export class Session extends HeyApiClient {
       parts?: Array<{
         id?: string
         type: "attachment"
+        artifact?: RolloutArtifactRef
         mime: string
         filename?: string
         url: string
@@ -3053,6 +3175,7 @@ export class Session extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "body", key: "experiment" },
             { in: "body", key: "messageID" },
             { in: "body", key: "agent" },
             { in: "body", key: "model" },
@@ -3278,7 +3401,7 @@ export class Session extends HeyApiClient {
   /**
    * Import session data
    *
-   * Import a Synergy session export JSON or gzipped JSON file into the current scope.
+   * Import a Synergy rollout ZIP, session export JSON, or gzipped JSON file into the current scope.
    */
   public import<ThrowOnError extends boolean = false>(
     parameters?: {

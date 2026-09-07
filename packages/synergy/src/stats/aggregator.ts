@@ -1,3 +1,5 @@
+import { RolloutSnapshot } from "@/session/rollout/snapshot"
+import { RolloutAccounting } from "@/session/rollout/accounting"
 import { MessageV2 } from "@/session/message-v2"
 import type { Info as SessionInfo } from "@/session/types"
 import type * as Stats from "@/stats/types"
@@ -32,6 +34,9 @@ export namespace Aggregator {
       messages.push(msg)
     }
 
+    const rollout = await RolloutSnapshot.read({ kind: "session", scopeID: session.scope.id, sessionID: session.id })
+    const recordedRoots = new Set(rollout.runs.map((run) => run.id))
+    const accounting = RolloutAccounting.summarize(rollout)
     const tokens = emptyTokenBreakdown()
     let cost = 0
     let turns = 0
@@ -45,8 +50,6 @@ export namespace Aggregator {
     const toolUsage: Stats.SessionDigest["toolUsage"] = {}
     const hourlyTurns: Stats.SessionDigest["hourlyTurns"] = {}
 
-    let currentTurnUser: string | null = null
-
     function hourKey(timestamp: number) {
       const d = new Date(timestamp)
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}`
@@ -57,15 +60,25 @@ export namespace Aggregator {
 
       if (msg.info.role === "user") {
         turns++
-        currentTurnUser = msg.info.id
         const key = hourKey(msg.info.time.created)
         hourlyTurns[key] = (hourlyTurns[key] ?? 0) + 1
       }
 
       if (msg.info.role === "assistant") {
         const info = msg.info
-        addTokens(tokens, info.tokens)
-        cost += info.cost
+        const legacy =
+          info.accounting?.kind !== "inherited" &&
+          info.accounting?.kind !== "imported" &&
+          info.accounting?.kind !== "rollout" &&
+          !recordedRoots.has(info.rootID ?? info.parentID)
+        const messageTokens = legacy ? info.tokens : emptyTokenBreakdown()
+        const messageCost = legacy ? info.cost : 0
+        if (legacy) {
+          accounting.legacy.cost += info.cost
+          accounting.legacy.messages++
+        }
+        addTokens(tokens, messageTokens)
+        cost += messageCost
 
         if (info.error !== undefined) errorCount++
 
@@ -77,9 +90,14 @@ export namespace Aggregator {
           totalResponseMs: 0,
         }
         modelEntry.messages++
-        addTokens(modelEntry.tokens, info.tokens)
-        modelEntry.cost += info.cost
-        if (info.time.completed !== undefined) {
+        addTokens(modelEntry.tokens, messageTokens)
+        modelEntry.cost += messageCost
+        if (legacy) {
+          modelEntry.accounting ??= RolloutAccounting.empty()
+          modelEntry.accounting.legacy.cost += messageCost
+          modelEntry.accounting.legacy.messages++
+        }
+        if (legacy && info.time.completed !== undefined) {
           modelEntry.totalResponseMs += info.time.completed - info.time.created
         }
         modelUsage[modelKey] = modelEntry
@@ -90,8 +108,13 @@ export namespace Aggregator {
           cost: 0,
         }
         agentEntry.messages++
-        addTokens(agentEntry.tokens, info.tokens)
-        agentEntry.cost += info.cost
+        addTokens(agentEntry.tokens, messageTokens)
+        agentEntry.cost += messageCost
+        if (legacy) {
+          agentEntry.accounting ??= RolloutAccounting.empty()
+          agentEntry.accounting.legacy.cost += messageCost
+          agentEntry.accounting.legacy.messages++
+        }
         agentUsage[info.agent] = agentEntry
       }
 
@@ -120,6 +143,10 @@ export namespace Aggregator {
       }
     }
 
+    const totals = { tokens, cost, modelUsage, agentUsage }
+    addCalls(rollout, totals)
+    cost = totals.cost
+
     const endpoint = session.endpoint
       ? {
           kind: session.endpoint.kind,
@@ -139,6 +166,8 @@ export namespace Aggregator {
       scopeID: session.scope.id,
       created: session.time.created,
       updated: session.time.updated,
+      rolloutRevision: rollout.revision,
+      accounting,
       archived: session.time.archived,
       pinned: session.pinned !== undefined,
       parentID: session.parentID,
@@ -162,6 +191,67 @@ export namespace Aggregator {
     }
   }
 
+  function addCalls(
+    rollout: RolloutSnapshot.Info,
+    totals: Pick<Stats.SessionDigest, "tokens" | "cost" | "modelUsage" | "agentUsage">,
+  ) {
+    const attemptsByCall = Map.groupBy(rollout.attempts, (attempt) => attempt.callID)
+    for (const call of rollout.calls) {
+      const entry = RolloutAccounting.summarize({
+        calls: [call],
+        attempts: attemptsByCall.get(call.id) ?? [],
+        gaps: [],
+      })
+      const usage = {
+        input: entry.tokens.uncached.known,
+        output: entry.tokens.output.known,
+        reasoning: entry.tokens.reasoning.known,
+        cache: { read: entry.tokens.cacheRead.known, write: entry.tokens.cacheWrite.known },
+      }
+      const knownCost = entry.apiEstimate.known
+      addTokens(totals.tokens, usage)
+      totals.cost += knownCost
+      const modelKey = `${call.model.providerID}/${call.model.modelID}`
+      const modelEntry = totals.modelUsage[modelKey] ?? {
+        messages: 0,
+        tokens: emptyTokenBreakdown(),
+        cost: 0,
+        totalResponseMs: 0,
+      }
+      addTokens(modelEntry.tokens, usage)
+      modelEntry.cost += knownCost
+      if (call.ended !== undefined) modelEntry.totalResponseMs += call.ended - call.started
+      modelEntry.accounting = RolloutAccounting.merge([modelEntry.accounting ?? RolloutAccounting.empty(), entry])
+      totals.modelUsage[modelKey] = modelEntry
+      const agentKey = call.agent ?? call.purpose
+      const agentEntry = totals.agentUsage[agentKey] ?? { messages: 0, tokens: emptyTokenBreakdown(), cost: 0 }
+      addTokens(agentEntry.tokens, usage)
+      agentEntry.cost += knownCost
+      agentEntry.accounting = RolloutAccounting.merge([agentEntry.accounting ?? RolloutAccounting.empty(), entry])
+      totals.agentUsage[agentKey] = agentEntry
+    }
+  }
+
+  export function operation(rollout: RolloutSnapshot.Info): Stats.OperationDigest {
+    if (rollout.owner.kind !== "operation") throw new Error("Expected independent operation")
+    const started = rollout.runs.map((run) => run.started)
+    const result: Stats.OperationDigest = {
+      operationID: rollout.owner.operationID,
+      scopeID: rollout.owner.scopeID,
+      rolloutRevision: rollout.revision,
+      created: started.length ? Math.min(...started) : 0,
+      updated: Math.max(0, ...rollout.runs.map((run) => run.ended ?? run.started)),
+      turns: 0,
+      tokens: emptyTokenBreakdown(),
+      cost: 0,
+      modelUsage: {},
+      agentUsage: {},
+      accounting: RolloutAccounting.summarize(rollout),
+    }
+    addCalls(rollout, result)
+    return result
+  }
+
   export async function digestAll(
     sessions: SessionInfo[],
     onProgress?: DigestProgress,
@@ -171,7 +261,7 @@ export namespace Aggregator {
 
     for (let i = 0; i < sessions.length; i += batchSize) {
       const batch = sessions.slice(i, i + batchSize)
-      const batchResults = await Promise.all(batch.map((s) => digest(s).catch(() => undefined)))
+      const batchResults = await Promise.all(batch.map((s) => digest(s)))
       for (const r of batchResults) {
         if (r) results.push(r)
       }

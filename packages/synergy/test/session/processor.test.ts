@@ -9,6 +9,7 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { SessionProcessor } from "../../src/session/processor"
 import { ContextUsage } from "../../src/session/context-usage"
 import { AgentTurn } from "../../src/session/agent-turn"
+import { fixture as rolloutFixture, complete as completeRollout } from "../fixture/rollout"
 import { Snapshot } from "../../src/session/snapshot"
 import { SessionBounds } from "../../src/session/bounds"
 import { Bus } from "../../src/bus"
@@ -147,6 +148,7 @@ describe("SessionProcessor.streamToolErrorOutcome", () => {
 })
 
 type SettlementScenario = {
+  rollout?: Awaited<ReturnType<typeof AgentTurn.stream>>["rollout"]
   messageID: string
   stream(processor: SessionProcessor.Info): AsyncGenerator<Record<string, unknown>>
   config?: Record<string, unknown>
@@ -205,9 +207,7 @@ async function runSettlementScenario(scenario: SettlementScenario) {
       },
     )
     ;(Session.updateLastExchange as any) = mock(async () => {})
-    ;(Config.current as any) = mock(
-      async () => scenario.config ?? { experimental: {}, timeout: { tool: { default_sec: 60 } } },
-    )
+    ;(Config.current as any) = mock(async () => scenario.config ?? { timeout: { tool: { default_sec: 60 } } })
     ;(Plugin.trigger as any) = mock(async (_name: string, _context: unknown, value: unknown) => value)
     ;(ExperienceEncoder.onComplete as any) = mock(() => {})
     ;(Bus.publish as any) = mock(async () => {})
@@ -215,6 +215,7 @@ async function runSettlementScenario(scenario: SettlementScenario) {
     ;(AgentTurn.stream as any) = mock(async (input: Record<string, unknown>) => {
       scenario.inspectAgentInput?.(input)
       return {
+        rollout: scenario.rollout,
         fullStream: scenario.stream(processor),
         contextUsageDraft:
           "contextUsageDraft" in scenario
@@ -243,7 +244,12 @@ async function runSettlementScenario(scenario: SettlementScenario) {
         time: { created: 0 },
       },
       sessionID: "ses_test",
-      model: { id: "test-model", modelID: "test-model", providerID: "test-provider" } as any,
+      model: {
+        id: "test-model",
+        modelID: "test-model",
+        providerID: "test-provider",
+        api: { id: "test-model", npm: "@ai-sdk/openai", url: "https://provider.invalid" },
+      } as any,
       abort: scenario.abort ?? new AbortController().signal,
     })
 
@@ -512,6 +518,28 @@ describe("SessionProcessor terminal part checkpoints", () => {
       expect([...new Set(checkpoints)]).toEqual(["partial response"])
     })
   }
+})
+
+test("assistant and step projections use the committed attempt accounting", async () => {
+  await rolloutFixture(async ({ call }) => {
+    await completeRollout(call)
+    let persisted: MessageV2.Assistant | undefined
+    const parts = await runSettlementScenario({
+      messageID: "msg_accounting_projection",
+      rollout: { owner: call.owner, runID: call.runID, callID: call.id },
+      updateMessage(message) {
+        persisted = structuredClone(message)
+      },
+      async *stream() {
+        yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 3, outputTokens: 2 } }
+      },
+    })
+    expect(persisted?.cost).toBeCloseTo(0.0105)
+    expect(persisted?.tokens.output).toBe(500)
+    expect(persisted?.accounting?.kind).toBe("rollout")
+    const step = parts.find((part) => part.type === "step-finish")
+    expect(step?.type === "step-finish" && step.cost).toBeCloseTo(0.0105)
+  })
 })
 
 describe("SessionProcessor context usage persistence", () => {
@@ -1305,7 +1333,7 @@ describe("SessionProcessor execution slot settlement", () => {
   test("marks a running part without an execution slot as missing_execution_slot", async () => {
     const parts = await runSettlementScenario({
       messageID: "msg_assistant_missing_slot",
-      config: { experimental: {}, timeout: { tool: { default_sec: 0.001 } } },
+      config: { timeout: { tool: { default_sec: 0.001 } } },
       async *stream() {
         yield { type: "start" }
         yield { type: "tool-call", toolCallId: "call_missing_slot", toolName: "bash", input: { command: "git status" } }

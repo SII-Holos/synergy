@@ -89,10 +89,10 @@ describe("settings form boss mode", () => {
   test("hydrates enabled boss mode with identity and briefing interval", () => {
     expect(
       initializedRuntime({
-        experimental: {
-          boss_mode: true,
-          boss_identity_text: "Ops lead",
-          boss_briefing_interval_days: 7,
+        boss: {
+          enabled: true,
+          identityText: "Ops lead",
+          briefingIntervalDays: 7,
         },
       }),
     ).toMatchObject({
@@ -103,7 +103,7 @@ describe("settings form boss mode", () => {
   })
 
   test("hydrates explicit boss mode false", () => {
-    expect(initializedRuntime({ experimental: { boss_mode: false } }).bossMode).toBe("false")
+    expect(initializedRuntime({ boss: { enabled: false } }).bossMode).toBe("false")
   })
 
   test("defaults persona preset to none with 0.5 traits when config is absent", () => {
@@ -119,8 +119,8 @@ describe("settings form boss mode", () => {
   test("hydrates a stored built-in persona preset", () => {
     expect(
       initializedRuntime({
-        experimental: {
-          boss_persona: { preset: "project_manager" },
+        boss: {
+          persona: { preset: "project_manager" },
         },
       }),
     ).toMatchObject({
@@ -135,8 +135,8 @@ describe("settings form boss mode", () => {
   test("hydrates a stored custom persona with its trait numbers", () => {
     expect(
       initializedRuntime({
-        experimental: {
-          boss_persona: {
+        boss: {
+          persona: {
             preset: "custom",
             formality: 0.9,
             conciseness: 0.25,

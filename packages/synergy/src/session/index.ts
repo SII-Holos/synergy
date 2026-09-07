@@ -1,4 +1,8 @@
+import { RolloutAttachment } from "./rollout/attachment"
+import { RolloutContext } from "./rollout/context"
 import { Decimal } from "decimal.js"
+import { RolloutArtifact } from "./rollout/artifact"
+import { record, RolloutRecordingError } from "./rollout/error"
 import z from "zod"
 import { type LanguageModelUsage, type ProviderMetadata } from "ai"
 import { Identifier } from "../id/id"
@@ -566,6 +570,7 @@ export namespace Session {
         messageMap.set(msg.info.id, id)
         const cloned = await updateMessage({
           ...msg.info,
+          ...(msg.info.role === "assistant" ? { accounting: MessageV2.copyAccounting(msg.info, "inherited") } : {}),
           sessionID: session.id,
           id,
           ...("parentID" in msg.info && typeof msg.info.parentID === "string"
@@ -574,8 +579,27 @@ export namespace Session {
         })
 
         for (const part of msg.parts) {
+          const from = { kind: "session" as const, scopeID: source.scope.id, sessionID: source.id }
+          const to = { ...from, sessionID: session.id }
+          const state = part.type === "tool" && part.state.status === "completed" ? { ...part.state } : undefined
+          if (state?.outputArtifact) state.outputArtifact = await RolloutArtifact.copy(from, to, state.outputArtifact)
+          if (state?.attachments) {
+            const attachments = []
+            for (const attachment of state.attachments)
+              attachments.push({
+                ...attachment,
+                ...(attachment.artifact ? { artifact: await RolloutArtifact.copy(from, to, attachment.artifact) } : {}),
+              })
+            state.attachments = attachments
+          }
+          const artifact =
+            part.type === "attachment" && part.artifact
+              ? await RolloutArtifact.copy(from, to, part.artifact)
+              : undefined
           await updatePart({
             ...part,
+            ...(artifact ? { artifact } : {}),
+            ...(state ? { state } : {}),
             id: Identifier.ascending("part"),
             messageID: cloned.id,
             sessionID: session.id,
@@ -1368,13 +1392,55 @@ export namespace Session {
     | { part: MessageV2.ReasoningPart; delta: string }
 
   async function updatePartInternal(input: UpdatePartInternalInput) {
-    const part = "delta" in input ? input.part : MessageV2.canonicalPart(input)
+    let part = "delta" in input ? input.part : input
     const delta = "delta" in input ? input.delta : undefined
     // Streaming hot path (issue #350 H1): resolve the scopeID from the permanent
     // sessionID -> scopeID cache instead of loading full session info on every
     // delta. A session's scope is immutable, so this is safe; on a cold cache it
     // reads only the small session-index record.
     const scopeID = asScopeID(await SessionManager.resolveScopeID(part.sessionID))
+    try {
+      const owner = { kind: "session" as const, scopeID, sessionID: part.sessionID }
+      if (part.type === "attachment") part = await RolloutAttachment.capture(owner, part)
+      if (part.type === "tool" && part.state.status === "completed" && part.state.attachments) {
+        const attachments = []
+        for (const attachment of part.state.attachments)
+          attachments.push(await RolloutAttachment.capture(owner, attachment))
+        part = { ...part, state: { ...part.state, attachments } }
+      }
+      if (part.type === "tool" && part.state.status === "completed" && !part.state.outputArtifact) {
+        const outputArtifact = await RolloutArtifact.writeText(
+          { kind: "session", scopeID, sessionID: part.sessionID },
+          part.state.output,
+        )
+        part = { ...part, state: { ...part.state, outputArtifact } }
+      } else if (part.type === "tool" && part.state.status === "completed" && part.state.outputArtifact) {
+        const owner = { kind: "session" as const, scopeID, sessionID: part.sessionID }
+        const ref = part.state.outputArtifact
+        const outputArtifact = await record(async () => {
+          const stored = await RolloutArtifact.get(owner, ref.id)
+          if (stored.status !== "complete" || stored.sha256 !== ref.sha256 || stored.bytes !== ref.bytes) {
+            throw new Error("Tool output artifact does not match its committed evidence")
+          }
+          return stored
+        })
+        part = { ...part, state: { ...part.state, outputArtifact } }
+      }
+    } catch (error) {
+      if (RolloutRecordingError.isInstance(error)) {
+        const causal = RolloutContext.current()
+        const message = await MessageV2.get({ sessionID: part.sessionID, messageID: part.messageID }).catch(
+          () => undefined,
+        )
+        const rootID =
+          causal?.owner.kind === "session" && causal.owner.sessionID === part.sessionID
+            ? causal.runID
+            : (message?.info.rootID ?? (message?.info.role === "user" ? message.info.id : message?.info.parentID))
+        if (rootID) SessionManager.signalAbort(part.sessionID, { rootID })
+      }
+      throw error
+    }
+    if (delta === undefined) part = MessageV2.canonicalPart(part)
     const path = StoragePath.messagePart(
       scopeID,
       asSessionID(part.sessionID),
@@ -1474,9 +1540,15 @@ export namespace Session {
         providerCacheMissTokens ??
         (excludesCachedTokens ? (input.usage.inputTokens ?? 0) : (input.usage.inputTokens ?? 0) - cachedInputTokens)
 
+      // @ai-sdk/google 2.0.49 reports candidatesTokenCount separately from thoughtsTokenCount;
+      // OpenAI 2.0.111 already includes reasoning in output_tokens/completion_tokens.
+      const separateReasoning =
+        (input.model.api.npm === "@ai-sdk/google" || input.model.api.npm === "@ai-sdk/google-vertex") &&
+        input.model.providerID !== "google-vertex-anthropic"
+
       const tokens = {
         input: safe(adjustedInputTokens),
-        output: safe(input.usage.outputTokens ?? 0),
+        output: safe((input.usage.outputTokens ?? 0) + (separateReasoning ? (input.usage.reasoningTokens ?? 0) : 0)),
         reasoning: safe(input.usage?.reasoningTokens ?? 0),
         cache: {
           write: safe(
@@ -1500,7 +1572,6 @@ export namespace Session {
             .add(new Decimal(tokens.output).mul(costInfo?.output ?? 0).div(1_000_000))
             .add(new Decimal(tokens.cache.read).mul(costInfo?.cache?.read ?? 0).div(1_000_000))
             .add(new Decimal(tokens.cache.write).mul(costInfo?.cache?.write ?? 0).div(1_000_000))
-            .add(new Decimal(tokens.reasoning).mul(costInfo?.output ?? 0).div(1_000_000))
             .toNumber(),
         ),
         tokens,

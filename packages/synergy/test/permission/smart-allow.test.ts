@@ -1,4 +1,10 @@
-import { describe, test, expect, beforeEach } from "bun:test"
+import { describe, test, expect, beforeEach, spyOn } from "bun:test"
+import { AgentCall } from "../../src/agent/call"
+import { Session } from "../../src/session"
+import { ScopeContext } from "../../src/scope/context"
+import { Identifier } from "../../src/id/id"
+import { RolloutRecordingError } from "../../src/session/rollout/error"
+import { tmpdir } from "../fixture/fixture"
 import { SmartAllow } from "@/permission/smart-allow"
 
 describe("SmartAllow.shouldAutoAllow", () => {
@@ -195,32 +201,55 @@ describe("SmartAllow circuit breaker", () => {
 })
 
 describe("SmartAllow classifier session attribution", () => {
-  test("forwards the session id to AgentCall.text for telemetry", async () => {
-    const original = (SmartAllow as any).classify
-    try {
-      let received: unknown
-      const { AgentCall } = await import("@/agent/call")
-      const originalText = AgentCall.text
-      ;(AgentCall.text as any) = async (input: unknown) => {
-        received = input
-        return { text: '{"risk":"safe","reason":"read-only","confidence":0.9}' }
-      }
-      try {
+  test("uses the triggering root without applying its prompt or variant overrides", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const root = await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          sessionID: session.id,
+          role: "user",
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test" },
+          time: { created: Date.now() },
+          system: "Root-only prompt",
+          variant: "root-only-variant",
+        })
+        using call = spyOn(AgentCall, "text").mockResolvedValue({
+          text: '{"risk":"safe","reason":"read-only","confidence":0.9}',
+        } as Awaited<ReturnType<typeof AgentCall.text>>)
         const classification = await SmartAllow.classify({
-          sessionID: "ses_target",
+          sessionID: session.id,
+          rootID: root.id,
           tool: "bash",
           args: { command: "echo hi" },
           capabilities: ["shell_exec"],
-          workspace: "/repo",
+          workspace: tmp.path,
           policyAction: "ask",
         })
         expect(classification?.risk).toBe("safe")
-        expect(received).toMatchObject({ sessionId: "ses_target" })
-      } finally {
-        ;(AgentCall.text as any) = originalText
-      }
-    } finally {
-      ;(SmartAllow as any).classify = original
-    }
+        expect(call.mock.calls[0][0]).toMatchObject({
+          sessionId: session.id,
+          user: { id: root.id, system: undefined, variant: undefined },
+        })
+      },
+    })
+  })
+
+  test("propagates recording failure instead of requesting ordinary approval", async () => {
+    SmartAllow.resetCircuitBreaker()
+    const failure = new RolloutRecordingError({ message: "disk full" })
+    using call = spyOn(AgentCall, "text").mockRejectedValue(failure)
+    await expect(
+      SmartAllow.classify({
+        tool: "bash",
+        args: { command: "echo hi" },
+        capabilities: ["shell_exec"],
+        workspace: "/repo",
+        policyAction: "ask",
+      }),
+    ).rejects.toBe(failure)
   })
 })

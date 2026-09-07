@@ -154,6 +154,18 @@ function StatsContent(props: {
           longest: snapshot().overview.longestStreak,
         }}
       />
+      <Show when={snapshot().tokenCost.accounting}>
+        {(accounting) => (
+          <p class="text-small text-text-weak">
+            {i18n._(S.accountingDetail.id, {
+              api: fmt.currency(accounting().apiEstimate.known, "USD"),
+              subscription: fmt.currency(accounting().subscriptionEquivalent.known, "USD"),
+              unknown: accounting().subscriptionEquivalent.unknown,
+              legacy: fmt.currency(accounting().legacy.cost, "USD"),
+            })}
+          </p>
+        )}
+      </Show>
       <DailyTrend days={snapshot().timeSeries.days} />
       <ActivityHeatmap
         days={snapshot().timeSeries.days}

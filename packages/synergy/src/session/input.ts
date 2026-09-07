@@ -1,3 +1,6 @@
+import { RolloutArtifact } from "./rollout/artifact"
+import { RolloutAttachment } from "./rollout/attachment"
+import { findRecordingError } from "./rollout/error"
 import path from "path"
 import { pathToFileURL } from "url"
 import os from "os"
@@ -22,6 +25,9 @@ import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 import { SessionHistory } from "./history"
 import { SessionUserMessageMaterialization } from "./user-message-materialization"
 import { SessionRootVariant } from "./root-variant"
+import { Experiment } from "@/config/experiment"
+import { RolloutContext } from "./rollout/context"
+import { RolloutLedger } from "./rollout/ledger"
 
 const log = Log.create({ service: "session.input" })
 
@@ -36,6 +42,7 @@ async function listTool() {
 }
 
 export const InvokeInput = z.object({
+  experiment: Experiment.File.optional(),
   sessionID: Identifier.schema("session"),
   messageID: Identifier.schema("message").optional(),
   model: z
@@ -178,6 +185,33 @@ export type CreateUserMessageInput = InvokeInput & {
 }
 
 export async function createUserMessage(input: CreateUserMessageInput, rootIDOverride?: string) {
+  if (input.noReply === true) {
+    if (input.experiment) throw new Error("Experiment configuration requires a new root task")
+    return materializeUserMessage(input, rootIDOverride)
+  }
+  const { Session } = await import(".")
+  const { RolloutLifecycle } = await import("./rollout/lifecycle")
+  const session = await Session.get(input.sessionID)
+  const messageID = input.messageID ?? Identifier.ascending("message")
+  const configuration = await RolloutLifecycle.configuration(
+    session,
+    rootIDOverride ?? messageID,
+    input.experiment,
+    input.model,
+  )
+  try {
+    return await Experiment.provide(configuration, () =>
+      RolloutContext.provide({ owner: RolloutLifecycle.owner(session), runID: rootIDOverride ?? messageID }, () =>
+        materializeUserMessage({ ...input, messageID }, rootIDOverride),
+      ),
+    )
+  } catch (error) {
+    await RolloutLedger.finishRun(RolloutLifecycle.owner(session), rootIDOverride ?? messageID, "failed")
+    throw error
+  }
+}
+
+async function materializeUserMessage(input: CreateUserMessageInput, rootIDOverride?: string) {
   const { Session } = await import(".")
   const { Agent } = await import("@/agent/agent")
   const session = await Session.get(input.sessionID).catch(() => undefined)
@@ -245,8 +279,19 @@ export async function createUserMessage(input: CreateUserMessageInput, rootIDOve
   }
 
   const parts = await Promise.all(
-    input.parts.map(async (part): Promise<MessageV2.Part[]> => {
+    input.parts.map(async (inputPart): Promise<MessageV2.Part[]> => {
+      const causal = RolloutContext.current()
+      async function captureInput(value: unknown) {
+        if (!causal) return
+        const artifact = await RolloutArtifact.writeText(causal.owner, JSON.stringify(value), "application/json")
+        await RolloutLedger.attachInput(causal.owner, causal.runID, artifact)
+      }
+      const part =
+        inputPart.type === "attachment" && causal && inputPart.source?.type !== "resource"
+          ? await RolloutAttachment.capture(causal.owner, inputPart, { allowFile: true })
+          : inputPart
       if (part.type === "attachment") {
+        if (causal && part.artifact) await RolloutLedger.attachInput(causal.owner, causal.runID, part.artifact)
         // before checking the protocol we check if this is an mcp resource because it needs special handling
         if (part.source?.type === "resource") {
           const { clientName, uri } = part.source
@@ -268,6 +313,8 @@ export async function createUserMessage(input: CreateUserMessageInput, rootIDOve
             if (!resourceContent) {
               throw new Error(`Resource not found: ${clientName}/${uri}`)
             }
+
+            await captureInput({ kind: "mcp_resource", clientName, uri, content: resourceContent })
 
             // Handle different content types
             const contents = Array.isArray(resourceContent.contents)
@@ -305,6 +352,7 @@ export async function createUserMessage(input: CreateUserMessageInput, rootIDOve
               sessionID: input.sessionID,
             })
           } catch (error: unknown) {
+            if (findRecordingError(error)) throw findRecordingError(error)
             log.error("failed to read MCP resource", { error, clientName, uri })
             const message = error instanceof Error ? error.message : String(error)
             pieces.push({
@@ -493,6 +541,7 @@ export async function createUserMessage(input: CreateUserMessageInput, rootIDOve
                     agent: input.agent!,
                     messageID: info.id,
                     extra: { bypassCwdCheck: true, model },
+                    captureResult: (result) => captureInput({ tool: "read", input: args, result }),
                     metadata: async () => {},
                     ask: async () => {},
                   }
@@ -524,6 +573,7 @@ export async function createUserMessage(input: CreateUserMessageInput, rootIDOve
                   }
                 })
                 .catch(async (error) => {
+                  if (findRecordingError(error)) throw findRecordingError(error)
                   log.error("failed to read file", { error })
                   const message = error instanceof Error ? error.message : error.toString()
                   const { SessionEvent } = await import("./event")
@@ -554,6 +604,7 @@ export async function createUserMessage(input: CreateUserMessageInput, rootIDOve
                 agent: input.agent!,
                 messageID: info.id,
                 extra: { bypassCwdCheck: true },
+                captureResult: (result) => captureInput({ tool: "list", input: args, result }),
                 metadata: async () => {},
                 ask: async () => {},
               }

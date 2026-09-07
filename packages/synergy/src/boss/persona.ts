@@ -5,10 +5,10 @@ import { DEFAULT_IDENTITY_TEXT } from "./boss-prompt"
 /**
  * Deterministic runtime-boss persona rendering (R2 / R7).
  *
- * `experimental.boss_persona` selects a built-in colleague personality
+ * `boss.persona` selects a built-in colleague personality
  * (project_manager / ops_assistant) or a custom four-trait blend. Rendering is
  * a pure function over config + the boss name row: no LLM calls, no extra
- * storage. `experimental.boss_identity_text` (legacy free-form identity) is
+ * storage. `boss.identityText` (legacy free-form identity) is
  * used only when no persona preset is configured; when neither is set the
  * neutral colleague identity (`DEFAULT_IDENTITY_TEXT`) is used so an upgrade
  * never produces a blank persona.
@@ -21,9 +21,9 @@ export type BossPersonaConfig =
   | { preset: "custom"; formality: number; conciseness: number; proactiveness: number; warmth: number }
 
 export interface RenderBossPersonaInput {
-  /** `experimental.boss_persona` (config). */
+  /** `boss.persona` (config). */
   persona?: BossPersonaConfig
-  /** `experimental.boss_identity_text` (legacy); used only when `persona` is unset. */
+  /** `boss.identityText` (legacy); used only when `persona` is unset. */
   legacyIdentityText?: string
   /** Boss name from the shared self memory (`boss_name`); rendered when present. */
   name?: string
@@ -141,10 +141,10 @@ export function renderBossPersona(input: RenderBossPersonaInput): RenderedBossPe
  */
 export async function resolveBossPersona(): Promise<RenderedBossPersona> {
   const config = await Config.current().catch(() => undefined)
-  const experimental = config?.experimental
+  const boss = config?.boss
   return renderBossPersona({
-    persona: experimental?.boss_persona ?? undefined,
-    legacyIdentityText: experimental?.boss_identity_text?.trim() || undefined,
+    persona: boss?.persona ?? undefined,
+    legacyIdentityText: boss?.identityText?.trim() || undefined,
     name: BossIdentity.getBossName(),
   })
 }

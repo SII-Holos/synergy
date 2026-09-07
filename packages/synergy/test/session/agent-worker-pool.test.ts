@@ -146,6 +146,86 @@ async function inScope<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 describe("AgentWorkerPool", () => {
+  test("acknowledges rollout chunks only after the owner commits them", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    let commit!: () => void
+    const persisted = new Promise<void>((resolve) => {
+      commit = resolve
+    })
+    const streamPromise = inScope(() => pool.run({ ...input(new AbortController().signal), archive: () => persisted }))
+    fake.workers[0].ready()
+    const worker = fake.workers[0]
+    const run = startTurn(worker)
+    worker.receive({
+      type: "archive",
+      requestId: run.requestId,
+      sequence: 1,
+      event: {
+        type: "attempt-start",
+        attemptID: crypto.randomUUID(),
+        url: "https://example.test",
+        method: "POST",
+        mediaType: "application/json",
+      },
+    })
+    await Bun.sleep(0)
+    expect(worker.sent.some((message) => message.type === "archive-ack")).toBe(false)
+    commit()
+    await Bun.sleep(0)
+    expect(worker.sent).toContainEqual({ type: "archive-ack", requestId: run.requestId, sequence: 1 })
+    worker.receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+    worker.receive({
+      type: "complete",
+      requestId: run.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(),
+      memory: workerMemory(),
+    })
+    releaseTurn(worker, run.requestId)
+    await stream.dispose()
+    await pool.stop()
+  })
+
+  test("fails the owned stream and cancels the worker when rollout storage rejects", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(options, fake.spawn)
+    const streamPromise = inScope(() =>
+      pool.run({
+        ...input(new AbortController().signal),
+        archive: async () => {
+          throw new Error("disk full")
+        },
+      }),
+    )
+    const worker = fake.workers[0]
+    worker.ready()
+    const run = startTurn(worker)
+    worker.receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+    worker.receive({
+      type: "archive",
+      requestId: run.requestId,
+      sequence: 1,
+      event: {
+        type: "attempt-start",
+        attemptID: crypto.randomUUID(),
+        url: "https://example.test",
+        method: "POST",
+        mediaType: "application/json",
+      },
+    })
+    await expect(stream.fullStream[Symbol.asyncIterator]().next()).rejects.toMatchObject({
+      name: "RolloutRecordingError",
+    })
+    expect(
+      worker.sent.some((message) => message.type === "archive-ack" && message.error?.name === "RolloutRecordingError"),
+    ).toBe(true)
+    expect(worker.sent.some((message) => message.type === "cancel")).toBe(true)
+    await pool.stop()
+  })
+
   test("keeps default hard watermarks at twice the soft recycle watermarks", () => {
     expect(DEFAULT_AGENT_WORKER_POOL_OPTIONS.maxRssBytes).toBe(3 * 1024 * 1024 * 1024)
     expect(DEFAULT_AGENT_WORKER_POOL_OPTIONS.maxHeapBytes).toBe(2 * 1024 * 1024 * 1024)

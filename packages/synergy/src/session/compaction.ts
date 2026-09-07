@@ -16,7 +16,7 @@ import { SessionPluginHooks as Plugin } from "./plugin-hooks"
 import { Config } from "@/config/config"
 import { Turn } from "./turn"
 import { LoopJob } from "./loop-job"
-import type { LanguageModelUsage, ModelMessage } from "ai"
+import type { ModelMessage } from "ai"
 import { SessionHistory } from "./history"
 import { ObservabilityMetrics } from "@/observability/metrics"
 import { ObservabilityRedaction } from "@/observability/redaction"
@@ -32,6 +32,10 @@ import {
   type CodexResponseItem,
   type CodexReplayPlan,
 } from "@/provider/codex-compaction"
+import { RolloutCall } from "./rollout/call"
+import { RolloutRecordingError } from "./rollout/error"
+import { Storage } from "@/storage/storage"
+import { StoragePath } from "@/storage/path"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 
 export namespace SessionCompaction {
@@ -354,7 +358,6 @@ export namespace SessionCompaction {
             ...part,
             state: {
               ...part.state,
-              output: "",
               time: { ...part.state.time, compacted },
             },
           }),
@@ -544,6 +547,7 @@ export namespace SessionCompaction {
    */
   async function runRemoteCompaction(input: {
     sessionID: string
+    rootID: string
     messages: MessageV2.WithParts[]
     providerID: string
     modelID: string
@@ -588,13 +592,41 @@ export namespace SessionCompaction {
         maxHistoryImages,
       })
       if (!items || items.length === 0) return undefined
-      const result = await CodexProvider.requestRemoteCompactionV2({
-        providerID: input.providerID,
-        modelID: requestModelID,
-        items,
-        sessionID: input.sessionID,
-        signal: remoteAbort.signal,
-      })
+      const index = await Storage.read<{ scopeID: string }>(
+        StoragePath.sessionIndex(Identifier.asSessionID(input.sessionID)),
+      )
+      const result = await RolloutCall.execute(
+        {
+          owner: { kind: "session", scopeID: index.scopeID, sessionID: input.sessionID },
+          runID: input.rootID,
+          purpose: "remote_compaction",
+          model: {
+            providerID: input.providerID,
+            modelID: input.modelID,
+            sdk: resolvedModel?.api.npm ?? "unknown",
+            pricing: resolvedModel?.pricing ?? null,
+          },
+          request: JSON.parse(JSON.stringify({ model: requestModelID, input: items })),
+        },
+        async () => {
+          const value = await CodexProvider.requestRemoteCompactionV2({
+            providerID: input.providerID,
+            modelID: requestModelID,
+            items,
+            sessionID: input.sessionID,
+            signal: remoteAbort.signal,
+          })
+          return {
+            value,
+            response: JSON.parse(JSON.stringify(value)),
+            usage: value.usage ? JSON.parse(JSON.stringify(value.usage)) : undefined,
+          }
+        },
+        () => {
+          remoteAbort.abort()
+          SessionManager.signalAbort(input.sessionID, { rootID: input.rootID })
+        },
+      )
       return {
         version: 2,
         provider: "openai-responses-compaction",
@@ -607,6 +639,7 @@ export namespace SessionCompaction {
         ...(result.usage ? { usage: result.usage } : {}),
       }
     } catch (error) {
+      if (RolloutRecordingError.isInstance(error)) throw error
       if (input.abort.aborted || input.cancel.aborted) return undefined
       log.warn("codex remote compaction v2 failed; local summary remains authoritative", {
         sessionID: input.sessionID,
@@ -620,72 +653,23 @@ export namespace SessionCompaction {
     }
   }
 
-  /**
-   * Persist a codex remote-compaction request through the canonical usage
-   * path: a hidden (non-visible, context-excluded, part-less) assistant record
-   * attributed to the conversation model, so Stats and activity totals count
-   * the extra model request under the model that actually served it, plus the
-   * same observability metrics the normal LLM stream records.
-   */
-  async function recordRemoteCompactionUsage(input: {
+  function observeRemoteCompaction(input: {
     sessionID: string
-    parentID: string
-    rootID: string
-    directory: string
+    messageID: string
     providerID: string
     modelID: string
     usage: CodexRemoteCompactionUsage
-  }): Promise<void> {
-    const model = await Provider.getModel(input.providerID, input.modelID).catch(() => undefined)
-    const languageModelUsage = {
-      inputTokens: (input.usage.input ?? 0) + (input.usage.cacheRead ?? 0),
-      outputTokens: input.usage.output ?? 0,
-      totalTokens: input.usage.totalTokens,
-      cachedInputTokens: input.usage.cacheRead ?? 0,
-    } satisfies LanguageModelUsage
-    const { cost, tokens } = model
-      ? Session.getUsage({ model, usage: languageModelUsage })
-      : {
-          cost: 0,
-          tokens: {
-            input: input.usage.input ?? 0,
-            output: input.usage.output ?? 0,
-            reasoning: 0,
-            cache: { read: input.usage.cacheRead ?? 0, write: 0 },
-          },
-        }
-    const now = Date.now()
-    const id = Identifier.ascending("message")
-    await Session.updateMessage({
-      id,
-      role: "assistant",
-      parentID: input.parentID,
-      rootID: input.rootID,
-      sessionID: input.sessionID,
-      visible: false,
-      includeInContext: false,
-      mode: "compaction",
-      agent: "compaction",
-      metadata: { codexRemoteCompactionUsage: true },
-      path: { cwd: input.directory, root: input.directory },
-      cost,
-      tokens,
-      modelID: input.modelID,
-      providerID: input.providerID,
-      // No `finish`: a terminal assistant on the conversation root would
-      // satisfy needsModelCall for a later continuation user message and could
-      // suppress the next real turn. This record exists only so Stats and
-      // activity totals see the remote request's tokens/cost.
-      time: { created: now, completed: now },
-    } satisfies MessageV2.Assistant)
+  }): void {
     for (const name of ["llm.tokens.input", "llm.tokens.output"] as const) {
+      const value = name === "llm.tokens.input" ? input.usage.input : input.usage.output
+      if (value === undefined) continue
       ObservabilityMetrics.record({
         name,
-        value: name === "llm.tokens.input" ? tokens.input : tokens.output,
+        value,
         unit: "tokens",
         module: "llm",
         sessionID: input.sessionID,
-        messageID: id,
+        messageID: input.messageID,
         labels: { provider: input.providerID, model: input.modelID },
       })
     }
@@ -695,7 +679,7 @@ export namespace SessionCompaction {
       unit: "count",
       module: "llm",
       sessionID: input.sessionID,
-      messageID: id,
+      messageID: input.messageID,
       labels: { provider: input.providerID, model: input.modelID, finishReason: "stop" },
     })
   }
@@ -779,212 +763,175 @@ export namespace SessionCompaction {
       },
     })) as MessageV2.Assistant
     // Codex remote-compaction v2 track: started in parallel with the local
-    // summarization so a slow or failing remote request never blocks the
-    // authoritative local summary. The conversation model (the root user
+    // summarization. Both calls settle before the compaction job completes. The conversation model (the root user
     // message's model) drives the request — the artifact is only replayable
     // on later turns of that same model.
     const remoteCancellation = new AbortController()
     const remoteCompactionPromise = runRemoteCompaction({
       sessionID: input.sessionID,
+      rootID: userMessage.rootID ?? input.parentID,
       messages: input.messages,
       providerID: userMessage.model.providerID,
       modelID: userMessage.model.modelID,
       agentName: userMessage.agent,
       cancel: remoteCancellation.signal,
       abort: input.abort,
-    })
-    const processor = SessionProcessor.create({
-      assistantMessage: msg,
-      sessionID: input.sessionID,
-      model,
-      abort: input.abort,
-    })
-    const compacting = await Plugin.trigger(
-      "experimental.session.compacting",
-      { sessionID: input.sessionID },
-      { context: [], prompt: undefined },
+    }).then(
+      (value) => ({ value, error: undefined }),
+      (error: unknown) => ({ value: undefined, error }),
     )
-    const defaultPrompt = [
-      "Write the compaction continuation summary now.",
-      "Strictly follow the compaction system prompt and its required Markdown section headers.",
-      "Only summarize the prior conversation for a future session; do not continue the user's task or answer pending requests.",
-      "Do not call tools. Do not emit tool-call-shaped text, DSML/XML tool blocks, JSON-RPC requests, shell transcripts, patches, file writes, or structured tool arguments.",
-      "Preserve exact observed facts, including user requests, decisions, constraints, file paths, commands already run, results already observed, completed work, current state, and pending work.",
-      "If something is unknown or was not observed, say it is unknown. Do not infer or fabricate.",
-      "Output only the Markdown continuation summary.",
-    ].join("\n")
-    const promptText = compacting.prompt ?? [defaultPrompt, ...compacting.context].join("\n\n")
-
-    // Trim the conversation history so it fits within the compaction model's
-    // context window while reserving a bounded summary output and tokenizer
-    // estimation margin. Compaction does not need the model's full long-output
-    // allowance, and requesting it can make the recovery call reject itself.
-    const contextLimit = model.limit?.context ?? 0
-    const promptCost = (await Token.estimateModel(model.id, promptText)) + 200
-    const configuredOutput = model.limit?.output && model.limit.output > 0 ? model.limit.output : OUTPUT_BUDGET
-    const outputBudget = Math.min(configuredOutput, OUTPUT_BUDGET)
-    const margin = PromptBudgeter.outputMargin(contextLimit)
-    const messageBudget = contextLimit > 0 ? contextLimit - promptCost - outputBudget - margin : Infinity
-    const safeMessages = isFinite(messageBudget)
-      ? await trimMessagesForContext(modelMessages, messageBudget, model.id)
-      : modelMessages
-
     try {
-      await processor.process({
-        user: { ...userMessage, variant: undefined },
-        agent,
-        abort: input.abort,
+      const processor = SessionProcessor.create({
+        assistantMessage: msg,
         sessionID: input.sessionID,
-        toolDefinitions: [],
-        executionTools: {},
-        executorKinds: {},
-        system: [],
-        messages: [
-          ...safeMessages,
-          {
-            role: "user" as const,
-            content: [
-              {
-                type: "text" as const,
-                text: promptText,
-              },
-            ],
-          },
-        ],
-        maxOutputTokens: outputBudget,
         model,
+        abort: input.abort,
       })
-    } catch (error) {
-      await settleFailedAttempt(msg, error)
-      remoteCancellation.abort()
-      throw error
-    }
+      const compacting = await Plugin.trigger(
+        "experimental.session.compacting",
+        { sessionID: input.sessionID },
+        { context: [], prompt: undefined },
+      )
+      const defaultPrompt = [
+        "Write the compaction continuation summary now.",
+        "Strictly follow the compaction system prompt and its required Markdown section headers.",
+        "Only summarize the prior conversation for a future session; do not continue the user's task or answer pending requests.",
+        "Do not call tools. Do not emit tool-call-shaped text, DSML/XML tool blocks, JSON-RPC requests, shell transcripts, patches, file writes, or structured tool arguments.",
+        "Preserve exact observed facts, including user requests, decisions, constraints, file paths, commands already run, results already observed, completed work, current state, and pending work.",
+        "If something is unknown or was not observed, say it is unknown. Do not infer or fabricate.",
+        "Output only the Markdown continuation summary.",
+      ].join("\n")
+      const promptText = compacting.prompt ?? [defaultPrompt, ...compacting.context].join("\n\n")
 
-    // If the LLM call failed due to context limits (e.g. bad token estimation
-    // or model-reported limits don't match reality), fall back to a
-    let usedMechanicalFallback = false
-    let committedSummaryText: string | undefined
-    if (processor.message.error) {
-      if (isContextExceeded(processor.message.error)) {
-        log.warn("compaction LLM context exceeded, using mechanical fallback", {
+      // Trim the conversation history so it fits within the compaction model's
+      // context window while reserving a bounded summary output and tokenizer
+      // estimation margin. Compaction does not need the model's full long-output
+      // allowance, and requesting it can make the recovery call reject itself.
+      const contextLimit = model.limit?.context ?? 0
+      const promptCost = (await Token.estimateModel(model.id, promptText)) + 200
+      const configuredOutput = model.limit?.output && model.limit.output > 0 ? model.limit.output : OUTPUT_BUDGET
+      const outputBudget = Math.min(configuredOutput, OUTPUT_BUDGET)
+      const margin = PromptBudgeter.outputMargin(contextLimit)
+      const messageBudget = contextLimit > 0 ? contextLimit - promptCost - outputBudget - margin : Infinity
+      const safeMessages = isFinite(messageBudget)
+        ? await trimMessagesForContext(modelMessages, messageBudget, model.id)
+        : modelMessages
+
+      try {
+        await processor.process({
+          user: { ...userMessage, variant: undefined },
+          agent,
+          abort: input.abort,
           sessionID: input.sessionID,
+          toolDefinitions: [],
+          executionTools: {},
+          executorKinds: {},
+          system: [],
+          messages: [
+            ...safeMessages,
+            {
+              role: "user" as const,
+              content: [
+                {
+                  type: "text" as const,
+                  text: promptText,
+                },
+              ],
+            },
+          ],
+          maxOutputTokens: outputBudget,
+          model,
         })
-        committedSummaryText = await writeMechanicalSummary(msg, input)
-        usedMechanicalFallback = true
-      } else {
-        await settleFailedAttempt(msg)
+      } catch (error) {
+        await settleFailedAttempt(msg, error)
         remoteCancellation.abort()
-        return "stop"
+        throw error
       }
-    }
 
-    if (!usedMechanicalFallback) {
-      const msgParts = await MessageV2.parts({ sessionID: input.sessionID, messageID: msg.id })
-      const textParts = msgParts.filter((p): p is MessageV2.TextPart => p.type === "text")
-      const allText = textParts.map((p) => p.text).join("\n")
-      if (!allText.trim()) {
-        setAttemptState(msg, "empty")
+      // If the LLM call failed due to context limits (e.g. bad token estimation
+      // or model-reported limits don't match reality), fall back to a
+      let usedMechanicalFallback = false
+      let committedSummaryText: string | undefined
+      if (processor.message.error) {
+        if (isContextExceeded(processor.message.error)) {
+          log.warn("compaction LLM context exceeded, using mechanical fallback", {
+            sessionID: input.sessionID,
+          })
+          committedSummaryText = await writeMechanicalSummary(msg, input)
+          usedMechanicalFallback = true
+        } else {
+          await settleFailedAttempt(msg)
+          remoteCancellation.abort()
+          return "stop"
+        }
+      }
+
+      if (!usedMechanicalFallback) {
+        const msgParts = await MessageV2.parts({ sessionID: input.sessionID, messageID: msg.id })
+        const textParts = msgParts.filter((p): p is MessageV2.TextPart => p.type === "text")
+        const allText = textParts.map((p) => p.text).join("\n")
+        if (!allText.trim()) {
+          setAttemptState(msg, "empty")
+          await Session.updateMessage(msg)
+          remoteCancellation.abort()
+          return "stop"
+        }
+        committedSummaryText = allText
+
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: msg.id,
+          sessionID: input.sessionID,
+          type: "compaction_recovery",
+          summary: allText,
+          mechanical: false,
+          validated: true,
+        })
+        if (!msg.finish) msg.finish = "stop"
+        if (!msg.time.completed) msg.time.completed = Date.now()
+        setAttemptState(msg, "committed")
+        msg.summary = true
+        msg.visible = true
+        msg.includeInContext = true
         await Session.updateMessage(msg)
-        remoteCancellation.abort()
-        return "stop"
       }
-      committedSummaryText = allText
-
-      await Session.updatePart({
-        id: Identifier.ascending("part"),
-        messageID: msg.id,
-        sessionID: input.sessionID,
-        type: "compaction_recovery",
-        summary: allText,
-        mechanical: false,
-        validated: true,
-      })
-      if (!msg.finish) msg.finish = "stop"
-      if (!msg.time.completed) msg.time.completed = Date.now()
-      setAttemptState(msg, "committed")
-      msg.summary = true
-      msg.visible = true
-      msg.includeInContext = true
-      await Session.updateMessage(msg)
-    }
-    // Merge the codex remote-compaction v2 artifact into the summary message
-    // metadata and record its usage through the canonical token/cost path.
-    // The attach is asynchronous on purpose: the remote request may take up
-    // to its 90s window while the committed local summary is authoritative,
-    // so the compaction job must not hold the session busy waiting for it.
-    // Best-effort: a failed, disabled, or model-mismatched remote track
-    // leaves the local summary untouched.
-    if (committedSummaryText) {
-      const attach = async () => {
-        try {
-          const remoteCompaction = await remoteCompactionPromise
-          if (!remoteCompaction || input.abort.aborted) return
-          await Session.mergeMessageMetadata({
+      const remote = await remoteCompactionPromise
+      if (remote.error) throw remote.error
+      if (committedSummaryText && remote.value && !input.abort.aborted) {
+        await Session.mergeMessageMetadata({
+          sessionID: input.sessionID,
+          messageID: msg.id,
+          metadata: { remoteCompaction: { ...remote.value, summaryText: committedSummaryText } },
+        })
+        if (remote.value.usage) {
+          observeRemoteCompaction({
             sessionID: input.sessionID,
             messageID: msg.id,
-            metadata: { remoteCompaction: { ...remoteCompaction, summaryText: committedSummaryText } },
-          })
-          if (remoteCompaction.usage) {
-            await recordRemoteCompactionUsage({
-              sessionID: input.sessionID,
-              parentID: input.parentID,
-              rootID: input.parentID,
-              directory,
-              providerID: userMessage.model.providerID,
-              modelID: userMessage.model.modelID,
-              usage: remoteCompaction.usage,
-            })
-          }
-          log.info("attached codex remote compaction v2 artifact", { sessionID: input.sessionID })
-        } catch (error) {
-          log.warn("failed to attach codex remote compaction v2 artifact", {
-            sessionID: input.sessionID,
-            error,
+            providerID: userMessage.model.providerID,
+            modelID: userMessage.model.modelID,
+            usage: remote.value.usage,
           })
         }
       }
-      void attach()
-    }
 
-    if (input.auto) {
-      const anchor = resolveAnchor(input.messages, input.parentID)
-      const continueMsg = await Session.updateMessage({
-        id: Identifier.ascending("message"),
-        role: "user",
-        sessionID: input.sessionID,
-        time: {
-          created: Date.now(),
-        },
-        agent: userMessage.agent,
-        model: userMessage.model,
-        origin: { type: "compaction", detail: "auto_continue" },
-        isRoot: false,
-        rootID: input.parentID,
-        visible: false,
-        summary: { title: "Compaction complete", diffs: [] },
-      })
-      const now = Date.now()
-      await Session.updatePart({
-        id: Identifier.ascending("part"),
-        messageID: continueMsg.id,
-        sessionID: input.sessionID,
-        type: "text",
-        synthetic: true,
-        origin: "system",
-        text: "Continue if you have next steps",
-        time: { start: now, end: now },
-      })
-      await Session.updatePart({
-        id: Identifier.ascending("part"),
-        messageID: continueMsg.id,
-        sessionID: input.sessionID,
-        type: "text",
-        synthetic: true,
-        origin: "system",
-        text: buildRecoveryHint({ sessionID: input.sessionID, summaryMessageID: msg.id }),
-        time: { start: now, end: now },
-      })
-      if (anchor) {
+      if (input.auto) {
+        const anchor = resolveAnchor(input.messages, input.parentID)
+        const continueMsg = await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          role: "user",
+          sessionID: input.sessionID,
+          time: {
+            created: Date.now(),
+          },
+          agent: userMessage.agent,
+          model: userMessage.model,
+          origin: { type: "compaction", detail: "auto_continue" },
+          isRoot: false,
+          rootID: input.parentID,
+          visible: false,
+          summary: { title: "Compaction complete", diffs: [] },
+        })
+        const now = Date.now()
         await Session.updatePart({
           id: Identifier.ascending("part"),
           messageID: continueMsg.id,
@@ -992,13 +939,39 @@ export namespace SessionCompaction {
           type: "text",
           synthetic: true,
           origin: "system",
-          text: formatAnchor(anchor.text),
+          text: "Continue if you have next steps",
           time: { start: now, end: now },
         })
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: continueMsg.id,
+          sessionID: input.sessionID,
+          type: "text",
+          synthetic: true,
+          origin: "system",
+          text: buildRecoveryHint({ sessionID: input.sessionID, summaryMessageID: msg.id }),
+          time: { start: now, end: now },
+        })
+        if (anchor) {
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: continueMsg.id,
+            sessionID: input.sessionID,
+            type: "text",
+            synthetic: true,
+            origin: "system",
+            text: formatAnchor(anchor.text),
+            time: { start: now, end: now },
+          })
+        }
       }
+      Bus.publish(Event.Compacted, { sessionID: input.sessionID })
+      return input.auto ? "continue" : "stop"
+    } finally {
+      remoteCancellation.abort()
+      const remote = await remoteCompactionPromise
+      if (RolloutRecordingError.isInstance(remote.error)) throw remote.error
     }
-    Bus.publish(Event.Compacted, { sessionID: input.sessionID })
-    return input.auto ? "continue" : "stop"
   }
 
   LoopJob.register({

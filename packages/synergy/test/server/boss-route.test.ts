@@ -204,7 +204,7 @@ describe("boss routes", () => {
     const originalConfigCurrent = Config.current
     try {
       Config.current = mock(async () =>
-        Config.Info.parse({ experimental: { boss_mode: true } } as unknown as Config.Info),
+        Config.Info.parse({ boss: { enabled: true } } as unknown as Config.Info),
       ) as typeof Config.current
       await withScope(async (scope) => {
         const app = Server.App()

@@ -58,7 +58,7 @@ describe("send --scope", () => {
 
     const result = await runSend(["--scope", "local-missing", "hello"], { SYNERGY_CWD: launch.path })
 
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(2)
     expect(result.output).toContain("Scope not found: local-missing")
     expect((await Scope.list()).some((scope) => scope.worktree === launch.path)).toBe(false)
   })
@@ -81,7 +81,7 @@ describe("send --scope", () => {
       SYNERGY_CWD: launch.path,
     })
 
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(2)
     expect(result.output).toContain("Scope not found: remote-missing")
     expect(received.scopeID).toBe("remote-missing")
     expect((await Scope.list()).some((scope) => scope.worktree === launch.path)).toBe(false)

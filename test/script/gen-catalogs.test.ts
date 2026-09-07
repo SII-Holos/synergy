@@ -36,6 +36,10 @@ describe("catalog determinism", () => {
     const first = await generateTools()
     const second = await generateTools()
     expect(second).toBe(first)
+    const skill = first.split("## skill\n")[1]?.split("\n## ")[0]
+    expect(skill).toContain("| `name` | string | yes |")
+    expect(skill).toContain("| `reference` | string |  |")
+    expect(skill).not.toContain("| `sha256`")
   })
 })
 

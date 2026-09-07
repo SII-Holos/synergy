@@ -14,6 +14,10 @@ import { Identifier } from "../../src/id/id"
 import { CortexOutput } from "../../src/cortex/output"
 import { TaskOutputTool } from "../../src/cortex/tools/task-output"
 import { Agent } from "../../src/agent/agent"
+import { Aggregator } from "../../src/stats/aggregator"
+import { RolloutLedger } from "../../src/session/rollout/ledger"
+import { ProviderPricing } from "../../src/provider/pricing"
+import { complete as completeRollout } from "../fixture/rollout"
 import { tmpdir } from "../fixture/fixture"
 
 async function launchAndCaptureCreatedTask(
@@ -427,7 +431,7 @@ describe.serial("Cortex", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const originalInvokeInternal = SessionInvoke.invokeInternal
-          const originalMessages = Session.messages
+          const originalDigest = Aggregator.digest
           const childMayFinish = Promise.withResolvers<void>()
           const usageReadStarted = Promise.withResolvers<void>()
           const releaseUsageRead = Promise.withResolvers<void>()
@@ -444,12 +448,12 @@ describe.serial("Cortex", () => {
               return writeAssistantText(input.sessionID, "completed")
             },
           )
-          ;(Session.messages as any) = mock(async (input: Parameters<typeof Session.messages>[0]) => {
-            if (input.sessionID === childSessionID && input.raw) {
+          Aggregator.digest = mock(async (input: Parameters<typeof Aggregator.digest>[0]) => {
+            if (input.id === childSessionID) {
               usageReadStarted.resolve()
               await releaseUsageRead.promise
             }
-            return originalMessages(input)
+            return originalDigest(input)
           })
 
           try {
@@ -475,11 +479,15 @@ describe.serial("Cortex", () => {
               }),
             ])
 
-            await Cortex.cancel(task.id)
-
+            let cancellationSettled = false
+            const cancellation = Cortex.cancel(task.id).then(() => {
+              cancellationSettled = true
+            })
+            await Bun.sleep(10)
             expect(Cortex.get(task.id)?.status).toBe("cancelled")
-
+            expect(cancellationSettled).toBe(false)
             releaseUsageRead.resolve()
+            await cancellation
             const terminalTask = await Promise.race([
               terminalPublished.promise,
               Bun.sleep(1_000).then(() => {
@@ -493,7 +501,7 @@ describe.serial("Cortex", () => {
             releaseUsageRead.resolve()
             await Promise.race([terminalPublished.promise, Bun.sleep(1_000)])
             unsubscribe()
-            ;(Session.messages as any) = originalMessages
+            Aggregator.digest = originalDigest
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
           }
         },
@@ -1274,6 +1282,61 @@ describe.serial("Cortex", () => {
         },
       })
     })
+    test("includes auxiliary attempts in the child task budget", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          SessionInvoke.invokeInternal = mock(async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+            const result = await writeAssistantText(input.sessionID, "result", 0)
+            if (result.info.role !== "assistant") throw new Error("Expected assistant response")
+            const call = await RolloutLedger.beginCall({
+              owner: { kind: "session", scopeID: ScopeContext.current.scope.id, sessionID: input.sessionID },
+              runID: result.info.rootID ?? result.info.parentID,
+              purpose: "summary",
+              agent: "summary",
+              request: {},
+              model: {
+                providerID: "test-provider",
+                modelID: "test-model",
+                sdk: "@ai-sdk/openai",
+                pricing: ProviderPricing.resolve({
+                  providerID: "test-provider",
+                  modelID: "test-model",
+                  source: "configuration",
+                  cost: { input: 3, output: 15, cache_read: 1 },
+                }),
+              },
+            })
+            await completeRollout(call)
+            return result
+          })
+          const parent = await Session.create({})
+          try {
+            const task = await Cortex.launch({
+              description: "Auxiliary budget",
+              prompt: "Answer",
+              agent: "developer",
+              parentSessionID: parent.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+              output: { mode: "final_response" },
+              maxCost: 0.01,
+            })
+            const completed = await waitUntilTerminal(task.id)
+            expect(completed?.status).toBe("error")
+            expect(completed?.usage?.cost).toBeCloseTo(0.0105)
+            expect(completed?.usage?.accounting?.attempts).toBe(1)
+          } finally {
+            SessionInvoke.invokeInternal = originalInvokeInternal
+            await Session.remove(parent.id)
+          }
+        },
+      })
+    })
+
     test("discards task output when actual usage exceeds the cost budget", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({

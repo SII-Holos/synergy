@@ -75,6 +75,16 @@ export namespace StoragePath {
     sessionID as string,
   ]
   export const sessionInfo = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "info"]
+  export const sessionRolloutRoot = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionRoot(scopeID, sessionID),
+    "rollout",
+  ]
+  export const operationRolloutRoot = (scopeID: ScopeID, operationID: string) => [
+    "operations",
+    scopeID as string,
+    operationID,
+    "rollout",
+  ]
   export const sessionSummary = (scopeID: ScopeID, sessionID: SessionID) => [
     ...sessionRoot(scopeID, sessionID),
     "summary",
@@ -320,6 +330,8 @@ export namespace StoragePath {
   ]
 
   // Stats
+  export const statsOperations = () => ["stats", "operations"]
+  export const statsOperation = (scopeID: string, operationID: string) => [...statsOperations(), scopeID, operationID]
   export const statsRoot = () => ["stats"]
   export const statsWatermark = () => ["stats", "watermark"]
   export const statsSnapshot = () => ["stats", "snapshot"]

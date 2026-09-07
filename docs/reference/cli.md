@@ -2,43 +2,43 @@
 
 # CLI Reference
 
-Generated from the CLI registration in `packages/synergy/src/main.ts`. Concept and lifecycle guidance lives in [CLI guide](cli-guide.md); use `synergy --help` or `synergy <command> --help` for the exact options of the installed version.
+Generated from the CLI registration in `packages/synergy/src/cli/commands.ts`. Concept and lifecycle guidance lives in [CLI guide](cli-guide.md); use `synergy --help` or `synergy <command> --help` for the exact options of the installed version.
 
 ## Commands
 
 | Command | Description |
 | --- | --- |
+| `$0` | start synergy server |
 | `acp` | start ACP (Agent Client Protocol) server |
 | `agent` | manage agents |
 | `auth` | manage credentials |
 | `browser` | diagnose and install Chromium for Browser tools |
 | `channel` | manage messaging channels |
 | `config` | manage synergy configuration |
-| `data` |  |
+| `data` | manage synergy data location and storage |
 | `debug` | debugging and troubleshooting tools |
 | `diagnostics` | create a local diagnostics package |
 | `doctor` | diagnose synergy sandbox and environment |
 | `embed` | manage the local embedding model |
-| `export` |  |
-| `generate` |  |
+| `export` | export a session transcript or self-contained rollout ZIP |
+| `generate` | generate the OpenAPI contract |
 | `holos` | manage Holos identity and runtime |
-| `import` |  |
+| `import` | import a session transcript or rollout ZIP |
 | `library` | manage library memory and learning |
 | `logs` | show synergy background service logs |
 | `mcp` | manage MCP (Model Context Protocol) servers |
-| `migrate` |  |
+| `migrate` | move synergy data to a new location (alias for 'data move') |
 | `migration` | manage schema and data migrations |
-| `models` |  |
+| `models` | list all available models |
 | `plugin` | install, remove, update, and inspect plugins |
-| `send` |  |
-| `server` |  |
+| `send` | send a message to synergy |
 | `session` | manage sessions |
 | `start` | start synergy background service |
 | `stats` | show token usage and cost statistics |
 | `status` | show synergy background service status |
 | `stop` | stop synergy background service |
-| `uninstall` |  |
-| `upgrade` |  |
+| `uninstall` | uninstall synergy and remove all related files |
+| `upgrade` | upgrade synergy to the latest or a specific version |
 | `web` | URL of a running synergy server |
 
 ## acp
@@ -126,6 +126,11 @@ show local Holos credential status
 | Option | Description |
 | --- | --- |
 | `--json` (boolean) | output as JSON |
+
+## data
+
+manage synergy data location and storage
+
 
 ## debug
 
@@ -215,8 +220,13 @@ export config as JSONC (secrets redacted by default)
 
 ## export [sessionID]
 
-export session data as JSON
+export a session transcript or self-contained rollout ZIP
 
+| Option | Description |
+| --- | --- |
+| `--format` | export format |
+| `--run` (string) | root run ID to include in the rollout |
+| `--output` (string) | destination file (required for rollout ZIP) |
 
 ## file
 
@@ -240,7 +250,7 @@ manage Holos identity and runtime
 
 ## import <file>
 
-import session data from JSON or JSON.GZ export file
+import a session transcript or rollout ZIP
 
 
 ## import <source>
@@ -379,6 +389,21 @@ configure memory parameters (writes to global config)
 | --- | --- |
 | `--print` (boolean) | print config instead of writing to file |
 
+## merge <source>
+
+merge data from another synergy directory or zip archive
+
+
+## migrate
+
+move synergy data to a new location (alias for 'data move')
+
+| Option | Description |
+| --- | --- |
+| `--target` (string) | target directory path |
+| `--remove-original` (boolean) | remove original data after successful move |
+| `--dry-run` (boolean) | show plan without executing |
+
 ## migration
 
 manage schema and data migrations
@@ -396,6 +421,20 @@ list all available models
 | `--verbose` (boolean) | use more verbose model output (includes metadata like costs) |
 | `--refresh` (boolean) | refresh the models cache from models.dev |
 
+## move <target>
+
+move synergy data to a new location
+
+| Option | Description |
+| --- | --- |
+| `--remove-original` (boolean) | remove original data after successful move |
+| `--dry-run` (boolean) | show plan without executing |
+
+## pack [output]
+
+pack synergy data into a zip archive
+
+
 ## patch <hash>
 
 show patch for a snapshot hash
@@ -406,7 +445,7 @@ show patch for a snapshot hash
 
 ## path
 
-show config file paths
+show current data location and usage
 
 
 ## paths
@@ -522,6 +561,9 @@ send a message to synergy
 | `--scope` (string) | registered scope id (defaults to the current directory, registering it when needed) |
 | `--model` (string) | model to use in the format of provider/model |
 | `--agent` (string) | agent to use |
+| `--experiment` (string) | Versioned experiment configuration file |
+| `--non-interactive` (boolean) | Fail explicitly if the task requires user input or permission |
+| `--timeout` (number) | Task timeout in seconds, including descendants and cleanup |
 | `--format` (string) | format: default (formatted) or json (raw JSON events) |
 | `--file` (string) | file(s) to attach to message |
 | `--title` (string) | title for the session (uses truncated prompt if no value provided) |
@@ -534,6 +576,14 @@ send a message to synergy
 
 manage sessions
 
+
+## set-home <path>
+
+set SYNERGY_HOME to change data location (does not move data)
+
+| Option | Description |
+| --- | --- |
+| `--unset` (boolean) | remove SYNERGY_HOME, revert to default ~/.synergy |
 
 ## show
 
@@ -569,6 +619,8 @@ show token usage and cost statistics
 
 | Option | Description |
 | --- | --- |
+| `--run` (string) | Show one run and its descendant accounting |
+| `--compare` (string) | Compare two runs without inferring task quality |
 | `--days` (number) | show stats for the last N days (default: all time) |
 | `--tools` (number) | number of tools to show (default: all) |
 | `--models` | show model statistics (default: hidden). Pass a number to show top N, otherwise shows all |

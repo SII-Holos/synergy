@@ -3,9 +3,10 @@ import { deserialize, serialize } from "v8"
 import { APICallError, type FinishReason, type LanguageModelUsage, type ProviderMetadata } from "ai"
 import { Runtime as ScopeRuntime } from "@/scope/types"
 import { Workspace } from "../workspace-schema"
+import { RolloutTransportSchema } from "../rollout/transport-schema"
 
 export namespace AgentTurnProtocol {
-  export const VERSION = 7
+  export const VERSION = 8
   export const REQUEST_MAX_BYTES = 64 * 1024 * 1024
   export const EVENT_MAX_BYTES = 2 * 1024 * 1024
   export const IPC_FRAME_MAX_BYTES = 2 * 1024 * 1024
@@ -193,6 +194,7 @@ export namespace AgentTurnProtocol {
     | { type: "run-commit"; requestId: string }
     | { type: "cancel"; requestId: string; reason?: string }
     | { type: "ack-window"; requestId: string; ackSequence: number }
+    | { type: "archive-ack"; requestId: string; sequence: number; error?: SerializedError }
     | { type: "collect-memory"; requestId: string }
     | { type: "shutdown" }
     | { type: "ping" }
@@ -203,6 +205,7 @@ export namespace AgentTurnProtocol {
     | { type: "chunk-ack"; requestId: string; index: number }
     | { type: "started"; requestId: string }
     | { type: "events"; requestId: string; sequence: number; events: StreamEvent[] }
+    | { type: "archive"; requestId: string; sequence: number; event: RolloutTransportSchema.Event }
     | {
         type: "complete"
         requestId: string
@@ -274,6 +277,14 @@ export namespace AgentTurnProtocol {
       })
       .strict(),
     z.object({ type: z.literal("collect-memory"), requestId: z.string() }).strict(),
+    z
+      .object({
+        type: z.literal("archive-ack"),
+        requestId: z.string(),
+        sequence: z.number().int().positive(),
+        error: SerializedError.optional(),
+      })
+      .strict(),
     z.object({ type: z.literal("shutdown") }).strict(),
     z.object({ type: z.literal("ping") }).strict(),
   ])
@@ -290,6 +301,14 @@ export namespace AgentTurnProtocol {
     z.object({ type: z.literal("run-ready"), requestId: z.string() }).strict(),
     z.object({ type: z.literal("chunk-ack"), requestId: z.string(), index: z.number().int().nonnegative() }).strict(),
     z.object({ type: z.literal("started"), requestId: z.string() }).strict(),
+    z
+      .object({
+        type: z.literal("archive"),
+        requestId: z.string(),
+        sequence: z.number().int().positive(),
+        event: RolloutTransportSchema.Event,
+      })
+      .strict(),
     z
       .object({
         type: z.literal("events"),

@@ -61,7 +61,7 @@ describe("Feishu boss routing", () => {
           },
         },
       },
-      experimental: { boss_mode: true },
+      boss: { enabled: true },
     }
   }
 

@@ -34,6 +34,7 @@ const CortexDelegationInfoInner = z.object({
   executionRole: z.enum(["primary", "delegated_subagent"]).optional(),
   startedAt: z.number(),
   completedAt: z.number().optional(),
+  settledAt: z.number().optional(),
   status: z.enum(["queued", "running", "completed", "error", "cancelled", "interrupted"]),
   model: z
     .object({

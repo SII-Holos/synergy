@@ -15,6 +15,8 @@ import { Identifier } from "../id/id"
 import { Auth } from "../provider/api-key"
 import { registerBuiltinProviderProfiles } from "../provider/builtin"
 import { ProviderProfile } from "../provider/profile"
+import { LegacyExecutionConfig } from "./legacy-execution"
+import { mergeDeep } from "remeda"
 
 const log = Log.create({ service: "config.migration" })
 
@@ -956,7 +958,52 @@ async function normalizeProviderProfileConfigs(): Promise<number> {
   return changed
 }
 
+export async function migrateExecutionConfigFile(filepath: string): Promise<boolean> {
+  const current = await readConfigObject(filepath)
+  if (!current || !("experimental" in current.config)) return false
+  const migrated = LegacyExecutionConfig.migrate(current.config)
+  if (!isRecord(migrated)) throw new Error("Execution configuration must be an object")
+  const owningDomain = ConfigDomain.domainForFile(filepath)
+  let text = current.raw
+  const formattingOptions = { tabSize: 2, insertSpaces: true, eol: "\n" } as const
+  for (const [key, value] of Object.entries(migrated)) {
+    if (JSON.stringify(current.config[key]) === JSON.stringify(value)) continue
+    const targetDomain = ConfigDomain.domainForKey(key)
+    if (owningDomain && targetDomain && targetDomain.id !== owningDomain.id) {
+      const target = path.join(path.dirname(filepath), targetDomain.filename)
+      const existing = await readConfigObject(target)
+      const merged = isRecord(existing?.config[key]) && isRecord(value) ? mergeDeep(existing.config[key], value) : value
+      const updated = applyEdits(
+        existing?.raw ?? "{}",
+        modify(existing?.raw ?? "{}", [key], merged, { formattingOptions }),
+      )
+      await Bun.write(target, updated + (updated.endsWith("\n") ? "" : "\n"))
+      text = applyEdits(text, modify(text, [key], undefined, { formattingOptions }))
+    } else text = applyEdits(text, modify(text, [key], value, { formattingOptions }))
+  }
+  text = applyEdits(text, modify(text, ["experimental"], undefined, { formattingOptions }))
+  await Bun.write(filepath, text + (text.endsWith("\n") ? "" : "\n"))
+  return true
+}
+
 export const migrations: Migration[] = [
+  {
+    id: "20260907-config-execution-domains",
+    description: "Move legacy experiment toggles to their owning configuration domains",
+    async up(progress) {
+      const files = new Set(await findConfigFiles())
+      if (Flag.SYNERGY_CONFIG) files.add(Flag.SYNERGY_CONFIG)
+      for (const dir of await findConfigDomainDirs()) {
+        for (const entry of await fs.readdir(dir, { withFileTypes: true }))
+          if (entry.isFile() && /\.jsonc?$/.test(entry.name)) files.add(path.join(dir, entry.name))
+      }
+      let done = 0
+      for (const filepath of files) {
+        await migrateExecutionConfigFile(filepath)
+        progress(++done, Math.max(1, files.size))
+      }
+    },
+  },
   {
     id: "20260410-config-holos-top-level",
     description: "Migrate Holos config from channel.holos to top-level holos",

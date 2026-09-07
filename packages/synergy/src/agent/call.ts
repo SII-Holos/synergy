@@ -1,9 +1,16 @@
+import { Experiment } from "@/config/experiment"
+import { RolloutLedger } from "../session/rollout/ledger"
 import type { ModelMessage } from "ai"
 import { Agent } from "./agent"
 import { Provider } from "../provider/provider"
 import { AgentTurn } from "../session/agent-turn"
-import type { MessageV2 } from "../session/message-v2"
+import { MessageV2 } from "../session/message-v2"
+import { RolloutContext } from "../session/rollout/context"
 import { Identifier } from "../id/id"
+import { ScopeContext } from "../scope/context"
+import { Storage } from "../storage/storage"
+import { StoragePath } from "../storage/path"
+import { RolloutRecordingError } from "../session/rollout/error"
 
 export namespace AgentCall {
   export type ErrorCode =
@@ -13,6 +20,7 @@ export namespace AgentCall {
     | "output_too_large"
     | "timeout"
     | "cancelled"
+    | "invalid_owner"
 
   export class Error extends globalThis.Error {
     readonly code: ErrorCode
@@ -80,6 +88,24 @@ export namespace AgentCall {
   }
 
   export async function text(input: TextInput): Promise<TextOutput> {
+    if (!Experiment.current()) return Experiment.provide(await Experiment.resolve(), () => text(input))
+    const causal = RolloutContext.current()
+    if (
+      !input.user &&
+      causal?.owner.kind === "session" &&
+      (!input.sessionId || input.sessionId === causal.owner.sessionID)
+    ) {
+      const [root] = MessageV2.deriveSemantics([
+        await MessageV2.get({ sessionID: causal.owner.sessionID, messageID: causal.runID }),
+      ])
+      if (root.info.role !== "user" || !root.info.isRoot)
+        throw new Error("invalid_owner", "Causal agent calls require a persisted root user")
+      input = { ...input, user: { ...root.info, system: undefined, variant: undefined } }
+    }
+    if (causal?.signal)
+      input = { ...input, signal: AbortSignal.any([causal.signal, ...(input.signal ? [input.signal] : [])]) }
+    if (input.sessionId && (!input.user || input.user.sessionID !== input.sessionId))
+      throw new Error("invalid_owner", "Session agent calls require the triggering root user from that session")
     if (input.signal?.aborted) throw new Error("cancelled", `Agent ${input.agent} was cancelled`)
     if (input.maxInputChars !== undefined && inputCharacters(input.messages) > input.maxInputChars) {
       throw new Error("input_too_large", `Agent ${input.agent} input exceeded ${input.maxInputChars} characters`)
@@ -99,7 +125,27 @@ export namespace AgentCall {
     if (!model) throw new Error("model_unavailable", `Agent ${input.agent} has no available model`)
     if (input.signal?.aborted) throw new Error("cancelled", `Agent ${input.agent} was cancelled`)
 
-    const sessionID = input.user?.sessionID ?? input.sessionId ?? Identifier.ascending("session")
+    const owningSessionID = input.user?.sessionID ?? input.sessionId
+    const inheritedOperation = !owningSessionID && causal?.owner.kind === "operation" ? causal : undefined
+    const operationID = owningSessionID
+      ? undefined
+      : inheritedOperation?.owner.kind === "operation"
+        ? inheritedOperation.owner.operationID
+        : crypto.randomUUID()
+    const sessionID = owningSessionID ?? operationID!
+    const owner = owningSessionID
+      ? {
+          kind: "session" as const,
+          sessionID: owningSessionID,
+          scopeID: (
+            await Storage.read<{ scopeID: string }>(StoragePath.sessionIndex(Identifier.asSessionID(owningSessionID)))
+          ).scopeID,
+        }
+      : (inheritedOperation?.owner ?? {
+          kind: "operation" as const,
+          operationID: operationID!,
+          scopeID: ScopeContext.tryScope()?.id ?? "home",
+        })
     const user: MessageV2.User =
       input.user ??
       ({
@@ -111,6 +157,13 @@ export namespace AgentCall {
         model: { providerID: model.providerID, modelID: model.id },
         metadata: input.userMetadata,
       } satisfies MessageV2.User)
+    const runID = input.user?.rootID ?? input.user?.id ?? inheritedOperation?.runID ?? operationID ?? user.id
+    if (owner.kind === "operation") {
+      await RolloutLedger.beginRun(owner, runID)
+      await RolloutLedger.configureRun(owner, runID, await Experiment.resolve())
+    }
+    let status: "completed" | "failed" | "cancelled" = "failed"
+    let failure: unknown
     const timeout = new AbortController()
     const output = new AbortController()
     const abort = input.signal
@@ -125,44 +178,59 @@ export namespace AgentCall {
     const wait = <T>(promise: Promise<T>) => Promise.race([promise, interrupted.promise])
 
     try {
-      const stream = await wait(
-        AgentTurn.stream({
-          agent,
-          user,
-          toolDefinitions: [],
-          model,
-          small: input.small ?? true,
-          messages: input.messages,
-          abort,
-          sessionID,
-          system: [],
-          retries: input.retries,
-          maxOutputTokens: input.maxOutputTokens,
-        }),
-      )
+      const starting = AgentTurn.stream({
+        agent,
+        user,
+        toolDefinitions: [],
+        model,
+        small: input.small ?? true,
+        messages: input.messages,
+        abort,
+        sessionID,
+        system: [],
+        retries: input.retries,
+        recording: {
+          owner,
+          runID,
+          purpose: input.agent,
+        },
+        maxOutputTokens: input.maxOutputTokens,
+      })
+      let stream: AgentTurn.Stream
+      try {
+        stream = await wait(starting)
+      } catch (error) {
+        await starting.then(
+          (late) => late.dispose(),
+          (failure: unknown) => {
+            if (RolloutRecordingError.isInstance(failure)) throw failure
+          },
+        )
+        throw error
+      }
       try {
         let value = ""
-        await wait(
-          (async () => {
-            for await (const part of stream.fullStream) {
-              if (part.type !== "text-delta") continue
-              const chunk = part.text
-              if (!chunk) continue
-              value += chunk
-              if (value.length <= input.maxOutputChars) continue
-              output.abort(new DOMException("Agent output exceeded its bound", "AbortError"))
-              throw new Error(
-                "output_too_large",
-                `Agent ${input.agent} output exceeded ${input.maxOutputChars} characters`,
-              )
-            }
-          })(),
-        )
-        return { text: value, model, usage: await stream.usage }
+        const iterator = stream.fullStream[Symbol.asyncIterator]()
+        while (true) {
+          const next = await wait(iterator.next())
+          if (next.done) break
+          const part = next.value
+          if (part.type !== "text-delta" || !part.text) continue
+          value += part.text
+          if (value.length <= input.maxOutputChars) continue
+          output.abort(new DOMException("Agent output exceeded its bound", "AbortError"))
+          throw new Error("output_too_large", `Agent ${input.agent} output exceeded ${input.maxOutputChars} characters`)
+        }
+        const usage = await wait(stream.usage)
+        status = "completed"
+        return { text: value, model, usage }
       } finally {
         await stream.dispose()
       }
     } catch (error) {
+      failure = error
+      status = input.signal?.aborted || timeout.signal.aborted ? "cancelled" : "failed"
+      if (RolloutRecordingError.isInstance(error)) throw error
       if (error instanceof Error) throw error
       if (input.signal?.aborted) throw new Error("cancelled", `Agent ${input.agent} was cancelled`, { cause: error })
       if (timeout.signal.aborted) {
@@ -171,6 +239,14 @@ export namespace AgentCall {
       throw error
     } finally {
       interrupted.dispose()
+      if (owner.kind === "operation" && !inheritedOperation) {
+        try {
+          await RolloutLedger.finishRun(owner, runID, status)
+        } catch (error) {
+          if (RolloutRecordingError.isInstance(failure)) throw failure
+          throw error
+        }
+      }
     }
   }
 }

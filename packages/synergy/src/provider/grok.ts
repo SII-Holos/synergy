@@ -1,3 +1,4 @@
+import { RolloutTransport } from "@/session/rollout/transport"
 import { Auth } from "@/provider/api-key"
 import { Log } from "@/util/log"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
@@ -502,7 +503,7 @@ export namespace GrokProvider {
           headers.set("User-Agent", "synergy")
           headers.set("x-grok-client-surface", "synergy")
 
-          return fetch(input, { ...init, headers })
+          return RolloutTransport.fetch(fetch, input, { ...init, headers })
         },
         refresh: async (auth) => refreshAuth(auth, fetch, providerID),
         classify: classifyError,

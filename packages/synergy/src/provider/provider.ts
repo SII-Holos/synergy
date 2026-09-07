@@ -1,3 +1,5 @@
+import { parseModelID } from "./model-id"
+import { ProviderPricing } from "./pricing"
 import z from "zod"
 import fuzzysort from "fuzzysort"
 import type { Config } from "../config/config"
@@ -227,6 +229,7 @@ export namespace Provider {
           }),
         ]),
       }),
+      pricing: ProviderPricing.Info.nullable().optional(),
       cost: z.object({
         input: z.number(),
         output: z.number(),
@@ -397,6 +400,12 @@ export namespace Provider {
       catalogState: model.catalog_state ?? "active",
       headers: model.headers ?? {},
       options: model.options ?? {},
+      pricing: ProviderPricing.resolve({
+        providerID: provider.id,
+        modelID: model.id,
+        cost: model.cost,
+        source: "catalog",
+      }),
       cost: {
         input: model.cost?.input ?? 0,
         output: model.cost?.output ?? 0,
@@ -410,8 +419,8 @@ export namespace Provider {
                 read: model.cost.context_over_200k.cache_read ?? 0,
                 write: model.cost.context_over_200k.cache_write ?? 0,
               },
-              input: model.cost.context_over_200k.input,
-              output: model.cost.context_over_200k.output,
+              input: model.cost.context_over_200k.input ?? model.cost.input ?? 0,
+              output: model.cost.context_over_200k.output ?? model.cost.output ?? 0,
             }
           : undefined,
       },
@@ -653,6 +662,13 @@ export namespace Provider {
           name,
           providerID,
           capabilities: mergeModelCapabilities(model, existingModel?.capabilities),
+          pricing: ProviderPricing.resolve({
+            providerID,
+            modelID,
+            cost: model.cost,
+            source: "configuration",
+            inherited: existingModel?.pricing,
+          }),
           cost: {
             input: model?.cost?.input ?? existingModel?.cost?.input ?? 0,
             output: model?.cost?.output ?? existingModel?.cost?.output ?? 0,
@@ -1367,7 +1383,7 @@ export namespace Provider {
     return model.status !== "deprecated" && model.catalogState !== "retained"
   }
 
-  export function sort(models: Model[]) {
+  export function sort<T extends { id: string }>(models: T[]) {
     return sortBy(
       models,
       [(model) => priority.findIndex((filter) => model.id.includes(filter)), "desc"],
@@ -1396,13 +1412,7 @@ export namespace Provider {
     }
   }
 
-  export function parseModel(model: string) {
-    const [providerID, ...rest] = model.split("/")
-    return {
-      providerID: providerID,
-      modelID: rest.join("/"),
-    }
-  }
+  export const parseModel = parseModelID
 
   export async function isModelAvailable(model: { providerID: string; modelID: string }): Promise<boolean> {
     const s = await state()

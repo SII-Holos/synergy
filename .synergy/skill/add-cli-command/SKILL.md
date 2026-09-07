@@ -50,3 +50,7 @@ Update [CLI reference](../../../docs/reference/cli.md) for user-visible syntax o
 ## Handoff
 
 Report the registered command path, domain API called, failure/exit behavior, manual invocation, tests, SDK generation status, and documentation updated.
+
+## Task execution commands
+
+Use the shared `RuntimeHandle` for a local writer and generated SDK methods for attached execution. Subscribe before submission, process interactions during command execution, and always remove signal listeners and drain cancellation in cleanup. Read durable run results instead of treating a session idle event as completion. Keep JSON stdout parseable and report unknown estimates separately from known cost. See [Rollout execution](../../../docs/reference/rollout.md).
