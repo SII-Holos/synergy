@@ -36,6 +36,10 @@ description: Add or modify Synergy durable state, JSON storage keys, SQLite tabl
 5. Preserve secrets and owner-only permissions. Never log raw credentials or include them in diagnostics fixtures.
 6. Build old-state fixtures from schemas emitted by shipped writers. Do not use a synthetic superset of multiple historical variants as the only upgrade fixture.
 
+## File Snapshot Storage
+
+Use `SnapshotStore` for backend resolution, `SnapshotLifecycle` for copied/deleted ownership, and `SnapshotMaintenance` for offline migration and collection. Hold the Scope lease for all object/ref transactions and the session lock for mutable indexes. Publish refs before message hashes; remove canonical session records before releasing their refs. Preserve every historical root across archive, transcript rollback, and message compaction. Full-data copies must use `SnapshotArchive` for snapshot directories, never generic copy-skip-existing. Rollout ZIP export/import uses its session-scoped object transfer under Scope leases; retain imported roots before publishing message references. Test packed refs, alternates without refs, unknown objects, checkpoint interruptions, and cross-process exclusion. Run `bun script/benchmark-snapshots.ts` from `packages/synergy` for an isolated storage-backend comparison; distinguish that measurement from old-binary timing or production capacity estimates.
+
 ## Verify
 
 Test:

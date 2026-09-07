@@ -1,5 +1,7 @@
 import { RolloutAttachment } from "./rollout/attachment"
 import { RolloutContext } from "./rollout/context"
+import { SnapshotLifecycle } from "./snapshot-lifecycle"
+import { SnapshotRecords } from "./snapshot-records"
 import { Decimal } from "decimal.js"
 import { RolloutArtifact } from "./rollout/artifact"
 import { record, RolloutRecordingError } from "./rollout/error"
@@ -561,55 +563,62 @@ export namespace Session {
           title: source.title,
         },
       })
-      const messageMap = new Map<string, string>()
-      for (const msg of msgs) {
-        // "before" stops at the target message (exclusive); "through" copies
-        // the target message and stops after it (inclusive).
-        if (forkPoint && msg.info.id === forkPoint && !includeForkPoint) break
-        const id = Identifier.ascending("message")
-        messageMap.set(msg.info.id, id)
-        const cloned = await updateMessage({
-          ...msg.info,
-          ...(msg.info.role === "assistant" ? { accounting: MessageV2.copyAccounting(msg.info, "inherited") } : {}),
-          sessionID: session.id,
-          id,
-          ...("parentID" in msg.info && typeof msg.info.parentID === "string"
-            ? { parentID: messageMap.get(msg.info.parentID) ?? msg.info.parentID }
-            : {}),
+      const selected = forkPoint
+        ? msgs.slice(0, msgs.findIndex((msg) => msg.info.id === forkPoint) + (includeForkPoint ? 1 : 0))
+        : msgs
+      try {
+        await SnapshotLifecycle.adopt({
+          scopeID: source.scope.id,
+          sourceSessionID: source.id,
+          targetSessionID: session.id,
+          workspace: source.workspace?.path ?? ScopeContext.current.directory,
+          hashes: selected.flatMap((msg) => msg.parts.flatMap(SnapshotRecords.partRoots)),
         })
-
-        for (const part of msg.parts) {
-          const from = { kind: "session" as const, scopeID: source.scope.id, sessionID: source.id }
-          const to = { ...from, sessionID: session.id }
-          const state = part.type === "tool" && part.state.status === "completed" ? { ...part.state } : undefined
-          if (state?.outputArtifact) state.outputArtifact = await RolloutArtifact.copy(from, to, state.outputArtifact)
-          if (state?.attachments) {
-            const attachments = []
-            for (const attachment of state.attachments)
-              attachments.push({
-                ...attachment,
-                ...(attachment.artifact ? { artifact: await RolloutArtifact.copy(from, to, attachment.artifact) } : {}),
-              })
-            state.attachments = attachments
-          }
-          const artifact =
-            part.type === "attachment" && part.artifact
-              ? await RolloutArtifact.copy(from, to, part.artifact)
-              : undefined
-          await updatePart({
-            ...part,
-            ...(artifact ? { artifact } : {}),
-            ...(state ? { state } : {}),
-            id: Identifier.ascending("part"),
-            messageID: cloned.id,
+        const messageMap = new Map<string, string>()
+        for (const msg of selected) {
+          const id = Identifier.ascending("message")
+          messageMap.set(msg.info.id, id)
+          const cloned = await updateMessage({
+            ...msg.info,
+            ...(msg.info.role === "assistant" ? { accounting: MessageV2.copyAccounting(msg.info, "inherited") } : {}),
             sessionID: session.id,
+            id,
+            ...("parentID" in msg.info && typeof msg.info.parentID === "string"
+              ? { parentID: messageMap.get(msg.info.parentID) ?? msg.info.parentID }
+              : {}),
           })
+
+          for (const part of msg.parts) {
+            const from = { kind: "session" as const, scopeID: source.scope.id, sessionID: source.id }
+            const to = { ...from, sessionID: session.id }
+            const state = part.type === "tool" && part.state.status === "completed" ? { ...part.state } : undefined
+            if (state?.outputArtifact) state.outputArtifact = await RolloutArtifact.copy(from, to, state.outputArtifact)
+            if (state?.attachments) {
+              const attachments = []
+              for (const attachment of state.attachments)
+                attachments.push({
+                  ...attachment,
+                  ...(attachment.artifact
+                    ? { artifact: await RolloutArtifact.copy(from, to, attachment.artifact) }
+                    : {}),
+                })
+              state.attachments = attachments
+            }
+            const artifact =
+              part.type === "attachment" && part.artifact
+                ? await RolloutArtifact.copy(from, to, part.artifact)
+                : undefined
+            await updatePart({
+              ...part,
+              ...(artifact ? { artifact } : {}),
+              ...(state ? { state } : {}),
+              id: Identifier.ascending("part"),
+              messageID: cloned.id,
+              sessionID: session.id,
+            })
+          }
         }
 
-        if (includeForkPoint && forkPoint && msg.info.id === forkPoint) break
-      }
-
-      try {
         session = await applyWorkspaceSelection(session.id, input.workspace)
       } catch (error) {
         await remove(session.id)
@@ -1096,6 +1105,7 @@ export namespace Session {
       for (const child of await children(sessionID)) {
         await removeInternal(child.id, removed)
       }
+      await SnapshotLifecycle.beginDelete(scope.id, sessionID)
       await SessionProjectHealth.detachWorktreeSession(sessionID).catch((error) => {
         log.warn("failed to detach worktree during session removal", { sessionID, error })
       })
@@ -1111,6 +1121,7 @@ export namespace Session {
       if (session.parentID) await removeChildIndexEntry(scope.id, session.parentID, sessionID)
       await SessionSearchIndex.removeRecords(scopeID, canonicalSessionID)
       await removeChildIndex(scope.id, sessionID)
+      await SnapshotLifecycle.completeDelete(scope.id, sessionID)
       removed.push(session)
     } catch (e) {
       log.error(e)

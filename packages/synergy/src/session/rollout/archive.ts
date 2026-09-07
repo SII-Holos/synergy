@@ -14,6 +14,9 @@ import { RolloutSnapshot } from "./snapshot"
 import { RolloutSchema } from "./schema"
 import { RolloutQuery } from "./query"
 import { RolloutJournal } from "./journal"
+import { SnapshotArchive } from "../snapshot-archive"
+import { SnapshotRecords } from "../snapshot-records"
+import { SnapshotLifecycle } from "../snapshot-lifecycle"
 
 export namespace RolloutArchive {
   const MAX_ENTRY_BYTES = 64 * 1024 * 1024
@@ -38,6 +41,17 @@ export namespace RolloutArchive {
         z.object({ owner: RolloutSchema.Owner, ref: RolloutArtifact.Ref, files: z.array(z.string()) }).strict(),
       ),
       files: z.array(File),
+      fileSnapshots: z
+        .array(
+          z
+            .object({
+              sessionID: z.string(),
+              roots: z.array(z.string().regex(/^[a-f0-9]{40}$/)).min(1),
+              packs: z.array(z.array(z.string()).min(1)).min(1),
+            })
+            .strict(),
+        )
+        .default([]),
       integrity: z.object({ complete: z.boolean(), missing: z.array(z.string()) }).strict(),
     })
     .strict()
@@ -108,6 +122,7 @@ export namespace RolloutArchive {
       snapshots,
       artifacts: [],
       files: [],
+      fileSnapshots: [],
       integrity: { complete: true, missing: [] },
     }
     const zip = new ZipWriter(target, { level: 0, useWebWorkers: false })
@@ -158,6 +173,27 @@ export namespace RolloutArchive {
         : undefined
       await json(`sessions/${data.info.id}/history.json`, history)
       await json(`sessions/${data.info.id}/workflow.json`, { workflow: data.info.workflow, blueprint })
+      const roots = data.messages.flatMap((message) => message.parts.flatMap(SnapshotRecords.partRoots))
+      if (roots.length) {
+        const exported = await SnapshotArchive.exportSession(data.info.id, roots, async (packs, retained) => {
+          const files: string[][] = []
+          for (const [index, file] of packs.entries()) {
+            const names: string[] = []
+            const handle = Bun.file(file)
+            for (let offset = 0; offset < handle.size; offset += RolloutArtifact.CHUNK_BYTES) {
+              const name = `file-snapshots/${data.info.id}/${index}/${names.length}.bin`
+              await add(
+                name,
+                new Uint8Array(await handle.slice(offset, offset + RolloutArtifact.CHUNK_BYTES).arrayBuffer()),
+              )
+              names.push(name)
+            }
+            files.push(names)
+          }
+          manifest.fileSnapshots.push({ sessionID: data.info.id, roots: retained, packs: files })
+        })
+        for (const root of exported.missing) manifest.integrity.missing.push(`file-snapshot:${data.info.id}:${root}`)
+      }
     }
     for (let index = 0; index < snapshots.length; index++) {
       const snapshot = snapshots[index]
@@ -290,6 +326,7 @@ export namespace RolloutArchive {
       const declared = new Set(["manifest.json"])
       const artifacts = new Map<string, Manifest["artifacts"][number]>()
       const files = new Map(manifest.files.map((file) => [file.path, file]))
+      const payloadFiles = new Set<string>()
       for (const file of manifest.files) {
         pathValid(file.path)
         if (declared.has(file.path)) throw new Error("Rollout ZIP integrity: duplicate manifest path")
@@ -308,6 +345,8 @@ export namespace RolloutArchive {
         const hash = new Bun.CryptoHasher("sha256")
         let size = 0
         for (const path of artifact.files) {
+          if (payloadFiles.has(path)) throw new Error("Rollout ZIP integrity: duplicate payload file")
+          payloadFiles.add(path)
           if (!declared.has(path) || path === "manifest.json")
             throw new Error("Rollout ZIP integrity: undeclared artifact")
           const data = await bytes(path)
@@ -348,6 +387,20 @@ export namespace RolloutArchive {
       for (const snapshot of manifest.snapshots) validateReferences(snapshot, snapshot.owner)
       const report = SessionExport.Report.parse(JSON.parse((await bytes("transcript.json")).toString()))
       if (report.rootSessionID !== manifest.rootSessionID) throw new Error("Rollout ZIP root mismatch")
+      const snapshotOwners = new Set<string>()
+      for (const snapshot of manifest.fileSnapshots) {
+        if (
+          snapshotOwners.has(snapshot.sessionID) ||
+          !report.sessions.some((session) => session.info.id === snapshot.sessionID)
+        )
+          throw new Error("Rollout ZIP file snapshot owner mismatch")
+        snapshotOwners.add(snapshot.sessionID)
+        for (const path of snapshot.packs.flat()) {
+          if (!files.has(path) || payloadFiles.has(path))
+            throw new Error("Rollout ZIP file snapshot file missing or reused")
+          payloadFiles.add(path)
+        }
+      }
       for (const session of report.sessions) {
         const owner: RolloutSchema.Owner = {
           kind: "session",
@@ -355,6 +408,16 @@ export namespace RolloutArchive {
           sessionID: session.info.id,
         }
         validateReferences(session, owner)
+        const retained = new Set(
+          manifest.fileSnapshots.find((snapshot) => snapshot.sessionID === session.info.id)?.roots,
+        )
+        if (
+          manifest.integrity.complete &&
+          session.messages.some((message) =>
+            message.parts.flatMap(SnapshotRecords.partRoots).some((root) => !retained.has(root)),
+          )
+        )
+          throw new Error("Rollout ZIP integrity: missing file snapshot")
       }
       return { reader, manifest, bytes }
     } catch (error) {
@@ -411,6 +474,14 @@ export namespace RolloutArchive {
         created.push(owner)
       }
       const artifacts = new Map<string, RolloutArtifact.Ref>()
+      for (const snapshot of archive.manifest.fileSnapshots) {
+        const packs = snapshot.packs.map((files) =>
+          (async function* () {
+            for (const file of files) yield await archive.bytes(file)
+          })(),
+        )
+        await SnapshotArchive.importSession(sessionIDs.get(snapshot.sessionID)!, snapshot.roots, packs)
+      }
       for (const artifact of archive.manifest.artifacts) {
         const owner = owners.get(ownerKey(artifact.owner))
         if (!owner) throw new Error("Rollout ZIP artifact owner mismatch")
@@ -579,6 +650,8 @@ export namespace RolloutArchive {
         if (owner.kind === "session") {
           await Session.remove(owner.sessionID).catch(() => {})
           await Storage.removeTree(RolloutArtifact.root(owner))
+          await SnapshotLifecycle.beginDelete(owner.scopeID, owner.sessionID)
+          await SnapshotLifecycle.completeDelete(owner.scopeID, owner.sessionID)
         }
       }
       throw error

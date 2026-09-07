@@ -92,10 +92,12 @@ export namespace RolloutLifecycle {
     for (const item of await SessionInbox.list(sessionID))
       if (item.messageID === runID) await SessionInbox.remove({ sessionID, itemID: item.id })
     SessionManager.signalAbort(sessionID, { rootID: runID })
-    for (const child of await Session.children(sessionID)) {
-      if ((await parent(child))?.runID !== runID) continue
-      if (child.cortex) await SessionCortexRuntime.cancelTask(child.cortex.taskID)
-    }
+    await Promise.all(
+      (await Session.children(sessionID)).map(async (child) => {
+        if ((await parent(child))?.runID !== runID) return
+        if (child.cortex) await SessionCortexRuntime.cancelAndDrainTask(child.cortex.taskID)
+      }),
+    )
     const latest = (await SessionHistory.modelMessages({ sessionID })).findLast(
       (message) => message.info.role === "user" && message.info.isRoot,
     )

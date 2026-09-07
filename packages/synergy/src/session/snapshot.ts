@@ -1,25 +1,18 @@
 import path from "path"
 import fs from "fs/promises"
 import { Log } from "../util/log"
-import { Global } from "../global"
-import z from "zod"
+import { z } from "zod"
 import { Config } from "../config/config"
 import { ScopeContext } from "../scope/context"
 import { SnapshotSchema } from "./snapshot-schema"
-import { withTimeout } from "../util/timeout"
+import { SnapshotGit } from "./snapshot-git"
+import { SnapshotStore } from "./snapshot-store"
+import { Storage } from "../storage/storage"
 
 export namespace Snapshot {
   const log = Log.create({ service: "snapshot" })
-  const SNAPSHOT_TIMEOUT_MS = 10_000
-  // Extra headroom past the abort timeout: the abort signal can only kill the
-  // child process — it cannot rescue a stdout/exit collection promise that
-  // never settles, so the whole collection is raced against this deadline.
-  const SNAPSHOT_HARD_TIMEOUT_MS = SNAPSHOT_TIMEOUT_MS + 5_000
   const SNAPSHOT_MAX_FILE_BYTES = 2 * 1024 * 1024
   const CANDIDATE_STATE_CONCURRENCY = 32
-  const GIT_SPAWN_MAX_ATTEMPTS = 3
-  const GIT_SPAWN_RETRY_BASE_MS = 25
-  const TRANSIENT_GIT_SPAWN_CODES = new Set(["EAGAIN", "EMFILE", "ENFILE", "ENOMEM"])
   const EXCLUDED_DIRS = new Set([
     ".git",
     ".synergy",
@@ -63,193 +56,30 @@ export namespace Snapshot {
     ".lock",
   ])
 
-  function spawnSignal(timeoutMs: number, parentSignal?: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
-    const controller = new AbortController()
-    const timer = setTimeout(
-      () => controller.abort(new DOMException("Snapshot git command timed out", "TimeoutError")),
-      timeoutMs,
-    )
-    let onAbort: (() => void) | undefined
-    const cleanup = () => {
-      clearTimeout(timer)
-      if (parentSignal && onAbort) parentSignal.removeEventListener("abort", onAbort)
-    }
-    if (parentSignal) {
-      if (parentSignal.aborted) {
-        cleanup()
-        return { signal: AbortSignal.abort(parentSignal.reason), cleanup }
-      }
-      onAbort = () => {
-        cleanup()
-        controller.abort(parentSignal.reason)
-      }
-      parentSignal.addEventListener("abort", onAbort, { once: true })
-    }
-    controller.signal.addEventListener("abort", cleanup, { once: true })
-    return { signal: controller.signal, cleanup }
-  }
-
-  function abortedGitResult(): { exitCode: number; text: string; stderr: string } {
-    return { exitCode: -1, text: "", stderr: "" }
-  }
-
-  function abortError(signal: AbortSignal): Error {
-    if (signal.reason instanceof Error) return signal.reason
-    return new DOMException("Snapshot git command aborted", "AbortError")
-  }
-
-  function withAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-    if (signal.aborted) return Promise.reject(abortError(signal))
-    return new Promise<T>((resolve, reject) => {
-      const onAbort = () => {
-        promise.catch(() => {})
-        reject(abortError(signal))
-      }
-      signal.addEventListener("abort", onAbort, { once: true })
-      promise.then(
-        (value) => {
-          signal.removeEventListener("abort", onAbort)
-          resolve(value)
-        },
-        (error) => {
-          signal.removeEventListener("abort", onAbort)
-          reject(error)
-        },
-      )
-    })
-  }
-
-  function gitSpawnError(error: unknown) {
-    const code = (error as { code?: unknown })?.code
-    const message = error instanceof Error ? error.message : String(error)
-    return {
-      code: typeof code === "string" ? code : undefined,
-      message,
-    }
-  }
-
-  function isTransientGitSpawnError(error: unknown) {
-    const code = gitSpawnError(error).code
-    return code !== undefined && TRANSIENT_GIT_SPAWN_CODES.has(code)
-  }
-
-  async function waitForGitSpawnRetry(attempt: number, signal?: AbortSignal) {
-    if (signal?.aborted) return false
-    const delayMs = GIT_SPAWN_RETRY_BASE_MS * 2 ** (attempt - 1)
-    return new Promise<boolean>((resolve) => {
-      let settled = false
-      let timer: ReturnType<typeof setTimeout>
-      const finish = (value: boolean) => {
-        if (settled) return
-        settled = true
-        clearTimeout(timer)
-        signal?.removeEventListener("abort", onAbort)
-        resolve(value)
-      }
-      const onAbort = () => finish(false)
-      timer = setTimeout(() => finish(true), delayMs)
-      signal?.addEventListener("abort", onAbort, { once: true })
-      if (signal?.aborted) onAbort()
-    })
-  }
-
-  async function gitSpawn(
-    args: string[],
-    cwd: string,
-    env?: Record<string, string>,
-    signal?: AbortSignal,
-    stdin?: string,
-  ): Promise<{ exitCode: number; text: string; stderr: string }> {
-    if (signal?.aborted) return abortedGitResult()
-    for (let attempt = 1; ; attempt++) {
-      const childSignal = spawnSignal(SNAPSHOT_TIMEOUT_MS, signal)
-      let proc: Bun.Subprocess<"ignore" | "pipe", "pipe", "pipe"> | undefined
-      try {
-        proc = Bun.spawn(args, {
-          cwd,
-          stdin: stdin === undefined ? "ignore" : "pipe",
-          stdout: "pipe",
-          stderr: "pipe",
-          env: env ? { ...process.env, ...env } : process.env,
-          signal: childSignal.signal,
-        })
-        if (stdin !== undefined) {
-          if (!proc.stdin) throw new Error("git subprocess stdin pipe unavailable")
-          proc.stdin.write(stdin)
-          proc.stdin.end()
-        }
-        const stdout = new Response(proc.stdout).text()
-        const stderr = new Response(proc.stderr).text().catch(() => "")
-        const [text, stderrText, exitCode] = await withTimeout(
-          withAbort(Promise.all([stdout, stderr, proc.exited]), childSignal.signal),
-          SNAPSHOT_HARD_TIMEOUT_MS,
-          { message: `git subprocess did not settle within ${SNAPSHOT_HARD_TIMEOUT_MS}ms` },
-        )
-        return { exitCode, text, stderr: stderrText }
-      } catch (error) {
-        if (signal?.aborted) {
-          try {
-            proc?.kill()
-          } catch {}
-          return abortedGitResult()
-        }
-        try {
-          proc?.kill()
-        } catch {}
-        const details = gitSpawnError(error)
-        const retrying = proc === undefined && isTransientGitSpawnError(error) && attempt < GIT_SPAWN_MAX_ATTEMPTS
-        log.warn("git spawn failed", {
-          args,
-          cwd,
-          attempt,
-          maxAttempts: GIT_SPAWN_MAX_ATTEMPTS,
-          retrying,
-          code: details.code,
-          error: details.message,
-        })
-        if (!retrying || !(await waitForGitSpawnRetry(attempt, signal))) {
-          const stderr = details.code ? `${details.code}: ${details.message}` : details.message
-          return { exitCode: -1, text: "", stderr }
-        }
-      } finally {
-        childSignal.cleanup()
-      }
-    }
+  async function gitSpawn(...args: Parameters<typeof SnapshotGit.run>) {
+    const context = SnapshotStore.current()
+    args[2] = { ...args[2], GIT_INDEX_FILE: context.index }
+    return SnapshotGit.run(...args)
   }
 
   export async function track(sessionID: string, signal?: AbortSignal): Promise<string | undefined> {
     if (signal?.aborted) return
     if (ScopeContext.current.scope.type !== "project" || ScopeContext.current.scope.vcs !== "git") return
-    const cfg = await Config.current()
-    if (cfg.snapshot === false) return
+    if ((await Config.current()).snapshot === false) return
+    try {
+      return await SnapshotStore.withSession(sessionID, () => trackImpl(sessionID, signal), signal)
+    } catch (error) {
+      if (signal?.aborted) return undefined
+      throw error
+    }
+  }
+
+  async function trackImpl(sessionID: string, signal?: AbortSignal): Promise<string | undefined> {
+    if (signal?.aborted) return
     const started = Date.now()
     log.debug("track start", { sessionID, cwd: ScopeContext.current.directory })
-    const git = gitdir(sessionID)
-    if (await fs.mkdir(git, { recursive: true })) {
-      const initResult = await gitSpawn(
-        ["git", "init"],
-        ScopeContext.current.directory,
-        { GIT_DIR: git, GIT_WORK_TREE: ScopeContext.current.directory },
-        signal,
-      )
-      if (initResult.exitCode !== 0) {
-        log.warn("track init failed", { sessionID, exitCode: initResult.exitCode, duration: Date.now() - started })
-        return undefined
-      }
-      await gitSpawn(
-        ["git", "--git-dir", git, "config", "core.autocrlf", "false"],
-        ScopeContext.current.directory,
-        undefined,
-        signal,
-      )
-      await gitSpawn(
-        ["git", "--git-dir", git, "config", "core.quotepath", "false"],
-        ScopeContext.current.directory,
-        undefined,
-        signal,
-      )
-      log.info("initialized")
-    }
+    const git = gitdir()
+    await SnapshotStore.initialize(SnapshotStore.current())
     // ensureExclude runs inside refreshIndex (which every snapshot path funnels
     // through), so it need not be repeated here.
     const addResult = await refreshIndex(sessionID, signal)
@@ -268,8 +98,70 @@ export namespace Snapshot {
       return undefined
     }
     const hash = writeResult.text.trim()
+    if (!(await SnapshotStore.retainCurrent(hash, signal))) return undefined
     log.info("tracking", { hash, cwd: ScopeContext.current.directory, git, duration: Date.now() - started })
     return hash
+  }
+
+  type IndexOptions = { indexFresh?: boolean; signal?: AbortSignal }
+
+  export async function patch(hash: string, sessionID: string, options?: IndexOptions): Promise<Patch> {
+    if (options?.signal?.aborted) return { hash, files: [] }
+    return SnapshotStore.withSession(
+      sessionID,
+      async () => {
+        if (!(await SnapshotStore.ownsCurrent(hash))) return { hash, files: [] }
+        return patchImpl(hash, sessionID, options)
+      },
+      options?.signal,
+    ).catch((error) => {
+      if (options?.signal?.aborted) return { hash, files: [] }
+      throw error
+    })
+  }
+
+  export async function diff(hash: string, sessionID: string, options?: IndexOptions) {
+    if (options?.signal?.aborted) return ""
+    return SnapshotStore.withSession(
+      sessionID,
+      async () => {
+        if (!(await SnapshotStore.ownsCurrent(hash))) return ""
+        return diffImpl(hash, sessionID, options)
+      },
+      options?.signal,
+    ).catch((error) => {
+      if (options?.signal?.aborted) return ""
+      throw error
+    })
+  }
+
+  export async function diffSummary(from: string, to: string, sessionID: string, signal?: AbortSignal) {
+    if (signal?.aborted) return []
+    return SnapshotStore.withSession(
+      sessionID,
+      async () => {
+        if (!(await SnapshotStore.ownsCurrent(from)) || !(await SnapshotStore.ownsCurrent(to))) return []
+        return diffSummaryImpl(from, to, sessionID, signal)
+      },
+      signal,
+    ).catch((error) => {
+      if (signal?.aborted) return []
+      throw error
+    })
+  }
+
+  export async function restore(snapshot: string, sessionID: string) {
+    return SnapshotStore.withSession(sessionID, async () => {
+      if (await SnapshotStore.ownsCurrent(snapshot)) await restoreImpl(snapshot, sessionID)
+    })
+  }
+
+  export async function revert(patches: Patch[], sessionID: string) {
+    return SnapshotStore.withSession(sessionID, async () => {
+      const owned: Patch[] = []
+      for (const patch of patches) if (await SnapshotStore.ownsCurrent(patch.hash)) owned.push(patch)
+      await revertImpl(owned, sessionID)
+    })
   }
 
   export const Patch = z.object({
@@ -278,15 +170,11 @@ export namespace Snapshot {
   })
   export type Patch = z.infer<typeof Patch>
 
-  export async function patch(
-    hash: string,
-    sessionID: string,
-    opts?: { indexFresh?: boolean; signal?: AbortSignal },
-  ): Promise<Patch> {
+  async function patchImpl(hash: string, sessionID: string, opts?: IndexOptions): Promise<Patch> {
     if (opts?.signal?.aborted) return { hash, files: [] }
     const started = Date.now()
     log.debug("patch start", { sessionID, hash })
-    const git = gitdir(sessionID)
+    const git = gitdir()
     if (!opts?.indexFresh) {
       const addResult = await refreshIndex(sessionID, opts?.signal)
       if (!addResult) {
@@ -340,9 +228,9 @@ export namespace Snapshot {
     }
   }
 
-  export async function restore(snapshot: string, sessionID: string) {
+  async function restoreImpl(snapshot: string, sessionID: string) {
     log.info("restore", { snapshot, sessionID })
-    const git = gitdir(sessionID)
+    const git = gitdir()
     let all
     try {
       const { Session } = await import(".")
@@ -385,9 +273,9 @@ export namespace Snapshot {
     }
   }
 
-  export async function revert(patches: Patch[], sessionID: string) {
+  async function revertImpl(patches: Patch[], sessionID: string) {
     const files = new Set<string>()
-    const git = gitdir(sessionID)
+    const git = gitdir()
     for (const item of patches) {
       for (const file of item.files) {
         if (files.has(file)) continue
@@ -448,8 +336,8 @@ export namespace Snapshot {
     }
   }
 
-  export async function diff(hash: string, sessionID: string, opts?: { indexFresh?: boolean; signal?: AbortSignal }) {
-    const git = gitdir(sessionID)
+  async function diffImpl(hash: string, sessionID: string, opts?: IndexOptions) {
+    const git = gitdir()
     if (!opts?.indexFresh) await refreshIndex(sessionID, opts?.signal)
     const result = await gitSpawn(
       [
@@ -486,13 +374,13 @@ export namespace Snapshot {
 
   export const FileDiff = SnapshotSchema.FileDiff
   export type FileDiff = SnapshotSchema.FileDiff
-  export async function diffSummary(
+  async function diffSummaryImpl(
     from: string,
     to: string,
     sessionID: string,
     signal?: AbortSignal,
   ): Promise<FileDiff[]> {
-    const git = gitdir(sessionID)
+    const git = gitdir()
     const result: FileDiff[] = []
     const diff = await gitSpawn(
       [
@@ -556,7 +444,7 @@ export namespace Snapshot {
   }
 
   async function refreshIndex(sessionID: string, signal?: AbortSignal): Promise<boolean> {
-    const git = gitdir(sessionID)
+    const git = gitdir()
     const cwd = ScopeContext.current.directory
     await ensureExclude(git)
 
@@ -578,7 +466,7 @@ export namespace Snapshot {
     }
 
     if (removable.length > 0) {
-      const pathspec = path.join(git, "synergy-remove-pathspec")
+      const pathspec = path.join(SnapshotStore.current().temporary, "remove-pathspec")
       await fs.writeFile(pathspec, removable.join("\0") + "\0")
       try {
         const rm = await gitSpawn(
@@ -608,7 +496,7 @@ export namespace Snapshot {
 
     if (addable.length === 0) return true
 
-    const pathspec = path.join(git, "synergy-pathspec")
+    const pathspec = path.join(SnapshotStore.current().temporary, "add-pathspec")
     await fs.writeFile(pathspec, addable.join("\0") + "\0")
     try {
       const add = await gitSpawn(
@@ -714,7 +602,7 @@ export namespace Snapshot {
     ].join("\n")
     const file = path.join(info, "exclude")
     const current = await fs.readFile(file, "utf8").catch(() => undefined)
-    if (current !== body) await fs.writeFile(file, body)
+    if (current !== body) await Storage.writeJsonAtomic(file, body)
   }
 
   function absoluteWorktreePath(rel: string): string {
@@ -780,8 +668,7 @@ export namespace Snapshot {
     return result
   }
 
-  function gitdir(sessionID: string) {
-    const scope = ScopeContext.current.scope
-    return path.join(Global.Path.snapshot, scope.id, sessionID)
+  function gitdir() {
+    return SnapshotStore.current().repository
   }
 }

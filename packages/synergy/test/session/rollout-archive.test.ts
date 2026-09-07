@@ -184,3 +184,36 @@ test("ZIP import preserves committed prefixes and re-exported source evidence", 
     }
   })
 })
+
+test("rollout ZIP retains file snapshot objects after the source store is removed", async () => {
+  const { Snapshot } = await import("../../src/session/snapshot")
+  const { SnapshotStore } = await import("../../src/session/snapshot-store")
+  const { Identifier } = await import("../../src/id/id")
+  const { ScopeContext } = await import("../../src/scope/context")
+  const fs = await import("node:fs/promises")
+  await fixture(async ({ session, rootID }) => {
+    await Bun.write(`${ScopeContext.current.directory}/evidence.txt`, "snapshot evidence")
+    const hash = await Snapshot.track(session.id)
+    if (!hash) throw new Error("missing snapshot fixture")
+    await Session.updatePart({
+      type: "step-start",
+      id: Identifier.ascending("part"),
+      sessionID: session.id,
+      messageID: rootID,
+      snapshot: hash,
+    })
+    const writer = new Uint8ArrayWriter()
+    await RolloutArchive.write({ sessionID: session.id, runID: rootID }, writer)
+    await Session.remove(session.id)
+    await fs.rm(SnapshotStore.root(session.scope.id), { recursive: true, force: true })
+    const restored = await SessionImport.fromBuffer(await writer.getData())
+    try {
+      expect(await SnapshotStore.owns(session.scope.id, restored.rootSessionID, hash)).toBe(true)
+      expect(
+        await SnapshotStore.command(SnapshotStore.repository(session.scope.id), ["show", `${hash}:evidence.txt`]),
+      ).toBe("snapshot evidence")
+    } finally {
+      await Session.remove(restored.rootSessionID)
+    }
+  })
+})

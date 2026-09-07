@@ -39,6 +39,12 @@ describe("product CLI help", () => {
     expect(await Bun.file(`${cache}/keep`).text()).toBe("sentinel")
     expect(await Bun.file(config).text()).toBe("{ invalid }")
   })
+  test("snapshot maintenance exposes scope selection and explicit collection controls", async () => {
+    const group = await cliHelp(["data", "snapshots", "--help"])
+    for (const action of ["inspect", "check", "migrate", "compact"]) expect(group).toContain(action)
+    const compact = await cliHelp(["data", "snapshots", "compact", "--help"])
+    for (const flag of ["--scope", "--json", "--apply", "--prune"]) expect(compact).toContain(flag)
+  })
   test("does not persist the launch directory while discovering plugin commands", async () => {
     await using tmp = await tmpdir()
 

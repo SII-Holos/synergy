@@ -1,3 +1,5 @@
+import { SnapshotLifecycle } from "./snapshot-lifecycle"
+import { SnapshotRecords } from "./snapshot-records"
 import z from "zod"
 import { gunzipSync } from "node:zlib"
 import { Bus } from "@/bus"
@@ -204,6 +206,18 @@ export namespace SessionImport {
         completionNotice: info.completionNotice,
       })
       await writeSessionInfo(scopeID, info)
+      const snapshots = await SnapshotLifecycle.adopt({
+        scopeID: scope.id,
+        sourceSessionID: data.info.id,
+        targetSessionID: sessionID,
+        workspace: info.workspace?.path ?? ScopeContext.current.directory,
+        hashes: data.messages.flatMap((message) => message.parts.flatMap(SnapshotRecords.partRoots)),
+        allowMissing: true,
+      })
+      if (snapshots.missing.length)
+        warnings.push(
+          `Imported session has ${snapshots.missing.length} unavailable file snapshots; JSON exports do not contain file objects.`,
+        )
 
       for (const message of data.messages) {
         const nextMessage = await remapMessage(message.info, sessionID, idMap)

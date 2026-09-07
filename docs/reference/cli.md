@@ -102,9 +102,19 @@ diagnose and install Chromium for Browser tools
 manage messaging channels
 
 
+## check
+
+verify stored objects and historical snapshot roots
+
+
+## compact
+
+pack shared snapshots (dry-run unless --apply)
+
+
 ## config
 
-show resolved configuration
+manage synergy configuration
 
 
 ## create
@@ -269,6 +279,11 @@ import config from URL or file
 ## info <plugin>
 
 show detailed plugin status and metadata
+
+
+## inspect
+
+show snapshot ownership and logical/allocated storage usage
 
 
 ## inspect <sessionID>
@@ -445,7 +460,7 @@ show patch for a snapshot hash
 
 ## path
 
-show current data location and usage
+show config file paths
 
 
 ## paths
@@ -598,6 +613,11 @@ list all available skills
 ## snapshot
 
 snapshot debugging utilities
+
+
+## snapshots
+
+inspect and maintain file snapshot storage
 
 
 ## start

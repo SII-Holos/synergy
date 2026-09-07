@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, stat, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
@@ -246,6 +246,7 @@ let serverOutput: ReturnType<typeof captureTail> | undefined
 const activeSessionIDs = new Set<string>()
 let result: Record<string, unknown> | undefined
 let cleanupComplete = false
+let shutdown: { elapsedMs: number; forced: boolean; exitCode: number | null } | undefined
 
 try {
   await mkdir(path.join(temporaryRoot, ".synergy"), { recursive: true })
@@ -279,6 +280,7 @@ try {
   const baseUrl = `http://127.0.0.1:${serverPort}`
   await waitForHealth(baseUrl, server)
   await waitForTool(baseUrl, workspace, PAYLOAD_TOOL)
+  const readyMs = Date.now() - startedAt
   await waitForResourceSample(baseUrl, workspace)
   await Bun.sleep(preset.idleSettleMs)
 
@@ -316,6 +318,8 @@ try {
   const rootTurns = fixtureTurns.get(rootFixture.session)!
   const replicas = scenarioReplicas(scenario)
   const verifications: Array<Record<string, unknown>> = []
+  const diskSamples: Array<{ files: number; bytes: number; rolloutBytes: number }> = []
+  const executionStarted = Date.now()
 
   if (scenario === "trajectory") {
     await setPhase("trajectory-root")
@@ -359,6 +363,7 @@ try {
       })
       verifications.push(verification)
       const sessionID = requiredString(verification.rootSessionID, `${replica} rootSessionID`)
+      diskSamples.push(await measureDisk(path.join(temporaryRoot, ".synergy", "data")))
       await deleteSession(baseUrl, workspace, sessionID)
       activeSessionIDs.delete(sessionID)
       samples.push(
@@ -368,6 +373,8 @@ try {
   }
 
   await setPhase("terminal")
+  const executionMs = Date.now() - executionStarted
+  diskSamples.push(await measureDisk(path.join(temporaryRoot, ".synergy", "data")))
   for (const sessionID of [...activeSessionIDs]) {
     await deleteSession(baseUrl, workspace, sessionID)
     activeSessionIDs.delete(sessionID)
@@ -398,6 +405,7 @@ try {
     arch: process.arch,
     bunVersion: Bun.version,
     preset: presetName,
+    executionMeasurement: { readyMs, executionMs, diskSamples },
     scenario,
     replicaCount: replicas.length,
     execution: {
@@ -490,7 +498,11 @@ try {
       await deleteSession(`http://127.0.0.1:${serverPort}`, workspace, sessionID).catch(() => {})
     }
   }
-  if (server && server.exitCode === null) await stopProcess(server)
+  if (server) {
+    const began = Date.now()
+    const forced = await stopProcess(server)
+    shutdown = { elapsedMs: Date.now() - began, forced, exitCode: server.exitCode }
+  }
   await serverOutput?.done.catch(() => {})
   mock.stop()
   await rm(temporaryRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
@@ -498,7 +510,28 @@ try {
 }
 
 if (!result) throw new Error("Runtime benchmark completed without a result")
-console.log(JSON.stringify({ ...result, cleanup: { temporaryRuntimeRemoved: cleanupComplete } }, null, 2))
+console.log(JSON.stringify({ ...result, cleanup: { temporaryRuntimeRemoved: cleanupComplete, shutdown } }, null, 2))
+
+async function measureDisk(root: string) {
+  const total = { files: 0, bytes: 0, rolloutBytes: 0 }
+  async function walk(directory: string, rollout = false) {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const file = path.join(directory, entry.name)
+      if (entry.isDirectory()) await walk(file, rollout || entry.name === "rollout")
+      else if (entry.isFile()) {
+        const info = await stat(file).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== "ENOENT") throw error
+        })
+        if (!info) continue
+        total.files++
+        total.bytes += info.size
+        if (rollout) total.rolloutBytes += info.size
+      }
+    }
+  }
+  await walk(root)
+  return total
+}
 
 function benchmarkConfig(mockUrl: string, mcpPath: string) {
   const model = "benchmark/benchmark-model"
@@ -1876,12 +1909,13 @@ function captureTail(...streams: ReadableStream<Uint8Array>[]) {
 }
 
 async function stopProcess(child: ReturnType<typeof Bun.spawn>) {
-  if (child.exitCode !== null) return
+  if (child.exitCode !== null) return false
   child.kill()
   const exited = await Promise.race([child.exited.then(() => true), Bun.sleep(5_000).then(() => false)])
-  if (exited) return
+  if (exited) return false
   child.kill("SIGKILL")
   await child.exited
+  return true
 }
 
 function sanitize(value: string, root: string) {

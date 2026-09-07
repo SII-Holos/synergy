@@ -123,8 +123,8 @@ export async function generate(): Promise<string> {
     for (const file of sources) {
       const source = await readFile(file, "utf8").catch(() => "")
       for (const block of parseCommandBlocks(source)) {
-        own.set(block.name, block)
-        blocks.set(block.name, block)
+        if (!own.has(block.name)) own.set(block.name, block)
+        if (!blocks.has(block.name) || file === path.join(REPO_ROOT, command.file)) blocks.set(block.name, block)
       }
     }
     blocksByModule.set(command.name, own)

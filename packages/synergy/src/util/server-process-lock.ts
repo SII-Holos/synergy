@@ -1,3 +1,4 @@
+import nodePath from "node:path"
 import fs from "fs/promises"
 import { DaemonPaths } from "./daemon-paths"
 import { execFile } from "child_process"
@@ -52,9 +53,8 @@ export namespace ServerProcessLock {
     error?: string
   }
 
-  export async function acquire(mode?: LockInfo["mode"]) {
-    const lockPath = DaemonPaths.runtimeLock()
-    await fs.mkdir(DaemonPaths.root(), { recursive: true })
+  export async function acquire(lockPath = DaemonPaths.runtimeLock(), mode?: LockInfo["mode"]) {
+    await fs.mkdir(nodePath.dirname(lockPath), { recursive: true })
 
     const ownerToken = randomUUID()
     const identity = (await processStartIdentity(process.pid)) ?? `unknown:${process.pid}`
@@ -75,7 +75,7 @@ export namespace ServerProcessLock {
       } catch (error) {
         if (errorCode(error) !== "EEXIST") throw error
 
-        const existing = await readForAcquire()
+        const existing = await readForAcquire(lockPath)
         if (existing?.lock && (await isProcessOwnerAlive(existing.lock))) {
           throw new AlreadyRunningError(existing.lock)
         }
@@ -142,15 +142,15 @@ export namespace ServerProcessLock {
     }
   }
 
-  async function readForAcquire(): Promise<LockSnapshot | undefined> {
+  async function readForAcquire(lockPath: string): Promise<LockSnapshot | undefined> {
     let lastContents: string | undefined
     let lastUncertain = false
     for (let attempt = 0; attempt < 100; attempt++) {
       try {
-        const before = await fs.stat(DaemonPaths.runtimeLock())
-        const contents = await fs.readFile(DaemonPaths.runtimeLock(), "utf8")
-        const contentsAgain = await fs.readFile(DaemonPaths.runtimeLock(), "utf8")
-        const after = await fs.stat(DaemonPaths.runtimeLock())
+        const before = await fs.stat(lockPath)
+        const contents = await fs.readFile(lockPath, "utf8")
+        const contentsAgain = await fs.readFile(lockPath, "utf8")
+        const after = await fs.stat(lockPath)
         if (contents !== contentsAgain || before.size !== after.size || before.mtimeMs !== after.mtimeMs) {
           await Bun.sleep(10)
           continue
@@ -163,7 +163,7 @@ export namespace ServerProcessLock {
       } catch (error) {
         if (errorCode(error) === "ENOENT") return undefined
         try {
-          await fs.stat(DaemonPaths.runtimeLock())
+          await fs.stat(lockPath)
         } catch (statError) {
           if (errorCode(statError) === "ENOENT") return undefined
         }

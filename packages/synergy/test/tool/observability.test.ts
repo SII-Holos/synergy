@@ -232,7 +232,7 @@ const model = {
 function minimalProcessor(executions: Map<string, Promise<any>>) {
   const callbacks = new Map<string, Promise<unknown>>()
   return {
-    message: { id: "msg_tool_obs" },
+    message: { id: "msg_tool_obs", rootID: "msg_tool_obs_root", parentID: "msg_tool_obs_root" },
     partFromToolCall: () => undefined,
     executeOnce: <T>(id: string, execute: () => Promise<T>) => {
       const existing = callbacks.get(id)

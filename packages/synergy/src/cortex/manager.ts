@@ -624,6 +624,15 @@ export namespace Cortex {
         task.error = undefined
         task.output = undefined
         tasks.set(taskID, task)
+        await record(() =>
+          Session.update(task.sessionID, (draft) => {
+            if (!draft.cortex) return
+            draft.cortex.status = "cancelled"
+            draft.cortex.completedAt = task.completedAt
+            draft.cortex.error = undefined
+            draft.cortex.output = undefined
+          }),
+        )
         publishVisibleTasksUpdate()
         log.info("published cancellation during concurrent task finalization", { taskID })
         return
@@ -737,19 +746,9 @@ export namespace Cortex {
           })
         })
       }
-      if (deliverySettled) {
-        const settled = await record(() =>
-          Session.update(task.sessionID, (draft) => {
-            if (draft.cortex) draft.cortex.settledAt = Date.now()
-          }),
-        )
-        const parent = await RolloutLifecycle.parent(settled)
-        if (parent?.owner.kind === "session" && parent.runID)
-          await RolloutLifecycle.reconcile(parent.owner.sessionID, parent.runID)
-      }
       const pluginSnapshot = pluginTaskSnapshotFromTask(terminalTask)
       if (pluginSnapshot) {
-        void Session.get(terminalTask.sessionID)
+        await Session.get(terminalTask.sessionID)
           .then((session) =>
             ScopeContext.provide({
               scope: session.scope,
@@ -768,7 +767,19 @@ export namespace Cortex {
           })
       }
 
-      void updateDagNode(terminalTask)
+      await updateDagNode(terminalTask)
+      await cleanupChildWorktree(terminalTask)
+
+      if (deliverySettled) {
+        const settled = await record(() =>
+          Session.update(task.sessionID, (draft) => {
+            if (draft.cortex) draft.cortex.settledAt = Date.now()
+          }),
+        )
+        const parent = await RolloutLifecycle.parent(settled)
+        if (parent?.owner.kind === "session" && parent.runID)
+          await RolloutLifecycle.reconcile(parent.owner.sessionID, parent.runID)
+      }
 
       if (waiters?.size) {
         for (const waiter of waiters) {
@@ -778,8 +789,6 @@ export namespace Cortex {
         taskWaiters.delete(taskID)
         log.info("task result delivered to waiters", { taskID, waiterCount: waiters.size })
       }
-
-      void cleanupChildWorktree(terminalTask)
 
       setTimeout(() => {
         const task = tasks.get(taskID)
@@ -1225,18 +1234,22 @@ export namespace Cortex {
   export async function cancel(taskID: string): Promise<void> {
     const task = tasks.get(taskID)
     if (!task) return
-    if (isTerminal(task.status)) {
-      await taskRuns.get(taskID)
-      return
-    }
+    if (isTerminal(task.status)) return
 
     log.info("cancelling task", { taskID, sessionID: task.sessionID, status: task.status })
     cancellationRequests.add(taskID)
     SessionInvoke.cancel(task.sessionID)
     await updateTaskStatus(taskID, "cancelled")
+  }
 
-    const run = taskRuns.get(taskID)
-    if (run) await run
+  export async function drain(taskID?: string): Promise<void> {
+    if (!taskID) {
+      while (taskRuns.size) await Promise.all([...taskRuns.values()])
+      return
+    }
+    const task = tasks.get(taskID)
+    const descendants = task ? getDescendantTasks(task.sessionID) : []
+    await Promise.all([taskRuns.get(taskID), ...descendants.map((child) => taskRuns.get(child.id))])
   }
 
   export async function cancelAll(parentSessionID: string): Promise<number> {

@@ -54,8 +54,10 @@ A terminal run independently reports execution status and recording completeness
 
 ## Archives and historical data
 
-Rollout ZIP uses a versioned manifest, fixed journal revisions, transcripts, workflow/history evidence and referenced artifacts with byte lengths and SHA-256 hashes. CLI and HTTP export share the implementation. Active runs and missing originals produce explicit partial manifests. Import validates entry paths, duplicates, sizes and hashes before creating sessions, remaps local identities, preserves original call provenance, and never executes imported tools or workflows. Each committed output prefix retains its own boundary after import.
+Rollout ZIP uses a versioned manifest, fixed journal revisions, transcripts, workflow/history evidence, owned file snapshot objects and referenced artifacts with byte lengths and SHA-256 hashes. CLI and HTTP export share the implementation. Active runs and missing originals produce explicit partial manifests. Import validates entry paths, duplicates, sizes and hashes before creating sessions, remaps local identities, preserves original call provenance, and never executes imported tools or workflows. Each committed output prefix retains its own boundary after import. File snapshots are transferred through the snapshot domain, validated as Git trees, and retained under the imported session before message references are published; they survive removal of the original snapshot store.
 
 Archive limits are 64 MiB per entry, 16 GiB total uncompressed content and 100,000 entries. Binary artifacts use 1 MiB chunks. Plain and gzip transcript imports remain supported with a 64 MiB decompressed limit, but cannot supply omitted rollout artifact files. Imports retain the existing same-Scope constraint.
 
 The versioned session migration preserves historical costs with their old calculation label, associates trusted retained outputs and available attachments, records gaps and supports reentry. Historical requests and provider usage cannot be reconstructed if they were never recorded. Operational log cleanup does not remove rollout evidence.
+
+Cortex cancellation publishes the durable cancelled state without waiting for held processors. Rollout cancellation and runtime shutdown separately drain task execution, descendant work, and final evidence before reporting completion or disposing resources.

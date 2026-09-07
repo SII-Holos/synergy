@@ -90,6 +90,13 @@ describe("generated catalog completeness", () => {
 })
 
 describe("parser behavior", () => {
+  test("CLI catalog includes grouped data imports without replacing the migrate alias with its nested command", async () => {
+    const output = await generateCli()
+    expect(output).toContain("| `data` | manage synergy data location and storage |")
+    expect(output).toContain("| `migrate` | move synergy data to a new location (alias for 'data move') |")
+    expect(output).toContain("## snapshots")
+  })
+
   test("parseCommandBlocks extracts describe and options from cmd blocks", () => {
     const source = `export const FooCommand = cmd({
   command: "foo",

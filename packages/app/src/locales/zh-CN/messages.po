@@ -6977,6 +6977,10 @@ msgstr "选择所有已加载的消息"
 msgid "app.rawMessages.title"
 msgstr "原始消息"
 
+#. js-lingui-explicit-id
+msgid "app.review.toolUnavailable"
+msgstr "此工具结果已不可用。"
+
 #. ── components/scopes/active-zone.tsx ────────────────────────────────
 msgid "app.scopes.activeZone.active"
 msgstr "活跃"
@@ -20355,6 +20359,18 @@ msgstr "无法复制通知。"
 #. js-lingui-explicit-id
 msgid "ui.toast.copyLabel"
 msgstr "复制通知"
+
+#. js-lingui-explicit-id
+msgid "ui.toolContent.openFile"
+msgstr "打开当前文件"
+
+#. js-lingui-explicit-id
+msgid "ui.toolContent.openReview"
+msgstr "在审阅中打开"
+
+#. js-lingui-explicit-id
+msgid "ui.toolContent.truncated"
+msgstr "预览已截短。"
 
 #. js-lingui-explicit-id
 msgid "ui.turnChangeSummary.hideFiles"

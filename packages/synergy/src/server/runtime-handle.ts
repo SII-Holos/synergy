@@ -13,6 +13,7 @@ import { Experiment } from "@/config/experiment"
 import { Plugin } from "@/plugin"
 import { Session } from "@/session"
 import { SessionManager } from "@/session/manager"
+import { SessionCortexRuntime } from "@/session/cortex-runtime"
 import { SessionAbort } from "@/session/abort"
 import { LoopJob } from "@/session/loop-job"
 import { ActivitySummary } from "@/session/activity-summary"
@@ -38,7 +39,7 @@ export namespace RuntimeHandle {
     network: Parameters<typeof Server.listen>[0]
     reporter?: MigrationReporter
   }) {
-    const ownership = await ServerProcessLock.acquire(options.mode === "oneshot" ? "oneshot" : undefined)
+    const ownership = await ServerProcessLock.acquire(undefined, options.mode === "oneshot" ? "oneshot" : undefined)
     let server: ReturnType<typeof Server.listen> | undefined
     let residentStarted = false
     let closing: Promise<void> | undefined
@@ -83,6 +84,7 @@ export namespace RuntimeHandle {
         })
         await cleanup(() => ProcessRegistry.killAllRunning())
         await cleanup(() => SessionManager.drain())
+        await cleanup(() => SessionCortexRuntime.drain())
         for (const session of sessions) {
           await cleanup(() => LoopJob.drain(session.id))
           await cleanup(() =>

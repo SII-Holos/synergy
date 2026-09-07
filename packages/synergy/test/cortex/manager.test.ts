@@ -480,9 +480,11 @@ describe.serial("Cortex", () => {
             ])
 
             let cancellationSettled = false
-            const cancellation = Cortex.cancel(task.id).then(() => {
-              cancellationSettled = true
-            })
+            const cancellation = Cortex.cancel(task.id)
+              .then(() => Cortex.drain(task.id))
+              .then(() => {
+                cancellationSettled = true
+              })
             await Bun.sleep(10)
             expect(Cortex.get(task.id)?.status).toBe("cancelled")
             expect(cancellationSettled).toBe(false)
