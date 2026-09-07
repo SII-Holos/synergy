@@ -4,9 +4,10 @@ import { Scope } from "../../src/scope"
 import { tmpdir } from "../fixture/fixture"
 
 async function runSend(args: string[], env?: Record<string, string>) {
+  await using runtime = await tmpdir()
   const proc = Bun.spawn([process.execPath, "--conditions=browser", "src/index.ts", "send", ...args], {
     cwd: import.meta.dir + "/../..",
-    env: { ...process.env, ...env },
+    env: { ...process.env, SYNERGY_HOME: runtime.path, ...env },
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
