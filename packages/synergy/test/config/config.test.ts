@@ -3,6 +3,7 @@ import { Config } from "../../src/config/config"
 import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { Auth } from "../../src/provider/api-key"
+import { Global } from "../../src/global"
 import { tmpdir } from "../fixture/fixture"
 import os from "os"
 import path from "path"
@@ -406,32 +407,44 @@ test("handles file inclusion substitution", async () => {
   })
 })
 
-test("strips unknown top-level fields and keeps the rest of the config", async () => {
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Bun.write(
-        path.join(dir, "synergy.json"),
-        JSON.stringify({
-          $schema: "file:///test/config.schema.json",
-          invalid_field: "should be stripped",
-          theme: "test_theme",
-        }),
-      )
-    },
-  })
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      // The strict schema still rejects unknown keys when parsing a value
-      // directly...
-      expect(() => Config.Info.parse({ invalid_field: 1 })).toThrow()
-      // ...but file loading strips them with a warning instead of failing
-      // the whole load, matching the section-level recovery semantics.
-      const config = await Config.current()
-      expect(config.theme).toBe("test_theme")
-      expect((config as Record<string, unknown>).invalid_field).toBeUndefined()
-    },
-  })
+test("legacy monolithic config with a retired root key stays intact as a migration signal", async () => {
+  const home = path.join(os.tmpdir(), `synergy-config-migration-signal-${Math.random().toString(36).slice(2)}`)
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  process.env["SYNERGY_TEST_HOME"] = home
+  try {
+    const configHome = path.join(home, ".synergy", "config")
+    const legacy = path.join(configHome, "synergy.jsonc")
+    await fs.mkdir(configHome, { recursive: true })
+    await Bun.write(legacy, JSON.stringify({ auto_classifier: true, theme: "test_theme" }))
+
+    // Drop any global resolution cached by earlier tests so the legacy
+    // migration path actually runs against this isolated home.
+    Config.global.reset()
+
+    // The load must fail loudly instead of stripping the retired key,
+    // splitting the file into fragments, and archiving it — that would
+    // silently drop the value the rewrite migration still needs to port.
+    await expect(Config.globalRaw()).rejects.toThrow()
+    expect(JSON.parse(await Bun.file(legacy).text())).toEqual({ auto_classifier: true, theme: "test_theme" })
+
+    resetMigrations()
+    await runMigrations({ targetDomain: "config" })
+    // The lazy global cache is still holding the rejected load from the
+    // migration-signal step; drop it so the next read re-resolves against
+    // the migrated file.
+    Config.global.reset()
+    const migrated = JSON.parse(await Bun.file(legacy).text())
+    expect(migrated.smartAllow).toBe(true)
+    expect(migrated.auto_classifier).toBeUndefined()
+    expect(migrated.theme).toBe("test_theme")
+    expect((await Config.globalRaw()).theme).toBe("test_theme")
+  } finally {
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    // Leave the global cache the way later tests expect it: resolved
+    // fresh against the shared test home, not this isolated one.
+    Config.global.reset()
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
 })
 
 test("validates Cortex concurrency as a positive integer", () => {
