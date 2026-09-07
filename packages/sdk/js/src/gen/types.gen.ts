@@ -1111,6 +1111,34 @@ export type PerfBrowserMetricBatch = {
   }>
 }
 
+export type StorageSnapshotOwnerCounts = {
+  legacy: number
+  shared: number
+  deleted: number
+}
+
+export type StorageSnapshotRetainedLegacy = {
+  unowned: number
+  reclaimed: number
+  sharedBaselines: number
+  unregistered: number
+}
+
+export type StorageSnapshotStatistics = {
+  bytes: number
+  allocatedBytes: number
+  files: number
+}
+
+export type StorageSnapshotUsage = {
+  scopeID: string
+  owners: StorageSnapshotOwnerCounts
+  retainedLegacy: StorageSnapshotRetainedLegacy
+  legacy: StorageSnapshotStatistics
+  shared: StorageSnapshotStatistics
+  indexes: StorageSnapshotStatistics
+}
+
 export type HolosLoginResponse = {
   url: string
 }
@@ -11235,6 +11263,31 @@ export type PerformanceEventsStreamResponses = {
    */
   200: unknown
 }
+
+export type StorageSnapshotUsageData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/storage/snapshot"
+}
+
+export type StorageSnapshotUsageErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageSnapshotUsageError = StorageSnapshotUsageErrors[keyof StorageSnapshotUsageErrors]
+
+export type StorageSnapshotUsageResponses = {
+  /**
+   * Snapshot storage usage per scope
+   */
+  200: Array<StorageSnapshotUsage>
+}
+
+export type StorageSnapshotUsageResponse = StorageSnapshotUsageResponses[keyof StorageSnapshotUsageResponses]
 
 export type GlobalDisposeData = {
   body?: never

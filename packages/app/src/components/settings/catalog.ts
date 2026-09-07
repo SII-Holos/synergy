@@ -51,6 +51,7 @@ export const BUILTIN_SETTINGS_IDS = [
   "config-files",
   "archived-sessions",
   "worktrees",
+  "storage",
 ] as const
 
 export type BuiltinSettingsId = (typeof BUILTIN_SETTINGS_IDS)[number]
@@ -120,7 +121,7 @@ const BUILTIN_SETTINGS_COPY = {
     searchTerms: {
       id: "settings.catalog.general.searchTerms",
       message:
-        "appearance | color | light | dark | auto | language | snapshot | activity | activity display | workspace | worktree | checkout | product update | toast | notification",
+        "appearance | color | light | dark | auto | language | activity | activity display | workspace | worktree | checkout | product update | toast | notification",
       comment: SEARCH_TERMS_COMMENT,
     },
     rowLabels: [
@@ -128,7 +129,6 @@ const BUILTIN_SETTINGS_COPY = {
       { id: "settings.catalog.general.row.interfaceLanguage", message: "Interface Language" },
       { id: "settings.catalog.general.row.activityDisplay", message: "Activity display" },
       { id: "settings.catalog.general.row.newSessionWorkspace", message: "New Session Workspace" },
-      { id: "settings.catalog.general.row.snapshot", message: "Snapshot" },
       { id: "settings.catalog.general.row.productUpdates", message: "Product Updates" },
       { id: "settings.catalog.general.row.notifications", message: "Notifications" },
       { id: "settings.catalog.general.row.toastDuration", message: "Toast Duration" },
@@ -513,6 +513,18 @@ const BUILTIN_SETTINGS_COPY = {
       comment: SEARCH_TERMS_COMMENT,
     },
   },
+  storage: {
+    label: { id: "settings.catalog.storage.label", message: "Storage" },
+    description: {
+      id: "settings.catalog.storage.description",
+      message: "File snapshot storage usage per project scope and the snapshot switch.",
+    },
+    searchTerms: {
+      id: "settings.catalog.storage.searchTerms",
+      message: "storage | snapshot | usage | disk | legacy | migrate | compact",
+      comment: SEARCH_TERMS_COMMENT,
+    },
+  },
 } satisfies Record<BuiltinSettingsId, SettingsCopyDefinition>
 
 export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
@@ -550,6 +562,7 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
   section("config-files", "system", 20, "settings.configFiles"),
   section("archived-sessions", "system", 30, "session.archive"),
   section("worktrees", "system", 40, "workspace.worktree"),
+  section("storage", "system", 45, "settings.storage", ["general"]),
 ]
 
 function section(

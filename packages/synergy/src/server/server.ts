@@ -73,6 +73,7 @@ import { SessionNavRoute } from "./session-nav"
 import { GlobalNavRoute } from "./global-nav"
 import { ControlProfileRoute } from "./control-profile-route"
 import { SandboxReadinessRoute } from "./sandbox-readiness-route"
+import { GlobalStorageRoute } from "./storage-route"
 import { BrowserRoute, configureBrowserViewerOrigins } from "./browser-route"
 import { BrowserHostBrokerProcess } from "../browser/host-broker-process"
 import { BlueprintRoute } from "./blueprint"
@@ -777,6 +778,7 @@ export namespace Server {
         .route("/global/update", UpdateRoute)
         .route("/global", ObservabilityRoute)
         .route("/global", PerformanceRoute)
+        .route("/global/storage", GlobalStorageRoute)
         .get(
           "/global/event/ws",
           (() => {

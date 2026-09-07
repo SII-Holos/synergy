@@ -50,7 +50,6 @@ describe("settings section localization", () => {
         "界面语言",
         "Activity display",
         "New Session Workspace",
-        "Snapshot",
         "Product Updates",
         "Notifications",
         "Toast Duration",

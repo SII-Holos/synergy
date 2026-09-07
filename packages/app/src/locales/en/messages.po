@@ -14597,10 +14597,6 @@ msgid "settings.catalog.general.row.productUpdates"
 msgstr "Product Updates"
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.general.row.snapshot"
-msgstr "Snapshot"
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.general.row.toastDuration"
 msgstr "Toast Duration"
 
@@ -14610,7 +14606,7 @@ msgstr "Interface Zoom"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.searchTerms"
-msgstr "appearance | color | light | dark | auto | language | snapshot | activity | activity display | workspace | worktree | checkout | product update | toast | notification"
+msgstr "appearance | color | light | dark | auto | language | activity | activity display | workspace | worktree | checkout | product update | toast | notification"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.github.description"
@@ -14883,6 +14879,18 @@ msgstr "OpenClaw"
 #. js-lingui-explicit-id
 msgid "settings.catalog.skills.searchTerms"
 msgstr "skill | skills | claude | codex | openclaw | agents | compatibility"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.storage.description"
+msgstr "File snapshot storage usage per project scope and the snapshot switch."
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.storage.label"
+msgstr "Storage"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.storage.searchTerms"
+msgstr "storage | snapshot | usage | disk | legacy | migrate | compact"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.synergyLink.description"
@@ -15715,14 +15723,6 @@ msgstr "Appearance, behavior, and notification preferences."
 #. js-lingui-explicit-id
 msgid "settings.general.page.title"
 msgstr "General"
-
-#. js-lingui-explicit-id
-msgid "settings.general.snapshots.description"
-msgstr "Keep restore points when Synergy edits files"
-
-#. js-lingui-explicit-id
-msgid "settings.general.snapshots.title"
-msgstr "File snapshots"
 
 #. js-lingui-explicit-id
 msgid "settings.general.theme.description"
@@ -18619,6 +18619,82 @@ msgstr "Custom"
 #. js-lingui-explicit-id
 msgid "settings.stepScale.customValue"
 msgstr "Custom {value}"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.maintenance.description"
+msgstr "Snapshot migration, compaction, and deletion run through the CLI: synergy data snapshots inspect | migrate | compact | clean. Deletion is only performed for permanently deleted sessions."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.maintenance.title"
+msgstr "Maintenance"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.page.description"
+msgstr "Inspect file snapshot storage usage per project scope."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.page.title"
+msgstr "Storage"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.refresh"
+msgstr "Refresh"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.snapshots.description"
+msgstr "Keep restore points when Synergy edits files"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.snapshots.title"
+msgstr "File snapshots"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.empty"
+msgstr "No snapshot storage found."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.failed"
+msgstr "Snapshot scan failed"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.indexes"
+msgstr "Session work indexes"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.legacy"
+msgstr "Legacy repositories"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.loading"
+msgstr "Scanning snapshot storage..."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.owners"
+msgstr "Sessions"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.owners.deleted"
+msgstr "{count} pending deletion"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.owners.legacy"
+msgstr "{count} on legacy storage"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.owners.shared"
+msgstr "{count} on shared storage"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.retainedLegacy"
+msgstr "{unowned} unowned, {reclaimed} reclaimed, {sharedBaselines} shared baselines, {unregistered} unregistered"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.shared"
+msgstr "Shared repository"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.title"
+msgstr "Snapshot usage"
 
 #. js-lingui-explicit-id
 msgid "settings.synergyLink.add.action"

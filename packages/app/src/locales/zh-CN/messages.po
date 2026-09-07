@@ -14597,10 +14597,6 @@ msgid "settings.catalog.general.row.productUpdates"
 msgstr "产品更新"
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.general.row.snapshot"
-msgstr "快照"
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.general.row.toastDuration"
 msgstr "提示时长"
 
@@ -14883,6 +14879,18 @@ msgstr "OpenClaw"
 #. js-lingui-explicit-id
 msgid "settings.catalog.skills.searchTerms"
 msgstr "技能 | skill | claude | codex | openclaw | agents | 兼容性"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.storage.description"
+msgstr "按项目范围查看文件快照存储占用与快照开关。"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.storage.label"
+msgstr "存储"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.storage.searchTerms"
+msgstr "存储 | 快照 | 占用 | 磁盘 | 旧版 | 迁移 | 压缩"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.synergyLink.description"
@@ -15715,14 +15723,6 @@ msgstr "外观、行为和通知偏好设置。"
 #. js-lingui-explicit-id
 msgid "settings.general.page.title"
 msgstr "常规"
-
-#. js-lingui-explicit-id
-msgid "settings.general.snapshots.description"
-msgstr "Synergy 编辑文件时保留恢复点"
-
-#. js-lingui-explicit-id
-msgid "settings.general.snapshots.title"
-msgstr "文件快照"
 
 #. js-lingui-explicit-id
 msgid "settings.general.theme.description"
@@ -18619,6 +18619,82 @@ msgstr "自定义"
 #. js-lingui-explicit-id
 msgid "settings.stepScale.customValue"
 msgstr "自定义 {value}"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.maintenance.description"
+msgstr "快照迁移、压缩和删除通过 CLI 执行：synergy data snapshots inspect | migrate | compact | clean。仅对已永久删除的会话执行删除。"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.maintenance.title"
+msgstr "维护"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.page.description"
+msgstr "按项目范围查看文件快照存储占用。"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.page.title"
+msgstr "存储"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.refresh"
+msgstr "刷新"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.snapshots.description"
+msgstr "Synergy 编辑文件时保留还原点"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.snapshots.title"
+msgstr "文件快照"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.empty"
+msgstr "未找到快照存储。"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.failed"
+msgstr "快照扫描失败"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.indexes"
+msgstr "会话工作索引"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.legacy"
+msgstr "旧版仓库"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.loading"
+msgstr "正在扫描快照存储..."
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.owners"
+msgstr "会话"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.owners.deleted"
+msgstr "{count} 个待删除"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.owners.legacy"
+msgstr "{count} 个在旧版存储"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.owners.shared"
+msgstr "{count} 个在共享存储"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.retainedLegacy"
+msgstr "{unowned} 个无主、{reclaimed} 个已回收、{sharedBaselines} 个共享基线、{unregistered} 个未注册"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.shared"
+msgstr "共享仓库"
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.title"
+msgstr "快照占用"
 
 #. js-lingui-explicit-id
 msgid "settings.synergyLink.add.action"

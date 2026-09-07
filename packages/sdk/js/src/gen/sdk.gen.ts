@@ -666,6 +666,8 @@ import type {
   SkillReloadResponses,
   SkillRemoveErrors,
   SkillRemoveResponses,
+  StorageSnapshotUsageErrors,
+  StorageSnapshotUsageResponses,
   SynergyLinkTargetCreateErrors,
   SynergyLinkTargetCreateInput,
   SynergyLinkTargetCreateResponses,
@@ -4296,6 +4298,25 @@ export class Performance extends HeyApiClient {
   browserMetrics = new BrowserMetrics({ client: this.client })
 
   events = new Events({ client: this.client })
+}
+
+export class Snapshot extends HeyApiClient {
+  /**
+   * Report snapshot storage usage
+   *
+   * Per-scope file snapshot storage report: owner counts by backend, retained legacy directories (unowned, reclaimed, shared baselines, unregistered), and legacy/shared/index storage statistics. Maintenance and deletion run through `synergy data snapshots`; this endpoint is read-only.
+   */
+  public usage<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      StorageSnapshotUsageResponses,
+      StorageSnapshotUsageErrors,
+      ThrowOnError
+    >({ url: "/global/storage/snapshot", ...options })
+  }
+}
+
+export class Storage extends HeyApiClient {
+  snapshot = new Snapshot({ client: this.client })
 }
 
 export class Credentials extends HeyApiClient {
@@ -12477,6 +12498,8 @@ export class SynergyClient extends HeyApiClient {
   observability = new Observability({ client: this.client })
 
   performance = new Performance({ client: this.client })
+
+  storage = new Storage({ client: this.client })
 
   holos = new Holos({ client: this.client })
 
