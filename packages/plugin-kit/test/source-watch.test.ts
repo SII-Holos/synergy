@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test"
-import fs from "node:fs"
 import path from "node:path"
 import { watchPluginSources } from "../src/lib/source-watch"
 import { createFixtureProject } from "./fixtures"
@@ -7,6 +6,7 @@ import { createFixtureProject } from "./fixtures"
 test("watcher follows new asset directories and external dependencies without watching its own output", async () => {
   const project = createFixtureProject("watch-assets")
   const dependency = createFixtureProject("watch-dependency")
+  project.writeFile("src/index.ts", "export {}")
   let changes = 0
   const watcher = watchPluginSources(project.root, () => {
     changes++
