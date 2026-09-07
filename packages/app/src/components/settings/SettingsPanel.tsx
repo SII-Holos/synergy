@@ -104,6 +104,7 @@ import { EmailPanel } from "./panels/EmailPanel"
 import { ImportPanel } from "./panels/ImportPanel"
 import { ConfigFilesPanel, ConfigReferencePanel } from "./panels/ConfigFilesPanel"
 import { ArchivedSessionsPanel } from "./panels/ArchivedSessionsPanel"
+import { StoragePanel } from "./panels/StoragePanel"
 import { WorktreesPanel } from "./panels/WorktreesPanel"
 import { ControlProfilePanel, PermissionsPanel, SandboxPanel } from "./panels/SafetyPanels"
 import { CompactionPanel, QuestionsPanel, TimeoutsPanel, ObservabilityPanel } from "./panels/RuntimePanels"
@@ -1124,6 +1125,13 @@ export function SettingsPanel(props: SettingsPanelProps) {
       />
     ),
     "archived-sessions": () => <ArchivedSessionsPanel popoverLayer={settingsPopoverLayer()} />,
+    storage: () => (
+      <StoragePanel
+        general={settings.general}
+        onGeneralChange={(key, value) => setSettings("general", key, value)}
+        popoverLayer={settingsPopoverLayer()}
+      />
+    ),
     worktrees: WorktreesPanel,
   })
 

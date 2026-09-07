@@ -14597,10 +14597,6 @@ msgid "settings.catalog.general.row.productUpdates"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.general.row.snapshot"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.general.row.toastDuration"
 msgstr ""
 
@@ -14882,6 +14878,18 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.skills.searchTerms"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.storage.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.storage.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.storage.searchTerms"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -15714,14 +15722,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.general.page.title"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.general.snapshots.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.general.snapshots.title"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -18618,6 +18618,134 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.stepScale.customValue"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.action"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.busy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.confirm.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.confirm.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.confirm.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.failed.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.nothing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.partial.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.success.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.success.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.clean.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.cleanup.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.maintenance.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.maintenance.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.page.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.page.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.snapshots.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.snapshots.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.indexes"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.legacy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.owners"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.owners.deleted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.owners.legacy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.owners.shared"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.retainedLegacy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.shared"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.storage.usage.title"
 msgstr ""
 
 #. js-lingui-explicit-id

@@ -7,7 +7,7 @@ import { SnapshotLease } from "../../../session/snapshot-lease"
 import { ServerProcessLock } from "../../../util/server-process-lock"
 
 interface Input {
-  action: "inspect" | "check" | "migrate" | "compact"
+  action: "inspect" | "check" | "migrate" | "compact" | "clean"
   scope?: string
   apply?: boolean
   prune?: boolean
@@ -18,6 +18,20 @@ export async function executeSnapshots(input: Input) {
   try {
     if (input.apply) lock = await ServerProcessLock.acquire()
     if (input.action === "inspect") return { ok: true, results: await SnapshotMaintenance.inspect(input.scope) }
+    if (input.action === "clean") {
+      // Skip registerLegacy: it would claim unowned legacy directories right
+      // before reclaiming them, so clean never sees its own candidates.
+      const scopes = input.scope ? [SnapshotStore.component(input.scope)] : await SnapshotMaintenance.scopes()
+      const results = []
+      let ok = true
+      for (const scopeID of scopes) {
+        if (input.apply) await SnapshotLifecycle.recover(scopeID)
+        const result = await SnapshotMaintenance.clean(scopeID, { apply: input.apply })
+        ok = ok && result.errors.length === 0
+        results.push(result)
+      }
+      return { ok, results }
+    }
     if (input.apply) await SnapshotMaintenance.registerLegacy(undefined, input.scope)
     const scopes = input.scope ? [SnapshotStore.component(input.scope)] : await SnapshotMaintenance.scopes()
     const results = []
@@ -107,11 +121,23 @@ const CompactCommand = cmd({
   builder: compact,
   handler: handler("compact"),
 })
+const CleanCommand = cmd({
+  command: "clean",
+  describe: "reclaim unowned legacy snapshot directories (dry-run unless --apply)",
+  builder: mutation,
+  handler: handler("clean"),
+})
 
 export const DataSnapshotsCommand = cmd({
   command: "snapshots",
   describe: "inspect and maintain file snapshot storage",
   builder: (yargs) =>
-    yargs.command(InspectCommand).command(CheckCommand).command(MigrateCommand).command(CompactCommand).demandCommand(),
+    yargs
+      .command(InspectCommand)
+      .command(CheckCommand)
+      .command(MigrateCommand)
+      .command(CompactCommand)
+      .command(CleanCommand)
+      .demandCommand(),
   handler: async () => {},
 })

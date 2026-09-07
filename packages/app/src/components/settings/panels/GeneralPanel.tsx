@@ -93,7 +93,6 @@ const copy = {
     message: "Used for code, terminals, diffs, and other monospaced content.",
   },
   behaviorTitle: { id: "settings.general.behavior.title", message: "Behavior" },
-  snapshotsTitle: { id: "settings.general.snapshots.title", message: "File snapshots" },
   activityDisplayTitle: { id: "settings.general.activityDisplay.title", message: "Activity display" },
   activityDisplayDescription: {
     id: "settings.general.activityDisplay.description",
@@ -109,10 +108,6 @@ const copy = {
   },
   workspaceMain: { id: "settings.general.workspace.main", message: "Main checkout" },
   workspaceWorktree: { id: "settings.general.workspace.worktree", message: "Worktree" },
-  snapshotsDescription: {
-    id: "settings.general.snapshots.description",
-    message: "Keep restore points when Synergy edits files",
-  },
   compactReasoningTitle: { id: "settings.general.compactReasoning.title", message: "Compact reasoning" },
   compactReasoningDescription: {
     id: "settings.general.compactReasoning.description",
@@ -325,13 +320,6 @@ export function GeneralPanel(props: {
       </SettingsSection>
 
       <SettingsSection title={_(copy.behaviorTitle)}>
-        <SettingRow
-          title={_(copy.snapshotsTitle)}
-          description={_(copy.snapshotsDescription)}
-          trailing={
-            <Switch checked={props.general.snapshot} onChange={(value) => props.onGeneralChange("snapshot", value)} />
-          }
-        />
         <SettingRow
           title={_(copy.compactReasoningTitle)}
           description={_(copy.compactReasoningDescription)}

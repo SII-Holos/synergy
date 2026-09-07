@@ -666,6 +666,11 @@ import type {
   SkillReloadResponses,
   SkillRemoveErrors,
   SkillRemoveResponses,
+  StorageSnapshotCleanErrors,
+  StorageSnapshotCleanInput,
+  StorageSnapshotCleanResponses,
+  StorageSnapshotUsageErrors,
+  StorageSnapshotUsageResponses,
   SynergyLinkTargetCreateErrors,
   SynergyLinkTargetCreateInput,
   SynergyLinkTargetCreateResponses,
@@ -4296,6 +4301,53 @@ export class Performance extends HeyApiClient {
   browserMetrics = new BrowserMetrics({ client: this.client })
 
   events = new Events({ client: this.client })
+}
+
+export class Snapshot extends HeyApiClient {
+  /**
+   * Report snapshot storage usage
+   *
+   * Per-scope file snapshot storage report: owner counts by backend, retained legacy directories (unowned, reclaimed, shared baselines, unregistered), and legacy/shared/index storage statistics. Read-only; reclamation is a separate POST.
+   */
+  public usage<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      StorageSnapshotUsageResponses,
+      StorageSnapshotUsageErrors,
+      ThrowOnError
+    >({ url: "/global/storage/snapshot", ...options })
+  }
+
+  /**
+   * Reclaim unowned legacy snapshot directories
+   *
+   * Reclaim retained legacy snapshot directories with no owner record and no session record, including the __reclaimed__ scope. The shared store and directories with owners are never touched. Dry run by default; apply refuses a scope whose integrity check fails. Conflicts with running maintenance or a corrupted scope return 409.
+   */
+  public clean<ThrowOnError extends boolean = false>(
+    parameters: {
+      storageSnapshotCleanInput: StorageSnapshotCleanInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "storageSnapshotCleanInput", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      StorageSnapshotCleanResponses,
+      StorageSnapshotCleanErrors,
+      ThrowOnError
+    >({
+      url: "/global/storage/snapshot/clean",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Storage extends HeyApiClient {
+  snapshot = new Snapshot({ client: this.client })
 }
 
 export class Credentials extends HeyApiClient {
@@ -12477,6 +12529,8 @@ export class SynergyClient extends HeyApiClient {
   observability = new Observability({ client: this.client })
 
   performance = new Performance({ client: this.client })
+
+  storage = new Storage({ client: this.client })
 
   holos = new Holos({ client: this.client })
 

@@ -1111,6 +1111,65 @@ export type PerfBrowserMetricBatch = {
   }>
 }
 
+export type StorageSnapshotOwnerCounts = {
+  legacy: number
+  shared: number
+  deleted: number
+}
+
+export type StorageSnapshotRetainedLegacy = {
+  unowned: number
+  reclaimed: number
+  sharedBaselines: number
+  unregistered: number
+}
+
+export type StorageSnapshotStatistics = {
+  bytes: number
+  allocatedBytes: number
+  files: number
+}
+
+export type StorageSnapshotUsage = {
+  scopeID: string
+  owners: StorageSnapshotOwnerCounts
+  retainedLegacy: StorageSnapshotRetainedLegacy
+  legacy: StorageSnapshotStatistics
+  shared: StorageSnapshotStatistics
+  indexes: StorageSnapshotStatistics
+}
+
+export type StorageSnapshotCleanCandidate = {
+  sessionID: string
+  bytes: number
+  reason: "reclaimed" | "unowned"
+}
+
+export type StorageSnapshotCleanResult = {
+  scopeID: string
+  applied: boolean
+  candidates: Array<StorageSnapshotCleanCandidate>
+  removed: number
+  bytes: number
+  skippedProtected: number
+  errors: Array<string>
+}
+
+export type StorageSnapshotCleanFailure = {
+  scopeID: string
+  message: string
+}
+
+export type StorageSnapshotCleanBatch = {
+  results: Array<StorageSnapshotCleanResult>
+  failures: Array<StorageSnapshotCleanFailure>
+}
+
+export type StorageSnapshotCleanInput = {
+  scopeID?: string
+  apply?: boolean
+}
+
 export type HolosLoginResponse = {
   url: string
 }
@@ -11235,6 +11294,62 @@ export type PerformanceEventsStreamResponses = {
    */
   200: unknown
 }
+
+export type StorageSnapshotUsageData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/storage/snapshot"
+}
+
+export type StorageSnapshotUsageErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageSnapshotUsageError = StorageSnapshotUsageErrors[keyof StorageSnapshotUsageErrors]
+
+export type StorageSnapshotUsageResponses = {
+  /**
+   * Snapshot storage usage per scope
+   */
+  200: Array<StorageSnapshotUsage>
+}
+
+export type StorageSnapshotUsageResponse = StorageSnapshotUsageResponses[keyof StorageSnapshotUsageResponses]
+
+export type StorageSnapshotCleanData = {
+  body: StorageSnapshotCleanInput
+  path?: never
+  query?: never
+  url: "/global/storage/snapshot/clean"
+}
+
+export type StorageSnapshotCleanErrors = {
+  /**
+   * A scope-targeted request found storage busy or its integrity check failed; nothing was reclaimed
+   */
+  409: {
+    message: string
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type StorageSnapshotCleanError = StorageSnapshotCleanErrors[keyof StorageSnapshotCleanErrors]
+
+export type StorageSnapshotCleanResponses = {
+  /**
+   * Per-scope clean reports plus failures for scopes that could not run (batch requests without scopeID keep completed work when a later scope fails)
+   */
+  200: StorageSnapshotCleanBatch
+}
+
+export type StorageSnapshotCleanResponse = StorageSnapshotCleanResponses[keyof StorageSnapshotCleanResponses]
 
 export type GlobalDisposeData = {
   body?: never
