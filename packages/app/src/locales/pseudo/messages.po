@@ -6977,6 +6977,10 @@ msgstr ""
 msgid "app.rawMessages.title"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "app.review.toolUnavailable"
+msgstr ""
+
 #. ── components/scopes/active-zone.tsx ────────────────────────────────
 msgid "app.scopes.activeZone.active"
 msgstr ""
@@ -20351,6 +20355,18 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "ui.toast.copyLabel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.toolContent.openFile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.toolContent.openReview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.toolContent.truncated"
 msgstr ""
 
 #. js-lingui-explicit-id

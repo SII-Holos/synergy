@@ -432,3 +432,7 @@ Composer snapshots, settled-draft notifications, selected-text snapshots, comple
   instead of rescanning the message window, so a new message invalidates only the projection memo rather than every rendered turn.
 - `BrowserViewEffects` keeps its handled-callID set bounded to the timeline
   window, releasing callIDs that were trimmed or switched away.
+
+## Tool content retention
+
+Tool review tabs persist session/message/part identity and a selected path. The mounted panel loads that message through the Scope-aware generated SDK and aborts obsolete requests. It does not persist tool payloads in layout state or create a session-wide eager fetch. File links use the existing workspace-file loading and eviction owner. String interning has bounded admission maps as well as a bounded retained-value map; promotion removes the admission reference. Rendering and cache capacities follow the [bounded tool rendering decision](../decisions/implemented/bug-fix/2026-09-07-bound-tool-rendering-memory.md).

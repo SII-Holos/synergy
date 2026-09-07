@@ -10,6 +10,7 @@ await runBatchedTests({
   timeoutMs: 120000,
   isolated: [
     "test/components/tool/computer-tool-renders.test.tsx",
+    "test/components/basic-tool-lifecycle.dom.test.ts",
     "test/components/message-part-error-boundary.test.ts",
     "test/components/activity-trace.dom.test.ts",
     "test/components/diff-patch.dom.test.ts",

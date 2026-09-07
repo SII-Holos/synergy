@@ -139,6 +139,8 @@ First-party tool-card titles should lead with a concise action phrase that tells
 Ordinary message-flow errors should remain compact by default: show a single-line error preview in a neutral workbench row with a restrained critical marker, and place the complete error text, tool input, and copy action in the shared grounded details dialog. A lifecycle card such as compaction may preserve its identity by expanding sanitized diagnostics in place, but raw diagnostics should never dominate the surrounding session work.
 
 User prompts inside a turn may render as a compact right-aligned bubble with matching prompt attachments, but the turn header, tool/result timeline, media results, and diffs must keep their workbench-width timeline structure and original part order.
+File and diff tool bodies use bounded plain previews. Open current file loads the workspace file into the right File panel; Open in Review loads the recorded tool patch into the right Review panel and opens its selected file. Large explicit reviews preserve available text without requiring syntax highlighting. Closed tool details must not construct renderers.
+
 Turn-level file changes summarize in the message flow. Balanced Activity Trace may show the individual tool-produced diff inside an expanded file step, while the session Review workbench remains the durable turn-level surface for inspecting the complete aggregated change set.
 
 ### Turn diff panel states

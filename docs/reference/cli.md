@@ -14,7 +14,7 @@ Generated from the CLI registration in `packages/synergy/src/main.ts`. Concept a
 | `browser` | diagnose and install Chromium for Browser tools |
 | `channel` | manage messaging channels |
 | `config` | manage synergy configuration |
-| `data` |  |
+| `data` | manage synergy data location and storage |
 | `debug` | debugging and troubleshooting tools |
 | `diagnostics` | create a local diagnostics package |
 | `doctor` | diagnose synergy sandbox and environment |
@@ -26,7 +26,7 @@ Generated from the CLI registration in `packages/synergy/src/main.ts`. Concept a
 | `library` | manage library memory and learning |
 | `logs` | show synergy background service logs |
 | `mcp` | manage MCP (Model Context Protocol) servers |
-| `migrate` |  |
+| `migrate` | move synergy data to a new location (alias for 'data move') |
 | `migration` | manage schema and data migrations |
 | `models` |  |
 | `plugin` | install, remove, update, and inspect plugins |
@@ -102,9 +102,19 @@ diagnose and install Chromium for Browser tools
 manage messaging channels
 
 
+## check
+
+verify stored objects and historical snapshot roots
+
+
+## compact
+
+pack shared snapshots (dry-run unless --apply)
+
+
 ## config
 
-show resolved configuration
+manage synergy configuration
 
 
 ## create
@@ -126,6 +136,11 @@ show local Holos credential status
 | Option | Description |
 | --- | --- |
 | `--json` (boolean) | output as JSON |
+
+## data
+
+manage synergy data location and storage
+
 
 ## debug
 
@@ -261,6 +276,11 @@ import config from URL or file
 show detailed plugin status and metadata
 
 
+## inspect
+
+show snapshot ownership and logical/allocated storage usage
+
+
 ## inspect <sessionID>
 
 inspect a session without hydrating its messages
@@ -379,6 +399,21 @@ configure memory parameters (writes to global config)
 | --- | --- |
 | `--print` (boolean) | print config instead of writing to file |
 
+## merge <source>
+
+merge data from another synergy directory or zip archive
+
+
+## migrate
+
+move synergy data to a new location (alias for 'data move')
+
+| Option | Description |
+| --- | --- |
+| `--target` (string) | target directory path |
+| `--remove-original` (boolean) | remove original data after successful move |
+| `--dry-run` (boolean) | show plan without executing |
+
 ## migration
 
 manage schema and data migrations
@@ -395,6 +430,20 @@ list all available models
 | --- | --- |
 | `--verbose` (boolean) | use more verbose model output (includes metadata like costs) |
 | `--refresh` (boolean) | refresh the models cache from models.dev |
+
+## move <target>
+
+move synergy data to a new location
+
+| Option | Description |
+| --- | --- |
+| `--remove-original` (boolean) | remove original data after successful move |
+| `--dry-run` (boolean) | show plan without executing |
+
+## pack [output]
+
+pack synergy data into a zip archive
+
 
 ## patch <hash>
 
@@ -535,6 +584,14 @@ send a message to synergy
 manage sessions
 
 
+## set-home <path>
+
+set SYNERGY_HOME to change data location (does not move data)
+
+| Option | Description |
+| --- | --- |
+| `--unset` (boolean) | remove SYNERGY_HOME, revert to default ~/.synergy |
+
 ## show
 
 show current library configuration
@@ -548,6 +605,11 @@ list all available skills
 ## snapshot
 
 snapshot debugging utilities
+
+
+## snapshots
+
+inspect and maintain file snapshot storage
 
 
 ## start

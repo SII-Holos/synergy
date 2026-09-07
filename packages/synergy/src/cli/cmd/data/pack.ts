@@ -1,3 +1,4 @@
+import { SnapshotArchive } from "../../../session/snapshot-archive"
 import fs from "fs/promises"
 import path from "path"
 import os from "os"
@@ -5,6 +6,8 @@ import * as prompts from "@clack/prompts"
 import { cmd } from "../cmd"
 import { UI } from "../../../util/ui"
 import {
+  archiveExclusions,
+  copyDirSkipExisting,
   CATEGORIES,
   scanCategories,
   formatSize,
@@ -85,77 +88,14 @@ export const DataPackCommand = cmd({
     spinner.start("Packing data...")
 
     try {
-      // Write manifest to a temp location
-      const tmpDir = path.join(os.tmpdir(), `synergy-pack-${Date.now()}`)
-      await fs.mkdir(tmpDir, { recursive: true })
-      await Bun.write(path.join(tmpDir, "manifest.json"), JSON.stringify(manifest, null, 2))
-
-      // Build the list of paths to include
-      const includePaths: string[] = ["manifest.json"]
-      for (const cat of selectedCategories) {
-        for (const subdir of cat.subdirs) {
-          const full = path.join(root, subdir)
-          if (
-            await fs
-              .access(full)
-              .then(() => true)
-              .catch(() => false)
-          ) {
-            includePaths.push(subdir)
-          }
-        }
-      }
-
-      // Use Bun.zip or fall back to a manual approach
-      // Bun doesn't have a built-in zip, so we use the `zip` CLI or archiver
-      const { execSync } = await import("child_process")
-
-      // Check if zip is available
-      try {
-        execSync("which zip", { stdio: "pipe" })
-      } catch {
-        // Fall back: use tar.gz
-        const tarPath = outputPath.replace(/\.zip$/, ".tar.gz")
-        spinner.message(`Packing to ${shortenPath(tarPath)}...`)
-
-        const dirsToTar = includePaths.filter((p) => p !== "manifest.json")
-        const cmd = `tar -czf "${tarPath}" -C "${tmpDir}" manifest.json ${dirsToTar.map((d) => `-C "${root}" "${d}"`).join(" ")}`
-
-        try {
-          execSync(cmd, { stdio: "pipe" })
-        } catch {
-          // Simpler approach: tar each separately
-          execSync(`tar -czf "${tarPath}" -C "${tmpDir}" manifest.json`, { stdio: "pipe" })
-          for (const d of dirsToTar) {
-            execSync(`tar -rf "${tarPath}" -C "${root}" "${d}"`, { stdio: "pipe" })
-          }
-        }
-
-        await fs.rm(tmpDir, { recursive: true, force: true })
-        spinner.stop(`Packed to ${shortenPath(tarPath)}`)
-        prompts.outro("Done")
-        return
-      }
-
-      spinner.message(`Packing to ${shortenPath(outputPath)}...`)
-
-      // Use zip CLI
-      const dirsToZip = includePaths.filter((p) => p !== "manifest.json")
-
-      // Create zip with manifest first
-      execSync(`zip -j "${outputPath}" "${path.join(tmpDir, "manifest.json")}"`, { stdio: "pipe" })
-
-      // Add each directory
-      for (const d of dirsToZip) {
-        const full = path.join(root, d)
-        spinner.message(`Packing ${d}/...`)
-        execSync(`zip -r -u "${outputPath}" "${d}" -C "${root}"`, { stdio: "pipe" })
-      }
-
-      await fs.rm(tmpDir, { recursive: true, force: true })
-
-      const packedSize = (await fs.stat(outputPath)).size
-      spinner.stop(`Packed to ${shortenPath(outputPath)} (${formatSize(packedSize)})`)
+      const packed = await createDataArchive(
+        root,
+        outputPath,
+        selectedCategories.flatMap((category) => category.subdirs),
+        manifest,
+      )
+      const packedSize = (await fs.stat(packed)).size
+      spinner.stop(`Packed to ${shortenPath(packed)} (${formatSize(packedSize)})`)
     } catch (e) {
       spinner.stop("Packing failed", 1)
       prompts.log.error(`Failed to pack: ${e instanceof Error ? e.message : String(e)}`)
@@ -166,3 +106,47 @@ export const DataPackCommand = cmd({
     prompts.outro("Done")
   },
 })
+
+export async function createDataArchive(root: string, output: string, directories: string[], manifest: unknown) {
+  await using homes = await SnapshotArchive.lockHomes([root])
+  const stage = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-pack-"))
+  try {
+    await Bun.write(path.join(stage, "manifest.json"), JSON.stringify(manifest, null, 2))
+    const included = ["manifest.json"]
+    for (const directory of directories) {
+      const source = path.join(root, directory)
+      const exists = await fs.stat(source).then(
+        () => true,
+        (error: NodeJS.ErrnoException) => {
+          if (error.code === "ENOENT") return false
+          throw error
+        },
+      )
+      if (!exists) continue
+      const destination = path.join(stage, directory)
+      if (directory === "data") await SnapshotArchive.merge(source, destination)
+      await copyDirSkipExisting(source, destination, undefined, undefined, undefined, archiveExclusions(directory))
+      included.push(directory)
+    }
+    const zip = Bun.which("zip")
+    const filename = zip ? output : output.replace(/\.zip$/, ".tar.gz")
+    await fs.mkdir(path.dirname(filename), { recursive: true })
+    const temporary = path.join(
+      path.dirname(filename),
+      `.synergy-pack-${crypto.randomUUID()}${zip ? ".zip" : ".tar.gz"}`,
+    )
+    try {
+      const command = zip ? [zip, "-q", "-r", temporary, ...included] : ["tar", "-czf", temporary, ...included]
+      const child = Bun.spawn(command, { cwd: stage, stdout: "ignore", stderr: "pipe" })
+      const errors = new Response(child.stderr).text()
+      if ((await child.exited) !== 0) throw new Error(`Archive creation failed: ${await errors}`)
+      await errors
+      await fs.rename(temporary, filename)
+    } finally {
+      await fs.rm(temporary, { force: true })
+    }
+    return filename
+  } finally {
+    await fs.rm(stage, { recursive: true, force: true })
+  }
+}

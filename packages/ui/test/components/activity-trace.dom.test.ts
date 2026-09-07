@@ -787,9 +787,9 @@ describe("ActivityTrace DOM behavior", () => {
 
     expect(viewHost.querySelector('[data-component="tool-result-body"]')).not.toBeNull()
     expect(viewHost.querySelector('[data-component="anchored-summary"]')).not.toBeNull()
-    expect(viewHost.querySelector('[data-component="view-content"]')).not.toBeNull()
-    expect(viewHost.querySelector('[data-component="code-fixture"]')?.textContent).toBe("const parity = true")
-    expect(viewHost.querySelector('[data-component="tool-output-text"]')).toBeNull()
+    expect(viewHost.querySelector('[data-component="tool-content-preview"]')).not.toBeNull()
+    expect(viewHost.querySelector('[data-component="code-fixture"]')).toBeNull()
+    expect(viewHost.querySelector('[data-component="tool-output-text"]')?.textContent).toBe("const parity = true")
     expect(viewHost.querySelector('[data-component="collapsible"][data-variant="tool"]')).toBeNull()
   })
 

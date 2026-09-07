@@ -1,9 +1,6 @@
 import { TOOL_TITLE_DESC, TOOL_LABEL_DESC } from "../../tool-title-descriptors"
 import { useLingui } from "@lingui/solid"
 import { createMemo, Show } from "solid-js"
-import { Dynamic } from "solid-js/web"
-import { checksum } from "@ericsanchezok/synergy-util/encode"
-import { useCodeComponent } from "../../../context/code"
 import { BasicTool } from "../../basic-tool"
 import {
   AnchoredParseCodeTool,
@@ -16,7 +13,7 @@ import {
 import { ToolRegistry, getDiagnostics, DiagnosticsDisplay } from "../../message-part"
 import { ToolTextOutput } from "../../tool-output-text"
 import { ToolDiffPreview } from "../diff-preview"
-import { DiffPatchGate } from "../../diff-patch"
+import { ToolFilePreview, ToolPatchPreview } from "../content-preview"
 
 ToolRegistry.register({ name: "view_file", render: AnchoredViewTool })
 ToolRegistry.register({ name: "scan_files", render: AnchoredScanFilesTool })
@@ -74,7 +71,12 @@ ToolRegistry.register({
             const patch = () =>
               (props.metadata.diff as string | undefined) ?? (filediff().preview as string | undefined)
             return (
-              <DiffPatchGate patch={patch()} diffStyle="unified" fallback={<ToolDiffPreview diff={filediff()} />} />
+              <ToolPatchPreview
+                tool={props}
+                path={props.input.filePath}
+                patch={patch()}
+                fallback={<ToolDiffPreview diff={filediff()} />}
+              />
             )
           }}
         </Show>
@@ -87,7 +89,6 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "write",
   render(props) {
-    const codeComponent = useCodeComponent()
     const diagnostics = createMemo(() =>
       props.status === "completed" ? getDiagnostics(props.metadata.diagnostics, props.input.filePath) : [],
     )
@@ -102,15 +103,7 @@ ToolRegistry.register({
       >
         <Show when={props.status !== "generating" && (props.input.content || props.input.filePath)}>
           <div data-component="write-content">
-            <Dynamic
-              component={codeComponent}
-              file={{
-                name: props.input.filePath ?? "file",
-                contents: props.input.content,
-                cacheKey: checksum(props.input.content),
-              }}
-              overflow="scroll"
-            />
+            <ToolFilePreview path={props.input.filePath} content={props.input.content ?? ""} />
           </div>
         </Show>
         <DiagnosticsDisplay diagnostics={diagnostics()} />
@@ -139,12 +132,13 @@ ToolRegistry.register({
               <Show keyed when={lastResult?.filediff}>
                 {(filediff) => {
                   const patch = () =>
-                    (lastResult?.diff as string | undefined) ?? (filediff().preview as string | undefined)
+                    (lastResult?.diff as string | undefined) ?? (filediff.preview as string | undefined)
                   return (
-                    <DiffPatchGate
+                    <ToolPatchPreview
+                      tool={props}
+                      path={props.input.filePath}
                       patch={patch()}
-                      diffStyle="unified"
-                      fallback={<ToolDiffPreview diff={filediff()} />}
+                      fallback={<ToolDiffPreview diff={filediff} />}
                     />
                   )
                 }}
