@@ -12,7 +12,7 @@ Draft captures retain the original cache entry through asynchronous work. Mutati
 
 ## Surface ownership
 
-A component mount belongs to plugin + generation + server + Scope + optional Session + contribution + optional resource. Its lifetime owns requests, subscriptions, menus, commands, portals and native view bindings. Bound services check lifetime, identity and capability before acting and after asynchronous completion. Unmounting UI does not undo an operation accepted by the server.
+A component mount belongs to plugin + generation + server + Scope + optional Session + contribution + optional resource. Its lifetime owns requests, subscriptions, menus, commands, portals and native view bindings. Bound services check lifetime, identity and capability before acting and after asynchronous completion. Unmounting UI does not undo an operation accepted by the server. Command registrations publish only after their owning render transition commits; disposal before commit prevents publication.
 
 Session collections adapt existing Scope state. Session detail reads adapt the active message window and parts. The domain controller retains paging, replay/reconcile, optimistic metadata and bounded rendering. No UI component creates an EventSource or performs an event-driven REST polling loop.
 

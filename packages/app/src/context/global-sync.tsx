@@ -22,6 +22,7 @@ import {
   type ScopeBootstrapResponse,
   createSynergyClient,
 } from "@ericsanchezok/synergy-sdk/client"
+import { createScopeRetention } from "./scope-retention"
 import { resolveWorkspaceTransition } from "./workspace-transition"
 import { internMessage, internMessages, internPart, internParts, internProviderList } from "./string-intern"
 import { planMessagePageApply } from "./session-message-page"
@@ -270,10 +271,12 @@ function createGlobalSync() {
   })
 
   const children: Record<string, ReturnType<typeof createStore<State>>> = {}
+  const scopeRetention = createScopeRetention(releaseScopeState)
+  let disposed = false
   const instanceRequestConcurrency = 2
   const bootstrapQueue: string[] = []
   const bootstrapQueued = new Set<string>()
-  const bootstrapActive = new Set<string>()
+  const bootstrapActive = new Set<ReturnType<typeof createStore<State>>>()
   // Bumped when reconnect recovery starts so store-external resources can
   // refetch immediately. Session snapshots observe the per-scope completed
   // generation below, after replay/reset has established freshness state.
@@ -400,25 +403,27 @@ function createGlobalSync() {
 
   function scheduleBootstrap(scopeKey: string) {
     if (!scopeKey || !children[scopeKey]) return
-    if (bootstrapActive.has(scopeKey) || bootstrapQueued.has(scopeKey)) return
+    if (bootstrapActive.has(children[scopeKey]) || bootstrapQueued.has(scopeKey)) return
     bootstrapQueued.add(scopeKey)
     bootstrapQueue.push(scopeKey)
     pumpBootstrapQueue()
   }
 
   function pumpBootstrapQueue() {
+    if (disposed) return
     while (bootstrapActive.size < instanceRequestConcurrency) {
       const scopeKey = bootstrapQueue.shift()
       if (!scopeKey) return
       bootstrapQueued.delete(scopeKey)
-      if (!children[scopeKey]) continue
-      bootstrapActive.add(scopeKey)
+      const state = children[scopeKey]
+      if (!state || bootstrapActive.has(state)) continue
+      bootstrapActive.add(state)
       void bootstrapInstance(scopeKey)
         .catch((error) => {
-          setFailure({ source: "scope", scopeKey, error })
+          if (children[scopeKey] === state) setFailure({ source: "scope", scopeKey, error })
         })
         .finally(() => {
-          bootstrapActive.delete(scopeKey)
+          bootstrapActive.delete(state)
           pumpBootstrapQueue()
         })
     }
@@ -472,8 +477,15 @@ function createGlobalSync() {
       })
       scheduleBootstrap(scopeKey)
     }
+    scopeRetention.touch(scopeKey)
     return children[scopeKey]
   }
+
+  function retainScopeState(scopeKey: string) {
+    const release = scopeRetention.retain(scopeKey)
+    return { state: ensureScopeState(scopeKey), release }
+  }
+
   function setLatestContextMessage(
     scopeKey: string,
     sessionID: string,
@@ -502,17 +514,26 @@ function createGlobalSync() {
   }
 
   function releaseScopeState(scopeKey: string) {
-    const store = children[scopeKey]?.[0]
-    const sessionIDs = new Set([
-      ...Object.keys(store?.message ?? {}),
-      ...Object.keys(store?.messageWindow ?? {}),
-      ...Object.keys(store?.latestContextMessage ?? {}),
-    ])
-    for (const sessionID of sessionIDs) contextProjectionRevision.release(scopeKey, sessionID)
+    contextProjectionRevision.releaseScope(scopeKey)
     delete children[scopeKey]
+    watermarks.delete(scopeKey)
+    replayInFlight.delete(scopeKey)
+    replayPending.delete(scopeKey)
     resourceFreshness.releaseScope(scopeKey)
     partSnapshotFreshness.releaseScope(scopeKey)
     bootstrapQueued.delete(scopeKey)
+    for (let i = bootstrapQueue.length - 1; i >= 0; i--) {
+      if (bootstrapQueue[i] === scopeKey) bootstrapQueue.splice(i, 1)
+    }
+    for (let i = messageLru.length - 1; i >= 0; i--) {
+      if (messageLru[i].startsWith(`${scopeKey}\n`)) messageLru.splice(i, 1)
+    }
+    if (activeBucketKey?.startsWith(`${scopeKey}\n`)) activeBucketKey = undefined
+    for (const timer of inboxRefreshTimers.get(scopeKey)?.values() ?? []) clearTimeout(timer)
+    inboxRefreshTimers.delete(scopeKey)
+    const cortexTimer = cortexRefreshTimers.get(scopeKey)
+    if (cortexTimer !== undefined) clearTimeout(cortexTimer)
+    cortexRefreshTimers.delete(scopeKey)
     scopeReconnectRecovery.release(scopeKey)
     setScopeReconnectVersions(
       produce((draft) => {
@@ -712,14 +733,15 @@ function createGlobalSync() {
   }
 
   async function loadSessions(scopeKey: string, sdk?: ReturnType<typeof createSynergyClient>) {
+    const scopeState = children[scopeKey]
+    if (!scopeState) return
     const client = sdk ?? createScopedClient(scopeKey)
     return client.session
       .list({ parentOnly: false })
       .then((x) => {
         const result = x.data!
         const sessions = (result.data ?? []).filter((s) => !!s?.id && !s.time?.archived)
-        const scopeState = children[scopeKey]
-        if (!scopeState) return
+        if (children[scopeKey] !== scopeState) return
         const [, setStore] = scopeState
         batch(() => {
           setStore("session", reconcile(sessions, { key: "id" }))
@@ -727,6 +749,7 @@ function createGlobalSync() {
         })
       })
       .catch((err) => {
+        if (children[scopeKey] !== scopeState) return
         console.error("Failed to load sessions", err)
         if (!sdk) {
           const project = isHomeScope(scopeKey) ? "Home" : getFilename(scopeKey)
@@ -773,18 +796,20 @@ function createGlobalSync() {
     })
   }
 
-  const inboxRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  const inboxRefreshTimers = new Map<string, Map<string, ReturnType<typeof setTimeout>>>()
   const cortexRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const terminalCortexStatuses = new Set(["completed", "error", "cancelled"])
 
   function refreshInbox(scopeKey: string, sessionID: string) {
-    const key = `${scopeKey}:${sessionID}`
-    const existing = inboxRefreshTimers.get(key)
+    let timers = inboxRefreshTimers.get(scopeKey)
+    if (!timers) inboxRefreshTimers.set(scopeKey, (timers = new Map()))
+    const existing = timers.get(sessionID)
     if (existing) clearTimeout(existing)
-    inboxRefreshTimers.set(
-      key,
+    timers.set(
+      sessionID,
       setTimeout(() => {
-        inboxRefreshTimers.delete(key)
+        timers.delete(sessionID)
+        if (!timers.size) inboxRefreshTimers.delete(scopeKey)
         const state = children[scopeKey]
         if (!state) return
         const [, setStore] = state
@@ -948,52 +973,56 @@ function createGlobalSync() {
   }
 
   async function resyncInstance(scopeKey: string): Promise<boolean> {
-    if (!scopeKey || !children[scopeKey]) return false
-    const [store, setStore] = children[scopeKey]
+    const state = children[scopeKey]
+    if (!scopeKey || !state) return false
+    const [store, setStore] = state
+    const current = () => !disposed && children[scopeKey] === state
     if (store.status === "loading") return false
     const sdk = createScopedClient(scopeKey)
 
     await Promise.all([
       sdk.scope.bootstrap(scopeRequest(scopeKey)).then((result) => {
+        if (!current()) return
         if (!result.data) throw new Error("Scope bootstrap returned no data")
         applyScopeBootstrapSnapshot(scopeKey, store, setStore, result.data, result.response?.headers)
       }),
-      sdk.permission
-        .list()
-        .then((result) => syncBySession(setStore, "permission", Object.keys(store.permission), result.data ?? [])),
-      sdk.question
-        .list()
-        .then((result) => syncBySession(setStore, "question", Object.keys(store.question), result.data ?? [])),
+      sdk.permission.list().then((result) => {
+        if (current()) syncBySession(setStore, "permission", Object.keys(store.permission), result.data ?? [])
+      }),
+      sdk.question.list().then((result) => {
+        if (current()) syncBySession(setStore, "question", Object.keys(store.question), result.data ?? [])
+      }),
       refreshVolatileAfterResync(scopeKey, store, setStore),
     ])
-    return true
+    return current()
   }
 
   async function bootstrapInstance(scopeKey: string): Promise<boolean> {
     if (!scopeKey) return false
-    const [store, setStore] = ensureScopeState(scopeKey)
+    const state = ensureScopeState(scopeKey)
+    const [store, setStore] = state
+    const current = () => !disposed && children[scopeKey] === state
     const sdk = createScopedClient(scopeKey)
-    const snapshotRequest = retry(() => sdk.scope.bootstrap(scopeRequest(scopeKey))).then((result) => {
-      if (!result.data) throw new Error("Scope bootstrap returned no data")
-      applyScopeBootstrapSnapshot(scopeKey, store, setStore, result.data, result.response?.headers)
-    })
-    const remainingRequests = [
-      sdk.permission
-        .list()
-        .then((result) => syncBySession(setStore, "permission", Object.keys(store.permission), result.data ?? [])),
-      sdk.question
-        .list()
-        .then((result) => syncBySession(setStore, "question", Object.keys(store.question), result.data ?? [])),
-    ]
-
     try {
-      await snapshotRequest
-      if (store.status !== "complete") setStore("status", "partial")
-      await Promise.all(remainingRequests)
+      await Promise.all([
+        retry(() => sdk.scope.bootstrap(scopeRequest(scopeKey))).then((result) => {
+          if (!current()) return
+          if (!result.data) throw new Error("Scope bootstrap returned no data")
+          applyScopeBootstrapSnapshot(scopeKey, store, setStore, result.data, result.response?.headers)
+          if (store.status !== "complete") setStore("status", "partial")
+        }),
+        sdk.permission.list().then((result) => {
+          if (current()) syncBySession(setStore, "permission", Object.keys(store.permission), result.data ?? [])
+        }),
+        sdk.question.list().then((result) => {
+          if (current()) syncBySession(setStore, "question", Object.keys(store.question), result.data ?? [])
+        }),
+      ])
+      if (!current()) return false
       setStore("status", "complete")
       return true
     } catch (error) {
-      setFailure({ source: "scope", scopeKey, error })
+      if (current()) setFailure({ source: "scope", scopeKey, error })
       return false
     }
   }
@@ -1773,8 +1802,12 @@ function createGlobalSync() {
     applyEvent(e.name, e.details)
   })
   onCleanup(() => {
+    disposed = true
     unsub()
-    for (const timer of inboxRefreshTimers.values()) clearTimeout(timer)
+    for (const scopeKey of Object.keys(children)) releaseScopeState(scopeKey)
+    for (const timers of inboxRefreshTimers.values()) {
+      for (const timer of timers.values()) clearTimeout(timer)
+    }
     for (const timer of cortexRefreshTimers.values()) clearTimeout(timer)
     inboxRefreshTimers.clear()
     cortexRefreshTimers.clear()
@@ -1786,12 +1819,15 @@ function createGlobalSync() {
   // reset (stale epoch / pruned journal) or any error — so it can never lose
   // updates, only do more work.
   async function performReplayOrResync(scopeKey: string, replayFrom?: Watermark): Promise<boolean> {
-    if (scopeKey === "global" || !children[scopeKey]) return false
+    const state = children[scopeKey]
+    if (disposed || scopeKey === "global" || !state) return false
+    const current = () => !disposed && children[scopeKey] === state
     const wm = replayFrom ?? watermarks.get(scopeKey)
     if (!wm) return resyncInstance(scopeKey).catch(() => false)
     try {
       const sdk = createScopedClient(scopeKey)
       const res = await sdk.event.replay({ since: wm.seq, epoch: wm.epoch })
+      if (!current()) return false
       const data = res.data as
         | { status: "ok"; epoch: string; seq: number; events: any[] }
         | { status: "reset"; epoch: string; seq: number }
@@ -1805,6 +1841,7 @@ function createGlobalSync() {
       watermarks.set(scopeKey, { epoch: data.epoch, seq: data.seq })
       return true
     } catch {
+      if (!current()) return false
       return resyncInstance(scopeKey).catch(() => false)
     }
   }
@@ -1818,7 +1855,8 @@ function createGlobalSync() {
 
     let tracked!: Promise<boolean>
     tracked = performReplayOrResync(scopeKey, replayFrom).then(async (recovered) => {
-      if (replayInFlight.get(scopeKey) === tracked) replayInFlight.delete(scopeKey)
+      if (replayInFlight.get(scopeKey) !== tracked) return recovered
+      replayInFlight.delete(scopeKey)
       if (replayPending.delete(scopeKey)) return replayOrResync(scopeKey)
       return recovered
     })
@@ -1940,7 +1978,7 @@ function createGlobalSync() {
     },
     peekScopeState,
     ensureScopeState,
-    releaseScopeState,
+    retainScopeState,
     markActiveSession,
     touchMessageBucket,
     messageEvictionVersion,

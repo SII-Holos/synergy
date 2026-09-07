@@ -1,4 +1,4 @@
-import { createMemo, createRoot, createSignal, getOwner, onCleanup, type Accessor } from "solid-js"
+import { createMemo, createRoot, createSignal, getOwner, onCleanup, onMount, type Accessor } from "solid-js"
 
 export interface CommandOption {
   id: string
@@ -43,8 +43,10 @@ export function createCommandRegistry() {
         if (id) reserved.delete(id)
         throw error
       }
-      setRegistrations((entries) => [results, ...entries])
       let disposed = false
+      const publish = () => {
+        if (!disposed) setRegistrations((entries) => [results, ...entries])
+      }
       const dispose = () => {
         if (disposed) return
         disposed = true
@@ -52,7 +54,10 @@ export function createCommandRegistry() {
         setRegistrations((entries) => entries.filter((entry) => entry !== results))
         release()
       }
-      if (getOwner()) onCleanup(dispose)
+      if (getOwner()) {
+        onMount(publish)
+        onCleanup(dispose)
+      } else publish()
       return dispose
     },
     async trigger(id: string, source?: "palette" | "keybind" | "slash") {

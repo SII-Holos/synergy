@@ -70,7 +70,7 @@ export function createSessionMessageLoader<TResult, TInput = void>(options: Load
         while (attempt < MAX_SUPERSEDED_ATTEMPTS) {
           attempt++
           const result = await options.request(sessionID, controller.signal, loadOptions?.input)
-          if (active.get(sessionID)?.generation !== generation) return
+          if (active.get(sessionID)?.controller !== controller) return
           const applied = options.apply(sessionID, result, loadOptions?.input)
           if (applied !== "superseded") {
             publish(sessionID, { phase: "ready", generation, hasSnapshot: true })
@@ -79,7 +79,7 @@ export function createSessionMessageLoader<TResult, TInput = void>(options: Load
         }
         throw new SessionMessageSnapshotSupersededError()
       } catch (error) {
-        if (active.get(sessionID)?.generation !== generation) return
+        if (active.get(sessionID)?.controller !== controller) return
         publish(sessionID, {
           phase: "error",
           generation,
@@ -88,7 +88,7 @@ export function createSessionMessageLoader<TResult, TInput = void>(options: Load
         })
         throw error
       } finally {
-        if (active.get(sessionID)?.generation === generation) active.delete(sessionID)
+        if (active.get(sessionID)?.controller === controller) active.delete(sessionID)
       }
     })()
 
@@ -96,10 +96,17 @@ export function createSessionMessageLoader<TResult, TInput = void>(options: Load
     return promise
   }
 
+  const release = (sessionID: string) => {
+    const request = active.get(sessionID)
+    active.delete(sessionID)
+    states.delete(sessionID)
+    request?.controller.abort()
+  }
+
   const dispose = () => {
     for (const request of active.values()) request.controller.abort()
     active.clear()
   }
 
-  return { load, state, dispose }
+  return { load, state, release, dispose }
 }
