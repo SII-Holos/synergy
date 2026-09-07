@@ -5,17 +5,19 @@ import path from "node:path"
 import { SynergyLinkInboundHandler } from "../src/inbound/handler"
 import { RPCHandler } from "../src/rpc/handler"
 import { SessionManager } from "../src/session/manager"
+import type { ProcessRegistryOptions } from "../src/exec/process-registry"
 
 const callerA = { type: "holos", agentID: "agent_a", ownerUserID: 1 }
 const callerB = { type: "holos", agentID: "agent_b", ownerUserID: 2 }
 
 function createHost(input?: {
+  registry?: ProcessRegistryOptions
   onChange?: (state: {
     current: ReturnType<SessionManager["current"]>
     blockedAgentIDs: string[]
   }) => void | Promise<void>
 }) {
-  const rpc = new RPCHandler({ linkID: "link_test" })
+  const rpc = new RPCHandler({ linkID: "link_test", registry: input?.registry })
   let inbound!: SynergyLinkInboundHandler
   const sessions = new SessionManager({
     onChange: input?.onChange,
@@ -566,6 +568,87 @@ describe("synergy-link host hardening", () => {
       expect(Date.now() - startedAt).toBeLessThan(1_800)
       expect(response.ok).toBe(true)
       if (response.ok) expect(response.result.metadata.status).toBe("running")
+    } finally {
+      await host.rpc.processRegistry.reset()
+    }
+  })
+
+  test("caps a blocking poll below its requested timeout so a still-running result returns promptly", async () => {
+    const host = createHost({ registry: { maxBlockingPollMs: 1_500 } })
+    try {
+      const sessionID = await openSession(host)
+      const started = await execute(host, sessionID, "req_poll_capped", "sleep 30")
+      const id = processID(started)
+      const startedAt = Date.now()
+      const response = await processRequest(host, leaseA(sessionID), "poll", id, { block: true, timeout: 30 })
+      const elapsed = Date.now() - startedAt
+
+      expect(response.ok).toBe(true)
+      expect(elapsed).toBeGreaterThanOrEqual(1_000)
+      expect(elapsed).toBeLessThan(4_000)
+      if (response.ok) {
+        expect(response.result.metadata.status).toBe("running")
+        expect(response.result.output).toContain("Process still running.")
+      }
+    } finally {
+      await host.rpc.processRegistry.reset()
+    }
+  })
+
+  test("applies the blocking-poll cap when timeout is omitted", async () => {
+    const host = createHost({ registry: { maxBlockingPollMs: 1_500 } })
+    try {
+      const sessionID = await openSession(host)
+      const started = await execute(host, sessionID, "req_poll_capped_default", "sleep 30")
+      const id = processID(started)
+      const startedAt = Date.now()
+      const response = await processRequest(host, leaseA(sessionID), "poll", id, { block: true })
+      const elapsed = Date.now() - startedAt
+
+      expect(response.ok).toBe(true)
+      expect(elapsed).toBeGreaterThanOrEqual(1_000)
+      expect(elapsed).toBeLessThan(4_000)
+      if (response.ok) expect(response.result.metadata.status).toBe("running")
+    } finally {
+      await host.rpc.processRegistry.reset()
+    }
+  })
+
+  test("non-blocking polls return immediately even under a short poll cap", async () => {
+    const host = createHost({ registry: { maxBlockingPollMs: 60_000 } })
+    try {
+      const sessionID = await openSession(host)
+      const started = await execute(host, sessionID, "req_poll_nonblocking", "sleep 30")
+      const id = processID(started)
+      const startedAt = Date.now()
+      const response = await processRequest(host, leaseA(sessionID), "poll", id, { block: false })
+      const elapsed = Date.now() - startedAt
+
+      expect(response.ok).toBe(true)
+      expect(elapsed).toBeLessThan(500)
+      if (response.ok) expect(response.result.metadata.status).toBe("running")
+    } finally {
+      await host.rpc.processRegistry.reset()
+    }
+  })
+
+  test("blocking poll returns the terminal state when the process exits during the wait", async () => {
+    const host = createHost({ registry: { maxBlockingPollMs: 30_000 } })
+    try {
+      const sessionID = await openSession(host)
+      const started = await execute(host, sessionID, "req_poll_exits", "sleep 2")
+      const id = processID(started)
+      const startedAt = Date.now()
+      const response = await processRequest(host, leaseA(sessionID), "poll", id, { block: true, timeout: 30 })
+      const elapsed = Date.now() - startedAt
+
+      expect(response.ok).toBe(true)
+      expect(elapsed).toBeGreaterThanOrEqual(800)
+      expect(elapsed).toBeLessThan(6_000)
+      if (response.ok) {
+        expect(response.result.metadata.status).toBe("completed")
+        expect(response.result.output).toContain("Process exited with")
+      }
     } finally {
       await host.rpc.processRegistry.reset()
     }
