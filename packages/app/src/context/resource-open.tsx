@@ -1,8 +1,10 @@
+import { toolReviewSource } from "./tool-review-target"
 import { onCleanup, onMount, type ParentProps } from "solid-js"
 import {
   ResourceOpenProvider as BaseResourceOpenProvider,
   type OpenableResource,
   type ResourceOpenOptions,
+  type ToolReviewTarget,
 } from "@ericsanchezok/synergy-ui/context/resource-open"
 import { ImagePreview, type ImagePreviewImage } from "@ericsanchezok/synergy-ui/image-preview"
 import {
@@ -80,6 +82,14 @@ export function ResourceOpenProvider(props: ParentProps) {
   const file = useFile()
   const sdk = useSDK()
   const workbench = useWorkbenchPanels()
+
+  const openToolReview = (target: ToolReviewTarget) => {
+    void workbench.openPanel("session-review", {
+      reuseExisting: true,
+      init: { source: toolReviewSource(target), resourceId: target.path ?? "" },
+    })
+    return true
+  }
 
   const openWorkspaceFile = (path: string) => {
     const normalized = path ? file.normalize(path) : undefined
@@ -174,7 +184,9 @@ export function ResourceOpenProvider(props: ParentProps) {
   })
 
   return (
-    <BaseResourceOpenProvider value={{ open, openAttachment, resolveWorkspacePath, openWorkspaceSource }}>
+    <BaseResourceOpenProvider
+      value={{ open, openAttachment, resolveWorkspacePath, openWorkspaceSource, openToolReview }}
+    >
       {props.children}
     </BaseResourceOpenProvider>
   )

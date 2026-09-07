@@ -1,3 +1,4 @@
+import { createHighlightCacheBudget } from "./cache-budget"
 import { WorkerPoolManager } from "@pierre/diffs/worker"
 import ShikiWorkerUrl from "@pierre/diffs/worker/worker.js?worker&url"
 
@@ -6,6 +7,8 @@ export type WorkerPoolStyle = "unified" | "split"
 export function workerFactory(): Worker {
   return new Worker(ShikiWorkerUrl, { type: "module" })
 }
+
+const cacheBudget = createHighlightCacheBudget()
 
 function createPool(lineDiffType: "none" | "word-alt") {
   const pool = new WorkerPoolManager(
@@ -17,6 +20,7 @@ function createPool(lineDiffType: "none" | "word-alt") {
       // a bit overkill, especially because Safari has a significantly slower
       // boot up time for workers
       poolSize: 2,
+      createASTCache: cacheBudget.createCache,
     },
     {
       theme: "Synergy",

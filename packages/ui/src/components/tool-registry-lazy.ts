@@ -18,6 +18,7 @@ export interface ToolProps {
   defaultOpen?: boolean
   forceOpen?: boolean
   sessionId?: string
+  partId?: string
   messageId?: string
   attachments?: AttachmentPart[]
 }

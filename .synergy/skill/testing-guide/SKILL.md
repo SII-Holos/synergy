@@ -11,6 +11,8 @@ description: Design, write, run, and diagnose Synergy tests with Bun, temporary 
 2. For a bug or new behavior, write the smallest failing test before the implementation. Skip a new test only for a pure refactor whose existing tests already cover unchanged behavior.
 3. Assert public results, state transitions, emitted contracts, permissions, or recovery behavior. Avoid source-text assertions, private call counts, and snapshots of irrelevant structure.
 
+For non-blocking and ordering contracts, hold the downstream operation behind an explicit promise and assert the upstream result while it remains pending. Use a generous timeout only to detect deadlocks, release the barrier in cleanup, and avoid wall-clock performance thresholds in instrumented correctness suites.
+
 ## Choose the Lowest Useful Level
 
 - pure function/schema: inline data and direct calls
@@ -97,6 +99,7 @@ Coverage has a floor. `bun run coverage:check` enforces per-package line/functio
 - Every exemption entry carries a `reason`; entries that match nothing, overlap, or cover more than 25% of a package fail validation.
 - Bun 1.3.14 supports no ignore comments (`istanbul ignore`, `v8 ignore`, and `c8 ignore` are all inert), so whole-file exemption is the only exclusion mechanism. Do not add ignore comments expecting them to work.
 - A source file never loaded by any test counts as 0% and fails the package — add a real test that loads it rather than exempting blindly.
+- For Solid wrappers exercised through a Vite-compiled DOM fixture, verify whether Bun attributes coverage to the emitted bundle instead of the TSX source. An exact-file exemption must identify the behavioral suite and this instrumentation boundary; keep directly testable logic measured separately.
 
 Use [Development reference](../../../docs/reference/development.md) and [Open-source quality](../../../docs/operations/open-source-quality.md) for current command ownership. Do not invent a root `bun test`; the root script intentionally rejects that ambiguous command.
 

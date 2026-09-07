@@ -156,6 +156,7 @@
     "prosemirror-view": "1.42.0"
   },
   "patchedDependencies": {
-    "ghostty-web@0.3.0": "patches/ghostty-web@0.3.0.patch"
+    "ghostty-web@0.3.0": "patches/ghostty-web@0.3.0.patch",
+    "@pierre/diffs@1.3.3": "patches/@pierre%2Fdiffs@1.3.3.patch"
   }
 }

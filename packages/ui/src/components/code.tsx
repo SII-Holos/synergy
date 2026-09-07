@@ -1,3 +1,4 @@
+import { highlightInputAllowed } from "../pierre/cache-budget"
 import {
   type FileContents,
   File,
@@ -74,6 +75,25 @@ function sameRenderRange(a: RenderRange | undefined, b: RenderRange | undefined)
   )
 }
 
+function plainFileRange(contents: string, range: RenderRange | undefined) {
+  if (!range) return contents
+  if (range.totalLines <= 0) return ""
+  let start = 0
+  for (let line = 0; line < range.startingLine; line++) {
+    const next = contents.indexOf("\n", start)
+    if (next < 0) return ""
+    start = next + 1
+  }
+  if (range.totalLines === Infinity) return contents.slice(start)
+  let end = start
+  for (let line = 0; line < range.totalLines; line++) {
+    const next = contents.indexOf("\n", end)
+    if (next < 0) return contents.slice(start)
+    end = next + 1
+  }
+  return contents.slice(start, end)
+}
+
 export function Code<T>(props: CodeProps<T>) {
   let container!: HTMLDivElement
 
@@ -86,15 +106,19 @@ export function Code<T>(props: CodeProps<T>) {
     "renderRange",
   ])
 
-  const file = createMemo(
-    () =>
-      new File<T>(
-        {
-          ...createDefaultOptions<T>("unified"),
-          ...others,
-        },
-        getWorkerPool("unified"),
-      ),
+  const fileContents = createMemo(() => local.file, undefined, { equals: sameFileContents })
+  const highlighted = createMemo(() => highlightInputAllowed(fileContents().contents))
+
+  const file = createMemo(() =>
+    highlighted()
+      ? new File<T>(
+          {
+            ...createDefaultOptions<T>("unified"),
+            ...others,
+          },
+          getWorkerPool("unified"),
+        )
+      : undefined,
   )
 
   const getRoot = () => {
@@ -137,7 +161,7 @@ export function Code<T>(props: CodeProps<T>) {
     if (side) range.side = side
     if (endSide && side && endSide !== side) range.endSide = endSide
 
-    file().setSelectedLines(range)
+    file()?.setSelectedLines(range)
   }
 
   // Value-stable gates: streaming projections rebuild wrapper objects around
@@ -145,20 +169,47 @@ export function Code<T>(props: CodeProps<T>) {
   // churn from re-running the render effect, which would otherwise wipe and
   // rebuild the pierre view on every projection (same pattern as
   // DiffPatch.patchText).
-  const fileContents = createMemo(() => local.file, undefined, { equals: sameFileContents })
   const renderRange = createMemo(() => local.renderRange, undefined, { equals: sameRenderRange })
 
   createEffect(() => {
     const current = file()
 
     onCleanup(() => {
-      current.cleanUp()
+      current?.cleanUp()
     })
   })
 
   createEffect(() => {
     container.innerHTML = ""
-    file().render({
+    const current = file()
+    if (!current) {
+      const plain = document.createElement("pre")
+      const range = renderRange()
+      const wrap = (others.overflow ?? createDefaultOptions<T>("unified").overflow) === "wrap"
+      plain.textContent = plainFileRange(fileContents().contents, range)
+      plain.style.margin = "0"
+      plain.style.whiteSpace = wrap ? "pre-wrap" : "pre"
+      plain.style.overflowWrap = wrap ? "anywhere" : "normal"
+      plain.style.overflowX = "auto"
+      const nodes: HTMLElement[] = [plain]
+      if (range && !others.disableVirtualizationBuffers) {
+        for (const [side, height] of [
+          ["before", range.bufferBefore],
+          ["after", range.bufferAfter],
+        ] as const) {
+          if (height <= 0) continue
+          const buffer = document.createElement("div")
+          buffer.dataset.virtualizerBuffer = side
+          buffer.style.height = `${height}px`
+          buffer.style.contain = "strict"
+          if (side === "before") nodes.unshift(buffer)
+          else nodes.push(buffer)
+        }
+      }
+      container.replaceChildren(...nodes)
+      return
+    }
+    current.render({
       file: fileContents(),
       lineAnnotations: local.annotations,
       containerWrapper: container,
@@ -167,7 +218,7 @@ export function Code<T>(props: CodeProps<T>) {
   })
 
   createEffect(() => {
-    file().setSelectedLines(local.selectedLines ?? null)
+    file()?.setSelectedLines(local.selectedLines ?? null)
   })
 
   createEffect(() => {

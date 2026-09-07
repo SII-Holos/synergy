@@ -48,6 +48,10 @@ beforeAll(async () => {
   mock.module("../../../../src/context/code", () => ({ useCodeComponent: () => () => null }))
   mock.module("../../../../src/components/tool-output-text", () => ({ ToolTextOutput: () => null }))
   mock.module("../../../../src/components/tool/diff-preview", () => ({ ToolDiffPreview: () => null }))
+  mock.module("../../../../src/components/tool/content-preview", () => ({
+    ToolFilePreview: () => null,
+    ToolPatchPreview: () => null,
+  }))
   mock.module("../../../../src/components/diff-patch", () => ({
     DiffPatchGate: () => null,
   }))

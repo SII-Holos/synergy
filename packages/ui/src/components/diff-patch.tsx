@@ -1,3 +1,4 @@
+import { highlightInputAllowed } from "../pierre/cache-budget"
 import { FileDiff, type FileDiffMetadata } from "@pierre/diffs"
 import { useLingui } from "@lingui/solid"
 import { createMediaQuery } from "@solid-primitives/media"
@@ -38,7 +39,9 @@ export function DiffPatch(props: DiffPatchProps) {
   // an unchanged patch string. The string memo stops that churn here so the
   // parse and render effects below only re-run when the patch truly changes.
   const patchText = createMemo(() => local.patch)
-  const metadata = createMemo<FileDiffMetadata | undefined>(() => local.metadata ?? parseRenderablePatch(patchText()))
+  const metadata = createMemo<FileDiffMetadata | undefined>(() =>
+    highlightInputAllowed(patchText()) ? (local.metadata ?? parseRenderablePatch(patchText())) : undefined,
+  )
 
   const options = createMemo(() => {
     const opts = {
@@ -136,10 +139,18 @@ export interface DiffPatchGateProps extends Omit<DiffPatchProps, "patch" | "meta
 export function DiffPatchGate(props: DiffPatchGateProps) {
   const [local, others] = splitProps(props, ["patch", "fallback"])
   const patchText = createMemo(() => local.patch ?? "")
-  const metadata = createMemo(() => parseRenderablePatch(patchText()))
+  const large = createMemo(() => !highlightInputAllowed(patchText()))
+  const metadata = createMemo(() => (large() ? undefined : parseRenderablePatch(patchText())))
   return (
-    <Show when={metadata()} fallback={local.fallback}>
-      {(parsed) => <DiffPatch {...others} patch={patchText()} metadata={parsed()} />}
+    <Show
+      when={large()}
+      fallback={
+        <Show when={metadata()} fallback={local.fallback}>
+          {(parsed) => <DiffPatch {...others} patch={patchText()} metadata={parsed()} />}
+        </Show>
+      }
+    >
+      <DiffPatch {...others} patch={patchText()} />
     </Show>
   )
 }
