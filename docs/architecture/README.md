@@ -94,3 +94,5 @@ Product domains own their tools (`<domain>/tools/` + `<domain>/tools.ts`), migra
 - [Web product contract](../../packages/app/PRODUCT.md) defines durable interaction and visual principles.
 - [Reference documentation](../README.md#reference) owns commands, configuration, paths, packages, and development procedures.
 - Root and package `AGENTS.md` files contain change rules and link back to these architecture contracts.
+
+Native application automation is described in [Native Computer Use](computer-use.md).

@@ -92,6 +92,9 @@ export const ActivityDerivedMetadataSchema = z.object({
 export type ActivityDerivedMetadata = z.infer<typeof ActivityDerivedMetadataSchema>
 
 const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
+  computer_apps: "generic",
+  computer_observe: "generic",
+  computer_action: "generic",
   webfetch: "web",
   browser_navigation: "browser",
   browser_snapshot: "browser",
@@ -276,6 +279,7 @@ const PATTERN_FALLBACKS: readonly { pattern: RegExp; category: SemanticCategory 
 
 const ACTIVITY_FAMILIES = new Set<ActivityFamily>(ACTIVITY_FAMILY_ORDER)
 const EXTERNAL_ACTION_TOOLS = new Set([
+  "computer_action",
   "email_send",
   "email_mark_read",
   "session_send",

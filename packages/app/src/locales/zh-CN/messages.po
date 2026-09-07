@@ -9132,6 +9132,18 @@ msgstr "执行任务"
 msgid "classifier.label.web"
 msgstr "访问网页"
 
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "computer.title.action"
+msgstr "操作应用"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "computer.title.apps"
+msgstr "查找应用窗口"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "computer.title.observe"
+msgstr "观察应用"
+
 #. js-lingui-explicit-id
 msgid "confirm.agendaAction.cancel.confirm"
 msgstr "取消日程"

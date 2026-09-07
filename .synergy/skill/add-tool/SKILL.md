@@ -14,7 +14,7 @@ description: Add or modify a first-party Synergy tool, its Zod parameters, execu
 ## Implement the Backend
 
 1. Define the tool with the current `Tool.define(id, init, options?)` pattern in `packages/synergy/src/tool/`.
-2. Use precise Zod parameters and descriptions. Return the established `{ title, metadata, output, attachments? }` shape.
+2. Use precise Zod parameters and descriptions. Model-facing parameters must serialize to a JSON Schema object at the root; wrap a discriminated action union in an object field such as `input`. The production tool resolver excludes schemas without an object root. Test this boundary as well as individual variants. Return the established `{ title, metadata, output, attachments? }` shape.
 3. Honor `ctx.abort`, use `ctx.ask()` for operation-specific permission requests, and route filesystem, shell, network, remote, or external-write work through existing boundaries.
 4. Register the tool in `tool/registry.ts` using the local ordering and conditional-exposure pattern.
 5. Add an exact `tool/taxonomy.ts` entry with the correct domain kind and `stateful` / `externalIO` traits. Verify enforcement classification when arguments change the operation, such as local versus remote execution.

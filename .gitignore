@@ -94,3 +94,6 @@ faro-web/
 # Weekly report skill (standalone repo)
 weekly-report/
 synergy-frontend-kit/
+
+# Verified native Computer driver build output
+packages/desktop/build/computer/

@@ -9,6 +9,7 @@
 
 import path from "node:path"
 import { readdir, readFile } from "node:fs/promises"
+import ts from "typescript"
 import {
   findAssign,
   findBlock,
@@ -20,6 +21,48 @@ import {
   stringLiteral,
   writeGenerated,
 } from "./shared"
+
+async function schemaFields(file: string, name: string, seen = new Set<string>()): Promise<ToolEntry["parameters"]> {
+  const key = `${file}:${name}`
+  if (seen.has(key)) return []
+  seen.add(key)
+  const source = ts.createSourceFile(file, await readFile(file, "utf8"), ts.ScriptTarget.Latest, true)
+  for (const statement of source.statements) {
+    if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
+      const bindings = statement.importClause?.namedBindings
+      if (!bindings || !ts.isNamedImports(bindings)) continue
+      const binding = bindings.elements.find((item) => item.name.text === name)
+      if (!binding) continue
+      const imported = Bun.resolveSync(statement.moduleSpecifier.text, path.dirname(file))
+      return schemaFields(imported, binding.propertyName?.text ?? name, seen)
+    }
+    if (!ts.isVariableStatement(statement)) continue
+    const declaration = statement.declarationList.declarations.find((item) => item.name.getText(source) === name)
+    if (!declaration?.initializer) continue
+    if (ts.isIdentifier(declaration.initializer)) return schemaFields(file, declaration.initializer.text, seen)
+    let expression = declaration.initializer
+    while (ts.isCallExpression(expression) && ts.isPropertyAccessExpression(expression.expression)) {
+      const callee = expression.expression
+      const shape = expression.arguments[0]
+      if (callee.expression.getText(source) === "z" && ["object", "strictObject"].includes(callee.name.text)) {
+        if (!shape || !ts.isObjectLiteralExpression(shape)) return []
+        return shape.properties.flatMap((property) => {
+          if (!ts.isPropertyAssignment(property)) return []
+          const initializer = property.initializer
+          const alias = ts.isIdentifier(initializer)
+            ? source.statements
+                .filter(ts.isVariableStatement)
+                .flatMap((item) => [...item.declarationList.declarations])
+                .find((item) => item.name.getText(source) === initializer.text)?.initializer
+            : undefined
+          return parseObjectFields(`${property.name.getText(source)}: ${(alias ?? initializer).getText(source)}`)
+        })
+      }
+      expression = callee.expression
+    }
+  }
+  return []
+}
 
 const REGISTRY = path.join(REPO_ROOT, "packages/synergy/src/tool/registry.ts")
 const TOOL_DIR = path.join(REPO_ROOT, "packages/synergy/src/tool")
@@ -209,7 +252,11 @@ async function parseToolFile(
   const description = await descriptionOf(file, source, body)
 
   let parameters: Array<{ name: string; type: string | null; description: string | null; optional: boolean }> = []
-  if (/parameters\s*,/.test(body)) {
+  const identifier = body.match(/parameters\s*:\s*(\w+)\s*,/)?.[1]
+  const importedSchema = identifier && source.match(new RegExp(`import\\s*\\{[^}]*\\b${identifier}\\b[^}]*\\}\\s*from`))
+  if (importedSchema && identifier) {
+    parameters = await schemaFields(file, identifier)
+  } else if (/parameters\s*,/.test(body)) {
     const moduleParams = source.match(/const\s+parameters\s*=\s*z[\s\S]*?\.object\(\{/)
     if (moduleParams) {
       const objectBlock = findBlock(source.slice(moduleParams.index), "const parameters", "{", "}")

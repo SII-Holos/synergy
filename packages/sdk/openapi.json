@@ -21876,6 +21876,49 @@
         ]
       }
     },
+    "/computer/host/broker": {
+      "get": {
+        "operationId": "computer.host.broker",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Connect the authenticated native Computer host",
+        "responses": {
+          "101": {
+            "description": "Native host WebSocket"
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.computer.host.broker({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/plugin/ui/contributions/themes": {
       "get": {
         "operationId": "plugin.listGlobalThemeContributions",

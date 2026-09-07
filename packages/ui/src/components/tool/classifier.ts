@@ -4,6 +4,7 @@ import {
   type SemanticCategory,
 } from "@ericsanchezok/synergy-util/activity"
 import type { IconName } from "../icon"
+import { COMPUTER_TOOL_ICONS } from "./computer-icons"
 import type { MessageDescriptor } from "@lingui/core"
 import { getSemanticIcon } from "../semantic-icon"
 import { CLASSIFIER_LABEL_DESC, TOOL_LABEL_DESC, TOOL_TITLE_DESC } from "../tool-title-descriptors"
@@ -346,3 +347,14 @@ function buildArgs(
 
 // Re-export for convenient access
 export { CLASSIFIER_LABEL_DESC }
+
+export function getComputerToolPresentation(tool: string, input: Record<string, unknown> = {}) {
+  if (!Object.hasOwn(COMPUTER_TOOL_ICONS, tool)) return undefined
+  const action =
+    input.input && typeof input.input === "object" && "action" in input.input ? input.input.action : undefined
+  return {
+    icon: COMPUTER_TOOL_ICONS[tool]!,
+    title: TOOL_TITLE_DESC[tool]!,
+    subtitle: typeof action === "string" ? action : undefined,
+  }
+}
