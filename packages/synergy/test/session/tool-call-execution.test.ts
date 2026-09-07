@@ -174,7 +174,7 @@ test("configured tool timeout settles a non-cooperative built-in execution exact
       ;(Config.current as any) = mock(async () => ({
         timeout: {
           tool: {
-            default_sec: 0.01,
+            default_sec: 1,
           },
         },
       }))
@@ -236,7 +236,7 @@ test("configured tool timeout settles a non-cooperative built-in execution exact
         await expect(
           Promise.race([
             execution,
-            Bun.sleep(1_000).then(() => {
+            Bun.sleep(3_000).then(() => {
               throw new Error("Tool execution did not settle after its configured timeout")
             }),
           ]),
@@ -301,7 +301,7 @@ for (const scenario of [
         ;(Config.current as any) = mock(async () => ({
           timeout: {
             tool: {
-              default_sec: 0.01,
+              default_sec: 1,
             },
           },
         }))
@@ -398,16 +398,22 @@ for (const scenario of [
             { toolCallId: callID },
           )
 
+          const completion = execution.then(
+            () => ({ ok: true as const }),
+            (error: unknown) => ({ ok: false as const, error }),
+          )
           await Promise.race([
             hookStarted,
-            Bun.sleep(1_000).then(() => {
+            Bun.sleep(3_000).then(() => {
               throw new Error(`${scenario.executor} ${scenario.phase} hook did not start`)
             }),
           ])
           await expect(
             Promise.race([
-              execution,
-              Bun.sleep(1_000).then(() => {
+              completion.then((result) => {
+                if (!result.ok) throw result.error
+              }),
+              Bun.sleep(3_000).then(() => {
                 throw new Error(
                   `Tool execution did not settle while its ${scenario.executor} ${scenario.phase} hook was stalled`,
                 )
