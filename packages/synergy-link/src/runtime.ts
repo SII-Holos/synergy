@@ -80,6 +80,7 @@ export class SynergyLinkRuntime {
         await rpc.processRegistry.releaseSession(session)
         rpc.clearSessionRequests(session.sessionID)
       },
+      hasActiveWork: (session) => rpc.processRegistry.hasActiveSessionWork(session),
     })
     const inbound = new SynergyLinkInboundHandler(rpc, sessions, (input) => runtime.decideSessionOpen(input))
     const control = new SynergyLinkControlServer((request) => runtime.handleControlRequest(request))

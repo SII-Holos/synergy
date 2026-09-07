@@ -724,7 +724,7 @@ describe("tool.connect verification", () => {
     }
   })
 
-  test("open reports unknown when a stale cached session heartbeat times out and does not open", async () => {
+  test("open reports unknown when verification times out and the recovery open also cannot be answered", async () => {
     let sessionCalls = 0
     SynergyLinkExecution.setClient({
       ...fakeClient({
@@ -753,9 +753,212 @@ describe("tool.connect verification", () => {
         ctx,
       )
 
-      expect(sessionCalls).toBe(1)
+      expect(sessionCalls).toBe(2)
       expect(result.metadata.status).toBe("unknown")
       expect(result.output).toContain("could not be verified")
+      expect(result.output).toContain("the cached session was kept")
+      expect(SynergyLinkExecution.getSession("link_open_timeout")?.sessionID).toBe("session_open_timeout")
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("open reconciles an unverified cached session when the host reports it still open", async () => {
+    const actions: SynergyLinkSession.Action[] = []
+    SynergyLinkExecution.setClient({
+      ...fakeClient({
+        title: "unused",
+        metadata: { action: "open", status: "opened", backend: "remote" },
+        output: "unused",
+      }),
+      executeSession: async (_linkID, payload): Promise<SynergyLinkSession.Result> => {
+        actions.push(payload.action)
+        if (payload.action === "heartbeat") {
+          throw new SynergyLinkRemoteError("transport_error", "Timed out waiting for Synergy Link response.")
+        }
+        return {
+          title: "Session opened",
+          metadata: {
+            action: "open",
+            status: "opened",
+            reused: true,
+            sessionID: "session_recover_same",
+            backend: "remote",
+          },
+          output: "reused",
+        }
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_recover_same",
+      targetAgentID: "agent_recover_same",
+      sourceAgent: "build",
+      sessionID: "session_recover_same",
+      status: "opened",
+      openedAt: Date.now() - 60_000,
+      lastUsedAt: Date.now() - 60_000,
+    })
+    try {
+      const tool = await ConnectTool.init()
+      const result = await tool.execute(
+        { action: "open", linkID: "link_recover_same", targetAgentID: "agent_recover_same" },
+        ctx,
+      )
+
+      expect(actions).toEqual(["heartbeat", "open"])
+      expect(result.metadata.status).toBe("opened")
+      expect(result.metadata.sessionID).toBe("session_recover_same")
+      expect(result.output).toContain("still open")
+      const session = SynergyLinkExecution.getSession("link_recover_same")
+      expect(session?.sessionID).toBe("session_recover_same")
+      expect(session?.lastVerifiedAt).toBeGreaterThan(0)
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("open adopts a fresh session when the host reports the unverified cached session ended", async () => {
+    const actions: SynergyLinkSession.Action[] = []
+    SynergyLinkExecution.setClient({
+      ...fakeClient({
+        title: "unused",
+        metadata: { action: "open", status: "opened", backend: "remote" },
+        output: "unused",
+      }),
+      executeSession: async (_linkID, payload): Promise<SynergyLinkSession.Result> => {
+        actions.push(payload.action)
+        if (payload.action === "heartbeat") {
+          throw new SynergyLinkRemoteError("transport_error", "Timed out waiting for Synergy Link response.")
+        }
+        return {
+          title: "Session opened",
+          metadata: {
+            action: "open",
+            status: "opened",
+            sessionID: "session_recover_fresh",
+            backend: "remote",
+          },
+          output: "opened",
+        }
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_recover_fresh",
+      targetAgentID: "agent_recover_fresh",
+      sourceAgent: "build",
+      sessionID: "session_recover_stale",
+      status: "opened",
+      openedAt: Date.now() - 60_000,
+      lastUsedAt: Date.now() - 60_000,
+    })
+    try {
+      const tool = await ConnectTool.init()
+      const result = await tool.execute(
+        { action: "open", linkID: "link_recover_fresh", targetAgentID: "agent_recover_fresh" },
+        ctx,
+      )
+
+      expect(actions).toEqual(["heartbeat", "open"])
+      expect(result.metadata.status).toBe("opened")
+      expect(result.metadata.sessionID).toBe("session_recover_fresh")
+      expect(SynergyLinkExecution.getSession("link_recover_fresh")?.sessionID).toBe("session_recover_fresh")
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("open reports busy and clears the cached session when the recovery open finds another caller", async () => {
+    const actions: SynergyLinkSession.Action[] = []
+    SynergyLinkExecution.setClient({
+      ...fakeClient({
+        title: "unused",
+        metadata: { action: "open", status: "opened", backend: "remote" },
+        output: "unused",
+      }),
+      executeSession: async (_linkID, payload): Promise<SynergyLinkSession.Result> => {
+        actions.push(payload.action)
+        if (payload.action === "heartbeat") {
+          throw new SynergyLinkRemoteError("transport_error", "Timed out waiting for Synergy Link response.")
+        }
+        return {
+          title: "Session busy",
+          metadata: {
+            action: "open",
+            status: "busy",
+            sessionID: "session_recover_other",
+            backend: "remote",
+          },
+          output: "Host is busy with session session_recover_other.",
+        }
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_recover_busy",
+      targetAgentID: "agent_recover_busy",
+      sourceAgent: "build",
+      sessionID: "session_recover_busy",
+      status: "opened",
+      openedAt: Date.now() - 60_000,
+      lastUsedAt: Date.now() - 60_000,
+    })
+    try {
+      const tool = await ConnectTool.init()
+      const result = await tool.execute(
+        { action: "open", linkID: "link_recover_busy", targetAgentID: "agent_recover_busy" },
+        ctx,
+      )
+
+      expect(actions).toEqual(["heartbeat", "open"])
+      expect(result.metadata.status).toBe("busy")
+      expect(SynergyLinkExecution.getSession("link_recover_busy")).toBeUndefined()
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("open reports refused and clears the cached session when the recovery open is refused", async () => {
+    const actions: SynergyLinkSession.Action[] = []
+    SynergyLinkExecution.setClient({
+      ...fakeClient({
+        title: "unused",
+        metadata: { action: "open", status: "opened", backend: "remote" },
+        output: "unused",
+      }),
+      executeSession: async (_linkID, payload): Promise<SynergyLinkSession.Result> => {
+        actions.push(payload.action)
+        if (payload.action === "heartbeat") {
+          throw new SynergyLinkRemoteError("transport_error", "Timed out waiting for Synergy Link response.")
+        }
+        return {
+          title: "Session refused",
+          metadata: {
+            action: "open",
+            status: "refused",
+            backend: "remote",
+          },
+          output: "Collaboration request denied by host policy.",
+        }
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_recover_refused",
+      targetAgentID: "agent_recover_refused",
+      sourceAgent: "build",
+      sessionID: "session_recover_refused",
+      status: "opened",
+      openedAt: Date.now() - 60_000,
+      lastUsedAt: Date.now() - 60_000,
+    })
+    try {
+      const tool = await ConnectTool.init()
+      const result = await tool.execute(
+        { action: "open", linkID: "link_recover_refused", targetAgentID: "agent_recover_refused" },
+        ctx,
+      )
+
+      expect(actions).toEqual(["heartbeat", "open"])
+      expect(result.metadata.status).toBe("refused")
+      expect(SynergyLinkExecution.getSession("link_recover_refused")).toBeUndefined()
     } finally {
       SynergyLinkExecution.setClient(null)
     }
