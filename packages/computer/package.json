@@ -15,7 +15,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
-    "test": "bun test test/*.test.ts"
+    "test": "bun test test/*.test.ts",
+    "test:coverage": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts"
   },
   "dependencies": {
     "zod": "catalog:"

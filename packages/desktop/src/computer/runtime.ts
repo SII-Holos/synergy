@@ -31,12 +31,24 @@ type Run = { session: string; observation?: Observation; updated: number }
 // Cua v0.23.2: exact-window snapshots and per-PID background mutation serialization.
 // https://github.com/trycua/cua/tree/cua-driver-rs-v0.23.2/libs/cua-driver
 export class ComputerRuntime {
+  private generation = 0
   private readonly runs = new Map<string, Run>()
   private readonly busy = new Set<string>()
   private readonly busyPids = new Set<number>()
   constructor(private readonly call: NativeCall) {}
 
   async execute(owner: string, command: ComputerCommand, signal?: AbortSignal): Promise<ComputerResult> {
+    const generation = this.generation
+    const result = await this.executeCommand(owner, command, signal)
+    if (generation !== this.generation)
+      throw new ComputerError(
+        "computer_runtime_reset",
+        "The native Computer runtime reset during this operation. Its outcome is uncertain; observe again before deciding whether to retry.",
+      )
+    return result
+  }
+
+  private async executeCommand(owner: string, command: ComputerCommand, signal?: AbortSignal): Promise<ComputerResult> {
     command = ComputerCommandSchema.parse(command)
     signal?.throwIfAborted()
     if (this.busy.has(owner))
@@ -143,6 +155,7 @@ export class ComputerRuntime {
   }
 
   reset() {
+    this.generation++
     this.runs.clear()
   }
 

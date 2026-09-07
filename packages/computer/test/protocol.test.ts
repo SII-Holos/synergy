@@ -1,5 +1,13 @@
 import { expect, test } from "bun:test"
-import { ComputerActionSchema, ComputerCommandSchema } from "../src/index"
+import { ComputerActionSchema, ComputerCommandSchema, ComputerError, ComputerResultSchema } from "../src/index"
+
+test("results supply attachment defaults and errors preserve their structured code", () => {
+  expect(ComputerResultSchema.parse({ output: "observed" })).toEqual({ output: "observed", images: [], metadata: {} })
+  const error = new ComputerError("computer_runtime_reset", "Observe again")
+  expect(error).toBeInstanceOf(Error)
+  expect(error.code).toBe("computer_runtime_reset")
+  expect(error.message).toBe("Observe again")
+})
 
 test("actions require an observation and cannot request foreground or replace its target", () => {
   expect(ComputerActionSchema.safeParse({ observationId: "observed", action: "type", text: "你好" }).success).toBe(true)

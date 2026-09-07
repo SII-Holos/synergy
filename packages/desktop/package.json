@@ -26,7 +26,8 @@
     "dev": "SYNERGY_DESKTOP_CHANNEL=dev bun run desktop:build && electron dist/main.js",
     "test:runtime": "bun run build && SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/browser-runtime-smoke.test.ts",
     "typecheck": "tsc --noEmit",
-    "desktop:prepare-computer": "bun run script/prepare-computer.ts"
+    "desktop:prepare-computer": "bun run script/prepare-computer.ts",
+    "test:coverage": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts test/computer/*.test.ts"
   },
   "dependencies": {
     "@ericsanchezok/synergy-browser": "workspace:*",

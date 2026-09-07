@@ -935,7 +935,8 @@ Observe one native application window using pid and windowId from computer_apps.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `type` | - | yes |  |
+| `pid` | number | yes |  |
+| `windowId` | number | yes |  |
 
 ## connect
 
@@ -1908,11 +1909,8 @@ Prepare a provider-neutral response card for the current Channel conversation. U
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `truncated` | false | yes |  |
-| `elementCount` | card.elements.length | yes |  |
+| `title` | string | yes |  |
+| `elements` | array | yes |  |
 
 ## revise_file
 

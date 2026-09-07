@@ -13,6 +13,33 @@ function fixture() {
   return { runtime, calls }
 }
 
+test("reset rejects a late observation and a fresh observation remains usable", async () => {
+  const pending = Promise.withResolvers<void>()
+  const entered = Promise.withResolvers<void>()
+  let block = true
+  const runtime = new ComputerRuntime(async () => {
+    if (block) {
+      block = false
+      entered.resolve()
+      await pending.promise
+    }
+    return { content: [], structuredContent: { snapshot_id: "s12345678" } }
+  })
+  const old = runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
+  await entered.promise
+  runtime.reset()
+  const fresh = await runtime.execute("b", { type: "observe", pid: 11, windowId: 21 })
+  pending.resolve()
+  await expect(old).rejects.toMatchObject({ code: "computer_runtime_reset" })
+  await expect(
+    runtime.execute("b", {
+      type: "action",
+      input: { action: "key", key: "return", observationId: fresh.observationId! },
+    }),
+  ).resolves.toHaveProperty("output")
+  expect((await runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })).observationId).toBeTruthy()
+})
+
 test("actions bind to the owning task and latest exact window observation", async () => {
   const { runtime, calls } = fixture()
   const observed = await runtime.execute("task-a", { type: "observe", pid: 10, windowId: 20 })
@@ -42,6 +69,32 @@ test("actions bind to the owning task and latest exact window observation", asyn
       input: { action: "click", observationId: observed.observationId!, elementIndex: 0 },
     }),
   ).rejects.toThrow("Observe")
+})
+
+test("reset marks a delivered action uncertain and does not replay it", async () => {
+  const pending = Promise.withResolvers<void>()
+  const entered = Promise.withResolvers<void>()
+  let actions = 0
+  const runtime = new ComputerRuntime(async (name) => {
+    if (name === "press_key") {
+      actions++
+      entered.resolve()
+      await pending.promise
+    }
+    return { content: [] }
+  })
+  const observed = await runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
+  const command = {
+    type: "action",
+    input: { action: "key", key: "return", observationId: observed.observationId! },
+  } as const
+  const action = runtime.execute("a", command)
+  await entered.promise
+  runtime.reset()
+  pending.resolve()
+  await expect(action).rejects.toMatchObject({ code: "computer_runtime_reset" })
+  await expect(runtime.execute("a", command)).rejects.toMatchObject({ code: "computer_observation_stale" })
+  expect(actions).toBe(1)
 })
 
 test("a new observation invalidates older references even for another task on that window", async () => {

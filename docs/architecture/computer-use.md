@@ -18,7 +18,7 @@ A model cannot select the driver session, change delivery mode, execute scripts,
 
 Independent applications may run concurrently. An in-flight operation excludes another operation targeting the same process; it does not reserve the desktop or app for an entire task. Cua additionally serializes native background mutations per process. New observations invalidate older references for the same window across tasks. Shared application state remains shared with the user and other tasks.
 
-Requests are bounded and cancellable. Disconnection rejects pending operations and does not replay them. A restarted driver loses observation records. Native success, including an `unverifiable` effect, does not establish completion of the user's task. A fresh observation is required to verify results and before considering a retry after an uncertain outcome.
+Requests are bounded and cancellable. Disconnection rejects pending operations and does not replay them. A restarted driver loses observation records. A runtime generation check rejects late results from operations that crossed a reset, including observations from independent applications. Native success, including an `unverifiable` effect, does not establish completion of the user's task. A fresh observation is required to verify results and before considering a retry after an uncertain outcome.
 
 The host process belongs to Desktop and is closed with its broker connection. The driver does not register a separate daemon or global MCP configuration. Cua telemetry is disabled in the child environment. Driver sessions expire upstream when idle; Desktop bounds its retained task records separately.
 

@@ -20,4 +20,4 @@ Run `bun run typecheck` and the focused test under `test/`, then `bun run deskto
 
 Update the Browser architecture, Web product contract, or Desktop release runbook when their durable behavior changes.
 
-For native Computer changes, read [Native Computer Use](../../docs/architecture/computer-use.md); run `bun test test/computer/*.test.ts` and verify exact-window background actions in an isolated Desktop.
+For native Computer changes, read [Native Computer Use](../../docs/architecture/computer-use.md); run `bun test test/computer/*.test.ts` and verify exact-window background actions in an isolated Desktop. `bun run test:coverage` includes both top-level and Computer suites and is the root coverage manifest entry point.

@@ -14,6 +14,8 @@ Use Cua Driver 0.23.2's exact-window background operations. A task observes an e
 
 Do not hold a desktop-wide lease for the duration of a task. Different applications may execute concurrently. Each application has at most one Synergy operation in flight, complementing Cua's short per-process native mutation serialization. This prevents overlapping focus/snapshot operations without preventing another task from working in a different app. Same-application tasks do not get independent application state.
 
+Bind each operation to a runtime generation. Reset advances that generation and clears observation records; any late result from the old generation is rejected as an uncertain outcome. This also covers independent applications sharing the worker, preventing an observation from appearing usable after its task record was discarded.
+
 Require `full_access` for observation as well as interaction. Ordinary permission approvals cannot enable Computer Use under `guarded` or `autonomous`. Desktop OS permissions remain independently required. Ordinary task cancellation and bounded calls remain available; no separate emergency-stop, takeover, or desktop-control panel is introduced.
 
 Ship the verified macOS universal driver inside Desktop resources with its MIT notice. Keep the driver version and archive/executable digests in the build manifest. Other platforms and remote Desktop hosts return an explicit unsupported/unavailable result. The first version covers finding windows, observation, element/pixel clicks, text, individual navigation keys, and scrolling; no arbitrary scripts, app launching, clipboard service, or desktop-wide input is exposed.

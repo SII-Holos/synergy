@@ -4,6 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import {
   evaluatePackage,
+  loadManifest,
   extractFailureSignals,
   matchesExempt,
   mergeLcov,
@@ -15,6 +16,16 @@ import {
 } from "../../script/coverage-check"
 
 const roots: string[] = []
+
+test("the Computer protocol participates in coverage enforcement", async () => {
+  const manifest = await loadManifest()
+  const config = manifest.packages["packages/computer"]
+  expect(config).toBeDefined()
+  expect(config!.command).toContain("coverage")
+  expect(config!.thresholds.lines).toBeGreaterThanOrEqual(80)
+  expect(config!.thresholds.functions).toBeGreaterThanOrEqual(75)
+  expect(config!.exempt).toEqual([])
+})
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))

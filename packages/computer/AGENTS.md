@@ -6,4 +6,4 @@ This private package owns bounded native Computer commands, results and host tra
 - Task identities come from the runtime; driver session identities are host-owned.
 - Protocol success describes driver dispatch, not completion of the user's application task.
 
-Run `bun run typecheck`, `bun run build`, and `bun test test/*.test.ts`, then affected Desktop and core Computer tests. Regenerate the SDK when these schemas enter OpenAPI.
+Run `bun run typecheck`, `bun run build`, and `bun run test:coverage`, then affected Desktop and core Computer tests. Coverage is enforced through the root manifest with no source exemptions. Regenerate the SDK when these schemas enter OpenAPI.
