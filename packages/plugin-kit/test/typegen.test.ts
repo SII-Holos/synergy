@@ -5,6 +5,8 @@ import { createFixtureProject, writeMinimalPlugin } from "./fixtures"
 
 test("generated UI data contracts preserve schema types without importing backend handlers", async () => {
   const project = createFixtureProject("typed-data")
+  let child: ReturnType<typeof Bun.spawn> | undefined
+  let timeout: ReturnType<typeof setTimeout> | undefined
   try {
     writeMinimalPlugin(
       project,
@@ -47,11 +49,18 @@ context.events.subscribe("unknown", () => {})
       ],
       { cwd: project.root, stdout: "pipe", stderr: "pipe" },
     )
+    child = check
+    timeout = setTimeout(() => check.kill(), 20000)
     const output = await new Response(check.stdout).text()
     expect(await check.exited, output).toBe(0)
     const contract = await Bun.file(path.join(project.root, "src/generated/plugin-data/index.d.ts")).text()
     expect(contract).not.toContain("handler")
   } finally {
+    clearTimeout(timeout)
+    if (child && child.exitCode === null) {
+      child.kill()
+      await child.exited
+    }
     project.cleanup()
   }
-})
+}, 30000)

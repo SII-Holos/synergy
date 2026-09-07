@@ -114,7 +114,7 @@ test("custom composer submits once and a running response survives switching to 
     await page.locator("[data-component=prompt-input]").waitFor()
     resume.resolve()
     await page
-      .locator('[data-message-role="assistant"]')
+      .locator('[data-component="session-turn"]')
       .getByText("Shared response completed.", { exact: true })
       .first()
       .waitFor()
