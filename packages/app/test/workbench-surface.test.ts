@@ -10,7 +10,7 @@ const agendaCalendar = await Bun.file(new URL("../src/components/agenda/calendar
 const agendaPanel = await Bun.file(new URL("../src/components/agenda/panel.tsx", import.meta.url)).text()
 const marketplaceCss = await Bun.file(new URL("../src/plugin/marketplace/marketplace.css", import.meta.url)).text()
 const libraryCss = await Bun.file(new URL("../src/components/library/library-panel.css", import.meta.url)).text()
-const menuFieldCss = await Bun.file(new URL("../src/components/menu-field/menu-field.css", import.meta.url)).text()
+const menuFieldCss = await Bun.file(new URL("../../ui/src/components/menu-field.css", import.meta.url)).text()
 const libraryPanel = await Bun.file(new URL("../src/components/library/library-panel.tsx", import.meta.url)).text()
 const libraryShared = await Bun.file(new URL("../src/components/library/shared.tsx", import.meta.url)).text()
 const questionPromptCss = await Bun.file(
@@ -28,6 +28,7 @@ const sessionTopBarCss = await Bun.file(
   new URL("../src/components/top-bar/session-top-bar.css", import.meta.url),
 ).text()
 const sessionTopBar = await Bun.file(new URL("../src/components/top-bar/session-top-bar.tsx", import.meta.url)).text()
+const defaultSession = await Bun.file(new URL("../src/plugin/default-session.tsx", import.meta.url)).text()
 const sessionPage = await Bun.file(new URL("../src/pages/session.tsx", import.meta.url)).text()
 const workbenchSurface = await Bun.file(
   new URL("../src/components/workspace/workbench-surface.tsx", import.meta.url),
@@ -134,7 +135,7 @@ describe("workbench surface polarity", () => {
     expect(css).toContain("--desktop-native-titlebar-traffic-width: 90px;")
     expect(nativeTitlebarCss).toContain(".desktop-native-titlebar__traffic-space")
     expect(nativeTitlebarCss).toContain(".desktop-native-titlebar__drag-region")
-    expect(sessionPage).toContain("session-workbench-pane")
+    expect(defaultSession).toContain("session-workbench-pane")
     expect(sessionTopBar).not.toContain('import { Portal } from "solid-js/web"')
     expect(sessionTopBarCss).not.toContain(".app-shell--desktop-native-chrome .stb-root")
     expect(sessionTopBarCss).not.toContain(".app-shell--desktop-native-chrome.app-shell--sidebar-collapsed .stb-root")
@@ -199,7 +200,7 @@ describe("workbench surface polarity", () => {
   })
 
   test("workbench surfaces close instead of persisting empty launchers", () => {
-    expect(workbenchPanels).toContain("if (next.tabs.length === 0) target.close()")
+    expect(workbenchPanels).toContain("if (!next.tabs.length) target.close()")
   })
 
   test("workbench tabs offer close-others from toolbar and context menu", () => {
@@ -223,9 +224,7 @@ describe("workbench surface polarity", () => {
     expect(workbenchSurface).toContain("stopImmediatePropagation")
     expect(workbenchPanels).toContain("batchClosingSurfaces")
     expect(workbenchPanels).toContain("closingIds")
-    expect(workbenchPanels).toContain(
-      "closeOtherWorkbenchPanelTabs(target.tabs(), target.active(), keepTabId, closingIds)",
-    )
+    expect(workbenchPanels).toContain("await closeBoundTab(boundSession, surfaceName, id)")
   })
 
   test("raised stronger non-alpha utilities resolve to popover surfaces inside the workbench", () => {

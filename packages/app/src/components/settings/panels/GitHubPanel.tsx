@@ -13,7 +13,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import { translateDescriptor } from "@/locales/translate"
 import { requestErrorMessage } from "@/utils/error"
 import { SettingsPage, SettingsSection, SettingsSubsection } from "../components/SettingsPrimitives"
-import { SettingRow } from "../components/SettingRow"
+import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
 import type { GithubIntegrationSettings } from "../types"
 import {
   providerNeedsAction,

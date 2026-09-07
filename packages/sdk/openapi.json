@@ -21668,13 +21668,42 @@
                         "type": "object",
                         "properties": {
                           "entry": {
-                            "type": "string"
+                            "type": "string",
+                            "minLength": 1
                           },
                           "sha256": {
-                            "type": "string"
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                          },
+                          "apiVersion": {
+                            "type": "string",
+                            "pattern": "^\\d+\\.\\d+$"
+                          },
+                          "resources": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "entry": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "sha256": {
+                                  "type": "string",
+                                  "pattern": "^[a-f0-9]{64}$"
+                                },
+                                "kind": {
+                                  "type": "string",
+                                  "enum": ["stylesheet", "asset"]
+                                }
+                              },
+                              "required": ["entry", "sha256", "kind"],
+                              "additionalProperties": false
+                            }
                           }
                         },
-                        "required": ["entry", "sha256"]
+                        "required": ["entry", "sha256"],
+                        "additionalProperties": false
                       }
                     },
                     "required": [
@@ -22104,7 +22133,7 @@
     },
     "/plugin/dev/reload": {
       "post": {
-        "operationId": "postPluginDevReload",
+        "operationId": "plugin.reloadDevelopment",
         "parameters": [
           {
             "in": "query",
@@ -22121,6 +22150,68 @@
             }
           }
         ],
+        "description": "Replace an installed development plugin with a validated artifact generation",
+        "responses": {
+          "200": {
+            "description": "Activated development generation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "pluginId": {
+                      "type": "string"
+                    },
+                    "generation": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["pluginId", "generation"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
         "requestBody": {
           "content": {
             "application/json": {
@@ -22142,23 +22233,10 @@
             }
           }
         },
-        "responses": {
-          "200": {},
-          "503": {
-            "description": "Runtime shutting down",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
-                }
-              }
-            }
-          }
-        },
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.postPluginDevReload({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.plugin.reloadDevelopment({\n  ...\n})"
           }
         ]
       }
@@ -46643,13 +46721,42 @@
             "type": "object",
             "properties": {
               "entry": {
-                "type": "string"
+                "type": "string",
+                "minLength": 1
               },
               "sha256": {
-                "type": "string"
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "apiVersion": {
+                "type": "string",
+                "pattern": "^\\d+\\.\\d+$"
+              },
+              "resources": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "entry": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": ["stylesheet", "asset"]
+                    }
+                  },
+                  "required": ["entry", "sha256", "kind"],
+                  "additionalProperties": false
+                }
               }
             },
-            "required": ["entry", "sha256"]
+            "required": ["entry", "sha256"],
+            "additionalProperties": false
           }
         },
         "required": ["pluginId", "name", "version", "generation", "enabledScopes", "capabilities", "contributions"]
@@ -49247,6 +49354,25 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.plugin.ui.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "plugin.ui.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scopeId": {
+                "type": "string"
+              }
+            },
+            "required": ["scopeId"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.plugin.event": {
         "type": "object",
         "properties": {
@@ -50167,6 +50293,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.note.unarchived"
+          },
+          {
+            "$ref": "#/components/schemas/Event.plugin.ui.updated"
           },
           {
             "$ref": "#/components/schemas/Event.plugin.event"

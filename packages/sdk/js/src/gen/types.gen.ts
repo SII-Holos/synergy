@@ -8032,6 +8032,12 @@ export type GlobalThemeContribution = {
   uiArtifact?: {
     entry: string
     sha256: string
+    apiVersion?: string
+    resources?: Array<{
+      entry: string
+      sha256: string
+      kind: "stylesheet" | "asset"
+    }>
   }
 }
 
@@ -8898,6 +8904,13 @@ export type EventNoteUnarchived = {
   }
 }
 
+export type EventPluginUiUpdated = {
+  type: "plugin.ui.updated"
+  properties: {
+    scopeId: string
+  }
+}
+
 export type EventPluginEvent = {
   type: "plugin.event"
   properties: {
@@ -9229,6 +9242,7 @@ export type Event =
   | EventNoteDeleted
   | EventNoteArchived
   | EventNoteUnarchived
+  | EventPluginUiUpdated
   | EventPluginEvent
   | EventMcpToolsChanged
   | EventMcpPromptsChanged
@@ -19592,6 +19606,12 @@ export type PluginListUiContributionsResponses = {
     uiArtifact?: {
       entry: string
       sha256: string
+      apiVersion?: string
+      resources?: Array<{
+        entry: string
+        sha256: string
+        kind: "stylesheet" | "asset"
+      }>
     }
   }>
 }
@@ -19779,7 +19799,7 @@ export type PluginStatusResponses = {
 
 export type PluginStatusResponse = PluginStatusResponses[keyof PluginStatusResponses]
 
-export type PostPluginDevReloadData = {
+export type PluginReloadDevelopmentData = {
   body?: {
     pluginId: string
     generation: string
@@ -19793,18 +19813,38 @@ export type PostPluginDevReloadData = {
   url: "/plugin/dev/reload"
 }
 
-export type PostPluginDevReloadErrors = {
+export type PluginReloadDevelopmentErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Forbidden
+   */
+  403: ForbiddenError
+  /**
+   * Not found
+   */
+  404: NotFoundError
   /**
    * Runtime shutting down
    */
   503: RuntimeShuttingDownError
 }
 
-export type PostPluginDevReloadError = PostPluginDevReloadErrors[keyof PostPluginDevReloadErrors]
+export type PluginReloadDevelopmentError = PluginReloadDevelopmentErrors[keyof PluginReloadDevelopmentErrors]
 
-export type PostPluginDevReloadResponses = {
-  200: unknown
+export type PluginReloadDevelopmentResponses = {
+  /**
+   * Activated development generation
+   */
+  200: {
+    pluginId: string
+    generation: string
+  }
 }
+
+export type PluginReloadDevelopmentResponse = PluginReloadDevelopmentResponses[keyof PluginReloadDevelopmentResponses]
 
 export type ApiPluginsListData = {
   body?: never

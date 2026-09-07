@@ -126,3 +126,9 @@ bun run localization:check
 ## Handoff
 
 Report state ownership, API path, semantic icon token, shared primitives, accessibility states, tests, visual checks, and any durable `PRODUCT.md` or Skill update.
+
+## Replaceable plugin presentation
+
+Read [frontend plugin ownership](../../../docs/architecture/frontend-plugin-platform.md) before changing Shell, conversation, composer, resource or overlay composition. Keep domain owners above replaceable presentation and test their public services with native and external views. Capture draft identity before asynchronous work and restore only at an unchanged owning revision. Dispose DOM references, pending UI work and portals by surface identity; accepted server work keeps its domain lifetime.
+
+For UI API 5 changes, build the production App and run bun run plugin-ui:test. Its public preview helper installs extracted archives into an isolated real host. Also run the owning App/UI tests, private HTTP smoke, typecheck, localization and package gates. Browser fixtures must pre-discover their actual module entry so dependency optimization cannot reload the page during interaction assertions. Verify styles on ordinary inherited text and protected portals, not only elements that explicitly restate font variables.

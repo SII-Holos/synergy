@@ -9,6 +9,10 @@ const root = path.resolve(import.meta.dir, "..")
 // sibling suite's freshly launched browser. Run every Chromium suite serially
 // after the main batch to keep their processes alive.
 const playwrightIsolated = [
+  "test/plugin/components.dom.test.ts",
+  "test/plugin/overlays.dom.test.ts",
+  "test/plugin/skin.dom.test.ts",
+  "test/components/prompt-input/editor.dom.test.ts",
   "test/components/app-shell/mobile-drawer-drag-region.test.tsx",
   "test/components/app-shell/mobile-drawer-root.test.tsx",
   "test/components/dialog/model-selector-layout.test.ts",
@@ -45,6 +49,8 @@ await runBatchedTests({
   isolated: playwrightIsolated,
   isolatedTimeoutMs: 120000,
   browserOnly: [
+    "test/plugin/shell-surface.test.ts",
+    "test/plugin/shell-preference.test.ts",
     "test/components/note/document-editor-core.test.ts",
     "test/components/terminal/dispose-reentrancy.test.ts",
     "test/components/workspace/builtin-workbench-panels.test.ts",

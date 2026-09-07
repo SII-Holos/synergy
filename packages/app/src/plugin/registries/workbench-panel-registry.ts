@@ -11,6 +11,7 @@ export interface WorkbenchPanelTab {
   title?: string
   source?: string
   state?: unknown
+  dirty?: boolean
 }
 
 export interface WorkbenchPanelContentProps {
@@ -26,6 +27,7 @@ export interface WorkbenchPanelTabInit {
   title?: string
   source?: string
   state?: unknown
+  dirty?: boolean
 }
 
 export interface WorkbenchPanelEntry extends SurfaceEntry {
@@ -39,7 +41,7 @@ export interface WorkbenchPanelEntry extends SurfaceEntry {
   exportName?: string
   defaultResource?: WorkbenchPanelTabInit
   createTab?: () => WorkbenchPanelTabInit | void | Promise<WorkbenchPanelTabInit | void>
-  onCloseTab?: (tab: WorkbenchPanelTab) => void | Promise<void>
+  onCloseTab?: (tab: WorkbenchPanelTab) => void | boolean | Promise<void | boolean>
   title?: (tab: WorkbenchPanelTab, siblingTabs: WorkbenchPanelTab[]) => string | undefined
   tabIcon?: (tab: WorkbenchPanelTab) => JSX.Element
 }

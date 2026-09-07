@@ -1,3 +1,4 @@
+import { useExtensionOutlet } from "@ericsanchezok/synergy-ui/context/extension-outlet"
 import {
   ErrorBoundary,
   Show,
@@ -52,6 +53,7 @@ function errorMessage(error: unknown) {
 }
 
 function PluginNavigationContent(props: { entry: NavigationEntry; loadProps: NavigationContentProps }) {
+  useExtensionOutlet("navigation.page")
   const { _ } = useLingui()
   const [component, setComponent] = createSignal<Component<NavigationContentProps> | null>(null)
   const [loading, setLoading] = createSignal(false)

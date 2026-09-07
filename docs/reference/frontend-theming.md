@@ -123,7 +123,7 @@ synergy-plugin validate
 synergy-plugin pack
 ```
 
-Install or refresh the local project with `synergy plugin add file:///absolute/path/to/ocean-theme`, then switch to it in Appearance. See [Plugin UI contributions](../plugins/ui-contributions.md#themes-and-icons) for the current contribution contract.
+Install or refresh the local project with `synergy plugin add file:///absolute/path/to/ocean-theme`, then switch to it in Appearance. See [Plugin UI contributions](../plugins/ui-contributions.md#themes-skins-and-styles) for the current contribution contract.
 
 ### Modifying a built-in theme
 

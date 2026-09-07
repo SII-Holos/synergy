@@ -1,3 +1,6 @@
+import { createWorkbenchClosePolicy } from "./close-policy"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { useLocale } from "@/context/locale"
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
@@ -12,7 +15,6 @@ import {
   type WorkbenchPanelTabInit,
 } from "@/plugin/registries/workbench-panel-registry"
 import {
-  closeOtherWorkbenchPanelTabs,
   closeWorkbenchPanelTab,
   createTabCloseGuard,
   isWorkbenchPanelAvailable,
@@ -39,7 +41,21 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     const [registryVersion, setRegistryVersion] = createSignal(0)
     let nextTabIndex = 0
     const closeGuard = createTabCloseGuard()
-    const batchClosingSurfaces = new Set<WorkbenchPanelSurface>()
+    const confirm = useConfirm()
+    const { i18n } = useLocale()
+    const closePolicy = createWorkbenchClosePolicy((tab) =>
+      confirm.ask({
+        title: i18n._({ id: "workbench.discard.title", message: "Discard unsaved changes?" }),
+        description: i18n._({
+          id: "workbench.discard.description",
+          message: "Changes in {title} have not been saved.",
+          values: { title: panelTitle(tab) },
+        }),
+        confirmLabel: i18n._({ id: "workbench.discard.action", message: "Discard changes" }),
+        tone: "danger",
+      }),
+    )
+    const batchClosingSurfaces = new Set<string>()
 
     const unsubscribe = subscribeWorkbenchPanels(() => setRegistryVersion((value) => value + 1))
     onCleanup(unsubscribe)
@@ -86,7 +102,8 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       const entry = visibleEntry(panelId)
       if (!entry) return undefined
 
-      const target = surface(entry.surface)
+      const boundSession = sessionKey()
+      const target = layout.surface(boundSession, entry.surface)
       const tabs = target.tabs()
       const shouldReuse = options.reuseExisting || (!options.forceNew && entry.cardinality !== "multi")
       const requestedResource = options.init?.resourceId ?? entry.defaultResource?.resourceId
@@ -105,10 +122,17 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         init = created
       }
 
+      if (entry.cardinality === "exclusive") {
+        for (const tab of target.tabs()) {
+          if (tab.id === existing?.id) continue
+          if (!(await closeBoundTab(boundSession, entry.surface, tab.id))) return undefined
+        }
+        if (target.tabs().some((tab) => tab.id !== existing?.id)) return undefined
+      }
       const next = openWorkbenchPanelTab({
         panelId,
         cardinality: entry.cardinality,
-        tabs,
+        tabs: target.tabs(),
         init,
         createId: () => createTabId(panelId),
         reuseExisting: options.reuseExisting && !options.forceNew,
@@ -121,66 +145,64 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       return next.tabs.find((tab) => tab.id === next.active)
     }
 
-    async function closeTab(tabId: string) {
-      if (!closeGuard.begin(tabId)) return
+    async function closeBoundTab(boundSession: string, surfaceName: WorkbenchPanelSurface, tabId: string) {
+      const guardKey = JSON.stringify([boundSession, tabId])
+      if (!closeGuard.begin(guardKey)) return false
       try {
-        for (const surfaceName of ["side", "bottom"] as const) {
-          const target = surface(surfaceName)
-          const tab = target.tabs().find((item) => item.id === tabId)
-          if (!tab) continue
-
-          const entry = getWorkbenchPanel(tab.panelId)
-          await entry?.onCloseTab?.(tab)
-
-          const next = closeWorkbenchPanelTab(target.tabs(), target.active(), tabId)
-          target.setTabs(next.tabs)
-          target.setActive(next.active)
-          if (next.tabs.length === 0) target.close()
-          return
-        }
+        const target = layout.surface(boundSession, surfaceName)
+        const tab = target.tabs().find((item) => item.id === tabId)
+        if (!tab) return true
+        if (!(await closePolicy.canClose(boundSession, tab))) return false
+        if ((await getWorkbenchPanel(tab.panelId)?.onCloseTab?.(tab)) === false) return false
+        const next = closeWorkbenchPanelTab(target.tabs(), target.active(), tabId)
+        target.setTabs(next.tabs)
+        target.setActive(next.active)
+        if (!next.tabs.length) target.close()
+        return true
       } finally {
-        closeGuard.end(tabId)
+        closeGuard.end(guardKey)
       }
     }
 
+    async function closeTab(tabId: string) {
+      const boundSession = sessionKey()
+      for (const surfaceName of ["side", "bottom"] as const) {
+        if (
+          !layout
+            .surface(boundSession, surfaceName)
+            .tabs()
+            .some((tab) => tab.id === tabId)
+        )
+          continue
+        return closeBoundTab(boundSession, surfaceName, tabId)
+      }
+      return true
+    }
+
     async function closeOtherTabsOnSurface(surfaceName: WorkbenchPanelSurface, keepTabId: string) {
-      if (batchClosingSurfaces.has(surfaceName)) return
-      const target = surface(surfaceName)
+      const boundSession = sessionKey()
+      const batchKey = JSON.stringify([boundSession, surfaceName])
+      if (batchClosingSurfaces.has(batchKey)) return
+      const target = layout.surface(boundSession, surfaceName)
       const keep = target.tabs().find((item) => item.id === keepTabId)
       if (!keep) return
 
-      batchClosingSurfaces.add(surfaceName)
+      batchClosingSurfaces.add(batchKey)
       try {
-        // Snapshot the batch at call time. Each onCloseTab hook can take a
-        // network round-trip (terminal pty removal); during that window the
-        // store may legitimately change: tabs the user opens now must not be
-        // swept, and a tab already closed through closeTab must not have its
-        // hook run twice.
-        const closingIds = new Set(target.tabs().map((tab) => tab.id))
-        closingIds.delete(keepTabId)
-        for (const tabId of closingIds) {
-          if (!closeGuard.begin(tabId)) continue
+        const closingIds = target
+          .tabs()
+          .filter((tab) => tab.id !== keepTabId)
+          .map((tab) => tab.id)
+        for (const id of closingIds) {
           try {
-            const tab = target.tabs().find((item) => item.id === tabId)
-            if (!tab) continue
-            const entry = getWorkbenchPanel(tab.panelId)
-            if (!entry?.onCloseTab) continue
-            try {
-              await entry.onCloseTab(tab)
-            } catch (error) {
-              console.error("Workbench close-others onCloseTab failed for", tab.panelId, error)
-            }
-          } finally {
-            closeGuard.end(tabId)
+            await closeBoundTab(boundSession, surfaceName, id)
+          } catch (error) {
+            console.error("Workbench resource could not close", error)
           }
         }
-
-        const next = closeOtherWorkbenchPanelTabs(target.tabs(), target.active(), keepTabId, closingIds)
-        target.setTabs(next.tabs)
-        target.setActive(next.active)
-        if (next.tabs.length === 0) target.close()
+        if (target.tabs().some((tab) => tab.id === keepTabId)) target.setActive(keepTabId)
       } finally {
-        batchClosingSurfaces.delete(surfaceName)
+        batchClosingSurfaces.delete(batchKey)
       }
     }
 
@@ -229,23 +251,6 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       return getWorkbenchPanel(tab.panelId)
     }
 
-    const openFromPlugin = (event: Event) => {
-      const detail = (
-        event as CustomEvent<{ panelId?: string; resource?: { id: string; title?: string; state?: unknown } }>
-      ).detail
-      if (!detail?.panelId) return
-      void openPanel(detail.panelId, {
-        init: {
-          resourceId: detail.resource?.id,
-          title: detail.resource?.title,
-          state: detail.resource?.state,
-          source: "plugin",
-        },
-      })
-    }
-    window.addEventListener("synergy:plugin-open-workbench", openFromPlugin)
-    onCleanup(() => window.removeEventListener("synergy:plugin-open-workbench", openFromPlugin))
-
     return {
       surface,
       panels(surfaceName: WorkbenchPanelSurface) {
@@ -255,6 +260,9 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       panelForTab,
       panelTitle,
       openPanel,
+      beforeClose(tabId: string, handler: () => boolean | Promise<boolean>) {
+        return closePolicy.register(sessionKey(), tabId, handler)
+      },
       closeTab,
       closeOtherTabs,
       closeOtherTabsOnSurface,

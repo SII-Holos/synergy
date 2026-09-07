@@ -18,7 +18,7 @@ const inboxCss = await Bun.file(new URL("../../../src/components/session/session
 
 async function dockTopPaddingClass(): Promise<string> {
   const source = await Bun.file(new URL("../../../src/components/session/prompt-dock.tsx", import.meta.url)).text()
-  const match = source.match(/"((?:md:)?pt-12)":\s*!props\.isNewSession\(\)/)
+  const match = source.match(/"((?:md:)?pt-12)":\s*!layout\.isNewSession\(\)/)
   if (!match) throw new Error("prompt-dock.tsx must declare the dock top padding class next to isNewSession")
   return match[1]!
 }

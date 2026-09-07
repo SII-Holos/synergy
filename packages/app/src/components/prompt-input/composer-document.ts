@@ -48,6 +48,7 @@ export interface ComposerExtensionService {
 }
 
 type Adapter = {
+  editable?(): boolean
   read(): Omit<ComposerDocumentSnapshot, "revision">
   applyEdits(edits: ComposerEdit[]): void | Promise<void>
   isEditableRange?(range: TextRange): boolean
@@ -57,7 +58,13 @@ type OwnedRegistration = ComposerExtensionRegistration & { order: number; degrad
 
 export class ComposerDocumentError extends Error {
   constructor(
-    readonly code: "stale_revision" | "invalid_range" | "overlapping_edits" | "capability_denied",
+    readonly code:
+      | "stale_revision"
+      | "invalid_range"
+      | "overlapping_edits"
+      | "capability_denied"
+      | "read_only"
+      | "composing",
     message: string,
   ) {
     super(message)
@@ -208,6 +215,7 @@ export class ComposerDocumentController {
   }
 
   async applyEdits(input: { revision: number; edits: ComposerEdit[] }): Promise<ComposerDocumentSnapshot> {
+    this.#assertEditable()
     const snapshot = this.current()
     if (input.revision !== snapshot.revision) {
       throw new ComposerDocumentError("stale_revision", "Composer document changed before edits were applied")
@@ -235,6 +243,7 @@ export class ComposerDocumentController {
   }
 
   async beforeSubmit(signal?: AbortSignal) {
+    this.#assertEditable()
     if (this.#submitting) throw new Error("Composer submit hooks are already running")
     this.#submitting = true
     this.#submitController = new AbortController()
@@ -277,6 +286,11 @@ export class ComposerDocumentController {
     this.#completions.clear()
     this.#decorations.clear()
     this.#notify()
+  }
+
+  #assertEditable() {
+    if (this.#adapter.editable?.() === false) throw new ComposerDocumentError("read_only", "Composer is read-only")
+    if (this.#composing) throw new ComposerDocumentError("composing", "Wait for text composition to finish")
   }
 
   #ordered() {

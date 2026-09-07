@@ -1,3 +1,4 @@
+import { SkinPreferenceRow } from "@/plugin/skin-preference-row"
 import { For, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -10,12 +11,13 @@ import type { LocalePreference } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import { usePlatform, type DesktopUpdateMode } from "@/context/platform"
 import { DevicePushBlock } from "./DevicePushBlock"
-import { SettingRow } from "../components/SettingRow"
+import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
 import { SegmentPill } from "../components/SegmentPill"
 import { ThemePicker } from "../components/ThemePicker"
-import { MenuField } from "../../menu-field/MenuField"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import { InterfaceZoom } from "./interface-zoom"
+import { ShellPreferenceRow } from "@/plugin/shell-preference-row"
 import {
   desktopUpdateStatusCopy,
   downloadLabel,
@@ -238,6 +240,8 @@ export function GeneralPanel(props: {
   return (
     <SettingsPage title={_(copy.pageTitle)} description={_(copy.pageDescription)}>
       <SettingsSection title={_(copy.appearanceTitle)}>
+        <ShellPreferenceRow popoverLayer={props.popoverLayer} />
+        <SkinPreferenceRow popoverLayer={props.popoverLayer} onThemeChange={setThemeId} />
         <div class="settings-theme-picker-section">
           <div class="settings-theme-picker-copy">
             <span class="settings-row-title">{_(copy.themeTitle)}</span>

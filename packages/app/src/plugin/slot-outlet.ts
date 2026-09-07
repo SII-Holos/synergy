@@ -1,3 +1,4 @@
+import { useExtensionOutlet } from "@ericsanchezok/synergy-ui/context/extension-outlet"
 /**
  * Unified plugin slot outlet.
  *
@@ -31,18 +32,19 @@ import { PluginErrorBoundary } from "./components/plugin-error-boundary"
 
 /** Apply the slot entry's `when` conditions against the outlet context. */
 export function filterSlotEntry(entry: SlotEntryBase, context: { session?: boolean }): boolean {
+  if (entry.visible && !entry.visible()) return false
   if (!entry.when) return true
   if (entry.when.session !== undefined && entry.when.session !== context.session) return false
   return true
 }
 
-function SlotEntryView(props: { entry: SlotEntryBase; session?: boolean }) {
+function SlotEntryView(props: { entry: SlotEntryBase; sessionId?: string }) {
   const [component, setComponent] = createSignal<Component<object>>()
   const [loadError, setLoadError] = createSignal<unknown>()
   createEffect(() => {
     const loader = props.entry.loader
     props.entry
-    props.session
+    props.sessionId
     if (!loader) return
     // The entry (or session context) changed: drop the previous entry's
     // component/error state before starting the new load.
@@ -92,6 +94,9 @@ function SlotEntryView(props: { entry: SlotEntryBase; session?: boolean }) {
           get component() {
             return viewComponent()!
           },
+          get sessionId() {
+            return props.sessionId
+          },
         }),
       })
     },
@@ -100,16 +105,17 @@ function SlotEntryView(props: { entry: SlotEntryBase; session?: boolean }) {
 
 export function SlotOutlet(props: {
   slot: string
-  session?: boolean
+  sessionId?: string
   fallback?: JSX.Element
   registry?: SlotRegistry
 }) {
+  useExtensionOutlet(props.slot)
   const registry = props.registry ?? pluginSlots
   const [version, setVersion] = createSignal(0)
   onCleanup(registry.subscribe(() => setVersion((value) => value + 1)))
   const entries = createMemo(() => {
     version()
-    return registry.list(props.slot).filter((entry) => filterSlotEntry(entry, { session: props.session }))
+    return registry.list(props.slot).filter((entry) => filterSlotEntry(entry, { session: Boolean(props.sessionId) }))
   })
   return Show({
     get when() {
@@ -120,7 +126,13 @@ export function SlotOutlet(props: {
       get each() {
         return entries()
       },
-      children: (entry: SlotEntryBase) => createComponent(SlotEntryView, { entry, session: props.session }),
+      children: (entry: SlotEntryBase) =>
+        createComponent(SlotEntryView, {
+          entry,
+          get sessionId() {
+            return props.sessionId
+          },
+        }),
     }),
   })
 }

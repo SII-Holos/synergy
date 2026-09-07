@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import { render } from "solid-js/web"
-import { ErrorBoundary, createComponent, type JSX } from "solid-js"
+import { ErrorBoundary, createComponent, createSignal, onCleanup, type JSX } from "solid-js"
 
 mock.module("@lingui/solid", () => ({
   useLingui: () => ({
@@ -65,6 +65,43 @@ afterEach(() => {
 })
 
 describe("SlotOutlet", () => {
+  test("rebinds a retained outlet when the session identity changes", async () => {
+    const reg = registry()
+    const [sessionId, setSessionId] = createSignal("session-a")
+    const released: string[] = []
+    reg.register(
+      simpleEntry({
+        loader: async () => ({
+          default: (props: { sessionId?: string }) => {
+            const id = props.sessionId ?? "none"
+            onCleanup(() => released.push(id))
+            return node("slot-session", id)
+          },
+        }),
+      }),
+    )
+    const target = document.createElement("div")
+    const dispose = render(
+      () =>
+        createComponent(SlotOutlet, {
+          slot: "sidebar.footer",
+          registry: reg,
+          get sessionId() {
+            return sessionId()
+          },
+        }),
+      target,
+    )
+    await Bun.sleep(5)
+    expect(target.textContent).toBe("session-a")
+    setSessionId("session-b")
+    await Bun.sleep(5)
+    expect(target.textContent).toBe("session-b")
+    expect(released).toEqual(["session-a"])
+    dispose()
+    expect(released).toEqual(["session-a", "session-b"])
+  })
+
   test("renders fallback when the slot is empty", async () => {
     const reg = registry()
     const target = document.createElement("div")
@@ -124,10 +161,7 @@ describe("SlotOutlet", () => {
     const without = reg.register(simpleEntry({ id: "test:any" }))
     const target = document.createElement("div")
     document.body.append(target)
-    const dispose = render(
-      () => createComponent(SlotOutlet, { slot: "sidebar.footer", session: false, registry: reg }),
-      target,
-    )
+    const dispose = render(() => createComponent(SlotOutlet, { slot: "sidebar.footer", registry: reg }), target)
     for (let attempt = 0; attempt < 20 && !target.querySelector('[data-testid="slot-entry"]'); attempt++) {
       await Bun.sleep(1)
     }

@@ -8,20 +8,15 @@ import { usePrompt } from "@/context/prompt"
 import type { ContentPart, NoteAttachmentPart, SessionAttachmentPart } from "@/context/prompt"
 import { PromptAttachmentError, uploadPromptAttachment } from "@/utils/prompt-attachment"
 import { useLocale } from "@/context/locale"
-import {
-  formatAttachmentBatchToast,
-  formatOversizedAttachmentToast,
-  isPromptAttachmentOversized,
-  partitionPromptAttachmentFiles,
-} from "./files"
-import { createPromptPartID } from "./content"
+import { formatAttachmentBatchToast, formatOversizedAttachmentToast, partitionPromptAttachmentFiles } from "./files"
+import { createPromptPartID, inlineLength } from "./content"
 import { getCursorPosition } from "./editor-dom"
 import { PI } from "./prompt-input-i18n"
 import type { BlueprintSlot, DroppedBlueprintData, DroppedSessionData, PromptInputStore } from "./types"
 import { decideDroppedSession } from "./session-drop"
 
 type PromptAttachmentsInput = {
-  editor: () => HTMLDivElement
+  editor: () => HTMLDivElement | undefined
   isFocused: Accessor<boolean>
   addPart: (part: ContentPart) => void
   noteAttachments: Accessor<NoteAttachmentPart[]>
@@ -49,19 +44,18 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
   const dialog = useDialog()
   const { i18n } = useLocale()
 
-  const addAttachment = async (file: File) => {
-    if (isPromptAttachmentOversized(file)) {
-      const toast = formatOversizedAttachmentToast([file], 0, i18n)
-      if (toast) showToast(toast)
-      return
-    }
+  const cursor = () => {
+    const editor = input.editor()
+    return prompt.cursor() ?? (editor ? getCursorPosition(editor) : inlineLength(prompt.current()))
+  }
 
+  const appendAttachment = async (file: File, draft: ReturnType<typeof prompt.capture>["draft"]) => {
     try {
-      const cursorPosition = prompt.cursor() ?? getCursorPosition(input.editor())
+      const cursorPosition = draft.cursor() ?? cursor()
       const uploaded = await uploadPromptAttachment(sdk.client, file)
-      prompt.set(
+      draft.set(
         [
-          ...prompt.current(),
+          ...draft.current(),
           {
             type: "attachment",
             id: createPromptPartID(),
@@ -102,8 +96,13 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
     const { accepted, rejected } = partitionPromptAttachmentFiles(all)
     const toast = formatOversizedAttachmentToast(rejected, accepted.length, i18n)
     if (toast) showToast(toast)
-    for (const file of accepted) {
-      await addAttachment(file)
+    const draft = prompt.capture()
+    try {
+      for (const file of accepted) {
+        await appendAttachment(file, draft.draft)
+      }
+    } finally {
+      draft.release()
     }
   }
 
@@ -181,6 +180,7 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
 
     const blueprintData = event.dataTransfer?.getData("application/x-synergy-blueprint")
     if (blueprintData) {
+      const binding = prompt.capture()
       try {
         const dropped = JSON.parse(blueprintData) as DroppedBlueprintData
         if (!dropped.noteID) return
@@ -230,6 +230,7 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
               return
             }
           }
+          if (!binding.isCurrent()) return
           input.clearPendingWorkflows()
         }
         input.setLocalArmedLoop({
@@ -238,7 +239,10 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
           title: dropped.title || "Blueprint",
           runMode: "current",
         })
-      } catch {}
+      } catch {
+      } finally {
+        binding.release()
+      }
       return
     }
 
@@ -248,7 +252,7 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
         const dropped = JSON.parse(sessionData) as DroppedSessionData
         const decision = decideDroppedSession(dropped, params.id, input.sessionAttachments())
         if (!decision.accepted) return
-        const cursorPosition = prompt.cursor() ?? getCursorPosition(input.editor())
+        const cursorPosition = cursor()
         prompt.set(
           [
             ...prompt.current(),
@@ -273,7 +277,7 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
         const { id: noteId, title, content } = JSON.parse(noteData)
         const existing = input.noteAttachments().find((note) => note.noteId === noteId)
         if (existing) return
-        const cursorPosition = prompt.cursor() ?? getCursorPosition(input.editor())
+        const cursorPosition = cursor()
         prompt.set(
           [
             ...prompt.current(),
@@ -298,7 +302,6 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
   }
 
   return {
-    addAttachment,
     addAttachments,
     removeAttachment,
     handlePaste,

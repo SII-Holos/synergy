@@ -2,7 +2,7 @@ import { createMemo } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import type { SkillList } from "@ericsanchezok/synergy-sdk/client"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
-import { SettingRow } from "../components/SettingRow"
+import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { SkillsSettings } from "../types"
 

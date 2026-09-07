@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/solid"
-import { SettingRow } from "../components/SettingRow"
+import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
 import { createZoomSliderModel } from "./zoom-slider-model"
 
 const copy = {

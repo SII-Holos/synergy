@@ -1,9 +1,12 @@
-import { createMemo, createSignal, onCleanup, onMount, Show, type Accessor } from "solid-js"
+import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { useLocale } from "@/context/locale"
+import { createCommandRegistry, type CommandOption } from "./command-registry"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
+export type { CommandOption } from "./command-registry"
 import { AP } from "@/app-i18n"
 
 const IS_MAC = typeof navigator === "object" && /(Mac|iPod|iPhone|iPad)/.test(navigator.platform)
@@ -16,19 +19,6 @@ export interface Keybind {
   meta: boolean
   shift: boolean
   alt: boolean
-}
-
-export interface CommandOption {
-  id: string
-  title: string
-  description?: string
-  category?: string
-  keybind?: KeybindConfig
-  slash?: string
-  suggested?: boolean
-  disabled?: boolean
-  onSelect?: (source?: "palette" | "keybind" | "slash") => void
-  onHighlight?: () => (() => void) | void
 }
 
 export function parseKeybind(config: string): Keybind[] {
@@ -116,7 +106,7 @@ export function formatKeybind(config: string): string {
   return IS_MAC ? parts.join("") : parts.join("+")
 }
 
-function DialogCommand(props: { options: CommandOption[] }) {
+function DialogCommand(props: { options: CommandOption[]; execute(option: CommandOption): void }) {
   const dialog = useDialog()
   let cleanup: (() => void) | void
   let committed = false
@@ -127,11 +117,11 @@ function DialogCommand(props: { options: CommandOption[] }) {
   }
 
   const handleSelect = (option: CommandOption | undefined) => {
-    if (option) {
+    if (option && !option.disabled) {
       committed = true
       cleanup = undefined
       dialog.close()
-      option.onSelect?.("palette")
+      props.execute(option)
     }
   }
 
@@ -176,21 +166,21 @@ function DialogCommand(props: { options: CommandOption[] }) {
 export const { use: useCommand, provider: CommandProvider } = createSimpleContext({
   name: "Command",
   init: () => {
-    const [registrations, setRegistrations] = createSignal<Accessor<CommandOption[]>[]>([])
+    const registry = createCommandRegistry()
+    const execute = (option: CommandOption, source: "palette" | "keybind") => {
+      void registry.trigger(option.id.replace(/^suggested\./, ""), source).catch((error) => {
+        showToast({
+          title: option.title,
+          description: error instanceof Error ? error.message : String(error),
+          type: "error",
+        })
+      })
+    }
     const [suspendCount, setSuspendCount] = createSignal(0)
     const dialog = useDialog()
 
     const options = createMemo(() => {
-      const seen = new Set<string>()
-      const all: CommandOption[] = []
-
-      for (const reg of registrations()) {
-        for (const opt of reg()) {
-          if (seen.has(opt.id)) continue
-          seen.add(opt.id)
-          all.push(opt)
-        }
-      }
+      const all = registry.options()
 
       const suggested = all.filter((x) => x.suggested && !x.disabled)
 
@@ -208,12 +198,17 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
 
     const showPalette = () => {
       if (!dialog.active) {
-        dialog.show(() => <DialogCommand options={options().filter((x) => !x.disabled)} />)
+        dialog.show(() => (
+          <DialogCommand
+            options={options().filter((x) => !x.disabled)}
+            execute={(option) => execute(option, "palette")}
+          />
+        ))
       }
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (suspended()) return
+      if (suspended() || event.defaultPrevented || event.isComposing) return
 
       const paletteKeybinds = parseKeybind("mod+shift+p")
       if (matchKeybind(paletteKeybinds, event)) {
@@ -229,7 +224,7 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
         const keybinds = parseKeybind(option.keybind)
         if (matchKeybind(keybinds, event)) {
           event.preventDefault()
-          option.onSelect?.("keybind")
+          execute(option, "keybind")
           return
         }
       }
@@ -244,21 +239,8 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
     })
 
     return {
-      register(cb: () => CommandOption[]) {
-        const results = createMemo(cb)
-        setRegistrations((arr) => [results, ...arr])
-        onCleanup(() => {
-          setRegistrations((arr) => arr.filter((x) => x !== results))
-        })
-      },
-      trigger(id: string, source?: "palette" | "keybind" | "slash") {
-        for (const option of options()) {
-          if (option.id === id || option.id === "suggested." + id) {
-            option.onSelect?.(source)
-            return
-          }
-        }
-      },
+      register: registry.register,
+      trigger: registry.trigger,
       keybind(id: string) {
         const option = options().find((x) => x.id === id || x.id === "suggested." + id)
         if (!option?.keybind) return ""

@@ -1,3 +1,5 @@
+import { Bus } from "../bus"
+import { PluginEvent } from "./event"
 import path from "path"
 import { pathToFileURL } from "url"
 import type {
@@ -96,8 +98,8 @@ function registerResolved(spec: string, resolved: ResolvedPluginSpec): LoadedPlu
     enabledScopes: new Set(),
     contributionHealth: new Map(),
   }
-  catalog.set(plugin.id, plugin)
   pluginContributionAdapters.registerPlugin(plugin.id, manifest)
+  catalog.set(plugin.id, plugin)
   specToPluginId.set(spec, plugin.id)
   return plugin
 }
@@ -125,7 +127,7 @@ export function identifyFailedPluginRegistration(input: {
   }
 }
 
-class ApprovalRequiredError extends Error {
+export class ApprovalRequiredError extends Error {
   constructor(
     message: string,
     readonly manifest: PluginManifestType,
@@ -262,6 +264,13 @@ export async function reloadDevelopmentGeneration(input: {
   if (resolved.manifest.artifacts.generation !== input.generation) {
     throw new Error("Development generation manifest mismatch")
   }
+  const approval = await getApproval(input.pluginId)
+  if (!approval || !verifyApproval(approval, resolved.manifest, undefined, { source: current.source }))
+    throw new ApprovalRequiredError(
+      `Plugin ${input.pluginId} requires capability approval before development reload`,
+      resolved.manifest,
+    )
+  pluginContributionAdapters.validatePlugin(input.pluginId, resolved.manifest)
   if (resolved.entryPath) {
     await pluginRuntimeManager.start({
       manifest: resolved.manifest,
@@ -273,6 +282,7 @@ export async function reloadDevelopmentGeneration(input: {
   const registered = registerResolved(current.spec, resolved)
   const [{ Agent }, { ToolRegistry }] = await Promise.all([import("../agent/agent"), import("../tool/registry")])
   await Promise.all([Agent.reload(), ToolRegistry.reload()])
+  await Bus.publish(PluginEvent.UIUpdated, { scopeId: ScopeContext.current.scope.id })
   return registered
 }
 

@@ -49,7 +49,8 @@
     "quality": "bun run quality:quick && bun run release:test && bun turbo test",
     "typecheck": "bun turbo typecheck",
     "prepare": "husky",
-    "test": "echo 'Root test is intentionally disabled. Use bun run quality, bun turbo test, or cd packages/synergy && bun test.' && exit 1"
+    "test": "echo 'Root test is intentionally disabled. Use bun run quality, bun turbo test, or cd packages/synergy && bun test.' && exit 1",
+    "plugin-ui:test": "bun test --config /dev/null test/plugin-ui5"
   },
   "workspaces": {
     "packages": [

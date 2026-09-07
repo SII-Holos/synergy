@@ -1,3 +1,5 @@
+import { Bus } from "../bus"
+import { PluginEvent } from "./event"
 import { Config } from "../config/config"
 import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
@@ -321,6 +323,7 @@ export async function reload() {
   const loaded = await getLoadedPlugins()
   await replaceForPlugins(await mcpCandidates(loaded))
   await reattachWorkflowTimers()
+  await Bus.publish(PluginEvent.UIUpdated, { scopeId: ScopeContext.current.scope.id })
 }
 
 export async function reloadMcpContributions() {

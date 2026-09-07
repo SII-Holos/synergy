@@ -1,3 +1,6 @@
+import type { PluginManifestContribution } from "./manifest.js"
+import type { PluginUICondition } from "./ui-condition.js"
+import type { PluginPageId } from "./ui-catalog.js"
 import z from "zod"
 import type {
   BlueprintAfterInput,
@@ -164,6 +167,11 @@ export interface NavigationItemContribution extends UISurfaceContributionBase<"u
   placement: "sidebar" | "page"
 }
 
+export interface ShellContribution extends UISurfaceContributionBase<"ui.shell"> {
+  component: TrustedComponentReference
+  pages?: Partial<Record<PluginPageId, TrustedComponentReference>>
+}
+
 export interface MessageRendererContribution extends UISurfaceContributionBase<"ui.messageRenderer"> {
   messageType: string
   tool?: string
@@ -232,12 +240,17 @@ export interface SlotContribution extends UISurfaceContributionBase<"ui.slot"> {
   /** Host-declared slot name, e.g. "sidebar.footer" or "session.empty". */
   slot: string
   /** Minimal visibility conditions. Omit to always show. */
-  when?: { session?: boolean }
+  when?: PluginUICondition
   /** A slot is a render position: it always needs a trusted component. */
   component: TrustedComponentReference
 }
 
 export interface ThemeContribution extends ContributionBase<"ui.theme"> {
+  label: string
+  path: string
+}
+
+export interface SkinContribution extends ContributionBase<"ui.skin"> {
   label: string
   path: string
 }
@@ -258,7 +271,12 @@ export interface LifecycleUninstallContribution extends ContributionBase<"lifecy
   handler(context: PluginInvocationContext): Promise<void>
 }
 
+export type UICommandContribution = Extract<PluginManifestContribution, { kind: "ui.command" }>
+export type UIMenuContribution = Extract<PluginManifestContribution, { kind: "ui.menu" }>
+
 export type PluginContribution =
+  | UICommandContribution
+  | UIMenuContribution
   | OperationContribution
   | EventContribution
   | ToolContribution
@@ -269,6 +287,7 @@ export type PluginContribution =
   | McpContribution
   | AuthProviderContribution
   | WorkbenchPanelContribution
+  | ShellContribution
   | NavigationItemContribution
   | MessageRendererContribution
   | ComposerActionContribution
@@ -279,6 +298,7 @@ export type PluginContribution =
   | SettingsContribution
   | SlotContribution
   | ThemeContribution
+  | SkinContribution
   | IconContribution
   | LifecycleInstallContribution
   | LifecycleUpgradeContribution
@@ -361,6 +381,17 @@ export function navigationItem(
   return { ...input, kind: "ui.navigationItem", order: input.order ?? 1000 }
 }
 
+export function shell(
+  input: Omit<ShellContribution, "kind" | "order" | "requires"> & { order?: number; requires?: string[] },
+): ShellContribution {
+  return {
+    ...input,
+    kind: "ui.shell",
+    order: input.order ?? 1000,
+    requires: [...new Set(["ui.shell", ...(input.requires ?? [])])],
+  }
+}
+
 export function messageRenderer(
   input: Omit<MessageRendererContribution, "kind" | "order"> & { order?: number },
 ): MessageRendererContribution {
@@ -439,4 +470,17 @@ export function schemaToJsonSchema(schema: PluginSchema): PluginJsonSchema {
     return z.toJSONSchema(schema as unknown as z.ZodType) as PluginJsonSchema
   }
   return structuredClone(schema)
+}
+
+export function skin(input: Omit<SkinContribution, "kind">): SkinContribution {
+  return { ...input, kind: "ui.skin" }
+}
+
+export function uiCommand(
+  input: Omit<UICommandContribution, "kind" | "requires"> & { requires?: string[] },
+): UICommandContribution {
+  return { ...input, kind: "ui.command", requires: [...new Set(["ui.commands", ...(input.requires ?? [])])] }
+}
+export function uiMenu(input: Omit<UIMenuContribution, "kind" | "order"> & { order?: number }): UIMenuContribution {
+  return { ...input, kind: "ui.menu", order: input.order ?? 1000 }
 }

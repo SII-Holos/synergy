@@ -19,6 +19,9 @@ mock.module("@solidjs/router", () => ({
     },
   }),
 }))
+mock.module("../../src/context/global-sdk", () => ({
+  useGlobalSDK: () => ({ event: { listen: () => () => {} } }),
+}))
 mock.module("../../src/context/server", () => ({
   useServer: () => ({ url: "http://registrar.local" }),
 }))
@@ -51,6 +54,7 @@ const SKIN_B: PluginThemeDefinition = {
 function assetsWith(themes: PluginThemeDefinition[]): PluginUIAssets {
   return {
     themes: new Map(themes.map((entry) => [entry.id, entry])),
+    skins: new Map(),
     icons: new Map(),
     stylesheets: new Map(),
     errors: [],

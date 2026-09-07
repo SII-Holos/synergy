@@ -7,7 +7,7 @@ import { List } from "@ericsanchezok/synergy-ui/list"
 import { channelAccountVariantKeys } from "../channel-account-model"
 import type { AccountToggle, ProviderGroup } from "../types"
 import { ModelVariantPicker } from "./ModelVariantPicker"
-import { SettingRow } from "./SettingRow"
+import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
 
 const useDefaultLabel = { id: "settings.accountToggle.useDefault", message: "Use default" }
 const inheritDesc = { id: "settings.accountToggle.inherit", message: "Inherit from global model config" }

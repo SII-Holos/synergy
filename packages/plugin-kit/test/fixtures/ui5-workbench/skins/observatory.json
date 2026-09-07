@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "id": "observatory",
+  "assets": {
+    "font": {
+      "kind": "font",
+      "path": "assets/inter.woff2"
+    },
+    "grid": {
+      "kind": "image",
+      "path": "assets/grid.svg"
+    },
+    "orbit": {
+      "kind": "image",
+      "path": "assets/orbit.svg"
+    }
+  },
+  "light": {
+    "density": "compact",
+    "typography": {
+      "sans": "font"
+    },
+    "parts": {
+      "workbench": {
+        "background": {
+          "asset": "grid",
+          "fit": "auto",
+          "repeat": "repeat",
+          "opacity": 0.35
+        },
+        "decoration": {
+          "asset": "orbit",
+          "width": 48,
+          "height": 72,
+          "opacity": 0.22,
+          "narrow": "hide"
+        }
+      },
+      "composer": {
+        "radius": 2,
+        "borderWidth": 1,
+        "shadow": "none"
+      },
+      "resource-panel": {
+        "radius": 2,
+        "borderWidth": 1
+      }
+    }
+  },
+  "dark": {
+    "density": "compact",
+    "typography": {
+      "sans": "font"
+    },
+    "parts": {
+      "workbench": {
+        "background": {
+          "asset": "grid",
+          "fit": "auto",
+          "repeat": "repeat",
+          "opacity": 0.22
+        },
+        "decoration": {
+          "asset": "orbit",
+          "width": 48,
+          "height": 72,
+          "opacity": 0.22,
+          "narrow": "hide"
+        }
+      },
+      "composer": {
+        "radius": 2,
+        "borderWidth": 1,
+        "shadow": "none"
+      },
+      "resource-panel": {
+        "radius": 2,
+        "borderWidth": 1
+      }
+    }
+  },
+  "narrow": {
+    "density": "compact",
+    "parts": {
+      "composer": {
+        "radius": 0
+      }
+    }
+  },
+  "reducedMotion": {
+    "decorations": "hide"
+  }
+}

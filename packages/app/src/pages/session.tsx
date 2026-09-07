@@ -1,4 +1,26 @@
-import { Show, Match, Switch, createMemo, createEffect, createSignal, on, onCleanup } from "solid-js"
+import type { PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
+import { StatusBar } from "@/components/status-bar"
+import { NewSessionGreeting } from "@/components/session/session-new-view"
+import { SlotOutlet } from "@/plugin/slot-outlet"
+import { SessionInbox } from "@/components/session/session-inbox"
+import { SubagentSessionFooter } from "@/components/session/subagent-session-footer"
+import { PromptDockFloatLayer } from "@/components/session/prompt-dock-float-layer"
+import {
+  promptDockBackPath,
+  promptDockBackToParentID,
+  promptDockForkSourceID,
+} from "@/components/session/prompt-dock-model"
+import { S } from "@/components/session/session-i18n"
+import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
+import { SessionTransitionCard } from "@/components/session/session-transition-card"
+import { HostView } from "@/plugin/host-view"
+import type { PluginSessionService, PluginSessionLayoutService } from "@ericsanchezok/synergy-plugin"
+import { DefaultSession } from "@/plugin/default-session"
+import { PluginPageOutlet } from "@/plugin/shell-outlet"
+import { BrowserViewEffects } from "@/components/workspace/browser/browser-view-effects"
+import { createPromptInputController } from "@/components/prompt-input/prompt-controller"
+import { SessionDecisionSurface } from "@/components/session/decision-surface"
+import { Show, Match, Switch, createMemo, createEffect, createSignal, on, onCleanup, untrack, type JSX } from "solid-js"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -39,6 +61,7 @@ import { useNavigateToSession } from "@/composables/use-navigate-to-session"
 import { replaceSessionHistoryUrl, sessionRouteReplaceOptions } from "@/composables/use-navigate-to-session-model"
 import { SessionConversation } from "@/components/session/conversation"
 import { PromptDock } from "@/components/session/prompt-dock"
+import { createWorkbenchService } from "@/plugin/workbench-service"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { useLocale } from "@/context/locale"
 import { AP } from "@/app-i18n"
@@ -147,6 +170,7 @@ function SessionPageContent() {
   const prompt = usePrompt()
   const { fmt, i18n } = useLocale()
   const workbench = useWorkbenchPanels()
+  const workbenchService = createWorkbenchService(workbench)
   const sessionTransition = useSessionTransition()
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const sideSurface = createMemo(() => layout.surface(sessionKey(), "side"))
@@ -1148,9 +1172,10 @@ function SessionPageContent() {
     const scrollAnchor = capturePrependScrollAnchor()
     try {
       const result = await sync.session.history.loadMore(id)
-      if (!result) return
+      if (!result || params.id !== id) return
       setStore("turnStart", 0)
       afterHistoryLayoutSettles(() => {
+        if (params.id !== id) return
         if (result === "latest") {
           autoScroll.forceScrollToBottom()
           return
@@ -1171,8 +1196,11 @@ function SessionPageContent() {
     if (!id) return
     try {
       await sync.session.history.returnLatest(id)
+      if (params.id !== id) return
       setStore("turnStart", 0)
-      afterHistoryLayoutSettles(() => autoScroll.forceScrollToBottom())
+      afterHistoryLayoutSettles(() => {
+        if (params.id === id) autoScroll.forceScrollToBottom()
+      })
     } catch (error) {
       showToast({
         type: "error",
@@ -1467,200 +1495,396 @@ function SessionPageContent() {
     clearTimeout(loadingRecoveryTimer)
   })
 
-  return (
-    <>
-      <div class="synergy-workbench-canvas relative bg-background-stronger size-full overflow-hidden flex flex-col">
-        <div class="flex-1 min-h-0 flex flex-col md:flex-row relative">
-          <div
-            class="session-workbench-pane synergy-workbench-canvas @container relative min-w-0 flex flex-1 flex-col bg-background-stronger pt-3 pb-0 md:py-3"
-            style={{
-              "min-width": isDesktop() && sideOpen() ? `${WORKSPACE_SESSION_MIN_WIDTH}px` : undefined,
-              "--prompt-height": store.promptHeight ? `${store.promptHeight}px` : undefined,
-            }}
-          >
-            <div class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
-              <SessionTopBar
-                onWorkspaceTransition={startWorkspaceTransition}
-                sessionTransitionPending={sessionTransitionPending}
-              />
-              <div class="flex-1 min-h-0 min-w-0 overflow-hidden">
-                <Switch>
-                  <Match when={!isNewSession()}>
-                    <Switch>
-                      <Match when={conversationLoadView().type === "conversation"}>
-                        <SessionConversation
-                          sessionID={params.id!}
-                          paramsDir={params.dir!}
-                          timeline={timeline}
-                          turnProjection={turnProjection}
-                          activityDisplay={activityDisplay}
-                          pendingTimeline={pendingTimeline}
-                          sessionTransition={visibleSessionTransition}
-                          sessionTransitionActions={visibleSessionTransitionActions}
-                          visibleUserMessages={visibleUserMessages}
-                          hasCanonicalRoot={() => rootMessages().length > 0}
-                          lastUserMessage={lastRenderableUserMessage}
-                          activeMessage={activeMessage}
-                          isWorking={isWorking}
-                          compactReasoning={() => sync.data.config.compactReasoning === true}
-                          turnStart={store.turnStart}
-                          turnBatch={turnBatch}
-                          onSetTurnStart={(start) => setStore("turnStart", start)}
-                          historyMore={historyMore}
-                          historyLoading={historyLoading}
-                          historyMode={historyMode}
-                          historyPendingLatest={historyPendingLatest}
-                          onLoadMore={() => void loadEarlierMessages()}
-                          onReturnLatest={() => void returnToLatestMessages()}
-                          scrolledUp={scrolledUp}
-                          onScrolledUpChange={setScrolledUp}
-                          autoScroll={autoScroll}
-                          onClearHash={clearHash}
-                          onScheduleScrollSpy={scheduleScrollSpy}
-                          setScrollRef={setScrollRef}
-                          isDesktop={isDesktop}
-                          scrollToMessage={scrollToMessage}
-                          anchor={anchor}
-                          terminalHeight={bottomSurface().opened() ? bottomSurface().size : () => 0}
-                          workspaceOpen={sideOpen}
-                          onRewind={openRewindConfirm}
-                          onReviewChanges={(input) => {
-                            if (isDesktop()) {
-                              void workbench.openPanel("session-review", {
-                                reuseExisting: true,
-                                init: {
-                                  ...(input.file ? { resourceId: input.file } : {}),
-                                  source: input.messageID,
-                                },
-                              })
-                            } else {
-                              setStore({
-                                mobileReviewOpen: true,
-                                mobileReviewSelectedFile: input.file,
-                              })
-                            }
-                          }}
-                          onPendingGuide={(item) => void guidePending(item)}
-                          onPendingRemove={(item) => void removePending(item)}
-                          onForkMessage={(messageID) => openForkConfirm(messageID)}
-                          rollbackActive={rollbackActive()}
-                        />
-                      </Match>
-                      <Match
-                        when={
-                          conversationLoadView().type === "loading" || conversationLoadView().type === "delayed-loading"
-                        }
-                      >
-                        <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger">
-                          <Spinner class="size-10 text-text-weak" />
-                          <span class="text-sm text-text-weak">{i18n._(AP.sessionLoading.id)}</span>
-                          <Show when={conversationLoadView().type === "delayed-loading"}>
-                            <button
-                              type="button"
-                              class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background-base hover:text-text-base"
-                              onClick={() => void refreshConversation()}
-                            >
-                              <Icon name={getSemanticIcon("action.refresh")} size="small" />
-                              <span>{i18n._(AP.sessionRetry.id)}</span>
-                            </button>
-                          </Show>
-                        </div>
-                      </Match>
-                      <Match when={conversationLoadView().type === "initial-error"}>
-                        <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger text-center">
-                          <span class="text-sm text-text-strong">{i18n._(AP.sessionErrorTitle.id)}</span>
-                          <span class="max-w-md text-sm text-text-weak">{conversationLoadError()}</span>
-                          <button
-                            type="button"
-                            class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background-base hover:text-text-base"
-                            onClick={() => void refreshConversation()}
-                          >
-                            <Icon name={getSemanticIcon("action.refresh")} size="small" />
-                            <span>{i18n._(AP.sessionRetry.id)}</span>
-                          </button>
-                        </div>
-                      </Match>
-                      <Match when={true}>
-                        <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger text-center">
-                          <span class="text-sm text-text-weak">{i18n._(AP.sessionNoMessages.id)}</span>
-                          <Show when={conversationLoadView().type === "empty-error"}>
-                            <span class="max-w-md text-sm text-text-error">{conversationLoadError()}</span>
-                          </Show>
-                          <button
-                            type="button"
-                            class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background-base hover:text-text-base disabled:opacity-50"
-                            disabled={conversationLoadView().type === "refreshing-empty"}
-                            onClick={() => void refreshConversation()}
-                          >
-                            <Icon
-                              name={getSemanticIcon("action.refresh")}
-                              size="small"
-                              class={conversationLoadView().type === "refreshing-empty" ? "animate-spin" : undefined}
-                            />
-                            <span>
-                              {conversationLoadView().type === "refreshing-empty"
-                                ? i18n._(AP.sessionRefreshing.id)
-                                : i18n._(AP.sessionRefresh.id)}
-                            </span>
-                          </button>
-                        </div>
-                      </Match>
-                    </Switch>
-                  </Match>
-                  <Match when={true}>{null}</Match>
-                </Switch>
-              </div>
-            </div>
-            <PromptDock
-              ref={(el) => (promptDock = el)}
-              inputRef={(el) => {
-                inputRef = el
-              }}
-              isNewSession={isNewSession}
-              isGlobal={isHomeScope(sdk.scopeKey)}
-              sessionID={params.id}
-              prompt={prompt}
-              hasCanonicalRoot={() => rootMessages().length > 0}
-              sync={sync}
-              sdk={sdk}
-              navigate={navigateToSession}
-              handoffPrompt={handoff.prompt}
-              meta={sessionMeta}
-              parentTitle={parentSession()?.title}
-              forkedFromID={currentSession()?.forkedFrom?.sessionID}
-              forkedFromTitle={forkedFromSession()?.title ?? currentSession()?.forkedFrom?.title}
-              backPath={backPath}
-              newSessionWorkspaceSelection={newSessionWorkspaceSelection}
-              newSessionCanonicalDirectory={scopeRoot}
-              newSessionCurrentDirectory={() => sync.data.path.directory}
-              onNewSessionWorkspaceSelectionChange={(selection) => setStore("newSessionWorkspaceSelection", selection)}
-              onNewSessionWorkspaceSelectionReset={() => setStore("newSessionWorkspaceSelection", undefined)}
-              onNewSessionTransitionChange={setNewSessionTransition}
-              sessionTransitionPending={sessionTransitionPending}
-              scopeName={scopeName}
-              branch={branch}
-              lastModified={lastModified}
-              workspaceOpen={sideOpen}
-              rollbackActive={rollbackActive()}
+  const [priorityControl, setPriorityControl] = createSignal<JSX.Element>()
+  const composer = createMemo(() =>
+    prompt.ready()
+      ? untrack(() =>
+          createPromptInputController({
+            ref: (element) => {
+              inputRef = element
+            },
+            get readOnly() {
+              return sessionMeta().isReadOnly
+            },
+            get newSessionWorkspaceSelection() {
+              return newSessionWorkspaceSelection()
+            },
+            get newSessionCanonicalDirectory() {
+              return scopeRoot()
+            },
+            get newSessionCurrentDirectory() {
+              return sync.data.path.directory
+            },
+            get newSessionCanCreateWorktree() {
+              return !isHomeScope(sdk.scopeKey)
+            },
+            onNewSessionWorkspaceSelectionChange: (selection) => setStore("newSessionWorkspaceSelection", selection),
+            onNewSessionWorkspaceSelectionReset: () => setStore("newSessionWorkspaceSelection", undefined),
+            onNewSessionTransitionChange: setNewSessionTransition,
+            get sessionTransitionPending() {
+              return sessionTransitionPending()
+            },
+            get hideAgentSelector() {
+              return !sessionMeta().showInputBar
+            },
+            onPriorityControlChange: (control) => setPriorityControl(() => control),
+          }),
+        )
+      : undefined,
+  )
+
+  const session: PluginSessionService = {
+    current: currentSession,
+    messages,
+    message: (id) => messages().find((message) => message.id === id),
+    parts: (id) => (messages().some((message) => message.id === id) ? dataView().partsFor(id) : []),
+    status,
+    ready: messagesReady,
+    history: () => ({
+      mode: historyMode(),
+      more: historyMore(),
+      loading: historyLoading(),
+      pendingLatest: historyPendingLatest(),
+    }),
+    loadEarlier: loadEarlierMessages,
+    returnLatest: returnToLatestMessages,
+    refresh: refreshConversation,
+    rewind: (id) => openRewindConfirm(userMessages().find((message) => message.id === id)),
+    fork: openForkConfirm,
+  }
+  const conversation: PluginConversationService = {
+    get sessionID() {
+      return params.id!
+    },
+    get timeline() {
+      return timeline
+    },
+    get turnProjection() {
+      return turnProjection
+    },
+    get activityDisplay() {
+      return activityDisplay
+    },
+    get pendingTimeline() {
+      return pendingTimeline
+    },
+    get visibleUserMessages() {
+      return visibleUserMessages
+    },
+    get hasCanonicalRoot() {
+      return () => rootMessages().length > 0
+    },
+    get lastUserMessage() {
+      return lastRenderableUserMessage
+    },
+    get activeMessage() {
+      return activeMessage
+    },
+    get isWorking() {
+      return isWorking
+    },
+    get compactReasoning() {
+      return () => sync.data.config.compactReasoning === true
+    },
+    get turnStart() {
+      return store.turnStart
+    },
+    get turnBatch() {
+      return turnBatch
+    },
+    get onSetTurnStart() {
+      return (start: number) => setStore("turnStart", start)
+    },
+    get historyMore() {
+      return historyMore
+    },
+    get historyLoading() {
+      return historyLoading
+    },
+    get historyMode() {
+      return historyMode
+    },
+    get historyPendingLatest() {
+      return historyPendingLatest
+    },
+    get onLoadMore() {
+      return () => void loadEarlierMessages()
+    },
+    get onReturnLatest() {
+      return () => void returnToLatestMessages()
+    },
+    get scrolledUp() {
+      return scrolledUp
+    },
+    get onScrolledUpChange() {
+      return setScrolledUp
+    },
+    get autoScroll() {
+      return autoScroll
+    },
+    get onClearHash() {
+      return clearHash
+    },
+    get onScheduleScrollSpy() {
+      return scheduleScrollSpy
+    },
+    get setScrollRef() {
+      return setScrollRef
+    },
+    get isDesktop() {
+      return isDesktop
+    },
+    get scrollToMessage() {
+      return scrollToMessage
+    },
+    get anchor() {
+      return anchor
+    },
+    get terminalHeight() {
+      return bottomSurface().opened() ? bottomSurface().size : () => 0
+    },
+    get workspaceOpen() {
+      return sideOpen
+    },
+    get onRewind() {
+      return openRewindConfirm
+    },
+    get onReviewChanges() {
+      return (input: { messageID: string; file?: string }) => {
+        if (isDesktop()) {
+          void workbench.openPanel("session-review", {
+            reuseExisting: true,
+            init: {
+              ...(input.file ? { resourceId: input.file } : {}),
+              source: input.messageID,
+            },
+          })
+        } else {
+          setStore({
+            mobileReviewOpen: true,
+            mobileReviewSelectedFile: input.file,
+          })
+        }
+      }
+    },
+    get onPendingGuide() {
+      return (item: SessionInboxItem) => void guidePending(item)
+    },
+    get onPendingRemove() {
+      return (item: SessionInboxItem) => void removePending(item)
+    },
+    get onForkMessage() {
+      return (messageID: string) => openForkConfirm(messageID)
+    },
+    get rollbackActive() {
+      return rollbackActive()
+    },
+    onFirstTurnMounted: () => navMark({ dir: params.dir!, to: params.id!, name: "session:first-turn-mounted" }),
+    canRewind: messageAllowsCanonicalActions,
+    transition: () => (
+      <Show when={visibleSessionTransition()}>
+        {(progress) => (
+          <div class="w-full min-w-0 px-3 md:px-1">
+            <SessionTransitionCard
+              progress={progress()}
+              onRetry={visibleSessionTransitionActions()?.retry}
+              onDismiss={visibleSessionTransitionActions()?.dismiss}
             />
           </div>
-          <Show when={sideWorkspaceMounts().desktop}>
-            <div class="hidden md:block">
+        )}
+      </Show>
+    ),
+  }
+  const composerLayout: PluginComposerLayoutService = {
+    input: () => composer()?.input,
+    mount: (element) => {
+      promptDock = element
+    },
+    ready: prompt.ready,
+    isNewSession,
+    readOnly: () => sessionMeta().isReadOnly,
+    isGlobal: () => isHomeScope(sdk.scopeKey),
+    pendingText: () => handoff.prompt || i18n._(S.dockLoadingPrompt),
+    scopeName,
+    branch,
+    lastModified,
+    links() {
+      const links: ReturnType<PluginComposerLayoutService["links"]>[number][] = []
+      const parent = promptDockBackToParentID(sessionMeta())
+      if (parent)
+        links.push({
+          id: "parent",
+          label: i18n._(S.dockBackToParent),
+          title: parentSession()?.title || i18n._(S.dockParentSession),
+          icon: "navigation.back",
+          open: () => navigateToSession(parent, "return-to-parent"),
+        })
+      const fork = promptDockForkSourceID(sessionMeta(), currentSession()?.forkedFrom?.sessionID)
+      if (fork)
+        links.push({
+          id: "fork",
+          label: i18n._(S.dockForkedFrom),
+          title: forkedFromSession()?.title ?? currentSession()?.forkedFrom?.title ?? i18n._(S.dockForkSourceTooltip),
+          icon: "workspace.worktree",
+          open: () => navigateToSession(fork),
+        })
+      const back = promptDockBackPath(sessionMeta(), backPath())
+      if (back)
+        links.push({
+          id: "back",
+          label: i18n._(S.dockBack),
+          title: i18n._(S.dockBack),
+          icon: "navigation.back",
+          open: () => navigate(back),
+        })
+      return links
+    },
+    render(part) {
+      if (part === "priority")
+        return (
+          <Show when={params.id}>
+            {(id) => <PromptDockFloatLayer sessionID={id()} priorityControl={priorityControl()} />}
+          </Show>
+        )
+      if (part === "greeting")
+        return (
+          <>
+            <NewSessionGreeting />
+            <SlotOutlet slot="session.empty" sessionId={params.id} />
+          </>
+        )
+      if (part === "status") return <StatusBar />
+      if (part === "inbox")
+        return (
+          <Show when={params.id}>
+            {(id) => (
+              <SessionInbox
+                sessionID={id()}
+                sync={sync}
+                sdk={sdk}
+                hasCanonicalRoot={rootMessages().length > 0}
+                freezeHint={rollbackActive()}
+              />
+            )}
+          </Show>
+        )
+      return (
+        <Show when={sessionMeta().cortex}>
+          {(delegation) => (
+            <Show when={params.id}>
+              {(id) => (
+                <SubagentSessionFooter
+                  cortex={delegation()}
+                  sessionID={id()}
+                  parentSessionID={sessionMeta().parentID ?? undefined}
+                />
+              )}
+            </Show>
+          )}
+        </Show>
+      )
+    },
+  }
+  const views = {
+    conversation: () => (
+      <div data-ui-part="conversation" class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
+        <SessionTopBar
+          onWorkspaceTransition={startWorkspaceTransition}
+          sessionTransitionPending={sessionTransitionPending}
+        />
+        <div class="flex-1 min-h-0 min-w-0 overflow-hidden">
+          <Switch>
+            <Match when={!isNewSession()}>
+              <Switch>
+                <Match when={conversationLoadView().type === "conversation"}>
+                  <SessionConversation context={conversation} />
+                </Match>
+                <Match
+                  when={conversationLoadView().type === "loading" || conversationLoadView().type === "delayed-loading"}
+                >
+                  <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger">
+                    <Spinner class="size-10 text-text-weak" />
+                    <span class="text-sm text-text-weak">{i18n._(AP.sessionLoading.id)}</span>
+                    <Show when={conversationLoadView().type === "delayed-loading"}>
+                      <button
+                        type="button"
+                        class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background-base hover:text-text-base"
+                        onClick={() => void refreshConversation()}
+                      >
+                        <Icon name={getSemanticIcon("action.refresh")} size="small" />
+                        <span>{i18n._(AP.sessionRetry.id)}</span>
+                      </button>
+                    </Show>
+                  </div>
+                </Match>
+                <Match when={conversationLoadView().type === "initial-error"}>
+                  <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger text-center">
+                    <span class="text-sm text-text-strong">{i18n._(AP.sessionErrorTitle.id)}</span>
+                    <span class="max-w-md text-sm text-text-weak">{conversationLoadError()}</span>
+                    <button
+                      type="button"
+                      class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background-base hover:text-text-base"
+                      onClick={() => void refreshConversation()}
+                    >
+                      <Icon name={getSemanticIcon("action.refresh")} size="small" />
+                      <span>{i18n._(AP.sessionRetry.id)}</span>
+                    </button>
+                  </div>
+                </Match>
+                <Match when={true}>
+                  <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger text-center">
+                    <span class="text-sm text-text-weak">{i18n._(AP.sessionNoMessages.id)}</span>
+                    <Show when={conversationLoadView().type === "empty-error"}>
+                      <span class="max-w-md text-sm text-text-error">{conversationLoadError()}</span>
+                    </Show>
+                    <button
+                      type="button"
+                      class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background-base hover:text-text-base disabled:opacity-50"
+                      disabled={conversationLoadView().type === "refreshing-empty"}
+                      onClick={() => void refreshConversation()}
+                    >
+                      <Icon
+                        name={getSemanticIcon("action.refresh")}
+                        size="small"
+                        class={conversationLoadView().type === "refreshing-empty" ? "animate-spin" : undefined}
+                      />
+                      <span>
+                        {conversationLoadView().type === "refreshing-empty"
+                          ? i18n._(AP.sessionRefreshing.id)
+                          : i18n._(AP.sessionRefresh.id)}
+                      </span>
+                    </button>
+                  </div>
+                </Match>
+              </Switch>
+            </Match>
+            <Match when={true}>{null}</Match>
+          </Switch>
+        </div>
+      </div>
+    ),
+    composer: () => <PromptDock context={composerLayout} />,
+    "workbench.side": () => (
+      <>
+        <Show when={sideWorkspaceMounts().desktop}>
+          <div class="hidden md:block">
+            <WorkbenchSurface surface="side" />
+          </div>
+        </Show>
+
+        {/* Mobile side workspace overlay */}
+        <Show when={sideWorkspaceMounts().mobile}>
+          <div class="absolute inset-0 z-50 flex flex-col bg-background-stronger">
+            <WorkspaceMobileHeader onClose={() => sideSurface().close()} />
+            <div class="mobile-workbench-overlay relative flex-1 min-h-0">
               <WorkbenchSurface surface="side" />
             </div>
-          </Show>
-
-          {/* Mobile side workspace overlay */}
-          <Show when={sideWorkspaceMounts().mobile}>
-            <div class="absolute inset-0 z-50 flex flex-col bg-background-stronger">
-              <WorkspaceMobileHeader onClose={() => sideSurface().close()} />
-              <div class="mobile-workbench-overlay relative flex-1 min-h-0">
-                <WorkbenchSurface surface="side" />
-              </div>
-            </div>
-          </Show>
-        </div>
-
+          </div>
+        </Show>
+      </>
+    ),
+    "workbench.bottom": () => (
+      <>
         <Show when={isDesktop()}>
           <WorkbenchSurface surface="bottom" />
         </Show>
@@ -1708,7 +1932,31 @@ function SessionPageContent() {
             </div>
           </div>
         </Show>
-      </div>
+      </>
+    ),
+  }
+  const sessionLayout: PluginSessionLayoutService = {
+    minimumWidth: () => (isDesktop() && sideOpen() ? WORKSPACE_SESSION_MIN_WIDTH : undefined),
+    promptHeight: () => store.promptHeight || undefined,
+    render: (part) => <HostView render={views[part]} />,
+  }
+  return (
+    <>
+      <SessionDecisionSurface sessionId={params.id} />
+      <BrowserViewEffects timeline={timeline} />
+      <Show when={composer()}>{(controller) => controller().extensions()}</Show>
+      <PluginPageOutlet
+        page="session"
+        sessionId={params.id}
+        session={session}
+        conversation={params.id ? conversation : undefined}
+        composerLayout={composerLayout}
+        input={composer()?.input}
+        layout={sessionLayout}
+        workbench={workbenchService}
+        views={views}
+        fallback={() => <DefaultSession context={{ layout: sessionLayout }} />}
+      />
     </>
   )
 }

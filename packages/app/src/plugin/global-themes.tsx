@@ -1,6 +1,7 @@
 import { createEffect, onCleanup } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { replacePluginThemes } from "@ericsanchezok/synergy-ui/theme"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { useServer } from "@/context/server"
 import { fetchGlobalThemeContributions } from "./api"
 import { loadPluginUIAssets } from "./ui-assets"
@@ -29,6 +30,11 @@ export function GlobalPluginThemesRegistrar() {
     host.plugins()
     if (server.url) void registrar.refresh()
   })
+  onCleanup(
+    useGlobalSDK().event.listen(({ details }) => {
+      if (details.type === "plugin.ui.updated") void registrar.refresh()
+    }),
+  )
   onCleanup(() => registrar.dispose())
   return null
 }

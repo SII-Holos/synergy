@@ -161,6 +161,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       { ...Persist.global("layout", ["layout.v8", "layout.v9"]), migrate: migrateWorkbenchLayout },
       createStore({
         ...createInitialLayoutDefaults(),
+        version: 1,
         review: {
           diffStyle: "split" as ReviewDiffStyle,
         },

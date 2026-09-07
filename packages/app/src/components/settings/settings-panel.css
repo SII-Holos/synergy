@@ -385,14 +385,6 @@
   line-height: var(--settings-type-row-title-line-height);
 }
 
-.settings-row-title {
-  color: var(--text-base);
-  font-size: var(--settings-type-row-title-size);
-  font-weight: var(--font-weight-medium);
-  line-height: var(--settings-type-row-title-line-height);
-}
-
-.settings-row-description,
 .settings-path-description,
 .settings-mcp-subtitle,
 .settings-integration-empty-copy,
@@ -457,15 +449,6 @@
 }
 
 /* ===== Setting row ===== */
-
-.ds-setting-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 54px;
-  padding: 8px 0;
-}
 
 .settings-channel-account-list {
   display: flex;
@@ -3902,13 +3885,6 @@
 }
 
 /* ===== Row state and control helpers ===== */
-
-.settings-row-state {
-  color: var(--text-weak);
-  font-size: var(--settings-type-caption-size);
-  font-weight: var(--font-weight-medium);
-  line-height: var(--settings-type-caption-line-height);
-}
 
 .settings-row-control-text {
   width: 180px;

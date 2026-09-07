@@ -8,7 +8,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { McpEntry } from "../types"
 import { SegmentPill } from "./SegmentPill"
 import { SettingsSubsection } from "./SettingsPrimitives"
-import { SettingRow } from "./SettingRow"
+import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
 
 const newServerLabel = { id: "settings.mcp.card.newServer", message: "New server" }
 const localTypeLabel = { id: "settings.mcp.card.type.local", message: "Local command" }

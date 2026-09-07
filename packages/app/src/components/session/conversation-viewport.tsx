@@ -1,13 +1,13 @@
 import type { JSX } from "solid-js"
-import { Show } from "solid-js"
+import { Show, onCleanup } from "solid-js"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
-import type { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
+import type { PluginConversationViewport } from "@ericsanchezok/synergy-plugin"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export function ConversationViewport(props: {
   scrolledUp: boolean
   onScrolledUpChange: (value: boolean) => void
-  autoScroll: ReturnType<typeof createAutoScroll>
+  autoScroll: PluginConversationViewport
   setScrollRef: (el: HTMLDivElement | undefined) => void
   overlay?: JSX.Element
   stickyHeader?: JSX.Element
@@ -18,6 +18,10 @@ export function ConversationViewport(props: {
   onScrollContainer?: (el: HTMLDivElement) => void
   children: JSX.Element
 }) {
+  onCleanup(() => {
+    props.setScrollRef(undefined)
+    props.autoScroll.contentRef(undefined)
+  })
   return (
     <div class="relative w-full h-full min-w-0">
       <Show when={props.overlay}>{props.overlay}</Show>

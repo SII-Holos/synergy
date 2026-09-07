@@ -1,3 +1,5 @@
+import { WorkbenchPanelsProvider } from "@/context/workbench"
+import { PluginPageOutlet } from "./plugin/shell-outlet"
 import "@/index.css"
 import { ErrorBoundary, Show, Switch, Match, lazy, createEffect, createMemo, type ParentProps } from "solid-js"
 import { Router, Route, Navigate } from "@solidjs/router"
@@ -26,6 +28,7 @@ import { HolosProvider } from "@/context/holos"
 import { InputProvider } from "@/context/input"
 import { FontPreferenceProvider } from "@/context/font-preference"
 import Layout from "@/pages/layout"
+import { PluginUIRecoveryProvider } from "@/plugin/ui-recovery"
 import DirectoryLayout from "@/pages/directory-layout"
 import { FatalErrorPage } from "./pages/fatal-error"
 import {
@@ -155,13 +158,15 @@ function ServerKey(props: ParentProps) {
 
 export function AppInterface() {
   return (
-    <AuthProvider>
-      <ServerProvider defaultUrl={defaultAccess.attachUrl}>
-        <ServerKey>
-          <ConnectedApp />
-        </ServerKey>
-      </ServerProvider>
-    </AuthProvider>
+    <PluginUIRecoveryProvider>
+      <AuthProvider>
+        <ServerProvider defaultUrl={defaultAccess.attachUrl}>
+          <ServerKey>
+            <ConnectedApp />
+          </ServerKey>
+        </ServerProvider>
+      </AuthProvider>
+    </PluginUIRecoveryProvider>
   )
 }
 
@@ -227,39 +232,84 @@ function ConnectedApp() {
                   base={proxyPrefix()}
                   root={(props) => (
                     <SessionTransitionProvider>
-                      <PluginRouteScope>
-                        {(scopeKey) => (
-                          <PluginHostProvider scopeKey={scopeKey}>
+                      <CommandProvider>
+                        <PluginRouteScope>
+                          {(scopeKey) => (
                             <GlobalSyncProvider>
-                              <PluginComposerSlotBridge />
-                              <PluginThemeConfigBridge />
-                              <PluginTextInteractionBridge />
-                              <GlobalPluginThemesRegistrar />
                               <LayoutProvider>
-                                <NotificationProvider>
-                                  <CommandProvider>
-                                    <Layout>{props.children}</Layout>
-                                  </CommandProvider>
-                                </NotificationProvider>
+                                <WorkbenchPanelsProvider>
+                                  <PluginHostProvider scopeKey={scopeKey}>
+                                    <PluginComposerSlotBridge />
+                                    <PluginThemeConfigBridge />
+                                    <PluginTextInteractionBridge />
+                                    <GlobalPluginThemesRegistrar />
+                                    <NotificationProvider>
+                                      <Layout>{props.children}</Layout>
+                                    </NotificationProvider>
+                                  </PluginHostProvider>
+                                </WorkbenchPanelsProvider>
                               </LayoutProvider>
                             </GlobalSyncProvider>
-                          </PluginHostProvider>
-                        )}
-                      </PluginRouteScope>
+                          )}
+                        </PluginRouteScope>
+                      </CommandProvider>
                     </SessionTransitionProvider>
                   )}
                 >
                   <Route path="/" component={() => <Navigate href={`/${base64Encode("home")}/session`} />} />
-                  <Route path="/agenda" component={() => <BuiltinNavigationPage navigationId="agenda" />} />
-                  <Route path="/kanban" component={() => <BuiltinNavigationPage navigationId="kanban" />} />
-                  <Route path="/library" component={() => <BuiltinNavigationPage navigationId="library" />} />
-                  <Route path="/performance" component={() => <BuiltinNavigationPage navigationId="performance" />} />
+                  <Route
+                    path="/agenda"
+                    component={() => (
+                      <PluginPageOutlet
+                        page="agenda"
+                        fallback={() => <BuiltinNavigationPage navigationId="agenda" />}
+                      />
+                    )}
+                  />
+                  <Route
+                    path="/kanban"
+                    component={() => (
+                      <PluginPageOutlet
+                        page="kanban"
+                        fallback={() => <BuiltinNavigationPage navigationId="kanban" />}
+                      />
+                    )}
+                  />
+                  <Route
+                    path="/library"
+                    component={() => (
+                      <PluginPageOutlet
+                        page="library"
+                        fallback={() => <BuiltinNavigationPage navigationId="library" />}
+                      />
+                    )}
+                  />
+                  <Route
+                    path="/performance"
+                    component={() => (
+                      <PluginPageOutlet
+                        page="performance"
+                        fallback={() => <BuiltinNavigationPage navigationId="performance" />}
+                      />
+                    )}
+                  />
                   <Route
                     path="/plugins/marketplace"
-                    component={() => <BuiltinNavigationPage navigationId="plugins" />}
+                    component={() => (
+                      <PluginPageOutlet
+                        page="plugins"
+                        fallback={() => <BuiltinNavigationPage navigationId="plugins" />}
+                      />
+                    )}
                   />
-                  <Route path="/plugins/:pluginId/:navigationId" component={PluginNavigationPage} />
-                  <Route path="/plugins/:pluginId" component={PluginDetailPage} />
+                  <Route
+                    path="/plugins/:pluginId/:navigationId"
+                    component={() => <PluginPageOutlet page="plugin-page" fallback={() => <PluginNavigationPage />} />}
+                  />
+                  <Route
+                    path="/plugins/:pluginId"
+                    component={() => <PluginPageOutlet page="plugin-detail" fallback={() => <PluginDetailPage />} />}
+                  />
                   <Route path="/:dir" component={DirectoryLayout}>
                     <Route path="/" component={() => <Navigate href="session" />} />
                     <Route

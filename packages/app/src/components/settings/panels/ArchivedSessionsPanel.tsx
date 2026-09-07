@@ -12,7 +12,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useLocale, type IntlFormatter } from "@/context/locale"
 import { relativeTime } from "@/utils/time"
 import { getScopeLabel } from "@/utils/scope"
-import { MenuField } from "../../menu-field/MenuField"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { SettingsEntityList, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { GlobalSessionSearchResponse } from "@ericsanchezok/synergy-sdk/client"
 

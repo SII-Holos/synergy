@@ -438,5 +438,13 @@
     "occurrence": 2,
     "category": "code",
     "reason": "The checker cannot resolve the dynamic property lookup into the descriptor object, but every ACTIVITY_TRACE_DESC.family entry is a static Lingui MessageDescriptor with an extracted ID."
+  },
+  {
+    "path": "packages/app/src/plugin/shell-outlet.tsx",
+    "kind": "user-visible-property",
+    "literal": "Synergy",
+    "occurrence": 1,
+    "category": "brand",
+    "reason": "Built-in workbench uses the product brand name."
   }
 ]

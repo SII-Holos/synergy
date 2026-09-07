@@ -3,7 +3,7 @@ import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { PasswordField } from "../components/PasswordField"
 import { SettingsPage, SettingsSection, SettingsSubsection } from "../components/SettingsPrimitives"
-import { SettingRow } from "../components/SettingRow"
+import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
 import type { EmailSettings } from "../types"
 
 const pageTitle = { id: "settings.email.page.title", message: "Email" }

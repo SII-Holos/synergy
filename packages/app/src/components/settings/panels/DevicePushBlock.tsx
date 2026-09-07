@@ -6,7 +6,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { enableDevicePush, pushCapability, PushPermissionDeniedError } from "@/utils/web-push"
 import type { PushSubscriptionInfo } from "@ericsanchezok/synergy-sdk"
-import { SettingRow } from "../components/SettingRow"
+import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
 
 const copy = {
   title: { id: "settings.general.devicePush.title", message: "Device push" },

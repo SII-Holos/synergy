@@ -1,71 +1,23 @@
+import type { PluginComponentProps, PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import { Dynamic } from "solid-js/web"
 import { For, Show, createMemo, onMount } from "solid-js"
-import type { Accessor } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { SessionTurn } from "@ericsanchezok/synergy-ui/session-turn"
-import type { SessionTurnProjection } from "@ericsanchezok/synergy-ui/session-turn-projection"
-import type { ActivityDisplayMode } from "@ericsanchezok/synergy-ui/session-turn-activity"
 import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
 import { MessageSlotOutlet } from "@ericsanchezok/synergy-ui/message-slots"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
-import type { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 import type { UserMessage, AssistantMessage, Message, SessionInboxItem } from "@ericsanchezok/synergy-sdk"
 import { SessionTimeline } from "./session-timeline"
 import { buildConversationTimelineSnapshot } from "./conversation-timeline"
 import { ConversationViewport } from "./conversation-viewport"
-import { navMark } from "@/utils/perf"
-import { BrowserViewEffects } from "@/components/workspace/browser/browser-view-effects"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import type { SessionTransitionActions, SessionTransitionProgress } from "./session-transition-progress"
-import { SessionTransitionCard } from "./session-transition-card"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
 import { pendingTimelineItemView } from "./conversation-pending"
-import { messageAllowsCanonicalActions } from "@/context/session-optimistic-message"
 
-export function SessionConversation(props: {
-  sessionID: string
-  paramsDir: string
-  timeline: Accessor<Message[]>
-  turnProjection: Accessor<SessionTurnProjection>
-  activityDisplay: Accessor<ActivityDisplayMode>
-  pendingTimeline?: Accessor<SessionInboxItem[]>
-  sessionTransition?: Accessor<SessionTransitionProgress | null>
-  sessionTransitionActions?: Accessor<SessionTransitionActions | undefined>
-  visibleUserMessages: Accessor<UserMessage[]>
-  hasCanonicalRoot: Accessor<boolean>
-  lastUserMessage: Accessor<UserMessage | undefined>
-  activeMessage: Accessor<UserMessage | undefined>
-  workspaceOpen?: Accessor<boolean>
-  isWorking: Accessor<boolean>
-  compactReasoning: Accessor<boolean>
-  turnStart: number
-  turnBatch: number
-  onSetTurnStart: (start: number) => void
-  historyMore: Accessor<boolean>
-  historyLoading: Accessor<boolean>
-  historyMode: Accessor<"latest" | "history">
-  historyPendingLatest: Accessor<boolean>
-  onReturnLatest: () => void
-  onLoadMore: () => void
-  scrolledUp: Accessor<boolean>
-  onScrolledUpChange: (val: boolean) => void
-  autoScroll: ReturnType<typeof createAutoScroll>
-  onClearHash: () => void
-  onScheduleScrollSpy: (container: HTMLDivElement) => void
-  setScrollRef: (el: HTMLDivElement | undefined) => void
-  isDesktop: Accessor<boolean>
-  scrollToMessage: (msg: UserMessage, behavior?: ScrollBehavior) => void
-  anchor: (id: string) => string
-  terminalHeight: Accessor<number>
-  onRewind?: (message: UserMessage) => void
-  onReviewChanges?: (input: { messageID: string; file?: string }) => void
-  onForkMessage?: (messageID: string) => void
-  onPendingGuide?: (item: SessionInboxItem) => void
-  onPendingRemove?: (item: SessionInboxItem) => void
-  rollbackActive?: boolean
-}) {
+export function SessionConversation(input: PluginComponentProps<PluginConversationService>) {
+  const props = input.context
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const workspaceOpen = createMemo(() => props.workspaceOpen?.() ?? false)
@@ -109,7 +61,6 @@ export function SessionConversation(props: {
       }}
     >
       <MessageSlotOutlet slot="message.above-conversation" sessionId={props.sessionID} />
-      <BrowserViewEffects timeline={props.timeline} />
       <Show when={props.turnStart > 0}>
         <div class="w-full flex justify-center">
           <Button
@@ -151,7 +102,7 @@ export function SessionConversation(props: {
       <For each={timelineSnapshot().keys}>
         {(key) => {
           onMount(() => {
-            navMark({ dir: props.paramsDir, to: props.sessionID, name: "session:first-turn-mounted" })
+            props.onFirstTurnMounted()
           })
 
           // Reading the current snapshot through getters keeps the row mounted
@@ -215,9 +166,7 @@ export function SessionConversation(props: {
                 activityDisplay={props.activityDisplay()}
                 lastUserMessageID={props.lastUserMessage()?.id}
                 compactReasoning={props.compactReasoning()}
-                onRewind={
-                  messageAllowsCanonicalActions(rootMessage()) ? () => props.onRewind?.(rootMessage()) : undefined
-                }
+                onRewind={props.canRewind(rootMessage()) ? () => props.onRewind?.(rootMessage()) : undefined}
                 rollbackActive={props.rollbackActive}
                 onReviewChanges={props.onReviewChanges}
                 onForkMessage={props.onForkMessage}
@@ -231,17 +180,7 @@ export function SessionConversation(props: {
           )
         }}
       </For>
-      <Show when={props.sessionTransition?.()}>
-        {(progress) => (
-          <div class="w-full min-w-0 px-3 md:px-1">
-            <SessionTransitionCard
-              progress={progress()}
-              onRetry={props.sessionTransitionActions?.()?.retry}
-              onDismiss={props.sessionTransitionActions?.()?.dismiss}
-            />
-          </div>
-        )}
-      </Show>
+      {props.transition?.()}
       <Show when={props.pendingTimeline?.()?.length}>
         <div class="w-full flex flex-col items-start gap-2 opacity-50">
           <For each={props.pendingTimeline?.() ?? []}>

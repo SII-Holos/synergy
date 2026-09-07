@@ -3,13 +3,19 @@ import path from "path"
 import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
+import { PluginUIArtifact } from "@ericsanchezok/synergy-plugin"
 import { Plugin } from "../plugin"
 import { getPluginConfig } from "../plugin/config-store"
 import { PluginApprovalRequiredError } from "../plugin/install"
 import { invokePluginOperation, PluginOperationError } from "../plugin/operation"
-import { reloadDevelopmentGeneration, getLoadedPlugins, getCatalogPlugin } from "../plugin/loader"
+import {
+  ApprovalRequiredError,
+  reloadDevelopmentGeneration,
+  getLoadedPlugins,
+  getCatalogPlugin,
+} from "../plugin/loader"
 import { PluginStatusSchema } from "../plugin/status"
-import { isPathContained } from "../util/path-contain"
+import { readPluginUIAsset } from "../plugin/ui-assets"
 import { errors } from "./error"
 import { ScopeContext } from "../scope/context"
 import {
@@ -38,7 +44,7 @@ const UIContribution = z.object({
   scopeId: z.string(),
   capabilities: z.array(z.string()),
   contributions: z.array(z.record(z.string(), z.unknown())),
-  uiArtifact: z.object({ entry: z.string(), sha256: z.string() }).optional(),
+  uiArtifact: PluginUIArtifact.optional(),
 })
 
 const InvokeBody = z.object({ input: JsonValue.optional(), sessionId: z.string().optional() })
@@ -52,7 +58,7 @@ const GlobalThemeContribution = z
     enabledScopes: z.array(z.string()),
     capabilities: z.array(z.string()),
     contributions: z.array(z.record(z.string(), z.unknown())),
-    uiArtifact: z.object({ entry: z.string(), sha256: z.string() }).optional(),
+    uiArtifact: PluginUIArtifact.optional(),
   })
   .meta({ ref: "GlobalThemeContribution" })
 
@@ -132,50 +138,14 @@ export const PluginRoute = new Hono()
     async (context) => {
       const pluginId = context.req.param("pluginId")
       const relative = context.req.param("asset")
-      let plugin = await Plugin.get(pluginId)
-      let catalogThemeAssetOnly = false
-      if (!plugin) {
-        // The catalog fallback exists because this route is global
-        // (isGlobalRoute): the process-wide catalog serves global theme
-        // registrations for plugins enabled in any scope without a scope
-        // hint. It requires at least one enabled scope because loader
-        // disposal removes the scope id but deliberately caches the catalog
-        // entry, and it serves only the manifest's declared ui.theme assets —
-        // the fallback's sole consumer — so the scope-less route cannot be
-        // used to read arbitrary files from a plugin directory. The
-        // generation check still pins the exact requested artifact.
-        const candidate = getCatalogPlugin(pluginId)
-        if (candidate && candidate.enabledScopes.size > 0) {
-          plugin = candidate
-          catalogThemeAssetOnly = true
-        }
-      }
-      if (!plugin || plugin.manifest.artifacts.generation !== context.req.param("generation"))
-        return context.json({ message: "Plugin generation not found" }, 404)
-      if (catalogThemeAssetOnly) {
-        const declaredThemeAsset = plugin.manifest.contributions.some(
-          (item) => item.kind === "ui.theme" && item.path === relative,
-        )
-        if (!declaredThemeAsset) return context.json({ message: "Asset not found" }, 404)
-      }
-      const file = path.resolve(plugin.pluginDir, relative)
-      if (!relative || !isPathContained(plugin.pluginDir, file))
-        return context.json({ message: "Asset not found" }, 404)
-      const data = await fs.readFile(file).catch(() => undefined)
-      if (!data) return context.json({ message: "Asset not found" }, 404)
-      const types: Record<string, string> = {
-        ".js": "text/javascript",
-        ".mjs": "text/javascript",
-        ".css": "text/css",
-        ".json": "application/json",
-        ".svg": "image/svg+xml",
-        ".png": "image/png",
-      }
-      return new Response(new Uint8Array(data), {
-        headers: {
-          "content-type": types[path.extname(file).toLowerCase()] ?? "application/octet-stream",
-          "cache-control": "no-store",
-        },
+      const local = await Plugin.get(pluginId)
+      const catalog = local ? undefined : getCatalogPlugin(pluginId)
+      const plugin = local ?? (catalog && catalog.enabledScopes.size > 0 ? catalog : undefined)
+      if (!plugin) return context.json({ message: "Plugin generation not found" }, 404)
+      const asset = await readPluginUIAsset(plugin, relative, context.req.param("generation"))
+      if (!asset) return context.json({ message: "Asset not found" }, 404)
+      return new Response(asset.data, {
+        headers: { "content-type": asset.mime, "cache-control": asset.cacheControl },
       })
     },
   )
@@ -260,11 +230,29 @@ export const PluginRoute = new Hono()
   )
   .post(
     "/dev/reload",
+    describeRoute({
+      operationId: "plugin.reloadDevelopment",
+      description: "Replace an installed development plugin with a validated artifact generation",
+      responses: {
+        200: {
+          description: "Activated development generation",
+          content: {
+            "application/json": { schema: resolver(z.object({ pluginId: z.string(), generation: z.string() })) },
+          },
+        },
+        ...errors(400, 403, 404),
+      },
+    }),
     validator("json", z.object({ pluginId: z.string(), generation: z.string(), artifactDir: z.string() })),
     async (context) => {
       const body = context.req.valid("json")
-      const plugin = await reloadDevelopmentGeneration(body)
-      return context.json({ pluginId: plugin.id, generation: plugin.manifest.artifacts.generation })
+      try {
+        const plugin = await reloadDevelopmentGeneration(body)
+        return context.json({ pluginId: plugin.id, generation: plugin.manifest.artifacts.generation })
+      } catch (error) {
+        if (error instanceof ApprovalRequiredError) return context.json({ message: error.message }, 403)
+        throw error
+      }
     },
   )
 

@@ -5,7 +5,7 @@ import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { SettingsPage, SettingsSection, SettingsSubsection } from "../components/SettingsPrimitives"
 import { AccountToggleCard } from "../components/AccountToggleCard"
 import { BasicAccountToggleCard } from "../components/BasicAccountToggleCard"
-import { SettingRow } from "../components/SettingRow"
+import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
 import type { ChannelSettings, GithubAccountToggle, ProviderGroup } from "../types"
 
 const pageTitle = { id: "settings.channels.page.title", message: "Channels" }

@@ -29,7 +29,7 @@ Read [PRODUCT.md](PRODUCT.md) before changing interaction structure, visual hier
 
 - Preserve surface polarity: dark-mode content/selection steps brighter than its container; light-mode content/selection steps darker.
 - Follow [Frontend themes and color](../../docs/reference/frontend-theming.md). Do not add Tailwind palette colors, arbitrary literal color utilities, or component-local light/dark palettes. Imperative renderers must consume the active resolved tokens and update on same-mode theme switches.
-- Use semantic icon tokens from `packages/ui/src/components/semantic-icon.tsx` for non-tool product UI. Reuse a token only for the same user-facing meaning; add a new token and an unused glyph for a new meaning. Raw Lucide icons belong only to narrow base, file-type, tool, or plugin plumbing with an explicit reason; tool icons follow `add-tool`.
+- Use semantic icon tokens from `packages/plugin/src/icons.ts` for non-tool product UI. Reuse a token only for the same user-facing meaning; add a new token and an unused glyph for a new meaning. Raw Lucide icons belong only to narrow base, file-type, tool, or plugin plumbing with an explicit reason; tool icons follow `add-tool`.
 - Preserve keyboard focus, labels, WCAG AA contrast, reduced-motion behavior, loading/empty/error states, and narrow layouts.
 - Register optional built-in workbench content through `WorkbenchPanelEntry.loader`. Keep Notes/Tiptap/Mermaid, Files/Monaco, Browser, Terminal, and Review implementations out of the route shell until the panel opens.
 - Keep only active product fonts in the application bundle. Adding an optional font requires a user-selectable runtime path and a loading strategy; do not import dormant font families from the root `Font` component.
@@ -42,7 +42,7 @@ Read [PRODUCT.md](PRODUCT.md) before changing interaction structure, visual hier
 - Use `src/components/settings/catalog.ts` for built-in section metadata, search terms, and domains.
 - Derive field ownership from `/config/domains` `ownedKeys`; do not maintain a frontend duplicate.
 - Use focused forms for common settings. For complex/low-frequency config, always show the canonical file and Copy Path; expose generated `config.domain.open` behavior only in Desktop managed-local mode where the shell and server share filesystem and desktop authority.
-- Preserve plugin-contributed settings and UI lifecycle. Built-ins use semantic `iconToken`; plugins may use declared plugin icons.
+- Preserve the UI API 5 single-context component lifecycle, public domain services, required Shell outlets, scoped styles and owned portals. Built-ins use semantic `iconToken`; plugins may use declared plugin icons.
 - Built-in settings metadata and every other Synergy-owned user-visible string use the shared Lingui runtime with explicit semantic IDs; do not add language branches, dynamic IDs, macro imports, or module-load translation calls. Keep plugin-author, user, LLM, brand, path, identifier, and raw diagnostic content verbatim. Avoid vague paired `X & Y` headings.
 - Read [Plugin UI contributions](../../docs/plugins/ui-contributions.md) before changing the Web plugin host or registries.
 - Read [Frontend localization](../../docs/architecture/localization.md) before adding product copy, locale-sensitive formatting, or a language setting. Update catalogs with App extraction, then run the single repository localization gate for drift, strict compilation, and the App/UI source contract.

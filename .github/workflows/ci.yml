@@ -142,6 +142,9 @@ jobs:
           bun run --cwd packages/app build
           bun packages/app/script/private-http-smoke.ts
 
+      - name: Run plugin UI contracts against the production host
+        run: bun run plugin-ui:test
+
       - name: Run release contract tests
         run: bun run release:test
 

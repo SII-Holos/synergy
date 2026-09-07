@@ -22,9 +22,10 @@ import {
 import { inlineCompletionPrefix, inlineText, isInlinePart } from "./content"
 import type { PromptInputStore } from "./types"
 import type { ComposerEdit, TextRange } from "./composer-document"
+import { applyPromptDocumentEdits, promptDocumentMapping } from "./document-model"
 
 type PromptEditorInput = {
-  editor: () => HTMLDivElement
+  editor: () => HTMLDivElement | undefined
   uploadedAttachments: Accessor<UploadedAttachmentPart[]>
   noteAttachments: Accessor<NoteAttachmentPart[]>
   sessionAttachments: Accessor<SessionAttachmentPart[]>
@@ -45,9 +46,10 @@ export function usePromptEditor(input: PromptEditorInput) {
     .join("")
   let suppressDocumentChange = false
   let applyingDocumentEdits = false
+  let detachedSelection: TextRange = { start: 0, end: 0 }
 
   const isNormalizedEditor = () =>
-    Array.from(input.editor().childNodes).every((node) => {
+    Array.from(input.editor()?.childNodes ?? []).every((node) => {
       if (node.nodeType === Node.TEXT_NODE) {
         const text = node.textContent ?? ""
         if (!text.includes("\u200B")) return true
@@ -69,6 +71,7 @@ export function usePromptEditor(input: PromptEditorInput) {
 
   const renderEditor = (parts: Prompt) => {
     const editor = input.editor()
+    if (!editor) return
     editor.innerHTML = ""
     for (const part of parts) {
       if (part.type === "text") {
@@ -129,7 +132,7 @@ export function usePromptEditor(input: PromptEditorInput) {
       }
     }
 
-    const children = Array.from(input.editor().childNodes)
+    const children = Array.from(input.editor()?.childNodes ?? [])
     children.forEach((child, index) => {
       const isBlock = child.nodeType === Node.ELEMENT_NODE && ["DIV", "P"].includes((child as HTMLElement).tagName)
       visit(child)
@@ -146,8 +149,8 @@ export function usePromptEditor(input: PromptEditorInput) {
 
   createEffect(
     on(
-      () => prompt.current(),
-      (currentParts) => {
+      () => [prompt.current(), input.editor()] as const,
+      ([currentParts, editor]) => {
         const nextDocumentText = currentParts
           .filter((part) => part.type === "text")
           .map((part) => part.content)
@@ -157,7 +160,7 @@ export function usePromptEditor(input: PromptEditorInput) {
           if (suppressDocumentChange) suppressDocumentChange = false
           else input.onDocumentChange?.()
         }
-        const editor = input.editor()
+        if (!editor) return
         const inputParts = currentParts.filter(isInlinePart) as Prompt
         const domParts = parseFromDOM()
         if (isNormalizedEditor() && isPromptEqual(inputParts, domParts)) return
@@ -179,6 +182,7 @@ export function usePromptEditor(input: PromptEditorInput) {
 
   const handleInput = () => {
     const editor = input.editor()
+    if (!editor) return
     const rawParts = parseFromDOM()
     const attachments = input.uploadedAttachments()
     const cursorPosition = getCursorPosition(editor)
@@ -235,7 +239,7 @@ export function usePromptEditor(input: PromptEditorInput) {
 
   const setRangeEdge = (range: Range, edge: "start" | "end", offset: number) => {
     let remaining = offset
-    const nodes = Array.from(input.editor().childNodes)
+    const nodes = Array.from(input.editor()?.childNodes ?? [])
 
     for (const node of nodes) {
       const length = getNodeLength(node)
@@ -264,7 +268,7 @@ export function usePromptEditor(input: PromptEditorInput) {
   const addPart = (part: ContentPart) => {
     const editor = input.editor()
     const selection = window.getSelection()
-    if (!selection || selection.rangeCount === 0) return
+    if (!editor || !selection || selection.rangeCount === 0) return
 
     const cursorPosition = getCursorPosition(editor)
     const currentPrompt = prompt.current()
@@ -319,23 +323,7 @@ export function usePromptEditor(input: PromptEditorInput) {
     input.setStore("popover", null)
   }
 
-  const documentMapping = () => {
-    const segments: Array<{ text: TextRange; dom: TextRange }> = []
-    let textOffset = 0
-    let domOffset = 0
-    for (const part of prompt.current().filter(isInlinePart)) {
-      const length = part.content.length
-      if (part.type === "text") {
-        segments.push({
-          text: { start: textOffset, end: textOffset + length },
-          dom: { start: domOffset, end: domOffset + length },
-        })
-        textOffset += length
-      }
-      domOffset += length
-    }
-    return { segments, textLength: textOffset }
-  }
+  const documentMapping = () => promptDocumentMapping(prompt.current())
 
   const toTextOffset = (domOffset: number) => {
     const mapping = documentMapping()
@@ -349,7 +337,12 @@ export function usePromptEditor(input: PromptEditorInput) {
   }
 
   const documentSelection = () => {
-    const selection = getSelectionRange(input.editor())
+    const editor = input.editor()
+    if (!editor) {
+      const length = documentMapping().textLength
+      return { start: Math.min(detachedSelection.start, length), end: Math.min(detachedSelection.end, length) }
+    }
+    const selection = getSelectionRange(editor)
     return { start: toTextOffset(selection.start), end: toTextOffset(selection.end) }
   }
 
@@ -362,7 +355,8 @@ export function usePromptEditor(input: PromptEditorInput) {
   }
 
   const domRangeFor = (edit: ComposerEdit) => {
-    const selection = getSelectionRange(input.editor())
+    const editor = input.editor()
+    const selection = editor ? getSelectionRange(editor) : detachedSelection
     const active = documentSelection()
     if (edit.range.start === edit.range.end && active.start === edit.range.start && active.end === edit.range.end) {
       return { start: selection.start, end: selection.end }
@@ -379,6 +373,27 @@ export function usePromptEditor(input: PromptEditorInput) {
 
   const applyDocumentEdits = (edits: ComposerEdit[]) => {
     suppressDocumentChange = true
+    if (!input.editor()) {
+      try {
+        const next = applyPromptDocumentEdits(prompt.current(), edits)
+        const caret = edits.at(-1)
+        if (caret)
+          detachedSelection = {
+            start: caret.range.start + caret.text.length,
+            end: caret.range.start + caret.text.length,
+          }
+        const segment = promptDocumentMapping(next).segments.find(
+          (part) => detachedSelection.start >= part.text.start && detachedSelection.start <= part.text.end,
+        )
+        const cursor = segment ? segment.dom.start + detachedSelection.start - segment.text.start : 0
+        prompt.set(next, cursor)
+      } finally {
+        queueMicrotask(() => {
+          suppressDocumentChange = false
+        })
+      }
+      return
+    }
     const selection = window.getSelection()
     if (!selection) {
       suppressDocumentChange = false
@@ -414,6 +429,7 @@ export function usePromptEditor(input: PromptEditorInput) {
   }
 
   const documentRange = (textRange: TextRange) => {
+    if (!input.editor()) return
     const offsets = domRangeFor({ range: textRange, text: "" })
     if (!offsets) return
     const range = document.createRange()
@@ -437,7 +453,35 @@ export function usePromptEditor(input: PromptEditorInput) {
     isEditableRange,
     applyDocumentEdits,
     isApplyingDocumentEdits: () => applyingDocumentEdits,
-    completionPrefix: () => inlineCompletionPrefix(prompt.current(), getCursorPosition(input.editor())),
+    completionPrefix: () => {
+      const editor = input.editor()
+      return inlineCompletionPrefix(prompt.current(), editor ? getCursorPosition(editor) : (prompt.cursor() ?? 0))
+    },
+    setSelection(range: TextRange) {
+      const length = documentMapping().textLength
+      if (
+        !Number.isInteger(range.start) ||
+        !Number.isInteger(range.end) ||
+        range.start < 0 ||
+        range.end < range.start ||
+        range.end > length
+      ) {
+        throw new Error("Composer selection range is invalid")
+      }
+      detachedSelection = { ...range }
+      if (!input.editor()) return
+      const mapping = documentMapping()
+      const offset = (position: number) => {
+        const part = mapping.segments.find((part) => position >= part.text.start && position <= part.text.end)
+        return part ? part.dom.start + position - part.text.start : 0
+      }
+      const selected = document.createRange()
+      setRangeEdge(selected, "start", offset(range.start))
+      setRangeEdge(selected, "end", offset(range.end))
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(selected)
+    },
     documentRange,
   }
 }

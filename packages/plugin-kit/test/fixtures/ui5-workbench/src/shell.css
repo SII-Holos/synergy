@@ -1,0 +1,67 @@
+.studio {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+}
+.studio-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+}
+.studio-main,
+.studio-session {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.studio-workarea {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.studio-session-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.studio-main {
+  position: relative;
+  overflow: hidden;
+}
+.studio-conversation {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.studio-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+}
+.studio-composer textarea {
+  min-height: 100px;
+  resize: vertical;
+  border: 1px solid var(--border-base);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--text-base);
+  background: var(--surface-base);
+  font: inherit;
+}
+.studio-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

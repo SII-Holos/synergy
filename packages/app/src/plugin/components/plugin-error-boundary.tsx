@@ -20,16 +20,9 @@ export function PluginErrorBoundary(props: PluginErrorBoundaryProps) {
 
   return (
     <ErrorBoundary
-      fallback={(err: any) => {
-        const message = err?.message || String(err)
-        // Log the error to the plugin host for status tracking
-        if (pluginHost) {
-          const existing = pluginHost.errors()
-          const exists = existing.some((e) => e.pluginId === props.pluginId && e.message === message)
-          if (!exists) {
-            console.error(`[PluginErrorBoundary] ${props.pluginId}:`, err)
-          }
-        }
+      fallback={(err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err)
+        pluginHost?.reportError({ pluginId: props.pluginId, message })
         return (
           <div class="plugin-error-card">
             <div class="plugin-error-header">

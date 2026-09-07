@@ -1,7 +1,7 @@
 import { createMemo, createResource, createSignal, For, Show, type JSXElement } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Popover } from "@kobalte/core/popover"
-import { MenuField } from "../menu-field/MenuField"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"

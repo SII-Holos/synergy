@@ -26,7 +26,7 @@ describe("settings registry", () => {
     expect(observed).toEqual([section, undefined])
   })
 
-  test("preserves the trusted Settings surface context without requiring it from legacy sections", () => {
+  test("retains a context factory so each Settings mount owns its lifetime", () => {
     const context = {
       pluginId: "test",
       scopeId: "scope",
@@ -34,12 +34,13 @@ describe("settings registry", () => {
       operations: {},
       events: {},
       settings: {},
-      host: {},
     } as unknown as PluginSettingsSurfaceContext
-    const unregister = registerSettingsSection({ ...section, id: "test:context", context })
+    const createContext = () => context
+    const unregister = registerSettingsSection({ ...section, id: "test:context", createContext })
 
-    expect(getSettingsSection("test:context")?.context).toBe(context)
-    expect(getSettingsSection(section.id)?.context).toBeUndefined()
+    expect(getSettingsSection("test:context")?.createContext).toBe(createContext)
+    expect(getSettingsSection("test:context")?.createContext?.()).toBe(context)
+    expect(getSettingsSection(section.id)?.createContext).toBeUndefined()
     unregister()
   })
 })

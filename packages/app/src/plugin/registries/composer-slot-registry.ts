@@ -1,13 +1,7 @@
 import type { Component } from "solid-js"
 import { SlotRegistry, type SlotEntryBase } from "../slot-registry"
 
-export type ComposerSlotName =
-  | "composer.above"
-  | "composer.below"
-  | "composer.toolbar.left"
-  | "composer.toolbar.right"
-  | "composer.add-menu"
-  | "composer.start-option"
+export type ComposerSlotName = import("@ericsanchezok/synergy-plugin").PluginComposerSlot
 
 export interface ComposerSlotProps {
   slot: ComposerSlotName

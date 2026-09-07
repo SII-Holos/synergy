@@ -49,6 +49,7 @@ export type PromptInputStore = {
 }
 
 export interface PromptInputProps {
+  readOnly?: boolean
   class?: string
   ref?: (el: HTMLDivElement) => void
   newSessionWorkspaceSelection?: NewSessionWorkspaceSelection

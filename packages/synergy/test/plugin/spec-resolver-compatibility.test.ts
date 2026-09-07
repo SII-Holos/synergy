@@ -1,8 +1,38 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
+import { compilePluginManifest, definePlugin } from "@ericsanchezok/synergy-plugin"
 import { assertPluginCompatibility, readPluginManifest } from "../../src/plugin/spec-resolver"
+import { sha256File } from "../../src/util/crypto"
+import { tmpdir } from "../fixture/fixture"
 
 describe("Plugin API compatibility", () => {
+  test("checks UI resource integrity before any plugin code executes", async () => {
+    await using tmp = await tmpdir()
+    const script = path.join(tmp.path, "ui/index.js")
+    const stylesheet = path.join(tmp.path, "ui/panel.css")
+    await Bun.write(script, 'throw new Error("must not execute during discovery")')
+    await Bun.write(stylesheet, ".panel { display: grid; }")
+    const definition = definePlugin({
+      id: "ui-resource-integrity",
+      version: "1.0.0",
+      description: "UI resources participate in metadata-only validation",
+      contributions: [],
+    })
+    const manifest = compilePluginManifest(definition, {
+      generation: "ui-resource-generation",
+      ui: {
+        apiVersion: "5.0",
+        entry: "ui/index.js",
+        sha256: sha256File(script),
+        resources: [{ entry: "ui/panel.css", kind: "stylesheet", sha256: sha256File(stylesheet) }],
+      },
+    })
+    await Bun.write(path.join(tmp.path, "plugin.json"), JSON.stringify(manifest))
+    expect((await readPluginManifest(tmp.path)).artifacts.ui?.apiVersion).toBe("5.0")
+    await Bun.write(stylesheet, ".panel { display: none; }")
+    await expect(readPluginManifest(tmp.path)).rejects.toThrow("ui resource artifact integrity mismatch")
+  })
+
   test("accepts API 4 across compatible Synergy releases", () => {
     expect(() =>
       assertPluginCompatibility(
