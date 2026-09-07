@@ -13,7 +13,7 @@
   "main": "./dist/main.js",
   "scripts": {
     "build": "bun run desktop:build",
-    "desktop:build": "bun build src/main.ts --outfile dist/main.js --target=node --external electron && bun build src/preload.ts --outfile dist/preload.cjs --target=node --format=cjs --external electron && bun run browser-host:build",
+    "desktop:build": "bun run desktop:prepare-computer && bun build src/main.ts --outfile dist/main.js --target=node --external electron --external @trycua/cua-driver && bun build src/preload.ts --outfile dist/preload.cjs --target=node --format=cjs --external electron && bun run browser-host:build",
     "browser-host:build": "bun build src/browser-host-main.ts --outfile dist/browser-host-main.js --target=node --external electron",
     "browser-host:dev": "bun run browser-host:build && electron dist/browser-host-main.js",
     "browser-host:dist": "bun run browser-host:build && electron-builder --config electron-builder.browser-host.json --publish=never",
@@ -22,14 +22,17 @@
     "desktop:prepare-runtime": "bun run script/prepare-runtime.ts",
     "desktop:pack": "bun run desktop:build && bun run desktop:prepare-runtime && electron-builder --dir",
     "desktop:dist": "bun run desktop:build && bun run desktop:prepare-runtime && electron-builder",
-    "desktop:test": "bun run typecheck && bun test test/*.test.ts",
+    "desktop:test": "bun run typecheck && bun test test/*.test.ts test/computer/*.test.ts",
     "dev": "SYNERGY_DESKTOP_CHANNEL=dev bun run desktop:build && electron dist/main.js",
     "test:runtime": "bun run build && SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/browser-runtime-smoke.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "desktop:prepare-computer": "bun run script/prepare-computer.ts"
   },
   "dependencies": {
     "@ericsanchezok/synergy-browser": "workspace:*",
+    "@ericsanchezok/synergy-computer": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
+    "@trycua/cua-driver": "0.23.2",
     "electron-updater": "6.6.8",
     "zod": "catalog:"
   },

@@ -173,3 +173,7 @@ Registry read-after-write checks use cache-busted, no-store requests. A successf
 - Draft GitHub Release contains all expected recommended installer artifacts, portable artifacts, both checksum assets (`Synergy-${version}-checksums.txt` and `Synergy-${version}-cli-checksums.txt`), and all four updater metadata files before finalize
 - Draft GitHub Release contains six Browser Host zips, six exact-version manifests, and six signatures; every manifest executable exists at its exact platform path inside the matching zip, and tampered zip/signature tests pass before finalize
 - Draft GitHub Release contains five exact-version Chromium manifests and five signatures for the supported standalone install targets; signature, target-substitution, and archive-tampering tests pass before finalize.
+
+## Native Computer Driver
+
+macOS Desktop builds run `desktop:prepare-computer` to prepare the Cua release pinned in `packages/desktop/src/computer/release.ts`. Both archive and executable digests must match before packaging. The `mac.extraResources` entry includes the executable and MIT notices from `build/computer`, and `mac.binaries` includes the executable for nested signing. Keep the notices with every distributed copy; the driver runs as a private child of Desktop for host-attributed macOS permissions. Other platforms do not bundle this driver.

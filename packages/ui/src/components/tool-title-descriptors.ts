@@ -165,6 +165,9 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   // Browser
   browser_navigation: d("browser.title.navigation", "Navigate web"),
   browser_snapshot: d("browser.title.snapshot", "Capture page snapshot"),
+  computer_apps: d("computer.title.apps", "Find application windows"),
+  computer_observe: d("computer.title.observe", "Observe application"),
+  computer_action: d("computer.title.action", "Act in application"),
   browser_action: d("browser.title.action", "Operate page"),
   browser_wait: d("browser.title.wait", "Wait for page"),
   browser_read: d("browser.title.read", "Read page"),

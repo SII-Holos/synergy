@@ -9113,6 +9113,18 @@ msgstr ""
 msgid "classifier.label.web"
 msgstr ""
 
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "computer.title.action"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "computer.title.apps"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "computer.title.observe"
+msgstr ""
+
 #. js-lingui-explicit-id
 msgid "confirm.agendaAction.cancel.confirm"
 msgstr ""

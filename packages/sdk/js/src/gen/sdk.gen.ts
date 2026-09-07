@@ -138,6 +138,7 @@ import type {
   ChannelStopResponses,
   CommandListErrors,
   CommandListResponses,
+  ComputerHostBrokerErrors,
   Config as Config2,
   ConfigDiagnosticsErrors,
   ConfigDiagnosticsResponses,
@@ -10653,6 +10654,40 @@ export class Browser extends HeyApiClient {
   }
 }
 
+export class Host extends HeyApiClient {
+  /**
+   * Connect the authenticated native Computer host
+   */
+  public broker<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<unknown, ComputerHostBrokerErrors, ThrowOnError>({
+      url: "/computer/host/broker",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Computer extends HeyApiClient {
+  host = new Host({ client: this.client })
+}
+
 export class Plugin extends HeyApiClient {
   /**
    * List plugin theme contributions across all enabled scopes
@@ -12378,6 +12413,8 @@ export class SynergyClient extends HeyApiClient {
   voice = new Voice({ client: this.client })
 
   browser = new Browser({ client: this.client })
+
+  computer = new Computer({ client: this.client })
 
   plugin = new Plugin({ client: this.client })
 

@@ -1,3 +1,4 @@
+import { ComputerBrokerClient } from "./computer/broker-client.js"
 import {
   app,
   BrowserWindow,
@@ -8,6 +9,7 @@ import {
   nativeImage,
   nativeTheme,
   shell,
+  systemPreferences,
   Tray,
   type BrowserWindowConstructorOptions,
 } from "electron"
@@ -87,6 +89,7 @@ import {
 import { applyDesktopUnreadUpdate, desktopUnreadAssetPaths, desktopUnreadPresentation } from "./unread-indicator.js"
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
+process.env.SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET ??= randomBytes(32).toString("hex")
 process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET ??= randomBytes(32).toString("hex")
 BrowserRegistrationSecretSchema.parse(process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET)
 
@@ -95,6 +98,8 @@ let mainRendererDelivery: DesktopRendererDelivery | null = null
 let startupOverlay: DesktopStartupOverlay | null = null
 let nativeViews: BrowserNativeViewManager | null = null
 let nativePagePool: BrowserNativePagePool | null = null
+let computerBroker: ComputerBrokerClient | null = null
+let computerBrokerOrigin: string | null = null
 let browserBroker: BrowserHostBrokerClient | null = null
 let browserBrokerOrigin: string | null = null
 let browserBrokerStatus: BrowserNativeBrokerStatus = "failed"
@@ -212,6 +217,7 @@ async function createWindow() {
       userDataDir: app.getPath("userData"),
       stopServer: async () => {
         await stopLocalBrowserBroker()
+        await stopLocalComputerBroker()
         await serverManager?.stop()
       },
       restartServer: async () => {
@@ -219,6 +225,7 @@ async function createWindow() {
         const url = await serverManager.start()
         currentAppURL = url
         await syncLocalBrowserBroker(true)
+        await syncLocalComputerBroker(true)
         await mainWindow?.loadURL(url)
       },
     })
@@ -325,6 +332,7 @@ async function createWindow() {
 
   const targetURL = await resolveAppURL()
   await syncLocalBrowserBroker()
+  await syncLocalComputerBroker()
   await setStartupStatus({
     title: currentAppURL ? "Loading workspace" : "Startup needs attention",
     detail: currentAppURL
@@ -498,6 +506,42 @@ async function stopLocalBrowserBroker(): Promise<void> {
   await previous?.close()
 }
 
+async function stopLocalComputerBroker() {
+  const previous = computerBroker
+  computerBroker = null
+  computerBrokerOrigin = null
+  await previous?.close()
+}
+
+async function syncLocalComputerBroker(force = false) {
+  const serverUrl =
+    process.env.SYNERGY_COMPUTER_BROKER_SERVER_URL ??
+    (serverManager?.status().mode === "managed" ? serverManager.status().url : null)
+  const origin = serverUrl ? new URL(serverUrl).origin : null
+  if (!force && computerBroker && computerBrokerOrigin === origin) return
+  await stopLocalComputerBroker()
+  if (!serverUrl || !origin) return
+  computerBrokerOrigin = origin
+  computerBroker = new ComputerBrokerClient({
+    serverUrl,
+    token: process.env.SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET!,
+    executable:
+      process.env.SYNERGY_COMPUTER_DRIVER_PATH ??
+      path.join(app.isPackaged ? process.resourcesPath : path.resolve(dirname, "../build"), "computer", "cua-driver"),
+    checkPermissions() {
+      if (process.platform !== "darwin") return
+      if (!systemPreferences.isTrustedAccessibilityClient(false)) {
+        systemPreferences.isTrustedAccessibilityClient(true)
+        throw new Error("Enable Accessibility for Synergy in macOS System Settings, then retry Computer Use.")
+      }
+      if (systemPreferences.getMediaAccessStatus("screen") !== "granted") {
+        throw new Error("Enable Screen Recording for Synergy in macOS System Settings, then restart Synergy Desktop.")
+      }
+    },
+  })
+  computerBroker.connect()
+}
+
 function registerIpcHandlers() {
   registerNativeViewHandlers("browserNative.attach", async (input) => {
     await nativeViews?.attach(parseBrowserNativeAttach(input))
@@ -608,9 +652,11 @@ function registerIpcHandlers() {
   ipcMain.handle("desktop.server.restart", async () => {
     if (!serverManager) throw new Error("Desktop server manager is not initialized")
     await stopLocalBrowserBroker()
+    await stopLocalComputerBroker()
     const url = await serverManager.restart()
     currentAppURL = url
     await syncLocalBrowserBroker(true)
+    await syncLocalComputerBroker(true)
     await mainWindow?.loadURL(url)
     return serverManager.status()
   })
@@ -884,6 +930,7 @@ app.on("before-quit", (event) => {
   void (async () => {
     const results = await Promise.allSettled([
       browserBroker?.close() ?? Promise.resolve(),
+      stopLocalComputerBroker(),
       serverManager?.stop() ?? Promise.resolve(),
       zoomWriteQueue,
     ])

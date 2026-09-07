@@ -55,6 +55,7 @@
     "packages": [
       "packages/app",
       "packages/browser",
+      "packages/computer",
       "packages/desktop",
       "packages/synergy-link-protocol",
       "packages/synergy-link",
