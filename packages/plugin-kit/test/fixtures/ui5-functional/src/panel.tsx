@@ -30,9 +30,10 @@ export default function Note({ context }: PluginComponentProps<PluginWorkbenchSu
       <Button onClick={() => context.workbench.update(tab().id, { dirty: false })}>Save note</Button>
       <Button
         onClick={() => {
-          void context.workbench
-            .close(tab().id)
-            .catch((error) => context.overlays.notify(String(error), { kind: "error" }))
+          void context.workbench.close(tab().id).catch((error) => {
+            if (context.lifetime.signal.aborted) return
+            context.overlays.notify(String(error), { kind: "error" })
+          })
         }}
       >
         Close note

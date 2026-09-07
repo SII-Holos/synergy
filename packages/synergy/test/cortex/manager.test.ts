@@ -792,7 +792,9 @@ describe.serial("Cortex", () => {
 
             let progressTask: CortexTypes.Task | undefined
             for (let i = 0; i < 30; i++) {
-              progressTask = progressUpdates.find((item) => item.id === task.id)
+              progressTask = progressUpdates.find(
+                (item) => item.id === task.id && item.progress?.lastMessage === "partial status",
+              )
               if (progressTask) break
               await Bun.sleep(25)
             }

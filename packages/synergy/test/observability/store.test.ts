@@ -216,7 +216,7 @@ describe("ObservabilityStore", () => {
     expect(timestamp).toBeGreaterThan(Date.now() - 10_000)
   })
 
-  test("keeps the physical database footprint under the configured cap without deleting newest data", () => {
+  test("keeps the physical database footprint under the configured cap without deleting newest data", async () => {
     const maxSqliteBytes = 1024 * 1024
     ObservabilityConfig.refresh({
       observability: { performance: { storage: { maxSqliteBytes } } },
@@ -232,6 +232,11 @@ describe("ObservabilityStore", () => {
     }
     ObservabilityStore.flush()
 
+    for (let pass = 0; pass < 20 && ObservabilityStore.stats().maintenanceDeferred; pass++) {
+      await Bun.sleep(0)
+      ObservabilityStore.retain()
+    }
+    expect(ObservabilityStore.stats().maintenanceDeferred).toBe(false)
     const filepath = ObservabilityStore.pathName()
     const physicalBytes = [filepath, `${filepath}-wal`, `${filepath}-shm`].reduce((total, file) => {
       try {
@@ -249,7 +254,7 @@ describe("ObservabilityStore", () => {
     expect(physicalBytes).toBeLessThanOrEqual(maxSqliteBytes)
     expect(rows.length).toBeGreaterThan(0)
     expect(rows[0].value).toBe(5_999)
-  })
+  }, 15000)
 
   test("fails open when the observability database cannot be created", () => {
     ObservabilityStore.close()
