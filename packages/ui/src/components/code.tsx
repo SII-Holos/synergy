@@ -75,6 +75,25 @@ function sameRenderRange(a: RenderRange | undefined, b: RenderRange | undefined)
   )
 }
 
+function plainFileRange(contents: string, range: RenderRange | undefined) {
+  if (!range) return contents
+  if (range.totalLines <= 0) return ""
+  let start = 0
+  for (let line = 0; line < range.startingLine; line++) {
+    const next = contents.indexOf("\n", start)
+    if (next < 0) return ""
+    start = next + 1
+  }
+  if (range.totalLines === Infinity) return contents.slice(start)
+  let end = start
+  for (let line = 0; line < range.totalLines; line++) {
+    const next = contents.indexOf("\n", end)
+    if (next < 0) return contents.slice(start)
+    end = next + 1
+  }
+  return contents.slice(start, end)
+}
+
 export function Code<T>(props: CodeProps<T>) {
   let container!: HTMLDivElement
 
@@ -165,8 +184,29 @@ export function Code<T>(props: CodeProps<T>) {
     const current = file()
     if (!current) {
       const plain = document.createElement("pre")
-      plain.textContent = fileContents().contents
-      container.replaceChildren(plain)
+      const range = renderRange()
+      const wrap = (others.overflow ?? createDefaultOptions<T>("unified").overflow) === "wrap"
+      plain.textContent = plainFileRange(fileContents().contents, range)
+      plain.style.margin = "0"
+      plain.style.whiteSpace = wrap ? "pre-wrap" : "pre"
+      plain.style.overflowWrap = wrap ? "anywhere" : "normal"
+      plain.style.overflowX = "auto"
+      const nodes: HTMLElement[] = [plain]
+      if (range && !others.disableVirtualizationBuffers) {
+        for (const [side, height] of [
+          ["before", range.bufferBefore],
+          ["after", range.bufferAfter],
+        ] as const) {
+          if (height <= 0) continue
+          const buffer = document.createElement("div")
+          buffer.dataset.virtualizerBuffer = side
+          buffer.style.height = `${height}px`
+          buffer.style.contain = "strict"
+          if (side === "before") nodes.unshift(buffer)
+          else nodes.push(buffer)
+        }
+      }
+      container.replaceChildren(...nodes)
       return
     }
     current.render({
