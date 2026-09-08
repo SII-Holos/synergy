@@ -1,6 +1,8 @@
 # 业务分离后的全仓体验审计
 
-本轮在[迁移验收](2026-09-08-runtime-package-ownership-verification.md)之后追加源码、安装产物和开发流程审计。首轮记录保留其原始时间及源码指纹；本记录描述后续修复和重新执行的验收。最后一个实现提交为 `930506962`，后续文档提交不改变下面测量的源码与配置。
+本轮在[迁移验收](2026-09-08-runtime-package-ownership-verification.md)之后追加源码、安装产物和开发流程审计。首轮记录保留其原始时间及源码指纹；本记录描述后续修复和重新执行的验收。最后一个实现提交为 `7b2194d7a`，后续文档提交不改变下面测量的源码与配置。
+
+最后核对分支时，追加整合了 `dev` 截至 `68273641c` 的三个修复提交：启动迁移进度、迁移阶段与 ACP 输出、扩展定价的模型目录验证。它们已按新领域所有权接线并重新验收；本次固定该上游目标，不代表已包含之后其它任务的新改动。
 
 ## 发现并修复的问题
 
@@ -15,12 +17,16 @@
 
 设计依据见[验证稳定性](../decisions/implemented/bug-fix/2026-09-08-validation-source-stability-and-gate-order.md)、[编译 namespace 所有权](../decisions/implemented/bug-fix/2026-09-08-compiled-runtime-namespace-ownership.md)和[完成贡献结算](../decisions/implemented/bug-fix/2026-09-08-await-completion-context-contributions.md)。核心生命周期、业务算法、宿主实现与界面职责见[架构总览](../architecture/README.md)。用户安装名称、`synergy` 命令、配置和数据路径不因源码目录迁移改名。
 
+新增整合保留了 migration phase、Desktop 进度续期、前台 stderr 渲染、ACP 干净协议输出、历史附件缺失证据及模型目录刷新结果。Plugin/Plugin Kit 构建仅写自己拥有的输出，开发和发行入口通过 Turbo 安排依赖；文件监视器正向测试等待真实通知，避免把 400 ms 固定睡眠误当作 OS 事件完成。
+
+完整执行和 Composer 验收的临时模型服务同时提供标准 chat 与 embedding 协议，Library 的召回和编码继续启用。此前新 home 触发 Hugging Face 权重下载，使模型执行验收受外部下载速度影响；随包的 ONNX 运行库另有独立加载验证；本项协议验收不把外部模型权重下载计作已通过，也不以关闭 Library 规避问题。
+
 ## 源码与公开包核对
 
-- [迁移映射](2026-09-08-runtime-package-ownership.json)重新核对：基线 5,557 个文件，3,262 个移动项、2,295 个路径不变、3,261 个不同移动目标，缺失目标为 0；Agenda 的唯一合并保留具体理由。
+- [迁移映射](2026-09-08-runtime-package-ownership.json)重新核对：基线 5,557 个文件，3,262 个移动项、2,295 个路径不变、3,261 个不同移动目标，缺失目标为 0；Agenda 的唯一合并保留具体理由。另补录上述 dev 新增的 21 个文件，其中 14 个需迁移，21 个目标全部存在且无重复。
 - 扫描跟踪文件中的目录字面量，并以 TypeScript AST 检查可静态求值的路径表达式。构建输出、虚拟模块、外部工具路径与故意引用旧路径的负向测试分别核查；历史记录不做盲目替换。
-- 按真实 cwd 核对 workspace scripts 与 GitHub workflows 中 119 个显式源码命令入口，没有缺失入口。文档检查覆盖本地 commands、所有 workspace README/AGENTS，包括 apps 与嵌套 SDK。
-- 22 个本次构建的归档中，765 个公开入口、2,219 个条件导出目标均可解析或定位实际文件；通配导出按实际归档文件展开。解析路径不回落到仓库；核心 8 个公共入口另在真实安装后加载，私有和测试入口拒绝解析。
+- 按真实 cwd 核对 workspace scripts 与 GitHub workflows 中 120 个显式源码命令入口，没有缺失入口。文档检查覆盖本地 commands、所有 workspace README/AGENTS，包括 apps 与嵌套 SDK。
+- 22 个本次构建的归档中，766 个公开入口、2,221 个条件导出目标均可解析或定位实际文件；通配导出按实际归档文件展开。解析路径不回落到仓库；核心 8 个公共入口另在真实安装后加载，私有和测试入口拒绝解析。
 - 333 个原有 API operation ID、path/method 全部保留；Config、Session、ScopeBootstrapResponse、ManagedProjectArchiveError、NoteConflictError 与迁移前精确一致。SDK 生成契约检查通过。
 
 ## 运行、安装与开发验收
@@ -32,8 +38,8 @@
 | 核心二进制与 CLI tarball | 两者分别通过同一套 6 场景、49 断言。源码完整装配也通过相同执行流程。                                                                                                                                             |
 | 能力组合                 | core、core + Browser、core + Library、core + Notes、Computer 独立服务与 full 均从实际 tarball 在仓库外安装、持久化操作、关闭资源并退出。                                                                         |
 | Web 与源码开发           | `bun dev server` 健康检查、`bun dev app` 的 HTML 与 Chromium 渲染通过；生产 private HTTP 在非安全上下文、没有 randomUUID 的情况下正常启动，页面错误为空。                                                        |
-| Desktop                  | 当前 full 产物重新打包；源码托管后端启动、重启和停止通过。标准套件 245 pass、746 断言，5 个既有条件测试保留；其中原生浏览器场景另显式执行。                                                                      |
-| Browser                  | 真实 Electron 2 测试、13 断言通过，覆盖 renderer 崩溃恢复、两种创建次序及协议/CDP 控制。WebRTC/data channel 由对应 Browser/Web 标准套件覆盖。                                                                    |
+| Desktop                  | 当前 full 产物重新打包；源码托管后端启动、重启和停止通过。标准套件 250 pass、764 断言，6 个按环境启用的测试保留；原生浏览器和启动进度场景另显式执行。                                                            |
+| Browser                  | 真实 Electron 3 测试、15 断言通过，覆盖 renderer 崩溃恢复、两种创建次序、启动迁移进度 DOM 及协议/CDP 控制。WebRTC/data channel 由对应 Browser/Web 标准套件覆盖。                                                 |
 | 完整资源与独立 Host      | 复制到仓库外的 full 产物可加载 Playwright Core 1.61.0 并初始化 ONNX。独立 Host ZIP 打包通过；ASAR 为 615,685 bytes，只有 dist、宿主入口和 package.json，不含 Harness、Library、Computer driver 或 node_modules。 |
 | Link                     | 模块与本机二进制构建通过；相关 CLI、协议及生命周期标准测试通过。                                                                                                                                                 |
 
@@ -44,44 +50,44 @@
 ## 标准测试与覆盖率
 
 - 非 Harness workspace 的 Turbo 标准图：47/47 构建与测试任务成功，0 个缓存命中。
-- Harness 最终 CI 编排：3,525 pass、9,854 断言，无失败或跳过。
-- 根脚本与发行契约：303 pass、935 断言；包括 installer、wrapper、SDK 验证及 CI 拓扑测试。
+- Harness 最终 CI 编排：3,549 pass、9,950 断言，无失败或跳过。
+- 根脚本与发行契约：303 pass、936 断言；包括 installer、wrapper、SDK 验证及 CI 拓扑测试。生产插件 UI 按独立进程编排，7 pass、60 断言，覆盖所有八种模板。
 - 16 项静态质量门禁通过，包含类型、格式、lint、依赖、公开包、文档、决策、Skills、指南、工作流及生成契约。
 
-完整覆盖率于 `2026-09-08T06:10:53.335Z` 至 `2026-09-08T06:23:27.268Z` 执行，27 个包的覆盖率命令和原有门槛全部通过。纳入指纹核对的 5,515 个非 Markdown、非 docs 文件在执行前后完全一致：`0e2aa355465a8a4eb8204a21e297250600ea129085eaae55289316f28f098a65`。报告来自本次完整执行，不复用旧覆盖率报告；未降低门槛或增加跳过条件。
+本轮覆盖率从新报告开始，执行时间为 `2026-09-08T07:04:40.122Z` 至 `2026-09-08T07:18:23.484Z`，27 个包均通过原有门槛。5,531 个非文档源码、配置及测试文件在执行前后 SHA-256 均为 `673324d90d7aa5ba00c790ee8ebefc1aa5c4bced53ea907ca60997dee5993e66`，没有边测边改源码，也没有复用上一轮覆盖率作为此次结果。
 
-| Workspace                      | 行覆盖率 | 函数覆盖率 | 门槛：行/函数 | 缺失受检文件 |
-| ------------------------------ | -------- | ---------- | ------------- | ------------ |
-| apps/desktop                   | 90.30%   | 79.73%     | 60/50         | 0            |
-| apps/web                       | 65.37%   | 78.30%     | 60/50         | 0            |
-| packages/agent-integrations    | 75.08%   | 78.00%     | 75/75         | 0            |
-| packages/browser               | 91.22%   | 94.33%     | 80/75         | 0            |
-| packages/browser-runtime       | 76.15%   | 81.67%     | 75/75         | 0            |
-| packages/cli                   | 76.16%   | 75.57%     | 75/75         | 0            |
-| packages/computer              | 100.00%  | 100.00%    | 80/75         | 0            |
-| packages/computer-runtime      | 92.37%   | 83.33%     | 75/75         | 0            |
-| packages/connections           | 75.96%   | 81.99%     | 75/75         | 0            |
-| packages/harness               | 80.09%   | 83.63%     | 75/75         | 0            |
-| packages/library               | 75.93%   | 84.08%     | 75/75         | 0            |
-| packages/media                 | 87.52%   | 92.80%     | 75/75         | 0            |
-| packages/note                  | 82.17%   | 85.49%     | 75/75         | 0            |
-| packages/plugin                | 94.24%   | 89.95%     | 80/75         | 0            |
-| packages/plugin-host           | 79.54%   | 76.00%     | 75/75         | 0            |
-| packages/plugin-kit            | 81.11%   | 88.89%     | 80/75         | 0            |
-| packages/product-runtime       | 80.44%   | 80.69%     | 75/75         | 0            |
-| packages/runtime-local         | 77.18%   | 81.40%     | 75/75         | 0            |
-| packages/sdk/js                | 87.28%   | 100.00%    | 80/75         | 0            |
-| packages/server                | 89.00%   | 75.00%     | 75/75         | 0            |
-| packages/synergy-link          | 80.27%   | 89.08%     | 80/75         | 0            |
-| packages/synergy-link-protocol | 92.42%   | 100.00%    | 80/75         | 0            |
-| packages/testing               | 95.17%   | 91.11%     | 75/75         | 0            |
-| packages/ui                    | 68.98%   | 81.38%     | 60/50         | 0            |
-| packages/util                  | 86.77%   | 91.15%     | 80/75         | 0            |
-| packages/workbench             | 89.96%   | 83.79%     | 75/75         | 0            |
-| packages/workflows             | 77.85%   | 77.04%     | 75/75         | 0            |
+| Workspace                      | 行覆盖率 | 函数覆盖率 | 门槛：行/函数 | 未加载源码文件 |
+| ------------------------------ | -------- | ---------- | ------------- | -------------- |
+| apps/desktop                   | 90.35%   | 79.97%     | 60/50         | 0              |
+| apps/web                       | 65.37%   | 78.30%     | 60/50         | 0              |
+| packages/agent-integrations    | 75.08%   | 78.00%     | 75/75         | 0              |
+| packages/browser               | 91.22%   | 94.33%     | 80/75         | 0              |
+| packages/browser-runtime       | 76.15%   | 81.67%     | 75/75         | 0              |
+| packages/cli                   | 75.95%   | 75.73%     | 75/75         | 0              |
+| packages/computer              | 100.00%  | 100.00%    | 80/75         | 0              |
+| packages/computer-runtime      | 92.37%   | 83.33%     | 75/75         | 0              |
+| packages/connections           | 75.96%   | 81.99%     | 75/75         | 0              |
+| packages/harness               | 80.16%   | 83.66%     | 75/75         | 0              |
+| packages/library               | 75.93%   | 84.08%     | 75/75         | 0              |
+| packages/media                 | 87.52%   | 92.80%     | 75/75         | 0              |
+| packages/note                  | 82.17%   | 85.49%     | 75/75         | 0              |
+| packages/plugin                | 94.24%   | 89.95%     | 80/75         | 0              |
+| packages/plugin-host           | 79.54%   | 76.00%     | 75/75         | 0              |
+| packages/plugin-kit            | 81.11%   | 88.89%     | 80/75         | 0              |
+| packages/product-runtime       | 80.46%   | 80.67%     | 75/75         | 0              |
+| packages/runtime-local         | 77.18%   | 81.40%     | 75/75         | 0              |
+| packages/sdk/js                | 87.28%   | 100.00%    | 80/75         | 0              |
+| packages/server                | 89.00%   | 75.00%     | 75/75         | 0              |
+| packages/synergy-link          | 80.27%   | 89.08%     | 80/75         | 0              |
+| packages/synergy-link-protocol | 92.42%   | 100.00%    | 80/75         | 0              |
+| packages/testing               | 95.17%   | 91.11%     | 75/75         | 0              |
+| packages/ui                    | 68.98%   | 81.38%     | 60/50         | 0              |
+| packages/util                  | 86.87%   | 91.24%     | 80/75         | 0              |
+| packages/workbench             | 89.96%   | 83.79%     | 75/75         | 0              |
+| packages/workflows             | 77.87%   | 77.06%     | 75/75         | 0              |
 
 ## 验收边界与保存
 
 本机为 macOS arm64、Bun 1.3.14。Linux/Windows 及其它架构的原生执行、跨平台安装器、代码签名、公证和远端 GitHub CI 没有在本机实际执行，不计作已通过。CI/CD 配置、依赖图、发行脚本和本机产物已验证，但未运行正式发布。真实邮件账号、所有外部模型/MCP 供应商和用户 OS 自动化动作没有逐个调用；现有功能由所属领域测试与上述实际运行验收覆盖，不能据此声称所有外部环境下绝无问题。
 
-实现已按问题分批本地提交：`9ab062eeb`、`5c03dfcbd`、`5c9bed6b7`、`d9a2071c1`、`930506962`。详细日志、失败复现和安装摘要保存在任务私有记录中。未推送、开 PR、正式发布或操作用户正在使用的 Synergy 实例。
+实现已按问题分批本地提交（早期至最终）：`9ab062eeb`、`5c03dfcbd`、`5c9bed6b7`、`d9a2071c1`、`930506962`、`628c40569`、`99c0f9690`、`ac986e112`、`7b2194d7a`。详细日志、失败复现和安装摘要保存在任务私有记录中。未推送、开 PR、正式发布或操作用户正在使用的 Synergy 实例。

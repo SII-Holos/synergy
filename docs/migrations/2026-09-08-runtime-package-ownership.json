@@ -3303,5 +3303,37 @@
       "reason": "Agenda-specific wake-up projections, reminder rendering and continuation blockers are owned by Workflows and registered through the generic Harness SessionExecutionContributions and ContinuationWait ports. The prior agenda-specific core registry is absorbed into the owning agenda implementation."
     }
   ],
-  "deleted": []
+  "deleted": [],
+  "supplemental": {
+    "integratedCommit": "68273641c",
+    "newTrackedFiles": 21,
+    "missingTargets": 0,
+    "ownership": {
+      "docs/decisions/implemented/bug-fix/2026-09-08-cli-startup-migration-progress.md": "docs/decisions/implemented/bug-fix/2026-09-08-cli-startup-migration-progress.md",
+      "docs/decisions/implemented/bug-fix/2026-09-08-desktop-migration-progress-wait.md": "docs/decisions/implemented/bug-fix/2026-09-08-desktop-migration-progress-wait.md",
+      "docs/decisions/implemented/bug-fix/2026-09-08-provider-catalog-refresh-validation.md": "docs/decisions/implemented/bug-fix/2026-09-08-provider-catalog-refresh-validation.md",
+      "docs/decisions/implemented/bug-fix/2026-09-08-rollout-migration-attachment-gaps.md": "docs/decisions/implemented/bug-fix/2026-09-08-rollout-migration-attachment-gaps.md",
+      "docs/decisions/implemented/bug-fix/2026-09-08-rollout-migration-owned-fields.md": "docs/decisions/implemented/bug-fix/2026-09-08-rollout-migration-owned-fields.md",
+      "packages/desktop/src/server-startup.ts": "apps/desktop/src/server-startup.ts",
+      "packages/desktop/test/fixture/startup-progress.ts": "apps/desktop/test/fixture/startup-progress.ts",
+      "packages/desktop/test/server-startup.test.ts": "apps/desktop/test/server-startup.test.ts",
+      "packages/desktop/test/startup-progress-runtime.test.ts": "apps/desktop/test/startup-progress-runtime.test.ts",
+      "packages/synergy/src/cli/managed-startup.ts": "packages/product-runtime/src/cli/managed-startup.ts",
+      "packages/synergy/test/attachment/data-url.test.ts": "packages/harness/test/attachment/data-url.test.ts",
+      "packages/synergy/test/cli/acp-startup.test.ts": "packages/product-runtime/test/cli/acp-startup.test.ts",
+      "packages/synergy/test/cli/migration-progress.test.ts": "packages/product-runtime/test/cli/migration-progress.test.ts",
+      "packages/synergy/test/config/provider-pricing.test.ts": "packages/harness/test/config/provider-pricing.test.ts",
+      "packages/synergy/test/fixture/cli-migration.ts": "packages/product-runtime/test/cli/fixture/migration.ts",
+      "packages/synergy/test/migration/desktop-progress.test.ts": "packages/product-runtime/test/migration/desktop-progress.test.ts",
+      "packages/synergy/test/migration/terminal-progress.test.ts": "packages/harness/test/migration/terminal-progress.test.ts",
+      "packages/synergy/test/provider/fixtures/models-refresh-cli.ts": "packages/product-runtime/test/provider/fixtures/models-refresh-cli.ts",
+      "packages/synergy/test/session/rollout-migration-attachments.test.ts": "packages/harness/test/session/rollout-migration-attachments.test.ts",
+      "packages/util/src/runtime-startup.ts": "packages/util/src/runtime-startup.ts",
+      "packages/util/test/runtime-startup.test.ts": "packages/util/test/runtime-startup.test.ts"
+    },
+    "notes": [
+      "Existing files continue to use the baseline mapping. Workflow migration phase changes are applied in packages/workflows/src/session-migration.ts and its test; core rollout upgrades remain in Harness.",
+      "Desktop-specific CLI progress and full ACP startup fixtures belong to Product Runtime. The shared startup protocol belongs to util."
+    ]
+  }
 }
