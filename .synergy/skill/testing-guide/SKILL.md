@@ -21,6 +21,7 @@ For non-blocking and ordering contracts, hold the downstream operation behind an
 - route/SDK: call the route or generated client contract
 - session/LLM loop: real session state with deterministic provider/model fixtures
 - Web/UI: component/context behavior plus the smallest browser or integration check needed
+- external agent adapters: execute a deterministic protocol fixture as a real child through the public Adapter interface; verify stdin, event framing, tool errors, usage, thread isolation/resume, credential filtering and shutdown rather than only private argument builders
 - package/release: build, pack, and validate the published artifact rather than source layout alone; run the shared CLI artifact behavior suite against both core and full binaries with `SYNERGY_TEST_ARTIFACT_BIN`, including actual model/tool execution. Help and health checks do not validate product lifecycle delegation.
 
 Inspect two nearby tests and `packages/harness/test/support/preload.ts` before introducing a new harness pattern.
