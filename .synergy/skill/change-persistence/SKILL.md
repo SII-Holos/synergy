@@ -35,6 +35,8 @@ description: Add or modify Synergy durable state, JSON storage keys, SQLite tabl
 4. Keep compatibility readers only at a named boundary when migration cannot make old data impossible; do not spread legacy checks through business logic.
 5. Preserve secrets and owner-only permissions. Never log raw credentials or include them in diagnostics fixtures.
 6. Build old-state fixtures from schemas emitted by shipped writers. Do not use a synthetic superset of multiple historical variants as the only upgrade fixture.
+7. Validate the historical fields a migration reads or rewrites, and preserve unrelated metadata when updating the record. Use the full current schema only when upgrading the whole record to that schema. Include nullable historical fields, archived source metadata, and preservation of unknown fields in upgrade tests where those formats existed.
+8. Inventory every record layer traversed by a startup-blocking migration, including nested message parts and attachments. Classify malformed historical input separately from storage failures: preserve the record and persist an explicit evidence gap when its original content cannot be recovered; keep permission, read/write and evidence-persistence failures fatal. Test both cases using real storage fixtures.
 
 ## File Snapshot Storage
 

@@ -33,6 +33,7 @@ export interface MigrationSummary {
 
 export interface MigrationReporter {
   summary(summary: MigrationSummary): void
+  started?(input: { domain: string; migration: Migration }): void
   progress?(input: { domain: string; migration: Migration; current: number; total: number; dryRun: boolean }): void
 }
 

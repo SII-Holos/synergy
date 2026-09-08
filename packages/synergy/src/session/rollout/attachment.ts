@@ -25,6 +25,7 @@ export namespace RolloutAttachment {
       })
       return part
     }
+    if (!URL.canParse(part.url)) throw new Attachment.InvalidUrlError()
     const url = new URL(part.url)
     let source: AsyncIterable<Uint8Array> | undefined
     if (url.protocol === "data:") {

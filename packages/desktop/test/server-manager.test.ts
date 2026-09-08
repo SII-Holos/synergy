@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { spawn, type ChildProcess } from "node:child_process"
 import { EventEmitter } from "node:events"
 import net from "node:net"
+import { DesktopServerStartup } from "../src/server-startup.js"
 import {
   attachManagedServerExitHandlers,
   buildManagedServerEnv,
@@ -59,6 +60,7 @@ describe("desktop server manager", () => {
       SYNERGY_CWD: "/Users/example",
       SYNERGY_DESKTOP_CHANNEL: "stable",
       SYNERGY_DESKTOP_PARENT_PID: "42",
+      SYNERGY_DESKTOP_STARTUP_PROGRESS: "1",
     })
   })
 
@@ -253,9 +255,32 @@ describe("desktop server manager", () => {
     expect(taskkill.listenerCount("error")).toBe(0)
   })
 
-  test("uses the bounded health timeout for managed non-Windows startup", async () => {
-    const source = await Bun.file(new URL("../src/server-manager.ts", import.meta.url)).text()
-    expect(source).toContain("await waitForHealth(`${this.url}${HEALTH_PATH}`, child, HEALTH_TIMEOUT_MS)")
+  test("waits for health using the progressing migration budget", async () => {
+    const child = new ChildProcessFixture() as unknown as ChildProcess
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive('SYNERGY_STARTUP_V1 {"phase":"migration","step":1,"current":0,"total":10}\n')
+    const originalFetch = globalThis.fetch
+    let requests = 0
+    globalThis.fetch = (async () => {
+      if (++requests === 1) {
+        now = 60_000
+        startup.receive('SYNERGY_STARTUP_V1 {"phase":"migration","step":1,"current":1,"total":10}\n')
+        return new Response(null, { status: 503 })
+      }
+      return new Response("healthy")
+    }) as typeof fetch
+    try {
+      await waitForHealth("http://127.0.0.1:1/global/health", child, 0, 0, startup)
+      expect(requests).toBe(2)
+      now = 360_000
+      await expect(waitForHealth("http://127.0.0.1:1/global/health", child, 0, 0, startup)).rejects.toThrow(
+        "no progress",
+      )
+      await expect(waitForWindowsServerHealth(child, 0, startup)).rejects.toThrow("no progress")
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 
   test.skipIf(process.platform !== "win32")(

@@ -1,6 +1,7 @@
 import type { Argv, InferredOptionTypes } from "yargs"
 import { Config } from "../config/config"
 import { ensureMigrations } from "../migration"
+import { createManagedMigrationReporter } from "./managed-startup"
 
 interface ResolveNetworkInput {
   argv?: string[]
@@ -55,7 +56,11 @@ export async function isServerReachable(url: string): Promise<boolean> {
 }
 
 export async function resolveNetworkOptions(args: NetworkOptions) {
-  await ensureMigrations()
+  const managed = process.env.SYNERGY_DESKTOP_STARTUP_PROGRESS === "1"
+  await ensureMigrations({
+    output: managed ? "silent" : "interactive",
+    reporter: managed ? createManagedMigrationReporter() : undefined,
+  })
   Config.global.reset()
   return resolveNetworkArgv({
     argv: process.argv,
@@ -81,7 +86,7 @@ export async function resolveNetworkArgv(
 ) {
   const argv = input.argv ?? process.argv
   if (!input.config) {
-    await ensureMigrations()
+    await ensureMigrations({ output: "interactive" })
     Config.global.reset()
   }
   const config = input.config ?? (await Config.global())

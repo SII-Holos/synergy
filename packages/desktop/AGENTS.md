@@ -18,6 +18,8 @@ Load `change-browser-runtime` for native Browser or Browser-host/WebRTC work and
 
 Run `bun run typecheck` and the focused test under `test/`, then `bun run desktop:test`. For Browser changes, run `test:runtime` and the relevant core/Web tests. Exercise the affected external or managed mode through an isolated home, and finish with root `bun run quality:quick`.
 
+For startup progress changes, also run `SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/startup-progress-runtime.test.ts` and verify an isolated managed upgrade longer than the ordinary health deadline.
+
 Update the Browser architecture, Web product contract, or Desktop release runbook when their durable behavior changes.
 
 For native Computer changes, read [Native Computer Use](../../docs/architecture/computer-use.md); run `bun test test/computer/*.test.ts` and verify exact-window background actions in an isolated Desktop. `bun run test:coverage` includes both top-level and Computer suites and is the root coverage manifest entry point.

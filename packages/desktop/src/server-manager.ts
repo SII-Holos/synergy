@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url"
 import { DESKTOP_SERVER_SHUTDOWN_TIMEOUT_MS } from "@ericsanchezok/synergy-util/runtime-shutdown"
 import type { DesktopChannel, DesktopServerMode } from "./identity.js"
 import { DesktopShellEnvironment, type DesktopShellEnvironmentDiagnostics } from "./shell-environment.js"
+import { DesktopServerStartup } from "./server-startup.js"
+import type { DesktopStartupStatus } from "./startup-page.js"
 
 export type DesktopServerState = "stopped" | "starting" | "running" | "failed" | "external"
 
@@ -31,6 +33,7 @@ export interface DesktopServerManagerOptions {
   logDir: string
   externalUrl?: string
   shellEnvironment?: DesktopShellEnvironment
+  onStartupStatus?: (status: DesktopStartupStatus) => void
 }
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -154,6 +157,9 @@ export class DesktopServerManager {
       windowsHide: true,
     })
     this.child = child
+    const startup = new DesktopServerStartup({ onStatus: this.options.onStartupStatus })
+    const onOutput = (chunk: Buffer) => startup.receive(chunk.toString("utf8"))
+    child.stdout?.on("data", onOutput)
     child.stdout?.pipe(logStream, { end: false })
     child.stderr?.pipe(logStream, { end: false })
     attachManagedServerExitHandlers(child, logStream, (details) => {
@@ -166,11 +172,11 @@ export class DesktopServerManager {
 
     try {
       if (process.platform === "win32") {
-        const health = await waitForWindowsServerHealth(child)
+        const health = await waitForWindowsServerHealth(child, HEALTH_TIMEOUT_MS, startup)
         this.port = health.port
         this.url = health.url
       } else {
-        await waitForHealth(`${this.url}${HEALTH_PATH}`, child, HEALTH_TIMEOUT_MS)
+        await waitForHealth(`${this.url}${HEALTH_PATH}`, child, HEALTH_TIMEOUT_MS, HEALTH_POLL_INTERVAL_MS, startup)
       }
       this.state = "running"
       return this.url!
@@ -182,6 +188,8 @@ export class DesktopServerManager {
       this.lastError = detail
       await this.stop()
       throw new Error(detail, { cause: error instanceof Error ? error : undefined })
+    } finally {
+      child.stdout?.off("data", onOutput)
     }
   }
 
@@ -222,6 +230,7 @@ export function buildManagedServerEnv(
     SYNERGY_CWD: input.cwd,
     SYNERGY_DESKTOP_CHANNEL: input.channel,
     SYNERGY_DESKTOP_PARENT_PID: String(input.parentPid),
+    SYNERGY_DESKTOP_STARTUP_PROGRESS: "1",
   }
 }
 
@@ -301,18 +310,20 @@ export async function waitForHealth(
   child: ChildProcess,
   timeoutMs = Number.POSITIVE_INFINITY,
   pollIntervalMs = HEALTH_POLL_INTERVAL_MS,
+  startup?: DesktopServerStartup,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs
+  const remaining = () => startup?.remainingMs() ?? deadline - Date.now()
   let lastError: unknown
   const childFailure = watchChildFailure(child)
   try {
     while (child.exitCode === null && child.signalCode === null) {
-      const remainingMs = deadline - Date.now()
+      const remainingMs = remaining()
       if (remainingMs <= 0) break
       const requestController = new AbortController()
       try {
         const response = await raceWithChildFailure(
-          fetchWithTimeout(url, remainingMs, requestController.signal),
+          fetchWithTimeout(url, Math.min(remainingMs, 1000), requestController.signal),
           childFailure.promise,
           () => lastError,
           () => requestController.abort(),
@@ -323,7 +334,7 @@ export async function waitForHealth(
         if (error instanceof ChildProcessHealthError) throw error
         lastError = error
       }
-      const delayMs = Math.min(pollIntervalMs, deadline - Date.now())
+      const delayMs = Math.min(pollIntervalMs, remaining())
       if (delayMs > 0) {
         await raceWithChildFailure(
           new Promise((resolve) => setTimeout(resolve, delayMs)),
@@ -332,9 +343,9 @@ export async function waitForHealth(
         )
       }
     }
-    if (Date.now() >= deadline) {
+    if (remaining() <= 0) {
       throw new Error(
-        `Synergy server health check timed out after ${timeoutMs}ms${
+        `${startup?.timeoutError().message ?? `Synergy server health check timed out after ${timeoutMs}ms`}${
           lastError instanceof Error ? `: ${lastError.message}` : ""
         }`,
       )
@@ -352,13 +363,15 @@ export async function waitForHealth(
 export async function waitForWindowsServerHealth(
   child: ChildProcess,
   timeoutMs = HEALTH_TIMEOUT_MS,
+  startup?: DesktopServerStartup,
 ): Promise<{ url: string; port: number }> {
   const deadline = Date.now() + timeoutMs
+  const remaining = () => startup?.remainingMs() ?? deadline - Date.now()
   let lastError: unknown
   const childFailure = watchChildFailure(child)
   try {
     while (child.exitCode === null && child.signalCode === null) {
-      const remainingMs = deadline - Date.now()
+      const remainingMs = remaining()
       if (remainingMs <= 0) break
 
       let port: number | null
@@ -378,7 +391,7 @@ export async function waitForWindowsServerHealth(
         const requestController = new AbortController()
         try {
           const response = await raceWithChildFailure(
-            fetchWithTimeout(`${url}${HEALTH_PATH}`, deadline - Date.now(), requestController.signal),
+            fetchWithTimeout(`${url}${HEALTH_PATH}`, Math.min(remaining(), 1000), requestController.signal),
             childFailure.promise,
             () => lastError,
             () => requestController.abort(),
@@ -391,7 +404,7 @@ export async function waitForWindowsServerHealth(
         }
       }
 
-      const delayMs = Math.min(HEALTH_POLL_INTERVAL_MS, deadline - Date.now())
+      const delayMs = Math.min(HEALTH_POLL_INTERVAL_MS, remaining())
       if (delayMs > 0) {
         await raceWithChildFailure(
           new Promise((resolve) => setTimeout(resolve, delayMs)),
@@ -400,9 +413,9 @@ export async function waitForWindowsServerHealth(
         )
       }
     }
-    if (Date.now() >= deadline) {
+    if (remaining() <= 0) {
       throw new Error(
-        `Synergy server health check timed out after ${timeoutMs}ms${
+        `${startup?.timeoutError().message ?? `Synergy server health check timed out after ${timeoutMs}ms`}${
           lastError instanceof Error ? `: ${lastError.message}` : ""
         }`,
       )

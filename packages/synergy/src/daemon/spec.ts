@@ -25,7 +25,7 @@ export namespace DaemonSpec {
   }
 
   export async function resolveNetwork(input?: { argv?: string[]; config?: GlobalConfig }): Promise<Network> {
-    await ensureMigrations()
+    await ensureMigrations({ output: "interactive" })
     if (!input?.config) Config.global.reset()
     const config = input?.config ?? (await Config.global())
     const network = await resolveNetworkArgv({
@@ -49,7 +49,7 @@ export namespace DaemonSpec {
   }
 
   export async function resolve(input?: { argv?: string[]; config?: GlobalConfig }): Promise<ManagedService> {
-    await ensureMigrations()
+    await ensureMigrations({ output: "interactive" })
     if (!input?.config) Config.global.reset()
     const config = input?.config ?? (await Config.global())
     const network = await resolveNetwork({ argv: input?.argv, config })
