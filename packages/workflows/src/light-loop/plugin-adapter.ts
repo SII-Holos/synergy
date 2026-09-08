@@ -1,12 +1,12 @@
 import type { PluginLightLoopAdapter } from "@ericsanchezok/synergy-plugin-host/plugin/host-services"
 import { Session } from "@ericsanchezok/synergy-harness/session"
-import { SessionWorkflowService } from "../session/workflow"
+import { WorkflowSessionService } from "../session/workflow"
 import { LightLoopRuntime } from "./runtime"
 import { LightLoopTerminalStore } from "./terminal-hook"
 
 export const lightLoopPluginAdapter: PluginLightLoopAdapter = {
   async start(sessionID, input) {
-    await SessionWorkflowService.startLightloop(sessionID, input.instructions)
+    await WorkflowSessionService.startLightloop(sessionID, input.instructions)
     await Session.update(sessionID, (draft) => {
       if (draft.workflow?.kind !== "lightloop") return
       draft.workflow = { ...draft.workflow, ...input, status: "running" }

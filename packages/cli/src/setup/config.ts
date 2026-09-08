@@ -1,5 +1,5 @@
 import { Auth } from "@ericsanchezok/synergy-harness/provider/api-key"
-import { ModelsDev } from "@ericsanchezok/synergy-harness/provider/models"
+import { ModelsCatalog } from "@ericsanchezok/synergy-harness/provider/models"
 import { ProviderCatalog } from "@ericsanchezok/synergy-harness/provider/catalog"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { ProviderTransform } from "@ericsanchezok/synergy-harness/provider/transform"
@@ -205,15 +205,15 @@ export namespace ConfigSetup {
   interface ImportedProviderModelTarget {
     provider: Provider.Info
     model: Provider.Model
-    catalogProvider?: ModelsDev.Provider
+    catalogProvider?: ModelsCatalog.Provider
   }
 
   export async function init() {
-    await ModelsDev.refresh()?.catch(() => {})
+    await ModelsCatalog.refresh()?.catch(() => {})
   }
 
   export async function getAvailableProviders(): Promise<ProviderInfo[]> {
-    const database = await ModelsDev.get()
+    const database = await ModelsCatalog.get()
     const priority: Record<string, number> = {
       anthropic: 0,
       openai: 1,
@@ -241,7 +241,7 @@ export namespace ConfigSetup {
     const auth = await Auth.all()
     const providers = await Provider.list()
     const currentConfig = await Config.globalRaw()
-    const database = await ModelsDev.get()
+    const database = await ModelsCatalog.get()
     const knownProviders = new Set(Object.keys(database))
     const configuredProviders = currentConfig.provider ?? {}
     const result: ConnectedProvider[] = []
@@ -273,7 +273,7 @@ export namespace ConfigSetup {
           ),
         }))
 
-    const databaseModelInfo = (provider: ModelsDev.Provider): ModelInfo[] =>
+    const databaseModelInfo = (provider: ModelsCatalog.Provider): ModelInfo[] =>
       Object.values(provider.models)
         .filter((model) => model.status !== "deprecated")
         .map((model) => ({
@@ -498,7 +498,7 @@ export namespace ConfigSetup {
   }
 
   export async function verifyAuth(providerID: string, key: string): Promise<VerifyAuthResult> {
-    const database = await ModelsDev.get()
+    const database = await ModelsCatalog.get()
     const provider = database[providerID]
 
     const verify = await verifyApiKey(providerID, provider, key)

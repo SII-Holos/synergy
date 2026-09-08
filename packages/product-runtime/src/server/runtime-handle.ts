@@ -11,7 +11,7 @@ import { Server } from "@ericsanchezok/synergy-server/server/server"
 import { registerProductRoutes } from "./routes"
 import { GlobalRuntime } from "./global-runtime"
 
-export namespace RuntimeHandle {
+export namespace ProductRuntimeHandle {
   export type Handle = Awaited<ReturnType<typeof open>>
 
   function services(): RuntimeServices {

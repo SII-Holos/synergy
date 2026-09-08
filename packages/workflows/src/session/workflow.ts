@@ -32,7 +32,7 @@ async function assertNoActiveBlueprintLoop(session: Session.Info, workflowName: 
 
 const workflowLock = CoreWorkflow.lock
 
-export namespace SessionWorkflowService {
+export namespace WorkflowSessionService {
   export const hasPendingExecution = CoreWorkflow.hasPendingExecution
   export const lock = CoreWorkflow.lock
   export type SetInput =

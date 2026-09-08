@@ -4,7 +4,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
-import { SessionWorkflowService } from "../../src/session/workflow"
+import { WorkflowSessionService } from "../../src/session/workflow"
 import { BossService } from "../../src/boss/boss"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 
@@ -16,7 +16,7 @@ async function withScope<T>(fn: () => Promise<T>): Promise<T> {
 
 async function bossAndWorker(): Promise<{ boss: Session.Info; worker: Session.Info }> {
   const boss = await Session.create({})
-  await SessionWorkflowService.enableBoss(boss.id)
+  await WorkflowSessionService.enableBoss(boss.id)
   const worker = await BossService.spawn(boss.id, { role: "code" })
   return { boss, worker }
 }
@@ -80,9 +80,9 @@ describe("BossService", () => {
   test("assign rejects targets outside the caller's direct children", async () => {
     await withScope(async () => {
       const bossA = await Session.create({})
-      await SessionWorkflowService.enableBoss(bossA.id)
+      await WorkflowSessionService.enableBoss(bossA.id)
       const bossB = await Session.create({})
-      await SessionWorkflowService.enableBoss(bossB.id)
+      await WorkflowSessionService.enableBoss(bossB.id)
       const worker = await BossService.spawn(bossB.id, { role: "code" })
 
       // bossA cannot assign to bossB's worker.
@@ -193,7 +193,7 @@ describe("BossService", () => {
   test("spawn persists standing instructions in the worker workflow", async () => {
     await withScope(async () => {
       const boss = await Session.create({})
-      await SessionWorkflowService.enableBoss(boss.id)
+      await WorkflowSessionService.enableBoss(boss.id)
       const worker = await BossService.spawn(boss.id, {
         role: "code",
         instructions: "Always use the project formatter before finishing.",
@@ -262,7 +262,7 @@ describe("BossService", () => {
   test("report rejects when the parent left the boss tree", async () => {
     await withScope(async () => {
       const { boss, worker } = await bossAndWorker()
-      await SessionWorkflowService.setNone(boss.id)
+      await WorkflowSessionService.setNone(boss.id)
       await expect(BossService.report(worker.id, { summary: "late report" })).rejects.toThrow(
         "not part of a Boss Mode tree",
       )

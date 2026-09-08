@@ -3,12 +3,12 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
 
-const binary = process.env.SYNERGY_CORE_TEST_BIN
-const installed = process.env.SYNERGY_CORE_TEST_INSTALL
+const binary = process.env.SYNERGY_TEST_ARTIFACT_BIN
+const installed = process.env.SYNERGY_TEST_ARTIFACT_INSTALL
 
 for (const mode of ["complete", "tool", "read", "budget", "timeout", "permission"] as const)
   test.skipIf(!binary && !installed)(
-    `installed core artifact preserves ${mode} outcome outside the repository`,
+    `installed runtime artifact preserves ${mode} outcome outside the repository`,
     async () => {
       const isolation = await createIsolatedTestEnv()
       delete isolation.env.NODE_PATH

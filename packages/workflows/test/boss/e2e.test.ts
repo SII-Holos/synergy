@@ -4,7 +4,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
-import { SessionWorkflowService } from "../../src/session/workflow"
+import { WorkflowSessionService } from "../../src/session/workflow"
 import { BossService } from "../../src/boss/boss"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 
@@ -19,7 +19,7 @@ describe("Boss Mode end-to-end", () => {
     await withScope(async () => {
       // Human creates a session and enables Boss Mode — the root boss.
       const boss = await Session.create({})
-      await SessionWorkflowService.enableBoss(boss.id)
+      await WorkflowSessionService.enableBoss(boss.id)
       expect(boss.workflow).toBeUndefined() // before enable
 
       // Boss spawns three specialist workers.
@@ -61,7 +61,7 @@ describe("Boss Mode end-to-end", () => {
   test("any-depth: a worker spawns a sub-worker and the root sees the full subtree", async () => {
     await withScope(async () => {
       const boss = await Session.create({})
-      await SessionWorkflowService.enableBoss(boss.id)
+      await WorkflowSessionService.enableBoss(boss.id)
       const code = await BossService.spawn(boss.id, { role: "code" })
       const sub = await BossService.spawn(code.id, { role: "lint" })
       await BossService.assign(code.id, { sessionID: sub.id, taskID: "s-1", task: "Lint the widget" })
@@ -84,7 +84,7 @@ describe("Boss Mode end-to-end", () => {
   test("idempotency: re-assigning the same taskID delivers only once", async () => {
     await withScope(async () => {
       const boss = await Session.create({})
-      await SessionWorkflowService.enableBoss(boss.id)
+      await WorkflowSessionService.enableBoss(boss.id)
       const worker = await BossService.spawn(boss.id, { role: "code" })
 
       const first = await BossService.assign(boss.id, { sessionID: worker.id, taskID: "t-1", task: "Do it" })
@@ -99,7 +99,7 @@ describe("Boss Mode end-to-end", () => {
   test("restart simulation: pending tasks and tree survive a runtime reset", async () => {
     await withScope(async () => {
       const boss = await Session.create({})
-      await SessionWorkflowService.enableBoss(boss.id)
+      await WorkflowSessionService.enableBoss(boss.id)
       const worker = await BossService.spawn(boss.id, { role: "code" })
       await BossService.assign(boss.id, { sessionID: worker.id, taskID: "t-1", task: "Persist me" })
 
@@ -125,7 +125,7 @@ describe("Boss Mode end-to-end", () => {
   test("disabling the root makes the tree unavailable but workers keep their tasks", async () => {
     await withScope(async () => {
       const boss = await Session.create({})
-      await SessionWorkflowService.enableBoss(boss.id)
+      await WorkflowSessionService.enableBoss(boss.id)
       const worker = await BossService.spawn(boss.id, { role: "code" })
       // Hold the worker loop while asserting pending work: assign schedules an
       // asynchronous wake that can otherwise drain the inbox before setNone returns.
@@ -135,7 +135,7 @@ describe("Boss Mode end-to-end", () => {
         await BossService.assign(boss.id, { sessionID: worker.id, taskID: "t-1", task: "Do it" })
         const before = await SessionInbox.list(worker.id)
         expect(before).toHaveLength(1)
-        await SessionWorkflowService.setNone(boss.id)
+        await WorkflowSessionService.setNone(boss.id)
         await expect(BossService.status(boss.id)).rejects.toThrow("not part of a Boss Mode tree")
         expect((await SessionInbox.list(worker.id)).map((item) => item.id)).toEqual(before.map((item) => item.id))
         expect((await Session.get(worker.id)).workflow?.kind).toBe("boss")

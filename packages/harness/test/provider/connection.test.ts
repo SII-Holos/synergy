@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Provider as ProviderConfig } from "../../src/config/schema"
-import type { ModelsDev } from "../../src/provider/models"
+import type { ModelsDev } from "../../src/provider/models-schemas"
 import { ProviderConnection } from "../../src/provider/connection"
 import { ProviderProfile } from "../../src/provider/profile"
 

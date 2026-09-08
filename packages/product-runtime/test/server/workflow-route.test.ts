@@ -4,7 +4,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Server } from "@ericsanchezok/synergy-server/server/server"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
-import { SessionWorkflowService } from "@ericsanchezok/synergy-workflows/session/workflow"
+import { WorkflowSessionService } from "@ericsanchezok/synergy-workflows/session/workflow"
 import { LightLoopRuntime } from "@ericsanchezok/synergy-workflows/light-loop/runtime"
 // Product domains register workflow contributions via the L4 manifest
 import "@ericsanchezok/synergy-product-runtime/product-registration"
@@ -22,7 +22,7 @@ describe("workflow routes", () => {
   test("updates and cancels an active Light Loop", async () => {
     await withScope(async (scope) => {
       const session = await Session.create({})
-      await SessionWorkflowService.startLightloop(session.id, "Original task")
+      await WorkflowSessionService.startLightloop(session.id, "Original task")
       const app = Server.App()
 
       const updatedResponse = await app.request(`/workflow/session/${session.id}/lightloop`, {
@@ -48,8 +48,8 @@ describe("workflow routes", () => {
   test("returns structured cancellation errors", async () => {
     await withScope(async (scope) => {
       const session = await Session.create({})
-      await SessionWorkflowService.startLightloop(session.id, "Original task")
-      const cancel = spyOn(SessionWorkflowService, "cancelLightloop").mockRejectedValueOnce(new Error("Cancel failed"))
+      await WorkflowSessionService.startLightloop(session.id, "Original task")
+      const cancel = spyOn(WorkflowSessionService, "cancelLightloop").mockRejectedValueOnce(new Error("Cancel failed"))
 
       try {
         const response = await Server.App().request(`/workflow/session/${session.id}/lightloop/cancel`, {
@@ -68,7 +68,7 @@ describe("workflow routes", () => {
   test("rejects empty instructions", async () => {
     await withScope(async (scope) => {
       const session = await Session.create({})
-      await SessionWorkflowService.startLightloop(session.id, "Original task")
+      await WorkflowSessionService.startLightloop(session.id, "Original task")
 
       const response = await Server.App().request(`/workflow/session/${session.id}/lightloop`, {
         method: "PATCH",
@@ -86,7 +86,7 @@ describe("workflow routes", () => {
   test("rejects legacy Lattice actions and reports paused-run conflicts as 409", async () => {
     await withScope(async (scope) => {
       const session = await Session.create({})
-      const enabled = await SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
+      const enabled = await WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
       if (enabled.workflow?.kind !== "lattice") throw new Error("expected Lattice workflow")
       await LatticeRunService.pause(enabled.workflow.runID)
 
@@ -109,7 +109,7 @@ describe("workflow routes", () => {
   test("reports workflow and BlueprintLoop ownership conflicts as 409", async () => {
     await withScope(async (scope) => {
       const workflowSession = await Session.create({})
-      await SessionWorkflowService.enablePlan(workflowSession.id)
+      await WorkflowSessionService.enablePlan(workflowSession.id)
 
       const workflowConflict = await Server.App().request(`/workflow/session/${workflowSession.id}`, {
         method: "PUT",
@@ -140,7 +140,7 @@ describe("workflow routes", () => {
   test("reserves 400 for validation and reports unexpected Lattice workflow failures as 500", async () => {
     await withScope(async (scope) => {
       const session = await Session.create({})
-      const set = spyOn(SessionWorkflowService, "set").mockRejectedValueOnce(new Error("sensitive storage failure"))
+      const set = spyOn(WorkflowSessionService, "set").mockRejectedValueOnce(new Error("sensitive storage failure"))
 
       try {
         const response = await Server.App().request(`/workflow/session/${session.id}`, {
@@ -181,7 +181,7 @@ describe("workflow routes", () => {
 test("reads the authoritative terminal status after the workflow is cleared", async () => {
   await withScope(async (scope) => {
     const session = await Session.create({})
-    await SessionWorkflowService.startLightloop(session.id, "Original task")
+    await WorkflowSessionService.startLightloop(session.id, "Original task")
     await LightLoopRuntime.setTerminalStatus(session.id, "timed_out", "deadline exceeded")
 
     const response = await Server.App().request(`/workflow/session/${session.id}/lightloop/terminal`, {

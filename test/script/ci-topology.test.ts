@@ -7,7 +7,7 @@ const root = path.resolve(import.meta.dir, "..", "..")
 const ciSource = await readFile(path.join(root, ".github/workflows/ci.yml"), "utf8")
 
 const REQUIRED_NEEDS = [
-  "core-artifact",
+  "runtime-artifacts",
   "quality",
   "typecheck",
   "windows",

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Session } from "@ericsanchezok/synergy-harness/session"
-import { SessionWorkflowService, WorkflowConflictError } from "@ericsanchezok/synergy-workflows/session/workflow"
+import { WorkflowSessionService, WorkflowConflictError } from "@ericsanchezok/synergy-workflows/session/workflow"
 import { ContinuationKernel } from "@ericsanchezok/synergy-harness/session/continuation-kernel"
 import { WorkflowPromptRegistry } from "@ericsanchezok/synergy-harness/session/workflow-prompt-registry"
 import { WorkflowKindRegistry } from "@ericsanchezok/synergy-harness/session/workflow-kind-registry"
@@ -89,7 +89,7 @@ describe("workflow kind registry (H3 test-only kind)", () => {
       expect(ContinuationKernel.registeredPolicyIDs()).toContain(`${TEST_KIND}_policy`)
 
       const session = await Session.create({})
-      const enabled = await SessionWorkflowService.setExtension(session.id, TEST_KIND, {
+      const enabled = await WorkflowSessionService.setExtension(session.id, TEST_KIND, {
         intensity: "maximum",
       })
       expect(enabled.workflow?.kind).toBe("extension")
@@ -112,15 +112,15 @@ describe("workflow kind registry (H3 test-only kind)", () => {
         ].join("\n"),
       )
 
-      await expect(SessionWorkflowService.setExtension(session.id, TEST_KIND, {})).rejects.toThrow("workflow is active")
-      await expect(SessionWorkflowService.enablePlan(session.id)).rejects.toThrow(TEST_KIND)
+      await expect(WorkflowSessionService.setExtension(session.id, TEST_KIND, {})).rejects.toThrow("workflow is active")
+      await expect(WorkflowSessionService.enablePlan(session.id)).rejects.toThrow(TEST_KIND)
       await expect(
-        SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" }),
+        WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" }),
       ).rejects.toMatchObject({
         data: { state: TEST_KIND, reason: expect.stringContaining(TEST_KIND) },
       })
 
-      const cleared = await SessionWorkflowService.setNone(session.id)
+      const cleared = await WorkflowSessionService.setNone(session.id)
       expect(cleared.workflow).toBeUndefined()
       expect((await Session.get(session.id)).workflow).toBeUndefined()
       expect(
@@ -135,7 +135,7 @@ describe("workflow kind registry (H3 test-only kind)", () => {
   test("unregistered extension kinds are rejected loudly", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      await expect(SessionWorkflowService.setExtension(session.id, "never_registered", {})).rejects.toThrow(
+      await expect(WorkflowSessionService.setExtension(session.id, "never_registered", {})).rejects.toThrow(
         'Workflow kind "never_registered" is not registered',
       )
       expect((await Session.get(session.id)).workflow).toBeUndefined()

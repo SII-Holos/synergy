@@ -245,8 +245,8 @@ export namespace LatticeController {
 
   async function ensureWorkflowProjection(scopeID: string, run: LatticeTypes.Run): Promise<boolean> {
     try {
-      const { SessionWorkflowService } = await import("../session/workflow")
-      await SessionWorkflowService.repairLatticeProjection({
+      const { WorkflowSessionService } = await import("../session/workflow")
+      await WorkflowSessionService.repairLatticeProjection({
         sessionID: run.sessionID,
         runID: run.id,
         mode: run.mode,
@@ -262,8 +262,8 @@ export namespace LatticeController {
   }
 
   async function clearTerminalWorkflowProjection(sessionID: string, runID: string): Promise<void> {
-    const { SessionWorkflowService } = await import("../session/workflow")
-    await SessionWorkflowService.clearIfLattice(sessionID, runID)
+    const { WorkflowSessionService } = await import("../session/workflow")
+    await WorkflowSessionService.clearIfLattice(sessionID, runID)
   }
 
   async function reconcileCompletionDelivery(scopeID: string, run: LatticeTypes.Run): Promise<boolean> {

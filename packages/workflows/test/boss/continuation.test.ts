@@ -7,7 +7,7 @@ import { BossContinuationPolicy } from "../../src/boss/boss-continuation"
 import { BossService } from "../../src/boss/boss"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
-import { SessionWorkflowService } from "../../src/session/workflow"
+import { WorkflowSessionService } from "../../src/session/workflow"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 
 const model = { providerID: "test-provider", modelID: "test-model" }
@@ -21,7 +21,7 @@ async function withScope<T>(fn: () => Promise<T>): Promise<T> {
 
 async function bossAndWorker(): Promise<{ boss: Session.Info; worker: Session.Info }> {
   const boss = await Session.create({})
-  await SessionWorkflowService.enableBoss(boss.id)
+  await WorkflowSessionService.enableBoss(boss.id)
   const worker = await BossService.spawn(boss.id, { role: "code" })
   return { boss, worker }
 }
@@ -186,7 +186,7 @@ describe("BossContinuationPolicy", () => {
       const { boss, worker } = await bossAndWorker()
       const taskUserID = await assignedTaskMaterialized(worker.id, boss.id)
       const assistantID = await terminalAssistant(worker.id, taskUserID)
-      await SessionWorkflowService.setNone(boss.id)
+      await WorkflowSessionService.setNone(boss.id)
 
       const proposal = await BossContinuationPolicy.handle(await gateFor(worker.id, assistantID))
       expect(proposal).toBeUndefined()

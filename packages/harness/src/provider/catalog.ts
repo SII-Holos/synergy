@@ -16,14 +16,14 @@ import { Env } from "../util/env"
 export namespace ProviderCatalog {
   const log = Log.create({ service: "provider.catalog" })
 
-  type ModelsDevRuntime = (typeof import("./models"))["ModelsDev"]
-  let modelsDevRuntime: Promise<ModelsDevRuntime> | undefined
+  type ModelsCatalogRuntime = (typeof import("./models"))["ModelsCatalog"]
+  let modelsCatalogRuntime: Promise<ModelsCatalogRuntime> | undefined
 
-  function loadModelsDevRuntime() {
-    if (!modelsDevRuntime) {
-      modelsDevRuntime = import("./models").then((module) => module.ModelsDev)
+  function loadModelsCatalogRuntime() {
+    if (!modelsCatalogRuntime) {
+      modelsCatalogRuntime = import("./models").then((module) => module.ModelsCatalog)
     }
-    return modelsDevRuntime
+    return modelsCatalogRuntime
   }
 
   export const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000
@@ -891,8 +891,8 @@ export namespace ProviderCatalog {
     key: string,
     generation: number,
   ): Promise<Record<string, ModelsDev.Provider>> {
-    const runtimeModelsDev = await loadModelsDevRuntime()
-    const modelsDev = withBuiltinSourceSurfaces(await runtimeModelsDev.get())
+    const runtimeModelsCatalog = await loadModelsCatalogRuntime()
+    const modelsDev = withBuiltinSourceSurfaces(await runtimeModelsCatalog.get())
     const result: Record<string, ModelsDev.Provider> = { ...modelsDev }
 
     for (const [providerID, provider] of Object.entries(bundledSnapshot(modelsDev))) {
@@ -1006,9 +1006,9 @@ export namespace ProviderCatalog {
     snapshots = undefined
   }
 
-  void loadModelsDevRuntime()
-    .then((modelsDevRuntime) =>
-      modelsDevRuntime.onRefresh(async () => {
+  void loadModelsCatalogRuntime()
+    .then((modelsCatalogRuntime) =>
+      modelsCatalogRuntime.onRefresh(async () => {
         invalidateModelsDevProjection()
         const { RuntimeReloadExecutor } = await import("../config/reload-executor")
         await RuntimeReloadExecutor.reloadGlobal({ targets: ["provider"], reason: "models.dev catalog refreshed" })

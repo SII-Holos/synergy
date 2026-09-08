@@ -8,7 +8,7 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionEndpoint } from "@ericsanchezok/synergy-harness/session/endpoint"
 import { ChannelPushTool } from "@ericsanchezok/synergy-connections/channel/tools/channel-push"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
-import { SessionWorkflowService } from "@ericsanchezok/synergy-workflows/session/workflow"
+import { WorkflowSessionService } from "@ericsanchezok/synergy-workflows/session/workflow"
 import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -85,7 +85,7 @@ async function createBossTurn(input: {
     scopeKey: "scope-1",
   })
   const session = await Session.create({ endpoint })
-  await SessionWorkflowService.enableBoss(session.id)
+  await WorkflowSessionService.enableBoss(session.id)
 
   const rootID = Identifier.ascending("message")
   await Session.updateMessage({
@@ -317,7 +317,7 @@ describe("channel_push tool", () => {
           scopeKey: "scope-1",
         }),
       })
-      await SessionWorkflowService.enableBoss(session.id)
+      await WorkflowSessionService.enableBoss(session.id)
       const tool = await ChannelPushTool.init()
       await expect(tool.execute({ text: "hello" }, ctx(session.id, Identifier.ascending("message")))).rejects.toThrow(
         "channel_push: no target chat",
@@ -336,7 +336,7 @@ describe("channel_push tool", () => {
           scopeKey: "scope-1",
         }),
       })
-      await SessionWorkflowService.enableBoss(session.id)
+      await WorkflowSessionService.enableBoss(session.id)
       const asks: string[] = []
       const tool = await ChannelPushTool.init()
       await tool.execute(
@@ -381,7 +381,7 @@ describe("channel_push tool", () => {
         scopeKey: "scope-1",
       })
       const session = await Session.create({ endpoint })
-      await SessionWorkflowService.enableBoss(session.id)
+      await WorkflowSessionService.enableBoss(session.id)
       const rootID = Identifier.ascending("message")
       await Session.updateMessage({
         id: rootID,

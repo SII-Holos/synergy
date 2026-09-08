@@ -1,6 +1,6 @@
 // L4 assembly: load built-in product registrations before any core registry use
 import "../product-registration"
-import { RuntimeHandle } from "./runtime-handle"
+import { ProductRuntimeHandle } from "./runtime-handle"
 import { Server } from "@ericsanchezok/synergy-server/server/server"
 import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -37,7 +37,7 @@ export interface RuntimeOptions {
 }
 export async function run(options: RuntimeOptions) {
   const reporter = options.printBanner ? StartupReporter.create() : undefined
-  await using handle = await RuntimeHandle.open({
+  await using handle = await ProductRuntimeHandle.open({
     mode: "server",
     network: options.network,
     reporter: reporter ? { summary: (summary) => reporter.migration(summary) } : undefined,
@@ -318,7 +318,7 @@ function displayUrl(hostname: string, port: number) {
   return url.toString().replace(/\/$/, "")
 }
 
-function registerShutdown(handle: RuntimeHandle.Handle) {
+function registerShutdown(handle: ProductRuntimeHandle.Handle) {
   let shuttingDown = false
   let stopWatchingParent = () => {}
   const gracefulShutdown = async (signal: string) => {

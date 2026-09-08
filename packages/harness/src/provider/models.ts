@@ -5,7 +5,7 @@ import { data } from "./models-macro" with { type: "macro" }
 import { Installation } from "../global/installation"
 import { Flag } from "../flag/flag"
 
-export namespace ModelsDev {
+export namespace ModelsCatalog {
   const log = Log.create({ service: "models.dev" })
   const filepath = Global.Path.modelsCache
 
@@ -125,4 +125,4 @@ export namespace ModelsDev {
   }
 }
 
-setInterval(() => ModelsDev.refresh(), 60 * 1000 * 60).unref()
+setInterval(() => ModelsCatalog.refresh(), 60 * 1000 * 60).unref()

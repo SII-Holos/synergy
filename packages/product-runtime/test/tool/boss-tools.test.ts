@@ -5,7 +5,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { BossService } from "@ericsanchezok/synergy-workflows/boss/boss"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
-import { SessionWorkflowService } from "@ericsanchezok/synergy-workflows/session/workflow"
+import { WorkflowSessionService } from "@ericsanchezok/synergy-workflows/session/workflow"
 import { BossAssignTool } from "@ericsanchezok/synergy-workflows/boss/tools/boss-assign"
 import { BossCancelTool } from "@ericsanchezok/synergy-workflows/boss/tools/boss-cancel"
 import { BossReportTool } from "@ericsanchezok/synergy-workflows/boss/tools/boss-report"
@@ -37,7 +37,7 @@ function ctx(sessionID: string): Tool.Context {
 
 async function bossAndWorker(): Promise<{ boss: Session.Info; worker: Session.Info }> {
   const boss = await Session.create({})
-  await SessionWorkflowService.enableBoss(boss.id)
+  await WorkflowSessionService.enableBoss(boss.id)
   const worker = await BossService.spawn(boss.id, { role: "code" })
   return { boss, worker }
 }
@@ -56,7 +56,7 @@ describe("Boss tools", () => {
   test("boss_spawn creates a worker and returns its sessionID", async () => {
     await withScope(async () => {
       const boss = await Session.create({})
-      await SessionWorkflowService.enableBoss(boss.id)
+      await WorkflowSessionService.enableBoss(boss.id)
       const tool = await BossSpawnTool.init()
       const result = await tool.execute({ role: "review" }, ctx(boss.id))
       expect(result.metadata).toMatchObject({ role: "review" })

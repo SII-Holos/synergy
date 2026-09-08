@@ -12,7 +12,7 @@ async function runShutdownProbe(): Promise<ShutdownProbe> {
   const script = String.raw`
     const { Log } = await import("@ericsanchezok/synergy-harness/util/log")
     Log.init({ print: false })
-    const [{ Server }, { RuntimeHandle }, { AgentTurn }, { PolicyWorker }, { ToolScheduler }] = await Promise.all([
+    const [{ Server }, { ProductRuntimeHandle }, { AgentTurn }, { PolicyWorker }, { ToolScheduler }] = await Promise.all([
       import("@ericsanchezok/synergy-server/server/server"),
       import("./src/server/runtime-handle"),
       import("@ericsanchezok/synergy-harness/session/agent-turn"),
@@ -20,7 +20,7 @@ async function runShutdownProbe(): Promise<ShutdownProbe> {
       import("@ericsanchezok/synergy-harness/test/support/internals"),
     ])
     const origin = "http://localhost:5173"
-    const runtime = await RuntimeHandle.open({ mode: "oneshot", network: { hostname: "127.0.0.1", port: 0 } })
+    const runtime = await ProductRuntimeHandle.open({ mode: "oneshot", network: { hostname: "127.0.0.1", port: 0 } })
     runtime.closeAdmission()
     const response = await Server.App().request("/global/health")
     const crossOrigin = await Server.App().request("/global/health", { headers: { origin } })

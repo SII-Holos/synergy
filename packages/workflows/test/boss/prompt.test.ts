@@ -4,7 +4,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { BossService } from "../../src/boss/boss"
 import { buildBossContext, buildWorkerContext, renderBossTree } from "../../src/boss/boss-prompt"
-import { SessionWorkflowService } from "../../src/session/workflow"
+import { WorkflowSessionService } from "../../src/session/workflow"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
@@ -20,7 +20,7 @@ describe("Boss Mode prompt builders", () => {
   test("boss context instructs delegation, monitoring, and human decisions", async () => {
     await withScope(async () => {
       const boss = await Session.create({})
-      await SessionWorkflowService.enableBoss(boss.id)
+      await WorkflowSessionService.enableBoss(boss.id)
       const text = buildBossContext(await Session.get(boss.id))
       expect(text).toContain("<boss-context>")
       expect(text).toContain("boss_spawn")
@@ -36,7 +36,7 @@ describe("Boss Mode prompt builders", () => {
   test("worker context names the role, the root, and boss_report", async () => {
     await withScope(async () => {
       const boss = await Session.create({})
-      await SessionWorkflowService.enableBoss(boss.id)
+      await WorkflowSessionService.enableBoss(boss.id)
       const worker = await BossService.spawn(boss.id, { role: "code" })
       const text = buildWorkerContext(await Session.get(worker.id))
       expect(text).toContain("<boss-worker-context>")
@@ -51,7 +51,7 @@ describe("Boss Mode prompt builders", () => {
   test("renderBossTree renders status, role, sessionID, and task", async () => {
     await withScope(async () => {
       const boss = await Session.create({})
-      await SessionWorkflowService.enableBoss(boss.id)
+      await WorkflowSessionService.enableBoss(boss.id)
       const worker = await BossService.spawn(boss.id, { role: "code" })
       await BossService.assign(boss.id, {
         sessionID: worker.id,

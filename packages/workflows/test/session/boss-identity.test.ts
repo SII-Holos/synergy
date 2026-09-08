@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
-import { SessionWorkflowService } from "../../src/session/workflow"
+import { WorkflowSessionService } from "../../src/session/workflow"
 import {
   BOSS_DISCIPLINE_BLOCK,
   DEFAULT_IDENTITY_TEXT,
@@ -39,7 +39,7 @@ describe("boss identity prompt", () => {
   test("buildRuntimeBossContext injects persona + discipline + instructions", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      await SessionWorkflowService.enableBoss(session.id)
+      await WorkflowSessionService.enableBoss(session.id)
       const context = buildRuntimeBossContext(session, {
         identityText: "我是同事小飞",
         instructions: "只汇报摘要",
@@ -55,7 +55,7 @@ describe("boss identity prompt", () => {
   test("buildRuntimeBossContext without identity still injects discipline and the default persona", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      await SessionWorkflowService.enableBoss(session.id)
+      await WorkflowSessionService.enableBoss(session.id)
       const context = buildRuntimeBossContext(session, {})
       expect(context).toContain("<boss-context>")
       expect(context).toContain(BOSS_DISCIPLINE_BLOCK)
@@ -67,7 +67,7 @@ describe("boss identity prompt", () => {
   test("buildRuntimeBossContext with a custom identity overrides the default persona", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      await SessionWorkflowService.enableBoss(session.id)
+      await WorkflowSessionService.enableBoss(session.id)
       const context = buildRuntimeBossContext(session, { identityText: "我是同事小飞" })
       expect(context).toContain("<boss-persona>")
       expect(context).toContain("我是同事小飞")

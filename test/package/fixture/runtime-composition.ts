@@ -28,7 +28,7 @@ if (enabled("note")) (await import("@ericsanchezok/synergy-note/register")).regi
 const runtime = full
   ? await (
       await import("@ericsanchezok/synergy-product-runtime/server/runtime-handle")
-    ).RuntimeHandle.open({ mode: "server", network: { hostname: "127.0.0.1", port: 0 } })
+    ).ProductRuntimeHandle.open({ mode: "server", network: { hostname: "127.0.0.1", port: 0 } })
   : await openLocalRuntime({
       mode: "oneshot",
       services: {

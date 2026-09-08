@@ -5,7 +5,7 @@ import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
-import { SessionWorkflowService } from "@ericsanchezok/synergy-workflows/session/workflow"
+import { WorkflowSessionService } from "@ericsanchezok/synergy-workflows/session/workflow"
 import { BossService } from "@ericsanchezok/synergy-workflows/boss/boss"
 import {
   BossProjectTool,
@@ -37,7 +37,7 @@ function ctx(sessionID: string): Tool.Context {
 
 async function bossSession(): Promise<Session.Info> {
   const session = await Session.create({})
-  await SessionWorkflowService.enableBoss(session.id)
+  await WorkflowSessionService.enableBoss(session.id)
   return session
 }
 

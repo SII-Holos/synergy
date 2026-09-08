@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  core-artifact:
+  runtime-artifacts:
     name: Installed Runtime Artifacts
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -40,7 +40,17 @@ jobs:
         working-directory: packages/cli
         run: bun test test/cli/artifact.test.ts
         env:
-          SYNERGY_CORE_TEST_BIN: ${{ github.workspace }}/packages/cli/dist/synergy-linux-x64/bin/synergy
+          SYNERGY_TEST_ARTIFACT_BIN: ${{ github.workspace }}/packages/cli/dist/synergy-linux-x64/bin/synergy
+      - name: Build the complete product profile
+        run: bun packages/product-runtime/script/build.ts --single --skip-install
+        env:
+          SYNERGY_HOME: ${{ runner.temp }}/synergy-product-build
+          SYNERGY_REQUIRE_SANDBOX_ASSETS: "1"
+      - name: Verify complete product execution outside the repository
+        working-directory: packages/cli
+        run: bun test test/cli/artifact.test.ts
+        env:
+          SYNERGY_TEST_ARTIFACT_BIN: ${{ github.workspace }}/packages/product-runtime/dist/synergy-linux-x64/bin/synergy
       - name: Build and verify installable core workspace archives
         run: |
           bun script/pack-workspace.ts packages/cli "${{ runner.temp }}/core-packages"
@@ -392,7 +402,7 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     needs:
-      - core-artifact
+      - runtime-artifacts
       - quality
       - typecheck
       - windows
@@ -409,7 +419,7 @@ jobs:
           # GitHub counts a skipped required check as passing, so this job
           # always runs and fails on any non-success result, including skips.
           failed=""
-          for result in "${{ needs.core-artifact.result }}" "${{ needs.quality.result }}" "${{ needs.typecheck.result }}" "${{ needs.windows.result }}" "${{ needs.test.result }}" "${{ needs.package-validation.result }}" "${{ needs.workflow-validation.result }}" "${{ needs.secret-scan.result }}" "${{ needs.desktop.result }}" "${{ needs.smoke.result }}" "${{ needs.coverage.result }}"; do
+          for result in "${{ needs.runtime-artifacts.result }}" "${{ needs.quality.result }}" "${{ needs.typecheck.result }}" "${{ needs.windows.result }}" "${{ needs.test.result }}" "${{ needs.package-validation.result }}" "${{ needs.workflow-validation.result }}" "${{ needs.secret-scan.result }}" "${{ needs.desktop.result }}" "${{ needs.smoke.result }}" "${{ needs.coverage.result }}"; do
             if [ "$result" != "success" ]; then
               failed="$failed $result"
             fi

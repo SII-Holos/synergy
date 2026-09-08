@@ -5,7 +5,7 @@ import { SessionExecutionContributions } from "@ericsanchezok/synergy-harness/se
 import { SessionRecoveryContributions } from "@ericsanchezok/synergy-harness/session/recovery-contributions"
 import { SessionModePolicy as CoreModePolicy } from "@ericsanchezok/synergy-harness/session/tool-mode-policy"
 import { SessionModePolicy, workflowToolAvailability } from "./tool-mode-policy"
-import { SessionWorkflowService, WorkflowConflictError } from "./workflow"
+import { WorkflowSessionService, WorkflowConflictError } from "./workflow"
 import { SessionBlueprintState } from "./blueprint-state"
 import { isActiveLightLoopWorkflow } from "./light-loop-state"
 import { WorkflowRecovery } from "./recovery"
@@ -22,11 +22,11 @@ export function registerWorkflowSessions() {
       managesLock: true,
       conflicts: ["plan", "lightloop", "lattice", "boss"],
       async enable({ sessionID, args }) {
-        if (kind === "plan") return SessionWorkflowService.enablePlan(sessionID)
-        if (kind === "boss") return SessionWorkflowService.enableBoss(sessionID)
+        if (kind === "plan") return WorkflowSessionService.enablePlan(sessionID)
+        if (kind === "boss") return WorkflowSessionService.enableBoss(sessionID)
         if (kind === "lightloop")
-          return SessionWorkflowService.startLightloop(sessionID, z.string().parse(args.instructions))
-        return SessionWorkflowService.enableLattice(sessionID, {
+          return WorkflowSessionService.startLightloop(sessionID, z.string().parse(args.instructions))
+        return WorkflowSessionService.enableLattice(sessionID, {
           kind,
           ...z
             .object({

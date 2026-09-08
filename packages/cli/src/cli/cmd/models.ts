@@ -2,7 +2,7 @@ import type { Argv } from "yargs"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
-import { ModelsDev } from "@ericsanchezok/synergy-harness/provider/models"
+import { ModelsCatalog } from "@ericsanchezok/synergy-harness/provider/models"
 import { cmd } from "./cmd"
 import { UI } from "../../util/ui"
 import { EOL } from "os"
@@ -29,7 +29,7 @@ export const ModelsCommand = cmd({
   },
   handler: async (args) => {
     if (args.refresh) {
-      await ModelsDev.refresh()
+      await ModelsCatalog.refresh()
       await ProviderCatalog.resolve({ forceRefresh: true, includeLive: true }).catch(() => {})
       UI.println(UI.Style.TEXT_SUCCESS_BOLD + "Provider catalog refreshed" + UI.Style.TEXT_NORMAL)
     }

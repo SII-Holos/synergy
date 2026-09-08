@@ -3,7 +3,7 @@ import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
-import { SessionWorkflowService } from "@ericsanchezok/synergy-workflows/session/workflow"
+import { WorkflowSessionService } from "@ericsanchezok/synergy-workflows/session/workflow"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { BossService } from "@ericsanchezok/synergy-workflows/boss/boss"
 import {
@@ -38,7 +38,7 @@ describe("boss hierarchy (layered reporting protocol)", () => {
     await withScope(async () => {
       // Top boss (runtime boss, home).
       const top = await Session.create({})
-      await SessionWorkflowService.enableBoss(top.id)
+      await WorkflowSessionService.enableBoss(top.id)
 
       // Project boss in a project scope (as boss_project would create it).
       const projectDir = path.join(process.env.SYNERGY_TEST_ROOT!, "hierarchy-" + Math.random().toString(36).slice(2))
@@ -67,7 +67,7 @@ describe("boss hierarchy (layered reporting protocol)", () => {
   test("project boss sends a summary to the top boss via session_send", async () => {
     await withScope(async () => {
       const top = await Session.create({})
-      await SessionWorkflowService.enableBoss(top.id)
+      await WorkflowSessionService.enableBoss(top.id)
 
       const projectDir = path.join(process.env.SYNERGY_TEST_ROOT!, "hierarchy-" + Math.random().toString(36).slice(2))
       const tool = await BossProjectTool.init()
@@ -92,7 +92,7 @@ describe("boss hierarchy (layered reporting protocol)", () => {
   test("boss_project writes the default layered-reporting discipline into instructions", async () => {
     await withScope(async () => {
       const top = await Session.create({})
-      await SessionWorkflowService.enableBoss(top.id)
+      await WorkflowSessionService.enableBoss(top.id)
       const projectDir = path.join(process.env.SYNERGY_TEST_ROOT!, "hierarchy-" + Math.random().toString(36).slice(2))
       const tool = await BossProjectTool.init()
       const created = await tool.execute({ directory: projectDir, title: "Project Z" }, ctx(top.id))

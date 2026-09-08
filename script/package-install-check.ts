@@ -102,8 +102,8 @@ if (import.meta.main) {
         ...process.env,
         NODE_PATH: undefined,
         NODE_OPTIONS: undefined,
-        SYNERGY_CORE_TEST_BIN: "",
-        SYNERGY_CORE_TEST_INSTALL: directory,
+        SYNERGY_TEST_ARTIFACT_BIN: "",
+        SYNERGY_TEST_ARTIFACT_INSTALL: directory,
       },
     })
     if (await acceptance.exited) throw new Error("Installed CLI behavioral acceptance failed")

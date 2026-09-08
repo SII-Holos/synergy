@@ -62,7 +62,7 @@ async function bootstrap(): Promise<void> {
     dataCommands: async () => (await import("./cli/data")).commands,
     defaultCommand: "server",
     commands: productCommands,
-    runtimeFactory: async (options) => (await import("./server/runtime-handle")).RuntimeHandle.openTask(options),
+    runtimeFactory: async (options) => (await import("./server/runtime-handle")).ProductRuntimeHandle.openTask(options),
     beforeCommand: async (command) => {
       if (command !== "send") await import("./product-registration")
     },

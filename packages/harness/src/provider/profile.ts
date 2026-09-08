@@ -1,5 +1,5 @@
 import type { Provider as SDK } from "ai"
-import type { ModelsDev } from "./models"
+import type { ModelsDev } from "./models-schemas"
 import type { Auth } from "./api-key"
 import type { AccountUsage } from "./usage"
 import z from "zod"

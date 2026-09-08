@@ -6,7 +6,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { Env } from "@ericsanchezok/synergy-harness/util/env"
-import { ModelsDev } from "@ericsanchezok/synergy-harness/provider/models"
+import { ModelsCatalog } from "@ericsanchezok/synergy-harness/provider/models"
 import { Provider as ProviderConfig } from "@ericsanchezok/synergy-harness/config/schema"
 import { ProviderCatalog } from "@ericsanchezok/synergy-harness/provider/catalog"
 import { ProviderProfile } from "@ericsanchezok/synergy-harness/provider/profile"
@@ -32,7 +32,7 @@ async function provideTestScope(input: {
 }
 
 test("catalog reasoning efforts survive unrelated future option types", () => {
-  const catalog = ModelsDev.Provider.parse({
+  const catalog = ModelsCatalog.Provider.parse({
     id: "openai",
     name: "OpenAI",
     api: "https://api.openai.com/v1",
@@ -65,7 +65,7 @@ test("catalog reasoning efforts survive unrelated future option types", () => {
 })
 
 test("Kimi K3 catalog efforts become Anthropic-compatible variants", () => {
-  const catalog = ModelsDev.Provider.parse({
+  const catalog = ModelsCatalog.Provider.parse({
     id: "kimi-for-coding",
     name: "Kimi For Coding",
     api: "https://api.kimi.com/coding/v1",
@@ -108,7 +108,7 @@ test.each([
     release_date: "2026-07-01",
     reasoning: true,
   }
-  expect(ModelsDev.reasoningEfforts(model as never)).toBeUndefined()
+  expect(ModelsCatalog.reasoningEfforts(model as never)).toBeUndefined()
   const capabilities = Provider.mergeModelCapabilities(model as never)
   expect(capabilities.reasoningEfforts).toBeUndefined()
 })
@@ -132,7 +132,7 @@ test.each([
     reasoning_options: [{ type: "effort", values }],
   })
   const variants = Provider.fromModelsDevProvider(
-    ModelsDev.Provider.parse({
+    ModelsCatalog.Provider.parse({
       id: "openai",
       name: "OpenAI",
       api: "https://api.openai.com/v1",

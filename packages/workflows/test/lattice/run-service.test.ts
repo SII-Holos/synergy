@@ -17,7 +17,7 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
-import { SessionWorkflowService } from "../../src/session/workflow"
+import { WorkflowSessionService } from "../../src/session/workflow"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -131,7 +131,7 @@ describe("LatticeRunService v2", () => {
   test("workflow enable projects only kind, runID, and mode", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      const after = await SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
+      const after = await WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
       const run = await LatticeStore.get(ScopeContext.current.scope.id, session.id)
 
       expect(run.status).toBe("active")
@@ -305,7 +305,7 @@ describe("LatticeRunService v2", () => {
       ])
 
       const session = await Session.create({})
-      const projected = await SessionWorkflowService.enableLattice(session.id, {
+      const projected = await WorkflowSessionService.enableLattice(session.id, {
         kind: "lattice",
         mode: "auto",
         goal: "Ship safely",
@@ -320,7 +320,7 @@ describe("LatticeRunService v2", () => {
       expect(entries[0].deliveryKey).toBe(
         run.effect?.kind === "deliver_prompt" ? run.effect.deliveryKey : entries[0].deliveryKey,
       )
-      await SessionWorkflowService.enableLattice(session.id, {
+      await WorkflowSessionService.enableLattice(session.id, {
         kind: "lattice",
         mode: "auto",
         goal: "Ignored duplicate seed",
@@ -1079,7 +1079,7 @@ describe("LatticeRunService v2", () => {
   test("live cancel clears only its matching workflow projection after releasing lifecycle ownership", async () => {
     await withScope(async () => {
       const session = await Session.create({})
-      const projected = await SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
+      const projected = await WorkflowSessionService.enableLattice(session.id, { kind: "lattice", mode: "auto" })
       if (projected.workflow?.kind !== "lattice") throw new Error("expected Lattice projection")
 
       await LatticeRunService.cancel(projected.workflow.runID)

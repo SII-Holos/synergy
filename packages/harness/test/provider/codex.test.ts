@@ -11,7 +11,7 @@ import {
   setReplayPlan,
   type CodexResponseItem,
 } from "../../src/provider/codex-compaction"
-import { ModelsDev } from "../../src/provider/models"
+import { ModelsCatalog } from "../../src/provider/models"
 import { Provider } from "../../src/provider/provider"
 import { ProviderCatalog } from "../../src/provider/catalog"
 import { ScopeContext } from "../../src/scope/context"
@@ -624,7 +624,7 @@ test("fetchModelCatalog parses Codex context windows without filtering supported
 })
 
 test("Codex metadata overrides source context without mutating OpenAI model metadata", () => {
-  const source: ModelsDev.Model = {
+  const source: ModelsCatalog.Model = {
     id: "gpt-5.5",
     name: "GPT-5.5",
     family: "gpt-5",

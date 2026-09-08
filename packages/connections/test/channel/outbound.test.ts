@@ -13,7 +13,7 @@ import type { OutboundPart, Provider, ResponseCard } from "../../src/channel/typ
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
-import { SessionWorkflowService } from "@ericsanchezok/synergy-workflows/session/workflow"
+import { WorkflowSessionService } from "@ericsanchezok/synergy-workflows/session/workflow"
 import { SessionEndpoint } from "@ericsanchezok/synergy-harness/session/endpoint"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -1025,7 +1025,7 @@ test("never auto-delivers boss-role session terminals through the bridge (R6 exp
             chatId: "chat_test",
           }),
         })
-        await SessionWorkflowService.enableBoss(session.id)
+        await WorkflowSessionService.enableBoss(session.id)
 
         // A terminal assistant reply with full channel delivery metadata would
         // be auto-delivered for a normal channel session; boss-role sessions

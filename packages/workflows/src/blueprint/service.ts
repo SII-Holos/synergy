@@ -6,7 +6,7 @@ import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { NoteStore } from "@ericsanchezok/synergy-note"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
-import { SessionWorkflowService } from "../session/workflow"
+import { WorkflowSessionService } from "../session/workflow"
 import { BlueprintLoopStore } from "./loop-store"
 import type { Info } from "./types"
 
@@ -112,7 +112,7 @@ When the Blueprint is complete and verified, call blueprint_loop_stop with a con
 
   export async function bindSessionToLoop(sessionID: string, loopID: string, loopRole: "execution" | "audit") {
     const loop = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loopID)
-    await SessionWorkflowService.prepareBlueprintLoopBinding(sessionID, loop.source)
+    await WorkflowSessionService.prepareBlueprintLoopBinding(sessionID, loop.source)
     await Session.update(sessionID, (draft) => {
       draft.blueprint = { ...draft.blueprint, loopID, loopRole }
     })

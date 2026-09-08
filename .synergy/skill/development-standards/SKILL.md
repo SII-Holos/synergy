@@ -68,3 +68,5 @@ Routine language usage, direct official API calls, and general patterns without 
 ## Handoff
 
 Report the owning workflows loaded, invariant changed, focused checks run, and any Skill or canonical document updated because a new development convention emerged.
+
+When splitting a namespace into a core mechanism and a business implementation, give the implementations distinct names and update value and type consumers. With the pinned Bun version, aliasing an imported namespace to avoid a same-name local namespace is insufficient after bundling. Verify real compiled behavior; see the [compiled runtime ownership decision](../../../docs/decisions/implemented/bug-fix/2026-09-08-compiled-runtime-namespace-ownership.md).

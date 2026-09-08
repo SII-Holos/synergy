@@ -51,9 +51,9 @@ if (action === "refresh") {
     })
   }) as unknown as typeof fetch
 
-  const { ModelsDev } = await import("@ericsanchezok/synergy-harness/provider/models")
+  const { ModelsCatalog } = await import("@ericsanchezok/synergy-harness/provider/models")
   await seedInitialCatalog()
-  const pending = ModelsDev.get()
+  const pending = ModelsCatalog.get()
   const first = await Promise.race([
     pending.then((catalog) => ({ returned: true as const, catalog })),
     Bun.sleep(100).then(() => ({ returned: false as const })),
@@ -61,8 +61,8 @@ if (action === "refresh") {
   released = true
   for (const respond of waiters.splice(0)) respond()
   const initial = await pending
-  await ModelsDev.refresh()
-  const memory = await ModelsDev.get()
+  await ModelsCatalog.refresh()
+  const memory = await ModelsCatalog.get()
   const disk = await Bun.file(path.join(process.env.SYNERGY_HOME!, ".synergy", "cache", "models.json")).json()
   process.stdout.write(
     JSON.stringify({
@@ -104,14 +104,14 @@ if (action === "refresh") {
   )
 } else if (action === "invalid-refresh") {
   globalThis.fetch = (() => Promise.resolve(Response.json(refreshedCatalog()))) as unknown as typeof fetch
-  const [{ ModelsDev }, { Server }] = await Promise.all([
+  const [{ ModelsCatalog }, { Server }] = await Promise.all([
     import("@ericsanchezok/synergy-harness/provider/models"),
     import("@ericsanchezok/synergy-server/server/server"),
   ])
   await seedInitialCatalog()
-  await ModelsDev.get()
-  await ModelsDev.refresh()
-  const memory = await ModelsDev.get()
+  await ModelsCatalog.get()
+  await ModelsCatalog.refresh()
+  const memory = await ModelsCatalog.get()
   const disk = await Bun.file(path.join(process.env.SYNERGY_HOME!, ".synergy", "cache", "models.json")).json()
   const app = Server.App()
   const providerResponse = await app.request("/provider")
@@ -142,13 +142,14 @@ if (action === "refresh") {
       else waiters.push(respond)
     })
   }) as unknown as typeof fetch
-  const [{ ModelsDev }, { Server }, { GlobalBus }, { RuntimeReload }, { RuntimeReloadExecutor }] = await Promise.all([
-    import("@ericsanchezok/synergy-harness/provider/models"),
-    import("@ericsanchezok/synergy-server/server/server"),
-    import("@ericsanchezok/synergy-harness/bus/global"),
-    import("@ericsanchezok/synergy-product-runtime/runtime/reload"),
-    import("@ericsanchezok/synergy-harness/config/reload-executor"),
-  ])
+  const [{ ModelsCatalog }, { Server }, { GlobalBus }, { RuntimeReload }, { RuntimeReloadExecutor }] =
+    await Promise.all([
+      import("@ericsanchezok/synergy-harness/provider/models"),
+      import("@ericsanchezok/synergy-server/server/server"),
+      import("@ericsanchezok/synergy-harness/bus/global"),
+      import("@ericsanchezok/synergy-product-runtime/runtime/reload"),
+      import("@ericsanchezok/synergy-harness/config/reload-executor"),
+    ])
   RuntimeReloadExecutor.setExecutor((input, options) => RuntimeReload.reload(input, options))
   RuntimeReloadExecutor.setGlobalExecutor((input, options) => RuntimeReload.reloadGlobal(input, options))
   const runtimeReloads: Array<{ hasDirectory: boolean; executed: string[]; cascaded: string[] }> = []
@@ -166,7 +167,7 @@ if (action === "refresh") {
   const initial = await initialResponse.json()
   released = true
   for (const respond of waiters.splice(0)) respond()
-  await ModelsDev.refresh()
+  await ModelsCatalog.refresh()
   const refreshedResponse = await app.request("/provider")
   const refreshed = await refreshedResponse.json()
   const bootstrapResponse = await app.request("/scope/bootstrap", {
@@ -197,14 +198,14 @@ if (action === "refresh") {
       releaseModelsRefresh = () => resolve(Response.json(refreshedCatalog()))
     })
   }) as unknown as typeof fetch
-  const [{ ModelsDev }, { ProviderCatalog }, { ProviderProfile }, { Global }] = await Promise.all([
+  const [{ ModelsCatalog }, { ProviderCatalog }, { ProviderProfile }, { Global }] = await Promise.all([
     import("@ericsanchezok/synergy-harness/provider/models"),
     import("@ericsanchezok/synergy-harness/provider/catalog"),
     import("@ericsanchezok/synergy-harness/provider/profile"),
     import("@ericsanchezok/synergy-harness/global"),
   ])
   await seedInitialCatalog()
-  await ModelsDev.get()
+  await ModelsCatalog.get()
   await didModelsRefreshStart
 
   let discoveryStarted!: () => void
@@ -231,7 +232,7 @@ if (action === "refresh") {
   const discovery = ProviderCatalog.refresh(providerID)
   await didDiscoveryStart
   releaseModelsRefresh()
-  await ModelsDev.refresh()
+  await ModelsCatalog.refresh()
   releaseDiscovery([{ id: "discovered-model" }])
   await discovery
 
@@ -253,13 +254,13 @@ if (action === "refresh") {
       releaseModelsRefresh = () => resolve(Response.json(refreshedCatalog()))
     })
   }) as unknown as typeof fetch
-  const [{ ModelsDev }, { ProviderCatalog }, { ProviderProfile }] = await Promise.all([
+  const [{ ModelsCatalog }, { ProviderCatalog }, { ProviderProfile }] = await Promise.all([
     import("@ericsanchezok/synergy-harness/provider/models"),
     import("@ericsanchezok/synergy-harness/provider/catalog"),
     import("@ericsanchezok/synergy-harness/provider/profile"),
   ])
   await seedInitialCatalog()
-  await ModelsDev.get()
+  await ModelsCatalog.get()
   await didModelsRefreshStart
 
   const providerID = "fresh-discovery"
@@ -276,7 +277,7 @@ if (action === "refresh") {
   const sourceBefore = ProviderCatalog.modelCatalogState(providerID)?.source
 
   releaseModelsRefresh()
-  await ModelsDev.refresh()
+  await ModelsCatalog.refresh()
   await ProviderCatalog.resolve({
     includeLive: true,
   })

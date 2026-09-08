@@ -9,7 +9,7 @@ import type { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { externalIdentityHash } from "@ericsanchezok/synergy-harness/util/identity"
 import { BusyError } from "@ericsanchezok/synergy-harness/session/error"
 import { ChannelInteraction } from "./interaction"
-import { SessionWorkflowService, WorkflowConflictError } from "@ericsanchezok/synergy-workflows/session/workflow"
+import { WorkflowSessionService, WorkflowConflictError } from "@ericsanchezok/synergy-workflows/session/workflow"
 import { WorkflowPromptRegistry } from "@ericsanchezok/synergy-harness/session/workflow-prompt-registry"
 
 export namespace ChannelCommand {
@@ -104,7 +104,7 @@ export namespace ChannelCommand {
 
   async function setWorkflow(
     ctx: Context,
-    input: SessionWorkflowService.SetInput,
+    input: WorkflowSessionService.SetInput,
     confirmation: string,
     scope: Scope,
   ): Promise<Result> {
@@ -113,11 +113,11 @@ export namespace ChannelCommand {
       const current = session.workflow
       const planAlreadyActive = input.kind === "plan" && current?.kind === "plan"
       if (input.kind === "none" && current?.kind === "lightloop") {
-        await SessionWorkflowService.cancelLightloop(session.id)
+        await WorkflowSessionService.cancelLightloop(session.id)
       } else if (input.kind === "lightloop" && current?.kind === "lightloop") {
-        await SessionWorkflowService.updateLightloopInstructions(session.id, input.instructions)
+        await WorkflowSessionService.updateLightloopInstructions(session.id, input.instructions)
       } else if (!planAlreadyActive) {
-        await SessionWorkflowService.set(session.id, input)
+        await WorkflowSessionService.set(session.id, input)
       }
     } catch (error) {
       return workflowFailure(error)

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
-import { SessionWorkflowService } from "../../src/session/workflow"
+import { WorkflowSessionService } from "../../src/session/workflow"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { BossService } from "@ericsanchezok/synergy-workflows/boss/boss"
@@ -41,7 +41,7 @@ async function injectChannelMessage(sessionID: string, anchor: { chatId: string;
 
 async function bossAndWorker(): Promise<{ boss: Session.Info; worker: Session.Info }> {
   const boss = await Session.create({})
-  await SessionWorkflowService.enableBoss(boss.id)
+  await WorkflowSessionService.enableBoss(boss.id)
   const worker = await BossService.spawn(boss.id, { role: "code" })
   return { boss, worker }
 }
@@ -145,7 +145,7 @@ describe("boss_spawn workspace selection", () => {
   test("default (main) worker inherits the caller's workspace", async () => {
     await withScope(async () => {
       const boss = await Session.create({})
-      await SessionWorkflowService.enableBoss(boss.id)
+      await WorkflowSessionService.enableBoss(boss.id)
       const worker = await BossService.spawn(boss.id, { role: "code" })
       expect(worker.workspace?.type).toBe("main")
       expect(worker.workspace?.scopeID).toBe((boss.scope as Scope).id)
@@ -155,7 +155,7 @@ describe("boss_spawn workspace selection", () => {
   test("workspace=worktree creates and binds a fresh git worktree for the worker", async () => {
     await withScope(async () => {
       const boss = await Session.create({})
-      await SessionWorkflowService.enableBoss(boss.id)
+      await WorkflowSessionService.enableBoss(boss.id)
       const worker = await BossService.spawn(boss.id, { role: "code", workspace: "worktree" })
       expect(worker.workspace?.type).toBe("git_worktree")
       expect(typeof worker.workspace?.worktreeID).toBe("string")
@@ -169,7 +169,7 @@ describe("boss_spawn workspace selection", () => {
       scope: Scope.home(),
       fn: async () => {
         const boss = await Session.create({})
-        await SessionWorkflowService.enableBoss(boss.id)
+        await WorkflowSessionService.enableBoss(boss.id)
         await expect(BossService.spawn(boss.id, { role: "code", workspace: "worktree" })).rejects.toMatchObject({
           code: "worktree_failed",
         })

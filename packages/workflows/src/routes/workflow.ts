@@ -4,7 +4,7 @@ import z from "zod"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { BusyError } from "@ericsanchezok/synergy-harness/session/error"
-import { SessionWorkflowService, WorkflowConflictError } from "../session/workflow"
+import { WorkflowSessionService, WorkflowConflictError } from "../session/workflow"
 import { LightLoopTerminalStore } from "../light-loop/terminal-hook"
 import { LatticeError } from "../lattice/error"
 import { errors } from "@ericsanchezok/synergy-server/server/error"
@@ -77,7 +77,7 @@ export const WorkflowRoute = new Hono()
     validator("json", WorkflowSetInput),
     async (c) => {
       try {
-        const session = await SessionWorkflowService.set(c.req.valid("param").id, c.req.valid("json"))
+        const session = await WorkflowSessionService.set(c.req.valid("param").id, c.req.valid("json"))
         return c.json(session)
       } catch (err: any) {
         if (err instanceof Storage.NotFoundError) {
@@ -114,7 +114,7 @@ export const WorkflowRoute = new Hono()
     validator("json", LightloopUpdateInput),
     async (c) => {
       try {
-        const session = await SessionWorkflowService.updateLightloopInstructions(
+        const session = await WorkflowSessionService.updateLightloopInstructions(
           c.req.valid("param").id,
           c.req.valid("json").instructions,
         )
@@ -144,7 +144,7 @@ export const WorkflowRoute = new Hono()
     validator("param", z.object({ id: z.string().meta({ description: "Session ID" }) })),
     async (c) => {
       try {
-        return c.json(await SessionWorkflowService.cancelLightloop(c.req.valid("param").id))
+        return c.json(await WorkflowSessionService.cancelLightloop(c.req.valid("param").id))
       } catch (err: any) {
         if (err instanceof Storage.NotFoundError) {
           return c.json({ message: `Session not found: ${c.req.valid("param").id}` }, 404)

@@ -3,7 +3,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import type { Info as SessionInfo } from "@ericsanchezok/synergy-harness/session/types"
-import { SessionWorkflowService } from "../session/workflow"
+import { WorkflowSessionService } from "../session/workflow"
 import { ContinuationKernel } from "@ericsanchezok/synergy-harness/session/continuation-kernel"
 import { WorkflowPromptRegistry } from "@ericsanchezok/synergy-harness/session/workflow-prompt-registry"
 import { WorkflowKindRegistry } from "@ericsanchezok/synergy-harness/session/workflow-kind-registry"
@@ -35,7 +35,7 @@ async function activeBlueprintLoop(session: SessionInfo) {
   return loop
 }
 
-/** Lattice enable moved from SessionWorkflowService.enableLattice; the body
+/** Lattice enable moved from WorkflowSessionService.enableLattice; the body
  * is unchanged — same lock, conflict checks, projection rollback, and
  * post-enable direct reconciliation. */
 async function enableLatticeWorkflow(
@@ -46,7 +46,7 @@ async function enableLatticeWorkflow(
   let run: EnableOutcome["run"]
   let projected: SessionInfo
   {
-    using _ = await SessionWorkflowService.lock(sessionID)
+    using _ = await WorkflowSessionService.lock(sessionID)
     SessionManager.assertIdle(sessionID)
     const session = await Session.get(sessionID)
     const existing = session.workflow ? WorkflowKindRegistry.effectiveKind(session.workflow) : undefined

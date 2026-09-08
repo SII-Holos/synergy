@@ -2,7 +2,7 @@ import { Auth } from "@ericsanchezok/synergy-harness/provider/api-key"
 import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../../util/ui"
-import { ModelsDev } from "@ericsanchezok/synergy-harness/provider/models"
+import { ModelsCatalog } from "@ericsanchezok/synergy-harness/provider/models"
 import { map, pipe, values } from "remeda"
 import path from "path"
 import os from "os"
@@ -542,7 +542,7 @@ export const AuthLoginCommand = cmd({
           prompts.outro("Done")
           return
         }
-        await ModelsDev.refresh()?.catch(() => {})
+        await ModelsCatalog.refresh()?.catch(() => {})
 
         const config = await Config.current()
 

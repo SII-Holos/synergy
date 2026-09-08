@@ -304,8 +304,8 @@ export namespace LatticeRunService {
     }
 
     if (cleaned && clearTerminalProjection) {
-      const { SessionWorkflowService } = await import("../session/workflow")
-      await SessionWorkflowService.clearIfLattice(cleaned.sessionID, cleaned.id)
+      const { WorkflowSessionService } = await import("../session/workflow")
+      await WorkflowSessionService.clearIfLattice(cleaned.sessionID, cleaned.id)
     }
     return cleaned
   }
@@ -428,7 +428,7 @@ export namespace LatticeRunService {
     return cancelled
   }
 
-  /** Disable the current Run before SessionWorkflowService clears its projection. */
+  /** Disable the current Run before WorkflowSessionService clears its projection. */
   export async function disable(sessionID: string): Promise<LatticeTypes.Run | undefined> {
     const scopeID = ScopeContext.current.scope.id
     using _ = await LatticeLock.write(scopeID, sessionID)
@@ -674,8 +674,8 @@ export namespace LatticeRunService {
         cancelled = await cancelRunUnderLock(scopeID, run)
       }
     }
-    const { SessionWorkflowService } = await import("../session/workflow")
-    await SessionWorkflowService.clearIfLattice(snapshot.sessionID, snapshot.id)
+    const { WorkflowSessionService } = await import("../session/workflow")
+    await WorkflowSessionService.clearIfLattice(snapshot.sessionID, snapshot.id)
     return cancelled
   }
 

@@ -2,7 +2,7 @@
 
 Own the complete product composition and packaged runtime entry. Read the root [AGENTS.md](../../AGENTS.md) and [architecture ownership map](../../docs/architecture/README.md#ownership-map) before changes.
 
-- Assemble configuration, session schemas, migrations, tools, agents, routes and services explicitly before opening the shared Harness lifecycle. Startup seals configuration and migration registration; late imports must not partially install a capability.
+- Assemble configuration, session schemas, migrations, tools, agents, routes and services explicitly before opening the shared Harness lifecycle through `ProductRuntimeHandle`. Startup seals configuration and migration registration; late imports must not partially install a capability.
 - Keep business implementations with their owning packages. Product Runtime connects typed sources and lifecycle contributions; do not move domain algorithms into assembly or introduce package scanning.
 - Preserve the single `runCli()` parser and `synergy` command. Inject the product runtime factory, command catalog, default server command and nested Data contributions. Full-data pack, merge and move operations belong here; Library owns its SQLite merge algorithms.
 - Source and compiled agent workers must install the same full composition as the foreground runtime before starting the Harness runner. Preserve resource discovery, verified sandbox assets, cancellation, evidence failures and shutdown drainage.

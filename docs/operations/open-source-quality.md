@@ -67,7 +67,7 @@ CI runs on push to `dev` / `main` and on pull requests targeting those branches.
 
 All jobs must pass for a PR to merge. The `package-validation` and `workflow-validation` jobs are not in the pre-push hook — they require network access or special tooling that is available in CI but may not be installed locally.
 
-The test job runs the workspace suites and executes the Harness CI runner separately with isolated process shards and JUnit reports. The blocking `core-artifact` job verifies compiled and tarball-installed CLI behavior outside the repository. The blocking `coverage` job runs a fresh full coverage invocation, combines successful reports by source owner, and enforces package thresholds.
+The test job runs the workspace suites and executes the Harness CI runner separately with isolated process shards and JUnit reports. The blocking `runtime-artifacts` job verifies compiled and tarball-installed CLI behavior outside the repository. The blocking `coverage` job runs a fresh full coverage invocation, combines successful reports by source owner, and enforces package thresholds.
 
 ## Tool Responsibilities
 
