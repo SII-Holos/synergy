@@ -1853,7 +1853,7 @@ export namespace SessionProcessor {
             Session.updateLastExchange(input.sessionID).catch((e) =>
               log.warn("failed to update lastExchange", { sessionID: input.sessionID, error: e }),
             )
-            SessionContextContributions.onAssistantComplete(input.assistantMessage)
+            await SessionContextContributions.onAssistantComplete(input.assistantMessage)
             await Plugin.trigger(
               "session.turn.after",
               {

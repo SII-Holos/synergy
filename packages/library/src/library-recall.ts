@@ -80,7 +80,7 @@ export namespace SessionLibraryRecall {
       injected: string,
     ): void
     /** Experience encoding entry point for completed assistant messages. */
-    onAssistantComplete(message: unknown): void
+    onAssistantComplete(message: unknown): void | Promise<void>
   }
 
   let provider: Provider | undefined
@@ -137,7 +137,7 @@ export namespace SessionLibraryRecall {
     provider?.writeExperienceDebugLog(sessionID, scopeID, query, results, injected)
   }
 
-  export function onAssistantComplete(message: unknown): void {
-    provider?.onAssistantComplete(message)
+  export function onAssistantComplete(message: unknown): void | Promise<void> {
+    return provider?.onAssistantComplete(message)
   }
 }

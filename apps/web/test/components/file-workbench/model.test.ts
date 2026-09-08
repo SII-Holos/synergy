@@ -20,7 +20,7 @@ describe("file workbench paths", () => {
 
   test("uses the shortest unique parent suffix for duplicate names", () => {
     const paths = ["apps/web/index.ts", "packages/tests/index.ts", "README.md"]
-    expect(shortestUniqueFileTitle(paths[0]!, paths)).toBe("index.ts · app")
+    expect(shortestUniqueFileTitle(paths[0]!, paths)).toBe("index.ts · web")
     expect(shortestUniqueFileTitle(paths[1]!, paths)).toBe("index.ts · tests")
     expect(shortestUniqueFileTitle(paths[2]!, paths)).toBe("README.md")
   })

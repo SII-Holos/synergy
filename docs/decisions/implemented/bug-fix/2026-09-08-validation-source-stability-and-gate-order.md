@@ -19,3 +19,5 @@ SDK 包验证和 workspace 打包使用只编译现有生成源码的入口，�
 ## Consequences
 
 SDK 编译测试验证所有生成文件的修改时间保持不变且产生公开客户端产物。门禁测试用受控 promise 阻塞前置任务，确认独立任务可以执行、依赖任务必须等待完成，不依赖机器速度。完整 SDK 生成仍会改写生成文件，须作为明确的生成工作运行。
+
+普通 workspace `build` 编译可消费的模块；CLI 与 Product Runtime 使用 `dist/modules`，不清除显式发行产生的平台目录。Turbo 的依赖构建不能隐式触发所有平台二进制发行，否则本机测试会因缺少其它操作系统的 sandbox 资产而失败。显式的 CLI/Product Runtime `script/build.ts` 继续负责原有二进制发行流程。

@@ -52,7 +52,7 @@ export namespace ExperienceEncoder {
     if (msg.error && !MessageV2.AbortedError.isInstance(msg.error)) return
     if (msg.finish === "tool-calls") return
 
-    encode(msg.sessionID, msg.parentID)
+    return encode(msg.sessionID, msg.parentID)
       .then(async (outcome) => {
         await triggerEncodeAfter(msg.sessionID, msg.parentID, outcome).catch((err) =>
           log.error("encode after hook failed", { sessionID: msg.sessionID, error: err }),
@@ -476,7 +476,7 @@ export namespace ExperienceEncoder {
 
       if (turnsRemaining > 0) continue
 
-      evaluateReward(exp, sessionID, msgs, turns, turnIdx, learning).catch((err: any) =>
+      await evaluateReward(exp, sessionID, msgs, turns, turnIdx, learning).catch((err: any) =>
         log.error("reward evaluation failed", { id: exp.id, error: err }),
       )
     }

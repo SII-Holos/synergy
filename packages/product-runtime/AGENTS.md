@@ -15,3 +15,5 @@ Run `bun run typecheck`, affected tests and `bun run test:coverage` from this pa
 Run manual startup and CLI checks with an isolated `SYNERGY_HOME` using `develop-synergy`. Never restart or modify the active instance. For releases, verify full assets and an installed tarball outside the repository; source resolution alone cannot prove the package is complete.
 
 Review the owning Skill for CLI, persistence, execution, API, Browser or Channel changes. Regenerate API contracts with the root `./script/generate.ts` and command documentation with `bun script/gen/gen-cli-reference.ts` when those public contracts change.
+
+`bun run build` compiles workspace modules into `dist/modules`. Use the package-owned `bun script/build.ts --single --skip-install` for a local executable; release tooling selects its target matrix through that same explicit binary entry.

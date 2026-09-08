@@ -136,6 +136,6 @@ export async function buildWorkspace(directory: string, options: { output?: stri
 
 if (import.meta.main) {
   const directory = process.argv[2]
-  if (!directory) throw new Error("Usage: bun script/build-workspace.ts <workspace directory>")
-  console.log(await buildWorkspace(directory))
+  if (!directory) throw new Error("Usage: bun script/build-workspace.ts <workspace directory> [output directory]")
+  console.log(await buildWorkspace(directory, { output: process.argv[3] }))
 }

@@ -346,3 +346,5 @@ Abort never publishes lifecycle idle by itself. The owner remains in `stopping` 
 - Automatic compaction is a resumable context boundary, not history deletion.
 - Compaction can repeat for a long root task and always resolves its anchor from that root.
 - Terminal failures are persisted and propagated; they are never silently converted into successful task completion.
+
+Completion context contributions finish before the owning execution is settled. Their promises include nested encoding, retry and reward work; failures do not allow other registered contributions to escape drainage. Library owns these algorithms while Harness owns the await boundary and shared rollout accounting.

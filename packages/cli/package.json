@@ -38,7 +38,7 @@
   "scripts": {
     "typecheck": "tsgo --noEmit",
     "test": "bun ../testing/script/test-ci.ts",
-    "build": "bun run script/build.ts",
+    "build": "bun ../../script/build-workspace.ts packages/cli dist/modules",
     "test:ci": "bun ../testing/script/test-ci.ts",
     "test:coverage": "bun ../testing/script/coverage-run.ts"
   },

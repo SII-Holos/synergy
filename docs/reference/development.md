@@ -4,6 +4,8 @@ Source development is orchestrated from the repository root with `bun dev`. The 
 
 One-shot and persistent-server execution share the runtime lifecycle. [Rollout execution](rollout.md) documents task configuration, durable evidence, import/export and accounting boundaries.
 
+Workspace `build` commands compile dependency modules. CLI and Product Runtime modules use `dist/modules`; their explicit `script/build.ts` entries produce executable distributions. Running workspace tests does not request cross-platform release artifacts.
+
 ## Requirements and Preparation
 
 The root manifest pins Bun `1.3.14`. Install that version, then run:

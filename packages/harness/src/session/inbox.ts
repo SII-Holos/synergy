@@ -915,7 +915,7 @@ export namespace SessionInbox {
     for (const part of parts) {
       await Session.updatePart(part)
     }
-    SessionContextContributions.onAssistantComplete(info)
+    await SessionContextContributions.onAssistantComplete(info)
     await Plugin.trigger(
       "session.turn.after",
       {

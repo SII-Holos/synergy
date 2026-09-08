@@ -1496,7 +1496,7 @@ export namespace SessionInvoke {
     Session.updateLastExchange(input.sessionID).catch((error) =>
       log.warn("failed to update lastExchange", { sessionID: input.sessionID, error }),
     )
-    SessionContextContributions.onAssistantComplete(message)
+    await SessionContextContributions.onAssistantComplete(message)
     await Plugin.trigger(
       "session.turn.after",
       {
@@ -1561,7 +1561,7 @@ export namespace SessionInvoke {
     Session.updateLastExchange(sessionID).catch((err) =>
       log.warn("failed to update lastExchange", { sessionID, error: err }),
     )
-    SessionContextContributions.onAssistantComplete(assistant)
+    await SessionContextContributions.onAssistantComplete(assistant)
     await Plugin.trigger(
       "session.turn.after",
       {
@@ -1615,7 +1615,7 @@ export namespace SessionInvoke {
       error: new MessageV2.AbortedError({ message: "Session ended before producing an assistant message" }).toObject(),
       sessionID,
     })) as MessageV2.Assistant
-    SessionContextContributions.onAssistantComplete(assistantMessage)
+    await SessionContextContributions.onAssistantComplete(assistantMessage)
     await Plugin.trigger(
       "session.turn.after",
       {

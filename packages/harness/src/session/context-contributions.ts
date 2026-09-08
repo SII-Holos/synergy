@@ -22,7 +22,7 @@ export namespace SessionContextContributions {
     contribute(input: Input): Promise<Result | undefined>
     fallback?(input: Input): Result | undefined | Promise<Result | undefined>
     committed?(sessionID: string, injection: Record<string, string>): void
-    onAssistantComplete?(message: MessageV2.Assistant): void
+    onAssistantComplete?(message: MessageV2.Assistant): void | Promise<void>
     timeoutMs?: number
   }
   const providers = new Map<string, Provider>()
@@ -74,8 +74,13 @@ export namespace SessionContextContributions {
     for (const source of result.sources) providers.get(source.id)?.committed?.(sessionID, source.injection)
   }
 
-  export function onAssistantComplete(message: MessageV2.Assistant): void {
-    for (const provider of providers.values()) provider.onAssistantComplete?.(message)
+  export async function onAssistantComplete(message: MessageV2.Assistant): Promise<void> {
+    const results = await Promise.allSettled(
+      [...providers.values()].map(async (provider) => provider.onAssistantComplete?.(message)),
+    )
+    const errors = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
+    if (errors.length === 1) throw errors[0]
+    if (errors.length) throw new AggregateError(errors, "Assistant completion contributions failed")
   }
 
   async function fallback(provider: Provider, input: Input): Promise<Result | undefined> {
