@@ -68,6 +68,8 @@ const repositoryRoot = path.resolve(import.meta.dir, "../../..")
  *   load on CI. Passes in its own process with coverage (verified 2026-09-04).
  */
 export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
+  // This suite owns stderr/TTY capture and resets process-wide migration progress.
+  "packages/harness/test/migration/terminal-progress.test.ts",
   // Config projection registration is permanent for the process composition.
   "packages/harness/test/config/extensions-field.test.ts",
   // Mailbox owns the process-wide native provider resolver.

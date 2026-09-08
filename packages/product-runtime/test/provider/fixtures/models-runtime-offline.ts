@@ -110,7 +110,7 @@ if (action === "refresh") {
   ])
   await seedInitialCatalog()
   await ModelsCatalog.get()
-  await ModelsCatalog.refresh()
+  const refreshResult = await ModelsCatalog.refresh()
   const memory = await ModelsCatalog.get()
   const disk = await Bun.file(path.join(process.env.SYNERGY_HOME!, ".synergy", "cache", "models.json")).json()
   const app = Server.App()
@@ -122,7 +122,11 @@ if (action === "refresh") {
   const bootstrap = await bootstrapResponse.json()
   process.stdout.write(
     JSON.stringify({
+      refreshResult,
       memoryProviders: Object.keys(memory),
+      memoryModels: Object.fromEntries(
+        Object.entries(memory).map(([id, provider]) => [id, Object.keys(provider.models)]),
+      ),
       diskProviders: Object.keys(disk),
       providerStatus: providerResponse.status,
       providerCatalogProviders: provider.catalogProviders,

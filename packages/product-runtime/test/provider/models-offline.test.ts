@@ -83,7 +83,7 @@ function isolatedEnv(home: string): Record<string, string | undefined> {
   return env
 }
 
-async function runProcess(command: string[], env: Record<string, string | undefined>) {
+async function runProcess(command: string[], env: Record<string, string | undefined>, expectedExitCode = 0) {
   const child = Bun.spawn(command, {
     cwd: packageRoot,
     env,
@@ -95,7 +95,7 @@ async function runProcess(command: string[], env: Record<string, string | undefi
     new Response(child.stderr).text(),
     child.exited,
   ])
-  expect(exitCode, stderr).toBe(0)
+  expect(exitCode, stderr).toBe(expectedExitCode)
   return { stdout, stderr }
 }
 
@@ -198,6 +198,7 @@ test.each([
     env,
   )
 
+  expect(result.refreshResult).toMatchObject({ status: "failed" })
   expect(result.memoryProviders).toEqual(expect.arrayContaining(["initial-provider", "openai", "anthropic", "google"]))
   expect(result.diskProviders).toEqual(expect.arrayContaining(["initial-provider", "openai", "anthropic", "google"]))
   expect(result.memoryProviders).not.toContain("partial-provider")
@@ -247,7 +248,7 @@ test("successful refresh invalidates provider catalog and scoped provider state"
   expect(result.bootstrapConnected).not.toContain("initial-provider")
 })
 
-test("ModelsDev refresh preserves an in-flight provider discovery snapshot", async () => {
+test("ModelsCatalog refresh preserves an in-flight provider discovery snapshot", async () => {
   const home = await tempdir("models-refresh-concurrent-discovery")
   const env = isolatedEnv(home)
   delete env.SYNERGY_DISABLE_MODELS_FETCH
@@ -262,7 +263,7 @@ test("ModelsDev refresh preserves an in-flight provider discovery snapshot", asy
   expect(result.activeModels).toEqual(["discovered-model"])
 })
 
-test("ModelsDev refresh preserves freshly discovered provider state", async () => {
+test("ModelsCatalog refresh preserves freshly discovered provider state", async () => {
   const home = await tempdir("models-refresh-fresh-discovery")
   const env = isolatedEnv(home)
   delete env.SYNERGY_DISABLE_MODELS_FETCH
@@ -277,7 +278,7 @@ test("ModelsDev refresh preserves freshly discovered provider state", async () =
   expect(result).toEqual({ sourceBefore: "live", sourceAfter: "live" })
 })
 
-test("ModelsDev cold start returns locally while refresh updates memory and disk", async () => {
+test("ModelsCatalog cold start returns locally while refresh updates memory and disk", async () => {
   const home = await tempdir("models-refresh-home")
   const source = path.join(await tempdir("models-refresh-source"), "models.json")
   await Bun.write(source, JSON.stringify(completeCatalog(catalog("initial-provider", "Initial provider"))))
@@ -384,4 +385,81 @@ test("bundled runtime uses the embedded models snapshot without a runtime fetch"
 
   const result = await runJSON([process.execPath, output], isolatedEnv(home))
   expect(result.providers).toEqual(expect.arrayContaining(["bundle-provider", "openai", "anthropic", "google"]))
+})
+
+test("keeps valid catalog entries when unrelated providers or models are malformed", async () => {
+  const home = await tempdir("models-partial-refresh")
+  const env = isolatedEnv(home)
+  delete env.SYNERGY_DISABLE_MODELS_FETCH
+  env.MODELS_OFFLINE_PROJECT = await tempdir("models-partial-project")
+  env.MODELS_INITIAL_PAYLOAD = JSON.stringify(completeCatalog(catalog("initial-provider", "Initial")))
+  const payload = completeCatalog(catalog("refreshed-provider", "Refreshed"))
+  env.MODELS_REFRESH_PAYLOAD = JSON.stringify({
+    ...payload,
+    broken: null,
+    "refreshed-provider": {
+      ...payload["refreshed-provider"],
+      models: { ...payload["refreshed-provider"].models, bad: null },
+    },
+  })
+  const result = await runJSON(
+    [process.execPath, "run", path.join(fixtures, "models-runtime-offline.ts"), "invalid-refresh"],
+    env,
+  )
+  expect(result.refreshResult).toMatchObject({ status: "refreshed", rejectedProviders: 1, rejectedModels: 1 })
+  expect(result.memoryProviders).toContain("refreshed-provider")
+  expect(result.memoryProviders).not.toContain("broken")
+  expect(result.memoryModels["refreshed-provider"]).toEqual(["test-model"])
+  expect(result.diskProviders).toContain("refreshed-provider")
+  expect(result.providerCatalogProviders).toContain("refreshed-provider")
+  expect(result.bootstrapCatalogProviders).toContain("refreshed-provider")
+})
+
+for (const mode of ["invalid", "invalid-json", "http", "network", "body", "disabled"]) {
+  test(`models --refresh does not report success when refresh is ${mode}`, async () => {
+    const env = isolatedEnv(await tempdir("models-cli-refresh"))
+    if (mode !== "disabled") delete env.SYNERGY_DISABLE_MODELS_FETCH
+    env.MODELS_REFRESH_TEST_MODE = mode
+    const result = await runProcess(
+      [
+        process.execPath,
+        "run",
+        "--conditions=browser",
+        path.join(fixtures, "models-refresh-cli.ts"),
+        "models",
+        "--refresh",
+      ],
+      env,
+      1,
+    )
+    expect(result.stdout).not.toContain("Provider catalog refreshed")
+    expect(result.stderr).toContain(mode === "disabled" ? "catalog refresh is disabled" : "catalog refresh failed")
+  }, 30_000)
+}
+
+test.each(["direct", "mirror", "partial"])("models --refresh persists a usable catalog via %s", async (mode) => {
+  const home = await tempdir("models-cli-success")
+  const env = isolatedEnv(home)
+  delete env.SYNERGY_DISABLE_MODELS_FETCH
+  env.MODELS_REFRESH_TEST_MODE = mode
+  env.MODELS_REFRESH_PAYLOAD = JSON.stringify({
+    ...completeCatalog(catalog("refreshed-provider", "Refreshed")),
+    ...(mode === "partial" ? { broken: null } : {}),
+  })
+  const result = await runProcess(
+    [
+      process.execPath,
+      "run",
+      "--conditions=browser",
+      path.join(fixtures, "models-refresh-cli.ts"),
+      "models",
+      "--refresh",
+    ],
+    env,
+  )
+  expect(result.stdout + result.stderr).toContain("Provider catalog refreshed")
+  if (mode === "partial")
+    expect(result.stdout + result.stderr).toContain("Skipped 1 invalid providers and 0 invalid models.")
+  const disk = await Bun.file(path.join(home, ".synergy/cache/models.json")).json()
+  expect(Object.keys(disk)).toContain("refreshed-provider")
 })

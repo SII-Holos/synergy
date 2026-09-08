@@ -245,6 +245,12 @@ Model names use `provider/model`. Provider definitions and model defaults live i
 
 Do not copy credentials or billing assumptions between them. Use `synergy auth` or the Settings UI to manage auth.
 
+### Service and model directory
+
+The shared Models.dev directory supplies the service list and baseline model metadata. Startup reads a validated local cache or embedded snapshot and refreshes in the background from Models.dev, then its mirror. External price metadata permits extension fields in context-price tiers and preserves them in the captured raw pricing data; configured context-price tiers retain their existing strict validation. Malformed providers or models are skipped individually, with aggregate rejection counts in diagnostics. A usable directory must still contain non-empty OpenAI, Anthropic, and Google model lists. If every source fails that check, the last usable cache remains intact.
+
+`synergy models --refresh` reports success only after a usable directory is stored and the provider view is rebuilt. It exits unsuccessfully when fetching is disabled or every source fails, and reports skipped entries for partial results. Account-specific model refresh is a separate operation described below.
+
 ### Live provider model discovery
 
 Providers that support live model discovery use one versioned `ProviderCatalog` snapshot per opaque account-identity hash. Snapshots are stored atomically under `cache/`, never contain credentials or raw account identifiers, and retain at most 100 provider/identity entries while protecting the current identity from eviction.

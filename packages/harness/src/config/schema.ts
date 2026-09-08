@@ -2,6 +2,7 @@ import { Log } from "../util/log"
 import z from "zod"
 import { MAX_EXECUTION_CANCEL_GRACE_MS } from "@ericsanchezok/synergy-util/runtime-shutdown"
 import { ModelsDev } from "../provider/models-schemas"
+import { ProviderPricing } from "../provider/pricing"
 import { ModelRole } from "../provider/model-role"
 import { ConfigExtensions } from "./extensions"
 
@@ -414,6 +415,7 @@ export const Provider = ModelsDev.Provider.partial()
       .record(
         z.string(),
         ModelsDev.Model.partial().extend({
+          cost: ProviderPricing.ModelConfigCost.optional(),
           variants: z
             .record(
               z.string(),

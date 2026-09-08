@@ -60,6 +60,10 @@ Use Cortex for decisions that must be independently auditable. Choose task visib
 
 `config/setup.ts` uses `generateText()` for a live provider capability probe before normal agent/session orchestration is appropriate. Keep direct AI SDK usage limited to such bootstrap/provider plumbing or the implementation of the shared `LLM` layer. Product inference should not bypass provider transforms, configured roles, plugin hooks, telemetry, timeouts, or output policy. Bootstrap probes that reach a managed-inference endpoint must pass through the same per-request header gate as normal turns (`ProviderSessionHeader.forRequest` with the resolved provider options), because the provider cannot distinguish a probe from a conversation.
 
+## External Model Catalogs
+
+Separate external catalog metadata from explicit user configuration. Allow additive external price fields at nested tier boundaries while retaining numeric validation and raw provenance; preserve the existing configuration acceptance rules, including strict nested rate fields. Exercise damaged individual entries, complete-catalog failure with cache preservation, cold startup, actual CLI exit/output, and the bundled runtime. Pair the pinned snapshot with focused upstream-shape fixtures, since a valid pinned snapshot cannot detect later additive fields. Follow [Service and model directory](../../../docs/reference/configuration-layout.md#service-and-model-directory) for runtime acceptance and refresh behavior.
+
 ## Provider Option Compatibility
 
 Choosing the same AI SDK package proves only transport and wire-protocol compatibility. It does not prove provider options, thinking/reasoning controls, effort levels, tool semantics, or cache behavior are compatible with the official provider using that package.

@@ -190,22 +190,30 @@ async function runMigrationsInternal(
         }
 
         try {
+          reporter?.started?.({ domain, migration })
+          if (output === "interactive") {
+            stageWrite(`  ${progressBar(0)} Starting [${domain}] ${migration.description}`, true)
+          }
           let lastProgressTime = 0
-          let started = false
+          let currentPhase = 0
           // Arity detection: existing migrations have up(progress) with 1 param;
           // new migrations may have up(context, progress) with 2 params.
           const upFn = migration.up
-          const progressCb = (current: number, total: number) => {
-            if (!started) started = true
+          const progressCb = (current: number, total: number, phase = 0) => {
+            if (!Number.isSafeInteger(phase) || phase < currentPhase) return
+            if (phase > currentPhase) {
+              currentPhase = phase
+              lastProgressTime = -Infinity
+              reporter?.started?.({ domain, migration })
+            }
             const now = Date.now()
             if (now - lastProgressTime < PROGRESS_INTERVAL && current < total) return
             lastProgressTime = now
             reporter?.progress?.({ domain, migration, current, total, dryRun })
             if (output === "interactive") {
-              stageWrite(
-                `  ${progressBar(current / total)} [${domain}] ${migration.description} (${current}/${total})`,
-                true,
-              )
+              const ratio = total > 0 ? Math.max(0, Math.min(1, current / total)) : 0
+              const counts = total > 0 ? `${Math.floor(ratio * 100)}% (${current}/${total})` : "Preparing"
+              stageWrite(`  ${progressBar(ratio)} ${counts} [${domain}] ${migration.description}`, true)
             }
           }
 
@@ -218,7 +226,6 @@ async function runMigrationsInternal(
           }
 
           if (output === "interactive") {
-            if (!started) stageWrite(`  ${progressBar(0)} [${domain}] ${migration.description}`, true)
             stageWrite(`  ${progressBar(1)} [${domain}] ${migration.description} ✓\n`, true)
           }
           logData[migration.id] = Date.now()
@@ -228,7 +235,7 @@ async function runMigrationsInternal(
         } catch (err) {
           summary.failed++
           if (output === "interactive") {
-            stageWrite(`  ${progressBar(0)} [${domain}] ${migration.description} ✗\n`, true)
+            stageWrite(`  ✗ [${domain}] ${migration.description}\n`, true)
           }
           log.error("failed", { id: migration.id, domain, error: err instanceof Error ? err : new Error(String(err)) })
           throw err

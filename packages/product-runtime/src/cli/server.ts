@@ -1,3 +1,4 @@
+import { createManagedMigrationReporter } from "./managed-startup"
 import { cmd } from "@ericsanchezok/synergy-cli/cli/cmd/cmd"
 import { withNetworkOptions, resolveNetworkOptions } from "@ericsanchezok/synergy-cli/cli/network"
 import { run as runServerRuntime } from "../server/runtime"
@@ -31,7 +32,11 @@ export const ServerCommand = cmd({
   handler: async (args) => {
     let network: RuntimeOptions["network"] | undefined
     try {
-      network = await resolveNetworkOptions(args)
+      const managed = process.env.SYNERGY_DESKTOP_STARTUP_PROGRESS === "1"
+      network = await resolveNetworkOptions(args, {
+        output: managed ? "silent" : "interactive",
+        reporter: managed ? createManagedMigrationReporter() : undefined,
+      })
       const managedService = args.managedService
 
       await runServerRuntime({

@@ -1,6 +1,6 @@
 import { ConfigExtensions } from "../config/extensions"
 import { MigrationRegistry } from "../migration/registry"
-import { ensureMigrations, type MigrationReporter } from "../migration/index"
+import { ensureMigrations, type MigrationReporter, type RunOptions } from "../migration/index"
 import { ServerProcessLock } from "../util/server-process-lock"
 import { Scope } from "../scope/index"
 import { ScopeContext } from "../scope/context"
@@ -59,6 +59,7 @@ export namespace RuntimeHandle {
     network?: RuntimeNetwork
     services?: RuntimeServices
     reporter?: MigrationReporter
+    migrationOutput?: RunOptions["output"]
   }) {
     const services = options.services ?? {}
     const ownership = await ServerProcessLock.acquire(undefined, options.mode === "oneshot" ? "oneshot" : undefined)
@@ -142,7 +143,10 @@ export namespace RuntimeHandle {
       MigrationRegistry.lock()
       ConfigExtensions.lock()
       await Global.initialize({ configSchemaPath: options.services?.configSchemaPath })
-      const migration = await ensureMigrations({ output: "silent", reporter: options.reporter })
+      const migration = await ensureMigrations({
+        output: options.migrationOutput ?? "silent",
+        reporter: options.reporter,
+      })
       const resolved = await ScopeContext.provide({ scope: Scope.home(), fn: () => Config.resolveExecution() })
       const requested = Experiment.applyRuntime(resolved, options.experiment?.runtime ?? {})
       const shutdownTimeoutMs = configureExecution(requested)

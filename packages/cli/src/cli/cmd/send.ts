@@ -537,7 +537,7 @@ export function createSendCommand(runtimeFactory: typeof openLocalRuntime = open
       await using runtime = await runtimeFactory({
         mode: "oneshot",
         experiment,
-        reporter: args.format === "json" ? { summary() {} } : undefined,
+        migrationOutput: "interactive",
       })
       await withScopeContext(
         directory,

@@ -521,6 +521,7 @@
         "@ericsanchezok/synergy-plugin-host": "workspace:*",
         "@ericsanchezok/synergy-runtime-local": "workspace:*",
         "@ericsanchezok/synergy-server": "workspace:*",
+        "@ericsanchezok/synergy-util": "workspace:*",
         "@ericsanchezok/synergy-workbench": "workspace:*",
         "@ericsanchezok/synergy-workflows": "workspace:*",
         "hono": "catalog:",

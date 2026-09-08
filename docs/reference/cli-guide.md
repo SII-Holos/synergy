@@ -111,6 +111,8 @@ Piped stdin is appended to the prompt. The command subscribes to session events 
 | `synergy mcp add\|list\|auth\|logout\|debug` | Configure, authenticate, and inspect MCP servers                |
 | `synergy embed download`                     | Download the local embedding model assets                       |
 
+`synergy models --refresh` refreshes the shared service/model directory before listing configured models. A failed or disabled refresh exits nonzero and preserves the existing cache; partial results report skipped entries. See [Service and model directory](configuration-layout.md#service-and-model-directory) for validation and fallback behavior.
+
 ### config import
 
 `synergy config import <source>` imports JSON or JSONC configuration from a local file path or an HTTP(S) URL. Sources are limited to 1 MiB; URL fetches time out after 15 seconds and reject redirects. The command produces a domain-aware plan, shows value-level changes, and asks for confirmation before applying.

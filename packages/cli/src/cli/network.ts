@@ -1,3 +1,4 @@
+import type { RunOptions } from "@ericsanchezok/synergy-harness/migration/types"
 import type { Argv, InferredOptionTypes } from "yargs"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { ensureMigrations } from "@ericsanchezok/synergy-harness/migration"
@@ -54,8 +55,11 @@ export async function isServerReachable(url: string): Promise<boolean> {
   }
 }
 
-export async function resolveNetworkOptions(args: NetworkOptions) {
-  await ensureMigrations()
+export async function resolveNetworkOptions(
+  args: NetworkOptions,
+  migrationOptions: Pick<RunOptions, "output" | "reporter"> = { output: "interactive" },
+) {
+  await ensureMigrations(migrationOptions)
   Config.global.reset()
   return resolveNetworkArgv({
     argv: process.argv,
@@ -81,7 +85,7 @@ export async function resolveNetworkArgv(
 ) {
   const argv = input.argv ?? process.argv
   if (!input.config) {
-    await ensureMigrations()
+    await ensureMigrations({ output: "interactive" })
     Config.global.reset()
   }
   const config = input.config ?? (await Config.global())

@@ -23,6 +23,8 @@ Backend capabilities register before Harness `RuntimeHandle.open()`; the full pr
 
 The migration tracking upgrade moves only IDs recognized by registered owners out of the old combined log. Unregistered IDs remain in that log so a later process with the owning capability can recover its history. `registerLibrary()` and `registerNote()` assemble each domain's migrations, tools, and lifecycle contributions before runtime startup; they do not require the full product manifest or plugin delivery to be installed.
 
+Startup migrations finish before HTTP requests are admitted. Managed Desktop receives versioned aggregate migration progress from the CLI reporter, keeps waiting while work advances, and displays the current step in its startup overlay. Migration callbacks accept an optional nonnegative phase index, starting at zero. Multi-scan migrations advance the phase before preparing each independent scan; the runner announces a new reporter step and resets progress throttling. Counts are monotonic within a phase, and reports from earlier phases are ignored. The [development reference](../reference/development.md) defines startup waiting limits; the [decision record](../decisions/implemented/bug-fix/2026-09-08-desktop-migration-progress-wait.md) explains the progress-based deadline.
+
 ## Global Runtime
 
 The full product’s `GlobalRuntime.start()` runs once per resident server process inside the home Scope. Product Runtime selects the services below; a standalone local task enables its selected execution services without starting resident product services:

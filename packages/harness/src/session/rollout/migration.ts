@@ -8,12 +8,19 @@ import { Storage } from "../../storage/storage"
 import { StoragePath } from "../../storage/path"
 import type { Migration } from "../../migration/types"
 import { MessageV2 } from "../message-v2"
-import { Info as SessionInfo } from "../types"
+import { CortexDelegationInfo } from "../types"
+import { Attachment } from "../../attachment"
 import { RolloutArtifact } from "./artifact"
 import { RolloutAttachment } from "./attachment"
 import type { RolloutSchema } from "./schema"
 
 export namespace RolloutMigration {
+  // Archived session metadata is historical evidence; validate only the settlement fields this migration owns.
+  const SettlementRecord = z
+    .object({
+      cortex: CortexDelegationInfo.pick({ status: true, settledAt: true }).passthrough().optional(),
+    })
+    .passthrough()
   const Audit = z
     .object({
       version: z.literal(1),
@@ -56,6 +63,8 @@ export namespace RolloutMigration {
     }
     const scopeID = Identifier.asScopeID(owner.scopeID),
       sessionID = Identifier.asSessionID(owner.sessionID)
+    const infoKey = StoragePath.sessionInfo(scopeID, sessionID)
+    const info = SettlementRecord.parse(await Storage.read(infoKey))
     for (const messageID of await Storage.scan(StoragePath.sessionMessagesRoot(scopeID, sessionID), { strict: true })) {
       const mid = Identifier.asMessageID(messageID)
       const infoKey = StoragePath.messageInfo(scopeID, sessionID, mid)
@@ -126,22 +135,26 @@ export namespace RolloutMigration {
         for (const attachment of attachments) {
           if (attachment.artifact) continue
           if (attachment.url.startsWith("data:") || attachment.url.startsWith("asset:")) {
-            try {
-              const captured = await RolloutAttachment.capture(owner, attachment)
-              Object.assign(attachment, captured)
-              await Storage.write(partKey, part, options)
-            } catch (error) {
-              if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error
+            const captured = await RolloutAttachment.capture(owner, attachment).catch((error: unknown) => {
+              if (
+                !(error instanceof Attachment.InvalidUrlError) &&
+                !(error instanceof Error && "code" in error && error.code === "ENOENT")
+              )
+                throw error
+              return undefined
+            })
+            if (!captured?.artifact) {
               audit.missing.push(`attachment:${attachment.id}:original_not_recoverable`)
+              continue
             }
+            Object.assign(attachment, captured)
+            await Storage.write(partKey, part, options)
           } else if (attachment.mime !== "application/x-directory")
             audit.missing.push(`attachment:${attachment.id}:original_not_recorded`)
         }
         if (part !== parsed.data) await Storage.write(partKey, part, options)
       }
     }
-    const infoKey = StoragePath.sessionInfo(scopeID, sessionID)
-    const info = SessionInfo.parse(await Storage.read(infoKey))
     if (info.cortex && !["queued", "running"].includes(info.cortex.status) && !info.cortex.settledAt) {
       await Storage.write(infoKey, { ...info, cortex: { ...info.cortex, settledAt: audit.completedAt } }, options)
       audit.missing.push("cortex:historical_delivery_not_verified")

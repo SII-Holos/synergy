@@ -32,11 +32,17 @@ export namespace ProviderPricing {
     tiers: z.array(ContextTier).optional(),
     units: UnitRates.optional(),
   }).strict()
-  export const CatalogCost = Cost.extend({
+  export const ModelConfigCost = Cost.extend({
     input_audio: z.number().finite().nonnegative().optional(),
     output_audio: z.number().finite().nonnegative().optional(),
     reasoning: z.number().finite().nonnegative().optional(),
   }).loose()
+  // Provenance: https://models.dev/api.json (external context-tier pricing metadata).
+  // Local adaptation: preserve additive tier fields as raw evidence while configured tiers retain strict validation.
+  export const CatalogCost = ModelConfigCost.extend({
+    context_over_200k: TokenRates.loose().optional(),
+    tiers: z.array(ContextTier.loose()).optional(),
+  })
   export const Info = z
     .object({
       version: z.literal(1),
