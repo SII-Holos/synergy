@@ -2,7 +2,6 @@ import type { MessageDescriptor } from "@lingui/core"
 import type { AssistantMessage, PermissionRequest, ReasoningPart, ToolPart } from "@ericsanchezok/synergy-sdk/client"
 import {
   ACTIVITY_FAMILY_ORDER,
-  ActivityDerivedMetadataSchema,
   activityFamilyForTool,
   activityGroupKey,
   activityScopeForTool,
@@ -10,7 +9,6 @@ import {
   isActivityGroupableTool,
   MAX_ACTIVITY_GROUP_STEPS,
   resolveActivityDisplay,
-  type ActivityDerivedMetadata,
   type ActivityDisplayMode,
   type ActivityFamily,
   type ActivitySummaryState,
@@ -48,7 +46,6 @@ export type ActivityGroupItem = {
   state: ActivityGroupState
   steps: ActivityStepProjection[]
   receipt: boolean
-  topic?: ActivityTextSummary
 }
 
 export type ActivityTextSummary = {
@@ -76,7 +73,6 @@ export type ActivitySummaryItem = {
   total: number
   facts: ActivitySummaryFact[]
   completed: boolean
-  now?: NonNullable<ActivityDerivedMetadata["now"]>
 }
 
 export type ActivityReceiptItem = {
@@ -225,11 +221,6 @@ function makeStep(
   }
 }
 
-function activityMetadata(message: AssistantMessage): ActivityDerivedMetadata | undefined {
-  const parsed = ActivityDerivedMetadataSchema.safeParse(message.metadata?.activity)
-  return parsed.success ? parsed.data : undefined
-}
-
 function reasoningSummary(message: AssistantMessage, partID: string, terminal: boolean): ActivityReasoningSummaryItem {
   return {
     kind: "activity-reasoning-summary",
@@ -240,15 +231,10 @@ function reasoningSummary(message: AssistantMessage, partID: string, terminal: b
   }
 }
 
-function makeGroup(
-  message: AssistantMessage,
-  step: ActivityStepProjection,
-  receipt: boolean,
-  persistedKey?: string,
-): ActivityGroupItem {
+function makeGroup(message: AssistantMessage, step: ActivityStepProjection, receipt: boolean): ActivityGroupItem {
   return {
     kind: "activity-group",
-    key: persistedKey ?? activityGroupKey(message.id, step.family, step.scopeKey, step.part.id),
+    key: activityGroupKey(message.id, step.family, step.scopeKey, step.part.id),
     message,
     family: step.family,
     scopeKey: step.scopeKey,
@@ -270,31 +256,13 @@ export function projectAssistantActivityItems(input: {
   const isRenderBoundary = input.isToolRenderBoundary ?? (() => false)
   const visibleByIdentity = new Map(input.visibleItems.map((item) => [timelineItemIdentity(item), item]))
   const visibleIdentities = new Set(visibleByIdentity.keys())
-  const metadata = activityMetadata(input.message)
-  const ordinaryPartIDs = new Set(
-    input.sourceItems.flatMap((item) => (isOrdinaryTool(item, isRenderBoundary) ? [item.part.id] : [])),
-  )
-  const persistedGroupByPartID = new Map<string, string>()
-  const validPersistedGroupKeys = new Set<string>()
-  for (const [key, group] of Object.entries(metadata?.groups ?? {})) {
-    const partIDs = group.signature?.split(":").filter(Boolean) ?? []
-    if (partIDs.length === 0 || partIDs.some((partID) => !ordinaryPartIDs.has(partID))) continue
-    validPersistedGroupKeys.add(key)
-    for (const partID of partIDs) persistedGroupByPartID.set(partID, key)
-  }
   let pendingGroup: ActivityGroupItem | undefined
-  let pendingPersistedKey: string | undefined
 
   const flush = () => {
     if (!pendingGroup) return
-    const stored = metadata?.groups?.[pendingGroup.key]
-    const validStored =
-      stored && (!stored.signature || validPersistedGroupKeys.has(pendingGroup.key)) ? stored : undefined
-    if (validStored?.text) pendingGroup.topic = { state: validStored.state, text: validStored.text }
-    pendingGroup.state = pendingGroup.topic?.state === "live" ? "running" : groupState(pendingGroup.steps)
+    pendingGroup.state = groupState(pendingGroup.steps)
     result.push(pendingGroup)
     pendingGroup = undefined
-    pendingPersistedKey = undefined
   }
 
   for (const source of input.sourceItems) {
@@ -326,20 +294,13 @@ export function projectAssistantActivityItems(input: {
       : (frozenStep(source.part) ??
         freezeStep(source.part, makeStep(input.message, source.part, input.permissions, input.resolveToolInfo)))
     const receipt = isActivityReceiptTool(source.part.tool, step.family)
-    const defaultKey = activityGroupKey(input.message.id, step.family, step.scopeKey, step.part.id)
-    const legacyStored = metadata?.groups?.[defaultKey]
-    const persistedKey = receipt
-      ? undefined
-      : (persistedGroupByPartID.get(step.part.id) ?? (legacyStored && !legacyStored.signature ? defaultKey : undefined))
-
     const canMerge =
       !receipt &&
       pendingGroup &&
       !pendingGroup.receipt &&
       pendingGroup.steps.length < MAX_ACTIVITY_GROUP_STEPS &&
-      (persistedKey
-        ? pendingPersistedKey === persistedKey
-        : !pendingPersistedKey && pendingGroup.family === step.family && pendingGroup.scopeKey === step.scopeKey)
+      pendingGroup.family === step.family &&
+      pendingGroup.scopeKey === step.scopeKey
 
     if (canMerge && pendingGroup) {
       pendingGroup.steps.push(step)
@@ -348,8 +309,7 @@ export function projectAssistantActivityItems(input: {
     }
 
     flush()
-    pendingGroup = makeGroup(input.message, step, receipt, persistedKey)
-    pendingPersistedKey = persistedKey
+    pendingGroup = makeGroup(input.message, step, receipt)
   }
 
   flush()
@@ -500,12 +460,6 @@ export function projectMinimalActivityItems<T>(
     const count = counts.get(family) ?? 0
     return count > 0 ? [{ family, count }] : []
   }).slice(0, 3)
-  const now = items.reduce<NonNullable<ActivityDerivedMetadata["now"]> | undefined>((latest, item) => {
-    if (!isActivityTimelineItem(item)) return latest
-    const candidate = activityMetadata(item.message)?.now
-    if (!candidate) return latest
-    return !latest || candidate.updatedAt > latest.updatedAt ? candidate : latest
-  }, undefined)
   const first = groups[0]
   const summary: ActivitySummaryItem = {
     kind: "activity-summary",
@@ -514,7 +468,6 @@ export function projectMinimalActivityItems<T>(
     total,
     facts,
     completed,
-    now,
   }
   let inserted = false
   const preservedMessages = new Set<string>()
