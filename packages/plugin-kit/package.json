@@ -19,7 +19,7 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsgo --noEmit",
-    "build": "bun run --cwd ../plugin build && rm -rf dist && tsc -p tsconfig.build.json"
+    "build": "rm -rf dist && tsc -p tsconfig.build.json"
   },
   "exports": {
     ".": {

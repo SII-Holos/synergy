@@ -60,3 +60,5 @@ description: Add, modify, or review Synergy Plugin API 4 definitions, generated 
 Report public contract changes, generated artifacts, capability/approval effects, runtime/generation behavior, Host Services, operation/event/hook behavior, UI lifecycle, transaction/migration effects, tests, and docs.
 
 For UI API 5 changes, run `bun run plugin-ui:test` after the production App build. It exercises all packed templates and both reference plugins through the real isolated host. Run Plugin Kit's compiled CLI test when changing authoring imports, definition loading or build dependencies: source execution alone cannot verify standalone resolution or embedded dependency assets. Definition inspection uses Bun CLI mode in a fresh subprocess so author dependencies resolve from their installed project even when the caller is a compiled executable.
+
+Build authoring packages from the repository root with `bun turbo build --filter=@ericsanchezok/synergy-plugin-kit`. Package build scripts compile their own outputs only; declared dependencies are built by the graph, so parallel consumers never observe a sibling `dist` being cleared by a dependent build.

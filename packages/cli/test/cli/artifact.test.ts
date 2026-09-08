@@ -26,8 +26,17 @@ for (const mode of ["complete", "tool", "read", "budget", "timeout", "permission
         hostname: "127.0.0.1",
         port: 0,
         async fetch(request) {
-          requests++
           const input = await request.json()
+          if (new URL(request.url).pathname.endsWith("/embeddings"))
+            return Response.json({
+              object: "list",
+              data: [
+                { object: "embedding", index: 0, embedding: Array.from({ length: 384 }, (_, i) => (i === 0 ? 1 : 0)) },
+              ],
+              model: "fixture-embedding",
+              usage: { prompt_tokens: 1, total_tokens: 1 },
+            })
+          requests++
           readObserved ||= input.messages.some(
             (message: { role: string; content: unknown }) =>
               message.role === "tool" && JSON.stringify(message.content).includes(fileContent),
@@ -120,6 +129,7 @@ for (const mode of ["complete", "tool", "read", "budget", "timeout", "permission
         await fs.mkdir(workspace, { recursive: true })
         await Bun.write(inputFile, fileContent)
         const config = {
+          embedding: { apiKey: "fixture", baseURL: server.url.toString(), model: "fixture-embedding" },
           agent: mode === "budget" ? { synergy: { steps: 1 } } : undefined,
           model: "test/test-model",
           controlProfile: mode === "tool" || mode === "read" ? "full_access" : "guarded",

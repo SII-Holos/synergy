@@ -92,6 +92,8 @@ For the full isolation procedure, the guard predicate, and the escape hatch, see
 
 The same pinned catalog is the default input for core binary builds. `script/release/shared/build/models-catalog.ts` validates it and requires non-empty OpenAI, Anthropic, and Google entries before compilation; `MODELS_DEV_API_JSON` can override the input for an ordinary local build, while release builds always force the repository-pinned snapshot.
 
+Workspace `build` scripts write only their own outputs. Build a package and its dependencies from the root, for example `bun turbo build --filter=@ericsanchezok/synergy-plugin-kit`; `bun dev prepare` and managed Desktop preparation arrange these dependencies automatically.
+
 Other package tests can run through Turbo or their package scripts:
 
 ```bash

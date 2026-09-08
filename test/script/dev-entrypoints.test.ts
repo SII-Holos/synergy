@@ -20,6 +20,25 @@ for (const args of [
     for (const process of plan.processes) {
       const manifest = Bun.file(path.join(process.cwd, "package.json"))
       expect(await manifest.exists()).toBe(true)
+      if (process.command[1] === "turbo") {
+        const child = Bun.spawn([...process.command, "--dry-run=json"], {
+          cwd: process.cwd,
+          stdout: "pipe",
+          stderr: "pipe",
+        })
+        const [output, errors, code] = await Promise.all([
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+          child.exited,
+        ])
+        expect(code, errors).toBe(0)
+        expect(JSON.parse(output).tasks.map((task: { taskId: string }) => task.taskId)).toEqual([
+          "@ericsanchezok/synergy-plugin#build",
+          "@ericsanchezok/synergy-sdk#build",
+          "@ericsanchezok/synergy-util#build",
+        ])
+        continue
+      }
       const command = process.command.slice(2).find((value) => !value.startsWith("--"))!
       if (command.endsWith(".ts")) expect(await Bun.file(path.resolve(process.cwd, command)).exists()).toBe(true)
       else expect((await manifest.json()).scripts[command]).toBeString()

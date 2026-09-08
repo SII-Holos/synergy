@@ -403,7 +403,11 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
       const dependenciesInstalled = fs.existsSync(path.join(repoRoot, "node_modules"))
       const processes: DevProcessSpec[] = [
         ...(dependenciesInstalled ? [] : [{ label: "install" as const, command: [bunPath, "install"], cwd: repoRoot }]),
-        { label: "build:plugin", command: [bunPath, "run", "build"], cwd: dirs.plugin },
+        {
+          label: "build:plugin",
+          command: [bunPath, "turbo", "build", "--filter=@ericsanchezok/synergy-plugin"],
+          cwd: repoRoot,
+        },
         {
           label: "build",
           command: [bunPath, "run", "build"],
@@ -798,7 +802,11 @@ async function runPrepare(repoRoot: string, bunPath: string): Promise<number> {
     { label: "generate", command: [bunPath, "./script/generate.ts"], cwd: repoRoot },
     // Build plugin (and its util dependency) before app so Vite can resolve
     // @ericsanchezok/synergy-plugin from its `dist/` exports map.
-    { label: "build:plugin", command: [bunPath, "run", "build"], cwd: dirs.plugin },
+    {
+      label: "build:plugin",
+      command: [bunPath, "turbo", "build", "--filter=@ericsanchezok/synergy-plugin"],
+      cwd: repoRoot,
+    },
     {
       label: "build",
       command: [bunPath, "run", "build"],

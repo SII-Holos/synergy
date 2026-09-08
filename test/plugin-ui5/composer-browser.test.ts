@@ -18,7 +18,25 @@ test("custom composer submits once and a running response survives switching to 
     async fetch(request) {
       if (request.method === "GET")
         return Response.json({ object: "list", data: [{ id: "fixture", object: "model", owned_by: "fixture" }] })
-      await request.json()
+      const input = await request.json()
+      if (new URL(request.url).pathname.endsWith("/embeddings"))
+        return Response.json({
+          object: "list",
+          data: [
+            { object: "embedding", index: 0, embedding: Array.from({ length: 384 }, (_, i) => (i === 0 ? 1 : 0)) },
+          ],
+          model: "fixture-embedding",
+          usage: { prompt_tokens: 1, total_tokens: 1 },
+        })
+      if (!input.stream)
+        return Response.json({
+          id: "fixture-response",
+          object: "chat.completion",
+          created: 1,
+          model: "fixture",
+          choices: [{ index: 0, message: { role: "assistant", content: "Fixture response" }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        })
       return new Response(
         new ReadableStream({
           async start(controller) {
@@ -76,6 +94,17 @@ test("custom composer submits once and a running response survives switching to 
       {
         domain: "models",
         configDomainUpdateInput: { config: { model: "fixture/fixture", nano_model: "fixture/fixture" } },
+      },
+      { throwOnError: true },
+    )
+    await preview.client.config.domain.update(
+      {
+        domain: "general",
+        configDomainUpdateInput: {
+          config: {
+            embedding: { apiKey: "fixture", baseURL: `${provider.url.origin}/v1`, model: "fixture-embedding" },
+          },
+        },
       },
       { throwOnError: true },
     )
