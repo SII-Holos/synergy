@@ -19,7 +19,7 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsgo --noEmit",
-    "build": "bun run --cwd ../plugin build && rm -rf dist && tsc -p tsconfig.build.json"
+    "build": "rm -rf dist && tsc -p tsconfig.build.json"
   },
   "exports": {
     ".": {
@@ -28,8 +28,8 @@
       "import": "./dist/index.js"
     },
     "./commands": {
-      "bun": "./src/commands/index.ts",
       "types": "./src/commands/index.ts",
+      "bun": "./src/commands/index.ts",
       "import": "./dist/commands/index.js"
     },
     "./market-entry": {

@@ -1,13 +1,13 @@
 ---
 name: change-execution-boundaries
-description: Add, modify, or review Synergy capability classification, control profiles, permission rules, SmartAllow eligibility, workspace and sensitive-path policy, tool enforcement, or macOS/Linux/Windows sandbox behavior. Use for packages/synergy/src/control-profile, enforcement, permission, sandbox, session/tool-resolver, or shared capability definitions.
+description: Add, modify, or review Synergy capability classification, control profiles, permission rules, SmartAllow eligibility, workspace and sensitive-path policy, tool enforcement, or macOS/Linux/Windows sandbox behavior. Use for packages/harness/src/control-profile, enforcement, permission, sandbox, session/tool-resolver, or shared capability definitions.
 ---
 
 # Change Execution Boundaries
 
 ## Trace the Whole Decision
 
-1. Read [Execution boundaries](../../../docs/architecture/execution-boundaries.md) and `packages/synergy/AGENTS.md`.
+1. Read [Execution boundaries](../../../docs/architecture/execution-boundaries.md) and `packages/product-runtime/AGENTS.md`.
 2. Start at `session/tool-resolver.ts`, then trace the operation through capability classification, the enforcement gate, profile compilation, saved/session permission layers, SmartAllow, approval side effects, sandbox policy, and the tool implementation.
 3. Inspect `packages/util/src/capability.ts` for the shared capability catalog and public severity/category metadata. Keep classification independent from profile policy: classifiers describe what an operation can do; profiles decide allow, ask, or deny.
 4. Check built-in tools, plugin and MCP envelopes, worktree/main-checkout reclassification, sensitive paths, remote execution, and platform fallback before assuming one call site owns the boundary.
@@ -22,7 +22,7 @@ description: Add, modify, or review Synergy capability classification, control p
 6. Mark hard boundaries non-bypassable at the capability definition or classification source. SmartAllow and preauthorization must not override hard denials or receive raw secrets.
 7. Keep the active workspace as the default write/execute boundary. Preserve original-checkout and sibling-worktree protection, trusted-root containment, protected metadata, and credential-path rules.
 8. Treat sandboxing as post-authorization containment. Preserve filesystem roots, network mode, approved external roots, shell-bypass semantics, and the configured `deny`/`warn`/`allow` fallback.
-9. Change platform helpers and TypeScript policy together. Do not claim parity without the relevant macOS Seatbelt, Linux helper/Bubblewrap, Windows helper, or WSL evidence.
+9. Keep permission policy and the `SandboxHost` contract in `packages/harness`; OS backends, PTYs, filesystem watchers and helper sources belong to `packages/runtime-local`. Register the host and native startup contribution in local composition, including agent-worker bootstrap. Missing host registration must fail closed. Change platform helpers and TypeScript policy together. Do not claim parity without the relevant macOS Seatbelt, Linux helper/Bubblewrap, Windows helper, or WSL evidence.
 
 ## Implement and Verify
 
@@ -39,3 +39,5 @@ Update the architecture document when the pipeline, profile semantics, capabilit
 ## Handoff
 
 Report the capability and risk, classifier, profile decisions, bypassability, permission/SmartAllow behavior, sandbox policy and platform coverage, workspace effects, tests, and documentation synchronized.
+
+Sandbox helper preparation and discovery must use the canonical runtime home, including `SYNERGY_HOME` and test isolation. Verify copied assets and hash lookup together; do not change OS policy read/deny roots to the runtime home. Check source Cargo discovery separately from registered packaged assets.

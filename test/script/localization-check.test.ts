@@ -26,7 +26,7 @@ describe("localization source contract", () => {
       }
     `
 
-    const violations = analyzeLocalizationSource("packages/app/src/example.tsx", source)
+    const violations = analyzeLocalizationSource("apps/web/src/example.tsx", source)
     const kinds = violations.map((item) => item.kind)
 
     expect(kinds).toContain("macro-import")
@@ -61,7 +61,7 @@ describe("localization source contract", () => {
       }
     `
 
-    expect(analyzeLocalizationSource("packages/app/src/example.tsx", source)).toEqual([])
+    expect(analyzeLocalizationSource("apps/web/src/example.tsx", source)).toEqual([])
   })
 
   test("ignores numeric placeholders, formatter options, and dynamic external content", () => {
@@ -77,7 +77,7 @@ describe("localization source contract", () => {
       }
     `
 
-    const violations = analyzeLocalizationSource("packages/app/src/example.tsx", source)
+    const violations = analyzeLocalizationSource("apps/web/src/example.tsx", source)
     expect(violations.map((item) => [item.kind, item.literal])).toEqual([
       ["jsx-attribute", "Enabled"],
       ["jsx-attribute", "Disabled"],
@@ -107,7 +107,7 @@ describe("localization source contract", () => {
       const accessor = i18n()._(S.rewindTitle)
     `
 
-    expect(analyzeLocalizationSource("packages/app/src/example.ts", source)).toEqual([])
+    expect(analyzeLocalizationSource("apps/web/src/example.ts", source)).toEqual([])
   })
 
   test("accepts static Trans references, conditional descriptors, and descriptor collection callbacks", () => {
@@ -134,7 +134,7 @@ describe("localization source contract", () => {
       }
     `
 
-    expect(analyzeLocalizationSource("packages/app/src/example.tsx", source)).toEqual([])
+    expect(analyzeLocalizationSource("apps/web/src/example.tsx", source)).toEqual([])
   })
 
   test("accepts structurally typed descriptor helpers and descriptor property pairs", () => {
@@ -149,7 +149,7 @@ describe("localization source contract", () => {
       const translated = translate(A.total, { total: 2 })
     `
 
-    expect(analyzeLocalizationSource("packages/app/src/example.ts", source)).toEqual([])
+    expect(analyzeLocalizationSource("apps/web/src/example.ts", source)).toEqual([])
   })
 
   test("accepts typed descriptor props and statically complete descriptor maps", () => {
@@ -181,12 +181,12 @@ describe("localization source contract", () => {
       }
     `
 
-    expect(analyzeLocalizationSource("packages/app/src/example.ts", source)).toEqual([])
+    expect(analyzeLocalizationSource("apps/web/src/example.ts", source)).toEqual([])
   })
 
   test("rejects properties whose type also permits arbitrary strings", () => {
     const mixedType = analyzeLocalizationSource(
-      "packages/app/src/mixed.ts",
+      "apps/web/src/mixed.ts",
       `
         import type { MessageDescriptor } from "@lingui/core"
         interface MixedOptions { title: string | MessageDescriptor }
@@ -203,11 +203,11 @@ describe("localization source contract", () => {
       const valid = i18n._({ id: "settings.general.language.label", message: "Language" })
     `
 
-    const violations = analyzeLocalizationSource("packages/app/src/example.ts", source)
+    const violations = analyzeLocalizationSource("apps/web/src/example.ts", source)
     expect(violations.map((item) => item.kind)).toEqual(["invalid-message-descriptor", "invalid-message-descriptor"])
 
     const dynamicOverride = analyzeLocalizationSource(
-      "packages/app/src/dynamic.ts",
+      "apps/web/src/dynamic.ts",
       `import { agenda as A } from "../../script/messages"; i18n._({ ...A.total, id: dynamicID })`,
     )
     expect(dynamicOverride.map((item) => item.kind)).toEqual(["dynamic-message-id"])
@@ -215,7 +215,7 @@ describe("localization source contract", () => {
 
   test("rejects descriptor maps indexed by unconstrained dynamic strings", () => {
     const unsafeMapLookup = analyzeLocalizationSource(
-      "packages/app/src/dynamic-map.ts",
+      "apps/web/src/dynamic-map.ts",
       `
         const labels = { ready: { id: "app.state.ready.label", message: "Ready" } }
         function label(key: string) { return _(labels[key]) }
@@ -232,12 +232,12 @@ describe("localization source contract", () => {
 
   test("allowlist entries are exact, categorized, and occurrence-scoped", () => {
     const source = `export const Example = () => <><span>Synergy</span><span>Synergy</span></>`
-    const violations = analyzeLocalizationSource("packages/app/src/example.tsx", source)
+    const violations = analyzeLocalizationSource("apps/web/src/example.tsx", source)
     expect(violations).toHaveLength(2)
 
     const allowlist: LocalizationAllowlistEntry[] = [
       {
-        path: "packages/app/src/example.tsx",
+        path: "apps/web/src/example.tsx",
         kind: "jsx-text",
         literal: "Synergy",
         occurrence: 1,
@@ -254,7 +254,7 @@ describe("localization source contract", () => {
   test("reports stale allowlist entries after their source violation is removed", () => {
     const allowlist: LocalizationAllowlistEntry[] = [
       {
-        path: "packages/app/src/example.tsx",
+        path: "apps/web/src/example.tsx",
         kind: "jsx-text",
         literal: "Synergy",
         occurrence: 1,
@@ -265,7 +265,7 @@ describe("localization source contract", () => {
 
     expect(findUnusedLocalizationAllowlistEntries([], allowlist)).toEqual(allowlist)
     const violations = analyzeLocalizationSource(
-      "packages/app/src/example.tsx",
+      "apps/web/src/example.tsx",
       `export const Example = () => <span>Synergy</span>`,
     )
     expect(findUnusedLocalizationAllowlistEntries(violations, allowlist)).toEqual([])

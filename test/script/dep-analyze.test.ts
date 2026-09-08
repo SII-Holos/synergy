@@ -1,135 +1,119 @@
-import { describe, expect, test } from "bun:test"
-import { mkdirSync, rmSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
-import {
-  __testHooks,
-  buildGraph,
-  extractImports,
-  layerOf,
-  r3Violations,
-  resolveSpec,
-  stronglyConnectedComponents,
-  summarize,
-} from "../../script/dep-analyze"
+import { expect, test } from "bun:test"
+import { mkdtemp, mkdir, rm } from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
+import { imports, validateWorkspaces } from "../../script/workspace-dependencies"
 
-describe("extractImports", () => {
-  test("collects value imports, side-effect imports, and dynamic imports", () => {
-    const source = [
-      'import { Log } from "@/util/log"',
-      'import type { Info } from "./types"',
-      'import "./side-effect"',
-      'const mod = await import("../lazy/module")',
-      'import TEXT from "./prompt/plan.txt"',
-      "",
-    ].join("\n")
-    const result = extractImports(source)
-    expect([...result.specs].sort()).toEqual(["../lazy/module", "./side-effect", "./types", "@/util/log"])
-    expect(result.typeOnly.has("./types")).toBe(true)
-    expect(result.typeOnly.has("@/util/log")).toBe(false)
-  })
-
-  test("records re-exports", () => {
-    const result = extractImports('export { helper } from "./helper"')
-    expect(result.specs.has("./helper")).toBe(true)
-  })
-})
-
-describe("resolveSpec", () => {
-  test("maps the @/ alias onto the source root", () => {
-    expect(resolveSpec("/src/session/a.ts", "@/bus", "/src")).toBe("/src/bus")
-  })
-
-  test("resolves relative specifiers against the importing file", () => {
-    expect(resolveSpec("/src/session/a.ts", "../lattice/policy", "/src")).toBe("/src/lattice/policy")
-  })
-
-  test("returns null for external packages", () => {
-    expect(resolveSpec("/src/a.ts", "zod", "/src")).toBeNull()
-  })
-})
-
-describe("stronglyConnectedComponents", () => {
-  test("returns the mutually reachable set for a cycle", () => {
-    const components = stronglyConnectedComponents({ a: ["b"], b: ["c"], c: ["a"], d: [] })
-    expect(components).toHaveLength(1)
-    expect(components[0]).toEqual(["a", "b", "c"])
-  })
-
-  test("returns nothing for an acyclic graph", () => {
-    expect(stronglyConnectedComponents({ a: ["b"], b: [] })).toEqual([])
-  })
-})
-
-describe("r3Violations", () => {
-  test("flags product pairs outside the allowlist and permits listed ones", () => {
-    const edges: Record<string, string[]> = {
-      lattice: ["blueprint"],
-      blueprint: ["plugin"],
-      cortex: ["plugin"],
-    }
-    const violations = r3Violations(edges, { allowlist: [["lattice", "blueprint"]] })
-    expect(violations).toEqual([
-      ["blueprint", "plugin"],
-      ["cortex", "plugin"],
-    ])
-  })
-
-  test("ignores non-product endpoints", () => {
-    expect(r3Violations({ session: ["blueprint"] }, { allowlist: [] })).toEqual([])
-  })
-})
-
-describe("layerOf", () => {
-  test("classifies the four layers plus unclassified roots", () => {
-    expect(layerOf("session")).toBe("L1")
-    expect(layerOf("lattice")).toBe("product")
-    expect(layerOf("server")).toBe("L4")
-    expect(layerOf("util")).toBe("L0")
-    expect(layerOf("index.ts")).toBe("unclassified")
-  })
-})
-
-describe("buildGraph + summarize", () => {
-  const root = __testHooks.mkdtemp()
-  const write = (relative: string, content: string) => {
-    const target = join(root, relative)
-    mkdirSync(join(target, ".."), { recursive: true })
-    writeFileSync(target, content)
+async function fixture(run: (root: string) => Promise<void>) {
+  const root = await mkdtemp(path.join(os.tmpdir(), "synergy-package-boundaries-"))
+  const names = ["harness", "util", "browser-runtime"]
+  await mkdir(path.join(root, "script"))
+  await Bun.write(
+    path.join(root, "package.json"),
+    JSON.stringify({ workspaces: { packages: names.map((name) => `packages/${name}`) } }),
+  )
+  await Bun.write(
+    path.join(root, "script/dependency-rules.json"),
+    JSON.stringify({ "packages/harness": ["packages/util"] }),
+  )
+  for (const name of names) {
+    await mkdir(path.join(root, "packages", name, "src"), { recursive: true })
+    await Bun.write(
+      path.join(root, "packages", name, "package.json"),
+      JSON.stringify({
+        name,
+        exports: { ".": "./src/index.ts" },
+        dependencies: name === "harness" ? { util: "workspace:*" } : {},
+      }),
+    )
+    await Bun.write(path.join(root, "packages", name, "src/index.ts"), "export const value = 1\n")
   }
+  try {
+    await run(root)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}
 
-  write("session/kernel.ts", 'import { Policy } from "../lattice/policy"\nexport const k = 1\n')
-  write("lattice/policy.ts", 'import { Session } from "../session"\nexport const Policy = 1\n')
-  write("tool/registry.ts", 'import { Boss } from "../boss/tools/assign"\nexport const r = 1\n')
-  write("boss/tools/assign.ts", "export const Boss = 1\n")
-  write("util/log.ts", 'import { Config } from "../config/config"\nexport const l = 1\n')
-  write("main.ts", 'import { k } from "./session/kernel"\n')
+test("imports distinguish prose from static, dynamic and type-only dependencies", () => {
+  expect(
+    imports(
+      "index.ts",
+      `import type { A } from "a"; export { B } from "b"; await import("c"); const description = "d"`,
+    ),
+  ).toEqual(["a", "b", "c"])
+})
 
-  const graph = buildGraph(root)
-  const summary = summarize(graph)
-
-  test("aggregates module-level edges", () => {
-    expect(graph.edges.session).toContain("lattice")
-    expect(graph.edges.lattice).toContain("session")
-    expect(graph.edges.tool).toContain("boss")
-    expect(graph.edges.util).toContain("config")
-    expect(graph.edges["main.ts"]).toEqual(["session"])
+test("public imports with declared dependencies form a valid isolated package", async () => {
+  await fixture(async (root) => {
+    await Bun.write(path.join(root, "packages/harness/src/index.ts"), 'import { value } from "util"\nexport { value }')
+    expect(validateWorkspaces(root).failures).toEqual([])
   })
+})
 
-  test("counts the core→product inversions that R1 gates", () => {
-    expect(summary.l1ToProduct).toEqual([
-      ["session", "lattice"],
-      ["tool", "boss"],
+test("declaring a dependency does not authorize a private source import", async () => {
+  await fixture(async (root) => {
+    await Bun.write(path.join(root, "packages/harness/src/index.ts"), 'export { value } from "../../util/src/index"')
+    expect(validateWorkspaces(root).failures).toEqual([
+      "packages/harness/src/index.ts: private cross-package import ../../util/src/index",
     ])
   })
+})
 
-  test("detects the lattice↔session cycle", () => {
-    expect(summary.cyclicSCCs).toHaveLength(1)
-    expect(summary.cyclicSCCs[0]).toEqual(["lattice", "session"])
+test("unregistered public exports and undeclared dependencies fail independently", async () => {
+  await fixture(async (root) => {
+    await Bun.write(path.join(root, "packages/harness/src/index.ts"), 'import "browser-runtime/private"')
+    expect(validateWorkspaces(root).failures).toEqual([
+      "packages/harness/src/index.ts: undeclared production dependency browser-runtime",
+      "packages/harness/src/index.ts: undeclared export browser-runtime/private",
+    ])
   })
+})
 
-  test("R3 violations default to an empty allowlist (all product pairs flagged)", () => {
-    expect(summary.r3Violations).toEqual([])
+test("manifest cycles are detected even when source files do not import each other", async () => {
+  await fixture(async (root) => {
+    const file = path.join(root, "packages/util/package.json")
+    const pkg = await Bun.file(file).json()
+    pkg.dependencies.harness = "workspace:*"
+    await Bun.write(file, JSON.stringify(pkg))
+    expect(
+      validateWorkspaces(root).failures.some((failure) => failure.startsWith("Production dependency cycle:")),
+    ).toBe(true)
   })
+})
 
-  rmSync(root, { recursive: true, force: true })
+test("runtime resolution and literal worker URLs enforce the same workspace boundary", async () => {
+  await fixture(async (root) => {
+    await Bun.write(
+      path.join(root, "packages/harness/src/index.ts"),
+      `import.meta.resolve("browser-runtime/private"); new URL("../../util/src/index.ts", import.meta.url)`,
+    )
+    expect(validateWorkspaces(root).failures).toEqual([
+      "packages/harness/src/index.ts: undeclared production dependency browser-runtime",
+      "packages/harness/src/index.ts: undeclared export browser-runtime/private",
+      "packages/harness/src/index.ts: private cross-package import ../../util/src/index.ts",
+    ])
+  })
+})
+
+test("white-box testing exports cannot become production dependencies", async () => {
+  await fixture(async (root) => {
+    const file = path.join(root, "packages/util/package.json")
+    const manifest = await Bun.file(file).json()
+    manifest.exports["./test/internal"] = "./src/index.ts"
+    await Bun.write(file, JSON.stringify(manifest))
+    await Bun.write(path.join(root, "packages/harness/src/index.ts"), 'import "util/test/internal"')
+    expect(validateWorkspaces(root).failures).toEqual([
+      "packages/harness/src/index.ts: production source imports testing-only export util/test/internal",
+    ])
+  })
+})
+
+test("type queries and module augmentation remain explicit package contracts", () => {
+  expect(
+    imports(
+      "config.ts",
+      'type Host = import("host/private").Host; declare module "harness/config/schema" { interface Extensions { enabled: boolean } }',
+    ),
+  ).toEqual(["host/private", "harness/config/schema"])
 })

@@ -1,0 +1,503 @@
+import z from "zod"
+import type { Scope } from "@ericsanchezok/synergy-harness/scope/types"
+import { opaque } from "@ericsanchezok/synergy-harness/util/schema"
+import { SessionEndpoint } from "@ericsanchezok/synergy-harness/session/endpoint"
+
+export namespace AgendaTypes {
+  // ---------------------------------------------------------------------------
+  // Item status
+  // ---------------------------------------------------------------------------
+
+  export const ItemStatus = z.enum(["pending", "active", "paused", "done", "cancelled"])
+  export type ItemStatus = z.infer<typeof ItemStatus>
+
+  // ---------------------------------------------------------------------------
+  // Triggers
+  // ---------------------------------------------------------------------------
+
+  export const TriggerAt = z
+    .object({
+      type: z.literal("at"),
+      at: z.number().describe("Unix timestamp (ms) for one-shot execution"),
+    })
+    .meta({ ref: "AgendaTriggerAt" })
+
+  export const TriggerCron = z
+    .object({
+      type: z.literal("cron"),
+      expr: z.string().describe("Cron expression, e.g. '0 9 * * *'"),
+      tz: z.string().optional().describe("IANA timezone, e.g. 'Asia/Shanghai'"),
+    })
+    .meta({ ref: "AgendaTriggerCron" })
+
+  export const TriggerEvery = z
+    .object({
+      type: z.literal("every"),
+      interval: z.string().describe("Human duration, e.g. '30m', '2h', '1d'"),
+      anchor: z.number().optional().describe("Unix timestamp (ms) to anchor the first tick"),
+    })
+    .meta({ ref: "AgendaTriggerEvery" })
+
+  export const TriggerDelay = z
+    .object({
+      type: z.literal("delay"),
+      delay: z.string().describe("Relative delay from creation, e.g. '30m', '2h'"),
+    })
+    .meta({ ref: "AgendaTriggerDelay" })
+
+  export const TriggerWatch = z
+    .object({
+      type: z.literal("watch"),
+      watch: z.discriminatedUnion("kind", [
+        // TODO: poll and tool watch kinds are disabled until we design a stable
+        // condition-checking mechanism. The current approach (agent guesses tool
+        // output format) is too fragile for production use. Re-enable after
+        // designing a proper condition evaluation system.
+        //
+        // z.object({
+        //   kind: z.literal("poll"),
+        //   command: z.string().describe("Shell command to execute periodically"),
+        //   interval: z.string().optional().describe("Poll interval, e.g. '5m'. Default: '1m'"),
+        //   trigger: z.enum(["change", "match"]).default("change"),
+        //   match: z.string().optional(),
+        // }),
+        // z.object({
+        //   kind: z.literal("tool"),
+        //   tool: z.string().describe("Synergy tool name to call"),
+        //   args: z.record(z.string(), z.unknown()).optional(),
+        //   interval: z.string().optional().describe("Poll interval, e.g. '5m'. Default: '5m'"),
+        //   trigger: z.enum(["change", "match"]).default("change"),
+        //   match: z.string().optional(),
+        // }),
+        z.object({
+          kind: z.literal("file"),
+          glob: z.string().describe("File glob pattern to watch for changes, e.g. 'src/**/*.ts'"),
+          event: z
+            .enum(["add", "change", "unlink"])
+            .optional()
+            .describe("Specific file event to match. If omitted, triggers on any event"),
+          debounce: z
+            .string()
+            .optional()
+            .describe("Debounce window before firing, e.g. '500ms', '2s'. Default: '500ms'"),
+        }),
+      ]),
+    })
+    .meta({ ref: "AgendaTriggerWatch" })
+
+  export const TriggerWebhook = z
+    .object({
+      type: z.literal("webhook"),
+      token: z.string().optional().describe("Auto-generated secret token for the webhook URL"),
+    })
+    .meta({ ref: "AgendaTriggerWebhook" })
+
+  export const TriggerSession = z
+    .object({
+      type: z.literal("session"),
+      sessionID: z.string().describe("Target session to watch for turn events"),
+      event: z.enum(["turn.end", "turn.start"]).default("turn.end").describe("Session turn event to react to"),
+      agent: z.string().optional().describe("Only fire when the turn's agent matches"),
+      finish: z
+        .string()
+        .optional()
+        .describe("Only fire when the turn's finish state matches (e.g. 'stop', 'error'). Only applies to turn.end"),
+      once: z.boolean().default(true).describe("If true, the item auto-completes after the first fire"),
+    })
+    .meta({ ref: "AgendaTriggerSession" })
+
+  export const TriggerGithub = z
+    .object({
+      type: z.literal("github"),
+      resource: z.enum(["pr", "issue", "workflow", "check"]).describe("GitHub resource kind to watch"),
+      repository: z
+        .string()
+        .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, "Use owner/repo form")
+        .describe("Repository in owner/repo form"),
+      number: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe(
+          "PR/issue number, or workflow run id. If omitted for pr/issue/workflow, watches the repository's most recent items",
+        ),
+      ref: z
+        .string()
+        .optional()
+        .describe(
+          "Branch/tag/commit ref for workflow and check targeting (e.g. 'main', full SHA). Defaults to HEAD for checks and the default branch for workflows",
+        ),
+      interval: z
+        .string()
+        .regex(/^(\d+)(ms|s|m|h|d|w)$/, "Use a duration like '5m', '30s', '1h'")
+        .optional()
+        .describe("Poll interval, e.g. '5m'. Default: '5m' (or github.watch.defaultIntervalMs)"),
+      states: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Only fire when the state transitions into one of these values. PR: open/draft/merged/closed; issue: open/closed; workflow/check: queued/in_progress/completed (filter the conclusion separately via these same values, e.g. 'success'/'failure')",
+        ),
+    })
+    .meta({ ref: "AgendaTriggerGithub" })
+
+  export const Trigger = z
+    .discriminatedUnion("type", [
+      TriggerAt,
+      TriggerCron,
+      TriggerEvery,
+      TriggerDelay,
+      TriggerWatch,
+      TriggerWebhook,
+      TriggerSession,
+      TriggerGithub,
+    ])
+    .meta({ ref: "AgendaTrigger" })
+  export type Trigger = z.infer<typeof Trigger>
+
+  /** Trigger types exposed via the agenda_schedule tool. No watch or webhook. */
+  export const ScheduleTrigger = z
+    .discriminatedUnion("type", [TriggerCron, TriggerEvery, TriggerAt, TriggerDelay, TriggerSession, TriggerGithub])
+    .meta({ ref: "AgendaScheduleTrigger" })
+  export type ScheduleTrigger = z.infer<typeof ScheduleTrigger>
+
+  // ---------------------------------------------------------------------------
+  // Session mode — inferred from triggers, but can be overridden per item
+  // ---------------------------------------------------------------------------
+
+  export type SessionMode = "ephemeral" | "persistent"
+
+  export const ControlProfile = z.enum(["guarded", "autonomous", "full_access"]).meta({ ref: "ControlProfileId" })
+  export type ControlProfile = z.infer<typeof ControlProfile>
+
+  /**
+   * Infer session mode from triggers, with an optional per-item override.
+   *
+   * Default behaviour: recurring triggers (cron, every, watch) use a persistent
+   * session so the agent can accumulate state across fires. One-shot triggers
+   * (at, delay) use an ephemeral session.
+   *
+   * Set `override` to "ephemeral" when each fire should start with a clean
+   * context — e.g. a daily diary that must not be influenced by previous runs.
+   */
+  export function inferSessionMode(triggers: Trigger[], override?: SessionMode): SessionMode {
+    if (override) return override
+    const hasRecurring = triggers.some(
+      (t) =>
+        t.type === "cron" ||
+        t.type === "every" ||
+        t.type === "watch" ||
+        t.type === "github" ||
+        (t.type === "session" && t.once === false),
+    )
+    return hasRecurring ? "persistent" : "ephemeral"
+  }
+
+  // ---------------------------------------------------------------------------
+  // Origin — creation context
+  // ---------------------------------------------------------------------------
+
+  const ScopeField = opaque<Scope>(
+    z.object({
+      id: z.string(),
+      type: z.string().optional(),
+      directory: z.string().optional(),
+      worktree: z.string().optional(),
+    }),
+    { ref: "AgendaScope" },
+  )
+
+  export const Origin = z
+    .object({
+      scope: ScopeField.describe("Scope where the item was created"),
+      sessionID: z.string().optional().describe("Session where the item was created"),
+      endpoint: SessionEndpoint.Info.optional().describe("Endpoint context if created from a session endpoint"),
+    })
+    .meta({ ref: "AgendaOrigin" })
+  export type Origin = z.infer<typeof Origin>
+
+  // ---------------------------------------------------------------------------
+  // Session reference
+  // ---------------------------------------------------------------------------
+
+  export const SessionRef = z
+    .object({
+      sessionID: z.string(),
+      hint: z.string().optional().describe("Brief description of what this session contains"),
+    })
+    .meta({ ref: "AgendaSessionRef" })
+  export type SessionRef = z.infer<typeof SessionRef>
+
+  // ---------------------------------------------------------------------------
+  // Item state — mutable runtime state tracked across runs
+  // ---------------------------------------------------------------------------
+
+  export const RunStatus = z.enum(["ok", "error", "skipped"])
+  export type RunStatus = z.infer<typeof RunStatus>
+
+  export const ItemState = z
+    .object({
+      nextRunAt: z.number().optional().describe("Next scheduled execution time (ms)"),
+      lastRunAt: z.number().optional().describe("Last execution start time (ms)"),
+      lastRunStatus: RunStatus.optional(),
+      lastRunError: z.string().optional(),
+      lastRunDuration: z.number().optional().describe("Last execution duration (ms)"),
+      lastRunSessionID: z.string().optional().describe("Session ID of the most recent execution"),
+      persistentSessionID: z.string().optional().describe("Reused session ID for persistent session mode"),
+      consecutiveErrors: z.number().default(0).describe("Consecutive error count, reset on success"),
+      runCount: z.number().default(0).describe("Total number of executions"),
+    })
+    .meta({ ref: "AgendaItemState" })
+  export type ItemState = z.infer<typeof ItemState>
+
+  // ---------------------------------------------------------------------------
+  // The complete agenda item
+  // ---------------------------------------------------------------------------
+
+  export const Item = z
+    .object({
+      id: z.string().describe("Unique item identifier"),
+      status: ItemStatus,
+      title: z.string(),
+      description: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      global: z.boolean().default(false).describe("If true, item is visible from all scopes"),
+
+      triggers: z.array(Trigger).default([]).describe("Activation conditions"),
+
+      prompt: z.string().describe("Instruction for the agent when triggered"),
+      deliveryMode: z
+        .literal("session_guidance")
+        .optional()
+        .describe("Internal delivery mode that injects hidden system guidance into the origin Session"),
+
+      // Advanced execution options
+      agent: z.string().optional().describe("Agent to use, defaults to configured default"),
+      model: z.object({ providerID: z.string(), modelID: z.string() }).optional().describe("Model override"),
+      controlProfile: ControlProfile.optional().describe("Control profile used by sessions created for this item"),
+      sessionMode: z
+        .enum(["ephemeral", "persistent"])
+        .optional()
+        .describe(
+          "Session mode override. Recurring triggers (cron, every) default to 'persistent' (reuse session across fires). Set 'ephemeral' to start a fresh session on every fire — useful for tasks that must not carry history from previous runs, such as daily reports.",
+        ),
+      sessionRefs: z
+        .array(SessionRef)
+        .optional()
+        .describe("Sessions whose content may be relevant — injected as context references"),
+      timeout: z.number().optional().describe("Execution timeout in milliseconds"),
+
+      // Notification behavior
+      wake: z.boolean().default(true).describe("Whether to wake the origin session's agent on completion"),
+      silent: z.boolean().default(false).describe("Whether to suppress result delivery entirely"),
+      autoDone: z
+        .boolean()
+        .default(false)
+        .describe("If true, automatically set status to done after first successful fire. Used by agenda_watch."),
+
+      origin: Origin.describe("Context captured at creation time"),
+      createdBy: z.enum(["user", "agent"]),
+
+      state: ItemState.default({
+        consecutiveErrors: 0,
+        runCount: 0,
+      }),
+
+      time: z.object({
+        created: z.number(),
+        updated: z.number(),
+      }),
+    })
+    .meta({ ref: "AgendaItem" })
+  export type Item = z.infer<typeof Item>
+
+  // ---------------------------------------------------------------------------
+  // Run log — execution history entry
+  // ---------------------------------------------------------------------------
+
+  export const RunLog = z
+    .object({
+      id: z.string().describe("Run identifier"),
+      itemID: z.string(),
+      status: RunStatus,
+      trigger: z
+        .object({
+          type: z.string().describe("What triggered this run, e.g. 'cron', 'watch', 'manual'"),
+          source: z.string().optional().describe("Trigger source identifier"),
+        })
+        .describe("What caused this execution"),
+      sessionID: z.string().optional(),
+      error: z.string().optional(),
+      duration: z.number().optional().describe("Execution duration (ms)"),
+      time: z.object({
+        started: z.number(),
+        completed: z.number().optional(),
+      }),
+    })
+    .meta({ ref: "AgendaRunLog" })
+  export type RunLog = z.infer<typeof RunLog>
+
+  export const ActivityAgenda = z
+    .object({
+      id: z.string(),
+      scopeID: z.string().describe("Scope that owns the agenda item"),
+      title: z.string(),
+      description: z.string().optional(),
+      status: ItemStatus,
+      tags: z.array(z.string()).optional(),
+      global: z.boolean(),
+      time: z.object({
+        created: z.number(),
+        updated: z.number(),
+      }),
+    })
+    .meta({ ref: "AgendaActivityAgenda" })
+  export type ActivityAgenda = z.infer<typeof ActivityAgenda>
+
+  export const ActivitySession = z
+    .object({
+      id: z.string(),
+      scopeID: z.string().describe("Scope that owns the session"),
+      title: z.string(),
+      time: z.object({
+        created: z.number(),
+        updated: z.number(),
+        archived: z.number().optional(),
+      }),
+    })
+    .meta({ ref: "AgendaActivitySession" })
+  export type ActivitySession = z.infer<typeof ActivitySession>
+
+  export const ActivityEntry = z
+    .object({
+      run: RunLog,
+      agenda: ActivityAgenda,
+      session: ActivitySession.optional(),
+    })
+    .meta({ ref: "AgendaActivityEntry" })
+  export type ActivityEntry = z.infer<typeof ActivityEntry>
+
+  export const ActivityPage = z
+    .object({
+      items: z.array(ActivityEntry),
+      total: z.number(),
+      limit: z.number(),
+      offset: z.number(),
+      hasMore: z.boolean(),
+    })
+    .meta({ ref: "AgendaActivityPage" })
+  export type ActivityPage = z.infer<typeof ActivityPage>
+
+  export const SessionAgendaTriggerType = z.enum([
+    "cron",
+    "every",
+    "at",
+    "delay",
+    "watch",
+    "webhook",
+    "session",
+    "github",
+  ])
+  export type SessionAgendaTriggerType = z.infer<typeof SessionAgendaTriggerType>
+
+  export const SessionAgendaTrigger = z
+    .object({
+      type: SessionAgendaTriggerType,
+      interval: z.string().optional().describe("Interval for every triggers, e.g. '30m'"),
+      delay: z.string().optional().describe("Delay for delay triggers, e.g. '2h'"),
+      sessionID: z.string().optional().describe("Target session for session triggers"),
+    })
+    .meta({ ref: "SessionAgendaTrigger" })
+  export type SessionAgendaTrigger = z.infer<typeof SessionAgendaTrigger>
+
+  export const SessionAgendaItem = z
+    .object({
+      itemID: z.string().describe("Agenda item ID"),
+      title: z.string().describe("Agenda item title"),
+      status: z.enum(["active", "pending"]),
+      nextRunAt: z.number().nullable().describe("Next scheduled activation time, or null for open-ended triggers"),
+      triggerTypes: z.array(SessionAgendaTriggerType).describe("Trigger types that can activate this agenda item"),
+      triggers: z.array(SessionAgendaTrigger).describe("Display-safe trigger details for client-side formatting"),
+      global: z.boolean().describe("Whether this agenda item is globally visible"),
+    })
+    .meta({ ref: "SessionAgendaItem" })
+  export type SessionAgendaItem = z.infer<typeof SessionAgendaItem>
+
+  export const SessionAgendaResponse = z
+    .object({
+      sessionID: z.string(),
+      count: z.number().int().min(0),
+      hasActiveAgenda: z.boolean(),
+      items: z.array(SessionAgendaItem),
+      offset: z.number().int().min(0),
+      limit: z.number().int().min(0),
+      total: z.number().int().min(0),
+      hasMore: z.boolean(),
+    })
+    .meta({ ref: "SessionAgendaResponse" })
+  export type SessionAgendaResponse = z.infer<typeof SessionAgendaResponse>
+
+  // ---------------------------------------------------------------------------
+  // Fired signal — runtime representation of a trigger activation
+  // ---------------------------------------------------------------------------
+
+  export const FiredSignal = z
+    .object({
+      type: z.string().describe("Trigger type that fired, e.g. 'cron', 'watch', 'manual'"),
+      source: z.string().describe("Source identifier, e.g. item ID or external source name"),
+      payload: z.record(z.string(), z.unknown()).optional().describe("Data carried by the signal"),
+      timestamp: z.number(),
+    })
+    .meta({ ref: "AgendaFiredSignal" })
+  export type FiredSignal = z.infer<typeof FiredSignal>
+
+  // ---------------------------------------------------------------------------
+  // Create / Patch — input types for mutations
+  // ---------------------------------------------------------------------------
+
+  export const CreateInput = z
+    .object({
+      title: z.string(),
+      prompt: z.string(),
+      description: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      triggers: z.array(Trigger).optional(),
+      global: z.boolean().optional(),
+      wake: z.boolean().optional(),
+      silent: z.boolean().optional(),
+      autoDone: z.boolean().optional(),
+      agent: z.string().optional(),
+      model: z.object({ providerID: z.string(), modelID: z.string() }).optional(),
+      controlProfile: ControlProfile.optional(),
+      sessionMode: z.enum(["ephemeral", "persistent"]).optional(),
+      sessionRefs: z.array(SessionRef).optional(),
+      timeout: z.number().optional(),
+      createdBy: z.enum(["user", "agent"]).default("user"),
+      sessionID: z.string().optional().describe("Session where the item was created"),
+      endpoint: SessionEndpoint.Info.optional().describe("Endpoint context if created from a session endpoint"),
+    })
+    .meta({ ref: "AgendaCreateInput" })
+  export type CreateInput = z.infer<typeof CreateInput>
+
+  export const PatchInput = z
+    .object({
+      title: z.string().optional(),
+      description: z.string().optional(),
+      status: ItemStatus.optional(),
+      tags: z.array(z.string()).optional(),
+      triggers: z.array(Trigger).optional(),
+      prompt: z.string().optional(),
+      global: z.boolean().optional(),
+      wake: z.boolean().optional(),
+      silent: z.boolean().optional(),
+      agent: z.string().optional(),
+      model: z.object({ providerID: z.string(), modelID: z.string() }).optional(),
+      controlProfile: ControlProfile.optional(),
+      sessionMode: z.enum(["ephemeral", "persistent"]).optional(),
+      sessionRefs: z.array(SessionRef).optional(),
+      timeout: z.number().optional(),
+    })
+    .meta({ ref: "AgendaPatchInput" })
+  export type PatchInput = z.infer<typeof PatchInput>
+}

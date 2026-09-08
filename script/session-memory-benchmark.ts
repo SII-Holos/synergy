@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { MessageV2 } from "../packages/synergy/src/session/message-v2"
-import { SessionToolInput } from "../packages/synergy/src/session/tool-input"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { SessionToolInput } from "@ericsanchezok/synergy-harness/session/tool-input"
 
 type Memory = Pick<
   ReturnType<typeof process.memoryUsage>,

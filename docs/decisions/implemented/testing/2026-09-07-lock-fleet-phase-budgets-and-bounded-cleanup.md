@@ -8,7 +8,7 @@ The `ServerProcessLock` competition suites failed Windows Checks on three consec
 
 ## Decision
 
-The fleet harness lives in `packages/synergy/test/daemon/lock-fleet.ts` with five contracts, shared by the 24-worker and 16-worker competition tests and reused by the single-worker suites' cleanup:
+The fleet harness lives in `packages/harness/test/util/lock-fleet.ts` with five contracts, shared by the 24-worker and 16-worker competition tests and reused by the single-worker suites' cleanup:
 
 1. **One phase deadline per phase, summing under the test budget** — readiness 80s, competition results 45s, reap grace 20s: 145s aggregate inside the 150s per-test budget, so the full worst-case failure path lands as the harness's named error, never Bun's blanket timeout.
 2. **Crash fast-fail** — a worker that exits before reporting ready fails the wait immediately with its exit code, because a parked worker only ever exits by crashing; the missing ready line is a diagnosable spawn failure, not a deadline wait. This contract found the real 2026-09-06 root cause ([startup schema publish was not concurrency-safe](../../implemented/bug-fix/2026-09-07-schema-publish-concurrent-safe.md)) in one CI run after three opaque timeouts.

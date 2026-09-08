@@ -6,7 +6,7 @@ import { createFixtureProject, writeMinimalPlugin, minimalPluginSource } from ".
 import { buildPluginProject } from "../../packages/plugin-kit/src/commands/build"
 import { importPreviewConversation } from "./session-fixture"
 
-const require = createRequire(path.resolve(import.meta.dir, "../../packages/app/package.json"))
+const require = createRequire(path.resolve(import.meta.dir, "../../apps/web/package.json"))
 const { chromium } = await import(require.resolve("playwright"))
 
 test("native public conversation retains bounded history and reconciles updates after reconnect", async () => {
@@ -19,7 +19,7 @@ test("native public conversation retains bounded history and reconciles updates 
     expect(await buildPluginProject(project.root)).toBe(true)
     preview = await startPluginPreview({
       artifacts: [path.join(project.root, "dist")],
-      command: [process.execPath, path.resolve(import.meta.dir, "../../packages/synergy/src/index.ts")],
+      command: [process.execPath, path.resolve(import.meta.dir, "../../packages/product-runtime/src/index.ts")],
     })
     await approvePreviewPlugins(preview)
     const conversation = await importPreviewConversation(preview, { title: "History fixture", turns: 360 })

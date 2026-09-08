@@ -7,28 +7,34 @@ test("watcher follows new asset directories and external dependencies without wa
   const project = createFixtureProject("watch-assets")
   const dependency = createFixtureProject("watch-dependency")
   let changes = 0
+  let change = Promise.withResolvers<void>()
   const watcher = watchPluginSources(project.root, () => {
     changes++
+    change.resolve()
   })
   try {
     dependency.writeFile("shared.ts", "export const value = 1")
     watcher.update([path.join(dependency.root, "shared.ts")])
+    change = Promise.withResolvers<void>()
     project.writeFile("skins/new/texture.svg", "first")
-    await Bun.sleep(400)
+    await change.promise
     expect(changes).toBe(1)
+    change = Promise.withResolvers<void>()
     dependency.writeFile("shared.ts", "export const value = 2")
-    await Bun.sleep(400)
+    await change.promise
     expect(changes).toBe(2)
     watcher.update([], false)
+    change = Promise.withResolvers<void>()
     dependency.writeFile("shared.ts", "export const value = 3")
-    await Bun.sleep(400)
+    await change.promise
     expect(changes).toBe(3)
     project.writeFile("dist/ui/index.js", "generated")
     project.writeFile("src/generated/plugin-data/index.d.ts", "generated")
     await Bun.sleep(400)
     expect(changes).toBe(3)
+    change = Promise.withResolvers<void>()
     project.writeFile("src/index.ts", "export {}")
-    await Bun.sleep(400)
+    await change.promise
     expect(changes).toBe(4)
     watcher.close()
     project.writeFile("skins/new/texture.svg", "later")
@@ -44,10 +50,15 @@ test("watcher follows new asset directories and external dependencies without wa
 test("watcher observes the first authored file in a new source directory", async () => {
   const project = createFixtureProject("watch-new-source")
   let changes = 0
-  const watcher = watchPluginSources(project.root, () => changes++)
+  let change = Promise.withResolvers<void>()
+  const watcher = watchPluginSources(project.root, () => {
+    changes++
+    change.resolve()
+  })
   try {
+    change = Promise.withResolvers<void>()
     project.writeFile("src/index.ts", "export {}")
-    await Bun.sleep(400)
+    await change.promise
     expect(changes).toBe(1)
   } finally {
     watcher.close()

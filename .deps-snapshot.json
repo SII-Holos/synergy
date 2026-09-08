@@ -1,73 +1,130 @@
 {
-  "totalModules": 66,
-  "totalFiles": 1065,
-  "cyclicSCCs": [
-    [
-      "agent",
-      "asset",
-      "attachment",
-      "bus",
-      "config",
-      "conflict",
-      "control-profile",
-      "enforcement",
-      "file",
-      "global",
-      "hashline",
-      "instruction",
-      "migration",
-      "observability",
-      "permission",
-      "process",
-      "provider",
-      "sandbox",
-      "scope",
-      "session",
-      "storage",
-      "tool",
-      "util",
-      "vector",
-      "workspace-file"
-    ],
-    ["cli", "daemon", "server"]
+  "@ericsanchezok/synergy-harness": ["@ericsanchezok/synergy-link-protocol", "@ericsanchezok/synergy-util"],
+  "@ericsanchezok/synergy-runtime-local": [
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-link-protocol",
+    "@ericsanchezok/synergy-util"
   ],
-  "l1ToProduct": [],
-  "l1ToAssembly": [],
-  "productInternalPairs": [
-    ["agenda", "blueprint"],
-    ["agenda", "cortex"],
-    ["agenda", "plugin"],
-    ["blueprint", "cortex"],
-    ["blueprint", "note"],
-    ["blueprint", "plugin"],
-    ["boss", "agenda"],
-    ["boss", "library"],
-    ["boss", "project"],
-    ["browser", "cortex"],
-    ["channel", "agenda"],
-    ["channel", "boss"],
-    ["channel", "holos"],
-    ["channel", "question"],
-    ["command", "project"],
-    ["command", "skill"],
-    ["cortex", "project"],
-    ["external-agent", "library"],
-    ["external-agent", "plugin"],
-    ["holos", "remote"],
-    ["lattice", "blueprint"],
-    ["lattice", "note"],
-    ["library", "plugin"],
-    ["light-loop", "cortex"],
-    ["note", "plugin"],
-    ["performance", "browser"],
-    ["performance", "cortex"],
-    ["performance", "mcp"],
-    ["performance", "plugin"],
-    ["plugin", "cortex"],
-    ["plugin", "light-loop"],
-    ["plugin", "mcp"],
-    ["plugin", "plugin-runtime"],
-    ["project", "question"]
+  "@ericsanchezok/synergy-cli": [
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-runtime-local",
+    "@ericsanchezok/synergy-sdk",
+    "@ericsanchezok/synergy-util"
   ],
-  "r3Violations": []
+  "@ericsanchezok/synergy-server": [
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-runtime-local",
+    "@ericsanchezok/synergy-util"
+  ],
+  "@ericsanchezok/synergy-product-runtime": [
+    "@ericsanchezok/synergy-agent-integrations",
+    "@ericsanchezok/synergy-browser-runtime",
+    "@ericsanchezok/synergy-cli",
+    "@ericsanchezok/synergy-computer-runtime",
+    "@ericsanchezok/synergy-connections",
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-library",
+    "@ericsanchezok/synergy-media",
+    "@ericsanchezok/synergy-note",
+    "@ericsanchezok/synergy-plugin-host",
+    "@ericsanchezok/synergy-runtime-local",
+    "@ericsanchezok/synergy-server",
+    "@ericsanchezok/synergy-workbench",
+    "@ericsanchezok/synergy-workflows"
+  ],
+  "@ericsanchezok/synergy-browser-runtime": [
+    "@ericsanchezok/synergy-browser",
+    "@ericsanchezok/synergy-cli",
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-server"
+  ],
+  "@ericsanchezok/synergy-computer-runtime": ["@ericsanchezok/synergy-computer", "@ericsanchezok/synergy-harness"],
+  "@ericsanchezok/synergy-library": [
+    "@ericsanchezok/synergy-cli",
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-server"
+  ],
+  "@ericsanchezok/synergy-note": [
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-server",
+    "@ericsanchezok/synergy-util"
+  ],
+  "@ericsanchezok/synergy-workflows": [
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-library",
+    "@ericsanchezok/synergy-note",
+    "@ericsanchezok/synergy-plugin",
+    "@ericsanchezok/synergy-plugin-host",
+    "@ericsanchezok/synergy-runtime-local",
+    "@ericsanchezok/synergy-server",
+    "@ericsanchezok/synergy-util"
+  ],
+  "@ericsanchezok/synergy-connections": [
+    "@ericsanchezok/synergy-cli",
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-link-protocol",
+    "@ericsanchezok/synergy-runtime-local",
+    "@ericsanchezok/synergy-server",
+    "@ericsanchezok/synergy-util",
+    "@ericsanchezok/synergy-workflows"
+  ],
+  "@ericsanchezok/synergy-workbench": [
+    "@ericsanchezok/synergy-agent-integrations",
+    "@ericsanchezok/synergy-browser-runtime",
+    "@ericsanchezok/synergy-cli",
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-plugin-host",
+    "@ericsanchezok/synergy-runtime-local",
+    "@ericsanchezok/synergy-server",
+    "@ericsanchezok/synergy-util"
+  ],
+  "@ericsanchezok/synergy-agent-integrations": [
+    "@ericsanchezok/synergy-cli",
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-link-protocol",
+    "@ericsanchezok/synergy-plugin",
+    "@ericsanchezok/synergy-runtime-local",
+    "@ericsanchezok/synergy-sdk",
+    "@ericsanchezok/synergy-server",
+    "@ericsanchezok/synergy-util"
+  ],
+  "@ericsanchezok/synergy-media": [
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-runtime-local",
+    "@ericsanchezok/synergy-server"
+  ],
+  "@ericsanchezok/synergy-plugin-host": [
+    "@ericsanchezok/synergy-cli",
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-plugin",
+    "@ericsanchezok/synergy-plugin-kit",
+    "@ericsanchezok/synergy-server",
+    "@ericsanchezok/synergy-util"
+  ],
+  "@ericsanchezok/synergy-testing": [],
+  "@ericsanchezok/synergy-browser": [],
+  "@ericsanchezok/synergy-computer": [],
+  "@ericsanchezok/synergy-link-protocol": [],
+  "@ericsanchezok/synergy-link": ["@ericsanchezok/synergy-link-protocol", "@ericsanchezok/synergy-util"],
+  "@ericsanchezok/synergy-plugin": ["@ericsanchezok/synergy-sdk", "@ericsanchezok/synergy-util"],
+  "@ericsanchezok/synergy-plugin-kit": ["@ericsanchezok/synergy-plugin", "@ericsanchezok/synergy-sdk"],
+  "@ericsanchezok/synergy-sdk": [],
+  "@ericsanchezok/synergy-ui": [
+    "@ericsanchezok/synergy-plugin",
+    "@ericsanchezok/synergy-sdk",
+    "@ericsanchezok/synergy-util"
+  ],
+  "@ericsanchezok/synergy-util": [],
+  "@ericsanchezok/synergy-app": [
+    "@ericsanchezok/synergy-browser",
+    "@ericsanchezok/synergy-plugin",
+    "@ericsanchezok/synergy-sdk",
+    "@ericsanchezok/synergy-ui",
+    "@ericsanchezok/synergy-util"
+  ],
+  "@ericsanchezok/synergy-desktop": [
+    "@ericsanchezok/synergy-browser",
+    "@ericsanchezok/synergy-computer",
+    "@ericsanchezok/synergy-util"
+  ]
 }

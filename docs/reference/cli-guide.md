@@ -16,14 +16,14 @@ Run `synergy --help` or `synergy <command> --help` for the exact options support
 
 ## Runtime Modes
 
-| Command            | Ownership and lifetime                                                                                            |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `synergy start`    | Install/start a managed background service through launchd, systemd user services, or Windows Task Scheduler      |
-| `synergy server`   | Run the server in the current foreground terminal; bare `synergy` is an alias for this command                    |
-| `synergy web`      | Open the Web UI served by an already running runtime                                                              |
-| `synergy send ...` | Attach to a runtime when `--attach` is supplied; otherwise start a private ephemeral local server for the command |
+| Command            | Ownership and lifetime                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `synergy start`    | Install/start a managed background service through launchd, systemd user services, or Windows Task Scheduler |
+| `synergy server`   | Run the server in the current foreground terminal; bare `synergy` is an alias for this command               |
+| `synergy web`      | Open the Web UI served by an already running runtime                                                         |
+| `synergy send ...` | Attach to a runtime when `--attach` is supplied; otherwise start a private local runtime for the command     |
 
-These modes share data and configuration when they use the same `SYNERGY_HOME`, but only one persistent server process may own that home at a time. A private `send` server stops when its task reaches idle.
+These modes share data and configuration when they use the same `SYNERGY_HOME`, but only one writing runtime process may own that home at a time. Local `send` calls the runtime directly and drains task execution and evidence before closing; it does not open an HTTP listener. Use `--attach` to submit work to an existing server that owns the home.
 
 ### Background service
 
@@ -77,7 +77,7 @@ Important options:
 
 | Option                           | Meaning                                                                                                                                                         |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--attach <url>`                 | Use a running server instead of a private ephemeral server                                                                                                      |
+| `--attach <url>`                 | Use a running server instead of an in-process local runtime                                                                                                     |
 | `--scope <id>`                   | Use the registered home or project Scope ID; unknown or archived IDs fail without creation                                                                      |
 | `-c`, `--continue`               | Continue the latest top-level session in the selected Scope                                                                                                     |
 | `-s`, `--session <id>`           | Continue a specific session                                                                                                                                     |
@@ -89,7 +89,7 @@ Important options:
 | `--title [text]`                 | Set the new-session title; an empty value derives it from the prompt                                                                                            |
 | `--workflow lightloop`           | Run the message as a Light Loop workflow task: the session enables `loop_stop` and a reviewer loop, and `send` exits when the workflow reaches a terminal state |
 | `--format default\|json`         | Render progress for humans or emit newline-delimited event JSON                                                                                                 |
-| `--port <number>`                | Port for the private local server; omitted means an available port                                                                                              |
+| `--port <number>`                | Accepted for command-line compatibility; local execution does not bind a port                                                                                   |
 
 When `--scope` is omitted, `send` uses the launch directory (or `SYNERGY_CWD`). An existing directory is resolved and registered as a project Scope when needed, even if Synergy has not opened it before; a missing directory resolves to the home Scope. Pass `--scope` to select an already registered Scope without registering the launch directory. With `--attach`, the target runtime owns and validates the Scope ID.
 

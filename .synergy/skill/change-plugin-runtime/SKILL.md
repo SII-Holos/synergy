@@ -8,7 +8,7 @@ description: Add, modify, or review Synergy Plugin API 4 definitions, generated 
 ## Trace the Single Contract
 
 1. Read [Plugin documentation](../../../docs/plugins/README.md) and the focused contract for the affected area.
-2. Start with source types in `packages/plugin`, then plugin-kit build output, host discovery/install under `packages/synergy/src/plugin`, runtime generation/dispatch under `plugin-runtime`, server routes, and the Web host under `packages/app/src/plugin`.
+2. Start with source types in `packages/plugin`, then plugin-kit build output, host discovery/install under `packages/plugin-host/src/plugin`, runtime generation/dispatch under `plugin-runtime`, server routes, and the Web host under `apps/web/src/plugin`.
 3. Trace `definePlugin()` → generated manifest/artifacts → metadata-only validation → approval review → installation transaction → contribution adapter → lazy runtime generation → invocation context/Host Service → disposer or lifecycle cleanup.
 4. Load `change-execution-boundaries` for host capability enforcement, `change-server-api` for routes/SDK, `change-persistence` for lock/approval/config migration, and `develop-frontend` for the Web host.
 
@@ -50,12 +50,15 @@ description: Add, modify, or review Synergy Plugin API 4 definitions, generated 
 
 1. Add or update behavior tests at the owning boundary: descriptor/schema, plugin-kit build/validate/pack/sign, metadata-only discovery, approval, transaction rollback, runtime generation, operation/event/hook contract, server route, or Web registration lifecycle. For install-lifecycle changes cover fresh install, legacy lockfile entry (no `lifecycleInstall`), update preservation, offline CLI pending, in-host delivery, boot/reload catch-up, in-flight skip, retry completed guard, and generation mismatch. Hash contract changes require a fixed public hash vector plus a real plugin-kit sign/registry-entry to host-verification test.
 2. Cover duplicate IDs, undeclared capabilities, handler mismatch, invalid schemas/hashes, disabled Scope, timeout/cancel/crash, stale generation, trusted UI export/runtime mismatch, upgrade failure, and force uninstall when relevant.
-3. For runtime memory changes, cover startup/stop ownership, the measured recycle effect, and a stale generation firing after an atomic replacement.
-4. Run public package typecheck/build, inspect a packed artifact, and verify a compiled standalone executable can invoke compiler-backed commands. Run focused host/Web tests, regenerate OpenAPI/SDK or config schema when their sources change, and finish with `bun run quality:quick`.
-5. Update the canonical plugin docs and this Skill in the same change. Delete obsolete guidance instead of appending migration caveats to current-state docs.
+3. Host tool invocation uses Harness `ToolInvocation.invoke()`; never construct a partial processor or invoke a resolved tool outside scheduling. Verify real file effects and tool evidence, permission rejection, parent cancellation, closed admission, recording failure and nested execution with one global slot.
+4. For runtime memory changes, cover startup/stop ownership, the measured recycle effect, and a stale generation firing after an atomic replacement.
+5. Run public package typecheck/build, inspect a packed artifact, and verify a compiled standalone executable can invoke compiler-backed commands. Run focused host/Web tests, regenerate OpenAPI/SDK or config schema when their sources change, and finish with `bun run quality:quick`.
+6. Update the canonical plugin docs and this Skill in the same change. Delete obsolete guidance instead of appending migration caveats to current-state docs.
 
 ## Handoff
 
 Report public contract changes, generated artifacts, capability/approval effects, runtime/generation behavior, Host Services, operation/event/hook behavior, UI lifecycle, transaction/migration effects, tests, and docs.
 
 For UI API 5 changes, run `bun run plugin-ui:test` after the production App build. It exercises all packed templates and both reference plugins through the real isolated host. Run Plugin Kit's compiled CLI test when changing authoring imports, definition loading or build dependencies: source execution alone cannot verify standalone resolution or embedded dependency assets. Definition inspection uses Bun CLI mode in a fresh subprocess so author dependencies resolve from their installed project even when the caller is a compiled executable.
+
+Build authoring packages from the repository root with `bun turbo build --filter=@ericsanchezok/synergy-plugin-kit`. Package build scripts compile their own outputs only; declared dependencies are built by the graph, so parallel consumers never observe a sibling `dist` being cleared by a dependent build.

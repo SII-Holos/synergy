@@ -6,9 +6,9 @@ Status: implemented
 
 On Windows, session-state persistence intermittently failed with `EPERM: operation not permitted, rename '.tmp-<pid>-<rand>' -> 'info.json'`, terminating background subagents and agenda runs through `SessionTerminalError` and leaving DAG/taskboard nodes failed until manually re-dispatched (#1247).
 
-Every persisted session object (info, messages, parts, dag, todo, inbox, agenda) funnels through `Storage.write`/`Storage.update` → `writeJsonAtomic` in `packages/synergy/src/storage/storage.ts`, which performed a single unguarded `Bun.write` + `fs.rename`. Node's `rename` maps to `MoveFileEx` on Windows: when another process holds a handle on the source or target without `FILE_SHARE_DELETE` — antivirus scans, OneDrive sync, or Synergy's own cross-process readers — the call fails with `EPERM`/`EACCES`. Such sharing violations typically clear within milliseconds, but one occurrence escalated fatally: the write error propagated up the invoke loop, was persisted as a terminal assistant-message error, and `selectResultMessage` rethrew it as `SessionTerminalError`.
+Every persisted session object (info, messages, parts, dag, todo, inbox, agenda) funnels through `Storage.write`/`Storage.update` → `writeJsonAtomic` in `packages/harness/src/storage/storage.ts`, which performed a single unguarded `Bun.write` + `fs.rename`. Node's `rename` maps to `MoveFileEx` on Windows: when another process holds a handle on the source or target without `FILE_SHARE_DELETE` — antivirus scans, OneDrive sync, or Synergy's own cross-process readers — the call fails with `EPERM`/`EACCES`. Such sharing violations typically clear within milliseconds, but one occurrence escalated fatally: the write error propagated up the invoke loop, was persisted as a terminal assistant-message error, and `selectResultMessage` rethrew it as `SessionTerminalError`.
 
-The repository already classified these codes as transient in `packages/synergy/src/util/io-retry.ts` (`EPERM`/`EACCES`/`EBUSY`, "Windows sharing violations, antivirus scans, OneDrive sync"), but only the read side used it; the write path had no retry.
+The repository already classified these codes as transient in `packages/harness/src/util/io-retry.ts` (`EPERM`/`EACCES`/`EBUSY`, "Windows sharing violations, antivirus scans, OneDrive sync"), but only the read side used it; the write path had no retry.
 
 ## Decision
 
@@ -18,9 +18,9 @@ The repository already classified these codes as transient in `packages/synergy/
 - Retry classification reuses `isRetryableIOError` from `@/util/io-retry` — only `EPERM`/`EACCES`/`EBUSY` retry; permanent errors (`ENOENT`, `ENOSPC`, genuine permission failures) propagate on the first occurrence.
 - On exhaustion or non-retryable failure the original error propagates unchanged after the temp file is removed; the cleanup itself retries transient unlink errors with the same backoff (the same handle that failed the rename can block the unlink), so no `.tmp-*` residue is left behind on the failure path.
 
-The diagnostics pending-session scan (`packages/synergy/src/observability/diagnostics.ts`), a cross-process reader of the same `info.json` files, now reads through `readFileWithRetry` so its own reads survive a concurrent atomic rename on Windows instead of silently dropping sessions from the dashboard.
+The diagnostics pending-session scan (`packages/harness/src/observability/diagnostics.ts`), a cross-process reader of the same `info.json` files, now reads through `readFileWithRetry` so its own reads survive a concurrent atomic rename on Windows instead of silently dropping sessions from the dashboard.
 
-Behavioral coverage lives in `packages/synergy/test/storage/storage-retry.test.ts`: transient rename failure recovers, transient temp-write failure recovers, exhausted retries propagate the original `code`, non-transient errors fail on the first attempt, and no temp files remain on any failure path.
+Behavioral coverage lives in `packages/harness/test/storage/storage-retry.test.ts`: transient rename failure recovers, transient temp-write failure recovers, exhausted retries propagate the original `code`, non-transient errors fail on the first attempt, and no temp files remain on any failure path.
 
 ## Alternatives considered
 

@@ -15,7 +15,7 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsgo --noEmit",
-    "build": "bun run --cwd ../util build && rm -rf dist && tsc -p tsconfig.build.json"
+    "build": "rm -rf dist && tsc -p tsconfig.build.json"
   },
   "exports": {
     ".": {
@@ -113,7 +113,8 @@
     "dist"
   ],
   "dependencies": {
-    "@ericsanchezok/synergy-sdk": "workspace:*"
+    "@ericsanchezok/synergy-sdk": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*"
   },
   "peerDependencies": {
     "solid-js": ">=1.9.10 <2.0.0",

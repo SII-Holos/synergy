@@ -54,3 +54,45 @@ describe("gate scheduling", () => {
     await expect(runGateSet([gate("a", ["a"])], "/tmp", noop)).rejects.toThrow("cycle")
   })
 })
+
+test("a dependent gate waits for completion while unrelated work can run", async () => {
+  const prerequisite = Promise.withResolvers<void>()
+  const independent = Promise.withResolvers<void>()
+  let dependentStarted = false
+  const run = runGateSet(
+    [gate("prepare"), gate("consumer", ["prepare"]), gate("independent")],
+    "/tmp",
+    async (current) => {
+      if (current.id === "prepare") await prerequisite.promise
+      if (current.id === "consumer") dependentStarted = true
+      if (current.id === "independent") independent.resolve()
+      return null
+    },
+  )
+  try {
+    await independent.promise
+    expect(dependentStarted).toBe(false)
+  } finally {
+    prerequisite.resolve()
+    await run
+  }
+  expect(dependentStarted).toBe(true)
+})
+
+test("failure diagnostics retain both stream summaries when output exceeds the cap", async () => {
+  const result = await runGateSet([
+    {
+      id: "large-output",
+      run: `bun -e 'console.error("stderr-start" + "x".repeat(120000) + "stderr-end"); console.log("stdout-start" + "y".repeat(120000) + "stdout-verdict"); process.exit(3)'`,
+      needs: [],
+    },
+  ])
+  expect(result.failures).toHaveLength(1)
+  const failure = result.failures[0]!
+  expect(failure.exitCode).toBe(3)
+  expect(failure.stderr).toContain("stderr-start")
+  expect(failure.stderr).toContain("stderr-end")
+  expect(failure.stderr).toContain("stdout-start")
+  expect(failure.stderr).toContain("stdout-verdict")
+  expect(failure.stderr.length).toBeLessThanOrEqual(100_000)
+})

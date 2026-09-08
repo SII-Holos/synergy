@@ -64,7 +64,7 @@ jobs:
       - name: Download sandbox assets
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          path: packages/synergy/sandbox-assets
+          path: packages/runtime-local/sandbox-assets
           pattern: sandbox-assets-*
           merge-multiple: true
 
@@ -174,7 +174,7 @@ jobs:
       - name: Download sandbox assets
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          path: packages/synergy/sandbox-assets
+          path: packages/runtime-local/sandbox-assets
           pattern: sandbox-assets-*
           merge-multiple: true
 
@@ -184,7 +184,7 @@ jobs:
           SYNERGY_VERSION: ${{ needs.stable_candidate.outputs.version }}
 
       - name: Build Synergy runtime for desktop package
-        run: bun run ./packages/synergy/script/build.ts
+        run: bun run ./packages/product-runtime/script/build.ts
         env:
           NODE_OPTIONS: --max-old-space-size=4096
           SYNERGY_VERSION: ${{ needs.stable_candidate.outputs.version }}
@@ -201,7 +201,7 @@ jobs:
           SYNERGY_BUILD_TARGETS: ${{ matrix.runtime_targets }}
 
       - name: Build desktop main process
-        run: bun run --cwd packages/desktop desktop:build
+        run: bun run --cwd apps/desktop desktop:build
 
       - name: Package desktop artifact
         shell: bash
@@ -226,7 +226,7 @@ jobs:
             unset APPLE_APP_SPECIFIC_PASSWORD
             unset APPLE_TEAM_ID
           fi
-          cd packages/desktop
+          cd apps/desktop
           bunx electron-builder "${BUILDER_ARGS[@]}" --publish=never
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -252,7 +252,7 @@ jobs:
             Write-Host "Windows signing not configured; skipping Authenticode signature verification"
             exit 0
           }
-          $installer = Get-ChildItem packages/desktop/release/Synergy-win32-x64-*.exe | Select-Object -First 1
+          $installer = Get-ChildItem apps/desktop/release/Synergy-win32-x64-*.exe | Select-Object -First 1
           if (-not $installer) { throw "Windows installer was not produced" }
           $signature = Get-AuthenticodeSignature $installer.FullName
           if ($signature.Status -ne 'Valid') {
@@ -263,7 +263,7 @@ jobs:
         shell: bash
         run: |
           HOST_BUILDER_ARGS=(${{ matrix.host_builder_args }})
-          cd packages/desktop
+          cd apps/desktop
           bun run browser-host:build
           bunx electron-builder --config electron-builder.browser-host.json "${HOST_BUILDER_ARGS[@]}" --publish=never
           SYNERGY_VERSION="${{ needs.stable_candidate.outputs.version }}" \
@@ -278,7 +278,7 @@ jobs:
       - name: Generate signed Chromium manifests
         shell: bash
         run: |
-          cd packages/desktop
+          cd apps/desktop
           SYNERGY_VERSION="${{ needs.stable_candidate.outputs.version }}" \
           bun run script/chromium-manifest.ts release/chromium
         env:
@@ -289,20 +289,20 @@ jobs:
         with:
           name: desktop-artifacts-${{ matrix.platform }}
           path: |
-            packages/desktop/release/*.AppImage
-            packages/desktop/release/*.blockmap
-            packages/desktop/release/*.deb
-            packages/desktop/release/*.dmg
-            packages/desktop/release/*.pkg
-            packages/desktop/release/*.exe
-            packages/desktop/release/*.tar.gz
-            packages/desktop/release/*.yml
-            packages/desktop/release/*.zip
-            packages/desktop/release/browser-host/*.zip
-            packages/desktop/release/browser-host/*.manifest.json
-            packages/desktop/release/browser-host/*.manifest.json.sig
-            packages/desktop/release/chromium/*.manifest.json
-            packages/desktop/release/chromium/*.manifest.json.sig
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/*.deb
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.pkg
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.tar.gz
+            apps/desktop/release/*.yml
+            apps/desktop/release/*.zip
+            apps/desktop/release/browser-host/*.zip
+            apps/desktop/release/browser-host/*.manifest.json
+            apps/desktop/release/browser-host/*.manifest.json.sig
+            apps/desktop/release/chromium/*.manifest.json
+            apps/desktop/release/chromium/*.manifest.json.sig
 
   stable_desktop_publish:
     name: Upload Desktop Artifacts
@@ -338,7 +338,7 @@ jobs:
         run: |
           mkdir -p desktop-release
           find desktop-release-input -maxdepth 2 -type f -exec cp {} desktop-release/ \;
-          SYNERGY_VERSION="${RELEASE_VERSION}" bun run --cwd packages/desktop script/checksums.ts "${GITHUB_WORKSPACE}/desktop-release"
+          SYNERGY_VERSION="${RELEASE_VERSION}" bun run --cwd apps/desktop script/checksums.ts "${GITHUB_WORKSPACE}/desktop-release"
 
       - name: Upload desktop assets to draft release
         shell: bash

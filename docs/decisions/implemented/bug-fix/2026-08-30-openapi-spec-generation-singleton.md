@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-CI failed deterministically on an unrelated PR with `TypeError: undefined is not an object (evaluating 'providerListSchema.properties')` in `openapi.test.ts:20`. Root cause: `hono-openapi`'s `getSpec` consumes each route's `describeRoute`/`resolver` schema entry in place during generation — the first call replaces the registered resolver with the resolved `$ref` plain object, so a **second** `generateSpecs` call in the same process emits paths whose `$ref`s have no backing components. The `/doc` route handler cached its own copy via `openAPIRouteHandler`, while `Server.openapi()` (`openapi()` in `packages/synergy/src/server/server.ts`) regenerated from scratch; any process that served `/doc` and later called `Server.openapi()` produced a componentless spec. The trigger was a new compression test requesting `/doc` — the first test-file-level `/doc` consumer, which reshuffled the Bun test shard so the failure appeared on a seemingly unrelated PR.
+CI failed deterministically on an unrelated PR with `TypeError: undefined is not an object (evaluating 'providerListSchema.properties')` in `openapi.test.ts:20`. Root cause: `hono-openapi`'s `getSpec` consumes each route's `describeRoute`/`resolver` schema entry in place during generation — the first call replaces the registered resolver with the resolved `$ref` plain object, so a **second** `generateSpecs` call in the same process emits paths whose `$ref`s have no backing components. The `/doc` route handler cached its own copy via `openAPIRouteHandler`, while `Server.openapi()` (`openapi()` in `packages/server/src/server/server.ts`) regenerated from scratch; any process that served `/doc` and later called `Server.openapi()` produced a componentless spec. The trigger was a new compression test requesting `/doc` — the first test-file-level `/doc` consumer, which reshuffled the Bun test shard so the failure appeared on a seemingly unrelated PR.
 
 ## Decision
 
@@ -12,7 +12,7 @@ Make spec generation once-per-process a public invariant instead of an implicit 
 
 - `Server.openapi()` memoizes the build in a module-level `_openapiSpecs` promise; all callers (`/doc` route, CLI `generate`, tests) share one cached spec.
 - The `/doc` route no longer uses `openAPIRouteHandler` (which maintained a separate untyped cache) and simply serves `openapi()`, keeping a single generation path and a single set of metadata (`version: "1.0.0"`).
-- A regression test (`survives a /doc request earlier in the same process` in `packages/synergy/test/server/openapi.test.ts`) pins the ordering property: requesting `/doc` first must not strip components from a later `Server.openapi()` call.
+- A regression test (`survives a /doc request earlier in the same process` in `packages/product-runtime/test/server/openapi.test.ts`) pins the ordering property: requesting `/doc` first must not strip components from a later `Server.openapi()` call.
 
 ## Alternatives considered
 

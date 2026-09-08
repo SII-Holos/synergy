@@ -63,22 +63,47 @@ async function stagedFiles(cwd: string): Promise<string[]> {
     .filter((line) => line.endsWith(".md"))
 }
 
-async function collectMarkdownFiles(root: string): Promise<string[]> {
-  const files: string[] = []
-  const candidates: string[] = ["README.md", "CONTRIBUTING.md", "AGENTS.md", "docs", ".synergy/skill"]
-  const packages = path.join(root, "packages")
-  const packageAgents: string[] = []
-  for (const entry of await readdir(packages, { withFileTypes: true }).catch(() => [])) {
-    if (entry.isDirectory()) packageAgents.push(path.join("packages", entry.name, "AGENTS.md"))
+async function workspaceDirectories(root: string): Promise<string[]> {
+  const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")) as {
+    workspaces?: string[] | { packages: string[] }
   }
-  for (const relativePath of [...candidates, ...packageAgents]) {
+  return Array.isArray(manifest.workspaces) ? manifest.workspaces : (manifest.workspaces?.packages ?? [])
+}
+
+export async function collectMarkdownFiles(root: string): Promise<string[]> {
+  const files: string[] = []
+  const candidates = ["README.md", "CONTRIBUTING.md", "AGENTS.md", "docs", ".synergy/skill", ".synergy/command"]
+  const packageGuides = (await workspaceDirectories(root)).flatMap((owner) => [
+    path.join(owner, "AGENTS.md"),
+    path.join(owner, "README.md"),
+  ])
+  for (const relativePath of [...candidates, ...packageGuides]) {
     const full = path.join(root, relativePath)
     const info = await stat(full).catch(() => null)
     if (!info) continue
     if (info.isFile() && full.endsWith(".md")) files.push(full)
     else if (info.isDirectory()) await walk(full, files)
   }
-  return files.sort()
+  return [...new Set(files)].sort()
+}
+
+export function findRetiredWorkspacePaths(markdown: string): { path: string; line: number }[] {
+  return [...markdown.matchAll(/\bpackages\/(?:synergy|app|desktop)(?=\/|[^\w-]|$)/g)].map((match) => ({
+    path: match[0],
+    line: markdown.slice(0, match.index).split("\n").length,
+  }))
+}
+
+async function checkCurrentPaths(files: string[], root: string, errors: string[]) {
+  for (const file of files) {
+    const name = relative(file, root).split(path.sep).join("/")
+    if (/^docs\/(?:decisions|migrations|research|postmortem)\//.test(name)) continue
+    for (const match of findRetiredWorkspacePaths(await readFile(file, "utf8"))) {
+      errors.push(
+        `${name}:${match.line}: retired workspace ${match.path}; use the owning package from docs/reference/packages.md`,
+      )
+    }
+  }
 }
 
 async function walk(dir: string, out: string[]) {
@@ -330,10 +355,8 @@ async function budgetTargets(root: string, budgets: BudgetsFile): Promise<Array<
   for (const [file, limit] of Object.entries(budgets.files)) {
     targets.push([path.join(root, file), limit])
   }
-  const packages = path.join(root, "packages")
-  for (const entry of await readdir(packages, { withFileTypes: true }).catch(() => [])) {
-    if (!entry.isDirectory()) continue
-    const full = path.join(packages, entry.name, "AGENTS.md")
+  for (const owner of await workspaceDirectories(root)) {
+    const full = path.join(root, owner, "AGENTS.md")
     if (!budgets.files[path.relative(root, full)] && budgets.defaults["AGENTS.md"]) {
       targets.push([full, budgets.defaults["AGENTS.md"]])
     }
@@ -397,6 +420,7 @@ export async function runDocCheck(options: DocCheckOptions = {}): Promise<DocChe
   const scope = await collectMarkdownFiles(root)
   if (!options.staged) {
     await checkLinks(scope, cwd, errors)
+    await checkCurrentPaths(scope, root, errors)
     fixed += await checkWrap(scope, cwd, errors, options.fix ?? false)
     await checkBudgets(root, cwd, errors)
     await checkGeneratedFreshness(root, errors)
@@ -408,6 +432,7 @@ export async function runDocCheck(options: DocCheckOptions = {}): Promise<DocChe
     warnings.push(`staged markdown files (${staged.length}) are all outside the document scope; nothing was checked`)
   }
   await checkLinks(files, cwd, errors)
+  await checkCurrentPaths(files, root, errors)
   fixed += await checkWrap(files, cwd, errors, options.fix ?? false)
   return { errors, warnings, fixed }
 }

@@ -15,6 +15,8 @@ The server derives the canonical owner key and includes it in every session-stat
 
 ## Lazy Runtime and Session State
 
+Browser execution is owned by `packages/browser-runtime`; the harness has no Browser driver or presentation dependency. The reaper consumes the shared session terminal-event contract, so archive, deletion, and child-task termination preserve the same cleanup behavior without importing product task orchestration. A host registers the Browser routes explicitly with its server composition.
+
 Chromium and Playwright start lazily when Browser is first used. The process-wide runtime holds one `BrowserSession` per owner. Each Browser session holds zero or one page plus annotations and observers.
 
 Browser execution belongs to the Control Plane/tool-runtime layer, not the Agent worker. The model receives only the serializable Browser tool definitions. Browser callbacks, canonical sessions, Playwright, Chromium discovery, host signaling, native views, and WebRTC state must not enter the Agent worker runner's static dependency graph. A proposed Browser call is authorized and scheduled only after the provider turn has released its Agent worker.

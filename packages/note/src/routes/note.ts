@@ -1,0 +1,345 @@
+import { Hono } from "hono"
+import { describeRoute, validator, resolver } from "hono-openapi"
+import z from "zod"
+import { errors } from "@ericsanchezok/synergy-server/server/error"
+import { NoteError, NoteMarkdown, NoteStore, NoteTypes } from ".."
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+
+export const NoteRoute = new Hono()
+
+  // Keep static metadata route before parameterized `/:id` routes for clear route intent.
+  .get(
+    "/meta",
+    describeRoute({
+      summary: "List note metadata grouped by scope",
+      description:
+        "List metadata for all notes across all scopes, grouped by scope ID. Does not include full note content. Returns active notes by default; pass ?archived=true to show only archived notes.",
+      operationId: "note.listMeta",
+      responses: {
+        200: {
+          description: "Note metadata grouped by scope",
+          content: { "application/json": { schema: resolver(NoteTypes.MetaScopeGroup.array()) } },
+        },
+        ...errors(400),
+      },
+    }),
+    validator(
+      "query",
+      z.object({
+        archived: z
+          .enum(["true", "false"])
+          .default("false")
+          .transform((v) => v === "true")
+          .meta({ description: "Filter by archived state. Defaults to false (active notes only)." }),
+      }),
+    ),
+    async (c) => {
+      try {
+        const { archived } = c.req.valid("query")
+        const archFilter: NoteStore.ArchiveFilter = archived ? "archived" : "active"
+        const groups = await NoteStore.listMetaGrouped(archFilter)
+        return c.json(groups)
+      } catch (err: any) {
+        return c.json({ message: err?.message ?? String(err) }, 400)
+      }
+    },
+  )
+  .get(
+    "/all",
+    describeRoute({
+      summary: "List all notes grouped by scope",
+      description:
+        "List all notes across all scopes, grouped by scope ID. Returns active notes by default; pass ?archived=true to show only archived notes.",
+      operationId: "note.listAll",
+      responses: {
+        200: {
+          description: "Notes grouped by scope",
+          content: { "application/json": { schema: resolver(NoteTypes.ScopeGroup.array()) } },
+        },
+        ...errors(400),
+      },
+    }),
+    validator(
+      "query",
+      z.object({
+        archived: z
+          .enum(["true", "false"])
+          .default("false")
+          .transform((v) => v === "true")
+          .meta({ description: "Filter by archived state. Defaults to false (active notes only)." }),
+      }),
+    ),
+    async (c) => {
+      try {
+        const { archived } = c.req.valid("query")
+        const archFilter: NoteStore.ArchiveFilter = archived ? "archived" : "active"
+        const groups = await NoteStore.listGrouped(archFilter)
+        return c.json(groups)
+      } catch (err: any) {
+        return c.json({ message: err?.message ?? String(err) }, 400)
+      }
+    },
+  )
+
+  .get(
+    "/export/:id",
+    describeRoute({
+      summary: "Export note",
+      description: "Export a note as Markdown or HTML.",
+      operationId: "note.export",
+      responses: {
+        200: { description: "Exported note content" },
+        ...errors(400, 404),
+      },
+    }),
+    validator("param", z.object({ id: z.string().meta({ description: "Note ID" }) })),
+    validator(
+      "query",
+      z.object({ format: z.enum(["md", "html"]).default("md").meta({ description: "Export format" }) }),
+    ),
+    async (c) => {
+      try {
+        const id = c.req.valid("param").id
+        const format = c.req.valid("query").format
+        const note = await NoteStore.getAny(ScopeContext.current.scope.id, id)
+        const markdown = NoteMarkdown.toMarkdown(note.content)
+        const safeTitle = note.title.replace(/[^\w\s-]/g, "").trim() || "note"
+
+        if (format === "html") {
+          const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>${note.title}</title></head><body>
+<pre>${markdown}</pre>
+</body></html>`
+          return c.html(html, 200, {
+            "Content-Disposition": `attachment; filename="${safeTitle}.html"`,
+          })
+        }
+
+        return c.body(markdown, 200, {
+          "Content-Type": "text/markdown; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${safeTitle}.md"`,
+        })
+      } catch (err: any) {
+        if (err instanceof Storage.NotFoundError)
+          return c.json({ message: `Note not found: ${c.req.valid("param").id}` }, 404)
+        return c.json({ message: err?.message ?? String(err) }, 400)
+      }
+    },
+  )
+
+  .post(
+    "/",
+    describeRoute({
+      summary: "Create note",
+      description: "Create a new note in the current scope.",
+      operationId: "note.create",
+      responses: {
+        200: {
+          description: "Created note",
+          content: { "application/json": { schema: resolver(NoteTypes.Info) } },
+        },
+        ...errors(400),
+      },
+    }),
+    validator("json", NoteTypes.CreateInput),
+    async (c) => {
+      try {
+        const body = c.req.valid("json")
+        const note = await NoteStore.create(body)
+        return c.json(note)
+      } catch (err: any) {
+        return c.json({ message: err?.message ?? String(err) }, 400)
+      }
+    },
+  )
+
+  .get(
+    "/:id",
+    describeRoute({
+      summary: "Get note",
+      description: "Get a specific note by ID.",
+      operationId: "note.get",
+      responses: {
+        200: {
+          description: "Note",
+          content: { "application/json": { schema: resolver(NoteTypes.Info) } },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator("param", z.object({ id: z.string().meta({ description: "Note ID" }) })),
+    async (c) => {
+      try {
+        const id = c.req.valid("param").id
+        const note = await NoteStore.getAny(ScopeContext.current.scope.id, id)
+        return c.json(note)
+      } catch (err: any) {
+        if (err instanceof Storage.NotFoundError)
+          return c.json({ message: `Note not found: ${c.req.valid("param").id}` }, 404)
+        return c.json({ message: err?.message ?? String(err) }, 400)
+      }
+    },
+  )
+
+  .put(
+    "/:id",
+    describeRoute({
+      summary: "Update note",
+      description: "Update a note's content or metadata.",
+      operationId: "note.update",
+      responses: {
+        200: {
+          description: "Updated note",
+          content: { "application/json": { schema: resolver(NoteTypes.Info) } },
+        },
+        ...errors(400, 404),
+        409: {
+          description: "Conflict",
+          content: { "application/json": { schema: resolver(NoteError.Conflict.Schema) } },
+        },
+      },
+    }),
+    validator("param", z.object({ id: z.string().meta({ description: "Note ID" }) })),
+    validator("json", NoteTypes.PatchInput),
+    async (c) => {
+      try {
+        const id = c.req.valid("param").id
+        const body = c.req.valid("json")
+        const note = await NoteStore.updateAny(ScopeContext.current.scope.id, id, body)
+        return c.json(note)
+      } catch (err: any) {
+        if (err instanceof Storage.NotFoundError)
+          return c.json({ message: `Note not found: ${c.req.valid("param").id}` }, 404)
+        if (err instanceof NoteError.Conflict) return c.json(err.toObject(), 409)
+        return c.json({ message: err?.message ?? String(err) }, 400)
+      }
+    },
+  )
+
+  .delete(
+    "/:id",
+    describeRoute({
+      summary: "Delete note",
+      description:
+        "Permanently delete a note. Only archived notes can be deleted. Active notes must be archived first.",
+      operationId: "note.remove",
+      responses: {
+        200: {
+          description: "Deleted",
+          content: { "application/json": { schema: resolver(z.boolean()) } },
+        },
+        ...errors(400, 404),
+        409: {
+          description: "Conflict",
+          content: { "application/json": { schema: resolver(NoteError.Conflict.Schema) } },
+        },
+      },
+    }),
+    validator("param", z.object({ id: z.string().meta({ description: "Note ID" }) })),
+    async (c) => {
+      try {
+        const id = c.req.valid("param").id
+        await NoteStore.removeAny(ScopeContext.current.scope.id, id)
+        return c.json(true)
+      } catch (err: any) {
+        if (err instanceof NoteError.NotArchived) return c.json(err.toObject(), 409)
+        if (err instanceof Storage.NotFoundError)
+          return c.json({ message: `Note not found: ${c.req.valid("param").id}` }, 404)
+        return c.json({ message: err?.message ?? String(err) }, 400)
+      }
+    },
+  )
+
+  .post(
+    "/batch",
+    describeRoute({
+      summary: "Batch archive or delete notes",
+      description: "Archive or permanently delete notes in bulk. Notes must be archived before they can be deleted.",
+      operationId: "note.batch",
+      responses: {
+        200: {
+          description: "Batch operation result",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z.object({ archived: z.array(z.string()).optional(), deleted: z.array(z.string()).optional() }),
+              ),
+            },
+          },
+        },
+        ...errors(400),
+      },
+    }),
+    validator(
+      "json",
+      z.object({
+        ids: z.array(z.string()).min(1).max(100).meta({ description: "Note IDs to act on" }),
+        action: z
+          .enum(["archive", "unarchive", "delete"])
+          .meta({ description: "Action: archive, unarchive, or delete" }),
+      }),
+    ),
+    async (c) => {
+      try {
+        const { ids, action } = c.req.valid("json")
+        const scopeID = ScopeContext.current.scope.id
+        if (action === "archive") {
+          await NoteStore.archive(scopeID, ids)
+          return c.json({ archived: ids })
+        }
+        if (action === "unarchive") {
+          await NoteStore.unarchive(scopeID, ids)
+          return c.json({ archived: [] })
+        }
+        if (action === "delete") {
+          for (const id of ids) {
+            await NoteStore.removeAny(scopeID, id)
+          }
+          return c.json({ deleted: ids })
+        }
+        return c.json({ message: "Invalid action" }, 400)
+      } catch (err: any) {
+        if (err instanceof NoteError.NotArchived)
+          return c.json({ message: err.toObject().data?.message ?? "Note must be archived first" }, 400)
+        return c.json({ message: err?.message ?? String(err) }, 400)
+      }
+    },
+  )
+
+  .get(
+    "/",
+    describeRoute({
+      summary: "List notes",
+      description:
+        "List all notes for the current scope, including global notes. Returns active notes by default; pass ?archived=true to show only archived notes.",
+      operationId: "note.list",
+      responses: {
+        200: {
+          description: "List of notes",
+          content: { "application/json": { schema: resolver(NoteTypes.Info.array()) } },
+        },
+        ...errors(400),
+      },
+    }),
+    validator(
+      "query",
+      z.object({
+        archived: z
+          .enum(["true", "false"])
+          .default("false")
+          .transform((v) => v === "true")
+          .meta({ description: "Filter by archived state. Defaults to false (active notes only)." }),
+      }),
+    ),
+    async (c) => {
+      try {
+        const { archived } = c.req.valid("query")
+        const archFilter: NoteStore.ArchiveFilter = archived ? "archived" : "active"
+        const notes = await NoteStore.listWithGlobal(ScopeContext.current.scope.id, archFilter)
+        return c.json(notes)
+      } catch (err: any) {
+        return c.json({ message: err?.message ?? String(err) }, 400)
+      }
+    },
+  )

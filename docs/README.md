@@ -27,7 +27,7 @@ Product documents explain what users work with and how the major capabilities re
 - [Automation](product/automation.md) — Agenda triggers, session modes, delivery, recovery, and failure behavior
 - [Connections](product/connections.md) — providers, MCP, Channels, Email, Holos, Synergy Link, and plugins
 - [Browser workspace](product/browser.md) — one-page session ownership, native and remote presentation, safety, and interaction
-- [Web product contract](../packages/app/PRODUCT.md) — durable interaction, visual, and accessibility rules
+- [Web product contract](../apps/web/PRODUCT.md) — durable interaction, visual, and accessibility rules
 
 ## Architecture
 
@@ -96,7 +96,7 @@ Research documents record investigations and measurements; they are not current 
 
 - `README.md` is the concise repository and product entry point.
 - `docs/product/` owns user-facing concepts and flows.
-- `packages/app/PRODUCT.md` owns durable Web interaction and visual principles.
+- `apps/web/PRODUCT.md` owns durable Web interaction and visual principles.
 - `docs/architecture/` owns implementation invariants and subsystem boundaries.
 - `docs/reference/` owns exact commands, configuration, Skills, paths, packages, and development procedures.
 - `docs/plugins/` owns the public plugin platform documentation.

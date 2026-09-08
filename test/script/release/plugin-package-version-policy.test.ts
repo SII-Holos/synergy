@@ -10,7 +10,7 @@ async function packageVersion(relativePath: string) {
 }
 
 test("plugin npm packages follow the Synergy package version independently of Plugin API", async () => {
-  const synergyVersion = await packageVersion("packages/synergy/package.json")
+  const synergyVersion = await packageVersion("packages/product-runtime/package.json")
 
   expect(await packageVersion("packages/plugin/package.json")).toBe(synergyVersion)
   expect(await packageVersion("packages/plugin-kit/package.json")).toBe(synergyVersion)

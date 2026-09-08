@@ -20,10 +20,8 @@ export interface PluginValidationSchema<T = unknown> {
 }
 export type PluginSchema<T = unknown> = PluginValidationSchema<T> | PluginJsonSchema
 
-export interface PluginSettingCondition {
-  setting: string
-  equals: string | number | boolean
-}
+export type { SettingCondition as PluginSettingCondition } from "@ericsanchezok/synergy-util/setting-condition"
+import type { SettingCondition as PluginSettingCondition } from "@ericsanchezok/synergy-util/setting-condition"
 
 export interface ContributionBase<Kind extends string> {
   kind: Kind

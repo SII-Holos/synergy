@@ -85,7 +85,7 @@ Never expose the following in a commit message, pull-request body, issue/PR comm
 | Credentials                | auth/config-store paths, API keys, tokens, secrets, or secret-like values                 |
 | Internal configuration     | provider endpoints, MCP addresses, private service URLs, or equivalent deployment details |
 
-Project-relative source paths such as `packages/synergy/src/tool/read.ts` are allowed. Redact or summarize sensitive evidence before it enters any outbound GitHub surface.
+Project-relative source paths such as `packages/runtime-local/src/tools/read.ts` are allowed. Redact or summarize sensitive evidence before it enters any outbound GitHub surface.
 
 ## Push and Open a PR
 

@@ -2,7 +2,7 @@
 
 # Configuration Reference
 
-Generated from the config domain definitions in `packages/synergy/src/config/domain.ts` and the Zod schema in `packages/synergy/src/config/schema.ts`. Concept and layout guidance lives in [Configuration layout](configuration-layout.md).
+Generated from `packages/harness/src/config/domain.ts` and the domain-owned configuration schemas composed by `packages/product-runtime/src/configuration.ts`. Concept and layout guidance lives in [Configuration layout](configuration-layout.md).
 
 ## Domains
 
@@ -32,19 +32,19 @@ File: `00-general.jsonc` · Merge: merge
 | Key | Type | Description |
 | --- | --- | --- |
 | `$schema` | string (optional) | JSON schema reference for configuration validation |
+| `logLevel` | Log.Level.optional (optional) | Log level |
+| `snapshot` | boolean (optional) |  |
+| `username` | string (optional) | Custom username to display in conversations instead of system username |
+| `embedding` | EmbeddingConfig |  |
+| `rerank` | RerankConfig |  |
 | `theme` | string (optional) | Theme name to use for the interface |
 | `keybinds` | Keybinds.optional (optional) | Custom keybind configurations |
 | `toast` | "info" \| "success" \| "warning" \| "error" (optional) | Toast notification preferences |
-| `logLevel` | Log.Level.optional (optional) | Log level |
-| `snapshot` | boolean (optional) |  |
 | `compactReasoning` | boolean (optional) | Show live reasoning in a compact single-line viewport |
-| `username` | string (optional) | Custom username to display in conversations instead of system username |
 | `locale` | "system" \| "en" \| "zh-CN" (optional) | UI locale (system = follow OS, default: system) |
 | `activityDisplay` | "full" \| "balanced" \| "minimal" (optional) | How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced) |
 | `defaultSessionWorkspace` | "main" \| "worktree" (optional) | Default workspace for new sessions started from the Web composer: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main). Programmatic session creation (API, channels, Cortex) always uses the main checkout. |
 | `layout` | Layout.optional (optional) | @deprecated Always uses stretch layout. |
-| `embedding` | EmbeddingConfig |  |
-| `rerank` | RerankConfig |  |
 
 ## Models
 
@@ -88,7 +88,7 @@ File: `40-mcp.jsonc` · Merge: merge
 | Key | Type | Description |
 | --- | --- | --- |
 | `mcp` | object (optional) | MCP (Model Context Protocol) server configurations |
-| `mcpDefaults` | McpDefaults.optional (optional) |  |
+| `mcpDefaults` | McpDefaults.optional (optional) | Default settings applied to all MCP servers that don't override them |
 
 ## Plugins
 
@@ -117,12 +117,12 @@ File: `60-agents.jsonc` · Merge: merge
 | --- | --- | --- |
 | `default_agent` | string (optional) | Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid. |
 | `agent` | object (optional) | Agent configuration |
-| `external_agent` | string (optional) | External agent configurations (e.g. codex, claude-code) |
 | `instructions` | string (optional) | Additional instruction files or patterns to include |
 | `project_doc_fallback_filenames` | string (optional) | Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory |
 | `project_doc_max_bytes` | number (optional) | Maximum bytes to include from each automatically discovered instruction file (default: 32768; 0 disables automatic discovery) |
 | `category` | string (optional) | Custom category configurations for background tasks. Categories define model and prompt presets. |
 | `prompt` | object (optional) | Include the git coauthor reminder in agent prompts (default: true) |
+| `external_agent` | string (optional) | External agent configurations (e.g. codex, claude-code) |
 
 ## Commands
 
@@ -188,15 +188,15 @@ File: `120-runtime.jsonc` · Merge: merge
 | `cortex` | object (optional) | Cortex task scheduling configuration |
 | `execution` | object (optional) | Time an excess idle Agent worker remains warm before retirement (default: 60000) |
 | `watcher` | object (optional) |  |
+| `question` | object (optional) | Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h) |
+| `compaction` | object (optional) | Enable Codex Remote Compaction V2 for openai-codex sessions: request an opaque server-side compaction artifact alongside the local text summary and replay it on later same-model turns (default: false). |
+| `observability` | ObservabilityConfig.optional (optional) | Local logs, indexed telemetry, and diagnostics settings |
 | `formatter` | object (optional) |  |
 | `lsp` | boolean (optional) | Expose the LSP tool; permission checks still apply (default: false) |
 | `lspWriteDiagnostics` | boolean (optional) | Include LSP diagnostics after file-writing tools complete (default: true) |
 | `lspDiagnostics` | "error" \| "warning" (optional) | Severity and scope policy for diagnostics returned after file-writing tools |
-| `question` | object (optional) | Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h) |
-| `compaction` | object (optional) | Enable Codex Remote Compaction V2 for openai-codex sessions: request an opaque server-side compaction artifact alongside the local text summary and replay it on later same-model turns (default: false). |
-| `boss` | object (optional) | Re-inject the versioned world-overview briefing every N days (default: disabled) |
 | `toolExposure` | object (optional) | Expose the LSP tool; permission checks still apply (default: false) |
-| `observability` | ObservabilityConfig.optional (optional) | Local logs, indexed telemetry, and diagnostics settings |
+| `boss` | object (optional) | Re-inject the versioned world-overview briefing every N days (default: disabled) |
 
 ## Voice
 

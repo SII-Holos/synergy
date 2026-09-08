@@ -283,3 +283,35 @@ export function firstStringArg(source: string, after: string): string | null {
 export function mdCell(text: string): string {
   return text.replace(/\|/g, "\\|")
 }
+
+export async function resolveWorkspaceModule(directory: string, specifier: string): Promise<string | null> {
+  let base: string | undefined
+  if (specifier.startsWith(".")) base = path.resolve(directory, specifier)
+  else {
+    const name = specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0]!
+    const manifest = JSON.parse(await readFile(path.join(REPO_ROOT, "package.json"), "utf8"))
+    for (const workspace of manifest.workspaces.packages as string[]) {
+      const pkg = JSON.parse(await readFile(path.join(REPO_ROOT, workspace, "package.json"), "utf8"))
+      if (pkg.name !== name) continue
+      const key = specifier === name ? "." : `.${specifier.slice(name.length)}`
+      const entry = Object.keys(pkg.exports ?? {}).find(
+        (entry) =>
+          entry === key ||
+          (entry.includes("*") && key.startsWith(entry.split("*")[0]) && key.endsWith(entry.split("*")[1])),
+      )
+      if (!entry) return null
+      let target = pkg.exports[entry]
+      if (typeof target === "object") target = target.bun ?? target.types ?? target.import
+      if (typeof target !== "string") return null
+      if (entry.includes("*"))
+        target = target.replace("*", key.slice(entry.split("*")[0].length, key.length - entry.split("*")[1].length))
+      base = path.join(REPO_ROOT, workspace, target)
+      break
+    }
+  }
+  if (!base) return null
+  for (const file of [base, base.replace(/\.js$/, ".ts"), `${base}.ts`, `${base}.tsx`, path.join(base, "index.ts")]) {
+    if (await Bun.file(file).exists()) return file
+  }
+  return null
+}

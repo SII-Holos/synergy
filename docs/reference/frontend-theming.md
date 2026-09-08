@@ -4,13 +4,13 @@ Synergy has one frontend color contract shared by the Web app, reusable UI compo
 
 ## Canonical Ownership
 
-| Concern                                                        | Canonical source                                                                            |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Public token names, seed contract, resolver, schema, and types | `packages/plugin/src/theme/` and `@ericsanchezok/synergy-plugin/theme`                      |
-| Built-in Synergy seed and override values                      | `packages/ui/src/theme/themes/synergy.json`                                                 |
-| Runtime selection and application                              | `packages/ui/src/theme/context.tsx` and `application.ts`                                    |
-| Plugin theme registration                                      | `packages/ui/src/theme/plugin-theme-registry.ts` and `packages/app/src/plugin/ui-assets.ts` |
-| Web/Desktop shell snapshot                                     | `packages/ui/src/theme/shell-skin.ts` and `packages/desktop/src/theme.ts`                   |
+| Concern                                                        | Canonical source                                                                        |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Public token names, seed contract, resolver, schema, and types | `packages/plugin/src/theme/` and `@ericsanchezok/synergy-plugin/theme`                  |
+| Built-in Synergy seed and override values                      | `packages/ui/src/theme/themes/synergy.json`                                             |
+| Runtime selection and application                              | `packages/ui/src/theme/context.tsx` and `application.ts`                                |
+| Plugin theme registration                                      | `packages/ui/src/theme/plugin-theme-registry.ts` and `apps/web/src/plugin/ui-assets.ts` |
+| Web/Desktop shell snapshot                                     | `packages/ui/src/theme/shell-skin.ts` and `apps/desktop/src/theme.ts`                   |
 
 The UI package keeps compatibility re-exports for the public contract. The generated static CSS, Tailwind mappings, JSON Schema, Web boot fallback, and Desktop fallback skin are outputs. Never edit them by hand. Regenerate them with:
 
@@ -147,19 +147,19 @@ Run the focused contract checks first:
 
 ```bash
 bun test --cwd packages/ui test/theme.test.ts test/theme-application.test.ts test/theme-generation.test.ts
-bun test --cwd packages/app test/testing/color-token-contract.test.ts
-bun test --cwd packages/app test/components/note/theme-adapters.test.ts test/components/visualization/use-chart-theme.test.ts
-bun test --cwd packages/desktop test/theme.test.ts test/startup-page.test.ts
+bun test --cwd apps/web test/testing/color-token-contract.test.ts
+bun test --cwd apps/web test/components/note/theme-adapters.test.ts test/components/visualization/use-chart-theme.test.ts
+bun test --cwd apps/desktop test/theme.test.ts test/startup-page.test.ts
 bun test --cwd packages/plugin-kit test/create.test.ts test/build.test.ts
 bun run --cwd packages/ui typecheck
-bun run --cwd packages/app typecheck
+bun run --cwd apps/web typecheck
 ```
 
 For a platform change, also run:
 
 ```bash
 bun run --cwd packages/ui test
-bun run --cwd packages/app test
+bun run --cwd apps/web test
 bun dev build app
 bun run deadcode
 bun run quality:quick

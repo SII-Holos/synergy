@@ -20,7 +20,7 @@ String admission used separate maps and order arrays. Promotion deleted the map 
 
 ## Guardrails added
 
-The [lifecycle regression](../../packages/ui/test/components/basic-tool-lifecycle.dom.test.ts) uses real Solid and disclosure components to check closed/open/closed counts and keyed multi-edit rendering. [String capacity tests](../../packages/app/test/context/string-interner-budget.test.ts) exercise repeated promotions. [Highlight budget tests](../../packages/ui/test/pierre/cache-budget.test.ts) verify shared eviction and the installed dependency's injected cache. The [decision record](../decisions/implemented/bug-fix/2026-09-07-bound-tool-rendering-memory.md) records preview and cache tradeoffs, and the [frontend Skill](../../.synergy/skill/develop-frontend/SKILL.md) requires demand-driven renderer lifetime checks.
+The [lifecycle regression](../../packages/ui/test/components/basic-tool-lifecycle.dom.test.ts) uses real Solid and disclosure components to check closed/open/closed counts and keyed multi-edit rendering. [String capacity tests](../../apps/web/test/context/string-interner-budget.test.ts) exercise repeated promotions. [Highlight budget tests](../../packages/ui/test/pierre/cache-budget.test.ts) verify shared eviction and the installed dependency's injected cache. The [decision record](../decisions/implemented/bug-fix/2026-09-07-bound-tool-rendering-memory.md) records preview and cache tradeoffs, and the [frontend Skill](../../.synergy/skill/develop-frontend/SKILL.md) requires demand-driven renderer lifetime checks.
 
 ## Lessons
 

@@ -2,7 +2,7 @@
 
 import { createReleaseState, summarizeState } from "./shared/context"
 import { snapshotFiles, restoreFiles } from "./shared/files"
-import { VERSION_MANAGED_PACKAGE_PATHS, SYNERGY_DIST_DIR, SYNERGY_LINK_DIST_DIR } from "./shared/packages"
+import { VERSION_MANAGED_PACKAGE_PATHS, PRODUCT_RUNTIME_DIST_DIR, SYNERGY_LINK_DIST_DIR } from "./shared/packages"
 import { computeStableVersion, configureNpmAuth, saveReleaseState } from "./shared/runtime"
 import { rewriteVersions } from "./shared/versions"
 import { bunInstall } from "./nodes/bun-install"
@@ -74,10 +74,10 @@ try {
   // await publishSynergyLinkCandidate(version, state.channel)
 
   state.registryPackages.push(...platformPackages)
-  const synergyAssets = await packageBinaryAssets(SYNERGY_DIST_DIR, synergy.platformNames)
+  const synergyAssets = await packageBinaryAssets(PRODUCT_RUNTIME_DIST_DIR, synergy.platformNames)
   const synergyLinkAssets = await packageBinaryAssets(SYNERGY_LINK_DIST_DIR, synergyLinkPlatformNames)
   state.binaryAssets = [...synergyAssets, ...synergyLinkAssets]
-  state.binaryChecksums = await createBinaryChecksums(version, state.binaryAssets, SYNERGY_DIST_DIR)
+  state.binaryChecksums = await createBinaryChecksums(version, state.binaryAssets, PRODUCT_RUNTIME_DIST_DIR)
   await ensureStableTag(state.version)
 
   const withRelease = await ensureDraftRelease(state)

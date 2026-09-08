@@ -230,8 +230,8 @@ bun script/performance-benchmark.ts
 npx lhci autorun --config=lighthouserc.performance.cjs
 
 # Rollup visualizer report mode for app bundles, opt-in only
-bun packages/app/script/visualizer-report.ts
-SYNERGY_BUNDLE_VISUALIZER=1 bun run --cwd packages/app build
+bun apps/web/script/visualizer-report.ts
+SYNERGY_BUNDLE_VISUALIZER=1 bun run --cwd apps/web build
 ```
 
 k6 can be used with `script/performance-k6.js` when teams already rely on it, but it is not a runtime dependency because of its AGPL license.

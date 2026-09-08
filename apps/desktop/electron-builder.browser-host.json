@@ -1,0 +1,48 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "io.holosai.synergy.browser-host",
+  "productName": "Synergy Browser Host",
+  "asar": true,
+  "directories": {
+    "buildResources": "build",
+    "output": "release/browser-host",
+    "app": "build/browser-host-app"
+  },
+  "files": ["dist/browser-host-main.js", "package.json", "!node_modules{,/**/*}"],
+  "extraMetadata": {
+    "main": "dist/browser-host-main.js"
+  },
+  "mac": {
+    "artifactName": "synergy-browser-host-darwin-${arch}-${version}.zip",
+    "target": [
+      {
+        "target": "zip",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "hardenedRuntime": true,
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.plist"
+  },
+  "win": {
+    "executableName": "Synergy Browser Host",
+    "artifactName": "synergy-browser-host-win32-${arch}-${version}.zip",
+    "target": [
+      {
+        "target": "zip",
+        "arch": ["x64", "arm64"]
+      }
+    ]
+  },
+  "linux": {
+    "executableName": "synergy-browser-host",
+    "artifactName": "synergy-browser-host-linux-${arch}-${version}.zip",
+    "target": [
+      {
+        "target": "zip",
+        "arch": ["x64", "arm64"]
+      }
+    ]
+  },
+  "afterPack": "script/browser-host-after-pack.cjs"
+}

@@ -1,9 +1,11 @@
 #!/usr/bin/env bun
+import { sourceFiles } from "../workspace-dependencies"
+import { resolveWorkspaceModule } from "./shared"
 
 /**
  * Generates docs/reference/tools.md from the static builtin tool list in
- * packages/synergy/src/tool/registry.ts, each tool module's Tool.define
- * call, and the canonical taxonomy in packages/synergy/src/tool/taxonomy.ts.
+ * packages/harness/src/tool/registry.ts, each tool module's Tool.define
+ * call, and the canonical taxonomy in packages/harness/src/tool/taxonomy.ts.
  * Deterministic; supports --check for freshness.
  */
 
@@ -64,9 +66,9 @@ async function schemaFields(file: string, name: string, seen = new Set<string>()
   return []
 }
 
-const REGISTRY = path.join(REPO_ROOT, "packages/synergy/src/tool/registry.ts")
-const TOOL_DIR = path.join(REPO_ROOT, "packages/synergy/src/tool")
-const TAXONOMY = path.join(REPO_ROOT, "packages/synergy/src/tool/taxonomy.ts")
+const REGISTRY = path.join(REPO_ROOT, "packages/harness/src/tool/registry.ts")
+const TOOL_DIR = path.join(REPO_ROOT, "packages/harness/src/tool")
+const TAXONOMY = path.join(REPO_ROOT, "packages/harness/src/tool/taxonomy.ts")
 const OUT = path.join(REPO_ROOT, "docs/reference/tools.md")
 const GENERATOR = "gen-tool-catalog.ts"
 
@@ -97,14 +99,10 @@ async function resolveToolFile(
   )
   if (importMatch) {
     const specifier = importMatch[1]!
-    const base = specifier.startsWith(".") ? path.resolve(baseDir, specifier) : path.resolve(TOOL_DIR, specifier)
-    for (const candidate of [`${base}.ts`, `${base}.tsx`, path.join(base, "index.ts")]) {
-      const exists = await readFile(candidate, "utf8")
-        .then(() => true)
-        .catch(() => false)
-      if (exists) return candidate
-    }
+    const resolved = await resolveWorkspaceModule(baseDir, specifier)
+    if (resolved) return resolved
   }
+
   if (baseDir !== TOOL_DIR) {
     for (const file of await readdir(baseDir, { recursive: true })) {
       const candidate = path.join(baseDir, file)
@@ -125,14 +123,14 @@ async function resolveToolFile(
 /** Domain register modules (src/&lt;domain&gt;/register.ts) contribute builtin
  * tools through ToolRegistry providers; harvest their names and dirs. */
 async function domainRegistries(): Promise<Array<{ source: string; dir: string }>> {
-  const srcRoot = path.dirname(TOOL_DIR)
+  const manifest = await Bun.file(path.join(REPO_ROOT, "package.json")).json()
   const out: Array<{ source: string; dir: string }> = []
-  for (const entry of await readdir(srcRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue
-    for (const name of ["register.ts", "tools.ts"]) {
-      const registerPath = path.join(srcRoot, entry.name, name)
-      const source = await readFile(registerPath, "utf8").catch(() => "")
-      if (source) out.push({ source, dir: path.dirname(registerPath) })
+  for (const workspace of manifest.workspaces.packages as string[]) {
+    if (!workspace.startsWith("packages/")) continue
+    for (const file of sourceFiles(path.join(REPO_ROOT, workspace, "src"))) {
+      if (!/(?:register[^/]*|tools)\.ts$/.test(file)) continue
+      const source = await readFile(file, "utf8")
+      if (source.includes("ToolRegistry.registerToolProvider")) out.push({ source, dir: path.dirname(file) })
     }
   }
   return out
@@ -294,7 +292,7 @@ export async function generate(): Promise<string> {
   const lines: string[] = [
     "# Tools Reference",
     "",
-    "Generated from the builtin tool registry in `packages/synergy/src/tool/registry.ts` and the canonical taxonomy in `packages/synergy/src/tool/taxonomy.ts`.",
+    "Generated from the builtin tool registry in `packages/harness/src/tool/registry.ts` and the canonical taxonomy in `packages/harness/src/tool/taxonomy.ts`.",
     "",
     "## Tools",
     "",

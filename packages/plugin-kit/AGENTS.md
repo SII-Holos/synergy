@@ -13,6 +13,8 @@ This package owns the published `synergy-plugin` authoring CLI. Load `change-plu
 
 The public `testing` entry starts isolated production hosts; keep all eight packed templates in the root real-host UI suite. Preview may signal and delete only its own runtime/home, and must settle cancelled builds before cleanup.
 
-Run `bun run typecheck` and `bun run build`, then focused scaffold/build/pack/sign/runtime-discovery tests in `packages/synergy`. Inspect a packed fixture and finish with root `bun run package:check` and `bun run quality:quick`.
+Run `bun run typecheck` and root `bun turbo build --filter=@ericsanchezok/synergy-plugin-kit`, then focused scaffold/build/pack/sign/runtime-discovery tests in `packages/plugin-host` and `packages/product-runtime`. Inspect a packed fixture and finish with root `bun run package:check` and `bun run quality:quick`.
 
 Definition inspection runs a fresh Bun CLI subprocess from the author's project; keep its JSON-only descriptor boundary identical for source, published package and compiled host execution. The compiled CLI behavioral test covers `typegen` and scoped CSS builds without sibling implementation files. Type generation formats through explicitly bundled Prettier parsers so it never depends on discovering parser files beside the executable.
+
+The workspace `build` writes only this package’s outputs. Turbo and the release/development entrypoints build declared dependencies first; never clear a sibling package’s `dist` from a package build.

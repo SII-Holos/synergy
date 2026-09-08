@@ -1,0 +1,76 @@
+import z from "zod"
+import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
+import DESCRIPTION from "./bash.txt"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Truncate } from "@ericsanchezok/synergy-harness/tool/truncation"
+import { SynergyLinkExecution } from "./synergy-link-execution"
+import { LocalBashBackend } from "./bash/local"
+import { RemoteBashBackend } from "./bash/remote"
+import type { BashMetadata } from "@ericsanchezok/synergy-harness/tool/bash-contract"
+
+const parameters = z
+  .object({
+    command: z.string().describe("The command to execute"),
+    workdir: z
+      .string()
+      .describe(
+        `The working directory to run the command in. Defaults to the project directory. Use this instead of 'cd' commands.`,
+      )
+      .optional(),
+    description: z
+      .string()
+      .describe(
+        "Clear, concise description of what this command does in 5-10 words. Examples:\nInput: ls\nOutput: Lists files in current directory\n\nInput: git status\nOutput: Shows working tree status\n\nInput: npm install\nOutput: Installs package dependencies\n\nInput: mkdir foo\nOutput: Creates directory 'foo'",
+      ),
+    background: z
+      .boolean()
+      .optional()
+      .describe(
+        "Run command in background. Returns immediately with processId. Use process tool to monitor/interact with the process.",
+      ),
+    yieldSeconds: z
+      .number()
+      .positive()
+      .optional()
+      .describe(
+        "Seconds to wait before auto-backgrounding a long-running command. If the command completes before this time, returns normally. Default: 10 (10 seconds). For remote Synergy Link execution, the host clamps this value to at most 5 seconds so it can return a tracked process handle before the transport deadline. A timeout does not prove the remote command was cancelled, so never auto-retry mutating commands after an ambiguous timeout.",
+      ),
+    linkID: z
+      .string()
+      .optional()
+      .describe(
+        "Legacy Synergy Link instance ID. Prefer targetID. Omit both fields for intentional local execution. A supplied remote target never falls back locally.",
+      ),
+    targetID: z.string().optional().describe("Persisted Synergy Link target ID returned by connect list_targets."),
+    detach: z
+      .boolean()
+      .optional()
+      .describe(
+        "Remote-only: detach the command from the Synergy Link session lifecycle when the connected host explicitly reports support. The process is spawned without the session owner marker, so it survives session close and cleanup; the caller is responsible for managing it. Unsupported hosts reject detach=true, and the field is never sent to hosts that do not advertise support. Ignored for local execution.",
+      ),
+  })
+  .strict()
+
+export const BashTool = Tool.define<typeof parameters, BashMetadata>("bash", {
+  get description() {
+    return DESCRIPTION.replaceAll("${directory}", ScopeContext.current.directory)
+      .replaceAll("${maxLines}", String(Truncate.MAX_LINES))
+      .replaceAll("${maxBytes}", String(Truncate.MAX_BYTES))
+  },
+  parameters,
+  async execute(params, ctx) {
+    const target = await SynergyLinkExecution.resolveExecutionTarget({
+      targetID: params.targetID,
+      targetIDSupplied: Object.hasOwn(params, "targetID"),
+      linkID: params.linkID,
+      linkIDSupplied: Object.hasOwn(params, "linkID"),
+      tool: "bash",
+      agent: ctx.agent,
+    })
+    if (target.kind === "remote") {
+      return RemoteBashBackend.execute(params, target)
+    }
+
+    return LocalBashBackend.execute({ ...params, backgroundAfterSeconds: params.yieldSeconds }, ctx)
+  },
+})

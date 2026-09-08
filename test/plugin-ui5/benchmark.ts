@@ -4,7 +4,7 @@ import { startPluginPreview, approvePreviewPlugins } from "../../packages/plugin
 import { importPreviewConversation } from "./session-fixture"
 
 const root = path.resolve(import.meta.dir, "../..")
-const require = createRequire(path.join(root, "packages/app/package.json"))
+const require = createRequire(path.join(root, "apps/web/package.json"))
 const { chromium } = await import(require.resolve("playwright"))
 const baseline = process.argv[2]
 const output = process.argv[3]
@@ -36,7 +36,7 @@ export default definePlugin({ id: "benchmark-panel", version: "1.0.0", descripti
       if (!(await buildPluginProject(project.root))) throw new Error("Benchmark plugin build failed")
       preview = await startPluginPreview({
         artifacts: [path.join(project.root, "dist")],
-        command: [process.execPath, path.join(checkout!, "packages/synergy/src/index.ts")],
+        command: [process.execPath, path.join(checkout!, "packages/product-runtime/src/index.ts")],
       })
       await approvePreviewPlugins(preview)
       const a = await importPreviewConversation(preview, { title: "Benchmark A", turns: 160 })

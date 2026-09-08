@@ -1,7 +1,7 @@
 Verify the current Synergy changes from narrow checks to repository gates. Interpret `$ARGUMENTS` as a requested scope or additional check.
 
 1. Inspect `git diff --stat` and select the affected package/domain tests.
-2. Run the narrow test first. Core runtime tests run from `packages/synergy`.
+2. Run the narrow test first. Core runtime tests run from `packages/harness`.
 3. Run the default root preflight:
 
 ```bash
@@ -10,7 +10,7 @@ bun run quality:quick
 
 4. Run `bun run quality` when the change crosses shared abstractions, the user requests the full suite, or the work is ready for PR-level verification.
 
-For core-runtime harness changes or CI-equivalent verification, run `bun run test:ci` from `packages/synergy` after focused tests. This uses sequential fresh-process shards and may replace a redundant second single-process full-suite run when the CI boundary is the intended signal.
+For core-runtime harness changes or CI-equivalent verification, run `bun run test:ci` from `packages/harness` after focused tests. This uses sequential fresh-process shards and may replace a redundant second single-process full-suite run when the CI boundary is the intended signal.
 
 5. Add specialized checks when relevant:
 
@@ -25,16 +25,16 @@ bun run desktop:test
 Frontend changes use the package test entry points before the root gates:
 
 ```bash
-bun run --cwd packages/app test
+bun run --cwd apps/web test
 bun run --cwd packages/ui test
 ```
 
 Browser capability or App bootstrap changes also run:
 
 ```bash
-bun test --cwd packages/app test/testing/browser-crypto-contract.test.ts
-bun run --cwd packages/app build
-bun packages/app/script/private-http-smoke.ts
+bun test --cwd apps/web test/testing/browser-crypto-contract.test.ts
+bun run --cwd apps/web build
+bun apps/web/script/private-http-smoke.ts
 ```
 
 Theme changes also run `bun run --cwd packages/ui generate:theme` and verify that no generated artifact changes remain after a second generation.
@@ -42,9 +42,9 @@ Theme changes also run `bun run --cwd packages/ui generate:theme` and verify tha
 Localization changes update the catalogs and then run the single repository localization gate:
 
 ```bash
-bun run --cwd packages/app i18n:extract
+bun run --cwd apps/web i18n:extract
 bun run localization:check
-bun run --cwd packages/app build
+bun run --cwd apps/web build
 ```
 
 Extraction must leave no catalog diff. The repository gate repeats extraction, rejects drift, strict-compiles every catalog, and scans App/UI source. Report catalog completeness, ICU compilation, production locale chunking, and any reviewed pass-through allowlist entries.

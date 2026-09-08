@@ -1,0 +1,34 @@
+{
+  "name": "@ericsanchezok/synergy-computer-runtime",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./tools": "./src/tools.ts",
+    "./routes/computer-route": "./src/routes/computer-route.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/computer-runtime",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-computer": "workspace:*",
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@hono/standard-validator": "^0.2.0",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "typescript": "catalog:"
+  }
+}

@@ -8,7 +8,8 @@
       "bun": "./src/*.ts",
       "types": "./src/*.ts",
       "import": "./src/*.ts"
-    }
+    },
+    "./pty-keys": "./src/pty-keys.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

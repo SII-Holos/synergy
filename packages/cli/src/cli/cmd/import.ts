@@ -1,0 +1,44 @@
+import { Flag } from "@ericsanchezok/synergy-harness/flag/flag"
+import type { Argv } from "yargs"
+import { cmd } from "./cmd"
+import { withScopeContext } from "../scope"
+import { SessionImport } from "@ericsanchezok/synergy-harness/session/session-import"
+import { EOL } from "os"
+
+export const ImportCommand = cmd({
+  command: "import <file>",
+  describe: "import a session transcript or rollout ZIP",
+  builder: (yargs: Argv) => {
+    return yargs.positional("file", {
+      describe: "path to JSON, JSON.GZ, or rollout ZIP file",
+      type: "string",
+      demandOption: true,
+    })
+  },
+  handler: async (args) => {
+    await withScopeContext(Flag.SYNERGY_CWD || process.cwd(), async () => {
+      const file = Bun.file(args.file)
+      if (!(await file.exists())) {
+        throw new Error(`File not found: ${args.file}`)
+      }
+
+      try {
+        const result = await SessionImport.fromBlob(file)
+        process.stdout.write(
+          `Imported session: ${result.rootSessionID} (${result.sessionCount} session${
+            result.sessionCount === 1 ? "" : "s"
+          }, ${result.messageCount} message${result.messageCount === 1 ? "" : "s"})`,
+        )
+        process.stdout.write(EOL)
+        for (const warning of result.warnings) {
+          process.stdout.write(`Warning: ${warning}`)
+          process.stdout.write(EOL)
+        }
+      } catch (error) {
+        process.stderr.write(`Import failed: ${error instanceof Error ? error.message : String(error)}`)
+        process.stderr.write(EOL)
+        process.exitCode = 1
+      }
+    })
+  },
+})

@@ -1,0 +1,359 @@
+import { normalizeSlashes } from "../util/path"
+import * as path from "path"
+
+// ------------------------------------------------------------------
+// Sandbox policy constants and helpers
+//
+// Shared by both macOS (Seatbelt) and Linux (bwrap) backends.
+// ------------------------------------------------------------------
+
+export const DEFAULT_SYSTEM_RUNTIME_READ_ROOTS = ["/usr/lib", "/System/Library", "/bin", "/usr/bin"]
+
+/**
+ * Developer-toolchain read roots for macOS sandbox profiles. Homebrew
+ * (`/opt/homebrew` on Apple Silicon, `/usr/local` on Intel) hosts the git,
+ * language runtimes, and package managers a developer shell actually uses;
+ * `/Library/Developer/CommandLineTools` and `/private/etc` cover CLT tools and
+ * TLS/ssl configuration. Only meaningful on darwin; other platforms ignore it.
+ */
+export const MACOS_DEVELOPER_READ_ROOTS = [
+  "/opt/homebrew",
+  "/usr/local",
+  "/Library/Developer/CommandLineTools",
+  "/etc",
+  "/private/etc",
+]
+
+export function macosPlatformReadRoots(): string[] {
+  return [...MACOS_DEVELOPER_READ_ROOTS]
+}
+
+export function pathFlavor(root: string): typeof path.posix | typeof path.win32 {
+  return /^[A-Za-z]:[\\/]/.test(root) || root.startsWith("\\\\") ? path.win32 : path.posix
+}
+
+export function joinPathLike(root: string, ...parts: string[]): string {
+  return pathFlavor(root).join(root, ...parts)
+}
+
+export const DEFAULT_USER_RUNTIME_READ_ROOTS = (homedir: string): string[] => [
+  joinPathLike(homedir, ".gitconfig"),
+  joinPathLike(homedir, ".config", "git"),
+  joinPathLike(homedir, ".bun"),
+  joinPathLike(homedir, ".synergy", "cache"),
+  joinPathLike(homedir, "Library", "Caches", "bun"),
+  joinPathLike(homedir, "Library", "Caches", "com.oven-sh.bun"),
+]
+
+export function defaultRuntimeReadRoots(homedir: string): string[] {
+  return [...DEFAULT_SYSTEM_RUNTIME_READ_ROOTS, ...DEFAULT_USER_RUNTIME_READ_ROOTS(homedir)]
+}
+
+export function uniqueRoots(roots: string[]): string[] {
+  return [...new Set(roots.filter(Boolean))]
+}
+
+export function gitProtectedSubpaths(root: string): string[] {
+  return [joinPathLike(root, ".git", "hooks"), joinPathLike(root, ".git", "config")]
+}
+
+/**
+ * Expand bare `<root>/.git` entries into the granular read-only subpaths
+ * (hooks + config) so git index/object/ref writes keep working under a
+ * writable root while the tamper/code-execution surface stays protected.
+ */
+export function expandGitProtectedSubpaths(paths: string[]): string[] {
+  return uniqueRoots(
+    paths.flatMap((p) => {
+      const flavor = pathFlavor(p)
+      return flavor.basename(p) === ".git" ? gitProtectedSubpaths(flavor.dirname(p)) : [p]
+    }),
+  )
+}
+
+export function ancestorLiterals(root: string): string[] {
+  const flavor = pathFlavor(root)
+  const resolved = flavor.resolve(root)
+  const result: string[] = []
+  let current = resolved
+  while (current && current !== flavor.dirname(current)) {
+    result.push(current)
+    current = flavor.dirname(current)
+  }
+  result.push(current || flavor.parse(resolved).root)
+  return result.reverse()
+}
+
+export function traversalLiterals(roots: string[]): string[] {
+  return uniqueRoots(roots.flatMap((root) => ancestorLiterals(root)))
+}
+
+/**
+ * Controlled temporary write root for sandboxed autonomous execution.
+ *
+ * Reuses the existing controlled-tmp precedent (Linux helper binds
+ * `<workspace>/.synergy/tmp` onto /tmp; the legacy macOS Seatbelt profile
+ * lists it as a writable root). When a session key is supplied the root is
+ * further isolated per session/process (glob-expand naming precedent
+ * `synergy-glob-{pid}-{id}`), so concurrent sandboxed shells cannot peek at
+ * each other's temporary files through TMPDIR.
+ */
+export function controlledTempRoot(workspace: string, sessionKey?: string): string {
+  const base = joinPathLike(workspace, ".synergy", "tmp")
+  if (!sessionKey) return base
+  const safeKey = sessionKey.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24)
+  return joinPathLike(base, `synergy-${process.pid}-${safeKey}`)
+}
+
+// ------------------------------------------------------------------
+// Credential-bearing paths that must ALWAYS be protected inside any sandbox.
+// Each path is read-only mounted (or denied writes on macOS) unconditionally.
+//
+// Lessons from real-world sandbox escapes:
+//   - Cymulate 2026: Gemini CLI OAuth leak via ~/.gemini/oauth_creds.json mounted RW
+//   - CBSE (Cross-Agent Sandbox Bypass Exploit): agent config cross-contamination
+// ------------------------------------------------------------------
+export const CREDENTIAL_PATHS = (homedir: string): string[] => [
+  // ── Synergy internal auth secrets ───────────────────────────────
+  joinPathLike(homedir, ".synergy", "data", "auth"),
+  // ── Network & cloud credentials ─────────────────────────────────
+  joinPathLike(homedir, ".netrc"),
+  joinPathLike(homedir, ".ssh"),
+  joinPathLike(homedir, ".gnupg"),
+  joinPathLike(homedir, ".aws"),
+  joinPathLike(homedir, ".config", "gcloud"),
+  joinPathLike(homedir, ".docker", "config.json"),
+  joinPathLike(homedir, ".npmrc"),
+  // ── Shell configs (prevent command injection) ────────────────────
+  joinPathLike(homedir, ".bashrc"),
+  joinPathLike(homedir, ".zshrc"),
+  joinPathLike(homedir, ".profile"),
+  joinPathLike(homedir, ".bash_profile"),
+  joinPathLike(homedir, ".zprofile"),
+  // ── Other agent configs ─────────────────────────────────────────
+  joinPathLike(homedir, ".cursor"),
+  joinPathLike(homedir, ".claude"),
+  joinPathLike(homedir, ".codex"),
+  joinPathLike(homedir, ".gemini"),
+]
+export const PROTECTED_METADATA_PATH_NAMES = [".git", ".agents", ".codex"]
+
+/**
+ * Check if a target path would be denied write access because it falls inside
+ * a protected metadata directory under any writable root.
+ *
+ * Mirrors Codex's `forbidden_agent_metadata_write()`.
+ */
+export function isMetadataWriteDenied(
+  writableRoots: string[],
+  targetPath: string,
+  customProtectedNames?: string[],
+): { denied: true; path: string; metadataName: string } | { denied: false } {
+  const names = customProtectedNames ?? PROTECTED_METADATA_PATH_NAMES
+  const normalizedTarget = normalizeSlashes(targetPath)
+
+  for (const root of writableRoots) {
+    const normalizedRoot = normalizeSlashes(root)
+    if (!normalizedTarget.startsWith(normalizedRoot + "/") && normalizedTarget !== normalizedRoot) continue
+    for (const name of names) {
+      const protectedFullPath = joinPathLike(root, name)
+      const normalizedProtected = normalizeSlashes(protectedFullPath)
+      if (normalizedTarget === normalizedProtected || normalizedTarget.startsWith(normalizedProtected + "/")) {
+        return { denied: true, path: targetPath, metadataName: name }
+      }
+    }
+  }
+  return { denied: false }
+}
+
+export const DEFAULT_PROTECTED_PATHS = (homedir: string, workspace: string): string[] => [
+  joinPathLike(workspace, ".git"),
+  ...CREDENTIAL_PATHS(homedir),
+]
+/**
+ * Returns the subset of protectedPaths that fall under any writableRoot.
+ *
+ * These paths need explicit read-only subpath overrides because otherwise
+ * they would be writable by virtue of being inside a writable root mount.
+ */
+export function protectedMetadataUnderWritableRoot(
+  writableRoots: string[],
+  protectedPaths: string[],
+  workspace: string,
+): string[] {
+  return protectedPaths.filter((pp) => {
+    const resolved = normalizeSlashes(pp).replace(/\/+$/, "")
+    return writableRoots.some((root) => {
+      const resolvedRoot = normalizeSlashes(root).replace(/\/+$/, "")
+      return resolved.startsWith(resolvedRoot + "/") || resolved === resolvedRoot
+    })
+  })
+}
+
+// ------------------------------------------------------------------
+// ReadDenyMatcher — Runtime glob deny-read matching
+// ------------------------------------------------------------------
+
+/**
+ * Escape a single character for use in a JavaScript regex.
+ */
+function escapeRegexChar(c: string): string {
+  const specials = new Set([".", "+", "^", "$", "(", ")", "[", "]", "|", "\\"])
+  return specials.has(c) ? "\\" + c : c
+}
+
+/**
+ * Find the matching closing brace for a brace expansion starting at `start`.
+ */
+function findMatchingBrace(s: string, start: number): number {
+  let depth = 1
+  for (let i = start + 1; i < s.length; i++) {
+    if (s[i] === "{") depth++
+    else if (s[i] === "}") {
+      depth--
+      if (depth === 0) return i
+    }
+  }
+  return -1
+}
+
+/**
+ * Split a brace expansion body on top-level commas, respecting nesting.
+ */
+function splitBraceAlternatives(s: string): string[] {
+  const result: string[] = []
+  let depth = 0
+  let current = ""
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]
+    if (c === "{") depth++
+    else if (c === "}") depth--
+    else if (c === "," && depth === 0) {
+      result.push(current)
+      current = ""
+      continue
+    }
+    current += c
+  }
+  result.push(current)
+  return result
+}
+
+/**
+ * Compile the body of a glob (without anchors or depth prefix) into a regex fragment.
+ */
+function compileGlobFragment(glob: string): string {
+  let result = ""
+  let i = 0
+
+  while (i < glob.length) {
+    const c = glob[i]
+
+    if (c === "*" && i + 1 < glob.length && glob[i + 1] === "*") {
+      result += ".*"
+      i += 2
+      if (i < glob.length && glob[i] === "/") {
+        result += "/"
+        i += 1
+      }
+    } else if (c === "*") {
+      result += "[^/]*"
+      i += 1
+    } else if (c === "?") {
+      result += "[^/]"
+      i += 1
+    } else if (c === "{") {
+      const closing = findMatchingBrace(glob, i)
+      if (closing === -1) {
+        result += escapeRegexChar(c)
+        i += 1
+        continue
+      }
+      const inner = glob.slice(i + 1, closing)
+      const alternatives = splitBraceAlternatives(inner)
+      const compiled = alternatives.map((a) => compileGlobFragment(a))
+      result += "(" + compiled.join("|") + ")"
+      i = closing + 1
+    } else {
+      result += escapeRegexChar(c)
+      i += 1
+    }
+  }
+
+  return result
+}
+
+/**
+ * Compile a git-style glob pattern into a JavaScript RegExp.
+ *
+ * Glob semantics:
+ *   **  → .*  (any directory depth including zero)
+ *   *   → [^/]*  (single path component, non-slash)
+ *   ?   → [^/]
+ *   {a,b} → (a|b)
+ *
+ * Patterns that do not start with ** are prefixed with a directory-depth prefix to match
+ * at any directory depth, consistent with gitignore default semantics.
+ *
+ * Returns null if compilation fails (invalid regex syntax).
+ */
+function compileGlobToRegex(glob: string): RegExp | null {
+  try {
+    const startsWithGlobstar = glob.startsWith("**")
+    const body = compileGlobFragment(glob)
+    const anchored = startsWithGlobstar ? body : "(.*/)?" + body
+    return new RegExp("^" + anchored + "$")
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Runtime matcher for deny-read rules.
+ *
+ * Combines exact-path rejection (unreadableRoots) with glob-pattern
+ * rejection (unreadableGlobs). Designed for use in non-Seatbelt
+ * sandbox backends (e.g. Windows) where kernel-level deny rules
+ * are not available and must be enforced in-process.
+ *
+ * Fail-closed: if any glob fails to compile, all paths are denied.
+ */
+export class ReadDenyMatcher {
+  private deniedCandidates: Set<string>
+  private denyReadMatchers: RegExp[]
+  private failedCompilation: boolean
+
+  constructor(unreadableGlobs: string[], unreadableRoots: string[]) {
+    this.deniedCandidates = new Set(unreadableRoots.map((r) => normalizeSlashes(r)))
+    this.denyReadMatchers = []
+    this.failedCompilation = false
+
+    for (const glob of unreadableGlobs) {
+      const regex = compileGlobToRegex(glob)
+      if (!regex) {
+        this.failedCompilation = true
+        break
+      }
+      this.denyReadMatchers.push(regex)
+    }
+  }
+
+  /**
+   * Check whether a path is denied for reading.
+   * Returns true if the path matches any deny rule.
+   * Fail-closed: returns true if any glob failed to compile.
+   */
+  isDenied(filepath: string): boolean {
+    if (this.failedCompilation) return true
+    const normalized = normalizeSlashes(filepath)
+    if (this.deniedCandidates.has(normalized)) return true
+    return this.denyReadMatchers.some((r) => r.test(normalized))
+  }
+
+  /**
+   * Filter a batch of paths, returning only the denied subset.
+   */
+  isDeniedBatch(paths: string[]): string[] {
+    return paths.filter((p) => this.isDenied(p))
+  }
+}

@@ -195,7 +195,7 @@ Export writes one top-level directory named after the Skill and preserves regula
 
 The runtime file watcher detects Skill changes when a changed file matches an accepted entry name inside a live Skill root. Canonical strict entries use `SKILL.md`; the Synergy and Agent Skills compatibility shims also watch legacy `Skill.md`, as do lenient roots. Detection assigns project or global scope from the root location, debounces by scope, and reloads the union of affected targets.
 
-Editing built-in source files under `packages/synergy/src` still requires restarting the backend process. Runtime reload refreshes runtime state; it does not reload already-imported module code.
+Editing built-in source files under a workspace package’s `src/` directory still requires restarting the backend process. Runtime reload refreshes runtime state; it does not reload already-imported module code.
 
 ## Compatibility Commitment
 

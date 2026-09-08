@@ -15,12 +15,12 @@ const PHASE2_UI_FILES: FileSet[] = [
 ]
 
 const APP_FILES = [
-  "../app/src/components/prompt-input/quick-actions.css",
-  "../app/src/components/session/question-prompt.css",
-  "../app/src/components/header-bar.css",
-  "../app/src/components/dialog/dialog-settings.css",
-  "../app/src/components/dialog/dialog-settings.tsx",
-  "../app/src/components/kanban/kanban.css",
+  "../../apps/web/src/components/prompt-input/quick-actions.css",
+  "../../apps/web/src/components/session/question-prompt.css",
+  "../../apps/web/src/components/header-bar.css",
+  "../../apps/web/src/components/dialog/dialog-settings.css",
+  "../../apps/web/src/components/dialog/dialog-settings.tsx",
+  "../../apps/web/src/components/kanban/kanban.css",
 ]
 
 const KNOWN_STATIC_TOKENS = new Set([
@@ -242,7 +242,7 @@ describe("CSS Token Integrity", () => {
   })
 
   test("index.html uses synergy theme preload naming", async () => {
-    const source = await readFileSafe("../app/index.html")
+    const source = await readFileSafe("../../apps/web/index.html")
     expect(source).toContain('id="synergy-theme-preload-script"')
     expect(source).not.toContain("oc-theme")
   })
@@ -259,7 +259,7 @@ describe("CSS Token Integrity", () => {
   })
 
   test("no formerly broken token references remain in P0 scope files", async () => {
-    const p0Files = ["src/components/markdown.css", "../app/src/components/prompt-input/quick-actions.css"]
+    const p0Files = ["src/components/markdown.css", "../../apps/web/src/components/prompt-input/quick-actions.css"]
 
     const mustNotReappear = new Set([
       "surface-raised-solid",
@@ -340,9 +340,9 @@ describe("CSS Token Integrity", () => {
 
   test("no formerly broken P2 token references remain in app-side files", async () => {
     const p2Files = [
-      "../app/src/components/header-bar.css",
-      "../app/src/components/dialog/dialog-settings.css",
-      "../app/src/components/dialog/dialog-settings.tsx",
+      "../../apps/web/src/components/header-bar.css",
+      "../../apps/web/src/components/dialog/dialog-settings.css",
+      "../../apps/web/src/components/dialog/dialog-settings.tsx",
     ]
 
     const mustNotReappear = new Set([
@@ -381,7 +381,7 @@ describe("CSS Token Integrity", () => {
     ])
 
     const offenders: string[] = []
-    for (const root of ["src", "../app/src"]) {
+    for (const root of ["src", "../../apps/web/src"]) {
       for (const ext of ["css", "ts", "tsx"]) {
         const glob = new Bun.Glob(`**/*.${ext}`)
         for await (const rel of glob.scan(root)) {

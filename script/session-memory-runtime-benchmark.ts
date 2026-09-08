@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readdir, stat, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
+import { RELEASE_CATALOG } from "./release/shared/packages"
 import {
   SESSION_MEMORY_WORKLOAD_CONTRACT_VERSION,
   sessionMemoryRuntimeEnvironment,
@@ -228,7 +229,7 @@ const workerPoolSettings = sessionMemoryWorkerPoolSettings({
 })
 
 const repositoryRoot = path.join(import.meta.dir, "..")
-const packagesSynergyDirectory = path.join(repositoryRoot, "packages", "synergy")
+const productRuntimeDirectory = path.join(repositoryRoot, RELEASE_CATALOG.productRuntime.directory)
 const fixturePath = path.join(import.meta.dir, "fixtures", "session-memory-trajectory.json")
 const fixture = (await Bun.file(fixturePath).json()) as TrajectoryFixture
 validateFixture(fixture)
@@ -268,7 +269,7 @@ try {
       "--non-interactive",
       "--no-banner",
     ],
-    cwd: packagesSynergyDirectory,
+    cwd: productRuntimeDirectory,
     env,
     stdin: "ignore",
     stdout: "pipe",
@@ -959,10 +960,10 @@ function eventStream(
 }
 
 async function writeTrajectoryMcp(filepath: string) {
-  const sdkRoot = path.join(packagesSynergyDirectory, "node_modules", "@modelcontextprotocol", "sdk", "dist", "esm")
+  const sdkRoot = path.join(productRuntimeDirectory, "node_modules", "@modelcontextprotocol", "sdk", "dist", "esm")
   const mcpModule = pathToFileURL(path.join(sdkRoot, "server", "mcp.js")).href
   const stdioModule = pathToFileURL(path.join(sdkRoot, "server", "stdio.js")).href
-  const zodModule = pathToFileURL(path.join(packagesSynergyDirectory, "node_modules", "zod", "index.js")).href
+  const zodModule = pathToFileURL(path.join(productRuntimeDirectory, "node_modules", "zod", "index.js")).href
   await writeFile(
     filepath,
     `import { McpServer } from ${JSON.stringify(mcpModule)}

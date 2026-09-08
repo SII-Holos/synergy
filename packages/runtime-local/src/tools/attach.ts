@@ -1,0 +1,103 @@
+import z from "zod"
+import path from "path"
+import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
+import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
+import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+
+const DESCRIPTION = `Deliver files to the user by making them available as conversation attachments. Use this after generating or obtaining user-facing artifacts such as PDFs, images, documents, archives, exports, plots, rendered figures, screenshots, or compiled paper outputs.
+
+The file will be uploaded to the asset store and delivered as an attachment in the conversation. Image files render inline in supported clients; PDFs and other files render as preview/download cards.
+
+Usage notes:
+- The file_path must point to an existing file on the local filesystem
+- Use an optional filename to control the display name shown to the user
+- After a bash command, script, or document build creates a visual result (.png, .jpg, .svg, .pdf, .html), use this tool to show the result instead of only printing the path
+- This tool is for delivering files to the user, not for reading them into your own context — use read or look_at for that`
+
+export const AttachTool = Tool.define("attach", {
+  description: DESCRIPTION,
+  parameters: z.object({
+    file_path: z.union([z.string(), z.array(z.string())]).describe("Absolute or relative path to the file to deliver"),
+    filename: z
+      .union([z.string(), z.array(z.string())])
+      .optional()
+      .describe("Display name for the file (defaults to the original filename)"),
+  }),
+  async execute(params, ctx) {
+    const paths = Array.isArray(params.file_path) ? params.file_path : [params.file_path]
+    const filenames = params.filename ? (Array.isArray(params.filename) ? params.filename : [params.filename]) : []
+
+    const files: { assetId: string; filename: string; mime: string; size: number }[] = []
+    const attachments: MessageV2.AttachmentPart[] = []
+
+    for (let i = 0; i < paths.length; i++) {
+      const filePath = path.resolve(ScopeContext.current.directory, paths[i])
+
+      const file = Bun.file(filePath)
+      if (!(await file.exists())) {
+        throw new Error(`File not found: ${filePath}`)
+      }
+
+      const buffer = Buffer.from(await file.arrayBuffer())
+      const mime = file.type || "application/octet-stream"
+      const filename = filenames[i] ?? path.basename(filePath)
+      const assetId = await Asset.write(buffer, mime, filename)
+
+      files.push({ assetId, filename, mime, size: buffer.length })
+      attachments.push({
+        id: Identifier.ascending("part"),
+        sessionID: ctx.sessionID,
+        messageID: ctx.messageID,
+        type: "attachment",
+        mime,
+        filename,
+        url: `asset://${assetId}`,
+        localPath: filePath,
+        model: {
+          mode: "summary",
+          summary: `${filename} (${mime}, ${formatSize(buffer.length)}) delivered to the user`,
+        },
+        metadata: {
+          kind: "attachment",
+          attachment: {
+            originTool: "attach",
+            sourcePath: filePath,
+            size: buffer.length,
+            deliverable: true,
+          },
+        },
+      })
+    }
+
+    const totalSize = files.reduce((sum, f) => sum + f.size, 0)
+    const output =
+      files.length === 1
+        ? `File delivered: ${files[0].filename} (${formatSize(files[0].size)})`
+        : `${files.length} files delivered (${formatSize(totalSize)}): ${files.map((f) => f.filename).join(", ")}`
+
+    return {
+      title: files.length === 1 ? files[0].filename : `${files.length} files`,
+      output,
+      metadata: {
+        truncated: false,
+        files,
+        // Hide the tool card so attachments render as an auto-expanded
+        // AttachmentGallery in the session timeline (see isToolCardHidden /
+        // the "tool-attachments" presentation path) instead of a collapsed
+        // one-line "add attachment" card requiring a click to expand.
+        display: {
+          toolCard: "hidden",
+        },
+      },
+      attachments,
+    }
+  },
+})
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}

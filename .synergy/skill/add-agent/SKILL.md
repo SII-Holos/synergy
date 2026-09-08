@@ -1,6 +1,6 @@
 ---
 name: add-agent
-description: Add or change a built-in Synergy primary agent, subagent, host-selected reviewer, prompt, visibility rule, delegation group, model role, or permission profile. Use for requests about built-in agent definitions under packages/synergy/src/agent; do not use for user-configured, plugin, or external agents.
+description: Add or change a built-in Synergy primary agent, subagent, host-selected reviewer, prompt, visibility rule, delegation group, model role, or permission profile. Use for requests about built-in agent definitions under packages/harness/src/agent; do not use for user-configured, plugin, or external agents.
 ---
 
 # Add a Built-in Agent
@@ -36,7 +36,7 @@ description: Add or change a built-in Synergy primary agent, subagent, host-sele
 ## Verify
 
 1. Add a behavioral or catalog test before implementation when behavior changes. Assert visibility, permission, model-role, or routing invariants rather than source text.
-2. Run the narrow agent/session tests from `packages/synergy`.
+2. Run the narrow agent/session tests from `packages/harness`.
 3. Run `bun run typecheck` and `bun run quality:quick` from the repository root.
 4. Exercise the affected primary catalog in an isolated development instance when prompt routing or delegation changed; use the `develop-synergy` skill.
 5. Update `AGENTS.md` only for a durable repository rule or built-in-agent boundary, and update canonical architecture docs only when the system contract changed.
