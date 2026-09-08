@@ -14,6 +14,8 @@ description: Implement or review Synergy Web and shared UI changes across apps/w
 
 ## Preserve State and API Ownership
 
+Solid JSX may evaluate to a function. Never distinguish a rendered trigger from a component with `typeof`; use an explicit component prop such as Popover `triggerAs`, and forward its event, ref, and accessibility props to the native button. Test click, keyboard activation, Escape, and focus return with the real Tooltip composition.
+
 1. Use stores for coherent keyed collections and signals for independent scalar state.
 2. Apply entity updates with targeted setters and `reconcile`; do not replace a whole stored object for a one-field event.
 3. Keep derived values one-way. Preserve composer resolution as explicit draft → session default → fallback; only explicit user choices persist upward.
@@ -61,8 +63,6 @@ Non-tool product UI expresses meaning through `packages/ui/src/components/semant
 Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplicate glyph mappings, missing shared registrations, raw JSX icon literals, and raw icon object metadata outside the documented base/tool/plugin-data exceptions.
 
 ## Preserve Product Presentation
-
-Solid JSX may evaluate to a function. Never distinguish a rendered trigger from a component with `typeof`; use an explicit component prop such as Popover `triggerAs`, and forward its event, ref, and accessibility props to the native button. Test click, keyboard activation, Escape, and focus return with the real Tooltip composition.
 
 1. Reuse shared workbench, dialog, form, toolbar, and surface primitives before creating local variants.
 2. Preserve polarity: dark content/selection surfaces step brighter inward; light surfaces step darker inward.
