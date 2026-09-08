@@ -39,6 +39,31 @@ describe("desktop migration reporting", () => {
     expect(lines).toEqual(['SYNERGY_STARTUP_V1 {"phase":"starting"}\n'])
   })
 
+  test("starts a new step for each explicit scan phase and ignores late phase reports", async () => {
+    const lines: string[] = []
+    MigrationRegistry.register(domain, [
+      {
+        id: "desktop-progress-phases",
+        description: "Two scans with independent counters",
+        async up(progress) {
+          progress(10_000, 10_000)
+          progress(0, 0, 1)
+          progress(1, 2, 1)
+          progress(2, 2, 1)
+          progress(10_000, 10_000, 0)
+        },
+      },
+    ])
+    await runMigrations({
+      targetDomain: domain,
+      output: "silent",
+      reporter: createManagedMigrationReporter((line) => lines.push(line)),
+    })
+    expect(lines).toContain('SYNERGY_STARTUP_V1 {"phase":"migration","step":2,"current":0,"total":0}\n')
+    expect(lines.at(-2)).toBe('SYNERGY_STARTUP_V1 {"phase":"migration","step":2,"current":2,"total":2}\n')
+    expect(lines.at(-1)).toBe('SYNERGY_STARTUP_V1 {"phase":"starting"}\n')
+  })
+
   test("a failed migration is retried without reporting successful startup", async () => {
     const lines: string[] = []
     let fail = true
