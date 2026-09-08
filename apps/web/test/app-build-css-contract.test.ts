@@ -729,6 +729,75 @@ async function expectPromptDockBandAndMobileFloatFlow(css: string) {
   }
 }
 
+async function expectSidebarScrollStaysInsideViewport(css: string, index: string) {
+  const root = index.match(/<div\b[^>]*\bid="root"[^>]*>/)?.[0]
+  const body = index.match(/<body\b[^>]*>/)?.[0]
+  if (!root || !body) throw new Error("Missing production app root")
+  const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
+  const browser = await browserType.launch({ headless: true })
+  try {
+    const page = await browser.newPage()
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme, reducedMotion: "reduce" })
+      for (const height of [720, 420]) {
+        await page.setViewportSize({ width: 1200, height })
+        await page.setContent(`
+          <html data-color-scheme="${colorScheme}"><head><style>${css}</style></head>${body}${root}
+            <div class="relative flex-1 min-h-0 flex flex-col">
+              <header style="flex: 0 0 18px">Window chrome</header>
+              <div data-skin-root="synergy" style="display: contents">
+                <div class="flex-1 min-h-0 min-w-0 flex overflow-hidden">
+                  <div data-plugin-ui="synergy">
+                    <nav class="sb-root sb-expanded">
+                      <div class="sb-header"><button>Navigation</button></div>
+                      <div class="sb-scroll">
+                        ${Array.from({ length: 80 }, (_, i) => `<div class="sb-project-row">Project ${i}</div>`).join("")}
+                      </div>
+                      <button style="flex-shrink: 0">Account</button>
+                    </nav>
+                  </div>
+                  <main class="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
+                    <div class="flex-1"></div><input aria-label="Composer" />
+                  </main>
+                </div>
+              </div>
+            </div>
+          </div></body></html>
+        `)
+        await page.getByRole("textbox", { name: "Composer" }).focus()
+        const measure = () =>
+          page.evaluate(() => {
+            const root = document.getElementById("root")!
+            const scroll = document.querySelector<HTMLElement>(".sb-scroll")!
+            const header = document.querySelector(".sb-header")!
+            return {
+              rootHeight: root.getBoundingClientRect().height,
+              headerTop: header.getBoundingClientRect().top,
+              documentTop: document.scrollingElement!.scrollTop,
+              listHeight: scroll.clientHeight,
+              contentHeight: scroll.scrollHeight,
+              listTop: scroll.scrollTop,
+            }
+          })
+        const before = await measure()
+        expect(before.rootHeight).toBe(height)
+        expect(before.headerTop).toBeGreaterThanOrEqual(18)
+        expect(before.documentTop).toBe(0)
+        expect(before.contentHeight).toBeGreaterThan(before.listHeight)
+        await page.locator(".sb-scroll").evaluate((element) => {
+          element.scrollTop = element.scrollHeight
+        })
+        const after = await measure()
+        expect(after.listTop).toBeGreaterThan(0)
+        expect(after.headerTop).toBe(before.headerTop)
+        expect(after.documentTop).toBe(0)
+      }
+    }
+  } finally {
+    await browser.close()
+  }
+}
+
 async function runAppBuild(outDir: string) {
   const proc = Bun.spawn({
     cmd: [process.execPath, "run", "build", "--outDir", outDir, "--emptyOutDir", "--manifest"],
@@ -760,6 +829,7 @@ describe("app production build contract", () => {
         readBuiltManifest(outDir),
       ])
 
+      await expectSidebarScrollStaysInsideViewport(css, index)
       for (const contract of rootRuleContracts) {
         expectRootRule(css, contract)
       }

@@ -1,4 +1,5 @@
 @import "@ericsanchezok/synergy-ui/styles/tailwind";
+@source "../index.html";
 
 html:not([data-color-scheme]),
 html:not([data-color-scheme]) body,
