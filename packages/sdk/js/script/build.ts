@@ -119,37 +119,40 @@ function removeExpandedPerformanceParameterComponents(spec: OpenApiDocument) {
   for (const name of Object.keys(performanceQueryParameters)) delete spec.components?.parameters?.[name]
 }
 
-await writeFile(path.join(dir, "openapi.json"), await generateOpenApi())
-await prepareSdkOpenApi()
+if (!process.argv.includes("--compile-only")) {
+  await writeFile(path.join(dir, "openapi.json"), await generateOpenApi())
+  await prepareSdkOpenApi()
 
-await createClient({
-  input: "./openapi.json",
-  output: {
-    path: "./src/gen",
-    tsConfigPath: path.join(dir, "tsconfig.json"),
-    clean: true,
-  },
-  plugins: [
-    {
-      name: "@hey-api/typescript",
-      exportFromIndex: false,
+  await createClient({
+    input: "./openapi.json",
+    output: {
+      path: "./src/gen",
+      tsConfigPath: path.join(dir, "tsconfig.json"),
+      clean: true,
     },
-    {
-      name: "@hey-api/sdk",
-      instance: "SynergyClient",
-      exportFromIndex: false,
-      auth: false,
-      paramsStructure: "flat",
-    },
-    {
-      name: "@hey-api/client-fetch",
-      exportFromIndex: false,
-      baseUrl: "http://localhost:4096",
-    },
-  ],
-})
+    plugins: [
+      {
+        name: "@hey-api/typescript",
+        exportFromIndex: false,
+      },
+      {
+        name: "@hey-api/sdk",
+        instance: "SynergyClient",
+        exportFromIndex: false,
+        auth: false,
+        paramsStructure: "flat",
+      },
+      {
+        name: "@hey-api/client-fetch",
+        exportFromIndex: false,
+        baseUrl: "http://localhost:4096",
+      },
+    ],
+  })
 
-await $`bun prettier --cache --cache-strategy content --write src`
+  await $`bun prettier --cache --cache-strategy content --write src`
+  await $`rm openapi.json`
+}
+
 await $`rm -rf dist`
 await $`bun tsc`
-await $`rm openapi.json`

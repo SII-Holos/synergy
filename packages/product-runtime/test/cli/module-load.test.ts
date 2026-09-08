@@ -36,7 +36,7 @@ const cliModules = [
   "../../../plugin-host/src/plugin/cli/plugin-test",
   "../../../plugin-host/src/plugin/cli/plugin-validate",
   "../../../plugin-host/src/plugin/cli/plugin",
-  "../../../cli/src/cli/cmd/run",
+  "../../../cli/src/cli/cmd/send",
   "../../src/cli/server",
   "../../../cli/src/cli/cmd/session",
   "../../../cli/src/cli/cmd/start",

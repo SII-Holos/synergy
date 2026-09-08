@@ -23,8 +23,8 @@ describe("isEphemeralTestWorktree (frontend)", () => {
   })
 
   test("does not match ordinary project worktrees", () => {
-    expect(isEphemeralTestWorktree("/Users/eric/projects/synergy/packages/synergy")).toBe(false)
-    expect(isEphemeralTestWorktree("/Users/eric/projects/synergy/.synergy/worktrees/x/packages/synergy")).toBe(false)
+    expect(isEphemeralTestWorktree("/Users/eric/projects/synergy/packages/harness")).toBe(false)
+    expect(isEphemeralTestWorktree("/Users/eric/projects/synergy/.synergy/worktrees/x/packages/harness")).toBe(false)
   })
 
   test("handles windows-style separators", () => {

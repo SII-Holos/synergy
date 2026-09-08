@@ -54,3 +54,27 @@ describe("gate scheduling", () => {
     await expect(runGateSet([gate("a", ["a"])], "/tmp", noop)).rejects.toThrow("cycle")
   })
 })
+
+test("a dependent gate waits for completion while unrelated work can run", async () => {
+  const prerequisite = Promise.withResolvers<void>()
+  const independent = Promise.withResolvers<void>()
+  let dependentStarted = false
+  const run = runGateSet(
+    [gate("prepare"), gate("consumer", ["prepare"]), gate("independent")],
+    "/tmp",
+    async (current) => {
+      if (current.id === "prepare") await prerequisite.promise
+      if (current.id === "consumer") dependentStarted = true
+      if (current.id === "independent") independent.resolve()
+      return null
+    },
+  )
+  try {
+    await independent.promise
+    expect(dependentStarted).toBe(false)
+  } finally {
+    prerequisite.resolve()
+    await run
+  }
+  expect(dependentStarted).toBe(true)
+})

@@ -190,7 +190,7 @@ describe("BossModePanel", () => {
   test("switches personality, custom traits, and persists the boss name through the library", async () => {
     // The whole contract runs as one browser session: bun test reaps the
     // Playwright browser between tests, so a single sequential test keeps
-    // the page alive (same pattern as packages/app menu-field.test.ts).
+    // the page alive (same pattern as apps/web menu-field.test.ts).
 
     // 1. Enabled state renders the switch, personality pills, and name field;
     //    the legacy identity textarea and briefing interval are gone.

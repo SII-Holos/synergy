@@ -71,20 +71,9 @@ export async function stagePackablePackage(options: { sourceDir: string; package
 
 async function validateWorkspacePackage(pkg: PublishablePackage, tempDir: string) {
   console.log(`\n=== package check: ${pkg.name} ===\n`)
-  const sdkOpenApiPath = path.join(SDK_DIR, "openapi.json")
-  const isSdkBuild = pkg.dir === SDK_DIR
-  let sdkOpenApiBefore: string | null = null
-  try {
-    if (isSdkBuild && (await exists(sdkOpenApiPath))) {
-      sdkOpenApiBefore = await Bun.file(sdkOpenApiPath).text()
-    }
-    if (pkg.build) {
-      await $`bun run build`.cwd(pkg.dir)
-    }
-  } finally {
-    if (sdkOpenApiBefore !== null) {
-      await Bun.write(sdkOpenApiPath, sdkOpenApiBefore)
-    }
+  if (pkg.build) {
+    if (pkg.dir === SDK_DIR) await $`bun run build --compile-only`.cwd(pkg.dir)
+    else await $`bun run build`.cwd(pkg.dir)
   }
 
   const originalText = await Bun.file(path.join(pkg.dir, "package.json")).text()

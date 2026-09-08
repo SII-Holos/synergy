@@ -165,7 +165,7 @@ export function createSendCommand(runtimeFactory: typeof openLocalRuntime = open
         })
         .option("port", {
           type: "number",
-          describe: "port for the local server (defaults to random port if no value provided)",
+          describe: "accepted for compatibility; local execution does not open an HTTP listener",
         })
         .option("variant", {
           type: "string",

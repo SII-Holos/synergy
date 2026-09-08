@@ -31,7 +31,7 @@ description: Add or modify a Synergy HTTP route, request/response schema, OpenAP
 1. Test validation, success, domain error, Scope ownership, and event behavior at the narrowest route/domain level.
 2. Typecheck the runtime, SDK, and affected client.
 3. Run the affected frontend context/component test when response identity or event reconciliation changes.
-4. Inspect the generated diff; do not hand-edit generated SDK files.
+4. Inspect the generated diff; do not hand-edit generated SDK files. Use `bun run --cwd packages/sdk/js build --compile-only` to validate the existing client concurrently with source readers. Full generation cleans and rewrites `src/gen`, so reserve it for explicit generation work, not read-only package checks.
 5. Run `bun run quality:quick` after focused checks.
 
 Update [Frontend data sync](../../../docs/architecture/frontend-data-sync.md) when snapshot/event/replay semantics change, and update API/help/product docs when the route is a public or user-facing contract.

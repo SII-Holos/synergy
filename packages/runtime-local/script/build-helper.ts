@@ -18,7 +18,7 @@ const skipBuild = args.includes("--skip-build")
 const localMode = args.includes("--local")
 
 if (args.includes("--auto-update") || args.includes("--append")) {
-  throw new Error("Helper hashes are embedded by script/build.ts; source hash maps are no longer updated")
+  throw new Error("Helper hashes are embedded by runtime artifact builds; source hash maps are no longer updated")
 }
 if (targetIndex >= 0 && !targetTriple) throw new Error("--target requires a Rust target triple")
 if (helperPathIndex >= 0 && !helperPath) throw new Error("--helper-path requires a file path")

@@ -18,7 +18,7 @@
 //   - No source text greps.
 //
 // Run with:
-//   cd packages/synergy && bun test test/sandbox/phase2-linux-config.test.ts
+//   cd packages/runtime-local && bun test test/sandbox/phase2-linux-config.test.ts
 // ---------------------------------------------------------------------------
 
 import { describe, test, expect } from "bun:test"

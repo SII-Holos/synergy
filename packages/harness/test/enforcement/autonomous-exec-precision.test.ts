@@ -14,7 +14,7 @@ const { ShellSafety } = await import("../../src/enforcement/shell-safety")
 //      mis-splits and the `"$d)"` fragment is read as a dynamic command name,
 //      producing a "sudo" tag and opaque directory-change risk.
 //   F3 cdpathDependentDirectoryTarget marks slash-relative cd (e.g.
-//      `cd packages/synergy/src`) opaque although the execution environment
+//      `cd packages/harness/src`) opaque although the execution environment
 //      allowlist never carries CDPATH.
 //   F4 gate extractAbsolutePaths surfaces awk regex literals such as
 //      /^\.\//) as external write path candidates.
@@ -26,18 +26,18 @@ const CORPUS: Array<{ id: string; command: string; workdir?: string }> = [
   {
     id: "cmd1",
     command:
-      "cd packages/synergy/src && for d in */; do d=${d%/}; [ -d \"$d\" ] || continue; files=$(find \"$d\" -type f \\( -name '*.ts' -o -name '*.txt' \\) | wc -l | tr -d ' '); loc=$(find \"$d\" -type f -name '*.ts' -exec cat {} + 2>/dev/null | wc -l | tr -d ' '); echo \"$d $files $loc\"; done | sort -k3 -nr",
+      "cd packages/harness/src && for d in */; do d=${d%/}; [ -d \"$d\" ] || continue; files=$(find \"$d\" -type f \\( -name '*.ts' -o -name '*.txt' \\) | wc -l | tr -d ' '); loc=$(find \"$d\" -type f -name '*.ts' -exec cat {} + 2>/dev/null | wc -l | tr -d ' '); echo \"$d $files $loc\"; done | sort -k3 -nr",
   },
   {
     id: "cmd2",
     command:
-      "cd packages/synergy/src && echo \"--- dir file counts (top level only) ---\" && find . -maxdepth 1 -type d | sort && echo \"--- total ts files & loc ---\" && find . -type f -name '*.ts' | wc -l && find . -type f -name '*.ts' -exec cat {} + | wc -l",
+      "cd packages/harness/src && echo \"--- dir file counts (top level only) ---\" && find . -maxdepth 1 -type d | sort && echo \"--- total ts files & loc ---\" && find . -type f -name '*.ts' | wc -l && find . -type f -name '*.ts' -exec cat {} + | wc -l",
   },
   {
     id: "cmd3",
     command:
       'for d in */; do d="${d%/}"; [ -d "$d" ] || continue; files=$(find "$d" -type f \\( -name \'*.ts\' -o -name \'*.txt\' \\) | wc -l | tr -d \' \'); loc=$(find "$d" -type f -name \'*.ts\' -exec cat {} + 2>/dev/null | wc -l | tr -d \' \'); printf \'%s %s %s\\n\' "$d" "$files" "$loc"; done | sort -k3 -nr',
-    workdir: `${WORKSPACE}/packages/synergy/src`,
+    workdir: `${WORKSPACE}/packages/harness/src`,
   },
   {
     id: "cmd4",
@@ -227,7 +227,7 @@ describe("autonomous bash exec precision — R5 slash-relative cd resolution", (
       profileId: "autonomous",
     })
     const envelope = gate.evaluate("bash", {
-      command: "cd packages/synergy/src && touch changed.txt",
+      command: "cd packages/harness/src && touch changed.txt",
       workdir: WORKSPACE,
     })
     expect(envelope.capabilities.some((c: any) => c.class === "file_external_write")).toBe(false)

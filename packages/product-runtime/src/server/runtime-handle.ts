@@ -1,7 +1,7 @@
 import path from "node:path"
 import { existsSync } from "node:fs"
 import "../product-registration"
-import { RuntimeHandle as LocalRuntimeHandle, type RuntimeServices } from "@ericsanchezok/synergy-harness/lifecycle"
+import { RuntimeHandle as HarnessRuntimeHandle, type RuntimeServices } from "@ericsanchezok/synergy-harness/lifecycle"
 import { RuntimeReload } from "../runtime/reload"
 import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"
 import { MCP } from "@ericsanchezok/synergy-agent-integrations/mcp"
@@ -47,13 +47,13 @@ export namespace RuntimeHandle {
     }
   }
 
-  export async function openTask(options: Omit<Parameters<typeof LocalRuntimeHandle.open>[0], "services">) {
+  export async function openTask(options: Omit<Parameters<typeof HarnessRuntimeHandle.open>[0], "services">) {
     const { transport: _, resident: __, ...taskServices } = services()
-    return LocalRuntimeHandle.open({ ...options, mode: "oneshot", services: taskServices })
+    return HarnessRuntimeHandle.open({ ...options, mode: "oneshot", services: taskServices })
   }
 
-  export async function open(options: Omit<Parameters<typeof LocalRuntimeHandle.open>[0], "services">) {
-    const handle = await LocalRuntimeHandle.open({ ...options, services: services() })
+  export async function open(options: Omit<Parameters<typeof HarnessRuntimeHandle.open>[0], "services">) {
+    const handle = await HarnessRuntimeHandle.open({ ...options, services: services() })
     if (!handle.server) throw new Error("Product runtime transport did not start")
     return { ...handle, server: handle.server }
   }

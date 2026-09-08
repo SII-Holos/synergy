@@ -40,7 +40,7 @@ describe("EnforcementGate path classification", () => {
     })
 
     const result = gate.classify("read", {
-      filePath: "/Users/test/synergy/packages/synergy/src/index.ts",
+      filePath: "/Users/test/synergy/packages/harness/src/index.ts",
     })
 
     const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
@@ -58,7 +58,7 @@ describe("EnforcementGate path classification", () => {
     })
 
     const envelope = gate.evaluate("read", {
-      filePath: "/Users/test/synergy/packages/synergy/src/index.ts",
+      filePath: "/Users/test/synergy/packages/harness/src/index.ts",
     })
 
     expect(envelope.decision).toBe("allow")
@@ -2257,7 +2257,7 @@ describe("EnforcementGate trustedRoots", () => {
     })
 
     const envelope = gate.evaluate("bash", {
-      command: "node /Users/test/.codex/skills/impeccable/scripts/context.mjs --target packages/app",
+      command: "node /Users/test/.codex/skills/impeccable/scripts/context.mjs --target apps/web",
     })
 
     expect(envelope.decision).toBe("allow")

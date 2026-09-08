@@ -13,7 +13,7 @@ import { realpathSync } from "fs"
  * scaffolding (`/private/var/folders/.../T`) differ in prefix but never in
  * basename, so the basename prefix is the primary cross-platform signal.
  *
- * The frontend (packages/app) runs in a browser without `os.tmpdir()`, so it
+ * The frontend (apps/web) runs in a browser without `os.tmpdir()`, so it
  * can only use the basename signal. The backend additionally verifies the
  * worktree actually resolves inside the OS temp directory so a real directory
  * named `synergy-test-*` outside tmp never gets filtered.

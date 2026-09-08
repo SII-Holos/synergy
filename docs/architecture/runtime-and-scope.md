@@ -2,7 +2,7 @@
 
 ## Runtime Model
 
-Synergy has one server runtime that can serve multiple clients and multiple project contexts. The process is not bound to the directory from which it was started; each scoped request supplies a `scopeID` or directory, and each session persists its own Scope and workspace binding.
+Synergy has one execution runtime and one writing owner per home in a process. Harness can run without an HTTP server; a server composition exposes that runtime to multiple clients and project contexts. The runtime is not bound to the launch directory: scoped operations select a `scopeID` or directory, and each session persists its own Scope and workspace binding.
 
 The same runtime can be launched through several ownership surfaces:
 
@@ -12,10 +12,10 @@ The same runtime can be launched through several ownership surfaces:
 | `synergy server`                             | Runs the server in the foreground for direct operation or debugging.                  |
 | Desktop managed mode                         | The Electron app owns a packaged local server and its lifecycle.                      |
 | Source `bun dev server`, `web`, or `desktop` | The source development orchestrator owns the selected development processes.          |
-| `synergy send` without `--attach`            | Starts an ephemeral local server for the one-off invocation.                          |
+| `synergy send` without `--attach`            | Opens an in-process task runtime, executes directly, flushes evidence and closes.     |
 | `web` or `send --attach`                     | Connects to an already running runtime and does not own it.                           |
 
-`SYNERGY_HOME` redirects the complete installation home, including config, data, state, logs, credentials, daemon records, and locks. One server owns a given `SYNERGY_HOME` at a time.
+`SYNERGY_HOME` redirects the complete installation home, including config, data, state, logs, credentials, daemon records, and locks. One writing runtime owns a given `SYNERGY_HOME` at a time.
 
 ## Composition and migration registration
 
@@ -25,7 +25,7 @@ The migration tracking upgrade moves only IDs recognized by registered owners ou
 
 ## Global Runtime
 
-`GlobalRuntime.start()` runs once per server process inside the home Scope. It starts or initializes:
+The full product’s `GlobalRuntime.start()` runs once per resident server process inside the home Scope. Product Runtime selects the services below; a standalone local task enables its selected execution services without starting resident product services:
 
 - plugin discovery and runtime initialization
 - home-scope session recovery
@@ -44,7 +44,7 @@ Global services may still perform scoped work. They must enter the relevant `Sco
 
 ## Execution Topology
 
-The server process is the Control Plane. It owns HTTP and WebSocket availability, session generation leases, canonical Session/Message writes, event ordering, permission state, tool scheduling, recovery, and aggregate observability. It assembles and releases the immutable turn snapshot, while provider request serialization, network streaming, response parsing, and their retained working sets run outside its event loop.
+The runtime host process is the Control Plane. It owns session generation leases, canonical Session/Message writes, event ordering, permission state, tool scheduling, recovery, and aggregate observability. Server compositions additionally own HTTP and WebSocket availability. It assembles and releases the immutable turn snapshot, while provider request serialization, network streaming, response parsing, and their retained working sets run outside its event loop.
 
 ```mermaid
 flowchart LR

@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test"
 //
 // This test encodes the hard acceptance criteria for the OMP port:
 // after implementation, the total line count of all source files under
-// packages/synergy/src/hashline/ must be >= 4,139.
+// packages/runtime-local/src/hashline/ must be >= 4,139.
 //
 // This gate protects against partial porting — if any module is incomplete
 // or too thin, the line count will fall below target and the test fails.

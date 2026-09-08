@@ -299,7 +299,15 @@ describe("server update route", () => {
 
   test("does not start a worker for dev-only daemon commands", async () => {
     process.env.SYNERGY_DAEMON = "1"
-    await writeManifest(["bun", "run", "--cwd", "/repo/packages/synergy", "src/daemon/entry.ts", "--port", "4096"])
+    await writeManifest([
+      "bun",
+      "run",
+      "--cwd",
+      "/repo/packages/product-runtime",
+      "src/daemon-entry.ts",
+      "--port",
+      "4096",
+    ])
 
     const app = testApp()
     const response = await app.request("/global/update/start", {

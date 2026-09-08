@@ -39,20 +39,20 @@ describe("resolveProjectScope", () => {
   })
 
   test("resolves a sandbox subdirectory to its parent project scope", () => {
-    const scopes = [{ worktree: "/repo/a", sandboxes: ["/repo/a/packages/app"] }]
-    expect(resolveProjectScope("/repo/a/packages/app", undefined, scopes)).toBe(scopes[0])
+    const scopes = [{ worktree: "/repo/a", sandboxes: ["/repo/a/apps/web"] }]
+    expect(resolveProjectScope("/repo/a/apps/web", undefined, scopes)).toBe(scopes[0])
   })
 
   test("prefers a sandbox parent over a divergent active scope", () => {
-    const active = { worktree: "/repo/a/packages/app", name: "app" }
-    const scopes = [{ worktree: "/repo/a", name: "Parent", sandboxes: ["/repo/a/packages/app"] }]
-    expect(resolveProjectScope("/repo/a/packages/app", active, scopes)).toBe(scopes[0])
+    const active = { worktree: "/repo/a/apps/web", name: "app" }
+    const scopes = [{ worktree: "/repo/a", name: "Parent", sandboxes: ["/repo/a/apps/web"] }]
+    expect(resolveProjectScope("/repo/a/apps/web", active, scopes)).toBe(scopes[0])
   })
 
   test("does not trust an active scope that does not cover the route directory", () => {
     const active = { worktree: "/repo/other", name: "Other" }
-    const scopes = [{ worktree: "/repo/a", name: "Parent", sandboxes: ["/repo/a/packages/app"] }]
-    expect(resolveProjectScope("/repo/a/packages/app", active, scopes)).toBe(scopes[0])
+    const scopes = [{ worktree: "/repo/a", name: "Parent", sandboxes: ["/repo/a/apps/web"] }]
+    expect(resolveProjectScope("/repo/a/apps/web", active, scopes)).toBe(scopes[0])
   })
 
   test("returns undefined when nothing matches", () => {

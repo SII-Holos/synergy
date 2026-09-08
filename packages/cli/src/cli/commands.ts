@@ -15,7 +15,7 @@ export function coreCommands(
     {
       command: "send [message..]",
       describe: "send a message to synergy",
-      load: async () => (await import("./cmd/run")).createSendCommand(runtimeFactory) as unknown as CommandModule,
+      load: async () => (await import("./cmd/send")).createSendCommand(runtimeFactory) as unknown as CommandModule,
     },
     {
       command: "auth",

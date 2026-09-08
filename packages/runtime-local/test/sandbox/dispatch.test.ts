@@ -24,7 +24,7 @@ function printCommand(text: string) {
 // (impl-backend-refactor + phase2-linux-reconnect).
 //
 // Run with:
-//   cd packages/synergy && bun test test/sandbox/dispatch.test.ts
+//   cd packages/runtime-local && bun test test/sandbox/dispatch.test.ts
 // ---------------------------------------------------------------------------
 
 // ------------------------------------------------------------------

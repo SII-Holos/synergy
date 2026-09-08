@@ -1515,7 +1515,7 @@
     "packages/synergy/src/cli/cmd/plugin-update-target.ts": "packages/plugin-host/src/plugin/cli/plugin-update-target.ts",
     "packages/synergy/src/cli/cmd/plugin-validate.ts": "packages/plugin-host/src/plugin/cli/plugin-validate.ts",
     "packages/synergy/src/cli/cmd/plugin.ts": "packages/plugin-host/src/plugin/cli/plugin.ts",
-    "packages/synergy/src/cli/cmd/run.ts": "packages/cli/src/cli/cmd/run.ts",
+    "packages/synergy/src/cli/cmd/run.ts": "packages/cli/src/cli/cmd/send.ts",
     "packages/synergy/src/cli/cmd/server.ts": "packages/product-runtime/src/cli/server.ts",
     "packages/synergy/src/cli/cmd/session.ts": "packages/cli/src/cli/cmd/session.ts",
     "packages/synergy/src/cli/cmd/start.ts": "packages/cli/src/cli/cmd/start.ts",

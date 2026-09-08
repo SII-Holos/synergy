@@ -8,7 +8,7 @@ import * as path from "path"
 // isDeniedBatch filtering, and fail-closed behavior.
 //
 // Run with:
-//   cd packages/synergy && bun test test/sandbox/policy.test.ts
+//   cd packages/harness && bun test test/sandbox/policy.test.ts
 // ---------------------------------------------------------------------------
 
 // ------------------------------------------------------------------

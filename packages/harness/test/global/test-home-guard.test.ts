@@ -11,7 +11,7 @@ import {
 
 const REAL_HOME_ROOT = path.join(os.homedir(), ".synergy")
 
-function testEntry(entry = "/repo/packages/synergy/test/foo.test.ts") {
+function testEntry(entry = "/repo/packages/harness/test/foo.test.ts") {
   return entry
 }
 
@@ -59,7 +59,7 @@ describe("isTestEntryPath", () => {
 
   test("rejects non-test entries (CLI, dev server, scripts)", () => {
     expect(
-      isTestEntryPath("/repo/packages/synergy/src/index.ts", ["bun", "/repo/packages/synergy/src/index.ts"], {}),
+      isTestEntryPath("/repo/packages/harness/src/index.ts", ["bun", "/repo/packages/harness/src/index.ts"], {}),
     ).toBe(false)
     expect(isTestEntryPath("/repo/script/build.ts", [], {})).toBe(false)
     expect(isTestEntryPath(undefined, ["bun", "/repo/script/dev.ts"], {})).toBe(false)
@@ -77,8 +77,8 @@ describe("assertIsolatedTestHome", () => {
     expect(() =>
       assertIsolatedTestHome(
         REAL_HOME_ROOT,
-        "/repo/packages/synergy/src/index.ts",
-        ["bun", "/repo/packages/synergy/src/index.ts"],
+        "/repo/packages/harness/src/index.ts",
+        ["bun", "/repo/packages/harness/src/index.ts"],
         {},
       ),
     ).not.toThrow()
@@ -169,10 +169,10 @@ async function writeFixture(): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-guard-fixture-"))
   fixtureRoot = root
   const file = path.join(root, "guard-contract.test.ts")
-  const packagesSynergy = path.resolve(import.meta.dir, "..", "..")
+  const harnessRoot = path.resolve(import.meta.dir, "..", "..")
   const body = [
     'import { test, expect } from "bun:test"',
-    `import { Global } from ${JSON.stringify(path.join(packagesSynergy, "src/global/index.ts"))}`,
+    `import { Global } from ${JSON.stringify(path.join(harnessRoot, "src/global/index.ts"))}`,
     "test('guard contract', async () => {",
     "  // Referencing Global retains the import so the guard runs at module eval.",
     "  expect(Global.Path.root).toBeTruthy()",

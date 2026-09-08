@@ -159,7 +159,7 @@ beforeAll(async () => {
     // Pre-bundle the Solid runtime, JSX runtime, and zod at server startup so
     // the optimizer never re-runs mid-load (which reloads the page and 500s
     // on slow cold Coverage CI starts). The cache is scoped to this fixture
-    // because sibling Playwright servers share packages/app/node_modules/.vite
+    // because sibling Playwright servers share apps/web/node_modules/.vite
     // and invalidate each other's cache.
     optimizeDeps: {
       include: ["solid-js", "solid-js/web", "solid-js/store", "solid-js/jsx-runtime", "zod"],

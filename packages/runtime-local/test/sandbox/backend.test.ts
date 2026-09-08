@@ -38,7 +38,7 @@ function executeIfSandboxAvailable(wrapper: Parameters<typeof SandboxBackend.exe
 // These tests encode the sandbox backend contract.
 //
 // Run with:
-//   cd packages/synergy && bun test test/sandbox/backend.test.ts
+//   cd packages/runtime-local && bun test test/sandbox/backend.test.ts
 // ---------------------------------------------------------------------------
 // ------------------------------------------------------------------
 // 1. SandboxBackend command wrapping — argv-based, not shell string

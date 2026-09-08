@@ -6,9 +6,11 @@ Code is authoritative. When code changes one of these contracts, update the owni
 
 ## System Shape
 
-Synergy is a client-server system built around a persistent runtime:
+Synergy separates execution mechanisms, concrete host implementations, optional business capabilities and product interfaces. Harness owns the session loop, scheduling, permissions, budgets, persistence and lifecycle. Runtime Local supplies the default model and local-system implementations. Product Runtime chooses the complete set of business services before startup; CLI and HTTP/WS are access paths to that runtime.
 
-1. The global runtime owns installation-wide services such as plugins, Channels, Holos, MCP, Agenda, recovery, and marketplace state.
+The full product is a client-server system built around the same persistent runtime:
+
+1. Product composition selects installation-wide services such as plugins, Channels, Holos, MCP, Agenda, recovery, and marketplace state.
 2. A `Scope` selects home or project context for each request and session.
 3. A lazily started project `ScopeRuntime` owns project-sensitive services such as file watching, LSP, formatting, VCS, and command state.
 4. A durable session owns messages, inbox state, session-local workflow state, workspace binding, and at most one active LLM loop.
@@ -34,6 +36,28 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 | [Browser runtime](browser-runtime.md)            | Page ownership, control, native/WebRTC presentation, navigation policy, input, and lifecycle.                                   |
 | [GitHub Channel](github-channel.md)              | GitHub as a Channel: polling, event gating, per-thread checkouts, agentic review/QA/fix sessions, and comment delivery.         |
 | [Push notifications](push.md)                    | Web Push delivery: event bridge, per-subscription categories, VAPID keys, routes, service-worker contract, and iOS PWA limits.  |
+
+## Dependency and deployment principles
+
+A business operation has one service owner. Its tools, routes, configuration, durable upgrades and command contributions stay with that owner; interface adapters call the same service. Generic execution accepts typed contributions without importing the concrete business package. Registration is explicit and complete before migrations or execution start, with no package scanning or universal service container.
+
+Package boundaries express independently consumable code and dependency weight. Process boundaries express lifecycle or native execution requirements. Shared Browser, Computer and Link protocols let both sides communicate without importing either host implementation. Plugin author APIs and development tools remain separate from the process that executes plugins. Only actual native hosting requires Electron; optional business backends can run without Desktop.
+
+```mermaid
+flowchart TD
+  Desktop[Desktop native host and UI] --> Product[Product Runtime]
+  Web[Web UI] --> Server[HTTP / WebSocket Server]
+  Product --> CLI[Single CLI implementation]
+  Product --> Server
+  Product --> Domains[Business capabilities]
+  Product --> Local[Runtime Local]
+  CLI --> Local
+  Local --> Harness[Harness execution and lifecycle]
+  Domains --> Harness
+  Server --> Harness
+```
+
+The diagram shows assembly and access relationships, not one process per box. Programmatic callers can use Harness directly; the local CLI uses Runtime Local; the ordinary installed product enables the complete product composition. Public executable names, full-product defaults, configuration/data formats and release resource names do not follow internal source renames.
 
 ## Cross-Cutting Invariants
 

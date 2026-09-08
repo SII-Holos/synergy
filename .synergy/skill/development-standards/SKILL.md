@@ -41,7 +41,7 @@ A durable development convention is part of the implementation deliverable, not 
 3. Create a new verb-led development Skill when no existing workflow would reliably trigger for that class of change. Keep it focused and link it from this router, root `AGENTS.md`, and `llms.txt`.
 4. Update canonical docs when the rule describes product or architecture truth; update `apps/web/PRODUCT.md` when it describes durable interaction or visual behavior.
 5. Keep root/package `AGENTS.md` concise: retain safety, global invariants, and Skill routing there; put executable steps and examples in Skills.
-6. Validate every changed or added Skill and its links with `bun run skill:check` from the repository root.
+6. Review `.synergy/command/`, contribution/setup instructions, workspace guides and both ends of renamed symbols or file references when moving an owner. Keep historical evidence and public executable, package, configuration and installed-resource names intact. Validate every changed or added Skill and its links with `bun run skill:check` from the repository root.
 7. Keep one nearest `AGENTS.md` for every root workspace package and validate coverage with `bun run package-guide:check`.
 
 ## Preserve Harness-Core Layering

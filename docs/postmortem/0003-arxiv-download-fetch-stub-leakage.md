@@ -8,7 +8,7 @@ From 2026-08-22, every dev-branch CI Test job failed all 12 `arXiv PDF download`
 
 ## Summary
 
-`packages/product-runtime/test/script/script-identity.test.ts` pins the environment before importing its subject, and pins the network path the same way: at module scope it installs `globalThis.fetch = stub` where the stub answers every request with `new Response(null, { status: 404 })`. The file's own per-test `finally` blocks restore `globalThis.fetch` from a local read taken _after_ the stub was installed — restoring the stub, not the real fetch. Nothing ever reinstated the real fetch.
+`test/script/release/build/script-identity.test.ts` pins the environment before importing its subject, and pins the network path the same way: at module scope it installs `globalThis.fetch = stub` where the stub answers every request with `new Response(null, { status: 404 })`. The file's own per-test `finally` blocks restore `globalThis.fetch` from a local read taken _after_ the stub was installed — restoring the stub, not the real fetch. Nothing ever reinstated the real fetch.
 
 `test:ci` runs four shards, each a single shared Bun process. `test/tool/arxiv-download.test.ts` starts a local `Bun.serve` server and fetches it; when both files share a shard and the stub file runs first, every download call gets the stub's 404 (`ArxivDownloadHttpError: Failed to download paper: HTTP 404`). The suite passed in the Coverage job only because `arxiv-download.test.ts` is on the `ISOLATED_COVERAGE_FILES` single-file batch list, and passed in local isolation because a lone process never imports the leaking file.
 

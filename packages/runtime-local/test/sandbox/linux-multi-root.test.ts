@@ -12,7 +12,7 @@
 // the create-new-metadata vector for paths that do not exist yet.
 //
 // Run with:
-//   cd packages/synergy && bun test test/sandbox/linux-multi-root.test.ts
+//   cd packages/runtime-local && bun test test/sandbox/linux-multi-root.test.ts
 // ---------------------------------------------------------------------------
 
 import { describe, test, expect } from "bun:test"

@@ -141,7 +141,7 @@ describe("checkProtectedPath - worktree exclusion", () => {
   })
 
   test("worktree paths are NOT flagged (relative)", () => {
-    const worktreePath = ".synergy/worktrees/fix-123/packages/synergy/src/index.ts"
+    const worktreePath = ".synergy/worktrees/fix-123/packages/harness/src/index.ts"
     expect(checkProtectedPath(worktreePath, "write").matched).toBe(false)
   })
 

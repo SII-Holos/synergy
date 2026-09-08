@@ -16,7 +16,7 @@
 //   - Use forcePlatform to bypass platform detection.
 //
 // Run with:
-//   cd packages/synergy && bun test test/sandbox/phase1-parity.test.ts
+//   cd packages/runtime-local && bun test test/sandbox/phase1-parity.test.ts
 // ---------------------------------------------------------------------------
 
 import { describe, test, expect } from "bun:test"

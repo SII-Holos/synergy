@@ -1,9 +1,10 @@
 Build the requested Synergy source target and report exact results. Interpret `$ARGUMENTS` as the target or additional requirement.
 
-1. Inspect current changes and choose the smallest matching build:
+1. Inspect current changes and choose the requested build. Product Runtime produces the full product binary; CLI produces the standalone core binary, both named `synergy`:
 
 ```bash
-./packages/synergy/script/build.ts --single
+bun packages/product-runtime/script/build.ts --single
+bun packages/cli/script/build.ts --single
 bun dev build app
 bun dev build desktop
 ```

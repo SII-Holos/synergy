@@ -30,6 +30,8 @@ Workspace manifests own dependencies. Explicit exports identify module resolutio
 
 **A generic module framework or multi-instance dependency container.** Rejected because existing registries and lifecycle contributions already support explicit assembly. Replacing the runtime model would add unrelated behavioral risk to the ownership migration.
 
+Current developer instructions are checked against the manifest-declared workspace set, including app and nested SDK guides and repository commands. Active documentation rejects retired workspace paths; sealed archives and historical evidence retain the names used at the time. The single send command module and runtime aliases follow their current ownership.
+
 ## Consequences
 
 A smaller installation can consume Harness and the local CLI without installing Browser, Library, MCP or Electron. The upstream `ai` execution library still includes its Gateway adapter as a transitive dependency; concrete provider selection and SDK factories belong to Runtime Local.

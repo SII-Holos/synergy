@@ -16,7 +16,7 @@
 //   - Documented blockers where seams are not yet injectable.
 //
 // Run with:
-//   cd packages/synergy && bun test test/sandbox/phase3-windows-config.test.ts
+//   cd packages/runtime-local && bun test test/sandbox/phase3-windows-config.test.ts
 // ---------------------------------------------------------------------------
 
 import { describe, test, expect } from "bun:test"

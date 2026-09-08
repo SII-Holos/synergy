@@ -53,7 +53,7 @@ When reviewing docs, these patterns are defects:
 
 Instruction files are budgeted so "keep it short" is mechanical:
 
-- Root `AGENTS.md` ≤ 1600 words
+- Root `AGENTS.md` ≤ 1700 words
 - `docs/AGENTS.md` ≤ 1600 words
 - `packages/product-runtime/AGENTS.md`, `apps/web/AGENTS.md` ≤ 1100 words each
 - All other subtree `AGENTS.md` ≤ 600 words each

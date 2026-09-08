@@ -34,9 +34,9 @@ describe("SessionModePolicy Plan visibility", () => {
 
 describe("SessionModePolicy Plan bash calls", () => {
   test("does not add a Plan-only bash restriction", async () => {
-    await expect(bashDiagnostic('rg "ToolResolver" packages/synergy/src')).resolves.toBeUndefined()
+    await expect(bashDiagnostic('rg "ToolResolver" packages/harness/src')).resolves.toBeUndefined()
     await expect(
-      bashDiagnostic("ls -la && cat package.json && git diff -- packages/synergy/src/session/tool-resolver.ts"),
+      bashDiagnostic("ls -la && cat package.json && git diff -- packages/harness/src/session/tool-resolver.ts"),
     ).resolves.toBeUndefined()
     await expect(bashDiagnostic("git status --short")).resolves.toBeUndefined()
     await expect(bashDiagnostic("npm view @ericsanchezok/synergy-plugin versions --json")).resolves.toBeUndefined()

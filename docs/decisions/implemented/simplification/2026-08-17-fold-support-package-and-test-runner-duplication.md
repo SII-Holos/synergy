@@ -11,7 +11,7 @@ Two build/tooling surfaces duplicate logic that already lives in the repo root:
 
 ## Decision
 
-- `Script` (build helpers, `retry`, `npmVersionExists`) now lives in `packages/product-runtime/script/script-identity.ts` next to its sole consumer (`packages/product-runtime/script/build.ts`). The `packages/script` workspace package, its knip config entry, and the root devDependency are removed.
+- `Script` (build helpers, `retry`, `npmVersionExists`) now lives in `script/release/shared/build/script-identity.ts` next to its sole consumer (`packages/product-runtime/script/build.ts`). The `packages/script` workspace package, its knip config entry, and the root devDependency are removed.
 - Version derivation calls into the canonical `script/release/shared/runtime.ts` (`computeDevVersion` / `computeStableVersion` / `npmVersionExists` / `retry`) instead of re-deriving the format.
 - The two per-package test runners now delegate to the shared `runBatchedTests()` helper in `script/shared/test-runner.ts`; `apps/web/script/test.ts` and `packages/ui/script/test.ts` only parameterize their per-package test lists.
 

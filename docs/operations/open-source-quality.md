@@ -17,7 +17,7 @@ Synergy runs a multi-layer quality system that covers formatting, linting, type-
 | CI workflow lint           | `bun run workflow:check`                                                    | `workflow-validation` | actionlint + zizmor           | —        |
 | Secret scanning            | `bun run secrets:check`                                                     | `secret-scan`         | gitleaks                      | —        |
 | Package validation         | `bun run package:check`                                                     | `package-validation`  | publint + attw                | —        |
-| Tests                      | `bun turbo test` / `bun run test:ci`                                        | `test`                | Turbo + sequential Bun shards | —        |
+| Tests                      | `bun turbo test` / `bun run --cwd packages/harness test:ci`                 | `test`                | Turbo + sequential Bun shards | —        |
 | Private HTTP browser smoke | `bun run --cwd apps/web build && bun apps/web/script/private-http-smoke.ts` | `test`                | Playwright Chromium           | —        |
 | Desktop checks             | `bun run desktop:test`                                                      | `desktop`             | bun test + build              | —        |
 | Server health smoke        | —                                                                           | `smoke`               | Synergy health check          | —        |
@@ -31,6 +31,8 @@ The pre-push hook runs these checks in sequence. If any fails, the push is block
 3. `bun run lint` — run oxlint with deny-warnings
 4. `bun run typecheck` — type-check all packages via turbo
 5. `bun run monorepo:check` — validate monorepo dependency consistency
+6. `bun run doc:check` — validate current documentation and generated references
+7. `bun run decision:check` — validate decision records
 
 The pre-push hook is intentionally fast — it covers the most common issues but does not run tests, secret scans, or workflow validation. Those run in CI.
 
@@ -43,7 +45,7 @@ bun run quality:quick    # format + lint + Skill/package-guide/test-layout check
 ### Full local check (before opening a PR)
 
 ```bash
-bun run quality          # quality:quick + all tests (turbo test)
+bun run quality          # quality:quick + release contracts + workspace tests
 ```
 
 This runs the full suite locally. CI runs the same checks in parallel jobs.
@@ -52,16 +54,16 @@ This runs the full suite locally. CI runs the same checks in parallel jobs.
 
 CI runs on push to `dev` / `main` and on pull requests targeting those branches. Jobs run in parallel:
 
-| Job                   | Purpose                                                                                            |
-| --------------------- | -------------------------------------------------------------------------------------------------- |
-| `quality`             | Formatting, lint, browser crypto contract, test layout, localization, monorepo deps, and dead code |
-| `typecheck`           | TypeScript type checking                                                                           |
-| `test`                | Non-Synergy package tests, private HTTP browser smoke, and sequential fresh-process Synergy shards |
-| `package-validation`  | publint + attw for publishable packages                                                            |
-| `workflow-validation` | actionlint + zizmor for CI workflow files                                                          |
-| `secret-scan`         | gitleaks for secrets and credentials                                                               |
-| `desktop`             | Desktop typecheck, unit tests, build config validation, runtime smoke                              |
-| `smoke`               | Server health check smoke test                                                                     |
+| Job                   | Purpose                                                                                                   |
+| --------------------- | --------------------------------------------------------------------------------------------------------- |
+| `quality`             | Formatting, lint, browser crypto contract, test layout, localization, monorepo deps, and dead code        |
+| `typecheck`           | TypeScript type checking                                                                                  |
+| `test`                | Business/interface package tests, private HTTP browser smoke, and sequential fresh-process Harness shards |
+| `package-validation`  | publint + attw for publishable packages                                                                   |
+| `workflow-validation` | actionlint + zizmor for CI workflow files                                                                 |
+| `secret-scan`         | gitleaks for secrets and credentials                                                                      |
+| `desktop`             | Desktop typecheck, unit tests, build config validation, runtime smoke                                     |
+| `smoke`               | Server health check smoke test                                                                            |
 
 All jobs must pass for a PR to merge. The `package-validation` and `workflow-validation` jobs are not in the pre-push hook — they require network access or special tooling that is available in CI but may not be installed locally.
 

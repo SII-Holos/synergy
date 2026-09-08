@@ -18,9 +18,9 @@ describe("isEphemeralTestWorktree", () => {
   test("rejects real project directories whose basename is not a test prefix", () => {
     expect(isEphemeralTestWorktree("/Users/eric/projects/synergy-test")).toBe(false)
     expect(isEphemeralTestWorktree("/Users/eric/projects/synergy-test/3d-software-rasterizer-pro")).toBe(false)
-    expect(isEphemeralTestWorktree("/Users/eric/projects/synergy/packages/synergy")).toBe(false)
+    expect(isEphemeralTestWorktree("/Users/eric/projects/synergy/packages/harness")).toBe(false)
     expect(
-      isEphemeralTestWorktree("/Users/eric/projects/synergy/.synergy/worktrees/plugin-mcp-v3-local/packages/synergy"),
+      isEphemeralTestWorktree("/Users/eric/projects/synergy/.synergy/worktrees/plugin-mcp-v3-local/packages/harness"),
     ).toBe(false)
   })
 

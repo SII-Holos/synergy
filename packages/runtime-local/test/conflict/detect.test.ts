@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-// Import the module that must be created at packages/synergy/src/conflict/detect.ts
+// Import the module that must be created at packages/runtime-local/src/conflict/detect.ts
 // Named export: detectConflicts(content: string): ConflictReport
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface ConflictLocation {

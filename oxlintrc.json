@@ -44,7 +44,6 @@
     "packages/**/release/**",
     "packages/sdk/js/src/gen/**",
     "packages/product-runtime/schema/**",
-    "packages/runtime-local/test/tool/fixtures/**",
     "**/*.min.js"
   ],
   "overrides": [

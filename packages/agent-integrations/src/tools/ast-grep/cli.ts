@@ -48,14 +48,14 @@ function findSgCliPath(): string | null {
     }
   } catch {}
 
-  // Check in synergy's own node_modules (bundled with the package)
+  // Check the owning integration package's node_modules
   // The npm package uses "ast-grep" as binary name
   if (pkgName) {
     const thisDir = path.dirname(fileURLToPath(import.meta.url))
-    const synergyRoot = path.resolve(thisDir, "../../..")
+    const packageRoot = path.resolve(thisDir, "../../..")
     const bundledPaths = [
-      path.join(synergyRoot, "node_modules", pkgName, npmBinaryName),
-      path.join(synergyRoot, "node_modules", "@ast-grep", "cli", npmBinaryName),
+      path.join(packageRoot, "node_modules", pkgName, npmBinaryName),
+      path.join(packageRoot, "node_modules", "@ast-grep", "cli", npmBinaryName),
     ]
 
     for (const p of bundledPaths) {

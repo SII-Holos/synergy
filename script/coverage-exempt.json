@@ -1210,7 +1210,7 @@
           "reason": "CLI command surface; exercised through integration flows, not the unit suite"
         },
         {
-          "glob": "src/cli/cmd/run.ts",
+          "glob": "src/cli/cmd/send.ts",
           "reason": "CLI command surface; exercised through integration flows, not the unit suite"
         },
         {

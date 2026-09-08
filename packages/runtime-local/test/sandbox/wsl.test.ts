@@ -10,7 +10,7 @@
 // On actual WSL, the behavior depends on the kernel version string.
 //
 // Run with:
-//   cd packages/synergy && bun test test/sandbox/wsl.test.ts
+//   cd packages/runtime-local && bun test test/sandbox/wsl.test.ts
 // ---------------------------------------------------------------------------
 
 import { describe, test, expect } from "bun:test"

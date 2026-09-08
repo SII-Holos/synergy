@@ -10,7 +10,7 @@ import type { SynergySandboxPermissionProfile } from "@ericsanchezok/synergy-har
 // and deny-read SBPL rules for unreadableGlobs.
 //
 // Run with:
-//   cd packages/synergy && bun test test/sandbox/macos-policy.test.ts
+//   cd packages/runtime-local && bun test test/sandbox/macos-policy.test.ts
 // ---------------------------------------------------------------------------
 
 // ------------------------------------------------------------------

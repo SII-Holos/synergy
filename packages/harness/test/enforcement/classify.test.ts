@@ -30,7 +30,7 @@ describe("PathClassifier workspace boundary — inside workspace", () => {
   test("relative subdirectory patterns are inside workspace", () => {
     const { PathClassifier } = require("../../src/enforcement/classify")
     const workspace = "/home/user/my-project"
-    const cases = ["src/**/*.ts", "lib/**/*.js", "test/fixture/**", "packages/synergy/src/**/*.ts", "a/b/c/d/e.txt"]
+    const cases = ["src/**/*.ts", "lib/**/*.js", "test/fixture/**", "packages/harness/src/**/*.ts", "a/b/c/d/e.txt"]
     for (const pattern of cases) {
       const result = PathClassifier.classify(pattern, { workspace })
       expect(result.boundary).toBe("inside")

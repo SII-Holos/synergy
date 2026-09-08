@@ -151,7 +151,7 @@ export async function runGateSet(
   await new Promise<void>((resolve, reject) => {
     const pump = () => {
       while (running < limit) {
-        const ready = gates.find((gate) => pending.has(gate.id) && gate.needs.every((need) => !pending.has(need)))
+        const ready = gates.find((gate) => pending.has(gate.id) && gate.needs.every((need) => results.has(need)))
         if (!ready) break
         pending.delete(ready.id)
         running++

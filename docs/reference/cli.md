@@ -588,7 +588,7 @@ send a message to synergy
 | `--file` (string) | file(s) to attach to message |
 | `--title` (string) | title for the session (uses truncated prompt if no value provided) |
 | `--attach` (string) | attach to a running synergy server (start one with: synergy start) |
-| `--port` (number) | port for the local server (defaults to random port if no value provided) |
+| `--port` (number) | accepted for compatibility; local execution does not open an HTTP listener |
 | `--variant` (string) | model variant (provider-specific reasoning effort, e.g., high, max, minimal) |
 | `--workflow` (string) | run the message as a Light Loop workflow task: the session enables loop_stop and a reviewer loop, and send exits when the workflow reaches a terminal state |
 

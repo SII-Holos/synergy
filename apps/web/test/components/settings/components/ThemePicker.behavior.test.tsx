@@ -79,7 +79,7 @@ beforeAll(async () => {
     // mid-load cannot invalidate the bundle and reload the page mid-flight
     // (which returned 500 on slow cold Coverage CI starts). The cache is
     // scoped to this fixture because the sibling Playwright servers share
-    // packages/app/node_modules/.vite and invalidate each other's cache.
+    // apps/web/node_modules/.vite and invalidate each other's cache.
     optimizeDeps: {
       include: ["solid-js", "solid-js/web", "solid-js/store", "solid-js/jsx-runtime", "zod"],
       noDiscovery: true,

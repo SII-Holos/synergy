@@ -1,5 +1,10 @@
+import path from "node:path"
+import { mkdtemp, mkdir, rm } from "node:fs/promises"
+import os from "node:os"
 import { describe, expect, test } from "bun:test"
 import {
+  collectMarkdownFiles,
+  findRetiredWorkspacePaths,
   extractLinks,
   filterStagedFiles,
   findWrapViolations,
@@ -157,4 +162,38 @@ describe("doc-check staged scope", () => {
     const staged = ["apps/web/PRODUCT.md", "docs/decisions/implemented/feature/x.md"]
     expect(filterStagedFiles(staged, scope, "/repo")).toEqual(["docs/decisions/implemented/feature/x.md"])
   })
+})
+
+describe("document ownership", () => {
+  test("includes commands and guides for every manifest-declared workspace", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "synergy-doc-owners-"))
+    try {
+      const owners = ["apps/web", "apps/desktop", "packages/sdk/js"]
+      await Bun.write(path.join(root, "package.json"), JSON.stringify({ workspaces: { packages: owners } }))
+      const documents = [
+        ".synergy/command/build.md",
+        ...owners.flatMap((owner) => [`${owner}/README.md`, `${owner}/AGENTS.md`]),
+      ]
+      for (const document of documents) {
+        await mkdir(path.dirname(path.join(root, document)), { recursive: true })
+        await Bun.write(path.join(root, document), "# Guide\n")
+      }
+      expect((await collectMarkdownFiles(root)).map((file) => path.relative(root, file))).toEqual(documents.sort())
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
+test("current documentation rejects retired workspace paths without rejecting public Link packages", () => {
+  expect(
+    findRetiredWorkspacePaths("bun test --cwd packages/app\n./packages/synergy/script/build.ts\npackages/desktop"),
+  ).toEqual([
+    { path: "packages/app", line: 1 },
+    { path: "packages/synergy", line: 2 },
+    { path: "packages/desktop", line: 3 },
+  ])
+  expect(
+    findRetiredWorkspacePaths("packages/synergy-link packages/synergy-link-protocol packages/app-builder-lib"),
+  ).toEqual([])
 })

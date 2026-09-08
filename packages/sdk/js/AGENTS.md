@@ -8,4 +8,6 @@ This package contains generated OpenAPI clients plus narrow handwritten client/s
 - Inspect generated diffs for operation IDs, reusable schema names, optionality, error responses, and accidental churn. Update every first-party consumer when a generated method changes.
 - Preserve Bun/types/import export conditions and built package resolution.
 
+Use `bun run build --compile-only` when validating or packaging the existing generated client without changing source files. Explicit API regeneration uses the root generator or normal SDK build.
+
 Run `bun run typecheck` and `bun run build`, the affected route/client tests, and root `bun run package:check` plus `bun run quality:quick`.

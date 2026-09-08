@@ -4,7 +4,7 @@
 
 ## Ownership
 
-- `cli/cmd/acp.ts` runs migrations, starts a local Synergy HTTP server, creates a generated SDK client for the requested working directory, and binds ACP stdio transport.
+- `cli/acp.ts` runs migrations, starts a local Synergy HTTP server, creates a generated SDK client for the requested working directory, and binds ACP stdio transport.
 - `agent.ts` implements protocol initialization, modes/models, session prompting, cancellation, permission bridging, history replay, and event-to-ACP updates.
 - `session.ts` maps ACP session state to durable Synergy session IDs and retains the ACP working directory, MCP descriptors, selected model, and mode.
 - `types.ts` defines the internal ACP configuration and session state.
@@ -35,4 +35,4 @@ The advertised login path is `synergy auth login`. The ACP `authenticate` method
 synergy acp --cwd /absolute/project/path
 ```
 
-Use an ACP client or protocol fixture to exercise initialization, session creation/load, streaming parts, tools, permission replies, model/mode selection, and cancellation. Run relevant tests from `packages/synergy`; do not test by restarting the active Synergy instance.
+Use an ACP client or protocol fixture to exercise initialization, session creation/load, streaming parts, tools, permission replies, model/mode selection, and cancellation. Run protocol tests from `packages/agent-integrations` and complete command/startup integration tests from `packages/product-runtime`; do not test by restarting the active Synergy instance.
