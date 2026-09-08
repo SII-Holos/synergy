@@ -62,6 +62,8 @@ Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplica
 
 ## Preserve Product Presentation
 
+Solid JSX may evaluate to a function. Never distinguish a rendered trigger from a component with `typeof`; use an explicit component prop such as Popover `triggerAs`, and forward its event, ref, and accessibility props to the native button. Test click, keyboard activation, Escape, and focus return with the real Tooltip composition.
+
 1. Reuse shared workbench, dialog, form, toolbar, and surface primitives before creating local variants.
 2. Preserve polarity: dark content/selection surfaces step brighter inward; light surfaces step darker inward.
 3. Use semantic color/type/spacing tokens. Reserve state colors for real state rather than decoration.

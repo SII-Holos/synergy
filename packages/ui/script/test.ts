@@ -33,6 +33,7 @@ await runBatchedTests({
     "test/components/tool/search-tool-renders.test.tsx",
     "test/components/tool/search-tool-bodies.test.tsx",
     "test/components/tooltip.test.ts",
+    "test/components/popover.test.ts",
     "test/components/tooltip-focus.test.ts",
     "test/components/provider-icon.test.ts",
   ],

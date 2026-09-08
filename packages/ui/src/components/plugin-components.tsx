@@ -79,7 +79,7 @@ export const pluginComponents: PluginUIComponents = {
     )
   },
   Dialog,
-  Popover,
+  Popover: (props) => <Popover {...props} trigger={undefined} triggerAs={props.trigger} />,
   Tooltip,
   FormField: (props) => (
     <div data-component="plugin-form-field">
