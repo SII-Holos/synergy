@@ -1143,7 +1143,15 @@ describe("session migrations", () => {
 
         const migration = migrations.find((entry) => entry.id === "20260708-session-workflow-field")
         expect(migration).toBeDefined()
-        await migration!.up(() => {})
+        const reports: [number, number, number][] = []
+        await migration!.up((current, total, phase = 0) => reports.push([current, total, phase]))
+        const sessionsComplete = reports.find(([current, total, phase]) => phase === 0 && current === total)
+        expect(sessionsComplete?.[0]).toBeGreaterThanOrEqual(4)
+        expect(reports).toContainEqual([0, 0, 1])
+        const messagesComplete = reports.find(
+          ([current, total, phase]) => phase === 1 && current === total && total > 0,
+        )
+        expect(messagesComplete?.[0]).toBeGreaterThanOrEqual(2)
 
         const migratedLattice = await Storage.read<any>(
           StoragePath.sessionInfo(scope, Identifier.asSessionID(latticeSession.id)),

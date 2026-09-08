@@ -3,7 +3,6 @@ import { cmd } from "./cmd"
 import { AgentSideConnection, ndJsonStream } from "@agentclientprotocol/sdk"
 import { ACP } from "@/acp/agent"
 import { Server } from "@/server/server"
-import { runMigrations } from "@/migration"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
 import { withNetworkOptions, resolveNetworkOptions } from "../network"
 
@@ -20,8 +19,7 @@ export const AcpCommand = cmd({
     })
   },
   handler: async (args) => {
-    await runMigrations({ output: "silent" })
-    const opts = await resolveNetworkOptions(args)
+    const opts = await resolveNetworkOptions(args, { output: "silent" })
     const server = Server.listen(opts)
 
     const sdk = createSynergyClient({

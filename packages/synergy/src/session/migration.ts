@@ -2435,7 +2435,8 @@ export const migrations: Migration[] = [
     description: "Migrate workflow mode session fields and message metadata to canonical workflow shape",
     async up(progress) {
       await migrateSessionWorkflowFields(progress)
-      await migrateWorkflowMessageMetadataFields(progress)
+      progress(0, 0, 1)
+      await migrateWorkflowMessageMetadataFields((current, total) => progress(current, total, 1))
     },
   },
   {
