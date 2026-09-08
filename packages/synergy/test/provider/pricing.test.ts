@@ -25,6 +25,23 @@ test("accepts the pinned external catalog while keeping explicit pricing strict"
   expect(ProviderPricing.estimate(price, usage(300_000), "openai").total).toBe(1.50225)
 })
 
+test("accepts external tier extensions without relaxing configured pricing", () => {
+  const cost = {
+    input: 1,
+    output: 2,
+    tiers: [{ tier: { type: "context", size: 200_000 }, input: 3, input_audio: 4, reasoning: 5, future_rate: 6 }],
+    context_over_200k: { input: 3, input_audio: 4 },
+  }
+  const parsed = ProviderPricing.CatalogCost.parse(cost)
+  const price = ProviderPricing.resolve({ providerID: "fixture", modelID: "fixture", cost: parsed, source: "catalog" })
+  expect(price?.raw).toEqual(cost)
+  expect(price?.contextTiers?.[0].rates.input).toBe(3)
+  expect(ProviderPricing.Cost.safeParse(cost).success).toBe(false)
+  expect(
+    ProviderPricing.CatalogCost.safeParse({ tiers: [{ tier: { type: "context", size: 1 }, input: -1 }] }).success,
+  ).toBe(false)
+})
+
 test("prices OpenAI output once, including its reasoning subset", () => {
   const pricing = ProviderPricing.resolve({
     providerID: "openai",

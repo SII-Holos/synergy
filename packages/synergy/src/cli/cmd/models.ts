@@ -29,8 +29,20 @@ export const ModelsCommand = cmd({
   },
   handler: async (args) => {
     if (args.refresh) {
-      await ModelsDev.refresh()
-      await ProviderCatalog.resolve({ forceRefresh: true, includeLive: true }).catch(() => {})
+      const result = await ModelsDev.refresh()
+      if (result.status !== "refreshed") {
+        UI.error(
+          result.status === "disabled"
+            ? "Provider catalog refresh is disabled by SYNERGY_DISABLE_MODELS_FETCH."
+            : "Provider catalog refresh failed: no source returned a usable catalog. The existing cache was kept.",
+        )
+        process.exitCode = 1
+        return
+      }
+      await ProviderCatalog.resolve({ forceRefresh: true, includeLive: true })
+      if (result.rejectedProviders || result.rejectedModels) {
+        UI.println(`Skipped ${result.rejectedProviders} invalid providers and ${result.rejectedModels} invalid models.`)
+      }
       UI.println(UI.Style.TEXT_SUCCESS_BOLD + "Provider catalog refreshed" + UI.Style.TEXT_NORMAL)
     }
 

@@ -1324,6 +1324,7 @@ export const Provider = ModelsDev.Provider.partial()
       .record(
         z.string(),
         ModelsDev.Model.partial().extend({
+          cost: ProviderPricing.ModelConfigCost.optional(),
           variants: z
             .record(
               z.string(),

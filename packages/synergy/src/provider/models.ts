@@ -1,3 +1,4 @@
+import { z } from "zod"
 import { Global } from "../global"
 import { Log } from "../util/log"
 import { ModelsDev as ModelsDevSchemas, ModelsDevCatalog, missingRequiredModelsDevProviders } from "./models-schemas"
@@ -22,7 +23,12 @@ export namespace ModelsDev {
 
   type Catalog = ModelsDevCatalog
 
-  let inFlight: Promise<void> | undefined
+  export type RefreshResult =
+    | { status: "refreshed"; rejectedProviders: number; rejectedModels: number }
+    | { status: "failed" }
+    | { status: "disabled" }
+
+  let inFlight: Promise<RefreshResult> | undefined
   let cache: Catalog | null = null
   const refreshListeners = new Set<() => void | Promise<void>>()
 
@@ -35,13 +41,38 @@ export namespace ModelsDev {
     await Promise.all([...refreshListeners].map((listener) => listener()))
   }
 
-  function parseCatalog(input: unknown): Catalog | undefined {
-    const parsed = ModelsDevCatalog.safeParse(input)
-    if (!parsed.success) return
-    return missingRequiredModelsDevProviders(parsed.data).length === 0 ? parsed.data : undefined
+  const CatalogEnvelope = z.record(z.string(), z.unknown())
+
+  function parseCatalog(input: unknown) {
+    const envelope = CatalogEnvelope.safeParse(input)
+    if (!envelope.success) return
+    const ProviderEnvelope = ModelsDevCatalog.valueType.extend({ models: z.record(z.string(), z.unknown()) })
+    const ModelSchema = ModelsDevCatalog.valueType.shape.models.valueType
+    const catalog: Catalog = {}
+    let rejectedProviders = 0
+    let rejectedModels = 0
+    for (const [providerID, input] of Object.entries(envelope.data)) {
+      const provider = ProviderEnvelope.safeParse(input)
+      if (!provider.success) {
+        rejectedProviders++
+        continue
+      }
+      const models: Record<string, Model> = {}
+      for (const [modelID, input] of Object.entries(provider.data.models)) {
+        const model = ModelSchema.safeParse(input)
+        if (model.success) models[modelID] = model.data
+        else rejectedModels++
+      }
+      catalog[providerID] = { ...provider.data, models }
+    }
+    if (missingRequiredModelsDevProviders(catalog).length > 0) return
+    if (rejectedProviders || rejectedModels) {
+      log.warn("ignored malformed models catalog entries", { rejectedProviders, rejectedModels })
+    }
+    return { catalog, rejectedProviders, rejectedModels }
   }
 
-  function parseCatalogText(input: string): Catalog | undefined {
+  function parseCatalogText(input: string) {
     try {
       return parseCatalog(JSON.parse(input))
     } catch {
@@ -61,7 +92,7 @@ export namespace ModelsDev {
     const file = Bun.file(filepath)
     const stored = parseCatalog(await file.json().catch(() => undefined))
     if (stored) {
-      cache = stored
+      cache = stored.catalog
       refreshInBackground()
       return cache
     }
@@ -69,13 +100,13 @@ export namespace ModelsDev {
     const bundledText = typeof data === "function" ? "{}" : await (data as unknown as () => Promise<string>)()
     const bundled = parseCatalogText(bundledText)
     if (!bundled) log.warn("ignored invalid bundled models catalog")
-    cache = bundled ?? {}
+    cache = bundled?.catalog ?? {}
     refreshInBackground()
     return cache
   }
 
-  export function refresh(): Promise<void> | undefined {
-    if (Flag.SYNERGY_DISABLE_MODELS_FETCH) return
+  export function refresh(): Promise<RefreshResult> {
+    if (Flag.SYNERGY_DISABLE_MODELS_FETCH) return Promise.resolve({ status: "disabled" })
     if (inFlight) return inFlight
     inFlight = doRefresh().finally(() => {
       inFlight = undefined
@@ -88,15 +119,12 @@ export namespace ModelsDev {
     "https://raw.githubusercontent.com/SII-Holos/synergy-provider-registry/main/models.json",
   ] as const
 
-  async function doRefresh() {
+  async function doRefresh(): Promise<RefreshResult> {
     const file = Bun.file(filepath)
     log.info("refreshing", { file })
-    let text: string | undefined
     for (const url of MIRRORS) {
       const result = await fetch(url, {
-        headers: {
-          "User-Agent": Installation.USER_AGENT,
-        },
+        headers: { "User-Agent": Installation.USER_AGENT },
         signal: AbortSignal.timeout(10 * 1000),
       }).catch((error) => {
         log.warn("failed to fetch models catalog", { url, error })
@@ -106,22 +134,20 @@ export namespace ModelsDev {
         log.warn("models catalog refresh returned non-success status", { url, status: result.status })
         continue
       }
-      const candidate = await result.text()
-      if (!parseCatalogText(candidate)) {
+      const text = await result.text().catch((error) => {
+        log.warn("failed to read models catalog", { url, error })
+      })
+      const parsed = text ? parseCatalogText(text) : undefined
+      if (!parsed) {
         log.warn("ignored invalid refreshed models catalog", { url })
         continue
       }
-      text = candidate
-      break
+      await Bun.write(file, JSON.stringify(parsed.catalog))
+      cache = parsed.catalog
+      await notifyRefresh()
+      return { status: "refreshed", rejectedProviders: parsed.rejectedProviders, rejectedModels: parsed.rejectedModels }
     }
-    if (!text) return
-
-    const parsed = parseCatalogText(text)
-    if (!parsed) return
-
-    await Bun.write(file, text)
-    cache = parsed
-    await notifyRefresh()
+    return { status: "failed" }
   }
 }
 
