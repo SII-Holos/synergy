@@ -78,3 +78,21 @@ test("a dependent gate waits for completion while unrelated work can run", async
   }
   expect(dependentStarted).toBe(true)
 })
+
+test("failure diagnostics retain both stream summaries when output exceeds the cap", async () => {
+  const result = await runGateSet([
+    {
+      id: "large-output",
+      run: `bun -e 'console.error("stderr-start" + "x".repeat(120000) + "stderr-end"); console.log("stdout-start" + "y".repeat(120000) + "stdout-verdict"); process.exit(3)'`,
+      needs: [],
+    },
+  ])
+  expect(result.failures).toHaveLength(1)
+  const failure = result.failures[0]!
+  expect(failure.exitCode).toBe(3)
+  expect(failure.stderr).toContain("stderr-start")
+  expect(failure.stderr).toContain("stderr-end")
+  expect(failure.stderr).toContain("stdout-start")
+  expect(failure.stderr).toContain("stdout-verdict")
+  expect(failure.stderr.length).toBeLessThanOrEqual(100_000)
+})

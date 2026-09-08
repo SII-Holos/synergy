@@ -522,18 +522,20 @@ if (import.meta.main) {
           `Coverage source: ${result.verification.source}; ${result.verification.shared ? "complete invocation, shared source hits" : "package-local reports"}${result.verification.source === "existing" ? "; command success and report freshness are not verified" : ""}`,
         )
       for (const verdict of result.verdicts) {
+        for (const error of verdict.errors) console.error(`- ${error}`)
+      }
+      for (const error of result.errors) console.error(`- ${error}`)
+      for (const verdict of result.verdicts) {
         const status = verdict.passed ? "PASS" : "FAIL"
         console.log(
           `${status} ${verdict.package}: lines ${fmt(verdict.linesPct)}/${verdict.thresholds.lines}% functions ${fmt(verdict.functionsPct)}/${verdict.thresholds.functions}% (measured ${verdict.measured}, missing ${verdict.missing}, exempted ${verdict.exempted})`,
         )
-        for (const error of verdict.errors) console.error(`- ${error}`)
         if (!verdict.passed) {
           for (const entry of verdict.uncovered) {
             console.error(`  ${entry.file}${entry.lines.length > 0 ? `:${entry.lines.join(",")}` : " (never loaded)"}`)
           }
         }
       }
-      for (const error of result.errors) console.error(`- ${error}`)
       if (!result.passed || result.errors.length > 0) {
         console.error("Coverage gate failed.")
         process.exit(1)

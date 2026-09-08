@@ -184,8 +184,8 @@ jobs:
           git config --global user.email "ci@synergy.dev"
           git config --global user.name "CI Runner"
 
-      - name: Run non-Synergy package tests
-        run: bun turbo test --filter='!@ericsanchezok/synergy-harness'
+      - name: Run non-Harness package tests
+        run: bun turbo test --concurrency=2 --filter='!@ericsanchezok/synergy-harness'
         env:
           SYNERGY_LINK_HOME: /tmp/synergy-link-ci-test
 
@@ -200,14 +200,14 @@ jobs:
       - name: Run release contract tests
         run: bun run release:test
 
-      - name: Run Synergy tests
+      - name: Run Harness tests
         run: bun run test:ci
         working-directory: packages/harness
         env:
           SYNERGY_LINK_HOME: /tmp/synergy-link-ci-test
           SYNERGY_TEST_JUNIT_DIR: coverage/ci-tests
 
-      - name: Upload Synergy test reports
+      - name: Upload Harness test reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

@@ -66,6 +66,15 @@ describe("CI topology", () => {
     expect(job.env?.SYNERGY_BUILD_TARGETS).toBe("linux-x64")
   })
 
+  test("workspace suites bound concurrent native processes on the CI runner", () => {
+    const workflow = Bun.YAML.parse(ciSource) as {
+      jobs: Record<string, { steps: Array<{ name?: string; run?: string }> }>
+    }
+    const command = workflow.jobs.test!.steps.find((step) => step.name === "Run non-Harness package tests")?.run
+    expect(command).toContain("--concurrency=2")
+    expect(command).toContain("--filter='!@ericsanchezok/synergy-harness'")
+  })
+
   test("quality job runs the ci-static gate cluster", () => {
     const block = ciSource.split("  quality:")[1]?.split("  typecheck:")[0] ?? ""
     expect(block).toContain("bun script/gates.ts ci-static")
