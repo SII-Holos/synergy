@@ -13,6 +13,35 @@ async function objects(repo: string) {
 }
 
 describe("shared snapshot storage", () => {
+  test("excludes newly oversized literal paths while preserving files and historical objects", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const file = path.join(tmp.path, "literal[1].txt")
+        await Bun.write(file, "before")
+        await Bun.write(path.join(tmp.path, "literal1.txt"), "keep")
+        const projectRepo = path.join(tmp.path, ".git")
+        await SnapshotStore.command(projectRepo, ["add", "--all"])
+        const projectIndex = await fs.readFile(path.join(projectRepo, "index"))
+        const before = await Snapshot.track("session-size")
+        expect(before).toBeTruthy()
+        const oversized = "x".repeat(2 * 1024 * 1024 + 1)
+        await Bun.write(file, oversized)
+        const after = await Snapshot.track("session-size")
+        expect(after).toBeTruthy()
+        const repo = SnapshotStore.repository(scope.id)
+        const files = (await SnapshotStore.command(repo, ["ls-tree", "-z", "--name-only", after!])).split("\0")
+        expect(files).toContain("literal1.txt")
+        expect(files).not.toContain("literal[1].txt")
+        expect(await Bun.file(file).text()).toBe(oversized)
+        expect(await SnapshotStore.command(repo, ["show", `${before}:literal[1].txt`])).toBe("before")
+        expect(await fs.readFile(path.join(projectRepo, "index"))).toEqual(projectIndex)
+      },
+    })
+  })
+
   test("cancellation while maintenance owns the store preserves empty snapshot results", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
