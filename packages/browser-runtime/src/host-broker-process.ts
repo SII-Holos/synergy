@@ -192,7 +192,7 @@ export namespace BrowserHostBrokerProcess {
 
   async function launch(resolvedServerUrl: string, pipeLogs: boolean): Promise<EnsureResult> {
     const epoch = ++launchEpoch
-    const hostCommand = await command().catch((error) => {
+    const hostCommand = await resolveCommand().catch((error) => {
       if (launchEpoch !== epoch) return null
       hostStatus = "failed"
       BrowserBroker.publishHostStatus(hostStatus)
@@ -329,11 +329,14 @@ export namespace BrowserHostBrokerProcess {
     idleTimer = null
   }
 
-  async function command(): Promise<string[]> {
+  export async function resolveCommand(): Promise<string[]> {
     const configured = process.env.SYNERGY_BROWSER_HOST_COMMAND
     if (configured)
       return configured.trim().startsWith("[") ? JSON.parse(configured) : configured.split(/\s+/).filter(Boolean)
-    if (Installation.VERSION === "local") return [BunProc.which(), "run", "--cwd", desktopDir(), "browser-host:dev"]
+    if (Installation.VERSION === "local") {
+      const source = await sourceCommand()
+      if (source) return source
+    }
     return [await BrowserInstall.ensureHost()]
   }
 
@@ -341,8 +344,10 @@ export namespace BrowserHostBrokerProcess {
     return path.resolve(import.meta.dir, "../../..")
   }
 
-  function desktopDir(): string {
-    return path.resolve(import.meta.dir, "../../../desktop")
+  export async function sourceCommand(directory = import.meta.dir): Promise<string[] | undefined> {
+    const desktop = path.resolve(directory, "../../../apps/desktop")
+    if (!(await Bun.file(path.join(desktop, "package.json")).exists())) return
+    return [BunProc.which(), "run", "--cwd", desktop, "browser-host:dev"]
   }
 
   function pipe(stream: ReadableStream<Uint8Array> | null | undefined, name: string): void {

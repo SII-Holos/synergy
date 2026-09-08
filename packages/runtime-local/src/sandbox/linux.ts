@@ -1,3 +1,4 @@
+import { Global } from "@ericsanchezok/synergy-harness/global"
 import { sandboxHelper } from "./helper-source"
 import * as path from "path"
 import * as os from "os"
@@ -82,7 +83,7 @@ function installTarballHelper(): boolean {
 
   if (!fs.existsSync(tarballHelper)) return false
 
-  const homedir = os.homedir()
+  const homedir = Global.Path.home
   const destDir = path.join(homedir, ".synergy", "sandbox-helper")
   const destPath = path.join(destDir, "synergy-sandbox-linux")
 
@@ -112,66 +113,25 @@ function installTarballHelper(): boolean {
   }
 }
 
-/**
- * One-time: discover a locally-built helper from `cargo build --release`.
- * Only runs when NOT inside a tarball layout — source-deploy use case.
- *
- * Scans a few well-known locations under the workspace root for the helper
- * binary and copies it to ~/.synergy/sandbox-helper/ if found and newer.
- * Non-fatal: returns false on any error.
- */
+export function sourceLinuxHelperPath(): string {
+  return path.resolve(import.meta.dir, "helper-linux/target/release/synergy-sandbox-linux")
+}
+
 function tryInstallCargoHelper(): boolean {
-  const execPath = process.execPath
-  const execDirName = path.basename(path.dirname(execPath))
-
-  // Only attempt cargo discovery when NOT inside a tarball layout.
-  // The tarball layout already handles this in installTarballHelper().
-  if (execDirName === "bin") return false
-
-  // resolveWorkspaceRoot is import-dynamic to avoid circular deps.
-  // Fall back to a simple heuristic: walk up from __dirname looking for
-  // a .git directory as the workspace root.
-  let workspaceRoot = import.meta.dir
-  for (let i = 0; i < 5; i++) {
-    const candidate = path.dirname(workspaceRoot)
-    if (!candidate || candidate === workspaceRoot) break
-    workspaceRoot = candidate
-    if (fs.existsSync(path.join(workspaceRoot, ".git"))) break
+  const source = sourceLinuxHelperPath()
+  const directory = path.join(Global.Path.root, "sandbox-helper")
+  const destination = path.join(directory, "synergy-sandbox-linux")
+  try {
+    if (!fs.existsSync(source)) return false
+    if (fs.existsSync(destination) && isTarballHelperUpToDate(source, destination)) return false
+    fs.mkdirSync(directory, { recursive: true })
+    fs.copyFileSync(source, destination)
+    fs.chmodSync(destination, 0o755)
+    log.info("Installed sandbox helper from cargo build", { src: source, dest: destination })
+    return true
+  } catch {
+    return false
   }
-
-  // Well-known cargo target paths from workspace root
-  const cargoPaths = [
-    path.join(
-      workspaceRoot,
-      "packages",
-      "synergy",
-      "src",
-      "sandbox",
-      "helper-linux",
-      "target",
-      "release",
-      "synergy-sandbox-linux",
-    ),
-  ]
-
-  const homedir = os.homedir()
-  const destDir = path.join(homedir, ".synergy", "sandbox-helper")
-  const destPath = path.join(destDir, "synergy-sandbox-linux")
-
-  for (const srcPath of cargoPaths) {
-    try {
-      if (fs.existsSync(srcPath) && (!fs.existsSync(destPath) || !isTarballHelperUpToDate(srcPath, destPath))) {
-        fs.mkdirSync(destDir, { recursive: true })
-        fs.copyFileSync(srcPath, destPath)
-        fs.chmodSync(destPath, 0o755)
-        log.info("Installed sandbox helper from cargo build", { src: srcPath, dest: destPath })
-        return true
-      }
-    } catch {
-      continue
-    }
-  }
-  return false
 }
 
 // ------------------------------------------------------------------
@@ -291,7 +251,7 @@ function verifyBwrapHash(binaryPath: string): boolean {
  * Returns { path, verified } if found, or null if not present at any search path.
  */
 export function findBundledBwrap(): { path: string; verified: boolean } | null {
-  const homedir = os.homedir()
+  const homedir = Global.Path.home
   for (const getPath of BWRAP_SEARCH_PATHS) {
     const p = getPath(homedir)
     try {
@@ -327,7 +287,8 @@ export function isBundledBwrapAvailable(): boolean {
 export const TRUSTED_LINUX_HELPER_HASHES: Record<string, string> = {
   ...(typeof SYNERGY_SANDBOX_HELPER_SHA256 === "string" && SYNERGY_SANDBOX_HELPER_SHA256
     ? {
-        [path.join(os.homedir(), ".synergy", "sandbox-helper", "synergy-sandbox-linux")]: SYNERGY_SANDBOX_HELPER_SHA256,
+        [path.join(Global.Path.home, ".synergy", "sandbox-helper", "synergy-sandbox-linux")]:
+          SYNERGY_SANDBOX_HELPER_SHA256,
       }
     : {}),
 }
@@ -349,7 +310,7 @@ function findLinuxHelperBinary(): { path: string; verified: boolean } | null {
   // One-time try: discover locally-built helper (cargo build --release)
   tryInstallCargoHelper()
 
-  const homedir = os.homedir()
+  const homedir = Global.Path.home
   for (const getPath of LINUX_HELPER_SEARCH_PATHS) {
     const p = getPath(homedir)
     try {

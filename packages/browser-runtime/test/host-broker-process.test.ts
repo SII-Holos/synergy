@@ -1,3 +1,6 @@
+import path from "node:path"
+import { mkdtemp, rm } from "node:fs/promises"
+import os from "node:os"
 import { afterEach, describe, expect, test } from "bun:test"
 import { BrowserHostBrokerProcess } from "../src/host-broker-process.js"
 import { BrowserBroker } from "../src/broker.js"
@@ -161,4 +164,24 @@ describe("BrowserHostBrokerProcess", () => {
     })
     expect(third.status).toBe("running")
   })
+})
+
+test("source Browser Host command resolves a runnable Desktop workspace", async () => {
+  delete process.env.SYNERGY_BROWSER_HOST_COMMAND
+  const command = await BrowserHostBrokerProcess.resolveCommand()
+  const cwd = command[command.indexOf("--cwd") + 1]!
+  const manifest = Bun.file(path.join(cwd, "package.json"))
+  expect(await manifest.exists()).toBe(true)
+  expect((await manifest.json()).scripts[command.at(-1)!]).toBeString()
+})
+
+test("an installed Browser runtime does not assume a Desktop source checkout", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "synergy-browser-package-"))
+  try {
+    expect(
+      await BrowserHostBrokerProcess.sourceCommand(path.join(directory, "node_modules/browser-runtime/dist")),
+    ).toBeUndefined()
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
 })

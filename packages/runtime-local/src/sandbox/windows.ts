@@ -1,3 +1,4 @@
+import { Global } from "@ericsanchezok/synergy-harness/global"
 import { sandboxHelper } from "./helper-source"
 import * as os from "os"
 import * as path from "path"
@@ -77,7 +78,7 @@ function installTarballHelper(): boolean {
 
   if (!fs.existsSync(tarballHelper)) return false
 
-  const homedir = os.homedir()
+  const homedir = Global.Path.home
   const destDir = path.join(homedir, ".synergy", "sandbox-helper")
   const destPath = path.join(destDir, WINDOWS_HELPER_BINARY_NAME)
 
@@ -113,7 +114,7 @@ function installTarballHelper(): boolean {
 export const TRUSTED_WINDOWS_HELPER_HASHES: Record<string, string> = {
   ...(typeof SYNERGY_SANDBOX_HELPER_SHA256 === "string" && SYNERGY_SANDBOX_HELPER_SHA256
     ? {
-        [path.join(os.homedir(), ".synergy", "sandbox-helper", "synergy-sandbox-windows.exe")]:
+        [path.join(Global.Path.home, ".synergy", "sandbox-helper", "synergy-sandbox-windows.exe")]:
           SYNERGY_SANDBOX_HELPER_SHA256,
       }
     : {}),
@@ -202,7 +203,7 @@ export function findHelperBinary(
   // Try tarball-relative installation before searching standard paths
   installTarballHelper()
 
-  const homedir = os.homedir()
+  const homedir = Global.Path.home
   let firstInvalid: WindowsHelperInfo | null = null
   for (const getPath of searchPaths) {
     const p = getPath(homedir)

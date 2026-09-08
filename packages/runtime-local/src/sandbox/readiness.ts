@@ -140,11 +140,11 @@ export async function getSandboxReadiness(sandboxCfg?: SandboxReadinessConfig): 
           id: "linux_helper",
           label: "Linux sandbox helper binary",
           status: "warn",
-          detail: `synergy-sandbox-linux found at ${linuxHelperInfo.path} but hash verification failed. The binary may be from a different version. Re-download or rebuild with: bun run script/build-helper.ts linux`,
+          detail: `synergy-sandbox-linux found at ${linuxHelperInfo.path} but hash verification failed. The binary may be from a different version. Re-download or rebuild with: bun run packages/runtime-local/script/build-helper.ts linux --local`,
           recovery: {
             action: "reinstall",
             label: "Reinstall Linux sandbox helper",
-            command: "bun run script/build-helper.ts linux",
+            command: "bun run packages/runtime-local/script/build-helper.ts linux --local",
           },
         })
       } else {

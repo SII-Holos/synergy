@@ -39,3 +39,5 @@ Update the architecture document when the pipeline, profile semantics, capabilit
 ## Handoff
 
 Report the capability and risk, classifier, profile decisions, bypassability, permission/SmartAllow behavior, sandbox policy and platform coverage, workspace effects, tests, and documentation synchronized.
+
+Sandbox helper preparation and discovery must use the canonical runtime home, including `SYNERGY_HOME` and test isolation. Verify copied assets and hash lookup together; do not change OS policy read/deny roots to the runtime home. Check source Cargo discovery separately from registered packaged assets.
