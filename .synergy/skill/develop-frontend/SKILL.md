@@ -64,6 +64,8 @@ Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplica
 
 ## Preserve Product Presentation
 
+Derive activity steps and counts from canonical tool parts. Display preferences must not schedule background inference or make session completion depend on presentation work; historical derived summary metadata does not control grouping.
+
 1. Reuse shared workbench, dialog, form, toolbar, and surface primitives before creating local variants.
 2. Preserve polarity: dark content/selection surfaces step brighter inward; light surfaces step darker inward.
 3. Use semantic color/type/spacing tokens. Reserve state colors for real state rather than decoration.

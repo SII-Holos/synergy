@@ -1,6 +1,5 @@
 import { SnapshotLifecycle } from "../session/snapshot-lifecycle"
 import { Log } from "../util/log"
-import { ActivitySummary } from "../session/activity-summary"
 import { SessionInvoke } from "../session/invoke"
 import { SessionRecovery } from "../session/recovery"
 import type { Scope } from "."
@@ -15,7 +14,7 @@ const log = Log.create({ service: "scope-startup" })
  * so order-sensitive product steps can pin themselves with before/after
  * declarations; the chain reproduces the historical startup order exactly:
  * plugin-activate → listeners → plugin-init → session-recovery → lattice →
- * activity-summary → resume-pending → format → lsp → file-watcher → vcs →
+ * resume-pending → format → lsp → file-watcher → vcs →
  * command-watcher. Execution is a deterministic topological sort; ties break
  * by (phase rank, registration rank).
  */
@@ -80,7 +79,6 @@ export namespace ScopeStartup {
         })
       },
     },
-    { name: "activity-summary", init: () => ActivitySummary.init() },
     {
       name: "resume-pending",
       init: (scope) => (resident() ? SessionInvoke.resumePending({ scopeID: scope.id }) : undefined),

@@ -15,7 +15,6 @@ import { SessionManager } from "../session/manager"
 import { SessionCortexRuntime } from "../session/cortex-runtime"
 import { SessionAbort } from "../session/abort"
 import { LoopJob } from "../session/loop-job"
-import { ActivitySummary } from "../session/activity-summary"
 import { RolloutRecovery } from "../session/rollout/recovery"
 import { ProcessRegistry } from "../process/registry"
 import { AgentTurn } from "../session/agent-turn/index"
@@ -110,12 +109,6 @@ export namespace RuntimeHandle {
         await cleanup(() => SessionCortexRuntime.drain())
         for (const session of sessions) {
           await cleanup(() => LoopJob.drain(session.id))
-          await cleanup(() =>
-            ScopeContext.provide({
-              scope: session.scope,
-              fn: () => ActivitySummary.drain(session.id, AbortSignal.abort()),
-            }),
-          )
         }
         for (const stop of [() => AgentTurn.stop(), () => PolicyWorker.stop(), () => ToolScheduler.stop()])
           await cleanup(stop)
@@ -166,7 +159,6 @@ export namespace RuntimeHandle {
         scope: Scope.home(),
         fn: async () => {
           await services.initializeExtensions?.()
-          ActivitySummary.init()
         },
       })
       if (services.transport) {

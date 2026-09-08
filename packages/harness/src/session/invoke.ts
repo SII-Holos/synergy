@@ -1,7 +1,6 @@
 import { SessionExecutionContributions } from "./execution-contributions"
 import { RolloutContext } from "./rollout/context"
 import { Experiment } from "../config/experiment"
-import { ActivitySummary } from "./activity-summary"
 import { RolloutRecordingError } from "./rollout/error"
 import { RolloutLifecycle } from "./rollout/lifecycle"
 import { RolloutLedger } from "./rollout/ledger"
@@ -299,12 +298,10 @@ export namespace SessionInvoke {
       throw error
     } finally {
       const errors: unknown[] = []
-      for (const drain of [() => LoopJob.drain(sessionID), () => ActivitySummary.drain(sessionID, lease.signal)]) {
-        try {
-          await drain()
-        } catch (error) {
-          errors.push(error)
-        }
+      try {
+        await LoopJob.drain(sessionID)
+      } catch (error) {
+        errors.push(error)
       }
       const outcome = lease.signal.aborted ? "cancelled" : failure || errors.length ? "failed" : undefined
       for (const segment of segments) {
@@ -1246,7 +1243,6 @@ export namespace SessionInvoke {
 
             if (processedRootID) {
               await LoopJob.drain(sessionID, processedRootID)
-              await ActivitySummary.drain(sessionID, abort)
               if (segment) {
                 const terminal = SessionProgress.findTerminalReply(
                   await SessionHistory.modelMessages({ sessionID }),

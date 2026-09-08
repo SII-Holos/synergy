@@ -189,7 +189,6 @@
     "./config/instructions": "./src/config/instructions.ts",
     "./cortex/event": "./src/cortex/event.ts",
     "./cortex/manager": "./src/cortex/manager.ts",
-    "./session/activity-summary": "./src/session/activity-summary.ts",
     "./observability/live-events": "./src/observability/live-events.ts",
     "./provider/profile": "./src/provider/profile.ts",
     "./provider/auth-health": "./src/provider/auth-health.ts",
