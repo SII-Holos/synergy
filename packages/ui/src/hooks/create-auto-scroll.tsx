@@ -5,6 +5,10 @@ import { createResizeObserver } from "@solid-primitives/resize-observer"
 export interface AutoScrollOptions {
   working: () => boolean
   onUserInteracted?: () => void
+  /** Reports the distance from the bottom for content growth that fires no scroll event. */
+  onMeasure?: (distanceFromBottom: number) => void
+  /** How long a forced pin keeps re-pinning through late content growth (images, code blocks) before follow releases. Default 1000. */
+  settleMs?: number
 }
 
 export function createAutoScroll(options: AutoScrollOptions) {
@@ -12,6 +16,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   let settling = false
   let settleTimer: ReturnType<typeof setTimeout> | undefined
   let scrollFrame: number | undefined
+  let measureFrame: number | undefined
   let forceNextScroll = false
   let down = false
   let cleanup: (() => void) | undefined
@@ -27,6 +32,25 @@ export function createAutoScroll(options: AutoScrollOptions) {
     const el = scroll
     if (!el) return 0
     return el.scrollHeight - el.clientHeight - el.scrollTop
+  }
+
+  const settleWindow = () => options.settleMs ?? 1000
+
+  const beginSettle = (ms: number) => {
+    settling = true
+    if (settleTimer) clearTimeout(settleTimer)
+    settleTimer = setTimeout(() => {
+      settling = false
+      settleTimer = undefined
+    }, ms)
+  }
+
+  const scheduleMeasure = () => {
+    if (measureFrame !== undefined) return
+    measureFrame = requestAnimationFrame(() => {
+      measureFrame = undefined
+      options.onMeasure?.(distanceFromBottom())
+    })
   }
 
   const flushScrollToBottom = () => {
@@ -52,6 +76,9 @@ export function createAutoScroll(options: AutoScrollOptions) {
     if (!scroll) return
     if (!force && store.userScrolled) return
 
+    // A forced pin lands on whatever layout exists right now; open the settle
+    // window immediately so late content growth keeps re-pinning underneath.
+    if (force) beginSettle(settleWindow())
     forceNextScroll ||= force
     if (scrollFrame !== undefined) return
     scrollFrame = requestAnimationFrame(flushScrollToBottom)
@@ -111,9 +138,15 @@ export function createAutoScroll(options: AutoScrollOptions) {
   createResizeObserver(
     () => store.contentRef,
     () => {
-      if (!active()) return
-      if (store.userScrolled) return
-      scrollToBottom(false)
+      // While pinned-follow, resizes only re-pin (and extend an active settle
+      // window). Otherwise content grows without scroll events, so report the
+      // distance so "scrolled up" state stays honest in idle sessions.
+      if (active() && !store.userScrolled) {
+        if (settling) beginSettle(settleWindow())
+        scrollToBottom(false)
+        return
+      }
+      scheduleMeasure()
     },
   )
 
@@ -131,10 +164,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
       }
 
       if (!store.userScrolled) {
-        settling = true
-        settleTimer = setTimeout(() => {
-          settling = false
-        }, 300)
+        beginSettle(300)
       }
     }),
   )
@@ -142,6 +172,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   onCleanup(() => {
     if (settleTimer) clearTimeout(settleTimer)
     if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
+    if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
     if (cleanup) cleanup()
   })
 
@@ -156,6 +187,12 @@ export function createAutoScroll(options: AutoScrollOptions) {
       down = false
 
       if (!el) return
+      // A fresh scroller starts at the top: drop a previous element/session's
+      // user-scrolled state or follow stays disabled there. An in-flight settle
+      // window is left alone: it self-expires within settleMs and only causes
+      // an early bottom pin of the fresh scroller, which the initial forced
+      // pin performs anyway.
+      if (store.userScrolled) setStore("userScrolled", false)
 
       el.style.overflowAnchor = "none"
       el.addEventListener("wheel", handleWheel, { passive: true })
