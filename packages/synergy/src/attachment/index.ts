@@ -12,6 +12,13 @@ import { Asset } from "@/asset/asset"
 const LOCAL_MEDIA_MIME_PREFIXES = ["image/", "audio/", "video/"]
 
 export namespace Attachment {
+  export class InvalidUrlError extends Error {
+    constructor() {
+      super("Invalid attachment URL")
+      this.name = "InvalidUrlError"
+    }
+  }
+
   export interface Target {
     filename?: string
     filepath?: string
@@ -137,16 +144,39 @@ export namespace Attachment {
   }
 
   export function decodeDataUrl(url: string) {
-    const marker = ";base64,"
-    const markerIndex = url.indexOf(marker)
-    if (markerIndex === -1 || !url.startsWith("data:")) {
-      throw new Error("Invalid data URL")
+    if (!URL.canParse(url)) throw new InvalidUrlError()
+    const parsed = new URL(url)
+    if (parsed.protocol !== "data:") throw new InvalidUrlError()
+    parsed.hash = ""
+    const comma = parsed.href.indexOf(",")
+    if (comma === -1) throw new InvalidUrlError()
+    const header = parsed.href.slice(5, comma).trim()
+    const mime = header.split(";")[0] || "text/plain"
+    // Provenance: https://fetch.spec.whatwg.org/#data-url-processor
+    // Local adaptation: preserve decoded octets and the existing MIME-essence return value; classify invalid input separately from storage failures.
+    const encoded = Buffer.from(parsed.href.slice(comma + 1))
+    let length = encoded.length
+    if (encoded.includes(37)) {
+      length = 0
+      for (let i = 0; i < encoded.length; i++) {
+        if (encoded[i] === 37) {
+          const hex = encoded.subarray(i + 1, i + 3).toString()
+          if (/^[\da-f]{2}$/i.test(hex)) {
+            encoded[length++] = Number.parseInt(hex, 16)
+            i += 2
+            continue
+          }
+        }
+        encoded[length++] = encoded[i]
+      }
     }
-    const mime = url.slice(5, markerIndex).split(";")[0]
-    const data = url.slice(markerIndex + marker.length)
-    return {
-      mime,
-      buffer: Buffer.from(data, "base64"),
+    const bytes = encoded.subarray(0, length)
+    if (!/; *base64$/i.test(header)) return { mime, buffer: bytes }
+    try {
+      return { mime, buffer: Buffer.from(atob(bytes.toString("latin1")), "latin1") }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "InvalidCharacterError") throw new InvalidUrlError()
+      throw error
     }
   }
 

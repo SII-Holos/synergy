@@ -97,11 +97,31 @@ test("startup migration completes historical endpoints and skips completed work 
       )
       await Storage.write(key, legacy)
       await Storage.write(oldKey, archived)
+      const brokenID = Identifier.ascending("part")
+      await Storage.write(
+        StoragePath.messagePart(
+          Identifier.asScopeID(session.scope.id),
+          Identifier.asSessionID(session.id),
+          Identifier.asMessageID(call.runID),
+          Identifier.asPartID(brokenID),
+        ),
+        {
+          id: brokenID,
+          sessionID: session.id,
+          messageID: call.runID,
+          type: "attachment",
+          mime: "application/octet-stream",
+          url: "data:broken",
+        },
+      )
       const first = await runMigrations({ targetDomain: "session", output: "silent" })
       expect(first.completed).toBe(1)
       expect(await Storage.read<typeof legacy>(key)).toEqual(legacy)
       expect(await Storage.read<typeof archived>(oldKey)).toEqual(archived)
-      expect(await Storage.read([...RolloutArtifact.root(call.owner), "history"])).toMatchObject({ version: 1 })
+      expect(await Storage.read([...RolloutArtifact.root(call.owner), "history"])).toMatchObject({
+        version: 1,
+        missing: [`attachment:${brokenID}:original_not_recoverable`],
+      })
       expect((await Storage.read<Record<string, number>>(tracking))[RolloutMigration.migration.id]).toBeGreaterThan(1)
       const second = await runMigrations({ targetDomain: "session", output: "silent" })
       expect(second.completed).toBe(0)

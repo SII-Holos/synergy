@@ -9,6 +9,7 @@ import { StoragePath } from "@/storage/path"
 import type { Migration } from "@/migration/types"
 import { MessageV2 } from "../message-v2"
 import { CortexDelegationInfo } from "../types"
+import { Attachment } from "@/attachment"
 import { RolloutArtifact } from "./artifact"
 import { RolloutAttachment } from "./attachment"
 import type { RolloutSchema } from "./schema"
@@ -134,14 +135,20 @@ export namespace RolloutMigration {
         for (const attachment of attachments) {
           if (attachment.artifact) continue
           if (attachment.url.startsWith("data:") || attachment.url.startsWith("asset:")) {
-            try {
-              const captured = await RolloutAttachment.capture(owner, attachment)
-              Object.assign(attachment, captured)
-              await Storage.write(partKey, part, options)
-            } catch (error) {
-              if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error
+            const captured = await RolloutAttachment.capture(owner, attachment).catch((error: unknown) => {
+              if (
+                !(error instanceof Attachment.InvalidUrlError) &&
+                !(error instanceof Error && "code" in error && error.code === "ENOENT")
+              )
+                throw error
+              return undefined
+            })
+            if (!captured?.artifact) {
               audit.missing.push(`attachment:${attachment.id}:original_not_recoverable`)
+              continue
             }
+            Object.assign(attachment, captured)
+            await Storage.write(partKey, part, options)
           } else if (attachment.mime !== "application/x-directory")
             audit.missing.push(`attachment:${attachment.id}:original_not_recorded`)
         }
