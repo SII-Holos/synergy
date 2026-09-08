@@ -2,6 +2,8 @@
 
 本记录对应迁移基线 `e11c17094` 及本次迁移代码。目录职责见[架构所有权图](../architecture/README.md#ownership-map)，逐文件去向见[迁移映射](2026-09-08-runtime-package-ownership.json)。本次保持唯一 `synergy` CLI，完整产品仍默认装配全部能力；Harness 和 Runtime Local 可由独立程序及同一 CLI 使用。
 
+后续源码、开发流程与实际完整产品安装审计见[修复后全仓验收](2026-09-08-runtime-package-ownership-audit.md)；该记录包含后续实现提交及重新执行的完整覆盖率。本记录保留首轮验收快照。
+
 ## 迁移核对
 
 基线的 5,557 个跟踪文件全部核对：3,262 个移动项、2,295 个路径未变、3,261 个不同的移动目标，缺失目标为 0。唯一的两处合并是 Agenda 信号实现归入 Workflows；映射记录具体原因。旧聚合包已移除。所有 27 个 workspace 具备所属包指南；源码、测试、fixtures、worker、资产和注册入口随业务所有者迁移。
