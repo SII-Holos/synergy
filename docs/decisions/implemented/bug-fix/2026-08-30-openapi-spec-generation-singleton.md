@@ -12,7 +12,7 @@ Make spec generation once-per-process a public invariant instead of an implicit 
 
 - `Server.openapi()` memoizes the build in a module-level `_openapiSpecs` promise; all callers (`/doc` route, CLI `generate`, tests) share one cached spec.
 - The `/doc` route no longer uses `openAPIRouteHandler` (which maintained a separate untyped cache) and simply serves `openapi()`, keeping a single generation path and a single set of metadata (`version: "1.0.0"`).
-- A regression test (`survives a /doc request earlier in the same process` in `packages/server/test/server/openapi.test.ts`) pins the ordering property: requesting `/doc` first must not strip components from a later `Server.openapi()` call.
+- A regression test (`survives a /doc request earlier in the same process` in `packages/product-runtime/test/server/openapi.test.ts`) pins the ordering property: requesting `/doc` first must not strip components from a later `Server.openapi()` call.
 
 ## Alternatives considered
 

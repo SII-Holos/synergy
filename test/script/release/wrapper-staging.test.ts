@@ -37,3 +37,25 @@ test("wrapper staging uses the CLI's complete bin directory and keeps the public
   await stageSynergyWrapper(options)
   expect((await fs.readdir(path.join(output, "bin"))).sort()).toEqual(["platform-package.cjs", "synergy"])
 })
+
+test("the staged release installer loads its platform resolver under Bun and Node", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-wrapper-installer-"))
+  directories.push(root)
+  const wrapper = await stageSynergyWrapper({
+    cliDir: path.resolve(import.meta.dir, "../../../packages/cli"),
+    runtimeDistDir: root,
+    version: "1.2.3",
+    optionalDependencies: {},
+    repositoryUrl: "https://github.com/SII-Holos/synergy.git",
+  })
+  for (const runtime of [process.execPath, "node"]) {
+    const child = Bun.spawn([runtime, path.join(wrapper, "postinstall.mjs")], {
+      cwd: root,
+      env: { ...process.env, SYNERGY_POSTINSTALL_LIBRARY_MODE: "1" },
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const [exit, errors] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    expect({ exit, errors }).toEqual({ exit: 0, errors: "" })
+  }
+})

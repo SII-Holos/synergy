@@ -4,7 +4,7 @@ import { format, resolveConfig } from "prettier"
 import fs from "node:fs"
 import os from "node:os"
 import { $ } from "bun"
-import { APP_DIR, CLI_DIR, PRODUCT_RUNTIME_DIR, RUNTIME_RELEASE_TARGETS, type RuntimeArtifactProfile } from "./packages"
+import { WEB_DIR, CLI_DIR, PRODUCT_RUNTIME_DIR, RUNTIME_RELEASE_TARGETS, type RuntimeArtifactProfile } from "./packages"
 import {
   assertPackagedSandboxAsset,
   copySandboxAsset,
@@ -133,7 +133,7 @@ export async function buildRuntime(profile: RuntimeArtifactProfile) {
 
   if (profile === "full") {
     console.log("building web app")
-    await $`bun run --cwd ${APP_DIR} build`
+    await $`bun run --cwd ${WEB_DIR} build`
   }
 
   const binaries: Record<string, string> = {}

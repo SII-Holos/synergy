@@ -15,12 +15,12 @@ import {
 } from "./release/shared/packages"
 import {
   createPublishablePackageJson,
-  createSynergyWrapperPackageJson,
   readCatalog,
   type DependencyVersionMap,
   type PackageJson,
 } from "./release/shared/package-manifest"
 import { currentGitRemoteUrl } from "./release/shared/git"
+import { stageSynergyWrapper } from "./release/nodes/prepare-synergy-packages"
 
 const dependencyVersions = Object.fromEntries(
   Object.values(RELEASE_CATALOG).map((entry) => {
@@ -94,27 +94,14 @@ async function validateWorkspacePackage(pkg: PublishablePackage, tempDir: string
 
 async function validateSynergyWrapper(tempDir: string) {
   console.log(`\n=== package check: @ericsanchezok/synergy wrapper ===\n`)
-  const wrapperDir = path.join(tempDir, "synergy-wrapper")
-  await $`mkdir -p ${path.join(wrapperDir, "bin")}`
-  await $`cp ${path.join(CLI_DIR, "bin", "synergy")} ${path.join(wrapperDir, "bin", "synergy")}`
-  await $`cp ${path.join(CLI_DIR, "script", "postinstall.mjs")} ${path.join(wrapperDir, "postinstall.mjs")}`
-
   const version = packageVersion(PRODUCT_RUNTIME_DIR)
-  const platformVersions = await availableSynergyPlatformVersions(version)
-  const repositoryUrl = await currentGitRemoteUrl()
-  await Bun.write(
-    path.join(wrapperDir, "package.json"),
-    JSON.stringify(
-      createSynergyWrapperPackageJson({
-        version,
-        binName: "synergy",
-        optionalDependencies: platformVersions,
-        repositoryUrl,
-      }),
-      null,
-      2,
-    ),
-  )
+  const wrapperDir = await stageSynergyWrapper({
+    cliDir: CLI_DIR,
+    runtimeDistDir: tempDir,
+    version,
+    optionalDependencies: await availableSynergyPlatformVersions(version),
+    repositoryUrl: await currentGitRemoteUrl(),
+  })
 
   const tarball = await pack(wrapperDir, tempDir)
   await runPublint(tarball)

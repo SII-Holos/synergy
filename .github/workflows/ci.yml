@@ -320,9 +320,14 @@ jobs:
         run: bun install
 
       - name: Start server and check health
+        env:
+          SYNERGY_HOME: ${{ runner.temp }}/synergy-health-smoke
+          SYNERGY_DISABLE_MODELS_FETCH: "true"
+          MODELS_DEV_API_JSON: ${{ github.workspace }}/packages/testing/fixtures/models-api.json
         run: |
-          bun run packages/product-runtime/src/index.ts server --port 4800 &
+          bun run packages/product-runtime/src/index.ts server --hostname 127.0.0.1 --port 4800 &
           SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
 
           # Wait for server to be ready (max 30 seconds)
           for i in $(seq 1 30); do
@@ -345,11 +350,8 @@ jobs:
             echo "Smoke test passed"
           else
             echo "::error::Health check failed: $HEALTH"
-            kill $SERVER_PID 2>/dev/null
             exit 1
           fi
-
-          kill $SERVER_PID 2>/dev/null
 
   coverage:
     name: Coverage

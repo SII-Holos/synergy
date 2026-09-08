@@ -62,7 +62,9 @@ export async function packWorkspace(
     const nested = ["packages/cli", "packages/product-runtime"].includes(pkg.directory)
     if (isRuntime) await buildWorkspace(pkg.directory, { output: nested ? "dist/modules" : "dist" })
     else if (original.scripts?.build) {
-      const process = Bun.spawn(["bun", "run", "build"], { cwd: sourceDirectory, stdout: "inherit", stderr: "inherit" })
+      const command = ["bun", "run", "build"]
+      if (pkg.directory === "packages/sdk/js") command.push("--compile-only")
+      const process = Bun.spawn(command, { cwd: sourceDirectory, stdout: "inherit", stderr: "inherit" })
       if (await process.exited) throw new Error(`Package build failed: ${name}`)
     }
     if (pkg.directory === "packages/runtime-local") {

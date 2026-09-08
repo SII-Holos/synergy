@@ -3,7 +3,7 @@ import fs from "node:fs/promises"
 import { createRequire } from "node:module"
 import path from "node:path"
 import {
-  APP_DIST_DIR,
+  WEB_DIST_DIR,
   CLI_DIR,
   CORE_RUNTIME_DIST_DIR,
   PRODUCT_RUNTIME_DIR,
@@ -39,7 +39,7 @@ function watcherBindingPackageName(targetOs: string, targetArch: string, musl: b
 
 export async function prepareRuntimeApplicationAssets(options: RuntimeAssetOptions) {
   const profile = options.profile ?? "full"
-  const appDistDir = options.appDistDir ?? APP_DIST_DIR
+  const appDistDir = options.appDistDir ?? WEB_DIST_DIR
   const schemaPath =
     options.schemaPath ?? path.join(profile === "core" ? CLI_DIR : PRODUCT_RUNTIME_DIR, "schema/config.schema.json")
   const appIndexPath = path.join(appDistDir, "index.html")

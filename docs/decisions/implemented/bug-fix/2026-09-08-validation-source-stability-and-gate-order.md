@@ -8,7 +8,7 @@ Status: implemented
 
 ## Decision
 
-SDK 包验证使用只编译现有生成源码的入口。显式生成仍负责刷新完整服务 API 和客户端；普通发布包验证不改写生成源码，遵守既有[只读包验证决定](../process/2026-08-21-package-check-read-only-gate.md)。门禁依赖通过已经记录的完成结果满足，独立任务继续并行运行。
+SDK 包验证和 workspace 打包使用只编译现有生成源码的入口，核心打包不需要启动完整产品 API 生成器。显式生成仍负责刷新完整服务 API 和客户端；普通发布包验证不改写生成源码，遵守既有[只读包验证决定](../process/2026-08-21-package-check-read-only-gate.md)。门禁依赖通过已经记录的完成结果满足，独立任务继续并行运行。发行 wrapper 和包验证共用完整 CLI 资产装配，避免验证包漏带平台解析器却仍通过 manifest 检查。CI 健康检查明确使用临时 home、固定 loopback 端口与退出清理。
 
 ## Alternatives considered
 

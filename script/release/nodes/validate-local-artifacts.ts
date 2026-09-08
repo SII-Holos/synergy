@@ -2,7 +2,7 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import type { RuntimeArtifactProfile } from "../shared/packages"
 import path from "path"
-import { APP_DIST_DIR, PRODUCT_RUNTIME_DIR, PRODUCT_RUNTIME_DIST_DIR } from "../shared/packages"
+import { WEB_DIST_DIR, PRODUCT_RUNTIME_DIR, PRODUCT_RUNTIME_DIST_DIR } from "../shared/packages"
 import { assertRuntimeManifest } from "../shared/runtime-contract"
 
 const playwrightRuntimeCheck = "__browser-playwright-runtime-check"
@@ -11,7 +11,7 @@ const embeddingRuntimeCheck = "__embedding-runtime-check"
 export async function validateLocalArtifacts(platformPackageNames: string[]) {
   console.log("\n=== validate local artifacts ===\n")
 
-  if (!(await Bun.file(path.join(APP_DIST_DIR, "index.html")).exists())) {
+  if (!(await Bun.file(path.join(WEB_DIST_DIR, "index.html")).exists())) {
     throw new Error("apps/web/dist/index.html is missing")
   }
   if (!(await Bun.file(path.join(PRODUCT_RUNTIME_DIR, "schema/config.schema.json")).exists())) {
