@@ -94,53 +94,58 @@ describe("PluginRuntimeManager", () => {
       runtime: { entry: "runtime/index.js", sha256: "test" },
     })
 
-    await manager.start({
-      manifest: firstManifest,
-      pluginDir: path.dirname(entryPath),
-      entryPath,
-      limits: { ...DEFAULT_LIMITS, maxMemoryMb: 64, memorySampleIntervalMs: 10 },
-    })
-    monitors[0].onSample(40)
-    await manager.start({
-      manifest: secondManifest,
-      pluginDir: path.dirname(entryPath),
-      entryPath,
-      limits: { ...DEFAULT_LIMITS, maxMemoryMb: 64, memorySampleIntervalMs: 10 },
-    })
-    monitors[1].onSample(48)
-    monitors[0].onExceed(80, 64)
-    for (let i = 0; i < 20 && manager.registry.list().length > 1; i++) await Bun.sleep(1)
+    try {
+      await manager.start({
+        manifest: firstManifest,
+        pluginDir: path.dirname(entryPath),
+        entryPath,
+        limits: { ...DEFAULT_LIMITS, maxMemoryMb: 64, memorySampleIntervalMs: 10 },
+      })
+      monitors[0].onSample(40)
+      await manager.start({
+        manifest: secondManifest,
+        pluginDir: path.dirname(entryPath),
+        entryPath,
+        limits: { ...DEFAULT_LIMITS, maxMemoryMb: 64, memorySampleIntervalMs: 10 },
+      })
+      monitors[1].onSample(48)
+      monitors[0].onExceed(80, 64)
+      const drainDeadline = Date.now() + DEFAULT_LIMITS.shutdownGraceMs
+      while (Date.now() < drainDeadline && manager.registry.list().length > 1) await Bun.sleep(10)
 
-    expect(manager.registry.active(definition.id)?.generation).toBe("memory-two")
-    expect(manager.resourceStats()).toMatchObject({
-      processCount: 1,
-      measuredProcessCount: 1,
-      lastRecovery: undefined,
-    })
+      expect(manager.registry.active(definition.id)?.generation).toBe("memory-two")
+      expect(manager.resourceStats()).toMatchObject({
+        processCount: 1,
+        measuredProcessCount: 1,
+        lastRecovery: undefined,
+      })
 
-    const previousPid = monitors[1].pid
-    monitors[1].onExceed(80, 64)
-    for (
-      let i = 0;
-      i < 100 && (monitors.length < 3 || manager.registry.active(definition.id)?.generation !== "memory-two");
-      i++
-    ) {
-      await Bun.sleep(1)
+      const previousPid = monitors[1].pid
+      monitors[1].onExceed(80, 64)
+      const recycleDeadline = Date.now() + DEFAULT_LIMITS.shutdownGraceMs + DEFAULT_LIMITS.startupTimeoutMs
+      while (
+        Date.now() < recycleDeadline &&
+        (monitors.length < 3 || manager.registry.active(definition.id)?.generation !== "memory-two")
+      ) {
+        await Bun.sleep(10)
+      }
+
+      expect(monitors[1].stopped).toBe(true)
+      expect(monitors).toHaveLength(3)
+      expect(monitors[2].pid).not.toBe(previousPid)
+      expect(manager.registry.active(definition.id)?.generation).toBe("memory-two")
+      expect(manager.resourceStats()).toMatchObject({
+        processCount: 1,
+        lastRecovery: {
+          action: "recycle",
+          reason: "memory_limit",
+          beforeBytes: 80 * 1024 * 1024,
+          afterBytes: 0,
+        },
+      })
+    } finally {
+      await manager.stop(definition.id)
     }
-
-    expect(monitors[1].stopped).toBe(true)
-    expect(monitors[2]?.pid).not.toBe(previousPid)
-    expect(manager.registry.active(definition.id)?.generation).toBe("memory-two")
-    expect(manager.resourceStats()).toMatchObject({
-      processCount: 1,
-      lastRecovery: {
-        action: "recycle",
-        reason: "memory_limit",
-        beforeBytes: 80 * 1024 * 1024,
-        afterBytes: 0,
-      },
-    })
-    await manager.stop(definition.id)
   }, 15_000)
 
   test("waits for cancelled Agent call delivery before stopping a generation", async () => {

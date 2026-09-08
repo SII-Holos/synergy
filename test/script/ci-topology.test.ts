@@ -57,6 +57,15 @@ describe("CI topology", () => {
     expect(block).toContain("GitHub counts a skipped required check as passing")
   })
 
+  test("installed runtime builds match the executable Linux ABI and staged helper", () => {
+    const workflow = Bun.YAML.parse(ciSource) as {
+      jobs: Record<string, { "runs-on": string; env?: Record<string, string> }>
+    }
+    const job = workflow.jobs["runtime-artifacts"]!
+    expect(job["runs-on"]).toBe("ubuntu-latest")
+    expect(job.env?.SYNERGY_BUILD_TARGETS).toBe("linux-x64")
+  })
+
   test("quality job runs the ci-static gate cluster", () => {
     const block = ciSource.split("  quality:")[1]?.split("  typecheck:")[0] ?? ""
     expect(block).toContain("bun script/gates.ts ci-static")
