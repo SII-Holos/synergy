@@ -6,21 +6,40 @@ import type { ImagePreviewImage } from "@ericsanchezok/synergy-ui/image-preview"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { buildPromptUploadEntries } from "./attachment-preview"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useLocale } from "@/context/locale"
+import type { PendingPromptAttachment } from "./pending-attachments"
+import { PendingAttachmentCard } from "./pending-attachment-card"
+import { PI } from "./prompt-input-i18n"
 
 export function PromptAttachments(props: {
   uploads: Accessor<UploadedAttachmentPart[]>
   notes: Accessor<NoteAttachmentPart[]>
   sessions: Accessor<SessionAttachmentPart[]>
+  pending: Accessor<PendingPromptAttachment[]>
   serverUrl: string
   removeAttachment: (id: string) => void
 }) {
+  const { i18n } = useLocale()
   const remove = (event: MouseEvent, id: string) => {
     event.stopPropagation()
     props.removeAttachment(id)
   }
 
+  const flashingIds = createMemo(
+    () =>
+      new Set(
+        props
+          .pending()
+          .filter((entry) => entry.status === "uploaded")
+          .map((entry) => entry.id),
+      ),
+  )
   const uploadEntries = createMemo(() =>
-    buildPromptUploadEntries(props.serverUrl, props.uploads(), resolveImagePreviewImage),
+    buildPromptUploadEntries(
+      props.serverUrl,
+      props.uploads().filter((attachment) => !flashingIds().has(attachment.id)),
+      resolveImagePreviewImage,
+    ),
   )
   const previewImages = createMemo(() =>
     uploadEntries()
@@ -30,6 +49,17 @@ export function PromptAttachments(props: {
 
   return (
     <div class="flex flex-wrap gap-2 px-3 pt-3">
+      <For each={props.pending()}>
+        {(entry) => (
+          <PendingAttachmentCard
+            entry={entry}
+            uploadingLabel={i18n._(PI.attachUploadingStatus)}
+            uploadedLabel={i18n._(PI.attachUploadedStatus)}
+            removeLabel={i18n._({ ...PI.attachRemoveButton, values: { filename: entry.filename } })}
+            onRemove={props.removeAttachment}
+          />
+        )}
+      </For>
       <For each={uploadEntries()}>
         {(entry) => (
           <div class="relative group w-56 max-w-full">
