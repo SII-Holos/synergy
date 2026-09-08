@@ -1,4 +1,9 @@
 import { expect, test } from "bun:test"
+import { tmpdir } from "../support/fixture"
+import { ScopeContext } from "../../src/scope/context"
+import { Identifier } from "../../src/id/id"
+import { Session } from "../../src/session"
+import { RolloutLifecycle } from "../../src/session/rollout/lifecycle"
 import { RolloutRecovery } from "../../src/session/rollout/recovery"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { RolloutArtifact } from "../../src/session/rollout/artifact"
@@ -42,4 +47,32 @@ test("recovery preserves committed evidence, interrupts side effects, and resume
   expect(resumed.id).not.toBe(segment.id)
   expect((await RolloutLedger.getRun(owner, "run")).input).toEqual(snapshot.runs[0].input)
   expect(await RolloutLedger.tools(owner, "run")).toHaveLength(1)
+})
+
+test("reconcile settles records left running by an interrupted turn and completes the run", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const scope = await tmp.scope()
+  await ScopeContext.provide({
+    scope,
+    fn: async () => {
+      const session = await Session.create({})
+      const identity = { kind: "session" as const, scopeID: scope.id, sessionID: session.id }
+      const runID = Identifier.ascending("message")
+      const call = await RolloutLedger.beginCall({
+        owner: identity,
+        runID,
+        purpose: "chat",
+        request: {},
+        model: { providerID: "test", modelID: "test", sdk: "test", pricing: null },
+      })
+      expect((await RolloutSnapshot.read(identity)).runs[0].status).toBe("running")
+
+      await RolloutLifecycle.reconcile(session.id, runID, "failed")
+
+      const snapshot = await RolloutSnapshot.read(identity)
+      expect(snapshot.calls.find((entry) => entry.id === call.id)?.status).toBe("interrupted")
+      expect(snapshot.runs.find((run) => run.id === runID)?.status).toBe("failed")
+      await Session.remove(session.id)
+    },
+  })
 })

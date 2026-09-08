@@ -528,20 +528,45 @@ export namespace SessionManager {
     return released
   }
 
+  export const WAKE_RETRY_DELAYS_MS = [250, 1_000, 2_000, 4_000, 8_000]
+  const activeWakeChains = new Set<string>()
+
+  function scheduleWakeAttempt(sessionID: string, reason: string, delayMs: number, failureCount: number): void {
+    const timer = setTimeout(() => {
+      void wake(sessionID)
+        .then(() => {
+          activeWakeChains.delete(sessionID)
+        })
+        .catch((error) => {
+          const delay = WAKE_RETRY_DELAYS_MS[failureCount]
+          if (delay === undefined) {
+            activeWakeChains.delete(sessionID)
+            log.error("async session wake failed", { sessionID, reason, error, retriesExhausted: true })
+            return
+          }
+          log.warn("async session wake failed; retrying", { sessionID, reason, error, nextDelayMs: delay })
+          scheduleWakeAttempt(sessionID, reason, delay, failureCount + 1)
+        })
+    }, delayMs)
+    timer.unref()
+  }
+
   export async function wake(sessionID: string): Promise<void> {
     if (isRunning(sessionID)) return
     if (!(await SessionInbox.hasRunnableItem(sessionID))) return
     const { SessionInvoke } = await import("./invoke")
-    await SessionInvoke.repairAfterAbort(sessionID)
+    // Repair is best-effort: loop() surfaces its own terminal errors to the
+    // retry chain, so a failed repair must not keep queued work undriven.
+    await SessionInvoke.repairAfterAbort(sessionID).catch((error) => {
+      log.warn("session repair before wake failed", { sessionID, error })
+    })
     await SessionInvoke.loop(sessionID)
   }
 
   export function scheduleWake(sessionID: string, reason: string): void {
-    setTimeout(() => {
-      void wake(sessionID).catch((error) => {
-        log.error("async session wake failed", { sessionID, reason, error })
-      })
-    }, 0)
+    if (activeWakeChains.has(sessionID)) return
+    activeWakeChains.add(sessionID)
+    scheduleWakeAttempt(sessionID, reason, 0, 0)
   }
 
   export function setStatus(sessionID: string, status: StatusInfo): void {
