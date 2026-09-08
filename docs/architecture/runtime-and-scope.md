@@ -17,6 +17,8 @@ The same runtime can be launched through several ownership surfaces:
 
 `SYNERGY_HOME` redirects the complete installation home, including config, data, state, logs, credentials, daemon records, and locks. One server owns a given `SYNERGY_HOME` at a time.
 
+Startup migrations finish before HTTP requests are admitted. Managed Desktop receives versioned aggregate migration progress from the CLI reporter, keeps waiting while work advances, and displays the current step in its startup overlay. The [development reference](../reference/development.md) defines startup waiting limits; the [decision record](../decisions/implemented/bug-fix/2026-09-08-desktop-migration-progress-wait.md) explains the progress-based deadline.
+
 ## Global Runtime
 
 `GlobalRuntime.start()` runs once per server process inside the home Scope. It starts or initializes:

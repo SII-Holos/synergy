@@ -75,6 +75,10 @@ Route main-process broadcasts for the application renderer through `DesktopRende
 4. Restart only the isolated process when server or Desktop main-process code changes; Vite handles Web hot reload.
 5. Run narrow automated tests and `bun run quality:quick` independently of the manual instance.
 
+For managed startup changes, test a fresh home and an isolated upgrade lasting longer than the ordinary health deadline. Verify advancing migration counts renew the wait, duplicate counts and ordinary logs do not, stalled work fails with its last progress, and migration completion restores the health deadline. Run `SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/startup-progress-runtime.test.ts` from `packages/desktop` to check the actual progress DOM in Electron. Keep startup progress aggregate-only and report it before awaiting long migration work.
+
+For CLI migration progress, exercise both foreground server and local `send --format json` startup. Keep human progress on stderr, display the step before its first await, and preserve stdout for command results or machine protocols. Test TTY updates, redirected output, `NO_COLOR`, `TERM=dumb`, failure cleanup and retry; explicit silent migration callers remain silent.
+
 ## Clean Up
 
 Terminate only PIDs launched for this isolated home. Verify the PID/port before signaling it. Remove the isolated directory only after its processes have exited and only when no evidence is needed.

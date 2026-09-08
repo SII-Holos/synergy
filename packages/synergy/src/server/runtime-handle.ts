@@ -1,5 +1,5 @@
 import "../product-registration"
-import { ensureMigrations, type MigrationReporter } from "@/migration"
+import { ensureMigrations, type MigrationReporter, type RunOptions } from "@/migration"
 import { ServerProcessLock } from "@/util/server-process-lock"
 import { Scope } from "@/scope"
 import { ScopeContext } from "@/scope/context"
@@ -38,6 +38,7 @@ export namespace RuntimeHandle {
     mode: "server" | "oneshot"
     network: Parameters<typeof Server.listen>[0]
     reporter?: MigrationReporter
+    migrationOutput?: RunOptions["output"]
   }) {
     const ownership = await ServerProcessLock.acquire(undefined, options.mode === "oneshot" ? "oneshot" : undefined)
     let server: ReturnType<typeof Server.listen> | undefined
@@ -118,7 +119,10 @@ export namespace RuntimeHandle {
 
     try {
       await Global.initialize()
-      const migration = await ensureMigrations({ output: "silent", reporter: options.reporter })
+      const migration = await ensureMigrations({
+        output: options.migrationOutput ?? "silent",
+        reporter: options.reporter,
+      })
       const resolved = await ScopeContext.provide({ scope: Scope.home(), fn: () => Config.resolveExecution() })
       const requested = Experiment.applyRuntime(resolved, options.experiment?.runtime ?? {})
       const shutdownTimeoutMs = configureExecution(requested)

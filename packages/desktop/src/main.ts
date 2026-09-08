@@ -209,6 +209,9 @@ async function createWindow() {
     resourcesPath: process.resourcesPath,
     logDir: desktopLogDir(),
     externalUrl: process.env.SYNERGY_DESKTOP_APP_URL,
+    onStartupStatus: (status) => {
+      void setStartupStatus(status)
+    },
   })
   if (!updater) {
     updater = new DesktopUpdater({

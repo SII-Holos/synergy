@@ -9,6 +9,7 @@ export interface DesktopStartupPageOptions {
 export interface DesktopStartupStatus {
   title: string
   detail: string
+  progress?: { current: number; total: number }
 }
 
 export function desktopStartupPage(options: DesktopStartupPageOptions): string {
@@ -211,6 +212,8 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
     .startup-center {
       display: grid;
       place-items: center;
+      width: min(360px, calc(100vw - 48px));
+      text-align: center;
     }
 
     .startup-mark {
@@ -240,13 +243,49 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
     }
 
     .startup-status {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      margin: -1px;
+      margin-top: 20px;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .startup-detail,
+    .startup-count {
+      margin-top: 10px;
+      font-size: 13px;
+      line-height: 1.5;
+      opacity: 0.7;
+    }
+
+    .startup-progress {
+      width: 100%;
+      height: 4px;
+      margin-top: 24px;
       overflow: hidden;
-      clip: rect(0 0 0 0);
-      white-space: nowrap;
+      border-radius: 4px;
+      background: var(--startup-control-hover-bg);
+    }
+
+    .startup-progress__fill {
+      width: 35%;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--startup-focus-ring);
+      animation: startup-progress 1600ms ease-in-out infinite;
+    }
+
+    .startup-progress[aria-valuenow] .startup-progress__fill {
+      animation: none;
+      transition: width 180ms ease-out;
+    }
+
+    .startup-count {
+      min-height: 20px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    @keyframes startup-progress {
+      from { transform: translateX(-100%); }
+      to { transform: translateX(290%); }
     }
 
     @keyframes startup-breathe {
@@ -262,29 +301,54 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .startup-mark {
+      .startup-mark,
+      .startup-progress__fill {
         animation: none;
       }
+      .startup-progress[aria-valuenow] .startup-progress__fill { transition: none; }
     }
   </style>
 </head>
 <body>
   <div class="startup-page">
     ${customChrome}
-    <main class="startup-center" aria-live="polite" aria-busy="true">
+    <main class="startup-center" aria-busy="true">
       <div class="startup-mark" aria-hidden="true">${icon}</div>
-      <div class="startup-status" data-startup-status>Opening Synergy</div>
+      <div class="startup-status" data-startup-status role="status">Opening Synergy</div>
+      <div class="startup-detail" data-startup-detail></div>
+      <div class="startup-progress" role="progressbar" aria-label="Startup progress" aria-valuemin="0" aria-valuemax="100" aria-describedby="startup-count">
+        <div class="startup-progress__fill"></div>
+      </div>
+      <div class="startup-count" id="startup-count"></div>
     </main>
   </div>
   <script>
     const desktopWindow = window.synergyDesktop?.window
     const status = document.querySelector("[data-startup-status]")
+    const detail = document.querySelector("[data-startup-detail]")
+    const progress = document.querySelector('[role="progressbar"]')
+    const fill = document.querySelector(".startup-progress__fill")
+    const count = document.querySelector(".startup-count")
     const maximize = document.querySelector('[data-window-action="maximize"]')
 
     function setStatus(next) {
       if (!next) return
       if (typeof next.title === "string") status.textContent = next.title
-      if (typeof next.detail === "string") status.setAttribute("data-detail", next.detail)
+      if (typeof next.detail === "string") detail.textContent = next.detail
+      const value = next.progress
+      if (Number.isSafeInteger(value?.current) && Number.isSafeInteger(value?.total) && value.total > 0 && value.current >= 0 && value.current <= value.total) {
+        const percent = Math.floor(value.current / value.total * 100)
+        const text = value.current.toLocaleString("en") + " / " + value.total.toLocaleString("en") + " · " + percent + "%"
+        progress.setAttribute("aria-valuenow", String(percent))
+        progress.setAttribute("aria-valuetext", text)
+        fill.style.width = (value.current / value.total * 100) + "%"
+        count.textContent = text
+      } else {
+        progress.removeAttribute("aria-valuenow")
+        progress.removeAttribute("aria-valuetext")
+        fill.style.removeProperty("width")
+        count.textContent = ""
+      }
     }
 
     function setStartupTheme(theme) {

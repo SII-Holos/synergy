@@ -8,12 +8,18 @@ import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import type { Migration } from "@/migration/types"
 import { MessageV2 } from "../message-v2"
-import { Info as SessionInfo } from "../types"
+import { CortexDelegationInfo } from "../types"
 import { RolloutArtifact } from "./artifact"
 import { RolloutAttachment } from "./attachment"
 import type { RolloutSchema } from "./schema"
 
 export namespace RolloutMigration {
+  // Archived session metadata is historical evidence; validate only the settlement fields this migration owns.
+  const SettlementRecord = z
+    .object({
+      cortex: CortexDelegationInfo.pick({ status: true, settledAt: true }).passthrough().optional(),
+    })
+    .passthrough()
   const Audit = z
     .object({
       version: z.literal(1),
@@ -56,6 +62,8 @@ export namespace RolloutMigration {
     }
     const scopeID = Identifier.asScopeID(owner.scopeID),
       sessionID = Identifier.asSessionID(owner.sessionID)
+    const infoKey = StoragePath.sessionInfo(scopeID, sessionID)
+    const info = SettlementRecord.parse(await Storage.read(infoKey))
     for (const messageID of await Storage.scan(StoragePath.sessionMessagesRoot(scopeID, sessionID), { strict: true })) {
       const mid = Identifier.asMessageID(messageID)
       const infoKey = StoragePath.messageInfo(scopeID, sessionID, mid)
@@ -140,8 +148,6 @@ export namespace RolloutMigration {
         if (part !== parsed.data) await Storage.write(partKey, part, options)
       }
     }
-    const infoKey = StoragePath.sessionInfo(scopeID, sessionID)
-    const info = SessionInfo.parse(await Storage.read(infoKey))
     if (info.cortex && !["queued", "running"].includes(info.cortex.status) && !info.cortex.settledAt) {
       await Storage.write(infoKey, { ...info, cortex: { ...info.cortex, settledAt: audit.completedAt } }, options)
       audit.missing.push("cortex:historical_delivery_not_verified")

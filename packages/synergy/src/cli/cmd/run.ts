@@ -529,7 +529,7 @@ export const SendCommand = cmd({
     await using runtime = await RuntimeHandle.open({
       mode: "oneshot",
       experiment,
-      reporter: args.format === "json" ? { summary() {} } : undefined,
+      migrationOutput: "interactive",
       network: { port: args.port ?? 0, hostname: "127.0.0.1" },
     })
     await withScopeContext(

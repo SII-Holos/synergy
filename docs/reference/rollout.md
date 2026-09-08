@@ -58,6 +58,6 @@ Rollout ZIP uses a versioned manifest, fixed journal revisions, transcripts, wor
 
 Archive limits are 64 MiB per entry, 16 GiB total uncompressed content and 100,000 entries. Binary artifacts use 1 MiB chunks. Plain and gzip transcript imports remain supported with a 64 MiB decompressed limit, but cannot supply omitted rollout artifact files. Imports retain the existing same-Scope constraint.
 
-The versioned session migration preserves historical costs with their old calculation label, associates trusted retained outputs and available attachments, records gaps and supports reentry. Historical requests and provider usage cannot be reconstructed if they were never recorded. Operational log cleanup does not remove rollout evidence.
+The versioned session migration preserves historical costs with their old calculation label, associates trusted retained outputs and available attachments, records gaps and supports reentry. Session metadata validation covers the settlement fields this migration updates; unrelated historical metadata is preserved without changing current API validation. Historical requests and provider usage cannot be reconstructed if they were never recorded. Operational log cleanup does not remove rollout evidence.
 
 Cortex cancellation publishes the durable cancelled state without waiting for held processors. Rollout cancellation and runtime shutdown separately drain task execution, descendant work, and final evidence before reporting completion or disposing resources.
