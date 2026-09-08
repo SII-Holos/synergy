@@ -68,6 +68,7 @@ describe("coverage batch splitting", () => {
       "packages/harness/test/config/extensions-field.test.ts",
       "packages/harness/test/global/test-home-guard.test.ts",
       "packages/harness/test/lifecycle/runtime.test.ts",
+      "packages/harness/test/migration/terminal-progress.test.ts",
       "packages/harness/test/provider/catalog-stability.test.ts",
       "packages/harness/test/session/retry.test.ts",
       "packages/harness/test/storage/storage-retry.test.ts",
