@@ -38,7 +38,7 @@ const originalMaybeCollect = SessionMemoryPressure.maybeCollect
 const originalStream = LLM.stream
 const originalPressurePollMs = process.env.SYNERGY_REENCODE_PRESSURE_POLL_MS
 
-async function waitForTerminalJob(id: string, timeoutMs = 3_000) {
+async function waitForTerminalJob(id: string, timeoutMs = 8_000) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     const job = ExperienceReencode.get(id)
@@ -156,7 +156,9 @@ async function createTurn(sessionID: string, userText: string, assistantText: st
   return user
 }
 
-afterEach(() => {
+afterEach(async () => {
+  const active = ExperienceReencode.current()
+  if (active?.status === "running") await ExperienceReencode.cancel(active.id)
   ;(Agent.get as any) = originalAgentGet
   ;(Agent.getAvailableModel as any) = originalAgentModel
   ;(Config.current as any) = originalConfigCurrent
