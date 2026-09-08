@@ -15,7 +15,6 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { SessionRecovery } from "@ericsanchezok/synergy-harness/session/recovery"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
-import { ActivitySummary } from "@ericsanchezok/synergy-harness/session/activity-summary"
 import { LatticeRuntime } from "@ericsanchezok/synergy-workflows/lattice/runtime"
 import { PushBridge } from "@ericsanchezok/synergy-workbench/push/bridge"
 
@@ -34,7 +33,6 @@ export namespace GlobalRuntime {
             log.warn("session runtime recovery failed", { scopeID: Scope.home().id, error })
           })
           await LatticeRuntime.init()
-          ActivitySummary.init()
           await SessionInvoke.resumePending({ scopeID: Scope.home().id })
           await ResponseCardRuntime.pruneExpired().catch((error) => {
             log.warn("response-card expired registration cleanup failed", { error })

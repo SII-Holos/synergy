@@ -13,7 +13,7 @@ import { registerCommandStartup } from "@ericsanchezok/synergy-runtime-local/com
  * every historical scope-startup step is registered as a contribution, and
  * the deterministic topological plan reproduces the historical startup
  * order exactly. Order-sensitive chain (blueprint): session-recovery →
- * lattice-runtime → activity-summary → resume-pending.
+ * lattice-runtime → resume-pending.
  */
 describe("ScopeStartup registration", () => {
   test("product registration mounts all domain startup contributions", () => {
@@ -38,8 +38,8 @@ describe("ScopeStartup registration", () => {
     expect(indexOf("starting-listeners")).toBeLessThan(indexOf("plugin-init"))
     expect(indexOf("plugin-init")).toBeLessThan(indexOf("session-recovery"))
     expect(indexOf("session-recovery")).toBeLessThan(indexOf("lattice-runtime"))
-    expect(indexOf("lattice-runtime")).toBeLessThan(indexOf("activity-summary"))
-    expect(indexOf("activity-summary")).toBeLessThan(indexOf("resume-pending"))
+    expect(indexOf("lattice-runtime")).toBeLessThan(indexOf("resume-pending"))
+    expect(plan).not.toContain("activity-summary")
     expect(indexOf("resume-pending")).toBeLessThan(indexOf("format"))
     expect(indexOf("format")).toBeLessThan(indexOf("lsp-init"))
     expect(indexOf("lsp-init")).toBeLessThan(indexOf("file-watcher"))

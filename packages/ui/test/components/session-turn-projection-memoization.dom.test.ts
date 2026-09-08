@@ -275,10 +275,7 @@ describe("SessionTurn streaming projection memoization", () => {
     const lookupsBeforeSettle = harness.getToolLookups()
     harness.setSessionStatus({ type: "idle" })
 
-    // Settlement flips working() off and re-projects the settled message
-    // exactly once, revealing Copy Markdown. Each projection pass resolves
-    // the tool renderer twice (group-key scan + main loop), so the exact
-    // delta is +2; a double re-projection would yield +4 and fail here.
-    expect(await waitUntil(() => harness.getToolLookups() === lookupsBeforeSettle + 2)).toBe(true)
+    expect(await waitUntil(() => harness.getToolLookups() === lookupsBeforeSettle + 1)).toBe(true)
+    expect(document.querySelector('[data-slot="session-turn-timeline-item"][data-kind="copy-markdown"]')).not.toBeNull()
   })
 })
