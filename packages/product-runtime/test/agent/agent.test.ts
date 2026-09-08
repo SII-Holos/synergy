@@ -1,0 +1,992 @@
+import { test, expect } from "bun:test"
+import path from "path"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
+import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
+import { RuntimeReload } from "@ericsanchezok/synergy-product-runtime/runtime/reload"
+import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"
+import { registerAgentPluginSource } from "@ericsanchezok/synergy-plugin-host/plugin/agent-source"
+
+registerAgentPluginSource()
+
+// Helper to evaluate permission for a tool with wildcard pattern
+function evalPerm(agent: Agent.Info | undefined, permission: string): PermissionNext.Action | undefined {
+  if (!agent) return undefined
+  return PermissionNext.evaluate(permission, "*", agent.permission).action
+}
+
+test("returns default native agents when no config", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const agents = await Agent.list()
+      const names = agents.map((a) => a.name)
+      expect(names).toContain("developer")
+      expect(names).toContain("scribe")
+      expect(names).toContain("explore")
+      expect(names).toContain("compaction")
+      expect(names).toContain("title")
+      expect(names).toContain("summary")
+      expect(names).toContain("multimodal-looker")
+      expect(names).toContain("scout")
+      expect(names).toContain("advisor")
+      expect(names).toContain("scholar")
+    },
+  })
+})
+
+test("developer agent has correct default properties", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      expect(developer).toBeDefined()
+      expect(developer?.mode).toBe("subagent")
+      expect(developer?.native).toBe(true)
+      expect(evalPerm(developer, "edit")).toBe("ask")
+      expect(evalPerm(developer, "bash")).toBe("allow")
+      expect(evalPerm(developer, "mcp__any_server__any_tool")).toBe("deny")
+    },
+  })
+})
+
+test("classic built-in agents resolve the intended model roles", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      model: "openai/default-test",
+      mid_model: "openai/mid-test",
+      thinking_model: "openai/thinking-test",
+      creative_model: "openai/creative-test",
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const expected = {
+        developer: { role: "thinking", model: "thinking-test" },
+        explore: { role: "mid", model: "mid-test" },
+        scout: { role: "mid", model: "mid-test" },
+        advisor: { role: "thinking", model: "thinking-test" },
+        inspector: { role: "mid", model: "mid-test" },
+        scribe: { role: "creative", model: "creative-test" },
+        scholar: { role: "thinking", model: "thinking-test" },
+      } as const
+
+      for (const [name, contract] of Object.entries(expected)) {
+        const agent = await Agent.get(name)
+        expect(agent?.modelRole, name).toBe(contract.role)
+        expect(agent?.modelSource, name).toBe("role")
+        expect(agent?.model?.modelID, name).toBe(contract.model)
+      }
+
+      const looker = await Agent.get("multimodal-looker")
+      expect(looker?.modelRole).toBe("vision")
+      expect(looker?.model).toBeUndefined()
+    },
+  })
+})
+
+test("model role summaries group built-in subagents", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const summaries = await Agent.modelRoleSummaries()
+      const mid = summaries.find((summary) => summary.id === "mid")
+      const thinking = summaries.find((summary) => summary.id === "thinking")
+      const creative = summaries.find((summary) => summary.id === "creative")
+      const vision = summaries.find((summary) => summary.id === "vision")
+
+      expect(mid?.usedBy.map((agent) => agent.name)).toEqual(expect.arrayContaining(["explore", "scout", "inspector"]))
+      expect(mid?.usedBy.map((agent) => agent.name)).not.toContain("developer")
+      expect(thinking?.usedBy.map((agent) => agent.name)).toEqual(
+        expect.arrayContaining(["developer", "advisor", "scholar"]),
+      )
+      expect(creative?.usedBy.map((agent) => agent.name)).toContain("scribe")
+      expect(vision?.fallbackChain).toEqual(["vision_model"])
+      expect(vision?.resolvedModel).toBeUndefined()
+      expect(vision?.disabledReason).toContain("Image analysis is disabled")
+    },
+  })
+})
+
+test("explore agent allows edit and write via ask", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const explore = await Agent.get("explore")
+      expect(explore).toBeDefined()
+      expect(explore?.mode).toBe("subagent")
+      expect(evalPerm(explore, "edit")).toBe("deny")
+      expect(evalPerm(explore, "write")).toBe("deny")
+      expect(evalPerm(explore, "todoread")).toBe("allow")
+      expect(evalPerm(explore, "todowrite")).toBe("allow")
+    },
+  })
+})
+
+test("scholar agent has correct permissions", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const scholar = await Agent.get("scholar")
+      expect(scholar).toBeDefined()
+      expect(scholar?.mode).toBe("subagent")
+      expect(scholar?.native).toBe(true)
+      // Scholar allows web fetch and MCP research tools
+      expect(PermissionNext.evaluate("webfetch", "*", scholar!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("mcp__search__server__tool", "*", scholar!.permission).action).toBe("allow")
+    },
+  })
+})
+
+test("compaction built-in permission layer denies all tools", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const compaction = await Agent.get("compaction")
+      expect(compaction).toBeDefined()
+      expect(compaction?.hidden).toBe(true)
+      expect(evalPerm(compaction, "bash")).toBe("deny")
+      expect(evalPerm(compaction, "edit")).toBe("deny")
+      expect(evalPerm(compaction, "read")).toBe("deny")
+      expect(evalPerm(compaction, "session_list")).toBe("deny")
+      expect(evalPerm(compaction, "session_read")).toBe("deny")
+      expect(evalPerm(compaction, "session_send")).toBe("deny")
+    },
+  })
+})
+
+test("model-only internal agents do not inherit subagent discovery tools", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      for (const name of ["compaction", "title", "summary", "intent", "script", "reward"]) {
+        const agent = await Agent.get(name)
+        expect(evalPerm(agent, "search_tools"), `${name}:search_tools`).toBe("deny")
+        expect(evalPerm(agent, "expand_tools"), `${name}:expand_tools`).toBe("deny")
+      }
+    },
+  })
+})
+
+test("custom agent from config creates new agent", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        my_custom_agent: {
+          model: "openai/gpt-4",
+          description: "My custom agent",
+          temperature: 0.5,
+          top_p: 0.9,
+        },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const custom = await Agent.get("my_custom_agent")
+      expect(custom).toBeDefined()
+      expect(custom?.model?.providerID).toBe("openai")
+      expect(custom?.model?.modelID).toBe("gpt-4")
+      expect(custom?.description).toBe("My custom agent")
+      expect(custom?.temperature).toBe(0.5)
+      expect(custom?.topP).toBe(0.9)
+      expect(custom?.native).toBe(false)
+      expect(custom?.mode).toBe("all")
+    },
+  })
+})
+
+test("custom agent config overrides native agent properties", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        developer: {
+          model: "anthropic/claude-3",
+          description: "Custom build agent",
+          temperature: 0.7,
+          color: "#FF0000",
+        },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      expect(developer).toBeDefined()
+      expect(developer?.model?.providerID).toBe("anthropic")
+      expect(developer?.model?.modelID).toBe("claude-3")
+      expect(developer?.description).toBe("Custom build agent")
+      expect(developer?.temperature).toBe(0.7)
+      expect(developer?.color).toBe("#FF0000")
+      expect(developer?.native).toBe(true)
+    },
+  })
+})
+
+test("explicit agent model wins over configured model role", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      model: "openai/gpt-4.1",
+      thinking_model: "openai/gpt-5-thinking",
+      agent: {
+        developer: {
+          modelRole: "thinking",
+          model: "anthropic/claude-3",
+        },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      expect(developer?.modelRole).toBe("thinking")
+      expect(developer?.modelSource).toBe("explicit")
+      expect(developer?.model).toEqual({ providerID: "anthropic", modelID: "claude-3" })
+
+      const summaries = await Agent.modelRoleSummaries()
+      const thinking = summaries.find((summary) => summary.id === "thinking")
+      const usage = thinking?.usedBy.find((agent) => agent.name === "developer")
+      expect(usage?.modelSource).toBe("explicit")
+      expect(usage?.model).toEqual({ providerID: "anthropic", modelID: "claude-3" })
+    },
+  })
+})
+
+test("custom config agent can use a model role", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      model: "openai/gpt-4.1",
+      creative_model: "openai/gpt-5-creative",
+      agent: {
+        design_reviewer: {
+          description: "Reviews interface design changes",
+          modelRole: "creative",
+        },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const agent = await Agent.get("design_reviewer")
+      expect(agent?.source).toBe("config")
+      expect(agent?.modelRole).toBe("creative")
+      expect(agent?.modelSource).toBe("role")
+      expect(agent?.model).toEqual({ providerID: "openai", modelID: "gpt-5-creative" })
+
+      const creative = (await Agent.modelRoleSummaries()).find((summary) => summary.id === "creative")
+      expect(creative?.usedBy.map((item) => item.name)).toContain("design_reviewer")
+    },
+  })
+})
+
+test("plugin agent model role appears in role summaries", async () => {
+  const originalAgentEntries = Plugin.agentEntries
+  ;(Plugin as any).agentEntries = async () => [
+    {
+      contributionId: "plugin_visual_reviewer",
+      pluginId: "visual-plugin",
+      pluginGeneration: "generation-one",
+      name: "plugin_visual_reviewer",
+      description: "Reviews visual output from a plugin",
+      prompt: "Review visual output.",
+      mode: "subagent",
+      modelRole: "creative",
+    },
+  ]
+
+  try {
+    await using tmp = await tmpdir({
+      config: {
+        model: "openai/gpt-4.1",
+        creative_model: "openai/gpt-5-creative",
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await Agent.reload()
+
+        const agent = await Agent.get("plugin_visual_reviewer")
+        expect(agent?.source).toBe("plugin")
+        expect(agent && "pluginOwner" in agent).toBe(false)
+        expect(agent && Agent.pluginOwner(agent)).toEqual({
+          pluginId: "visual-plugin",
+          pluginGeneration: "generation-one",
+        })
+        expect(agent?.modelRole).toBe("creative")
+        expect(agent?.model).toEqual({ providerID: "openai", modelID: "gpt-5-creative" })
+
+        const creative = (await Agent.modelRoleSummaries()).find((summary) => summary.id === "creative")
+        expect(creative?.usedBy.map((item) => item.name)).toContain("plugin_visual_reviewer")
+      },
+    })
+  } finally {
+    ;(Plugin as any).agentEntries = originalAgentEntries
+    await Agent.reload()
+  }
+})
+
+test("agent disable removes agent from list", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        explore: { disable: true },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const explore = await Agent.get("explore")
+      expect(explore).toBeUndefined()
+      const agents = await Agent.list()
+      const names = agents.map((a) => a.name)
+      expect(names).not.toContain("explore")
+    },
+  })
+})
+
+test("agent permission config merges with defaults", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        developer: {
+          permission: {
+            bash: {
+              "rm -rf *": "deny",
+            },
+          },
+        },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      expect(developer).toBeDefined()
+      // Specific pattern is denied
+      expect(PermissionNext.evaluate("bash", "rm -rf *", developer!.permission).action).toBe("deny")
+      // Edit remains ask by default
+      expect(evalPerm(developer, "edit")).toBe("ask")
+    },
+  })
+})
+
+test("global permission config applies to all agents", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      permission: {
+        bash: "deny",
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      expect(developer).toBeDefined()
+      expect(evalPerm(developer, "bash")).toBe("deny")
+    },
+  })
+})
+
+test("agent steps/maxSteps config overrides steps property", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        developer: { steps: 50 },
+        scribe: { maxSteps: 100 },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      const scribe = await Agent.get("scribe")
+      expect(developer?.steps).toBe(50)
+      expect(scribe?.steps).toBe(100)
+    },
+  })
+})
+
+test("agent mode can be overridden", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        explore: { mode: "primary" },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const explore = await Agent.get("explore")
+      expect(explore?.mode).toBe("primary")
+    },
+  })
+})
+
+test("agent name can be overridden", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        developer: { name: "Builder" },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      expect(developer?.name).toBe("Builder")
+    },
+  })
+})
+
+test("agent prompt can be set from config", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        developer: { prompt: "Custom system prompt" },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      expect(developer?.prompt).toBe("Custom system prompt")
+    },
+  })
+})
+
+test("unknown agent properties are placed into options", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        developer: {
+          random_property: "hello",
+          another_random: 123,
+        },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      expect(developer?.options.random_property).toBe("hello")
+      expect(developer?.options.another_random).toBe(123)
+    },
+  })
+})
+
+test("agent options merge correctly", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        developer: {
+          options: {
+            custom_option: true,
+            another_option: "value",
+          },
+        },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      expect(developer?.options.custom_option).toBe(true)
+      expect(developer?.options.another_option).toBe("value")
+    },
+  })
+})
+
+test("multiple custom agents can be defined", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        agent_a: {
+          description: "Agent A",
+          mode: "subagent",
+        },
+        agent_b: {
+          description: "Agent B",
+          mode: "primary",
+        },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const agentA = await Agent.get("agent_a")
+      const agentB = await Agent.get("agent_b")
+      expect(agentA?.description).toBe("Agent A")
+      expect(agentA?.mode).toBe("subagent")
+      expect(agentB?.description).toBe("Agent B")
+      expect(agentB?.mode).toBe("primary")
+    },
+  })
+})
+
+test("Agent.get returns undefined for non-existent agent", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const nonExistent = await Agent.get("does_not_exist")
+      expect(nonExistent).toBeUndefined()
+    },
+  })
+})
+
+test("explore agent model follows mid_model after config reload", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      model: "openai/gpt-4.1",
+      mid_model: "openai/gpt-4.1",
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const before = await Agent.get("explore")
+      expect(before?.model).toEqual({ providerID: "openai", modelID: "gpt-4.1" })
+
+      await Bun.write(
+        path.join(tmp.path, ".synergy", "synergy.d", "10-models.jsonc"),
+        JSON.stringify({
+          model: "openai/gpt-4.1",
+          mid_model: "openai/gpt-5-mini",
+        }),
+      )
+
+      await RuntimeReload.reload({ targets: ["config"], scope: "project", reason: "test" })
+
+      const after = await Agent.get("explore")
+      expect(after?.model).toEqual({ providerID: "openai", modelID: "gpt-5-mini" })
+    },
+  })
+})
+
+test("default subagent permission denies unknown tools and external_directory ask", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      expect(evalPerm(developer, "doom_loop")).toBe("deny")
+      expect(evalPerm(developer, "external_directory")).toBe("ask")
+    },
+  })
+})
+
+test("openclaw external agent is registered without model switching claims", async () => {
+  if (!Bun.which("openclaw")) {
+    console.log("Skipping: openclaw binary not available")
+    return
+  }
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const openclaw = await Agent.get("openclaw")
+      expect(openclaw?.external?.adapter).toBe("openclaw")
+      expect(openclaw?.external?.config?.modelSwitch).toBeUndefined()
+    },
+  })
+})
+
+test("developer denies webfetch by default", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      expect(evalPerm(developer, "webfetch")).toBe("allow")
+    },
+  })
+})
+
+test("legacy tools config converts to permissions", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        developer: {
+          tools: {
+            bash: false,
+            read: false,
+          },
+        },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      expect(evalPerm(developer, "bash")).toBe("deny")
+      expect(evalPerm(developer, "read")).toBe("deny")
+    },
+  })
+})
+
+test("legacy tools config maps write/edit/patch/multiedit to edit permission", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        developer: {
+          tools: {
+            write: false,
+          },
+        },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      expect(evalPerm(developer, "edit")).toBe("deny")
+    },
+  })
+})
+
+test("Truncate.DIR is allowed even when user denies external_directory globally", async () => {
+  const { Truncate } = await import("@ericsanchezok/synergy-harness/tool/truncation")
+  await using tmp = await tmpdir({
+    config: {
+      permission: {
+        external_directory: "deny",
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      expect(PermissionNext.evaluate("external_directory", Truncate.DIR, developer!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("external_directory", "/some/other/path", developer!.permission).action).toBe(
+        "deny",
+      )
+    },
+  })
+})
+
+test("Truncate.DIR is allowed even when user denies external_directory per-agent", async () => {
+  const { Truncate } = await import("@ericsanchezok/synergy-harness/tool/truncation")
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        developer: {
+          permission: {
+            external_directory: "deny",
+          },
+        },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      expect(PermissionNext.evaluate("external_directory", Truncate.DIR, developer!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("external_directory", "/some/other/path", developer!.permission).action).toBe(
+        "deny",
+      )
+    },
+  })
+})
+
+test("explicit Truncate.DIR deny is respected", async () => {
+  const { Truncate } = await import("@ericsanchezok/synergy-harness/tool/truncation")
+  await using tmp = await tmpdir({
+    config: {
+      permission: {
+        external_directory: {
+          "*": "deny",
+          [Truncate.DIR]: "deny",
+        },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      expect(PermissionNext.evaluate("external_directory", Truncate.DIR, developer!.permission).action).toBe("deny")
+    },
+  })
+})
+
+// Skill permission tests
+
+test("scribe agent has selective skill permissions", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const scribe = await Agent.get("scribe")
+      expect(scribe).toBeDefined()
+      // Scribe allows git-guide and synergy-skill-creator
+      expect(PermissionNext.evaluate("skill", "git-guide", scribe!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "synergy-skill-creator", scribe!.permission).action).toBe("allow")
+    },
+  })
+})
+
+test("explore agent has selective skill permissions", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const explore = await Agent.get("explore")
+      expect(explore).toBeDefined()
+      // Explore allows git-guide and synergy-skill-creator
+      expect(PermissionNext.evaluate("skill", "git-guide", explore!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "synergy-skill-creator", explore!.permission).action).toBe("allow")
+    },
+  })
+})
+
+test("multimodal-looker agent denies all skills", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const looker = await Agent.get("multimodal-looker")
+      expect(looker).toBeDefined()
+      expect(PermissionNext.evaluate("skill", "*", looker!.permission).action).toBe("deny")
+      expect(PermissionNext.evaluate("skill", "git-guide", looker!.permission).action).toBe("deny")
+      expect(PermissionNext.evaluate("skill", "synergy-skill-creator", looker!.permission).action).toBe("deny")
+    },
+  })
+})
+
+test("scout agent has selective skill permissions", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const scout = await Agent.get("scout")
+      expect(scout).toBeDefined()
+      // Scout allows git-guide and synergy-skill-creator
+      expect(PermissionNext.evaluate("skill", "git-guide", scout!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "synergy-skill-creator", scout!.permission).action).toBe("allow")
+    },
+  })
+})
+
+test("developer agent denies skills by default", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const developer = await Agent.get("developer")
+      expect(developer).toBeDefined()
+      expect(PermissionNext.evaluate("skill", "git-guide", developer!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "synergy-skill-creator", developer!.permission).action).toBe("allow")
+    },
+  })
+})
+
+test("Agent.defaultAgent() returns synergy by default", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const defaultAgent = await Agent.defaultAgent()
+      expect(defaultAgent).toBe("synergy")
+    },
+  })
+})
+
+test("Agent.defaultAgent() with default_agent config returns configured agent", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      default_agent: "developer",
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const defaultAgent = await Agent.defaultAgent()
+      expect(defaultAgent).toBe("developer")
+    },
+  })
+})
+
+test("Agent.defaultAgent() with custom default_agent returns configured custom agent", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      default_agent: "custom_agent",
+      agent: {
+        custom_agent: {
+          description: "A custom default agent",
+        },
+      },
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const defaultAgent = await Agent.defaultAgent()
+      expect(defaultAgent).toBe("custom_agent")
+    },
+  })
+})
+
+test("Agent.list() sorts configured default_agent first", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      default_agent: "scribe",
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const agents = await Agent.list()
+      const firstAgent = agents[0]
+      expect(firstAgent.name).toBe("scribe")
+    },
+  })
+})
+
+test("Agent.list() sorts synergy first when no default_agent configured", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const agents = await Agent.list()
+      const firstAgent = agents[0]
+      expect(firstAgent.name).toBe("synergy")
+    },
+  })
+})
+
+test("plugin agent registered by public name even when contribution id differs", async () => {
+  const originalAgentEntries = Plugin.agentEntries
+  ;(Plugin as any).agentEntries = async () => [
+    {
+      contributionId: "plugin-ui-reviewer",
+      pluginId: "ui-plugin",
+      pluginGeneration: "generation-one",
+      name: "ui_reviewer",
+      description: "Reviews UI from a plugin",
+      prompt: "Review UI output.",
+      mode: "subagent",
+    },
+  ]
+
+  try {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await Agent.reload()
+        const byName = await Agent.get("ui_reviewer")
+        expect(byName).toBeDefined()
+        expect(byName?.source).toBe("plugin")
+        const byId = await Agent.get("plugin-ui-reviewer")
+        expect(byId).toBeUndefined()
+      },
+    })
+  } finally {
+    ;(Plugin as any).agentEntries = originalAgentEntries
+    await Agent.reload()
+  }
+})
+
+test("plugin agent with same public name as builtin does not override builtin", async () => {
+  const originalAgentEntries = Plugin.agentEntries
+  ;(Plugin as any).agentEntries = async () => [
+    {
+      contributionId: "plugin-developer",
+      pluginId: "shadow-plugin",
+      pluginGeneration: "generation-one",
+      name: "developer",
+      description: "Shadow developer",
+      prompt: "Shadow.",
+      mode: "subagent",
+    },
+  ]
+
+  try {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await Agent.reload()
+        const developer = await Agent.get("developer")
+        expect(developer).toBeDefined()
+        expect(developer?.native).toBe(true)
+        expect(developer?.source).toBe("builtin")
+      },
+    })
+  } finally {
+    ;(Plugin as any).agentEntries = originalAgentEntries
+    await Agent.reload()
+  }
+})
+
+test("two plugin contributions with same public name use first-wins order", async () => {
+  const originalAgentEntries = Plugin.agentEntries
+  ;(Plugin as any).agentEntries = async () => [
+    {
+      contributionId: "plugin-a-shared",
+      pluginId: "plugin-a",
+      pluginGeneration: "generation-one",
+      name: "shared_name",
+      description: "First registered plugin agent",
+      prompt: "First.",
+      mode: "subagent",
+    },
+    {
+      contributionId: "plugin-b-shared",
+      pluginId: "plugin-b",
+      pluginGeneration: "generation-two",
+      name: "shared_name",
+      description: "Second registered plugin agent",
+      prompt: "Second.",
+      mode: "subagent",
+    },
+  ]
+
+  try {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await Agent.reload()
+        const agent = await Agent.get("shared_name")
+        expect(agent).toBeDefined()
+        expect(agent?.description).toBe("First registered plugin agent")
+        expect(agent && Agent.pluginOwner(agent)).toEqual({
+          pluginId: "plugin-a",
+          pluginGeneration: "generation-one",
+        })
+      },
+    })
+  } finally {
+    ;(Plugin as any).agentEntries = originalAgentEntries
+    await Agent.reload()
+  }
+})

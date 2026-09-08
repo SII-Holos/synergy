@@ -6,7 +6,7 @@ import { createFixtureProject } from "../../packages/plugin-kit/test/fixtures"
 import { scaffoldPluginProject } from "../../packages/plugin-kit/src/commands/create"
 import { buildPluginProject } from "../../packages/plugin-kit/src/commands/build"
 
-const require = createRequire(path.resolve(import.meta.dir, "../../packages/app/package.json"))
+const require = createRequire(path.resolve(import.meta.dir, "../../apps/web/package.json"))
 const { chromium } = await import(require.resolve("playwright"))
 
 test("custom composer submits once and a running response survives switching to the native workbench", async () => {
@@ -51,7 +51,7 @@ test("custom composer submits once and a running response survives switching to 
     expect(await buildPluginProject(project.root)).toBe(true)
     preview = await startPluginPreview({
       artifacts: [path.join(project.root, "dist")],
-      command: [process.execPath, path.resolve(import.meta.dir, "../../packages/synergy/src/index.ts")],
+      command: [process.execPath, path.resolve(import.meta.dir, "../../packages/product-runtime/src/index.ts")],
     })
     await preview.client.config.domain.update(
       {

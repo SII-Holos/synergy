@@ -1582,6 +1582,9 @@ export type ChannelInfo = {
   createdAt?: number
 }
 
+/**
+ * Endpoint context if created from a session endpoint
+ */
 export type SessionEndpoint = {
   kind: "channel"
   channel: ChannelInfo
@@ -2101,6 +2104,1720 @@ export type Agent = {
 }
 
 /**
+ * Log level
+ */
+export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR"
+
+/**
+ * Server configuration for synergy serve and web commands
+ */
+export type ServerConfig = {
+  /**
+   * Port to listen on
+   */
+  port?: number
+  /**
+   * Hostname to listen on
+   */
+  hostname?: string
+  /**
+   * Enable mDNS service discovery
+   */
+  mdns?: boolean
+  /**
+   * Additional origins allowed for CORS and Browser viewer WebSockets
+   */
+  cors?: Array<string>
+}
+
+export type PermissionActionConfig = "ask" | "allow" | "deny"
+
+export type PermissionObjectConfig = {
+  [key: string]: PermissionActionConfig
+}
+
+export type PermissionRuleConfig = PermissionActionConfig | PermissionObjectConfig
+
+export type PermissionConfig =
+  | {
+      __originalKeys?: Array<string>
+      read?: PermissionRuleConfig
+      edit?: PermissionRuleConfig
+      glob?: PermissionRuleConfig
+      grep?: PermissionRuleConfig
+      list?: PermissionRuleConfig
+      bash?: PermissionRuleConfig
+      task?: PermissionRuleConfig
+      external_directory?: PermissionRuleConfig
+      todowrite?: PermissionActionConfig
+      todoread?: PermissionActionConfig
+      dagwrite?: PermissionActionConfig
+      dagread?: PermissionActionConfig
+      question?: PermissionActionConfig
+      webfetch?: PermissionActionConfig
+      download?: PermissionActionConfig
+      lsp?: PermissionRuleConfig
+      doom_loop?: PermissionActionConfig
+      [key: string]: PermissionRuleConfig | Array<string> | PermissionActionConfig | undefined
+    }
+  | PermissionActionConfig
+
+export type AgentConfig = {
+  model?: string
+  modelRole?: ModelRole
+  temperature?: number
+  top_p?: number
+  prompt?: string
+  /**
+   * @deprecated Use 'permission' field instead
+   */
+  tools?: {
+    [key: string]: boolean
+  }
+  disable?: boolean
+  /**
+   * Description of when to use the agent
+   */
+  description?: string
+  mode?: "subagent" | "primary" | "all"
+  /**
+   * Hide this subagent from the @ autocomplete menu (default: false, only applies to mode: subagent)
+   */
+  hidden?: boolean
+  /**
+   * Agent or delegation group names allowed to delegate to this subagent
+   */
+  visibleTo?: Array<string>
+  /**
+   * Additional delegation catalogs this agent may use when dispatching subagents
+   */
+  delegationGroups?: Array<string>
+  /**
+   * Tool IDs folded behind expand_tools for this agent, such as task delegation and DAG planning tools
+   */
+  deferredTools?: Array<string>
+  options?: {
+    [key: string]: unknown
+  }
+  /**
+   * Hex color code for the agent (e.g., #FF5733)
+   */
+  color?: string
+  /**
+   * Maximum number of agentic iterations before forcing text-only response
+   */
+  steps?: number
+  /**
+   * @deprecated Use 'steps' field instead.
+   */
+  maxSteps?: number
+  permission?: PermissionConfig
+  controlProfile?: ControlProfileId
+  /**
+   * Default variant to apply when this agent runs. Overrides the role-level variant. Per-request variant overrides this.
+   */
+  defaultVariant?: string
+  [key: string]:
+    | unknown
+    | string
+    | ModelRole
+    | number
+    | {
+        [key: string]: boolean
+      }
+    | boolean
+    | "subagent"
+    | "primary"
+    | "all"
+    | Array<string>
+    | Array<string>
+    | Array<string>
+    | {
+        [key: string]: unknown
+      }
+    | string
+    | number
+    | PermissionConfig
+    | ControlProfileId
+    | undefined
+}
+
+export type ProviderConfig = {
+  api?: string
+  name?: string
+  description?: string
+  signupUrl?: string
+  recommendation?: {
+    level: "featured" | "recommended" | "standard"
+    rank?: number
+    headline?: string
+    reason?: string
+    cta?: {
+      kind: "external"
+      label: string
+      url: string
+    }
+    defaultModel?: string
+  }
+  env?: Array<string>
+  id?: string
+  npm?: string
+  models?: {
+    [key: string]: {
+      id?: string
+      name?: string
+      family?: string
+      release_date?: string
+      attachment?: boolean
+      reasoning?: boolean
+      reasoning_options?: Array<{
+        type: string
+        values?: Array<unknown>
+      }>
+      temperature?: boolean
+      tool_call?: boolean
+      interleaved?:
+        | true
+        | {
+            field: "reasoning_content" | "reasoning_details"
+          }
+      cost?: {
+        input?: number
+        output?: number
+        cache_read?: number
+        cache_write?: number
+        cache_write_1h?: number
+        context_over_200k?: {
+          input?: number
+          output?: number
+          cache_read?: number
+          cache_write?: number
+          cache_write_1h?: number
+        }
+        tiers?: Array<{
+          input?: number
+          output?: number
+          cache_read?: number
+          cache_write?: number
+          cache_write_1h?: number
+          tier: {
+            type: "context"
+            size: number
+          }
+        }>
+        units?: {
+          audio_seconds?: {
+            price: number
+            per: number
+          }
+          audio_input_tokens?: {
+            price: number
+            per: number
+          }
+          audio_output_tokens?: {
+            price: number
+            per: number
+          }
+          characters?: {
+            price: number
+            per: number
+          }
+        }
+        input_audio?: number
+        output_audio?: number
+        reasoning?: number
+        [key: string]:
+          | unknown
+          | number
+          | {
+              input?: number
+              output?: number
+              cache_read?: number
+              cache_write?: number
+              cache_write_1h?: number
+            }
+          | Array<{
+              input?: number
+              output?: number
+              cache_read?: number
+              cache_write?: number
+              cache_write_1h?: number
+              tier: {
+                type: "context"
+                size: number
+              }
+            }>
+          | {
+              audio_seconds?: {
+                price: number
+                per: number
+              }
+              audio_input_tokens?: {
+                price: number
+                per: number
+              }
+              audio_output_tokens?: {
+                price: number
+                per: number
+              }
+              characters?: {
+                price: number
+                per: number
+              }
+            }
+          | undefined
+      }
+      limit?: {
+        context: number
+        input?: number
+        output: number
+      }
+      modalities?: {
+        input: Array<"text" | "audio" | "image" | "video" | "pdf">
+        output: Array<"text" | "audio" | "image" | "video" | "pdf">
+      }
+      supported_image_media_types?: Array<string>
+      status?: "alpha" | "beta" | "deprecated"
+      catalog_state?: "active" | "retained"
+      options?: {
+        [key: string]: unknown
+      }
+      headers?: {
+        [key: string]: string
+      }
+      provider?: {
+        npm?: string
+      }
+      /**
+       * Variant-specific configuration
+       */
+      variants?: {
+        [key: string]: {
+          /**
+           * Disable this variant for the model
+           */
+          disabled?: boolean
+          [key: string]: unknown | boolean | undefined
+        }
+      }
+    }
+  }
+  /**
+   * Canonical provider profile whose runtime behavior this account connection uses
+   */
+  profile?: string
+  /**
+   * Models.dev provider id to use as this provider connection's model catalog source
+   */
+  modelsDevProviderID?: string
+  whitelist?: Array<string>
+  blacklist?: Array<string>
+  options?: {
+    apiKey?: string
+    baseURL?: string
+    /**
+     * GitHub Enterprise URL for copilot authentication
+     */
+    enterpriseUrl?: string
+    /**
+     * Enable promptCacheKey for this provider (default false)
+     */
+    setCacheKey?: boolean
+    /**
+     * Merge leading system messages into a single system message for strict OpenAI-compatible endpoints that reject multiple or non-leading system messages (e.g. vLLM Qwen chat templates). Default false.
+     */
+    mergeSystemMessages?: boolean
+    /**
+     * Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.
+     */
+    timeout?: number | false
+    [key: string]: unknown | string | boolean | number | false | undefined
+  }
+}
+
+/**
+ * Sandbox configuration for workspace boundary enforcement
+ */
+export type SandboxConfig = {
+  /**
+   * Enable the sandbox runtime when available (default: true)
+   */
+  enabled?: boolean
+  /**
+   * How to proceed when the requested sandbox runtime is unavailable (default: 'warn')
+   */
+  fallbackPolicy?: "warn" | "allow" | "deny"
+  /**
+   * Force a specific sandbox backend. 'auto' (default) selects the platform-native backend. Valid: 'auto' (platform default), 'seatbelt-deny-default' (macOS deny-default SBPL), 'seatbelt-legacy-allow-default' (macOS allow-default SBPL), 'synergy-sandbox-linux' (Linux bundled bwrap), 'bwrap-inline-debug' (Linux in-tree bwrap debug), 'windows-restricted-token' (Windows MVP), 'windows-elevated' (Windows full, future).
+   */
+  backend?:
+    | "auto"
+    | "seatbelt-deny-default"
+    | "seatbelt-legacy-allow-default"
+    | "synergy-sandbox-linux"
+    | "bwrap-inline-debug"
+    | "windows-restricted-token"
+    | "windows-elevated"
+  /**
+   * Network configuration for sandbox enforcement
+   */
+  network?: {
+    /**
+     * Network access mode within the sandbox (default: 'restricted')
+     */
+    mode?: "restricted" | "proxy_only" | "full"
+  }
+  /**
+   * macOS-specific sandbox settings
+   */
+  macos?: {
+    /**
+     * Log sandbox denials via macOS Seatbelt (default: true)
+     */
+    denialLogger?: boolean
+  }
+  /**
+   * Linux-specific sandbox settings
+   */
+  linux?: {
+    /**
+     * Use the bundled bwrap binary instead of system bwrap (default: true)
+     */
+    bundledBwrap?: boolean
+    /**
+     * Fall back to Landlock LSM when bwrap is unavailable (default: true)
+     */
+    landlockFallback?: boolean
+  }
+  /**
+   * Windows-specific sandbox settings
+   */
+  windows?: {
+    /**
+     * Windows sandbox level (default: 'restricted-token')
+     */
+    level?: "disabled" | "restricted-token" | "elevated"
+    /**
+     * Path to the synergy-sandbox-windows.exe helper binary
+     */
+    helperPath?: string
+    /**
+     * Verify the helper binary SHA-256 hash before use (default: true)
+     */
+    verifyHelperHash?: boolean
+    /**
+     * Create a private desktop for the sandboxed process (default: true)
+     */
+    privateDesktop?: boolean
+    /**
+     * Use ConPTY for pseudo-terminal support (default: true)
+     */
+    conpty?: boolean
+  }
+}
+
+/**
+ * Local logs, indexed telemetry, and diagnostics settings
+ */
+export type ObservabilityConfig = {
+  /**
+   * Record AI SDK model spans (default: false)
+   */
+  modelSpans?: boolean
+  /**
+   * Enable local indexed observability events, spans, metrics, issues, and diagnostics (default: true)
+   */
+  enabled?: boolean
+  /**
+   * Days to retain optional observability mirror files (default: 7)
+   */
+  retentionDays?: number
+  /**
+   * Maximum total local observability storage in bytes (default: 250MB)
+   */
+  maxBytes?: number
+  /**
+   * Milliseconds without tool activity before emitting a stalled-tool observability event
+   */
+  stalledToolMs?: number
+  /**
+   * Structured local performance observability settings
+   */
+  performance?: {
+    /**
+     * Enable structured local performance metrics and traces
+     */
+    enabled?: boolean
+    /**
+     * Default performance metric sampling rate
+     */
+    samplingRate?: number
+    /**
+     * Milliseconds to retain raw performance metrics
+     */
+    metricRetentionMs?: number
+    /**
+     * Milliseconds to retain performance spans and trace details
+     */
+    traceRetentionMs?: number
+    /**
+     * Runtime resource sampling interval
+     */
+    resourceSampleIntervalMs?: number
+    /**
+     * Default slow trace issue threshold
+     */
+    slowTraceThresholdMs?: number
+    /**
+     * Maximum related events returned for a trace detail
+     */
+    maxTraceEvents?: number
+    /**
+     * Maximum timeline buckets returned to the dashboard
+     */
+    maxTimelineBuckets?: number
+    /**
+     * Maximum trace list rows returned
+     */
+    maxTraceListLimit?: number
+    /**
+     * Maximum redacted attribute string length
+     */
+    maxAttributeStringLength?: number
+    /**
+     * Performance dashboard polling refresh interval
+     */
+    dashboardRefreshMs?: number
+    /**
+     * Performance SSE heartbeat interval
+     */
+    sseHeartbeatMs?: number
+    /**
+     * Performance event stream replay buffer size
+     */
+    sseBufferSize?: number
+    /**
+     * Per-client performance SSE queue size
+     */
+    perClientSseQueueSize?: number
+    /**
+     * Additional performance telemetry attribute keys to redact
+     */
+    redactAttributeKeys?: Array<string>
+    rateLimits?: {
+      [key: string]: number
+    }
+    storage?: {
+      sqliteEnabled?: boolean
+      /**
+       * Enable optional JSONL mirror files for debugging exports
+       */
+      jsonlMirrorEnabled?: boolean
+      maxSqliteBytes?: number
+      walCheckpointIntervalMs?: number
+    }
+    thresholds?: {
+      [key: string]: number
+    }
+  }
+}
+
+export type CategoryConfig = {
+  /**
+   * Model to use for this category (e.g., 'sii-openai/GPT-5.2')
+   */
+  model?: string
+  /**
+   * Temperature override for this category
+   */
+  temperature?: number
+  /**
+   * Additional prompt context to inject for this category
+   */
+  promptAppend?: string
+  /**
+   * Description of when to use this category
+   */
+  description?: string
+}
+
+/**
+ * Default plugin runtime resource and request limits
+ */
+export type PluginRuntimeLimitsConfig = {
+  /**
+   * Maximum milliseconds for plugin runtime startup
+   */
+  startupTimeoutMs?: number
+  /**
+   * Maximum milliseconds for a plugin tool invocation
+   */
+  toolInvocationTimeoutMs?: number
+  /**
+   * Maximum milliseconds for one plugin Host Service request
+   */
+  hostServiceRequestTimeoutMs?: number
+  /**
+   * Default maximum milliseconds for plugin delegated task runs
+   */
+  taskRunTimeoutMs?: number
+  /**
+   * Graceful shutdown window before force kill
+   */
+  shutdownGraceMs?: number
+  /**
+   * Heartbeat interval in milliseconds
+   */
+  heartbeatIntervalMs?: number
+  /**
+   * External plugin runtime RSS limit in megabytes
+   */
+  maxMemoryMb?: number
+  /**
+   * External plugin runtime RSS sampling interval in milliseconds
+   */
+  memorySampleIntervalMs?: number
+  /**
+   * Maximum milliseconds for a plugin agent.call/agent.start model invocation
+   */
+  agentCallMaxRuntimeMs?: number
+  /**
+   * Maximum milliseconds for one plugin hook handler invocation
+   */
+  hookTimeoutMs?: number
+  /**
+   * Default maximum milliseconds for a plugin contribution invocation without a declared timeout
+   */
+  contributionInvokeTimeoutMs?: number
+  /**
+   * Default maximum milliseconds for plugin shell.run commands
+   */
+  shellRunTimeoutMs?: number
+  /**
+   * Maximum milliseconds a plugin task.run waits for a delegated task to reach a terminal state
+   */
+  taskRunWaitTimeoutMs?: number
+}
+
+/**
+ * Plugin runtime isolation policy configuration
+ */
+export type PluginRuntimePolicyConfig = {
+  limits?: PluginRuntimeLimitsConfig
+}
+
+/**
+ * Public plugin marketplace registry configuration
+ */
+export type PluginMarketplaceConfig = {
+  /**
+   * Enable the public GitHub-backed plugin marketplace
+   */
+  enabled?: boolean
+  /**
+   * URL of the official plugin registry.json index
+   */
+  registryUrl?: string
+  /**
+   * Include the local development registry in marketplace search and detail routes
+   */
+  includeLocalRegistry?: boolean
+  /**
+   * Remote marketplace cache TTL in milliseconds
+   */
+  cacheTtlMs?: number
+  /**
+   * Use stale marketplace cache for browsing when the remote registry cannot be reached
+   */
+  offlineCache?: boolean
+  /**
+   * Timeout in milliseconds for registry and entry metadata requests
+   */
+  requestTimeoutMs?: number
+  /**
+   * Timeout in milliseconds for plugin artifact and signature downloads
+   */
+  artifactDownloadTimeoutMs?: number
+  /**
+   * Timeout in milliseconds for Synergy CLI plugin commands waiting on the local server
+   */
+  cliRequestTimeoutMs?: number
+}
+
+export type ChannelFeishuAccountConfig = {
+  enabled?: boolean
+  /**
+   * Feishu app ID
+   */
+  appId: string
+  /**
+   * Feishu app secret
+   */
+  appSecret: string
+  /**
+   * Feishu domain (feishu for China, lark for international)
+   */
+  domain?: "feishu" | "lark"
+  /**
+   * Allow direct messages
+   */
+  allowDM?: boolean
+  /**
+   * Allow group messages
+   */
+  allowGroup?: boolean
+  /**
+   * Require @mention in group chats
+   */
+  requireMention?: boolean
+  /**
+   * Bot open_id used to verify real @mentions in group chats
+   */
+  botOpenId?: string
+  /**
+   * Project directory whose Scope owns sessions for this Feishu account
+   */
+  projectDir?: string
+  /**
+   * Enable streaming card updates
+   */
+  streaming?: boolean
+  /**
+   * Format for ordinary outbound text messages (markdown renders through a CardKit card)
+   */
+  responseFormat?: "text" | "markdown"
+  /**
+   * Minimum interval between streaming card updates in ms
+   */
+  streamingThrottleMs?: number
+  /**
+   * Session scoping strategy for group chats
+   */
+  groupSessionScope?: "group" | "group_sender" | "group_topic" | "group_topic_sender" | "group_thread"
+  /**
+   * Debounce rapid-fire messages from the same sender in the same chat (0 = disabled)
+   */
+  inboundDebounceMs?: number
+  /**
+   * Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)
+   */
+  model?: string
+  /**
+   * Model variant to use with this account model (e.g. low, high, max)
+   */
+  variant?: string
+  /**
+   * Resolve sender display names via Feishu contact API
+   */
+  resolveSenderNames?: boolean
+  /**
+   * Reply in thread when message is part of a topic
+   */
+  replyInThread?: boolean
+}
+
+export type ChannelFeishuConfig = {
+  type: "feishu"
+  accounts: {
+    [key: string]: ChannelFeishuAccountConfig
+  }
+  /**
+   * Default domain for all accounts
+   */
+  domain?: "feishu" | "lark"
+  /**
+   * Default streaming setting for all accounts
+   */
+  streaming?: boolean
+  /**
+   * Default outbound text format for all accounts
+   */
+  responseFormat?: "text" | "markdown"
+}
+
+export type ChannelClarusAccountConfig = {
+  enabled?: boolean
+  /**
+   * Clarus REST API base URL override, including an optional path prefix; defaults to the configured Holos API base URL
+   */
+  apiUrl?: string
+  /**
+   * Primary Synergy agent for project and assignment Sessions
+   */
+  agent?: string
+}
+
+export type ChannelClarusConfig = {
+  type: "clarus"
+  accounts: {
+    [key: string]: ChannelClarusAccountConfig
+  }
+}
+
+export type ChannelGithubAccountConfig = {
+  enabled?: boolean
+  /**
+   * GitHub repositories to watch and respond to (owner/repo); may be empty and filled in later
+   */
+  repositories?: Array<string>
+  /**
+   * Directory under which per-repository checkouts are created. Each pull request or issue gets its own random-hash subdirectory with the branch checked out.
+   */
+  workspaceDir: string
+  /**
+   * Hours an unused per-thread checkout is kept before its local clone is removed. Session history is preserved; the checkout is recreated automatically the next time the thread is triggered.
+   */
+  workspaceTtlHours?: number
+  /**
+   * Interval between GitHub API polls in milliseconds (default 5 minutes)
+   */
+  pollingIntervalMs?: number
+  /**
+   * Automatically review newly opened and updated pull requests
+   */
+  autoReview?: boolean
+  /**
+   * Respond to @mentions of the bot handle and questions in issues and pull requests
+   */
+  autoRespond?: boolean
+  /**
+   * Agent used for GitHub channel sessions (defaults to github-channel-agent)
+   */
+  agent?: string
+  /**
+   * GitHub handle users @-mention to summon the bot (defaults to the GitHub App slug resolved from the App identity)
+   */
+  mention?: string
+  /**
+   * Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)
+   */
+  model?: string
+  /**
+   * Model variant to use with this account model (e.g. low, high, max)
+   */
+  variant?: string
+}
+
+export type ChannelGithubConfig = {
+  type: "github"
+  accounts: {
+    [key: string]: ChannelGithubAccountConfig
+  }
+}
+
+/**
+ * Holos platform configuration
+ */
+export type HolosConfig = {
+  /**
+   * Enable the Holos runtime connection
+   */
+  enabled?: boolean
+  /**
+   * Holos API base URL
+   */
+  apiUrl?: string
+  /**
+   * Holos WebSocket base URL
+   */
+  wsUrl?: string
+  /**
+   * Holos portal URL for browser-facing pages (bind/start)
+   */
+  portalUrl?: string
+}
+
+/**
+ * Sender identity for outgoing emails
+ */
+export type EmailFromConfig = {
+  /**
+   * Sender email address
+   */
+  address?: string
+  /**
+   * Sender display name
+   */
+  name?: string
+}
+
+/**
+ * SMTP transport settings for outgoing emails
+ */
+export type EmailSmtpConfig = {
+  /**
+   * SMTP server hostname
+   */
+  host?: string
+  /**
+   * SMTP server port
+   */
+  port?: number
+  /**
+   * Use TLS/SSL for the SMTP connection
+   */
+  secure?: boolean
+  /**
+   * SMTP username
+   */
+  username?: string
+  /**
+   * SMTP password or app token
+   */
+  password?: string
+}
+
+/**
+ * IMAP settings for reading emails
+ */
+export type EmailImapConfig = {
+  /**
+   * IMAP server hostname
+   */
+  host?: string
+  /**
+   * IMAP server port
+   */
+  port?: number
+  /**
+   * Use TLS/SSL for the IMAP connection
+   */
+  secure?: boolean
+  /**
+   * IMAP username
+   */
+  username?: string
+  /**
+   * IMAP password or app token
+   */
+  password?: string
+}
+
+/**
+ * Outgoing email configuration
+ */
+export type EmailConfig = {
+  /**
+   * Enable email features
+   */
+  enabled?: boolean
+  from?: EmailFromConfig
+  smtp?: EmailSmtpConfig
+  imap?: EmailImapConfig
+}
+
+/**
+ * Git identity sync settings
+ */
+export type GithubIdentitySyncConfig = {
+  /**
+   * Sync git user.name/user.email from the connected GitHub account
+   */
+  enabled?: boolean
+  /**
+   * Optional git user.name override (defaults to the GitHub account login). null clears the override
+   */
+  name?: string | null
+  /**
+   * Optional git user.email override (defaults to the GitHub noreply email). null clears the override
+   */
+  email?: string | null
+}
+
+/**
+ * GitHub agenda trigger settings
+ */
+export type GithubWatchConfig = {
+  /**
+   * Allow GitHub agenda triggers (PR/issue/workflow status polling). Default: true
+   */
+  enabled?: boolean
+  /**
+   * Default poll interval for GitHub agenda triggers in milliseconds (default 300000)
+   */
+  defaultIntervalMs?: number
+}
+
+/**
+ * GitHub integration settings (git identity sync, agenda watch)
+ */
+export type GithubConfig = {
+  identitySync?: GithubIdentitySyncConfig
+  watch?: GithubWatchConfig
+}
+
+export type MemoryConfig = {
+  /**
+   * Enable agent-initiated memory curation via chronicler (default: true)
+   */
+  enabled?: boolean
+  /**
+   * Semantic memory retrieval settings
+   */
+  retrieval?: {
+    /**
+     * Minimum similarity for auto-injection (default: 0.7)
+     */
+    simThreshold?: number
+    /**
+     * Max entries per category to retrieve (default: 3)
+     */
+    topK?: number
+    /**
+     * Per-category retrieval overrides
+     */
+    categories?: {
+      [key: string]: {
+        /**
+         * Minimum similarity for contextual retrieval
+         */
+        simThreshold?: number
+        /**
+         * Maximum contextual entries to retrieve
+         */
+        topK?: number
+      }
+    }
+  }
+  /**
+   * Memory deduplication settings
+   */
+  dedup?: {
+    /**
+     * Cosine similarity threshold for duplicate detection (default: 0.75)
+     */
+    threshold?: number
+  }
+}
+
+export type PassiveRetrievalConfig = {
+  /**
+   * Minimum cosine similarity for retrieval candidates (default: 0.7)
+   */
+  simThreshold?: number
+  /**
+   * Number of experiences to retrieve (default: 8)
+   */
+  topK?: number
+  /**
+   * ε-greedy exploration probability (default: 0.1)
+   */
+  epsilon?: number
+  /**
+   * Weight for similarity in hybrid score (default: 0.5)
+   */
+  wSim?: number
+  /**
+   * Weight for Q-value in hybrid score (default: 0.5)
+   */
+  wQ?: number
+  /**
+   * UCB1 exploration constant — scales √(ln(N)/n) visit-decay bonus (default: 0.5)
+   */
+  explorationConstant?: number
+}
+
+/**
+ * Q-learning hyperparameters for experience evaluation
+ */
+export type LearningConfig = {
+  /**
+   * Q-learning step size / learning rate (default: 0.3)
+   */
+  alpha?: number
+  /**
+   * Optimistic Q-value initialization per reward dimension (default: 1.0)
+   */
+  qInit?: number
+  /**
+   * Intent cosine similarity threshold for deduplicating experiences (default: 0.85)
+   */
+  dedupIntentThreshold?: number
+  /**
+   * Script cosine similarity threshold for deduplicating experiences (default: 0.8)
+   */
+  dedupScriptThreshold?: number
+  /**
+   * Maximum Q-value history entries per experience (default: 50)
+   */
+  qHistorySize?: number
+  /**
+   * Threshold for snapping reward dimensions to discrete {-1, 0, 1} (default: 0.5)
+   */
+  snapThreshold?: number
+  /**
+   * Default confidence for legacy scalar reward format (default: 0.3)
+   */
+  legacyRewardConfidence?: number
+  /**
+   * LLM retry count for intent/script/reward generation (default: 3)
+   */
+  encoderRetries?: number
+  /**
+   * Wall-clock deadline for a single encoder LLM call in milliseconds (default: 60000)
+   */
+  encoderTimeoutMs?: number
+  /**
+   * Maximum characters collected from one encoder model stream before abort (default: 16000)
+   */
+  encoderMaxOutputChars?: number
+  /**
+   * Maximum concurrent experience reencode workers (default: 5)
+   */
+  reencodeConcurrency?: number
+  /**
+   * Retry count for transient reencode stages, including model, embedding, session, network, and database operations (default: 3)
+   */
+  reencodeRetries?: number
+  /**
+   * Initial backoff for transient reencode stage retries in milliseconds (default: 1000)
+   */
+  reencodeRetryBackoffMs?: number
+  /**
+   * Max estimated tokens for tool output in turn digest (default: 800)
+   */
+  digestToolOutputBudget?: number
+  /**
+   * Max chars per tool input field in encoder context (default: 500)
+   */
+  encoderToolFieldBudget?: number
+  /**
+   * Max chars for tool output in encoder context (default: 300)
+   */
+  encoderToolOutputBudget?: number
+  /**
+   * Weights for multi-dimensional reward composition (default: outcome=0.35, intent=0.25, execution=0.2, orchestration=0.1, expression=0.1)
+   */
+  rewardWeights?: {
+    /**
+     * Weight for outcome dimension (default: 0.35)
+     */
+    outcome?: number
+    /**
+     * Weight for intent dimension (default: 0.25)
+     */
+    intent?: number
+    /**
+     * Weight for execution dimension (default: 0.2)
+     */
+    execution?: number
+    /**
+     * Weight for orchestration dimension (default: 0.1)
+     */
+    orchestration?: number
+    /**
+     * Weight for expression dimension (default: 0.1)
+     */
+    expression?: number
+  }
+  /**
+   * Number of subsequent turns to wait before evaluating reward (default: 2)
+   */
+  rewardDelay?: number
+}
+
+export type ExperienceConfig = {
+  /**
+   * Auto-encode conversation patterns into experiences (default: true)
+   */
+  encode?: boolean
+  /**
+   * Inject relevant past experiences into prompts (default: true)
+   */
+  retrieve?: boolean | PassiveRetrievalConfig
+  learning?: LearningConfig
+}
+
+export type LibraryConfig = {
+  memory?: MemoryConfig
+  experience?: ExperienceConfig
+  /**
+   * Enable autonomous background routines like anima daily wake (default: true)
+   */
+  autonomy?: boolean
+}
+
+/**
+ * Bundled local embedding model download settings
+ */
+export type LocalEmbeddingConfig = {
+  /**
+   * Download source for the bundled local embedding model (default: huggingface)
+   */
+  source?: "huggingface" | "hf-mirror" | "custom"
+  /**
+   * Public HTTPS origin used when source is custom
+   */
+  remoteHost?: string
+  /**
+   * Directory where the bundled local embedding model is cached (default: ~/.synergy/data/embedding/models). Supports {env:VAR} references.
+   */
+  cacheDir?: string
+}
+
+/**
+ * Embedding model configuration. When absent, a local model is used automatically.
+ */
+export type EmbeddingConfig = {
+  /**
+   * Explicit model prices in USD: token rates per million, unit rates per declared quantity
+   */
+  cost?: {
+    input?: number
+    output?: number
+    cache_read?: number
+    cache_write?: number
+    cache_write_1h?: number
+    context_over_200k?: {
+      input?: number
+      output?: number
+      cache_read?: number
+      cache_write?: number
+      cache_write_1h?: number
+    }
+    tiers?: Array<{
+      input?: number
+      output?: number
+      cache_read?: number
+      cache_write?: number
+      cache_write_1h?: number
+      tier: {
+        type: "context"
+        size: number
+      }
+    }>
+    units?: {
+      audio_seconds?: {
+        price: number
+        per: number
+      }
+      audio_input_tokens?: {
+        price: number
+        per: number
+      }
+      audio_output_tokens?: {
+        price: number
+        per: number
+      }
+      characters?: {
+        price: number
+        per: number
+      }
+    }
+  }
+  /**
+   * Base URL for the embedding API
+   */
+  baseURL?: string
+  /**
+   * API key for the embedding service
+   */
+  apiKey?: string
+  /**
+   * Embedding model name
+   */
+  model?: string
+  local?: LocalEmbeddingConfig
+}
+
+/**
+ * Rerank model for memory retrieval refinement. Disabled when not configured.
+ */
+export type RerankConfig = {
+  /**
+   * Explicit model prices in USD: token rates per million, unit rates per declared quantity
+   */
+  cost?: {
+    input?: number
+    output?: number
+    cache_read?: number
+    cache_write?: number
+    cache_write_1h?: number
+    context_over_200k?: {
+      input?: number
+      output?: number
+      cache_read?: number
+      cache_write?: number
+      cache_write_1h?: number
+    }
+    tiers?: Array<{
+      input?: number
+      output?: number
+      cache_read?: number
+      cache_write?: number
+      cache_write_1h?: number
+      tier: {
+        type: "context"
+        size: number
+      }
+    }>
+    units?: {
+      audio_seconds?: {
+        price: number
+        per: number
+      }
+      audio_input_tokens?: {
+        price: number
+        per: number
+      }
+      audio_output_tokens?: {
+        price: number
+        per: number
+      }
+      characters?: {
+        price: number
+        per: number
+      }
+    }
+  }
+  /**
+   * Base URL for the rerank API
+   */
+  baseURL?: string
+  /**
+   * API key for the rerank service
+   */
+  apiKey?: string
+  /**
+   * Rerank model name
+   */
+  model?: string
+}
+
+/**
+ * Retry policy for connecting to this server
+ */
+export type McpRetryConfig = {
+  /**
+   * Maximum connection attempts before giving up
+   */
+  maxAttempts?: number
+  /**
+   * Initial backoff delay in ms between retries
+   */
+  backoffMs?: number
+  /**
+   * Multiplier applied to backoff on each retry
+   */
+  backoffMultiplier?: number
+  /**
+   * Cooldown period in ms before a retry cycle resets
+   */
+  cooldownMs?: number
+}
+
+/**
+ * Filter which tools are exposed from this server
+ */
+export type McpToolFilterConfig = {
+  /**
+   * Tool names to include (allowlist)
+   */
+  include?: Array<string>
+  /**
+   * Tool names to exclude (blocklist)
+   */
+  exclude?: Array<string>
+}
+
+/**
+ * Tool execution behavior config
+ */
+export type McpToolsConfig = {
+  /**
+   * Tool approval mode
+   */
+  approval?: "auto" | "always" | "per_session"
+  /**
+   * Maximum tool output size in bytes
+   */
+  maxOutputBytes?: number
+}
+
+/**
+ * Tool list caching behavior
+ */
+export type McpToolCacheConfig = {
+  /**
+   * Tool list caching mode
+   */
+  mode?: "disabled" | "session" | "persistent"
+  /**
+   * Time-to-live for cached tool list in ms
+   */
+  ttlMs?: number
+}
+
+export type McpLocalConfig = {
+  /**
+   * Type of MCP server connection
+   */
+  type: "local"
+  /**
+   * Command and arguments to run the MCP server
+   */
+  command: Array<string>
+  /**
+   * Working directory for local MCP servers
+   */
+  cwd?: string
+  /**
+   * Environment variables to set when running the MCP server
+   */
+  environment?: {
+    [key: string]: string
+  }
+  /**
+   * Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.
+   */
+  timeout?: number
+  /**
+   * MCP startup mode
+   */
+  startup?: "eager" | "lazy" | "manual"
+  /**
+   * If true, this MCP server is required for the configured workflow
+   */
+  required?: boolean
+  /**
+   * Timeout in ms for initial connection handshake
+   */
+  connectTimeout?: number
+  /**
+   * Timeout in ms for listing tools
+   */
+  listTimeout?: number
+  /**
+   * Timeout in ms for tool call execution
+   */
+  callTimeout?: number
+  retry?: McpRetryConfig
+  /**
+   * Idle time in ms after which the server is shut down
+   */
+  idleShutdownMs?: number
+  toolFilter?: McpToolFilterConfig
+  /**
+   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
+   */
+  expandByDefault?: boolean
+  tools?: McpToolsConfig
+  toolCache?: McpToolCacheConfig
+  /**
+   * Enable or disable the MCP server on startup
+   */
+  enabled?: boolean
+}
+
+export type McpOAuthConfig = {
+  /**
+   * OAuth client ID. If not provided, dynamic client registration (RFC 7591) will be attempted.
+   */
+  clientId?: string
+  /**
+   * OAuth client secret (if required by the authorization server)
+   */
+  clientSecret?: string
+  /**
+   * OAuth scopes to request during authorization
+   */
+  scope?: string
+}
+
+export type McpRemoteConfig = {
+  /**
+   * Type of MCP server connection
+   */
+  type: "remote"
+  /**
+   * URL of the remote MCP server
+   */
+  url: string
+  /**
+   * Headers to send with the request
+   */
+  headers?: {
+    [key: string]: string
+  }
+  /**
+   * OAuth authentication configuration for the MCP server. Set to false to disable OAuth auto-detection.
+   */
+  oauth?: McpOAuthConfig | false
+  /**
+   * Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.
+   */
+  timeout?: number
+  /**
+   * MCP startup mode
+   */
+  startup?: "eager" | "lazy" | "manual"
+  /**
+   * If true, this MCP server is required for the configured workflow
+   */
+  required?: boolean
+  /**
+   * Timeout in ms for initial connection handshake
+   */
+  connectTimeout?: number
+  /**
+   * Timeout in ms for listing tools
+   */
+  listTimeout?: number
+  /**
+   * Timeout in ms for tool call execution
+   */
+  callTimeout?: number
+  retry?: McpRetryConfig
+  /**
+   * Idle time in ms after which the server is shut down
+   */
+  idleShutdownMs?: number
+  toolFilter?: McpToolFilterConfig
+  /**
+   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
+   */
+  expandByDefault?: boolean
+  tools?: McpToolsConfig
+  toolCache?: McpToolCacheConfig
+  /**
+   * Enable or disable the MCP server on startup
+   */
+  enabled?: boolean
+}
+
+/**
+ * Default settings applied to all MCP servers that don't override them
+ */
+export type McpDefaultsConfig = {
+  /**
+   * MCP startup mode
+   */
+  startup?: "eager" | "lazy" | "manual"
+  /**
+   * If true, this MCP server is required for the configured workflow
+   */
+  required?: boolean
+  /**
+   * Timeout in ms for initial connection handshake
+   */
+  connectTimeout?: number
+  /**
+   * Timeout in ms for listing tools
+   */
+  listTimeout?: number
+  /**
+   * Timeout in ms for tool call execution
+   */
+  callTimeout?: number
+  retry?: McpRetryConfig
+  /**
+   * Idle time in ms after which the server is shut down
+   */
+  idleShutdownMs?: number
+  toolFilter?: McpToolFilterConfig
+  /**
+   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
+   */
+  expandByDefault?: boolean
+  tools?: McpToolsConfig
+  toolCache?: McpToolCacheConfig
+}
+
+export type ExternalAgentConfig = {
+  /**
+   * Disable this external agent
+   */
+  disabled?: boolean
+  /**
+   * Override path to the external agent binary
+   */
+  path?: string
+  /**
+   * Default model for this external agent
+   */
+  model?: string
+  /**
+   * Whether to auto-discover this agent on startup (default: true)
+   */
+  auto_discover?: boolean
+  [key: string]: unknown | boolean | string | undefined
+}
+
+/**
+ * Per-source compatibility toggles for discovering Skills from other agent tools
+ */
+export type SkillsCompatibilityConfig = {
+  /**
+   * Load Agent Skills from .agents/skills directories (default: true)
+   */
+  agents?: boolean
+  /**
+   * Load Claude Code Skills from .claude/skills directories (default: true)
+   */
+  claude?: boolean
+  /**
+   * Load Codex Skills from .codex/skills directories (default: true)
+   */
+  codex?: boolean
+  /**
+   * Load OpenClaw Skills from .openclaw/skills and workspace skills directories (default: true)
+   */
+  openclaw?: boolean
+}
+
+export type SkillsConfig = {
+  compatibility?: SkillsCompatibilityConfig
+}
+
+/**
+ * Speech-to-text service configuration
+ */
+export type VoiceSttConfig = {
+  /**
+   * Explicit model prices in USD: token rates per million, unit rates per declared quantity
+   */
+  cost?: {
+    input?: number
+    output?: number
+    cache_read?: number
+    cache_write?: number
+    cache_write_1h?: number
+    context_over_200k?: {
+      input?: number
+      output?: number
+      cache_read?: number
+      cache_write?: number
+      cache_write_1h?: number
+    }
+    tiers?: Array<{
+      input?: number
+      output?: number
+      cache_read?: number
+      cache_write?: number
+      cache_write_1h?: number
+      tier: {
+        type: "context"
+        size: number
+      }
+    }>
+    units?: {
+      audio_seconds?: {
+        price: number
+        per: number
+      }
+      audio_input_tokens?: {
+        price: number
+        per: number
+      }
+      audio_output_tokens?: {
+        price: number
+        per: number
+      }
+      characters?: {
+        price: number
+        per: number
+      }
+    }
+  }
+  /**
+   * Base URL for the speech-to-text API (OpenAI-compatible)
+   */
+  baseURL?: string
+  /**
+   * API key for the speech-to-text service
+   */
+  apiKey?: string
+  /**
+   * Speech-to-text model name. Voice input is disabled when not set.
+   */
+  model?: string
+  /**
+   * BCP-47 language hint for transcription, e.g. zh, en. Auto-detected when not set.
+   */
+  language?: string
+}
+
+/**
+ * Text-to-speech service configuration
+ */
+export type VoiceTtsConfig = {
+  /**
+   * Explicit model prices in USD: token rates per million, unit rates per declared quantity
+   */
+  cost?: {
+    input?: number
+    output?: number
+    cache_read?: number
+    cache_write?: number
+    cache_write_1h?: number
+    context_over_200k?: {
+      input?: number
+      output?: number
+      cache_read?: number
+      cache_write?: number
+      cache_write_1h?: number
+    }
+    tiers?: Array<{
+      input?: number
+      output?: number
+      cache_read?: number
+      cache_write?: number
+      cache_write_1h?: number
+      tier: {
+        type: "context"
+        size: number
+      }
+    }>
+    units?: {
+      audio_seconds?: {
+        price: number
+        per: number
+      }
+      audio_input_tokens?: {
+        price: number
+        per: number
+      }
+      audio_output_tokens?: {
+        price: number
+        per: number
+      }
+      characters?: {
+        price: number
+        per: number
+      }
+    }
+  }
+  /**
+   * Base URL for the text-to-speech API (OpenAI-compatible)
+   */
+  baseURL?: string
+  /**
+   * API key for the text-to-speech service
+   */
+  apiKey?: string
+  /**
+   * Text-to-speech model name. The speak tool is disabled when not set.
+   */
+  model?: string
+  /**
+   * Voice name for synthesis (provider-specific, e.g. alloy)
+   */
+  voice?: string
+  /**
+   * Natural-language delivery instructions applied to synthesized speech, e.g. tone and pace
+   */
+  instructions?: string
+}
+
+/**
+ * Voice input (dictation) and output (speech synthesis) configuration.
+ */
+export type VoiceConfig = {
+  stt?: VoiceSttConfig
+  tts?: VoiceTtsConfig
+}
+
+/**
  * Custom keybind configurations
  */
 export type KeybindsConfig = {
@@ -2446,136 +4163,6 @@ export type KeybindsConfig = {
   tips_toggle?: string
 }
 
-/**
- * Log level
- */
-export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR"
-
-/**
- * Server configuration for synergy serve and web commands
- */
-export type ServerConfig = {
-  /**
-   * Port to listen on
-   */
-  port?: number
-  /**
-   * Hostname to listen on
-   */
-  hostname?: string
-  /**
-   * Enable mDNS service discovery
-   */
-  mdns?: boolean
-  /**
-   * Additional origins allowed for CORS and Browser viewer WebSockets
-   */
-  cors?: Array<string>
-}
-
-/**
- * Default plugin runtime resource and request limits
- */
-export type PluginRuntimeLimitsConfig = {
-  /**
-   * Maximum milliseconds for plugin runtime startup
-   */
-  startupTimeoutMs?: number
-  /**
-   * Maximum milliseconds for a plugin tool invocation
-   */
-  toolInvocationTimeoutMs?: number
-  /**
-   * Maximum milliseconds for one plugin Host Service request
-   */
-  hostServiceRequestTimeoutMs?: number
-  /**
-   * Default maximum milliseconds for plugin delegated task runs
-   */
-  taskRunTimeoutMs?: number
-  /**
-   * Graceful shutdown window before force kill
-   */
-  shutdownGraceMs?: number
-  /**
-   * Heartbeat interval in milliseconds
-   */
-  heartbeatIntervalMs?: number
-  /**
-   * External plugin runtime RSS limit in megabytes
-   */
-  maxMemoryMb?: number
-  /**
-   * External plugin runtime RSS sampling interval in milliseconds
-   */
-  memorySampleIntervalMs?: number
-  /**
-   * Maximum milliseconds for a plugin agent.call/agent.start model invocation
-   */
-  agentCallMaxRuntimeMs?: number
-  /**
-   * Maximum milliseconds for one plugin hook handler invocation
-   */
-  hookTimeoutMs?: number
-  /**
-   * Default maximum milliseconds for a plugin contribution invocation without a declared timeout
-   */
-  contributionInvokeTimeoutMs?: number
-  /**
-   * Default maximum milliseconds for plugin shell.run commands
-   */
-  shellRunTimeoutMs?: number
-  /**
-   * Maximum milliseconds a plugin task.run waits for a delegated task to reach a terminal state
-   */
-  taskRunWaitTimeoutMs?: number
-}
-
-/**
- * Plugin runtime isolation policy configuration
- */
-export type PluginRuntimePolicyConfig = {
-  limits?: PluginRuntimeLimitsConfig
-}
-
-/**
- * Public plugin marketplace registry configuration
- */
-export type PluginMarketplaceConfig = {
-  /**
-   * Enable the public GitHub-backed plugin marketplace
-   */
-  enabled?: boolean
-  /**
-   * URL of the official plugin registry.json index
-   */
-  registryUrl?: string
-  /**
-   * Include the local development registry in marketplace search and detail routes
-   */
-  includeLocalRegistry?: boolean
-  /**
-   * Remote marketplace cache TTL in milliseconds
-   */
-  cacheTtlMs?: number
-  /**
-   * Use stale marketplace cache for browsing when the remote registry cannot be reached
-   */
-  offlineCache?: boolean
-  /**
-   * Timeout in milliseconds for registry and entry metadata requests
-   */
-  requestTimeoutMs?: number
-  /**
-   * Timeout in milliseconds for plugin artifact and signature downloads
-   */
-  artifactDownloadTimeoutMs?: number
-  /**
-   * Timeout in milliseconds for Synergy CLI plugin commands waiting on the local server
-   */
-  cliRequestTimeoutMs?: number
-}
-
 export type QuickSwitcherModelConfig = {
   /**
    * Provider id for the quick switcher model preference
@@ -2601,1617 +4188,16 @@ export type QuickSwitcherConfig = {
   models?: Array<QuickSwitcherModelConfig>
 }
 
-export type PermissionActionConfig = "ask" | "allow" | "deny"
-
-export type PermissionObjectConfig = {
-  [key: string]: PermissionActionConfig
-}
-
-export type PermissionRuleConfig = PermissionActionConfig | PermissionObjectConfig
-
-export type PermissionConfig =
-  | {
-      __originalKeys?: Array<string>
-      read?: PermissionRuleConfig
-      edit?: PermissionRuleConfig
-      glob?: PermissionRuleConfig
-      grep?: PermissionRuleConfig
-      list?: PermissionRuleConfig
-      bash?: PermissionRuleConfig
-      task?: PermissionRuleConfig
-      external_directory?: PermissionRuleConfig
-      todowrite?: PermissionActionConfig
-      todoread?: PermissionActionConfig
-      dagwrite?: PermissionActionConfig
-      dagread?: PermissionActionConfig
-      question?: PermissionActionConfig
-      webfetch?: PermissionActionConfig
-      download?: PermissionActionConfig
-      lsp?: PermissionRuleConfig
-      doom_loop?: PermissionActionConfig
-      [key: string]: PermissionRuleConfig | Array<string> | PermissionActionConfig | undefined
-    }
-  | PermissionActionConfig
-
-export type AgentConfig = {
-  model?: string
-  modelRole?: ModelRole
-  temperature?: number
-  top_p?: number
-  prompt?: string
-  /**
-   * @deprecated Use 'permission' field instead
-   */
-  tools?: {
-    [key: string]: boolean
-  }
-  disable?: boolean
-  /**
-   * Description of when to use the agent
-   */
-  description?: string
-  mode?: "subagent" | "primary" | "all"
-  /**
-   * Hide this subagent from the @ autocomplete menu (default: false, only applies to mode: subagent)
-   */
-  hidden?: boolean
-  /**
-   * Agent or delegation group names allowed to delegate to this subagent
-   */
-  visibleTo?: Array<string>
-  /**
-   * Additional delegation catalogs this agent may use when dispatching subagents
-   */
-  delegationGroups?: Array<string>
-  /**
-   * Tool IDs folded behind expand_tools for this agent, such as task delegation and DAG planning tools
-   */
-  deferredTools?: Array<string>
-  options?: {
-    [key: string]: unknown
-  }
-  /**
-   * Hex color code for the agent (e.g., #FF5733)
-   */
-  color?: string
-  /**
-   * Maximum number of agentic iterations before forcing text-only response
-   */
-  steps?: number
-  /**
-   * @deprecated Use 'steps' field instead.
-   */
-  maxSteps?: number
-  permission?: PermissionConfig
-  controlProfile?: ControlProfileId
-  /**
-   * Default variant to apply when this agent runs. Overrides the role-level variant. Per-request variant overrides this.
-   */
-  defaultVariant?: string
-  [key: string]:
-    | unknown
-    | string
-    | ModelRole
-    | number
-    | {
-        [key: string]: boolean
-      }
-    | boolean
-    | "subagent"
-    | "primary"
-    | "all"
-    | Array<string>
-    | Array<string>
-    | Array<string>
-    | {
-        [key: string]: unknown
-      }
-    | string
-    | number
-    | PermissionConfig
-    | ControlProfileId
-    | undefined
-}
-
-export type ExternalAgentConfig = {
-  /**
-   * Disable this external agent
-   */
-  disabled?: boolean
-  /**
-   * Override path to the external agent binary
-   */
-  path?: string
-  /**
-   * Default model for this external agent
-   */
-  model?: string
-  /**
-   * Whether to auto-discover this agent on startup (default: true)
-   */
-  auto_discover?: boolean
-  [key: string]: unknown | boolean | string | undefined
-}
-
-export type ProviderConfig = {
-  api?: string
-  name?: string
-  description?: string
-  signupUrl?: string
-  recommendation?: {
-    level: "featured" | "recommended" | "standard"
-    rank?: number
-    headline?: string
-    reason?: string
-    cta?: {
-      kind: "external"
-      label: string
-      url: string
-    }
-    defaultModel?: string
-  }
-  env?: Array<string>
-  id?: string
-  npm?: string
-  models?: {
-    [key: string]: {
-      id?: string
-      name?: string
-      family?: string
-      release_date?: string
-      attachment?: boolean
-      reasoning?: boolean
-      reasoning_options?: Array<{
-        type: string
-        values?: Array<unknown>
-      }>
-      temperature?: boolean
-      tool_call?: boolean
-      interleaved?:
-        | true
-        | {
-            field: "reasoning_content" | "reasoning_details"
-          }
-      cost?: {
-        input?: number
-        output?: number
-        cache_read?: number
-        cache_write?: number
-        cache_write_1h?: number
-        context_over_200k?: {
-          input?: number
-          output?: number
-          cache_read?: number
-          cache_write?: number
-          cache_write_1h?: number
-        }
-        tiers?: Array<{
-          input?: number
-          output?: number
-          cache_read?: number
-          cache_write?: number
-          cache_write_1h?: number
-          tier: {
-            type: "context"
-            size: number
-          }
-        }>
-        units?: {
-          audio_seconds?: {
-            price: number
-            per: number
-          }
-          audio_input_tokens?: {
-            price: number
-            per: number
-          }
-          audio_output_tokens?: {
-            price: number
-            per: number
-          }
-          characters?: {
-            price: number
-            per: number
-          }
-        }
-        input_audio?: number
-        output_audio?: number
-        reasoning?: number
-        [key: string]:
-          | unknown
-          | number
-          | {
-              input?: number
-              output?: number
-              cache_read?: number
-              cache_write?: number
-              cache_write_1h?: number
-            }
-          | Array<{
-              input?: number
-              output?: number
-              cache_read?: number
-              cache_write?: number
-              cache_write_1h?: number
-              tier: {
-                type: "context"
-                size: number
-              }
-            }>
-          | {
-              audio_seconds?: {
-                price: number
-                per: number
-              }
-              audio_input_tokens?: {
-                price: number
-                per: number
-              }
-              audio_output_tokens?: {
-                price: number
-                per: number
-              }
-              characters?: {
-                price: number
-                per: number
-              }
-            }
-          | undefined
-      }
-      limit?: {
-        context: number
-        input?: number
-        output: number
-      }
-      modalities?: {
-        input: Array<"text" | "audio" | "image" | "video" | "pdf">
-        output: Array<"text" | "audio" | "image" | "video" | "pdf">
-      }
-      supported_image_media_types?: Array<string>
-      status?: "alpha" | "beta" | "deprecated"
-      catalog_state?: "active" | "retained"
-      options?: {
-        [key: string]: unknown
-      }
-      headers?: {
-        [key: string]: string
-      }
-      provider?: {
-        npm?: string
-      }
-      /**
-       * Variant-specific configuration
-       */
-      variants?: {
-        [key: string]: {
-          /**
-           * Disable this variant for the model
-           */
-          disabled?: boolean
-          [key: string]: unknown | boolean | undefined
-        }
-      }
-    }
-  }
-  /**
-   * Canonical provider profile whose runtime behavior this account connection uses
-   */
-  profile?: string
-  /**
-   * Models.dev provider id to use as this provider connection's model catalog source
-   */
-  modelsDevProviderID?: string
-  whitelist?: Array<string>
-  blacklist?: Array<string>
-  options?: {
-    apiKey?: string
-    baseURL?: string
-    /**
-     * GitHub Enterprise URL for copilot authentication
-     */
-    enterpriseUrl?: string
-    /**
-     * Enable promptCacheKey for this provider (default false)
-     */
-    setCacheKey?: boolean
-    /**
-     * Merge leading system messages into a single system message for strict OpenAI-compatible endpoints that reject multiple or non-leading system messages (e.g. vLLM Qwen chat templates). Default false.
-     */
-    mergeSystemMessages?: boolean
-    /**
-     * Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.
-     */
-    timeout?: number | false
-    [key: string]: unknown | string | boolean | number | false | undefined
-  }
-}
-
-/**
- * Bundled local embedding model download settings
- */
-export type LocalEmbeddingConfig = {
-  /**
-   * Download source for the bundled local embedding model (default: huggingface)
-   */
-  source?: "huggingface" | "hf-mirror" | "custom"
-  /**
-   * Public HTTPS origin used when source is custom
-   */
-  remoteHost?: string
-  /**
-   * Directory where the bundled local embedding model is cached (default: ~/.synergy/data/embedding/models). Supports {env:VAR} references.
-   */
-  cacheDir?: string
-}
-
-/**
- * Embedding model configuration. When absent, a local model is used automatically.
- */
-export type EmbeddingConfig = {
-  /**
-   * Explicit model prices in USD: token rates per million, unit rates per declared quantity
-   */
-  cost?: {
-    input?: number
-    output?: number
-    cache_read?: number
-    cache_write?: number
-    cache_write_1h?: number
-    context_over_200k?: {
-      input?: number
-      output?: number
-      cache_read?: number
-      cache_write?: number
-      cache_write_1h?: number
-    }
-    tiers?: Array<{
-      input?: number
-      output?: number
-      cache_read?: number
-      cache_write?: number
-      cache_write_1h?: number
-      tier: {
-        type: "context"
-        size: number
-      }
-    }>
-    units?: {
-      audio_seconds?: {
-        price: number
-        per: number
-      }
-      audio_input_tokens?: {
-        price: number
-        per: number
-      }
-      audio_output_tokens?: {
-        price: number
-        per: number
-      }
-      characters?: {
-        price: number
-        per: number
-      }
-    }
-  }
-  /**
-   * Base URL for the embedding API
-   */
-  baseURL?: string
-  /**
-   * API key for the embedding service
-   */
-  apiKey?: string
-  /**
-   * Embedding model name
-   */
-  model?: string
-  local?: LocalEmbeddingConfig
-}
-
-/**
- * Rerank model for memory retrieval refinement. Disabled when not configured.
- */
-export type RerankConfig = {
-  /**
-   * Explicit model prices in USD: token rates per million, unit rates per declared quantity
-   */
-  cost?: {
-    input?: number
-    output?: number
-    cache_read?: number
-    cache_write?: number
-    cache_write_1h?: number
-    context_over_200k?: {
-      input?: number
-      output?: number
-      cache_read?: number
-      cache_write?: number
-      cache_write_1h?: number
-    }
-    tiers?: Array<{
-      input?: number
-      output?: number
-      cache_read?: number
-      cache_write?: number
-      cache_write_1h?: number
-      tier: {
-        type: "context"
-        size: number
-      }
-    }>
-    units?: {
-      audio_seconds?: {
-        price: number
-        per: number
-      }
-      audio_input_tokens?: {
-        price: number
-        per: number
-      }
-      audio_output_tokens?: {
-        price: number
-        per: number
-      }
-      characters?: {
-        price: number
-        per: number
-      }
-    }
-  }
-  /**
-   * Base URL for the rerank API
-   */
-  baseURL?: string
-  /**
-   * API key for the rerank service
-   */
-  apiKey?: string
-  /**
-   * Rerank model name
-   */
-  model?: string
-}
-
-/**
- * Speech-to-text service configuration
- */
-export type VoiceSttConfig = {
-  /**
-   * Explicit model prices in USD: token rates per million, unit rates per declared quantity
-   */
-  cost?: {
-    input?: number
-    output?: number
-    cache_read?: number
-    cache_write?: number
-    cache_write_1h?: number
-    context_over_200k?: {
-      input?: number
-      output?: number
-      cache_read?: number
-      cache_write?: number
-      cache_write_1h?: number
-    }
-    tiers?: Array<{
-      input?: number
-      output?: number
-      cache_read?: number
-      cache_write?: number
-      cache_write_1h?: number
-      tier: {
-        type: "context"
-        size: number
-      }
-    }>
-    units?: {
-      audio_seconds?: {
-        price: number
-        per: number
-      }
-      audio_input_tokens?: {
-        price: number
-        per: number
-      }
-      audio_output_tokens?: {
-        price: number
-        per: number
-      }
-      characters?: {
-        price: number
-        per: number
-      }
-    }
-  }
-  /**
-   * Base URL for the speech-to-text API (OpenAI-compatible)
-   */
-  baseURL?: string
-  /**
-   * API key for the speech-to-text service
-   */
-  apiKey?: string
-  /**
-   * Speech-to-text model name. Voice input is disabled when not set.
-   */
-  model?: string
-  /**
-   * BCP-47 language hint for transcription, e.g. zh, en. Auto-detected when not set.
-   */
-  language?: string
-}
-
-/**
- * Text-to-speech service configuration
- */
-export type VoiceTtsConfig = {
-  /**
-   * Explicit model prices in USD: token rates per million, unit rates per declared quantity
-   */
-  cost?: {
-    input?: number
-    output?: number
-    cache_read?: number
-    cache_write?: number
-    cache_write_1h?: number
-    context_over_200k?: {
-      input?: number
-      output?: number
-      cache_read?: number
-      cache_write?: number
-      cache_write_1h?: number
-    }
-    tiers?: Array<{
-      input?: number
-      output?: number
-      cache_read?: number
-      cache_write?: number
-      cache_write_1h?: number
-      tier: {
-        type: "context"
-        size: number
-      }
-    }>
-    units?: {
-      audio_seconds?: {
-        price: number
-        per: number
-      }
-      audio_input_tokens?: {
-        price: number
-        per: number
-      }
-      audio_output_tokens?: {
-        price: number
-        per: number
-      }
-      characters?: {
-        price: number
-        per: number
-      }
-    }
-  }
-  /**
-   * Base URL for the text-to-speech API (OpenAI-compatible)
-   */
-  baseURL?: string
-  /**
-   * API key for the text-to-speech service
-   */
-  apiKey?: string
-  /**
-   * Text-to-speech model name. The speak tool is disabled when not set.
-   */
-  model?: string
-  /**
-   * Voice name for synthesis (provider-specific, e.g. alloy)
-   */
-  voice?: string
-  /**
-   * Natural-language delivery instructions applied to synthesized speech, e.g. tone and pace
-   */
-  instructions?: string
-}
-
-/**
- * Voice input (dictation) and output (speech synthesis) configuration.
- */
-export type VoiceConfig = {
-  stt?: VoiceSttConfig
-  tts?: VoiceTtsConfig
-}
-
-export type MemoryConfig = {
-  /**
-   * Enable agent-initiated memory curation via chronicler (default: true)
-   */
-  enabled?: boolean
-  /**
-   * Semantic memory retrieval settings
-   */
-  retrieval?: {
-    /**
-     * Minimum similarity for auto-injection (default: 0.7)
-     */
-    simThreshold?: number
-    /**
-     * Max entries per category to retrieve (default: 3)
-     */
-    topK?: number
-    /**
-     * Per-category retrieval overrides
-     */
-    categories?: {
-      [key: string]: {
-        /**
-         * Minimum similarity for contextual retrieval
-         */
-        simThreshold?: number
-        /**
-         * Maximum contextual entries to retrieve
-         */
-        topK?: number
-      }
-    }
-  }
-  /**
-   * Memory deduplication settings
-   */
-  dedup?: {
-    /**
-     * Cosine similarity threshold for duplicate detection (default: 0.75)
-     */
-    threshold?: number
-  }
-}
-
-export type PassiveRetrievalConfig = {
-  /**
-   * Minimum cosine similarity for retrieval candidates (default: 0.7)
-   */
-  simThreshold?: number
-  /**
-   * Number of experiences to retrieve (default: 8)
-   */
-  topK?: number
-  /**
-   * ε-greedy exploration probability (default: 0.1)
-   */
-  epsilon?: number
-  /**
-   * Weight for similarity in hybrid score (default: 0.5)
-   */
-  wSim?: number
-  /**
-   * Weight for Q-value in hybrid score (default: 0.5)
-   */
-  wQ?: number
-  /**
-   * UCB1 exploration constant — scales √(ln(N)/n) visit-decay bonus (default: 0.5)
-   */
-  explorationConstant?: number
-}
-
-/**
- * Q-learning hyperparameters for experience evaluation
- */
-export type LearningConfig = {
-  /**
-   * Q-learning step size / learning rate (default: 0.3)
-   */
-  alpha?: number
-  /**
-   * Optimistic Q-value initialization per reward dimension (default: 1.0)
-   */
-  qInit?: number
-  /**
-   * Intent cosine similarity threshold for deduplicating experiences (default: 0.85)
-   */
-  dedupIntentThreshold?: number
-  /**
-   * Script cosine similarity threshold for deduplicating experiences (default: 0.8)
-   */
-  dedupScriptThreshold?: number
-  /**
-   * Maximum Q-value history entries per experience (default: 50)
-   */
-  qHistorySize?: number
-  /**
-   * Threshold for snapping reward dimensions to discrete {-1, 0, 1} (default: 0.5)
-   */
-  snapThreshold?: number
-  /**
-   * Default confidence for legacy scalar reward format (default: 0.3)
-   */
-  legacyRewardConfidence?: number
-  /**
-   * LLM retry count for intent/script/reward generation (default: 3)
-   */
-  encoderRetries?: number
-  /**
-   * Wall-clock deadline for a single encoder LLM call in milliseconds (default: 60000)
-   */
-  encoderTimeoutMs?: number
-  /**
-   * Maximum characters collected from one encoder model stream before abort (default: 16000)
-   */
-  encoderMaxOutputChars?: number
-  /**
-   * Maximum concurrent experience reencode workers (default: 5)
-   */
-  reencodeConcurrency?: number
-  /**
-   * Retry count for transient reencode stages, including model, embedding, session, network, and database operations (default: 3)
-   */
-  reencodeRetries?: number
-  /**
-   * Initial backoff for transient reencode stage retries in milliseconds (default: 1000)
-   */
-  reencodeRetryBackoffMs?: number
-  /**
-   * Max estimated tokens for tool output in turn digest (default: 800)
-   */
-  digestToolOutputBudget?: number
-  /**
-   * Max chars per tool input field in encoder context (default: 500)
-   */
-  encoderToolFieldBudget?: number
-  /**
-   * Max chars for tool output in encoder context (default: 300)
-   */
-  encoderToolOutputBudget?: number
-  /**
-   * Weights for multi-dimensional reward composition (default: outcome=0.35, intent=0.25, execution=0.2, orchestration=0.1, expression=0.1)
-   */
-  rewardWeights?: {
-    /**
-     * Weight for outcome dimension (default: 0.35)
-     */
-    outcome?: number
-    /**
-     * Weight for intent dimension (default: 0.25)
-     */
-    intent?: number
-    /**
-     * Weight for execution dimension (default: 0.2)
-     */
-    execution?: number
-    /**
-     * Weight for orchestration dimension (default: 0.1)
-     */
-    orchestration?: number
-    /**
-     * Weight for expression dimension (default: 0.1)
-     */
-    expression?: number
-  }
-  /**
-   * Number of subsequent turns to wait before evaluating reward (default: 2)
-   */
-  rewardDelay?: number
-}
-
-export type ExperienceConfig = {
-  /**
-   * Auto-encode conversation patterns into experiences (default: true)
-   */
-  encode?: boolean
-  /**
-   * Inject relevant past experiences into prompts (default: true)
-   */
-  retrieve?: boolean | PassiveRetrievalConfig
-  learning?: LearningConfig
-}
-
-export type LibraryConfig = {
-  memory?: MemoryConfig
-  experience?: ExperienceConfig
-  /**
-   * Enable autonomous background routines like anima daily wake (default: true)
-   */
-  autonomy?: boolean
-}
-
-/**
- * Per-source compatibility toggles for discovering Skills from other agent tools
- */
-export type SkillsCompatibilityConfig = {
-  /**
-   * Load Agent Skills from .agents/skills directories (default: true)
-   */
-  agents?: boolean
-  /**
-   * Load Claude Code Skills from .claude/skills directories (default: true)
-   */
-  claude?: boolean
-  /**
-   * Load Codex Skills from .codex/skills directories (default: true)
-   */
-  codex?: boolean
-  /**
-   * Load OpenClaw Skills from .openclaw/skills and workspace skills directories (default: true)
-   */
-  openclaw?: boolean
-}
-
-export type SkillsConfig = {
-  compatibility?: SkillsCompatibilityConfig
-}
-
-/**
- * Retry policy for connecting to this server
- */
-export type McpRetryConfig = {
-  /**
-   * Maximum connection attempts before giving up
-   */
-  maxAttempts?: number
-  /**
-   * Initial backoff delay in ms between retries
-   */
-  backoffMs?: number
-  /**
-   * Multiplier applied to backoff on each retry
-   */
-  backoffMultiplier?: number
-  /**
-   * Cooldown period in ms before a retry cycle resets
-   */
-  cooldownMs?: number
-}
-
-/**
- * Filter which tools are exposed from this server
- */
-export type McpToolFilterConfig = {
-  /**
-   * Tool names to include (allowlist)
-   */
-  include?: Array<string>
-  /**
-   * Tool names to exclude (blocklist)
-   */
-  exclude?: Array<string>
-}
-
-/**
- * Tool execution behavior config
- */
-export type McpToolsConfig = {
-  /**
-   * Tool approval mode
-   */
-  approval?: "auto" | "always" | "per_session"
-  /**
-   * Maximum tool output size in bytes
-   */
-  maxOutputBytes?: number
-}
-
-/**
- * Tool list caching behavior
- */
-export type McpToolCacheConfig = {
-  /**
-   * Tool list caching mode
-   */
-  mode?: "disabled" | "session" | "persistent"
-  /**
-   * Time-to-live for cached tool list in ms
-   */
-  ttlMs?: number
-}
-
-export type McpLocalConfig = {
-  /**
-   * Type of MCP server connection
-   */
-  type: "local"
-  /**
-   * Command and arguments to run the MCP server
-   */
-  command: Array<string>
-  /**
-   * Working directory for local MCP servers
-   */
-  cwd?: string
-  /**
-   * Environment variables to set when running the MCP server
-   */
-  environment?: {
-    [key: string]: string
-  }
-  /**
-   * Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.
-   */
-  timeout?: number
-  /**
-   * MCP startup mode
-   */
-  startup?: "eager" | "lazy" | "manual"
-  /**
-   * If true, this MCP server is required for the configured workflow
-   */
-  required?: boolean
-  /**
-   * Timeout in ms for initial connection handshake
-   */
-  connectTimeout?: number
-  /**
-   * Timeout in ms for listing tools
-   */
-  listTimeout?: number
-  /**
-   * Timeout in ms for tool call execution
-   */
-  callTimeout?: number
-  retry?: McpRetryConfig
-  /**
-   * Idle time in ms after which the server is shut down
-   */
-  idleShutdownMs?: number
-  toolFilter?: McpToolFilterConfig
-  /**
-   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
-   */
-  expandByDefault?: boolean
-  tools?: McpToolsConfig
-  toolCache?: McpToolCacheConfig
-  /**
-   * Enable or disable the MCP server on startup
-   */
-  enabled?: boolean
-}
-
-export type McpOAuthConfig = {
-  /**
-   * OAuth client ID. If not provided, dynamic client registration (RFC 7591) will be attempted.
-   */
-  clientId?: string
-  /**
-   * OAuth client secret (if required by the authorization server)
-   */
-  clientSecret?: string
-  /**
-   * OAuth scopes to request during authorization
-   */
-  scope?: string
-}
-
-export type McpRemoteConfig = {
-  /**
-   * Type of MCP server connection
-   */
-  type: "remote"
-  /**
-   * URL of the remote MCP server
-   */
-  url: string
-  /**
-   * Headers to send with the request
-   */
-  headers?: {
-    [key: string]: string
-  }
-  /**
-   * OAuth authentication configuration for the MCP server. Set to false to disable OAuth auto-detection.
-   */
-  oauth?: McpOAuthConfig | false
-  /**
-   * Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.
-   */
-  timeout?: number
-  /**
-   * MCP startup mode
-   */
-  startup?: "eager" | "lazy" | "manual"
-  /**
-   * If true, this MCP server is required for the configured workflow
-   */
-  required?: boolean
-  /**
-   * Timeout in ms for initial connection handshake
-   */
-  connectTimeout?: number
-  /**
-   * Timeout in ms for listing tools
-   */
-  listTimeout?: number
-  /**
-   * Timeout in ms for tool call execution
-   */
-  callTimeout?: number
-  retry?: McpRetryConfig
-  /**
-   * Idle time in ms after which the server is shut down
-   */
-  idleShutdownMs?: number
-  toolFilter?: McpToolFilterConfig
-  /**
-   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
-   */
-  expandByDefault?: boolean
-  tools?: McpToolsConfig
-  toolCache?: McpToolCacheConfig
-  /**
-   * Enable or disable the MCP server on startup
-   */
-  enabled?: boolean
-}
-
-/**
- * Default settings applied to all MCP servers that don't override them
- */
-export type McpDefaultsConfig = {
-  /**
-   * MCP startup mode
-   */
-  startup?: "eager" | "lazy" | "manual"
-  /**
-   * If true, this MCP server is required for the configured workflow
-   */
-  required?: boolean
-  /**
-   * Timeout in ms for initial connection handshake
-   */
-  connectTimeout?: number
-  /**
-   * Timeout in ms for listing tools
-   */
-  listTimeout?: number
-  /**
-   * Timeout in ms for tool call execution
-   */
-  callTimeout?: number
-  retry?: McpRetryConfig
-  /**
-   * Idle time in ms after which the server is shut down
-   */
-  idleShutdownMs?: number
-  toolFilter?: McpToolFilterConfig
-  /**
-   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
-   */
-  expandByDefault?: boolean
-  tools?: McpToolsConfig
-  toolCache?: McpToolCacheConfig
-}
-
-export type ChannelFeishuAccountConfig = {
-  enabled?: boolean
-  /**
-   * Feishu app ID
-   */
-  appId: string
-  /**
-   * Feishu app secret
-   */
-  appSecret: string
-  /**
-   * Feishu domain (feishu for China, lark for international)
-   */
-  domain?: "feishu" | "lark"
-  /**
-   * Allow direct messages
-   */
-  allowDM?: boolean
-  /**
-   * Allow group messages
-   */
-  allowGroup?: boolean
-  /**
-   * Require @mention in group chats
-   */
-  requireMention?: boolean
-  /**
-   * Bot open_id used to verify real @mentions in group chats
-   */
-  botOpenId?: string
-  /**
-   * Project directory whose Scope owns sessions for this Feishu account
-   */
-  projectDir?: string
-  /**
-   * Enable streaming card updates
-   */
-  streaming?: boolean
-  /**
-   * Format for ordinary outbound text messages (markdown renders through a CardKit card)
-   */
-  responseFormat?: "text" | "markdown"
-  /**
-   * Minimum interval between streaming card updates in ms
-   */
-  streamingThrottleMs?: number
-  /**
-   * Session scoping strategy for group chats
-   */
-  groupSessionScope?: "group" | "group_sender" | "group_topic" | "group_topic_sender" | "group_thread"
-  /**
-   * Debounce rapid-fire messages from the same sender in the same chat (0 = disabled)
-   */
-  inboundDebounceMs?: number
-  /**
-   * Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)
-   */
-  model?: string
-  /**
-   * Model variant to use with this account model (e.g. low, high, max)
-   */
-  variant?: string
-  /**
-   * Resolve sender display names via Feishu contact API
-   */
-  resolveSenderNames?: boolean
-  /**
-   * Reply in thread when message is part of a topic
-   */
-  replyInThread?: boolean
-}
-
-export type ChannelFeishuConfig = {
-  type: "feishu"
-  accounts: {
-    [key: string]: ChannelFeishuAccountConfig
-  }
-  /**
-   * Default domain for all accounts
-   */
-  domain?: "feishu" | "lark"
-  /**
-   * Default streaming setting for all accounts
-   */
-  streaming?: boolean
-  /**
-   * Default outbound text format for all accounts
-   */
-  responseFormat?: "text" | "markdown"
-}
-
-export type ChannelClarusAccountConfig = {
-  enabled?: boolean
-  /**
-   * Clarus REST API base URL override, including an optional path prefix; defaults to the configured Holos API base URL
-   */
-  apiUrl?: string
-  /**
-   * Primary Synergy agent for project and assignment Sessions
-   */
-  agent?: string
-}
-
-export type ChannelClarusConfig = {
-  type: "clarus"
-  accounts: {
-    [key: string]: ChannelClarusAccountConfig
-  }
-}
-
-export type ChannelGithubAccountConfig = {
-  enabled?: boolean
-  /**
-   * GitHub repositories to watch and respond to (owner/repo); may be empty and filled in later
-   */
-  repositories?: Array<string>
-  /**
-   * Directory under which per-repository checkouts are created. Each pull request or issue gets its own random-hash subdirectory with the branch checked out.
-   */
-  workspaceDir: string
-  /**
-   * Hours an unused per-thread checkout is kept before its local clone is removed. Session history is preserved; the checkout is recreated automatically the next time the thread is triggered.
-   */
-  workspaceTtlHours?: number
-  /**
-   * Interval between GitHub API polls in milliseconds (default 5 minutes)
-   */
-  pollingIntervalMs?: number
-  /**
-   * Automatically review newly opened and updated pull requests
-   */
-  autoReview?: boolean
-  /**
-   * Respond to @mentions of the bot handle and questions in issues and pull requests
-   */
-  autoRespond?: boolean
-  /**
-   * Agent used for GitHub channel sessions (defaults to github-channel-agent)
-   */
-  agent?: string
-  /**
-   * GitHub handle users @-mention to summon the bot (defaults to the GitHub App slug resolved from the App identity)
-   */
-  mention?: string
-  /**
-   * Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)
-   */
-  model?: string
-  /**
-   * Model variant to use with this account model (e.g. low, high, max)
-   */
-  variant?: string
-}
-
-export type ChannelGithubConfig = {
-  type: "github"
-  accounts: {
-    [key: string]: ChannelGithubAccountConfig
-  }
-}
-
-/**
- * Sandbox configuration for workspace boundary enforcement
- */
-export type SandboxConfig = {
-  /**
-   * Enable the sandbox runtime when available (default: true)
-   */
-  enabled?: boolean
-  /**
-   * How to proceed when the requested sandbox runtime is unavailable (default: 'warn')
-   */
-  fallbackPolicy?: "warn" | "allow" | "deny"
-  /**
-   * Force a specific sandbox backend. 'auto' (default) selects the platform-native backend. Valid: 'auto' (platform default), 'seatbelt-deny-default' (macOS deny-default SBPL), 'seatbelt-legacy-allow-default' (macOS allow-default SBPL), 'synergy-sandbox-linux' (Linux bundled bwrap), 'bwrap-inline-debug' (Linux in-tree bwrap debug), 'windows-restricted-token' (Windows MVP), 'windows-elevated' (Windows full, future).
-   */
-  backend?:
-    | "auto"
-    | "seatbelt-deny-default"
-    | "seatbelt-legacy-allow-default"
-    | "synergy-sandbox-linux"
-    | "bwrap-inline-debug"
-    | "windows-restricted-token"
-    | "windows-elevated"
-  /**
-   * Network configuration for sandbox enforcement
-   */
-  network?: {
-    /**
-     * Network access mode within the sandbox (default: 'restricted')
-     */
-    mode?: "restricted" | "proxy_only" | "full"
-  }
-  /**
-   * macOS-specific sandbox settings
-   */
-  macos?: {
-    /**
-     * Log sandbox denials via macOS Seatbelt (default: true)
-     */
-    denialLogger?: boolean
-  }
-  /**
-   * Linux-specific sandbox settings
-   */
-  linux?: {
-    /**
-     * Use the bundled bwrap binary instead of system bwrap (default: true)
-     */
-    bundledBwrap?: boolean
-    /**
-     * Fall back to Landlock LSM when bwrap is unavailable (default: true)
-     */
-    landlockFallback?: boolean
-  }
-  /**
-   * Windows-specific sandbox settings
-   */
-  windows?: {
-    /**
-     * Windows sandbox level (default: 'restricted-token')
-     */
-    level?: "disabled" | "restricted-token" | "elevated"
-    /**
-     * Path to the synergy-sandbox-windows.exe helper binary
-     */
-    helperPath?: string
-    /**
-     * Verify the helper binary SHA-256 hash before use (default: true)
-     */
-    verifyHelperHash?: boolean
-    /**
-     * Create a private desktop for the sandboxed process (default: true)
-     */
-    privateDesktop?: boolean
-    /**
-     * Use ConPTY for pseudo-terminal support (default: true)
-     */
-    conpty?: boolean
-  }
-}
-
-/**
- * Local logs, indexed telemetry, and diagnostics settings
- */
-export type ObservabilityConfig = {
-  /**
-   * Record AI SDK model spans (default: false)
-   */
-  modelSpans?: boolean
-  /**
-   * Enable local indexed observability events, spans, metrics, issues, and diagnostics (default: true)
-   */
-  enabled?: boolean
-  /**
-   * Days to retain optional observability mirror files (default: 7)
-   */
-  retentionDays?: number
-  /**
-   * Maximum total local observability storage in bytes (default: 250MB)
-   */
-  maxBytes?: number
-  /**
-   * Milliseconds without tool activity before emitting a stalled-tool observability event
-   */
-  stalledToolMs?: number
-  /**
-   * Structured local performance observability settings
-   */
-  performance?: {
-    /**
-     * Enable structured local performance metrics and traces
-     */
-    enabled?: boolean
-    /**
-     * Default performance metric sampling rate
-     */
-    samplingRate?: number
-    /**
-     * Milliseconds to retain raw performance metrics
-     */
-    metricRetentionMs?: number
-    /**
-     * Milliseconds to retain performance spans and trace details
-     */
-    traceRetentionMs?: number
-    /**
-     * Runtime resource sampling interval
-     */
-    resourceSampleIntervalMs?: number
-    /**
-     * Default slow trace issue threshold
-     */
-    slowTraceThresholdMs?: number
-    /**
-     * Maximum related events returned for a trace detail
-     */
-    maxTraceEvents?: number
-    /**
-     * Maximum timeline buckets returned to the dashboard
-     */
-    maxTimelineBuckets?: number
-    /**
-     * Maximum trace list rows returned
-     */
-    maxTraceListLimit?: number
-    /**
-     * Maximum redacted attribute string length
-     */
-    maxAttributeStringLength?: number
-    /**
-     * Performance dashboard polling refresh interval
-     */
-    dashboardRefreshMs?: number
-    /**
-     * Performance SSE heartbeat interval
-     */
-    sseHeartbeatMs?: number
-    /**
-     * Performance event stream replay buffer size
-     */
-    sseBufferSize?: number
-    /**
-     * Per-client performance SSE queue size
-     */
-    perClientSseQueueSize?: number
-    /**
-     * Additional performance telemetry attribute keys to redact
-     */
-    redactAttributeKeys?: Array<string>
-    rateLimits?: {
-      [key: string]: number
-    }
-    storage?: {
-      sqliteEnabled?: boolean
-      /**
-       * Enable optional JSONL mirror files for debugging exports
-       */
-      jsonlMirrorEnabled?: boolean
-      maxSqliteBytes?: number
-      walCheckpointIntervalMs?: number
-    }
-    thresholds?: {
-      [key: string]: number
-    }
-  }
-}
-
-/**
- * Holos platform configuration
- */
-export type HolosConfig = {
-  /**
-   * Enable the Holos runtime connection
-   */
-  enabled?: boolean
-  /**
-   * Holos API base URL
-   */
-  apiUrl?: string
-  /**
-   * Holos WebSocket base URL
-   */
-  wsUrl?: string
-  /**
-   * Holos portal URL for browser-facing pages (bind/start)
-   */
-  portalUrl?: string
-}
-
-/**
- * Sender identity for outgoing emails
- */
-export type EmailFromConfig = {
-  /**
-   * Sender email address
-   */
-  address?: string
-  /**
-   * Sender display name
-   */
-  name?: string
-}
-
-/**
- * SMTP transport settings for outgoing emails
- */
-export type EmailSmtpConfig = {
-  /**
-   * SMTP server hostname
-   */
-  host?: string
-  /**
-   * SMTP server port
-   */
-  port?: number
-  /**
-   * Use TLS/SSL for the SMTP connection
-   */
-  secure?: boolean
-  /**
-   * SMTP username
-   */
-  username?: string
-  /**
-   * SMTP password or app token
-   */
-  password?: string
-}
-
-/**
- * IMAP settings for reading emails
- */
-export type EmailImapConfig = {
-  /**
-   * IMAP server hostname
-   */
-  host?: string
-  /**
-   * IMAP server port
-   */
-  port?: number
-  /**
-   * Use TLS/SSL for the IMAP connection
-   */
-  secure?: boolean
-  /**
-   * IMAP username
-   */
-  username?: string
-  /**
-   * IMAP password or app token
-   */
-  password?: string
-}
-
-/**
- * Outgoing email configuration
- */
-export type EmailConfig = {
-  /**
-   * Enable email features
-   */
-  enabled?: boolean
-  from?: EmailFromConfig
-  smtp?: EmailSmtpConfig
-  imap?: EmailImapConfig
-}
-
-/**
- * Git identity sync settings
- */
-export type GithubIdentitySyncConfig = {
-  /**
-   * Sync git user.name/user.email from the connected GitHub account
-   */
-  enabled?: boolean
-  /**
-   * Optional git user.name override (defaults to the GitHub account login). null clears the override
-   */
-  name?: string | null
-  /**
-   * Optional git user.email override (defaults to the GitHub noreply email). null clears the override
-   */
-  email?: string | null
-}
-
-/**
- * GitHub agenda trigger settings
- */
-export type GithubWatchConfig = {
-  /**
-   * Allow GitHub agenda triggers (PR/issue/workflow status polling). Default: true
-   */
-  enabled?: boolean
-  /**
-   * Default poll interval for GitHub agenda triggers in milliseconds (default 300000)
-   */
-  defaultIntervalMs?: number
-}
-
-/**
- * GitHub integration settings (git identity sync, agenda watch)
- */
-export type GithubConfig = {
-  identitySync?: GithubIdentitySyncConfig
-  watch?: GithubWatchConfig
-}
-
 /**
  * @deprecated Always uses stretch layout.
  */
 export type LayoutConfig = "auto" | "stretch"
-
-export type CategoryConfig = {
-  /**
-   * Model to use for this category (e.g., 'sii-openai/GPT-5.2')
-   */
-  model?: string
-  /**
-   * Temperature override for this category
-   */
-  temperature?: number
-  /**
-   * Additional prompt context to inject for this category
-   */
-  promptAppend?: string
-  /**
-   * Description of when to use this category
-   */
-  description?: string
-}
 
 export type Config = {
   /**
    * JSON schema reference for configuration validation
    */
   $schema?: string
-  /**
-   * UI locale (system = follow OS, default: system)
-   */
-  locale?: "system" | "en" | "zh-CN"
-  /**
-   * Theme name to use for the interface
-   */
-  theme?: string
-  /**
-   * How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)
-   */
-  activityDisplay?: "full" | "balanced" | "minimal"
-  /**
-   * Default workspace for new sessions started from the Web composer: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main). Programmatic session creation (API, channels, Cortex) always uses the main checkout.
-   */
-  defaultSessionWorkspace?: "main" | "worktree"
-  keybinds?: KeybindsConfig
   logLevel?: LogLevel
   server?: ServerConfig
   /**
@@ -4409,14 +4395,7 @@ export type Config = {
   watcher?: {
     ignore?: Array<string>
   }
-  plugin?: Array<string>
-  pluginRuntimePolicy?: PluginRuntimePolicyConfig
-  pluginMarketplace?: PluginMarketplaceConfig
   snapshot?: boolean
-  /**
-   * Show live reasoning in a compact single-line viewport
-   */
-  compactReasoning?: boolean
   /**
    * Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters
    */
@@ -4463,7 +4442,6 @@ export type Config = {
   role_variant?: {
     [key: string]: string
   }
-  quick_switcher?: QuickSwitcherConfig
   /**
    * Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.
    */
@@ -4488,22 +4466,135 @@ export type Config = {
     [key: string]: AgentConfig | undefined
   }
   /**
-   * External agent configurations (e.g. codex, claude-code)
-   */
-  external_agent?: {
-    [key: string]: ExternalAgentConfig
-  }
-  /**
    * Custom provider configurations and model overrides
    */
   provider?: {
     [key: string]: ProviderConfig
   }
+  sandbox?: SandboxConfig
+  observability?: ObservabilityConfig
+  controlProfile?: ControlProfileId
+  /**
+   * Additional instruction files or patterns to include
+   */
+  instructions?: Array<string>
+  /**
+   * Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory
+   */
+  project_doc_fallback_filenames?: Array<string>
+  /**
+   * Maximum bytes to include from each automatically discovered instruction file (default: 32768; 0 disables automatic discovery)
+   */
+  project_doc_max_bytes?: number
+  permission?: PermissionConfig
+  /**
+   * Use the SmartAllow internal agent to auto-allow high-confidence safe asks in guarded mode and eligible false-positive denies in autonomous mode using metadata or redacted evidence only; full_access does not need SmartAllow
+   */
+  smartAllow?: boolean
+  tools?: {
+    [key: string]: boolean
+  }
+  question?: {
+    /**
+     * Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h)
+     */
+    timeout?: number
+  }
+  compaction?: {
+    /**
+     * Enable automatic compaction when context is full (default: true)
+     */
+    auto?: boolean
+    /**
+     * Enable pruning of old tool outputs (default: true)
+     */
+    prune?: boolean
+    /**
+     * Fraction of usable context that triggers auto-compaction (default: 0.85)
+     */
+    overflowThreshold?: number
+    /**
+     * Maximum number of historical images to send as base64 per request (older images replaced with text placeholders). Default: 8.
+     */
+    maxHistoryImages?: number
+    /**
+     * Enable Codex Remote Compaction V2 for openai-codex sessions: request an opaque server-side compaction artifact alongside the local text summary and replay it on later same-model turns (default: false).
+     */
+    codexRemote?: boolean
+  }
+  prompt?: {
+    /**
+     * Include the git coauthor reminder in agent prompts (default: true)
+     */
+    coauthorReminder?: boolean
+  }
+  /**
+   * Custom category configurations for background tasks. Categories define model and prompt presets.
+   */
+  category?: {
+    [key: string]: CategoryConfig
+  }
+  plugin?: Array<string>
+  pluginRuntimePolicy?: PluginRuntimePolicyConfig
+  pluginMarketplace?: PluginMarketplaceConfig
+  /**
+   * Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.
+   */
+  pluginConfig?: {
+    [key: string]: {
+      [key: string]: unknown
+    }
+  }
+  /**
+   * Channel configurations for messaging platform integrations
+   */
+  channel?: {
+    [key: string]: ChannelFeishuConfig | ChannelClarusConfig | ChannelGithubConfig
+  }
+  holos?: HolosConfig
+  email?: EmailConfig
+  github?: GithubConfig
+  enterprise?: {
+    /**
+     * Enterprise URL
+     */
+    url?: string
+  }
+  boss?: {
+    /**
+     * Enable Runtime Boss Mode: auto-provision a home-scope runtime boss session and route all Feishu messages to it
+     */
+    enabled?: boolean
+    /**
+     * Optional colleague identity description injected into the runtime boss session
+     */
+    identityText?: string | null
+    /**
+     * Re-inject the versioned world-overview briefing every N days (default: disabled)
+     */
+    briefingIntervalDays?: number | null
+    /**
+     * Colleague persona preset for the runtime boss: a built-in personality (project_manager or ops_assistant) or a custom blend of four 0..1 traits. Pass null to clear. When unset, identityText (legacy) or the default colleague identity is used.
+     */
+    persona?:
+      | {
+          preset: "project_manager"
+        }
+      | {
+          preset: "ops_assistant"
+        }
+      | {
+          preset: "custom"
+          formality: number
+          conciseness: number
+          proactiveness: number
+          warmth: number
+        }
+      | null
+  }
+  library?: LibraryConfig
   embedding?: EmbeddingConfig
   rerank?: RerankConfig
-  voice?: VoiceConfig
-  library?: LibraryConfig
-  skills?: SkillsConfig
   /**
    * MCP (Model Context Protocol) server configurations
    */
@@ -4522,17 +4613,11 @@ export type Config = {
   }
   mcpDefaults?: McpDefaultsConfig
   /**
-   * Channel configurations for messaging platform integrations
+   * External agent configurations (e.g. codex, claude-code)
    */
-  channel?: {
-    [key: string]: ChannelFeishuConfig | ChannelClarusConfig | ChannelGithubConfig
+  external_agent?: {
+    [key: string]: ExternalAgentConfig
   }
-  sandbox?: SandboxConfig
-  observability?: ObservabilityConfig
-  controlProfile?: ControlProfileId
-  holos?: HolosConfig
-  email?: EmailConfig
-  github?: GithubConfig
   formatter?:
     | false
     | {
@@ -4575,119 +4660,37 @@ export type Config = {
     severity?: "error" | "warning"
     scope?: "delta" | "file" | "project"
   }
-  /**
-   * Additional instruction files or patterns to include
-   */
-  instructions?: Array<string>
-  /**
-   * Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory
-   */
-  project_doc_fallback_filenames?: Array<string>
-  /**
-   * Maximum bytes to include from each automatically discovered instruction file (default: 32768; 0 disables automatic discovery)
-   */
-  project_doc_max_bytes?: number
-  layout?: LayoutConfig
-  permission?: PermissionConfig
-  /**
-   * Use the SmartAllow internal agent to auto-allow high-confidence safe asks in guarded mode and eligible false-positive denies in autonomous mode using metadata or redacted evidence only; full_access does not need SmartAllow
-   */
-  smartAllow?: boolean
-  tools?: {
-    [key: string]: boolean
-  }
-  enterprise?: {
-    /**
-     * Enterprise URL
-     */
-    url?: string
-  }
-  question?: {
-    /**
-     * Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h)
-     */
-    timeout?: number
-  }
-  compaction?: {
-    /**
-     * Enable automatic compaction when context is full (default: true)
-     */
-    auto?: boolean
-    /**
-     * Enable pruning of old tool outputs (default: true)
-     */
-    prune?: boolean
-    /**
-     * Fraction of usable context that triggers auto-compaction (default: 0.85)
-     */
-    overflowThreshold?: number
-    /**
-     * Maximum number of historical images to send as base64 per request (older images replaced with text placeholders). Default: 8.
-     */
-    maxHistoryImages?: number
-    /**
-     * Enable Codex Remote Compaction V2 for openai-codex sessions: request an opaque server-side compaction artifact alongside the local text summary and replay it on later same-model turns (default: false).
-     */
-    codexRemote?: boolean
-  }
-  boss?: {
-    /**
-     * Enable Runtime Boss Mode: auto-provision a home-scope runtime boss session and route all Feishu messages to it
-     */
-    enabled?: boolean
-    /**
-     * Optional colleague identity description injected into the runtime boss session
-     */
-    identityText?: string | null
-    /**
-     * Re-inject the versioned world-overview briefing every N days (default: disabled)
-     */
-    briefingIntervalDays?: number | null
-    /**
-     * Colleague persona preset for the runtime boss: a built-in personality (project_manager or ops_assistant) or a custom blend of four 0..1 traits. Pass null to clear. When unset, identityText (legacy) or the default colleague identity is used.
-     */
-    persona?:
-      | {
-          preset: "project_manager"
-        }
-      | {
-          preset: "ops_assistant"
-        }
-      | {
-          preset: "custom"
-          formality: number
-          conciseness: number
-          proactiveness: number
-          warmth: number
-        }
-      | null
-  }
-  prompt?: {
-    /**
-     * Include the git coauthor reminder in agent prompts (default: true)
-     */
-    coauthorReminder?: boolean
-  }
   toolExposure?: {
     /**
      * Expose the LSP tool; permission checks still apply (default: false)
      */
     lsp?: boolean
   }
+  skills?: SkillsConfig
+  voice?: VoiceConfig
   /**
-   * Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.
+   * UI locale (system = follow OS, default: system)
    */
-  pluginConfig?: {
-    [key: string]: {
-      [key: string]: unknown
-    }
-  }
+  locale?: "system" | "en" | "zh-CN"
   /**
-   * Custom category configurations for background tasks. Categories define model and prompt presets.
+   * Theme name to use for the interface
    */
-  category?: {
-    [key: string]: CategoryConfig
-  }
+  theme?: string
+  /**
+   * How much activity detail to show in the interface: full = everything, balanced = semantic activity grouping, minimal = only essential activity (default: balanced)
+   */
+  activityDisplay?: "full" | "balanced" | "minimal"
+  /**
+   * Default workspace for new sessions started from the Web composer: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main). Programmatic session creation (API, channels, Cortex) always uses the main checkout.
+   */
+  defaultSessionWorkspace?: "main" | "worktree"
+  keybinds?: KeybindsConfig
+  /**
+   * Show live reasoning in a compact single-line viewport
+   */
+  compactReasoning?: boolean
+  quick_switcher?: QuickSwitcherConfig
+  layout?: LayoutConfig
   /**
    * Toast notification preferences
    */
@@ -4882,13 +4885,6 @@ export type SessionCortexDelegation = {
   }
 }
 
-export type SessionSuperPlanInfo = {
-  runID: string
-  role: "planner" | "node" | "merge" | "audit"
-  nodeID?: string
-  mergeID?: string
-}
-
 export type SessionWorkingInfo =
   | {
       status: "busy"
@@ -4980,6 +4976,13 @@ export type SessionWorkflowInfo =
     }
   | SessionWorkflowExtension
 
+export type SessionSuperPlanInfo = {
+  runID: string
+  role: "planner" | "node" | "merge" | "audit"
+  nodeID?: string
+  mergeID?: string
+}
+
 export type Session = {
   id: string
   scope: SessionScope
@@ -5031,9 +5034,6 @@ export type Session = {
   agentOverride?: string
   pendingReply?: boolean
   interaction?: SessionInteraction
-  agenda?: {
-    itemID: string
-  }
   lastExchange?: {
     user?: string
     assistant?: string
@@ -5041,14 +5041,17 @@ export type Session = {
   history?: SessionHistoryInfo
   rollbackAck?: SessionRollbackAck
   cortex?: SessionCortexDelegation
-  superplan?: SessionSuperPlanInfo
   working?: SessionWorkingInfo
   workspace?: SessionWorkspace
+  workflow?: SessionWorkflowInfo
+  agenda?: {
+    itemID: string
+  }
+  superplan?: SessionSuperPlanInfo
   blueprint?: {
     loopID?: string
     loopRole?: "execution" | "audit"
   }
-  workflow?: SessionWorkflowInfo
 }
 
 export type ScopeBootstrapSessions = {
@@ -5057,68 +5060,6 @@ export type ScopeBootstrapSessions = {
   offset: number
   limit: number
 }
-
-export type McpStatusUninitialized = {
-  status: "uninitialized"
-}
-
-export type McpStatusStarting = {
-  status: "starting"
-}
-
-export type McpStatusConnecting = {
-  status: "connecting"
-}
-
-export type McpStatusListingTools = {
-  status: "listing_tools"
-}
-
-export type McpStatusConnected = {
-  status: "connected"
-}
-
-export type McpStatusReconnecting = {
-  status: "reconnecting"
-  attempt: number
-  maxAttempts: number
-}
-
-export type McpStatusFailed = {
-  status: "failed"
-  error: string
-}
-
-export type McpStatusDisabled = {
-  status: "disabled"
-}
-
-export type McpStatusNeedsAuth = {
-  status: "needs_auth"
-  error: string
-}
-
-export type McpStatusNeedsClientRegistration = {
-  status: "needs_client_registration"
-  error: string
-}
-
-export type McpStatusStopping = {
-  status: "stopping"
-}
-
-export type McpStatus =
-  | McpStatusUninitialized
-  | McpStatusStarting
-  | McpStatusConnecting
-  | McpStatusListingTools
-  | McpStatusConnected
-  | McpStatusReconnecting
-  | McpStatusFailed
-  | McpStatusDisabled
-  | McpStatusNeedsAuth
-  | McpStatusNeedsClientRegistration
-  | McpStatusStopping
 
 export type CortexTask = {
   id: string
@@ -5206,6 +5147,73 @@ export type CortexTask = {
   }
 }
 
+export type ScopeBootstrapFieldError = {
+  code: string
+  message: string
+}
+
+export type McpStatusUninitialized = {
+  status: "uninitialized"
+}
+
+export type McpStatusStarting = {
+  status: "starting"
+}
+
+export type McpStatusConnecting = {
+  status: "connecting"
+}
+
+export type McpStatusListingTools = {
+  status: "listing_tools"
+}
+
+export type McpStatusConnected = {
+  status: "connected"
+}
+
+export type McpStatusReconnecting = {
+  status: "reconnecting"
+  attempt: number
+  maxAttempts: number
+}
+
+export type McpStatusFailed = {
+  status: "failed"
+  error: string
+}
+
+export type McpStatusDisabled = {
+  status: "disabled"
+}
+
+export type McpStatusNeedsAuth = {
+  status: "needs_auth"
+  error: string
+}
+
+export type McpStatusNeedsClientRegistration = {
+  status: "needs_client_registration"
+  error: string
+}
+
+export type McpStatusStopping = {
+  status: "stopping"
+}
+
+export type McpStatus =
+  | McpStatusUninitialized
+  | McpStatusStarting
+  | McpStatusConnecting
+  | McpStatusListingTools
+  | McpStatusConnected
+  | McpStatusReconnecting
+  | McpStatusFailed
+  | McpStatusDisabled
+  | McpStatusNeedsAuth
+  | McpStatusNeedsClientRegistration
+  | McpStatusStopping
+
 export type LspStatus = {
   id: string
   name: string
@@ -5215,11 +5223,6 @@ export type LspStatus = {
 
 export type VcsInfo = {
   branch: string
-}
-
-export type ScopeBootstrapFieldError = {
-  code: string
-  message: string
 }
 
 export type ScopeBootstrapResponse = {
@@ -5233,16 +5236,16 @@ export type ScopeBootstrapResponse = {
     [key: string]: SessionStatus
   }
   sessions?: ScopeBootstrapSessions
-  mcp?: {
-    [key: string]: McpStatus
-  }
   cortex?: Array<CortexTask>
-  agenda?: Array<AgendaItem>
-  lsp?: Array<LspStatus>
-  vcs?: VcsInfo
   _errors?: {
     [key: string]: ScopeBootstrapFieldError
   }
+  mcp?: {
+    [key: string]: McpStatus
+  }
+  agenda?: Array<AgendaItem>
+  lsp?: Array<LspStatus>
+  vcs?: VcsInfo
 }
 
 export type Pty = {
@@ -5313,19 +5316,19 @@ export type ConfigDomainSummary = {
     | "general"
     | "models"
     | "providers"
-    | "library"
-    | "mcp"
-    | "plugins"
-    | "skills"
     | "agents"
     | "commands"
     | "permissions"
+    | "runtime"
+    | "plugins"
     | "channels"
     | "holos"
     | "email"
     | "github"
+    | "library"
+    | "mcp"
+    | "skills"
     | "voice"
-    | "runtime"
   filename: string
   label: string
   path: string
@@ -5369,19 +5372,19 @@ export type ConfigExportResult = {
     | "general"
     | "models"
     | "providers"
-    | "library"
-    | "mcp"
-    | "plugins"
-    | "skills"
     | "agents"
     | "commands"
     | "permissions"
+    | "runtime"
+    | "plugins"
     | "channels"
     | "holos"
     | "email"
     | "github"
+    | "library"
+    | "mcp"
+    | "skills"
     | "voice"
-    | "runtime"
   >
   warnings: Array<string>
   config: Config
@@ -5427,19 +5430,19 @@ export type ConfigDomainImportDomainPlan = {
     | "general"
     | "models"
     | "providers"
-    | "library"
-    | "mcp"
-    | "plugins"
-    | "skills"
     | "agents"
     | "commands"
     | "permissions"
+    | "runtime"
+    | "plugins"
     | "channels"
     | "holos"
     | "email"
     | "github"
+    | "library"
+    | "mcp"
+    | "skills"
     | "voice"
-    | "runtime"
   filename: string
   path: string
   mode: "merge" | "replace-domain" | "append"
@@ -5480,19 +5483,19 @@ export type ConfigDomainImportPlanInput = {
     | "general"
     | "models"
     | "providers"
-    | "library"
-    | "mcp"
-    | "plugins"
-    | "skills"
     | "agents"
     | "commands"
     | "permissions"
+    | "runtime"
+    | "plugins"
     | "channels"
     | "holos"
     | "email"
     | "github"
+    | "library"
+    | "mcp"
+    | "skills"
     | "voice"
-    | "runtime"
   >
   mode?: "merge" | "replace-domain" | "append"
   scope?: ConfigImportScope
@@ -5563,19 +5566,19 @@ export type ConfigImportRevisionConflictError = {
       | "general"
       | "models"
       | "providers"
-      | "library"
-      | "mcp"
-      | "plugins"
-      | "skills"
       | "agents"
       | "commands"
       | "permissions"
+      | "runtime"
+      | "plugins"
       | "channels"
       | "holos"
       | "email"
       | "github"
+      | "library"
+      | "mcp"
+      | "skills"
       | "voice"
-      | "runtime"
     >
   }
 }
@@ -5594,19 +5597,19 @@ export type ConfigDomainImportApplyInput = {
     | "general"
     | "models"
     | "providers"
-    | "library"
-    | "mcp"
-    | "plugins"
-    | "skills"
     | "agents"
     | "commands"
     | "permissions"
+    | "runtime"
+    | "plugins"
     | "channels"
     | "holos"
     | "email"
     | "github"
+    | "library"
+    | "mcp"
+    | "skills"
     | "voice"
-    | "runtime"
   >
   mode?: "merge" | "replace-domain" | "append"
   scope?: ConfigImportScope
@@ -5739,6 +5742,61 @@ export type WorktreeRemoveInput = {
   force?: boolean
 }
 
+export type SessionAgendaTrigger = {
+  type: "cron" | "every" | "at" | "delay" | "watch" | "webhook" | "session" | "github"
+  /**
+   * Interval for every triggers, e.g. '30m'
+   */
+  interval?: string
+  /**
+   * Delay for delay triggers, e.g. '2h'
+   */
+  delay?: string
+  /**
+   * Target session for session triggers
+   */
+  sessionID?: string
+}
+
+export type SessionAgendaItem = {
+  /**
+   * Agenda item ID
+   */
+  itemID: string
+  /**
+   * Agenda item title
+   */
+  title: string
+  status: "active" | "pending"
+  /**
+   * Next scheduled activation time, or null for open-ended triggers
+   */
+  nextRunAt: number | null
+  /**
+   * Trigger types that can activate this agenda item
+   */
+  triggerTypes: Array<"cron" | "every" | "at" | "delay" | "watch" | "webhook" | "session" | "github">
+  /**
+   * Display-safe trigger details for client-side formatting
+   */
+  triggers: Array<SessionAgendaTrigger>
+  /**
+   * Whether this agenda item is globally visible
+   */
+  global: boolean
+}
+
+export type SessionAgendaResponse = {
+  sessionID: string
+  count: number
+  hasActiveAgenda: boolean
+  items: Array<SessionAgendaItem>
+  offset: number
+  limit: number
+  total: number
+  hasMore: boolean
+}
+
 export type SessionNavResponse = {
   items: Array<SessionNavEntry>
   nextCursor: NavCursor | null
@@ -5784,23 +5842,6 @@ export type ExperimentOverrides = {
      */
     coauthorReminder?: boolean
   }
-  toolExposure?: {
-    /**
-     * Expose the LSP tool; permission checks still apply (default: false)
-     */
-    lsp?: boolean
-  }
-  /**
-   * Include LSP diagnostics after file-writing tools complete (default: true)
-   */
-  lspWriteDiagnostics?: boolean
-  /**
-   * Severity and scope policy for diagnostics returned after file-writing tools
-   */
-  lspDiagnostics?: {
-    severity?: "error" | "warning"
-    scope?: "delta" | "file" | "project"
-  }
   /**
    * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5
    */
@@ -5838,6 +5879,23 @@ export type ExperimentOverrides = {
    */
   role_variant?: {
     [key: string]: string
+  }
+  toolExposure?: {
+    /**
+     * Expose the LSP tool; permission checks still apply (default: false)
+     */
+    lsp?: boolean
+  }
+  /**
+   * Include LSP diagnostics after file-writing tools complete (default: true)
+   */
+  lspWriteDiagnostics?: boolean
+  /**
+   * Severity and scope policy for diagnostics returned after file-writing tools
+   */
+  lspDiagnostics?: {
+    severity?: "error" | "warning"
+    scope?: "delta" | "file" | "project"
   }
   execution?: {
     /**
@@ -6459,61 +6517,6 @@ export type DagNode = {
    * Execution result (trajectory summary or error) populated automatically on completion — do not set manually
    */
   result?: string
-}
-
-export type SessionAgendaTrigger = {
-  type: "cron" | "every" | "at" | "delay" | "watch" | "webhook" | "session" | "github"
-  /**
-   * Interval for every triggers, e.g. '30m'
-   */
-  interval?: string
-  /**
-   * Delay for delay triggers, e.g. '2h'
-   */
-  delay?: string
-  /**
-   * Target session for session triggers
-   */
-  sessionID?: string
-}
-
-export type SessionAgendaItem = {
-  /**
-   * Agenda item ID
-   */
-  itemID: string
-  /**
-   * Agenda item title
-   */
-  title: string
-  status: "active" | "pending"
-  /**
-   * Next scheduled activation time, or null for open-ended triggers
-   */
-  nextRunAt: number | null
-  /**
-   * Trigger types that can activate this agenda item
-   */
-  triggerTypes: Array<"cron" | "every" | "at" | "delay" | "watch" | "webhook" | "session" | "github">
-  /**
-   * Display-safe trigger details for client-side formatting
-   */
-  triggers: Array<SessionAgendaTrigger>
-  /**
-   * Whether this agenda item is globally visible
-   */
-  global: boolean
-}
-
-export type SessionAgendaResponse = {
-  sessionID: string
-  count: number
-  hasActiveAgenda: boolean
-  items: Array<SessionAgendaItem>
-  offset: number
-  limit: number
-  total: number
-  hasMore: boolean
 }
 
 export type SessionWorkspaceSelection =
@@ -7314,40 +7317,6 @@ export type SessionRollbackSummary = {
   files: Array<string>
   patchPartIDs: Array<string>
   canUnrollback: boolean
-}
-
-export type NoteInfo = {
-  id: string
-  title: string
-  content: unknown
-  pinned: boolean
-  global: boolean
-  originScope?: string
-  tags: Array<string>
-  kind?: "note" | "blueprint"
-  blueprint?: {
-    description?: string
-    defaultAgent?: string
-    auditAgent?: string
-    activeLoopID?: string
-    runCount?: number
-    lastRunAt?: number
-  }
-  archived: boolean
-  version: number
-  time: {
-    created: number
-    updated: number
-  }
-}
-
-export type NoteConflictError = {
-  name: "NoteConflictError"
-  data: {
-    noteID: string
-    expectedVersion: number
-    note: NoteInfo
-  }
 }
 
 export type SessionFileRestoreResult = {
@@ -8339,6 +8308,31 @@ export type NoteMetaScopeGroup = {
   notes: Array<NoteMetaInfo>
 }
 
+export type NoteInfo = {
+  id: string
+  title: string
+  content: unknown
+  pinned: boolean
+  global: boolean
+  originScope?: string
+  tags: Array<string>
+  kind?: "note" | "blueprint"
+  blueprint?: {
+    description?: string
+    defaultAgent?: string
+    auditAgent?: string
+    activeLoopID?: string
+    runCount?: number
+    lastRunAt?: number
+  }
+  archived: boolean
+  version: number
+  time: {
+    created: number
+    updated: number
+  }
+}
+
 export type NoteScopeGroup = {
   scopeID: string
   scopeType: "home" | "project"
@@ -8357,6 +8351,15 @@ export type NoteCreateInput = {
     activeLoopID?: string
     runCount?: number
     lastRunAt?: number
+  }
+}
+
+export type NoteConflictError = {
+  name: "NoteConflictError"
+  data: {
+    noteID: string
+    expectedVersion: number
+    note: NoteInfo
   }
 }
 
@@ -9774,6 +9777,57 @@ export type EventInstallationUpdateAvailable = {
   }
 }
 
+export type EventBlueprintLoopCreated = {
+  type: "blueprint_loop.created"
+  properties: {
+    loop: BlueprintLoopInfo
+  }
+}
+
+export type EventBlueprintLoopUpdated = {
+  type: "blueprint_loop.updated"
+  properties: {
+    loop: BlueprintLoopInfo
+  }
+}
+
+export type EventBlueprintLoopCompleted = {
+  type: "blueprint_loop.completed"
+  properties: {
+    loopID: string
+  }
+}
+
+export type EventBlueprintLoopFailed = {
+  type: "blueprint_loop.failed"
+  properties: {
+    loopID: string
+    error: string
+  }
+}
+
+export type EventBlueprintLoopCancelled = {
+  type: "blueprint_loop.cancelled"
+  properties: {
+    loopID: string
+  }
+}
+
+export type EventBlueprintLoopAuditing = {
+  type: "blueprint_loop.auditing"
+  properties: {
+    loopID: string
+  }
+}
+
+export type EventBlueprintLoopRejected = {
+  type: "blueprint_loop.rejected"
+  properties: {
+    loopID: string
+    reason: string
+  }
+}
+
 export type EventScopeUpdated = {
   type: "scope.updated"
   properties: Scope
@@ -9795,32 +9849,48 @@ export type EventScopeRuntimeDisposed = {
   }
 }
 
-export type EventAgendaItemCreated = {
-  type: "agenda.item.created"
+export type EventNoteCreated = {
+  type: "note.created"
   properties: {
-    item: AgendaItem
+    scopeID: string
+    note: NoteInfo
+    meta: NoteMetaInfo
   }
 }
 
-export type EventAgendaItemUpdated = {
-  type: "agenda.item.updated"
+export type EventNoteUpdated = {
+  type: "note.updated"
   properties: {
-    item: AgendaItem
+    scopeID: string
+    note: NoteInfo
+    meta: NoteMetaInfo
+    changed: Array<"title" | "content" | "tags" | "pinned" | "global" | "kind" | "blueprint" | "archived">
   }
 }
 
-export type EventAgendaItemDeleted = {
-  type: "agenda.item.deleted"
+export type EventNoteDeleted = {
+  type: "note.deleted"
   properties: {
     id: string
     scopeID: string
   }
 }
 
-export type EventProviderAuthUpdated = {
-  type: "provider.auth.updated"
+export type EventNoteArchived = {
+  type: "note.archived"
   properties: {
-    health: ProviderAuthHealth
+    ids: Array<string>
+    scopeID: string
+    metas: Array<NoteMetaInfo>
+  }
+}
+
+export type EventNoteUnarchived = {
+  type: "note.unarchived"
+  properties: {
+    ids: Array<string>
+    scopeID: string
+    metas: Array<NoteMetaInfo>
   }
 }
 
@@ -9853,6 +9923,13 @@ export type EventMessagePartRemoved = {
     sessionID: string
     messageID: string
     partID: string
+  }
+}
+
+export type EventProviderAuthUpdated = {
+  type: "provider.auth.updated"
+  properties: {
+    health: ProviderAuthHealth
   }
 }
 
@@ -9959,27 +10036,32 @@ export type EventSessionInboxUpdated = {
   }
 }
 
-export type EventRuntimeReloaded = {
-  type: "runtime.reloaded"
+export type EventPluginUiUpdated = {
+  type: "plugin.ui.updated"
   properties: {
-    executed: Array<RuntimeReloadTarget>
-    cascaded: Array<RuntimeReloadTarget>
-    changedFields: Array<string>
+    scopeId: string
   }
 }
 
-export type EventFileEdited = {
-  type: "file.edited"
+export type EventPluginEvent = {
+  type: "plugin.event"
   properties: {
-    file: string
+    pluginId: string
+    pluginVersion: string
+    generation: string
+    eventId: string
+    scopeId: string
+    sessionId?: string
+    sequence: number
+    timestamp: number
+    payload: unknown
   }
 }
 
-export type EventTodoUpdated = {
-  type: "todo.updated"
+export type EventSessionCompacted = {
+  type: "session.compacted"
   properties: {
     sessionID: string
-    todos: Array<Todo>
   }
 }
 
@@ -9989,13 +10071,6 @@ export type EventDagUpdated = {
     sessionID: string
     nodes: Array<DagNode>
     ready: Array<string>
-  }
-}
-
-export type EventSessionCompacted = {
-  type: "session.compacted"
-  properties: {
-    sessionID: string
   }
 }
 
@@ -10020,121 +10095,25 @@ export type EventCortexTasksUpdated = {
   }
 }
 
-export type EventBlueprintLoopCreated = {
-  type: "blueprint_loop.created"
+export type EventAgendaItemCreated = {
+  type: "agenda.item.created"
   properties: {
-    loop: BlueprintLoopInfo
+    item: AgendaItem
   }
 }
 
-export type EventBlueprintLoopUpdated = {
-  type: "blueprint_loop.updated"
+export type EventAgendaItemUpdated = {
+  type: "agenda.item.updated"
   properties: {
-    loop: BlueprintLoopInfo
+    item: AgendaItem
   }
 }
 
-export type EventBlueprintLoopCompleted = {
-  type: "blueprint_loop.completed"
-  properties: {
-    loopID: string
-  }
-}
-
-export type EventBlueprintLoopFailed = {
-  type: "blueprint_loop.failed"
-  properties: {
-    loopID: string
-    error: string
-  }
-}
-
-export type EventBlueprintLoopCancelled = {
-  type: "blueprint_loop.cancelled"
-  properties: {
-    loopID: string
-  }
-}
-
-export type EventBlueprintLoopAuditing = {
-  type: "blueprint_loop.auditing"
-  properties: {
-    loopID: string
-  }
-}
-
-export type EventBlueprintLoopRejected = {
-  type: "blueprint_loop.rejected"
-  properties: {
-    loopID: string
-    reason: string
-  }
-}
-
-export type EventNoteCreated = {
-  type: "note.created"
-  properties: {
-    scopeID: string
-    note: NoteInfo
-    meta: NoteMetaInfo
-  }
-}
-
-export type EventNoteUpdated = {
-  type: "note.updated"
-  properties: {
-    scopeID: string
-    note: NoteInfo
-    meta: NoteMetaInfo
-    changed: Array<"title" | "content" | "tags" | "pinned" | "global" | "kind" | "blueprint" | "archived">
-  }
-}
-
-export type EventNoteDeleted = {
-  type: "note.deleted"
+export type EventAgendaItemDeleted = {
+  type: "agenda.item.deleted"
   properties: {
     id: string
     scopeID: string
-  }
-}
-
-export type EventNoteArchived = {
-  type: "note.archived"
-  properties: {
-    ids: Array<string>
-    scopeID: string
-    metas: Array<NoteMetaInfo>
-  }
-}
-
-export type EventNoteUnarchived = {
-  type: "note.unarchived"
-  properties: {
-    ids: Array<string>
-    scopeID: string
-    metas: Array<NoteMetaInfo>
-  }
-}
-
-export type EventPluginUiUpdated = {
-  type: "plugin.ui.updated"
-  properties: {
-    scopeId: string
-  }
-}
-
-export type EventPluginEvent = {
-  type: "plugin.event"
-  properties: {
-    pluginId: string
-    pluginVersion: string
-    generation: string
-    eventId: string
-    scopeId: string
-    sessionId?: string
-    sequence: number
-    timestamp: number
-    payload: unknown
   }
 }
 
@@ -10174,27 +10153,6 @@ export type EventMcpFailed = {
   }
 }
 
-export type EventLatticeRunCreated = {
-  type: "lattice.run.created"
-  properties: {
-    run: LatticeRunView
-  }
-}
-
-export type EventLatticeRunUpdated = {
-  type: "lattice.run.updated"
-  properties: {
-    run: LatticeRunView
-  }
-}
-
-export type EventLatticeEventAppended = {
-  type: "lattice.event.appended"
-  properties: {
-    event: LatticeEvent
-  }
-}
-
 export type EventFileWatcherUpdated = {
   type: "file.watcher.updated"
   properties: {
@@ -10209,14 +10167,28 @@ export type EventFileWatcherUpdated = {
   }
 }
 
-export type EventChannelCommandExecuted = {
-  type: "channel.command.executed"
+export type EventFileEdited = {
+  type: "file.edited"
+  properties: {
+    file: string
+  }
+}
+
+export type EventTodoUpdated = {
+  type: "todo.updated"
+  properties: {
+    sessionID: string
+    todos: Array<Todo>
+  }
+}
+
+export type EventCommandExecuted = {
+  type: "command.executed"
   properties: {
     name: string
-    channelType: string
-    accountId: string
-    chatId: string
-    userId?: string
+    sessionID: string
+    arguments: string
+    messageID: string
   }
 }
 
@@ -10247,6 +10219,47 @@ export type EventQuestionTimedOut = {
   properties: {
     sessionID: string
     requestID: string
+  }
+}
+
+export type EventRuntimeReloaded = {
+  type: "runtime.reloaded"
+  properties: {
+    executed: Array<RuntimeReloadTarget>
+    cascaded: Array<RuntimeReloadTarget>
+    changedFields: Array<string>
+  }
+}
+
+export type EventLatticeRunCreated = {
+  type: "lattice.run.created"
+  properties: {
+    run: LatticeRunView
+  }
+}
+
+export type EventLatticeRunUpdated = {
+  type: "lattice.run.updated"
+  properties: {
+    run: LatticeRunView
+  }
+}
+
+export type EventLatticeEventAppended = {
+  type: "lattice.event.appended"
+  properties: {
+    event: LatticeEvent
+  }
+}
+
+export type EventChannelCommandExecuted = {
+  type: "channel.command.executed"
+  properties: {
+    name: string
+    channelType: string
+    accountId: string
+    chatId: string
+    userId?: string
   }
 }
 
@@ -10354,16 +10367,6 @@ export type EventVcsBranchUpdated = {
   }
 }
 
-export type EventCommandExecuted = {
-  type: "command.executed"
-  properties: {
-    name: string
-    sessionID: string
-    arguments: string
-    messageID: string
-  }
-}
-
 export type EventPtyCreated = {
   type: "pty.created"
   properties: {
@@ -10410,17 +10413,26 @@ export type EventGlobalDisposed = {
 export type Event =
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
+  | EventBlueprintLoopCreated
+  | EventBlueprintLoopUpdated
+  | EventBlueprintLoopCompleted
+  | EventBlueprintLoopFailed
+  | EventBlueprintLoopCancelled
+  | EventBlueprintLoopAuditing
+  | EventBlueprintLoopRejected
   | EventScopeUpdated
   | EventScopeRemoved
   | EventScopeRuntimeDisposed
-  | EventAgendaItemCreated
-  | EventAgendaItemUpdated
-  | EventAgendaItemDeleted
-  | EventProviderAuthUpdated
+  | EventNoteCreated
+  | EventNoteUpdated
+  | EventNoteDeleted
+  | EventNoteArchived
+  | EventNoteUnarchived
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
+  | EventProviderAuthUpdated
   | EventConfigUpdated
   | EventPermissionAsked
   | EventPermissionReplied
@@ -10434,42 +10446,34 @@ export type Event =
   | EventSessionTurnStart
   | EventSessionTurnEnd
   | EventSessionInboxUpdated
-  | EventRuntimeReloaded
-  | EventFileEdited
-  | EventTodoUpdated
-  | EventDagUpdated
+  | EventPluginUiUpdated
+  | EventPluginEvent
   | EventSessionCompacted
+  | EventDagUpdated
   | EventCortexTaskCreated
   | EventCortexTaskCompleted
   | EventCortexTasksUpdated
-  | EventBlueprintLoopCreated
-  | EventBlueprintLoopUpdated
-  | EventBlueprintLoopCompleted
-  | EventBlueprintLoopFailed
-  | EventBlueprintLoopCancelled
-  | EventBlueprintLoopAuditing
-  | EventBlueprintLoopRejected
-  | EventNoteCreated
-  | EventNoteUpdated
-  | EventNoteDeleted
-  | EventNoteArchived
-  | EventNoteUnarchived
-  | EventPluginUiUpdated
-  | EventPluginEvent
+  | EventAgendaItemCreated
+  | EventAgendaItemUpdated
+  | EventAgendaItemDeleted
   | EventMcpToolsChanged
   | EventMcpPromptsChanged
   | EventMcpResourcesChanged
   | EventMcpReady
   | EventMcpFailed
-  | EventLatticeRunCreated
-  | EventLatticeRunUpdated
-  | EventLatticeEventAppended
   | EventFileWatcherUpdated
-  | EventChannelCommandExecuted
+  | EventFileEdited
+  | EventTodoUpdated
+  | EventCommandExecuted
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
   | EventQuestionTimedOut
+  | EventRuntimeReloaded
+  | EventLatticeRunCreated
+  | EventLatticeRunUpdated
+  | EventLatticeEventAppended
+  | EventChannelCommandExecuted
   | EventChannelConnected
   | EventChannelDisconnected
   | EventHolosContactAdded
@@ -10484,7 +10488,6 @@ export type Event =
   | EventSynergyLinkTargetUpdated
   | EventSynergyLinkTargetRemoved
   | EventVcsBranchUpdated
-  | EventCommandExecuted
   | EventPtyCreated
   | EventPtyUpdated
   | EventPtyExited
@@ -12321,7 +12324,7 @@ export type ScopeRemoveData = {
 
 export type ScopeRemoveErrors = {
   /**
-   * Managed project archive conflict
+   * Scope archive conflict
    */
   409: ManagedProjectArchiveError
   /**
@@ -12374,7 +12377,7 @@ export type ScopeUpdateErrors = {
    */
   404: NotFoundError
   /**
-   * Managed project archive conflict
+   * Scope archive conflict
    */
   409: ManagedProjectArchiveError
   /**
@@ -12882,19 +12885,19 @@ export type ConfigDomainGetData = {
       | "general"
       | "models"
       | "providers"
-      | "library"
-      | "mcp"
-      | "plugins"
-      | "skills"
       | "agents"
       | "commands"
       | "permissions"
+      | "runtime"
+      | "plugins"
       | "channels"
       | "holos"
       | "email"
       | "github"
+      | "library"
+      | "mcp"
+      | "skills"
       | "voice"
-      | "runtime"
   }
   query?: {
     directory?: string
@@ -12932,19 +12935,19 @@ export type ConfigDomainUpdateData = {
       | "general"
       | "models"
       | "providers"
-      | "library"
-      | "mcp"
-      | "plugins"
-      | "skills"
       | "agents"
       | "commands"
       | "permissions"
+      | "runtime"
+      | "plugins"
       | "channels"
       | "holos"
       | "email"
       | "github"
+      | "library"
+      | "mcp"
+      | "skills"
       | "voice"
-      | "runtime"
   }
   query?: {
     directory?: string
@@ -12982,19 +12985,19 @@ export type ConfigDomainOpenData = {
       | "general"
       | "models"
       | "providers"
-      | "library"
-      | "mcp"
-      | "plugins"
-      | "skills"
       | "agents"
       | "commands"
       | "permissions"
+      | "runtime"
+      | "plugins"
       | "channels"
       | "holos"
       | "email"
       | "github"
+      | "library"
+      | "mcp"
+      | "skills"
       | "voice"
-      | "runtime"
   }
   query?: {
     directory?: string
@@ -13040,36 +13043,36 @@ export type ConfigExportData = {
       | "general"
       | "models"
       | "providers"
-      | "library"
-      | "mcp"
-      | "plugins"
-      | "skills"
       | "agents"
       | "commands"
       | "permissions"
+      | "runtime"
+      | "plugins"
       | "channels"
       | "holos"
       | "email"
       | "github"
+      | "library"
+      | "mcp"
+      | "skills"
       | "voice"
-      | "runtime"
       | Array<
           | "general"
           | "models"
           | "providers"
-          | "library"
-          | "mcp"
-          | "plugins"
-          | "skills"
           | "agents"
           | "commands"
           | "permissions"
+          | "runtime"
+          | "plugins"
           | "channels"
           | "holos"
           | "email"
           | "github"
+          | "library"
+          | "mcp"
+          | "skills"
           | "voice"
-          | "runtime"
         >
     includeSecrets?: string
   }
@@ -13658,6 +13661,49 @@ export type WorktreeRemoveResponses = {
 
 export type WorktreeRemoveResponse = WorktreeRemoveResponses[keyof WorktreeRemoveResponses]
 
+export type SessionAgendaData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    limit?: number
+    offset?: number
+  }
+  url: "/session/{sessionID}/agenda"
+}
+
+export type SessionAgendaErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionAgendaError = SessionAgendaErrors[keyof SessionAgendaErrors]
+
+export type SessionAgendaResponses = {
+  /**
+   * Session agenda wakeups
+   */
+  200: SessionAgendaResponse
+}
+
+export type SessionAgendaResponse2 = SessionAgendaResponses[keyof SessionAgendaResponses]
+
 export type VcsGetData = {
   body?: never
   path?: never
@@ -14226,49 +14272,6 @@ export type SessionDagResponses = {
 }
 
 export type SessionDagResponse = SessionDagResponses[keyof SessionDagResponses]
-
-export type SessionAgendaData = {
-  body?: never
-  path: {
-    /**
-     * Session ID
-     */
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-    limit?: number
-    offset?: number
-  }
-  url: "/session/{sessionID}/agenda"
-}
-
-export type SessionAgendaErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SessionAgendaError = SessionAgendaErrors[keyof SessionAgendaErrors]
-
-export type SessionAgendaResponses = {
-  /**
-   * Session agenda wakeups
-   */
-  200: SessionAgendaResponse
-}
-
-export type SessionAgendaResponse2 = SessionAgendaResponses[keyof SessionAgendaResponses]
 
 export type SessionInitData = {
   body?: {
@@ -15341,7 +15344,10 @@ export type SessionUnrollbackErrors = {
   /**
    * Conflict
    */
-  409: NoteConflictError
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Runtime shutting down
    */
@@ -19357,7 +19363,10 @@ export type LatticeRunPauseErrors = {
   /**
    * Conflict
    */
-  409: NoteConflictError
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Internal server error
    */
@@ -19408,7 +19417,10 @@ export type LatticeRunResumeErrors = {
   /**
    * Conflict
    */
-  409: NoteConflictError
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Internal server error
    */
@@ -19459,7 +19471,10 @@ export type LatticeRunCancelErrors = {
   /**
    * Conflict
    */
-  409: NoteConflictError
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Internal server error
    */
@@ -19510,7 +19525,10 @@ export type LatticeRunApproveErrors = {
   /**
    * Conflict
    */
-  409: NoteConflictError
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Internal server error
    */
@@ -19559,7 +19577,10 @@ export type WorkflowSessionSetErrors = {
   /**
    * Conflict
    */
-  409: NoteConflictError
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Internal server error
    */
@@ -19740,7 +19761,10 @@ export type BossSessionTreeErrors = {
   /**
    * Conflict
    */
-  409: NoteConflictError
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Internal server error
    */
@@ -19789,7 +19813,10 @@ export type BossSessionWorkerCreateErrors = {
   /**
    * Conflict
    */
-  409: NoteConflictError
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Internal server error
    */
@@ -19838,7 +19865,10 @@ export type BossSessionWorkerAssignErrors = {
   /**
    * Conflict
    */
-  409: NoteConflictError
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Internal server error
    */
@@ -19887,7 +19917,10 @@ export type BossSessionWorkerCancelErrors = {
   /**
    * Conflict
    */
-  409: NoteConflictError
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Internal server error
    */
@@ -19931,7 +19964,10 @@ export type BossSessionOpenErrors = {
   /**
    * Conflict
    */
-  409: NoteConflictError
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Internal server error
    */
@@ -21164,7 +21200,10 @@ export type PluginInvokeOperationErrors = {
   /**
    * Conflict
    */
-  409: NoteConflictError
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Service unavailable or runtime shutting down
    */

@@ -2,7 +2,8 @@
 
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities) source("../../../../");
-@source not "../../../../app/src/locales";
+@source "../../../../../apps/web/src";
+@source not "../../../../../apps/web/src/locales";
 @import "./utilities.css";
 
 @import "../index.css";

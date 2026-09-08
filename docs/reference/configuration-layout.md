@@ -4,6 +4,14 @@ The field-level reference is generated at [configuration.md](configuration.md); 
 
 Synergy uses JSONC domain files. Global and project configuration share the same domain names so one setting has one owning file.
 
+## Package ownership
+
+The harness owns configuration loading, file transactions, core schemas, and the `ConfigExtensions` registry. Each optional backend owns its field schemas, defaults, provider-reference checks, and exact credential redaction/restoration in `src/config-schema.ts`. The full product composes these through `packages/product-runtime/src/configuration.ts` before validating configuration or generating its schema. Schema references obtained before registration resolve the current composition, including registered domain IDs.
+
+A reduced composition preserves unregistered fields in shared files and leaves unregistered domain files untouched. Replacing a known domain retains its unregistered fields on disk. Client-facing redaction omits fields whose owner is absent because the core cannot classify that owner's credentials. Explicit requests for an unregistered domain or unsupported experiment override fail validation; dormant optional experiment settings in an existing home do not activate that capability. Full composition retains the strict root validation and recovery rules of the product.
+
+The host supplies the published configuration schema path to `Global.initialize()`. The core does not locate product schema assets or create embedding-model directories at startup.
+
 ## Locations
 
 Global configuration:
@@ -44,7 +52,7 @@ Clarus accounts live in the Channel domain and reuse Holos credentials:
 
 Holos login creates the matching Clarus Channel account when it is absent and preserves explicit account settings. A versioned Holos migration provisions the same disabled account for an existing active identity. There is no top-level `clarus` domain or Clarus workspace-root setting.
 
-Monolithic `synergy.json` and `synergy.jsonc` files are migration inputs, not active runtime config paths. Startup migrates legacy global and project files into domain files and archives the originals.
+Monolithic `synergy.json` and `synergy.jsonc` files are migration inputs. Startup migrates legacy global and project files into domain files and archives the originals once every field has a registered owner. A reduced composition defers a migration containing unregistered fields, retains the original file, and reads its core values beneath canonical domain overrides until the complete owner set is available.
 
 ### Execution isolation
 

@@ -1,0 +1,2292 @@
+import { SessionExecutionContributions } from "./execution-contributions"
+import { RolloutContext } from "./rollout/context"
+import { Experiment } from "../config/experiment"
+import { ActivitySummary } from "./activity-summary"
+import { RolloutRecordingError } from "./rollout/error"
+import { RolloutLifecycle } from "./rollout/lifecycle"
+import { RolloutLedger } from "./rollout/ledger"
+import type { RolloutSchema } from "./rollout/schema"
+import z from "zod"
+import { Identifier } from "../id/id"
+import { MessageV2 } from "./message-v2"
+import { Log } from "../util/log"
+import { Session } from "."
+import { SessionEvent } from "./event"
+import { Agent } from "../agent/agent"
+import { Provider } from "../provider/provider"
+import { SessionCompaction } from "./compaction"
+import { Token } from "../util/token"
+import { Lock } from "../util/lock"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
+import { Bus } from "../bus"
+import { SystemPrompt } from "./system"
+import { SessionEndpoint } from "./endpoint"
+import { SessionPluginHooks as Plugin } from "./plugin-hooks"
+import MAX_STEPS from "./prompt/max-steps.txt"
+import CORTEX_REMINDER from "./prompt/cortex-reminder.txt"
+import PLANNING_REMINDER from "./prompt/planning-reminder.txt"
+import COAUTHOR_REMINDER from "./prompt/coauthor-reminder.txt"
+import { defer } from "../util/defer"
+import { SessionCommandRuntime } from "./command-runtime"
+import { InstructionRegistry } from "../instruction/registry"
+import "./summary"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { fn } from "../util/fn"
+import { SessionProcessor } from "./processor"
+import { SessionMemoryPressure } from "./memory-pressure"
+import { SessionMemoryIncident } from "./memory-incident"
+import { SessionExternalAgents } from "./external-agents"
+import { withPreambleSection } from "../agent/prompt/preamble"
+import { SessionManager } from "./manager"
+import { SessionMessageCache } from "./message-cache"
+import { LLMTurnMemory } from "./llm-memory"
+import { SessionInbox } from "./inbox"
+import { SessionHistory } from "./history"
+import { TimeoutConfig } from "../util/timeout-config"
+import { ToolResolver } from "./tool-resolver"
+import { PromptBudgeter } from "./prompt-budgeter"
+import { ContextUsage } from "./context-usage"
+import { PermissionNext } from "../permission/next"
+import { ControlProfileCompiler } from "../control-profile/compiler"
+import { buildPermissionContext } from "./permission-context"
+import { Config } from "../config/config"
+import { SessionCortexRuntime } from "./cortex-runtime"
+import { Observability } from "../observability"
+import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./input"
+import { SessionProgress } from "./progress"
+import * as SessionWorking from "./working"
+import { SessionUserMessageMaterialization } from "./user-message-materialization"
+import { cacheResult, getCachedResult, evictRecallCache } from "./recall"
+import "./title"
+
+import { LLM } from "./llm"
+import { ScopeContext } from "../scope/context"
+import { Scope } from "../scope"
+import { LoopJob } from "./loop-job"
+import "./loop-signals"
+import { ContinuationKernel } from "./continuation-kernel"
+import { SessionContextContributions } from "./context-contributions"
+import { SessionProjectHealth } from "./project-health"
+import { formatElapsed } from "../util/elapsed"
+import { WorkflowUserWrapper } from "./workflow-user-wrapper"
+import { WorkflowPromptRegistry } from "./workflow-prompt-registry"
+import { WorkflowKindRegistry } from "./workflow-kind-registry"
+import type { ToolDisplay } from "@ericsanchezok/synergy-util/tool"
+import { ObservabilitySpans } from "../observability/spans"
+import { ObservabilityContext } from "../observability/context"
+import { SkillSourceProfile } from "../instruction/source-profile"
+
+export { InvokeInput, resolveInputParts } from "./input"
+
+// @ts-ignore
+globalThis.AI_SDK_LOG_WARNINGS = false
+
+export namespace SessionInvoke {
+  const log = Log.create({ service: "session.invoke" })
+  const ephemeralToolsByMessage = new Map<string, ToolResolver.EphemeralTool[]>()
+  const maxOutputTokensByMessage = new Map<string, number>()
+
+  function channelDeliveryMetadata(messages: MessageV2.WithParts[], afterIndex: number) {
+    let channelPush = false
+    let channelReply = false
+    let channelReplyToMessageId: string | undefined
+    let channelChatId: string | undefined
+    let channelChatType: "dm" | "group" | undefined
+    let replyAnchorConflict = false
+    let chatIdConflict = false
+    let chatTypeConflict = false
+    for (let index = afterIndex + 1; index < messages.length; index++) {
+      const info = messages[index].info
+      if (info.role !== "user") continue
+      const metadata = info.metadata
+      if (metadata?.mailbox || metadata?.channelPush || metadata?.channelReply) channelPush = true
+      if (metadata?.channelReply) channelReply = true
+      const replyAnchor =
+        typeof metadata?.channelReplyToMessageId === "string" && metadata.channelReplyToMessageId.trim()
+          ? metadata.channelReplyToMessageId
+          : undefined
+      if (replyAnchor) {
+        if (channelReplyToMessageId && channelReplyToMessageId !== replyAnchor) replyAnchorConflict = true
+        else channelReplyToMessageId = replyAnchor
+      }
+      const chatId =
+        typeof metadata?.channelChatId === "string" && metadata.channelChatId.trim()
+          ? metadata.channelChatId
+          : undefined
+      if (chatId) {
+        if (channelChatId && channelChatId !== chatId) chatIdConflict = true
+        else channelChatId = chatId
+      }
+      const chatType =
+        metadata?.channelChatType === "dm" || metadata?.channelChatType === "group"
+          ? metadata.channelChatType
+          : undefined
+      if (chatType) {
+        if (channelChatType && channelChatType !== chatType) chatTypeConflict = true
+        else channelChatType = chatType
+      }
+    }
+    if (!channelPush) return undefined
+    return {
+      channelPush: true,
+      ...(channelReply ? { channelReply: true } : {}),
+      ...(channelReply && channelReplyToMessageId && !replyAnchorConflict ? { channelReplyToMessageId } : {}),
+      ...(channelChatId && !chatIdConflict ? { channelChatId } : {}),
+      ...(channelChatType && !chatTypeConflict ? { channelChatType } : {}),
+    }
+  }
+
+  export function assertIdle(sessionID: string) {
+    return SessionManager.assertIdle(sessionID)
+  }
+  export function cancel(sessionID: string, options?: { recoverQueuedTasks?: boolean }) {
+    log.info("cancel", { sessionID })
+    evictRecallCache(sessionID)
+    PermissionNext.clearForSession(sessionID).catch((err) => {
+      log.error("permission cleanup failed", { sessionID, error: err })
+    })
+    SessionManager.signalAbort(sessionID, options)
+  }
+
+  /**
+   * Repair persisted abort state and synchronize status when no live loop owns
+   * the session. Lifecycle idle remains owned by SessionManager.release().
+   *
+   * @returns Whether an incomplete assistant message was repaired.
+   */
+  export async function repairAfterAbort(sessionID: string): Promise<boolean> {
+    const repaired = await repairIncompleteAssistant(sessionID).catch((err) => {
+      log.error("assistant repair after abort failed", { sessionID, error: err })
+      return false
+    })
+    if (!repaired || SessionManager.isRunning(sessionID)) return repaired
+    if (await SessionWorking.resolve(sessionID)) return repaired
+    await SessionManager.publishStatusOnly(sessionID, { type: "idle" })
+    return repaired
+  }
+
+  type InternalInvokeInput = InvokeInput & {
+    ephemeralTools?: ToolResolver.EphemeralTool[]
+    maxOutputTokens?: number
+    origin?: MessageV2.OriginUser
+  }
+
+  async function invokeWithInternalTools(input: InternalInvokeInput, lease?: SessionManager.LoopLease) {
+    return SessionManager.run(
+      input.sessionID,
+      async (runLease) => {
+        const message = await createUserMessage(input)
+        if (input.ephemeralTools?.length) {
+          ephemeralToolsByMessage.set(message.info.id, input.ephemeralTools)
+        }
+        if (input.maxOutputTokens) maxOutputTokensByMessage.set(message.info.id, input.maxOutputTokens)
+
+        await Session.update(input.sessionID, (draft) => {
+          draft.pendingReply = input.noReply !== true || undefined
+        })
+
+        if (input.noReply === true) {
+          ephemeralToolsByMessage.delete(message.info.id)
+          maxOutputTokensByMessage.delete(message.info.id)
+          return message
+        }
+
+        try {
+          return await loopBodyWithIncident(input.sessionID, runLease)
+        } catch (error) {
+          await writeErrorAssistantIfMissing(input.sessionID, message.info as MessageV2.User, error).catch((err) => {
+            log.error("failed to persist invocation error", { sessionID: input.sessionID, error: err })
+          })
+          throw error
+        } finally {
+          ephemeralToolsByMessage.delete(message.info.id)
+          maxOutputTokensByMessage.delete(message.info.id)
+        }
+      },
+      lease ? { lease, releaseLease: false } : undefined,
+    )
+  }
+
+  export const invoke = fn(InvokeInput, async (input) => invokeWithInternalTools(input))
+
+  export async function invokeWithLease(input: InvokeInput, lease: SessionManager.LoopLease) {
+    return invokeWithInternalTools(InvokeInput.parse(input), lease)
+  }
+  export async function invokeInboxWithLease(
+    input: { sessionID: string; itemID: string },
+    lease: SessionManager.LoopLease,
+  ) {
+    return SessionManager.run(
+      input.sessionID,
+      async (runLease) => {
+        const item = await SessionInbox.getStored(input.sessionID, input.itemID)
+        const message = await SessionInbox.materializeItem(item)
+        if (!message || message.info.role !== "user") {
+          throw new Error(`Session inbox task could not be materialized: ${input.itemID}`)
+        }
+        await SessionInbox.commitReady(input.sessionID, [item.id])
+
+        await Session.update(input.sessionID, (draft) => {
+          draft.pendingReply = true
+        })
+
+        try {
+          return await loopBodyWithIncident(input.sessionID, runLease)
+        } catch (error) {
+          await writeErrorAssistantIfMissing(input.sessionID, message.info, error).catch((err) => {
+            log.error("failed to persist inbox invocation error", { sessionID: input.sessionID, error: err })
+          })
+          throw error
+        }
+      },
+      { lease, releaseLease: false },
+    )
+  }
+
+  export async function invokeInternal(input: InternalInvokeInput) {
+    return invokeWithInternalTools({ ...input, origin: input.origin ?? { type: "system" } })
+  }
+
+  async function recallMemory(
+    step: number,
+    sessionID: string,
+    scopeID: string,
+    messages: MessageV2.WithParts[],
+    isTopSession: boolean,
+    signal: AbortSignal,
+  ): Promise<SessionContextContributions.Collected | undefined> {
+    if (step > 1) return isTopSession ? getCachedResult(sessionID) : undefined
+    return SessionContextContributions.collect({ sessionID, scopeID, messages, isTopSession, signal })
+  }
+
+  export const loop = fn(Identifier.schema("session"), (sessionID) => {
+    const lease = SessionManager.acquire(sessionID)
+    if (!lease) {
+      const runtime = SessionManager.registerRuntime(sessionID)
+      return new Promise<MessageV2.WithParts>((onComplete, onCancel) => {
+        runtime.waiters.push({ onComplete, onCancel })
+      })
+    }
+    return SessionManager.run(sessionID, (runLease) => loopBodyWithIncident(sessionID, runLease), {
+      lease,
+      requestNextWorkOnFailure: false,
+    })
+  })
+
+  async function loopBodyWithIncident(sessionID: string, lease: SessionManager.LoopLease) {
+    let failure: unknown
+    const segments: RolloutSchema.ExecutionSegment[] = []
+    let result: MessageV2.WithParts | undefined
+    try {
+      result = await loopBody(sessionID, lease, segments)
+    } catch (error) {
+      failure = error
+      if (SessionMemoryIncident.isOutOfMemory(error) && !(error instanceof MessageV2.SessionTerminalError)) {
+        await SessionMemoryIncident.capture({ error, sessionID }).catch((incidentError) => {
+          log.warn("failed to capture OOM incident", { error: incidentError })
+        })
+      }
+      if (!lease.signal.aborted) {
+        const session = await Session.get(sessionID)
+        const kind = WorkflowKindRegistry.effectiveKind(session.workflow)
+        if (kind)
+          await WorkflowPromptRegistry.get(kind)
+            ?.onLoopError?.(sessionID, error)
+            .catch((err) => {
+              log.error("failed to record workflow loop error", { sessionID, kind, error: err })
+            })
+      }
+      throw error
+    } finally {
+      const errors: unknown[] = []
+      for (const drain of [() => LoopJob.drain(sessionID), () => ActivitySummary.drain(sessionID, lease.signal)]) {
+        try {
+          await drain()
+        } catch (error) {
+          errors.push(error)
+        }
+      }
+      const outcome = lease.signal.aborted ? "cancelled" : failure || errors.length ? "failed" : undefined
+      for (const segment of segments) {
+        try {
+          await RolloutLedger.finishSegment(segment, outcome ?? "completed")
+        } catch (error) {
+          errors.push(error)
+        }
+      }
+      for (const runID of new Set(segments.map((segment) => segment.runID))) {
+        try {
+          await RolloutLifecycle.reconcile(sessionID, runID, runID === segments.at(-1)?.runID ? outcome : undefined)
+        } catch (error) {
+          errors.push(error)
+        }
+      }
+      const recordingError = errors.find(RolloutRecordingError.isInstance)
+      if (recordingError) throw recordingError
+      if (!failure && errors.length) throw errors[0]
+    }
+    if (!result) throw new Error("Session loop produced no result")
+    SessionManager.completeWaiters(lease, result)
+    return result
+  }
+
+  async function loopBody(
+    sessionID: string,
+    lease: SessionManager.LoopLease,
+    segments: RolloutSchema.ExecutionSegment[],
+  ): Promise<MessageV2.WithParts> {
+    ContinuationKernel.init()
+    for (const kind of WorkflowPromptRegistry.kinds()) WorkflowPromptRegistry.get(kind)?.init?.()
+    const abort = lease.signal
+
+    // Open the loop-scoped message cache window (#350 D2): while this loop owns
+    // the session it is the sole writer (I1), so the assembled history can be
+    // held in memory and maintained by the loop's own writes. Dropped on exit.
+    SessionMessageCache.enable(sessionID)
+    await using _ = defer(async () => {
+      SessionMessageCache.disable(sessionID)
+      evictRecallCache(sessionID)
+      const finalized = await Promise.allSettled(
+        WorkflowPromptRegistry.kinds().map((kind) => WorkflowPromptRegistry.get(kind)?.finalize?.(sessionID, scopeID)),
+      )
+      const errors = finalized.flatMap((result) => (result.status === "rejected" ? [result.reason as unknown] : []))
+      if (errors.length) throw errors.find(RolloutRecordingError.isInstance) ?? errors[0]
+    })
+
+    const runtime = SessionManager.registerRuntime(sessionID)
+    let step = 0
+    let emergencyCompactionTriggered = false
+    let hardOverflowCompactionRootID: string | undefined
+    let session = await Session.get(sessionID)
+    SessionManager.assertExecutionContext(session, "session loop")
+    let scopeID = (session.scope as Scope).id
+
+    while (true) {
+      const root = (await SessionHistory.modelMessages({ sessionID })).findLast(
+        (message) => message.info.role === "user" && message.info.isRoot === true,
+      )
+      if (!root) {
+        const task = await SessionInbox.peekTask(sessionID)
+        if (!task) break
+        if (!(await SessionInbox.materializeItem(task)))
+          throw new Error(`Session inbox task could not be materialized: ${task.id}`)
+        await SessionInbox.commitReady(sessionID, [task.id])
+        continue
+      }
+      const configuration = await RolloutLifecycle.configuration(session, root.info.id)
+      const next = await Experiment.provide(configuration, () =>
+        RolloutContext.provide(
+          { owner: RolloutLifecycle.owner(session), runID: root.info.id, signal: abort },
+          async () => {
+            let processedRootID: string | undefined
+            let segment: RolloutSchema.ExecutionSegment | undefined
+            let previousTerminalReplyID: string | undefined
+            while (true) {
+              SessionManager.setStatus(sessionID, { type: "busy" })
+              log.info("loop", { step, sessionID })
+              if (abort.aborted) break
+              session = await Session.get(sessionID)
+              SessionManager.assertExecutionContext(session, "session loop refresh")
+              scopeID = (session.scope as Scope).id
+              let msgs = await effectiveCompactedMessages(sessionID)
+
+              // Find R: the latest root user message. R is the anchor for the entire
+              // loop: rootID, model, agent, system, and compaction anchor all derive
+              // from R, not from a heuristic "lastUser".
+              let R: MessageV2.User | undefined
+              let RParts: MessageV2.Part[] | undefined
+              let lastFinished: MessageV2.Assistant | undefined
+              let lastFinishedParts: MessageV2.Part[] | undefined
+              let lastFinishedIndex = -1
+              let lastAssistant: MessageV2.Assistant | undefined
+              for (let i = msgs.length - 1; i >= 0; i--) {
+                const msg = msgs[i]
+                if (msg.info.role === "user") {
+                  const user = msg.info as MessageV2.User
+                  if (user.isRoot === true && !R) {
+                    R = user
+                    RParts = msg.parts
+                  }
+                }
+                if (msg.info.role === "assistant") {
+                  if (!lastAssistant) {
+                    lastAssistant = msg.info as MessageV2.Assistant
+                  }
+                  if (!lastFinished && SessionProgress.isTerminalAssistant(msg.info as MessageV2.Assistant)) {
+                    lastFinished = msg.info as MessageV2.Assistant
+                    lastFinishedParts = msg.parts
+                    lastFinishedIndex = i
+                  }
+                }
+                if (R && lastFinished) break
+              }
+
+              if (!R) {
+                break
+              }
+              if (!SessionManager.bindRootTask(lease, R.id)) break
+
+              step++
+
+              const rollbackActive = (await SessionHistory.storedInfo(sessionID))?.rollback?.canUnrollback === true
+
+              // Mode-based drain ①: steer items must be materialized BEFORE needsModelCall
+              // so they can trigger a model call in this iteration. Context items follow
+              // in ② after the predicate confirms a call is needed (piggyback).
+              if (!rollbackActive) {
+                const steerItems = await SessionInbox.drainSteer(sessionID)
+                if (steerItems.length > 0) {
+                  log.info("drained steer items into session", { sessionID, count: steerItems.length })
+                  for (const item of steerItems) {
+                    const materialized = await SessionInbox.materializeItem(item, R.id, { guiding: true })
+                    if (materialized) msgs.push(materialized)
+                  }
+                }
+              }
+
+              if (!SessionProgress.needsModelCall(msgs, R.id)) {
+                break
+              }
+              processedRootID = R.id
+              if (!segment) {
+                segment = await RolloutLifecycle.start(session, R, RParts ?? [])
+                segments.push(segment)
+              }
+              previousTerminalReplyID = SessionProgress.findTerminalReply(msgs, R.id)?.info.id
+
+              const jobCtx: LoopJob.Context = {
+                session,
+                sessionID,
+                step,
+                messages: msgs,
+                lastUser: R,
+                lastUserParts: RParts!,
+                lastFinished,
+                lastFinishedParts,
+                lastAssistant,
+                abort,
+                compactionAutoDisabled: (await Config.current()).compaction?.auto === false,
+                compactionOverflowThreshold: (await Config.current()).compaction?.overflowThreshold,
+                compactionMaxHistoryImages: (await Config.current()).compaction?.maxHistoryImages ?? 8,
+                modelID: R.model.modelID,
+                modelLimits: await Promise.all([
+                  Provider.getModel(R.model.providerID, R.model.modelID)
+                    .then((m) => m.limit)
+                    .catch(() => undefined),
+                  Token.warmup(R.model.modelID),
+                ]).then(([limits]) => limits),
+              }
+              const firedSignals = await LoopJob.detectSignals(jobCtx)
+
+              const preJobs = LoopJob.collect("pre", jobCtx, firedSignals)
+              if (preJobs.length > 0) {
+                const result = await LoopJob.execute(preJobs, jobCtx)
+                if (result === "stop") break
+                if (result === "continue") {
+                  // A processed compaction re-arms the emergency-compaction fallback so
+                  // that a later overflow — from history accumulated after this
+                  // compaction — can trigger it again on the same root (issue #321).
+                  if (firedSignals.includes("compact")) emergencyCompactionTriggered = false
+                  continue
+                }
+              }
+
+              // Mode-based drain ②: context items piggyback on confirmed model call.
+              // Materialized after needsModelCall is true; do NOT wake idle sessions.
+              if (!rollbackActive) {
+                const contextItems = await SessionInbox.drainContext(sessionID)
+                if (contextItems.length > 0) {
+                  log.info("drained context items (piggyback)", { sessionID, count: contextItems.length })
+                  for (const item of contextItems) {
+                    const materialized = await SessionInbox.materializeItem(item, R.id)
+                    if (materialized) msgs.push(materialized)
+                  }
+                }
+              }
+
+              const userModel = R.model
+              let agentName = R.agent
+
+              const agent = await Agent.get(agentName)
+
+              const model = await Provider.getModel(userModel.providerID, userModel.modelID).catch((error) => {
+                if (!Provider.ModelNotFoundError.isInstance(error)) throw error
+                throw new Provider.ModelUnavailableError(
+                  {
+                    providerID: userModel.providerID,
+                    modelID: userModel.modelID,
+                    reason: "not_in_catalog",
+                  },
+                  { cause: error },
+                )
+              })
+
+              log.info("resolved agent", {
+                name: agentName,
+                hasExternal: !!agent.external,
+                adapter: agent.external?.adapter,
+              })
+
+              if (agent.external) {
+                const profileId = await Session.resolveEffectiveControlProfile({
+                  sessionID: session?.id,
+                  agentControlProfile: agent.controlProfile,
+                })
+                const adapter = SessionExternalAgents.getAdapter(agent.external.adapter, sessionID)
+                if (!adapter) {
+                  log.error("external adapter not found", { adapter: agent.external.adapter, sessionID })
+                  break
+                }
+
+                const runConfig = applyExternalPermissionMode({ ...agent.external.config }, adapter.name, profileId)
+                const codexNativeAuth = adapter.name === "codex" && runConfig.nativeAuth === true
+                const override = codexNativeAuth ? undefined : await resolveExternalModelOverride(R.model, adapter.name)
+                if (override && adapter.capabilities.modelSwitch) {
+                  applyModelOverride(runConfig, adapter.name, override)
+                }
+
+                const env: Record<string, string> | undefined =
+                  override?.apiKey && adapter.name === "codex" ? { SYNERGY_CODEX_API_KEY: override.apiKey } : undefined
+
+                if (!adapter.started) {
+                  await adapter.start({
+                    cwd: ScopeContext.current.directory,
+                    config: runConfig,
+                    env,
+                  })
+                } else {
+                  const cfg = (adapter as any).adapterConfig as Record<string, unknown> | undefined
+                  if (cfg) {
+                    Object.assign(cfg, runConfig)
+                  }
+                  if (env) {
+                    const adapterEnv = (adapter as any).env as Record<string, string | undefined> | undefined
+                    if (adapterEnv) Object.assign(adapterEnv, env)
+                  }
+                }
+
+                const [instructionParts, taskContext] = await Promise.all([
+                  SystemPrompt.custom(),
+                  buildCortexExecutionContext(sessionID),
+                ])
+
+                const instructions = [agent.prompt?.trim(), ...instructionParts].filter(Boolean).join("\n\n")
+
+                const context: SessionExternalAgents.TurnContext = {
+                  sessionID,
+                  prompt: MessageV2.extractText(RParts!),
+                  instructions: instructions ? withPreambleSection(instructions) : withPreambleSection(),
+                  taskContext: taskContext ?? undefined,
+                }
+
+                const approvalDelegate: SessionExternalAgents.ApprovalDelegate = async () => false
+
+                await SessionExternalAgents.process({
+                  sessionID,
+                  agent: agent.name,
+                  adapter,
+                  parentID: R.id,
+                  model: R.model,
+                  context,
+                  approvalDelegate,
+                  abort,
+                })
+                break
+              }
+
+              const maxSteps = agent.steps ?? Infinity
+              const isLastStep = step >= maxSteps
+
+              const deliveryMetadata = channelDeliveryMetadata(msgs, lastFinishedIndex)
+              const toolDisplayByName = new Map<string, ToolDisplay>()
+              const processor = SessionProcessor.create({
+                assistantMessage: (await Session.updateMessage({
+                  id: Identifier.ascending("message"),
+                  parentID: R.id,
+                  rootID: R.id,
+                  visible: true,
+                  role: "assistant",
+                  mode: agent.name,
+                  agent: agent.name,
+                  path: {
+                    cwd: ScopeContext.current.directory,
+                    root: ScopeContext.current.directory,
+                  },
+                  cost: 0,
+                  tokens: {
+                    input: 0,
+                    output: 0,
+                    reasoning: 0,
+                    cache: { read: 0, write: 0 },
+                  },
+                  modelID: model.id,
+                  providerID: model.providerID,
+                  time: {
+                    created: Date.now(),
+                  },
+                  sessionID,
+                  ...(deliveryMetadata ? { metadata: deliveryMetadata } : {}),
+                })) as MessageV2.Assistant,
+                sessionID: sessionID,
+                model,
+                abort,
+                generation: lease.generation,
+                toolDisplay: (toolName) => toolDisplayByName.get(toolName),
+              })
+
+              // Shallow structural copy: duplicates message/part references but shares
+              // the heavy string payloads (tool outputs, text content) to avoid the
+              // memory cost of a full deep clone while still isolating msgs from
+              // downstream mutations (reminder wrapping, plugin transforms).
+              const sessionMessages = msgs.map((m) => ({ ...m, parts: [...m.parts] }))
+
+              // Ephemerally wrap non-root user-origin steer messages with a reminder.
+              // Only user-origin steer (mid-run interruptions) get wrapped; cortex/agenda
+              // steer messages carry their own structured text and should not be wrapped.
+              if (step > 1 && lastFinished) {
+                for (let index = lastFinishedIndex + 1; index < sessionMessages.length; index++) {
+                  const msg = sessionMessages[index]
+                  if (msg.info.role !== "user") continue
+                  const user = msg.info as MessageV2.User
+                  const isRoot = user.isRoot === true
+                  const originType = user.origin?.type
+                  // Only wrap non-root user-origin messages (steer interruptions)
+                  if (isRoot || (originType && originType !== "user")) continue
+                  msg.parts = msg.parts.map((part) => {
+                    if (part.type !== "text") return part
+                    if (MessageV2.isSystemPart(part)) return part
+                    if (!part.text.trim()) return part
+                    return {
+                      ...part,
+                      text: [
+                        "<system-reminder>",
+                        "The user sent the following message:",
+                        part.text,
+                        "",
+                        "Please address this message and continue with your tasks.",
+                        "</system-reminder>",
+                      ].join("\n"),
+                    }
+                  })
+                }
+              }
+
+              try {
+                await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
+              } catch (error) {
+                await completeAssistantWithError({ sessionID, processor, model, error })
+                break
+              }
+
+              // Launch independent async work in parallel: tool resolution, system
+              // prompt assembly, cortex context, and memory recall (flashback) all
+              // run concurrently to minimise time-to-first-token.
+              const isTopSession = !session.parentID
+
+              const turnPreparation = await Promise.all([
+                ToolResolver.definitions({
+                  agent,
+                  model,
+                  sessionID,
+                  session,
+                  userTools: R.tools,
+                  ephemeralTools: ephemeralToolsByMessage.get(R.id),
+                  includeMCP: true,
+                }),
+                Promise.all([
+                  SystemPrompt.environment({ endpointType: SessionEndpoint.type(session.endpoint), session }),
+                  SystemPrompt.custom(),
+                ]).then(([env, custom]) => [env, custom] as const),
+                buildCortexExecutionContext(sessionID),
+                buildCortexReminder(sessionID),
+                SessionExecutionContributions.advisory(sessionID, scopeID, lease.signal),
+                recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession, lease.signal),
+              ]).catch(async (error) => {
+                await completeAssistantWithError({ sessionID, processor, model, error })
+                return undefined
+              })
+              if (!turnPreparation) break
+
+              let [
+                toolDefinitions,
+                [envParts, customParts],
+                cortexExecutionContext,
+                cortexReminder,
+                advisoryParts,
+                memoryResult,
+              ] = turnPreparation
+
+              for (const def of toolDefinitions) {
+                if (def.display) toolDisplayByName.set(def.id, def.display)
+              }
+
+              // Layered system prompt assembly: stable → semi-stable → dynamic
+              // This ordering maximizes prompt caching by keeping static content first.
+              let systemParts: string[] = []
+              let systemCacheBreakpoint: number | undefined
+              let lateSystemParts: string[] = []
+
+              // Layer 1: Static — AGENTS.md instructions (stable within session)
+              systemParts.push(...customParts)
+              if (systemParts.length > 0) systemCacheBreakpoint = systemParts.length - 1
+
+              // Layer 1.5: Semi-static — permission context (stable per session)
+              try {
+                const workspace = ScopeContext.current.directory
+                const workspaceInfo = ScopeContext.current.workspace
+                const profileId = await Session.resolveEffectiveControlProfile({
+                  sessionID: session?.id,
+                  agentControlProfile: agent.controlProfile,
+                })
+                const trustedRoots = Scope.Root.executionRoots(
+                  ScopeContext.current.scope,
+                  workspaceInfo,
+                  SkillSourceProfile.allRootPaths(workspace),
+                )
+                const resolved = await ControlProfileCompiler.resolve(profileId, {
+                  workspace,
+                  workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+                  trustedRoots,
+                })
+                if (resolved.valid) {
+                  const ctx = buildPermissionContext(resolved, trustedRoots)
+                  systemParts.push(ctx)
+                  systemCacheBreakpoint = systemParts.length - 1
+                }
+              } catch {
+                // Profile resolution failure is non-fatal — skip permission context
+              }
+
+              // Layer 2: Semi-static — cortex context (stable during execution)
+              if (cortexExecutionContext) systemParts.push(cortexExecutionContext)
+
+              const workflowKind = WorkflowKindRegistry.effectiveKind(session?.workflow)
+              const workflowContext = {
+                deliveryMetadata: channelDeliveryMetadata(msgs, lastFinishedIndex),
+                agentName: agent.name,
+              }
+              if (session) {
+                const contribution = workflowKind ? WorkflowPromptRegistry.get(workflowKind) : undefined
+                systemParts.push(...((await contribution?.buildSystem?.(session, workflowContext)) ?? []))
+                systemParts.push(...(await SessionExecutionContributions.system(session, workflowContext)))
+              }
+
+              // Layer 3: Dynamic advisory context — loop-stable memory/experience, volatile across turns
+              if (memoryResult) {
+                lateSystemParts.push(memoryResult.context)
+                if (step === 1) cacheResult(sessionID, memoryResult)
+                const { injection } = memoryResult
+                if (step === 1) SessionContextContributions.committed(sessionID, memoryResult)
+                if (Object.keys(injection).length > 0 && !R.metadata?.injectedContext) {
+                  const updated = await Session.mergeMessageMetadata({
+                    sessionID,
+                    messageID: R.id,
+                    metadata: { injectedContext: injection },
+                  })
+                  if (updated?.role === "user") R = updated
+                }
+              }
+
+              // Layer 4: Dynamic advisory context — environment block (contains timestamp, changes per invoke)
+              lateSystemParts.push(...envParts)
+
+              // Layer 4.5: Dynamic advisory context — git health diagnostics (warns about uncommitted changes, large files, etc.)
+              const gitHealthBlock = SessionProjectHealth.injectCachedGitHealth(ScopeContext.current.directory)
+              if (gitHealthBlock) lateSystemParts.push(gitHealthBlock)
+
+              // Layer 4.55: Configurable advisory context — git commit coauthor footer reminder
+              // Only meaningful in a git working tree; use the same live probe as the
+              // env block (SessionProjectHealth.isGitRepo) so the reminder never
+              // contradicts "Is directory a git repo" in the environment text.
+              if ((await Config.current()).prompt?.coauthorReminder !== false) {
+                const inGitRepo =
+                  ScopeContext.current.scope.type === "project" &&
+                  (await SessionProjectHealth.isGitRepo(ScopeContext.current.directory))
+                if (inGitRepo) {
+                  lateSystemParts.push(`<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
+                }
+              }
+
+              // Domain advisories share the turn cancellation signal.
+              lateSystemParts.push(...advisoryParts)
+
+              // Layer 6: Dynamic advisory context — cortex reminders and time context
+              if (cortexReminder) lateSystemParts.push(cortexReminder)
+
+              // Layer 7: Dynamic advisory context — planning reminder when agent self-executes without a DAG
+              const planningReminder = await buildPlanningReminder(sessionID, agent, sessionMessages)
+              if (planningReminder) lateSystemParts.push(planningReminder)
+
+              if (step === 1 && lastFinished?.time.completed) {
+                const elapsed = R.time.created - lastFinished.time.completed
+                if (elapsed > 0) {
+                  lateSystemParts.push(
+                    `<time-context>\nTime since your last response: ${formatElapsed(elapsed)}\n</time-context>`,
+                  )
+                }
+              }
+              const historyBeforeBytes = LLMTurnMemory.estimateBytes(sessionMessages)
+              using memoryTurn = LLMTurnMemory.begin({
+                sessionID,
+                messageID: processor.message.id,
+                providerID: model.providerID,
+                modelID: model.id,
+                historyBeforeBytes,
+                baseline: SessionMemoryPressure.currentSnapshot(),
+              })
+              await memoryTurn.stabilizeBeforeProjection()
+              let modelSessionMessages = WorkflowUserWrapper.projectMessages({
+                messages: sessionMessages,
+                session,
+                agent,
+              })
+              const modelProjection = MessageV2.projectModelMessages(modelSessionMessages, {
+                maxHistoryImages: jobCtx.compactionMaxHistoryImages,
+              })
+              const { converted, dropped, failed } = modelProjection.sanitization
+              if (converted + dropped + failed > 0) {
+                log.info("model prompt sanitized non-JSON-safe values", {
+                  sessionID,
+                  converted,
+                  dropped,
+                  failed,
+                })
+              }
+              const projectedHistoryBytes = LLMTurnMemory.estimateBytes(modelProjection.messages)
+              memoryTurn.projected({ historyAfterBytes: projectedHistoryBytes })
+              let preparedMessages = [
+                ...modelProjection.messages,
+                ...(isLastStep
+                  ? [
+                      {
+                        role: "assistant" as const,
+                        content: MAX_STEPS,
+                      },
+                    ]
+                  : []),
+              ]
+
+              const promptPlanTimer = log.time("promptBudgeter.buildPlan")
+              let promptPlan = await PromptBudgeter.buildPlan({
+                sessionID,
+                agent: agent.name,
+                messageID: R.id,
+                model,
+                system: systemParts,
+                systemCacheBreakpoint,
+                messages: preparedMessages,
+                lateSystem: lateSystemParts,
+                toolDefinitions,
+              }).catch(async (error) => {
+                await completeAssistantWithError({ sessionID, processor, model, error })
+                return undefined
+              })
+              promptPlanTimer.stop()
+              if (!promptPlan) break
+
+              const calibration = buildCalibration(msgs)
+              const requestedMaxOutputTokens = maxOutputTokensByMessage.get(R.id)
+              const promptDecideTimer = log.time("promptBudgeter.decide")
+              let promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
+                overflowThreshold: jobCtx.compactionOverflowThreshold,
+                calibration,
+                maxOutputTokens: requestedMaxOutputTokens,
+              }).catch(async (error) => {
+                await completeAssistantWithError({ sessionID, processor, model, error })
+                return undefined
+              })
+              promptDecideTimer.stop()
+              if (!promptDecision) break
+
+              const shouldInjectCompaction =
+                !jobCtx.compactionAutoDisabled &&
+                hardOverflowCompactionRootID !== R.id &&
+                !SessionCompaction.hasPendingCompaction(RParts!, msgs, R.id) &&
+                (promptDecision.shouldCompact || promptDecision.contextExceeded)
+              if (shouldInjectCompaction) {
+                log.info("prompt budget exceeded, injecting compaction", {
+                  sessionID,
+                  total: promptDecision.measure.total,
+                  soft: promptDecision.budget.soft,
+                  usable: promptDecision.budget.usable,
+                  inputEnvelope: promptDecision.budget.inputEnvelope,
+                  output: promptDecision.budget.output,
+                  margin: promptDecision.budget.margin,
+                  contextExceeded: promptDecision.contextExceeded,
+                })
+                if (promptDecision.contextExceeded) hardOverflowCompactionRootID = R.id
+                await Session.updatePart({
+                  id: Identifier.ascending("part"),
+                  messageID: R.id,
+                  sessionID,
+                  type: "compaction",
+                  auto: true,
+                })
+                toolDefinitions = []
+                systemParts = []
+                lateSystemParts = []
+                modelSessionMessages = []
+                preparedMessages = []
+                promptPlan = undefined
+                promptDecision = undefined
+                continue
+              }
+
+              if (promptDecision.contextExceeded) {
+                await completeAssistantWithError({
+                  sessionID,
+                  processor,
+                  model,
+                  error: new PromptBudgeter.ContextBudgetExceededError(),
+                })
+                break
+              }
+
+              const toolResolveTimer = log.time("toolResolver.resolve")
+              let resolvedTools = await ToolResolver.resolveWithAvailability({
+                agent,
+                model,
+                sessionID,
+                processor,
+                session,
+                userTools: R.tools,
+                ephemeralTools: ephemeralToolsByMessage.get(R.id),
+                includeMCP: true,
+              }).catch(async (error) => {
+                await completeAssistantWithError({ sessionID, processor, model, error })
+                return undefined
+              })
+              toolResolveTimer.stop()
+              if (!resolvedTools) break
+
+              const plannedHistoryProvenance = ContextUsage.remapProvenance(
+                promptPlan.messages,
+                ContextUsage.buildProvenance({
+                  history: modelProjection.provenance,
+                  toolDefinitions: [],
+                  instructions: isLastStep ? [MAX_STEPS] : [],
+                }),
+              )
+              const activeToolIDs = new Set(resolvedTools.activeToolIDs)
+              const activeToolDefinitions = promptPlan.toolDefinitions.filter((definition) =>
+                activeToolIDs.has(definition.id),
+              )
+              const contextUsageProvenance = ContextUsage.buildProvenance({
+                history: plannedHistoryProvenance,
+                toolDefinitions: activeToolDefinitions,
+              })
+              const toolSchemaBytes = LLMTurnMemory.estimateBytes(activeToolDefinitions)
+              const requestBytes = LLMTurnMemory.estimateBytes({
+                system: promptPlan.system,
+                lateSystem: promptPlan.lateSystem,
+                messages: promptPlan.messages,
+                tools: activeToolDefinitions,
+              })
+              memoryTurn.prepared({
+                toolSchemaBytes,
+                requestBytes,
+              })
+
+              let streamInput: SessionProcessor.ProcessInput | undefined
+              function releaseTurnReferences(mutateStreamInput: boolean) {
+                if (mutateStreamInput) {
+                  sessionMessages.length = 0
+                  toolDefinitions.length = 0
+                  systemParts.length = 0
+                  lateSystemParts.length = 0
+                  modelSessionMessages.length = 0
+                  modelProjection.messages.length = 0
+                  for (const contributions of Object.values(modelProjection.provenance.categories)) {
+                    contributions.length = 0
+                  }
+                  preparedMessages.length = 0
+                  promptPlan?.system.splice(0)
+                  promptPlan?.lateSystem?.splice(0)
+                  promptPlan?.messages.splice(0)
+                  promptPlan?.toolDefinitions.splice(0)
+                  resolvedTools?.activeToolIDs.splice(0)
+                  if (resolvedTools) {
+                    resolvedTools.definitions.splice(0)
+                    resolvedTools.autoExpandable?.clear()
+                    for (const id of Object.keys(resolvedTools.executionTools)) delete resolvedTools.executionTools[id]
+                    for (const id of Object.keys(resolvedTools.executorKinds)) delete resolvedTools.executorKinds[id]
+                  }
+                  activeToolIDs.clear()
+                  activeToolDefinitions.length = 0
+                  for (const provenance of [plannedHistoryProvenance, contextUsageProvenance]) {
+                    for (const contributions of Object.values(provenance.categories)) contributions.length = 0
+                  }
+                  if (streamInput) {
+                    streamInput.system.splice(0)
+                    streamInput.lateSystem?.splice(0)
+                    streamInput.messages.splice(0)
+                    streamInput.toolDefinitions.splice(0)
+                    for (const id of Object.keys(streamInput.executionTools)) delete streamInput.executionTools[id]
+                    for (const id of Object.keys(streamInput.executorKinds)) delete streamInput.executorKinds[id]
+                    streamInput.activeToolIDs?.splice(0)
+                  }
+                }
+                toolDefinitions = []
+                systemParts = []
+                lateSystemParts = []
+                modelSessionMessages = []
+                preparedMessages = []
+                promptDecision = undefined
+                promptPlan = undefined
+                resolvedTools = undefined
+                streamInput = undefined
+              }
+
+              SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
+              // Count LLM calls for registered workflow kinds in memory; flushed to
+              // the durable domain state at turn boundaries / policy entry.
+              const activeKind = WorkflowKindRegistry.effectiveKind(session?.workflow)
+              if (activeKind) {
+                WorkflowPromptRegistry.get(activeKind)?.onModelCall?.(sessionID)
+              }
+              const processTimer = log.time("processor.process")
+              const timeoutCfg = await TimeoutConfig.resolve()
+              const turnDeadline = new AbortController()
+              const deadlineError = new DOMException(
+                "Assistant step timed out after " + timeoutCfg.invokeMs + "ms",
+                "AbortError",
+              )
+              let rejectDeadline: (error: Error) => void
+              const deadlinePromise = new Promise<never>((_, reject) => {
+                rejectDeadline = reject
+              })
+              deadlinePromise.catch(() => {})
+              const turnTimer = setTimeout(() => {
+                turnDeadline.abort(deadlineError)
+                rejectDeadline(deadlineError)
+              }, timeoutCfg.invokeMs)
+              const onSessionAbort = () => clearTimeout(turnTimer)
+              abort.addEventListener("abort", onSessionAbort, { once: true })
+              const combinedAbort = AbortSignal.any([abort, turnDeadline.signal])
+
+              // Race against the deadline instead of relying on abort propagation:
+              // the processor can be stuck in an await that never observes signals
+              // (e.g. a wedged subprocess), and a signal alone cannot interrupt it.
+              const turnSpan = ObservabilitySpans.start({
+                name: "session.turn",
+                module: "session",
+                scopeID,
+                sessionID,
+                messageID: R.id,
+                attributes: { agent: agent.name, model: model.id, provider: model.providerID },
+              })
+              let turnSpanEnded = false
+              let result: Awaited<ReturnType<typeof processor.process>> = "stop"
+              // Codex remote-compaction replay plan for this root's model call,
+              // computed from the newest compaction summary message's persisted
+              // metadata (config- and same-model-gated; undefined otherwise).
+              const codexReplay = await SessionCompaction.codexReplayPlan({
+                messages: msgs,
+                providerID: model.providerID,
+                modelID: model.id,
+              })
+              streamInput = {
+                user: R,
+                agent,
+                abort: combinedAbort,
+                sessionID,
+                system: promptPlan.system,
+                systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
+                lateSystem: promptPlan.lateSystem,
+                messages: promptPlan.messages,
+                toolDefinitions: resolvedTools.definitions,
+                executionTools: resolvedTools.executionTools,
+                executorKinds: resolvedTools.executorKinds,
+                activeToolIDs: resolvedTools.activeToolIDs,
+                codexReplay,
+                autoExpandable: resolvedTools.autoExpandable,
+                resolverInput: {
+                  agent,
+                  model,
+                  sessionID,
+                  session,
+                  userTools: R.tools,
+                  ephemeralTools: ephemeralToolsByMessage.get(R.id),
+                  includeMCP: true,
+                },
+                model,
+                contextUsageProvenance,
+                maxOutputTokens: promptDecision.maxOutputTokens,
+                memoryTurn,
+              }
+              try {
+                const currentStreamInput = streamInput
+                const process = () => Promise.race([processor.process(currentStreamInput), deadlinePromise])
+                result = turnSpan
+                  ? await ObservabilityContext.withContextAsync(
+                      {
+                        correlationId: turnSpan.correlationId,
+                        traceId: turnSpan.traceId,
+                        spanId: turnSpan.spanId,
+                        parentSpanId: turnSpan.parentSpanId,
+                        scopeID: turnSpan.scopeID,
+                        sessionID: turnSpan.sessionID,
+                        messageID: turnSpan.messageID,
+                        module: turnSpan.module,
+                        source: turnSpan.source,
+                      },
+                      process,
+                    )
+                  : await process()
+              } catch (error) {
+                if (error !== deadlineError) {
+                  ObservabilitySpans.end(turnSpan, { status: "error", error })
+                  turnSpanEnded = true
+                  await completeAssistantWithError({ sessionID, processor, model, error })
+                  result = "stop"
+                } else {
+                  log.error("turn deadline exceeded, abandoning turn", { sessionID, timeoutMs: timeoutCfg.invokeMs })
+                  processor.message.error = MessageV2.fromError(deadlineError, {
+                    providerID: model.providerID,
+                    modelID: model.id,
+                  })
+                  processor.message.finish = "error"
+                  processor.message.time.completed = Date.now()
+                  await Session.updateMessage(processor.message)
+                  Bus.publish(SessionEvent.Error, { sessionID, error: processor.message.error })
+                  Bus.publish(SessionEvent.TurnEnd, {
+                    sessionID,
+                    messageID: processor.message.id,
+                    finish: "error",
+                    agent: processor.message.agent,
+                  })
+                  result = "stop"
+                  ObservabilitySpans.end(turnSpan, { status: "timeout", error: deadlineError })
+                  turnSpanEnded = true
+                }
+              } finally {
+                const turnTimedOut = turnDeadline.signal.aborted
+                clearTimeout(turnTimer)
+                abort.removeEventListener("abort", onSessionAbort)
+                turnDeadline.abort()
+                processTimer.stop()
+                releaseTurnReferences(!turnTimedOut)
+                if (!turnSpanEnded) {
+                  ObservabilitySpans.end(turnSpan, {
+                    attributes: {
+                      result,
+                      assistantMessageID: processor.message.id,
+                      finish: processor.message.finish,
+                    },
+                  })
+                }
+              }
+              hardOverflowCompactionRootID = undefined
+
+              let postRequestedStop = false
+              {
+                // post-LLM jobs
+                const postParts = await MessageV2.parts({ scopeID, sessionID, messageID: processor.message.id })
+                const postCtx: LoopJob.Context = {
+                  ...jobCtx,
+                  messages: [...jobCtx.messages, { info: processor.message, parts: postParts }],
+                  lastAssistant: processor.message,
+                  lastFinished: SessionProgress.isTerminalAssistant(processor.message)
+                    ? processor.message
+                    : jobCtx.lastFinished,
+                  lastFinishedParts: SessionProgress.isTerminalAssistant(processor.message)
+                    ? postParts
+                    : jobCtx.lastFinishedParts,
+                }
+                const postJobs = LoopJob.collect("post", postCtx)
+                if (postJobs.length > 0) {
+                  const postResult = await LoopJob.execute(postJobs, postCtx)
+                  postRequestedStop = postResult === "stop"
+                }
+              }
+              if (process.platform === "linux") {
+                SessionMemoryPressure.signalRelease({
+                  sessionID,
+                  messageID: processor.message.id,
+                  phase: "session.turn.after_post_jobs",
+                  linuxOnly: true,
+                })
+              } else {
+                await SessionMemoryPressure.maybeCollect({
+                  sessionID,
+                  messageID: processor.message.id,
+                  phase: "session.turn.after_post_jobs",
+                })
+              }
+              if (postRequestedStop) break
+
+              if (result === "stop") {
+                // If the failure was caused by exceeding context limits, inject a
+                // compaction signal and re-enter the loop. The next iteration will
+                // detect the signal, run compaction (which now has its own input
+                // trimming and mechanical fallback), and then retry the user's request.
+                if (
+                  !emergencyCompactionTriggered &&
+                  processor.message.error &&
+                  SessionCompaction.isContextExceeded(processor.message.error)
+                ) {
+                  log.warn("context exceeded, injecting emergency compaction", { sessionID })
+                  emergencyCompactionTriggered = true
+                  // Attach the compaction part to R so the next iteration detects it
+                  // via lastUserParts (same path as the prompt-budget trigger above)
+                  // and anchors compaction on the task root.
+                  await Session.updatePart({
+                    id: Identifier.ascending("part"),
+                    messageID: R.id,
+                    sessionID,
+                    type: "compaction" as const,
+                    auto: true,
+                  })
+                  continue
+                }
+                break
+              }
+              continue
+            }
+
+            if (processedRootID) {
+              await LoopJob.drain(sessionID, processedRootID)
+              await ActivitySummary.drain(sessionID, abort)
+              if (segment) {
+                const terminal = SessionProgress.findTerminalReply(
+                  await SessionHistory.modelMessages({ sessionID }),
+                  processedRootID,
+                )
+                const failed = terminal?.info.role === "assistant" && terminal.info.error
+                await RolloutLedger.finishSegment(
+                  segment,
+                  abort.aborted ? "cancelled" : failed ? "failed" : "completed",
+                )
+              }
+            }
+
+            // Inner loop finished — post-turn drain.
+            // Use peek-then-commit pattern so items are never deleted before
+            // they are successfully materialized and the reply cycle completes.
+            if (abort.aborted) {
+              // Abort: discard steer/context, keep task items (no auto-start).
+              await SessionInbox.removeByMode(sessionID, ["steer", "context"])
+              return false
+            }
+
+            if (processedRootID) {
+              const messages = await SessionHistory.modelMessages({ sessionID })
+              const terminalReply = SessionProgress.findTerminalReply(messages, processedRootID)
+              if (terminalReply?.info.role === "assistant" && terminalReply.info.id !== previousTerminalReplyID) {
+                await Session.recordCompletionNotice(sessionID, { publishEvent: !terminalReply.info.error })
+              }
+            }
+
+            const taskItem = await SessionInbox.peekTask(sessionID)
+            if (taskItem) {
+              log.info("next task found, materializing", { sessionID, itemID: taskItem.id })
+              const materialized = await SessionInbox.materializeItem(taskItem)
+              if (!materialized) {
+                throw new Error(`Session inbox task could not be materialized: ${taskItem.id}`)
+              }
+              await SessionInbox.commitReady(sessionID, [taskItem.id])
+              log.info("materialized durable task", {
+                sessionID,
+                itemID: taskItem.id,
+                messageID: taskItem.messageID,
+                queuedForMs: Math.max(0, Date.now() - taskItem.time.created),
+              })
+              return true
+            }
+
+            const rollbackActive = (await SessionHistory.storedInfo(sessionID))?.rollback?.canUnrollback === true
+            if (await SessionInbox.hasRunnableItem(sessionID, { allowSteer: !rollbackActive })) {
+              log.info("runnable inbox items detected, re-entering loop", { sessionID })
+              return true
+            }
+            return false
+          },
+        ),
+      )
+      if (!next) break
+    }
+
+    evictRecallCache(sessionID)
+
+    // Clear pendingReply only after the loop has fully drained. Completion
+    // notices are recorded once per processed root task above.
+    await Session.update(sessionID, (draft) => {
+      draft.pendingReply = undefined
+    })
+
+    let resultMessage = selectResultMessage(await SessionHistory.modelMessages({ sessionID }))
+    if (!resultMessage) {
+      resultMessage = await writeAbortedAssistantMessage(sessionID, scopeID)
+    }
+    // If the assistant message is marked with an error (LLM API error, auth
+    // error, output length exceeded, abort, or unknown), propagate it as an
+    // exception so cortex/runTask records task.status = "error" instead of
+    // silently marking the task as "completed".
+    if (resultMessage.info.role === "assistant" && resultMessage.info.error) {
+      const err = resultMessage.info.error
+      throw new MessageV2.SessionTerminalError({
+        errorName: err.name,
+        message:
+          err.data && typeof err.data === "object" && "message" in err.data ? String(err.data.message) : err.name,
+      })
+    }
+    return resultMessage
+  }
+
+  export function selectResultMessage(messages: MessageV2.WithParts[]): MessageV2.WithParts | undefined {
+    let lastReplyRequiredUser: MessageV2.User | undefined
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const msg = messages[index]
+      if (msg.info.role !== "user") continue
+      const user = msg.info as MessageV2.User
+      if (!SessionProgress.isReplyRequiredUser(user)) continue
+      lastReplyRequiredUser = user
+      break
+    }
+
+    if (lastReplyRequiredUser) {
+      const reply = SessionProgress.findTerminalReply(messages, lastReplyRequiredUser.id)
+      if (reply) return reply
+    }
+
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const msg = messages[index]
+      if (msg.info.role === "assistant") return msg
+    }
+  }
+
+  // --- Helpers ---
+
+  /**
+   * Terminalize the latest reply-required root after an interrupted turn.
+   * The repair is root-anchored and serialized per session so startup, Abort,
+   * and pre-wake callers can safely share the same idempotent operation.
+   */
+  async function repairIncompleteAssistant(sessionID: string): Promise<boolean> {
+    using _ = await Lock.write(`session-terminal-repair:${sessionID}`)
+    const session = await SessionManager.getSession(sessionID)
+    if (!session) return false
+
+    const messages = await SessionHistory.modelMessages({ sessionID })
+    let latestRoot: MessageV2.User | undefined
+    let latestAssistantWithoutRoot: MessageV2.Assistant | undefined
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const info = messages[index].info
+      if (!latestAssistantWithoutRoot && info.role === "assistant") {
+        latestAssistantWithoutRoot = info as MessageV2.Assistant
+      }
+      if (info.role !== "user") continue
+      const user = info as MessageV2.User
+      if (!SessionProgress.isReplyRequiredUser(user)) continue
+      latestRoot = user
+      break
+    }
+
+    let latestAssistant: MessageV2.Assistant | undefined
+    if (latestRoot) {
+      for (let index = messages.length - 1; index >= 0; index--) {
+        const info = messages[index].info
+        if (info.role !== "assistant") continue
+        const assistant = info as MessageV2.Assistant
+        if (assistant.parentID !== latestRoot.id && assistant.rootID !== latestRoot.id) continue
+        latestAssistant = assistant
+        break
+      }
+    } else {
+      latestAssistant = latestAssistantWithoutRoot
+    }
+    if (!latestRoot && !latestAssistant) return false
+
+    if (latestAssistant && SessionProgress.isTerminalAssistant(latestAssistant)) {
+      if (!session.pendingReply) return false
+      await Session.update(sessionID, (draft) => {
+        draft.pendingReply = undefined
+      })
+      return true
+    }
+
+    if (latestAssistant) {
+      const preserveError = latestAssistant.error && latestAssistant.time.completed != null
+      log.info("repairing non-terminal assistant", {
+        sessionID,
+        rootID: latestRoot?.id ?? latestAssistant.rootID,
+        messageID: latestAssistant.id,
+        preserveError: !!preserveError,
+      })
+      await Session.updateMessage({
+        ...latestAssistant,
+        time: { ...latestAssistant.time, completed: latestAssistant.time.completed ?? Date.now() },
+        finish: "error",
+        error:
+          preserveError || latestAssistant.error
+            ? latestAssistant.error
+            : new MessageV2.AbortedError({
+                message: "Session aborted during turn — assistant response was not completed",
+              }).toObject(),
+      })
+    } else if (latestRoot) {
+      log.info("creating aborted assistant for pending root", {
+        sessionID,
+        rootID: latestRoot.id,
+      })
+      const now = Date.now()
+      await Session.updateMessage({
+        id: Identifier.ascending("message"),
+        parentID: latestRoot.id,
+        rootID: latestRoot.rootID ?? latestRoot.id,
+        visible: true,
+        role: "assistant",
+        mode: latestRoot.agent,
+        agent: latestRoot.agent,
+        path: {
+          cwd: ScopeContext.current.directory,
+          root: ScopeContext.current.directory,
+        },
+        cost: 0,
+        tokens: {
+          input: 0,
+          output: 0,
+          reasoning: 0,
+          cache: { read: 0, write: 0 },
+        },
+        modelID: latestRoot.model.modelID,
+        providerID: latestRoot.model.providerID,
+        time: { created: now, completed: now },
+        finish: "error",
+        error: new MessageV2.AbortedError({
+          message: "Session aborted during turn — assistant response was not completed",
+        }).toObject(),
+        sessionID,
+      } satisfies MessageV2.Assistant)
+    }
+
+    await Session.update(sessionID, (draft) => {
+      draft.pendingReply = undefined
+    })
+    return true
+  }
+
+  async function completeAssistantWithError(input: {
+    sessionID: string
+    processor: SessionProcessor.Info
+    model: Provider.Model
+    error: unknown
+  }): Promise<void> {
+    const message = input.processor.message
+    if (message.time.completed != null) return
+
+    if (SessionMemoryIncident.isOutOfMemory(input.error)) {
+      await SessionMemoryIncident.capture({
+        error: input.error,
+        sessionID: input.sessionID,
+        messageID: message.id,
+      }).catch((incidentError) => {
+        log.warn("failed to capture OOM incident", { error: incidentError })
+      })
+    }
+
+    message.error = MessageV2.fromError(input.error, {
+      providerID: input.model.providerID,
+      modelID: input.model.id,
+    })
+    message.finish = "error"
+    message.time.completed = Date.now()
+    await Session.updateMessage(message)
+    Bus.publish(SessionEvent.Error, { sessionID: input.sessionID, error: message.error })
+    Session.updateLastExchange(input.sessionID).catch((error) =>
+      log.warn("failed to update lastExchange", { sessionID: input.sessionID, error }),
+    )
+    SessionContextContributions.onAssistantComplete(message)
+    await Plugin.trigger(
+      "session.turn.after",
+      {
+        sessionID: input.sessionID,
+        userMessageID: message.parentID,
+        assistantMessageID: message.id,
+        assistant: message,
+        finish: message.finish,
+        error: message.error,
+      },
+      {},
+    ).catch((error) => {
+      log.warn("session.turn.after hook failed after turn error", { sessionID: input.sessionID, error })
+    })
+    await Bus.publish(SessionEvent.TurnEnd, {
+      sessionID: input.sessionID,
+      messageID: message.id,
+      finish: message.finish,
+      agent: message.agent,
+    })
+  }
+
+  async function writeErrorAssistantIfMissing(sessionID: string, user: MessageV2.User, error: unknown): Promise<void> {
+    const messages = await SessionHistory.modelMessages({ sessionID })
+    if (SessionProgress.findTerminalReply(messages, user.id)) return
+
+    const assistant = (await Session.updateMessage({
+      id: Identifier.ascending("message"),
+      parentID: user.id,
+      rootID: user.rootID ?? user.id,
+      visible: true,
+      role: "assistant",
+      mode: user.agent,
+      agent: user.agent,
+      path: {
+        cwd: ScopeContext.current.directory,
+        root: ScopeContext.current.directory,
+      },
+      cost: 0,
+      tokens: {
+        input: 0,
+        output: 0,
+        reasoning: 0,
+        cache: { read: 0, write: 0 },
+      },
+      modelID: user.model.modelID,
+      providerID: user.model.providerID,
+      time: {
+        created: Date.now(),
+        completed: Date.now(),
+      },
+      finish: "error",
+      error: MessageV2.fromError(error, { providerID: user.model.providerID, modelID: user.model.modelID }),
+      sessionID,
+    })) as MessageV2.Assistant
+
+    await Session.update(sessionID, (draft) => {
+      draft.pendingReply = undefined
+    })
+    await Session.recordCompletionNotice(sessionID, { publishEvent: false })
+    Bus.publish(SessionEvent.Error, { sessionID, error: assistant.error })
+    Session.updateLastExchange(sessionID).catch((err) =>
+      log.warn("failed to update lastExchange", { sessionID, error: err }),
+    )
+    SessionContextContributions.onAssistantComplete(assistant)
+    await Plugin.trigger(
+      "session.turn.after",
+      {
+        sessionID,
+        userMessageID: assistant.parentID,
+        assistantMessageID: assistant.id,
+        assistant,
+        finish: assistant.finish,
+        error: assistant.error,
+      },
+      {},
+    ).catch((err) => {
+      log.warn("session.turn.after hook failed after invoke error", { sessionID, error: err })
+    })
+    await Bus.publish(SessionEvent.TurnEnd, {
+      sessionID,
+      messageID: assistant.id,
+      finish: assistant.finish,
+      agent: assistant.agent,
+    })
+  }
+
+  async function writeAbortedAssistantMessage(sessionID: string, scopeID: string): Promise<MessageV2.WithParts> {
+    const abortedParentID = Identifier.ascending("message")
+    const assistantMessage = (await Session.updateMessage({
+      id: Identifier.ascending("message"),
+      parentID: abortedParentID,
+      rootID: abortedParentID,
+      visible: true,
+      role: "assistant",
+      mode: "unknown",
+      agent: "unknown",
+      path: {
+        cwd: ScopeContext.current.directory,
+        root: ScopeContext.current.directory,
+      },
+      cost: 0,
+      tokens: {
+        input: 0,
+        output: 0,
+        reasoning: 0,
+        cache: { read: 0, write: 0 },
+      },
+      modelID: "unknown",
+      providerID: "unknown",
+      time: {
+        created: Date.now(),
+        completed: Date.now(),
+      },
+      finish: "error",
+      error: new MessageV2.AbortedError({ message: "Session ended before producing an assistant message" }).toObject(),
+      sessionID,
+    })) as MessageV2.Assistant
+    SessionContextContributions.onAssistantComplete(assistantMessage)
+    await Plugin.trigger(
+      "session.turn.after",
+      {
+        sessionID,
+        userMessageID: assistantMessage.parentID,
+        assistantMessageID: assistantMessage.id,
+        assistant: assistantMessage,
+        finish: assistantMessage.finish,
+        error: assistantMessage.error,
+      },
+      {},
+    )
+    await Bus.publish(SessionEvent.TurnEnd, {
+      sessionID,
+      messageID: assistantMessage.id,
+      finish: assistantMessage.finish,
+      agent: assistantMessage.agent,
+    })
+    return {
+      info: assistantMessage,
+      parts: await MessageV2.parts({ scopeID, sessionID, messageID: assistantMessage.id }),
+    }
+  }
+
+  async function buildDagUpstreamContext(
+    sessionID: string,
+    parentSessionID: string,
+    dagNodeId?: string,
+  ): Promise<string | undefined> {
+    if (!dagNodeId) return undefined
+
+    const { Dag } = await import("./dag")
+    const nodes = await Dag.get(parentSessionID)
+    const current = nodes.find((n) => n.id === dagNodeId)
+    if (!current || current.deps.length === 0) return undefined
+
+    const upstreamResults: string[] = []
+    let totalChars = 0
+    const MAX_PER_NODE = 4096
+    const MAX_TOTAL = 16384
+
+    for (const depId of current.deps) {
+      const depNode = nodes.find((n) => n.id === depId)
+      if (!depNode || depNode.status !== "completed" || !depNode.result) continue
+
+      let result = depNode.result
+      if (result.length > MAX_PER_NODE) {
+        result = result.slice(0, MAX_PER_NODE - 3) + "..."
+      }
+
+      const block = [
+        `## Node: ${depNode.id} — ${depNode.content}`,
+        depNode.assign ? `**Agent**: @${depNode.assign}` : "",
+        "**Result**:",
+        result,
+      ]
+        .filter(Boolean)
+        .join("\n")
+
+      const blockSize = block.length + 2 // +2 for the blank line separator
+      if (totalChars + blockSize > MAX_TOTAL) break
+
+      upstreamResults.push(block)
+      totalChars += blockSize
+    }
+
+    if (upstreamResults.length === 0) return undefined
+
+    return [
+      "<upstream-results>",
+      "The following upstream DAG nodes have completed. Their results are provided as context for your task. Use these findings — do not redo work already done.",
+      "",
+      ...upstreamResults,
+      "</upstream-results>",
+    ].join("\n")
+  }
+
+  async function buildCortexExecutionContext(sessionID: string): Promise<string | undefined> {
+    const task = await SessionCortexRuntime.delegatedTask(sessionID)
+    if (!task) return undefined
+
+    const upstreamContext = await buildDagUpstreamContext(sessionID, task.parentSessionID, task.dagNodeId)
+
+    const parts: string[] = []
+    if (upstreamContext) parts.push(upstreamContext)
+    parts.push(
+      [
+        "<cortex-execution>",
+        "Execution role: delegated_subagent",
+        "You are executing a delegated task.",
+        "Default to direct execution and return your result to the parent agent.",
+        "Do not delegate further and do not use task_output unless this session launched a visible background task itself.",
+        "Never call task_output speculatively.",
+        "</cortex-execution>",
+      ].join("\n"),
+    )
+    return parts.join("\n")
+  }
+
+  async function buildCortexReminder(sessionID: string): Promise<string | undefined> {
+    const running = await SessionCortexRuntime.runningTaskRows(sessionID)
+    if (running.length === 0) return undefined
+
+    const taskList = running
+      .map((t) => {
+        const elapsed = Math.floor((Date.now() - t.startedAt) / 1000)
+        const lastTool = t.lastTool ? ` | last: ${t.lastTool}${t.lastToolStatus ? ` (${t.lastToolStatus})` : ""}` : ""
+        return `- \`${t.id}\` [${elapsed}s] — @${t.agent} — ${t.description} — ${t.health}${lastTool}`
+      })
+      .join("\n")
+
+    return `<cortex-reminder>\n${CORTEX_REMINDER.replace("{{count}}", String(running.length)).replace("{{task_list}}", taskList)}\n</cortex-reminder>`
+  }
+
+  const ACCUMULATING_TOOLS = new Set([
+    "bash",
+    "process",
+    "read",
+    "grep",
+    "ast_grep",
+    "glob",
+    "look_at",
+    "scan_document",
+    "edit",
+    "write",
+    "webfetch",
+  ])
+  const CLEARING_TOOLS = new Set(["dagwrite", "dagread", "dagpatch", "task", "task_list", "task_output", "task_cancel"])
+
+  async function buildPlanningReminder(
+    sessionID: string,
+    agent: { name: string; mode?: string },
+    sessionMessages: { info: { role: string }; parts: { type: string; tool?: string }[] }[],
+  ): Promise<string | undefined> {
+    if (agent.name !== "synergy-max") return undefined
+
+    const lastUserIdx = sessionMessages.reduce((last, msg, idx) => (msg.info.role === "user" ? idx : last), -1)
+    if (lastUserIdx < 0) return undefined
+
+    const currentTurnTools = new Set<string>()
+    for (let i = lastUserIdx + 1; i < sessionMessages.length; i++) {
+      for (const part of sessionMessages[i].parts) {
+        if (part.type === "tool" && part.tool) {
+          currentTurnTools.add(part.tool)
+        }
+      }
+    }
+
+    let counter = 0
+    for (const tool of currentTurnTools) {
+      if (CLEARING_TOOLS.has(tool)) counter = 0
+      else if (ACCUMULATING_TOOLS.has(tool)) counter += 1
+    }
+    if (counter < 3) return undefined
+
+    const { Dag } = await import("./dag")
+    const nodes = await Dag.get(sessionID)
+    if (nodes.length > 0) return undefined
+
+    return `<planning-reminder>\n${PLANNING_REMINDER.trim()}\n</planning-reminder>`
+  }
+
+  interface ExternalModelInfo {
+    model: string
+    providerID?: string
+    baseURL?: string
+    apiKey?: string
+  }
+
+  export function applyExternalPermissionMode(
+    config: Record<string, unknown>,
+    adapterName: string,
+    controlProfile: string,
+  ): Record<string, unknown> {
+    config.controlProfile = controlProfile
+
+    if (adapterName === "claude-code") {
+      delete config.skipPermissions
+      config.permissionMode = controlProfile === "full_access" ? "bypassPermissions" : "default"
+      return config
+    }
+
+    return config
+  }
+
+  function applyModelOverride(config: Record<string, unknown>, adapterName: string, override: ExternalModelInfo): void {
+    switch (adapterName) {
+      case "codex":
+        // Codex external agent uses the native Codex/ChatGPT authentication path.
+        // It should only be exposed after the openai-codex provider is authenticated,
+        // and must not receive OpenAI-compatible baseURL/API-key overrides.
+        break
+      case "claude-code":
+        config.model = override.model
+        break
+      default:
+        break
+    }
+  }
+
+  async function resolveExternalModelOverride(
+    userModel: { providerID: string; modelID: string },
+    adapterName: string,
+  ): Promise<ExternalModelInfo | undefined> {
+    try {
+      const provider = await Provider.getProvider(userModel.providerID)
+      const model = await Provider.getModel(userModel.providerID, userModel.modelID)
+      if (!provider || !model) return undefined
+
+      const npm = model.api.npm ?? ""
+      if (!isModelCompatibleWithAdapter(npm, adapterName)) {
+        log.info("skipping model override — incompatible provider for adapter", {
+          adapterName,
+          npm,
+          modelID: model.api.id,
+        })
+        return undefined
+      }
+
+      const options: Record<string, any> = { ...provider.options, ...model.options }
+      const baseURL = (options["baseURL"] as string) || model.api.url
+      const apiKey = (options["apiKey"] as string) || provider.key
+
+      return {
+        model: model.api.id,
+        providerID: userModel.providerID,
+        baseURL: baseURL || undefined,
+        apiKey: apiKey || undefined,
+      }
+    } catch (e) {
+      log.warn("resolveExternalModelOverride failed, falling back", { error: String(e) })
+      return undefined
+    }
+  }
+
+  function isModelCompatibleWithAdapter(npm: string, adapterName: string): boolean {
+    switch (adapterName) {
+      case "codex":
+        return npm.includes("openai") || npm.includes("openrouter")
+      case "claude-code":
+        return npm.includes("anthropic")
+      default:
+        return false
+    }
+  }
+
+  export const CommandInput = z.object({
+    experiment: Experiment.File.optional(),
+    messageID: Identifier.schema("message").optional(),
+    sessionID: Identifier.schema("session"),
+    agent: z.string().optional(),
+    model: z.string().optional(),
+    arguments: z.string(),
+    command: z.string(),
+    variant: z.string().optional(),
+    parts: z
+      .array(
+        z.discriminatedUnion("type", [
+          MessageV2.AttachmentPart.omit({
+            messageID: true,
+            sessionID: true,
+          }).partial({
+            id: true,
+          }),
+        ]),
+      )
+      .optional(),
+  })
+  export type CommandInput = z.infer<typeof CommandInput>
+  function commandMetadata(command: SessionCommandRuntime.CommandInfo) {
+    return {
+      command: {
+        name: command.name,
+        kind: command.kind,
+        action: command.action,
+        promptVisible: command.promptVisible,
+      },
+      promptVisible: command.promptVisible,
+      source: "command",
+      // Denormalized for easier frontend access (metadata.commandName vs. metadata.command?.name)
+      commandName: command.name,
+    }
+  }
+
+  async function deterministicCommandResult(
+    input: CommandInput,
+    command: SessionCommandRuntime.CommandInfo,
+    result: SessionCommandRuntime.CommandResult,
+  ) {
+    const userID = input.messageID ?? Identifier.ascending("message")
+    const agentName = input.agent ?? (await Agent.defaultAgent().catch(() => "system"))
+    const parsedModel = input.model
+      ? Provider.parseModel(input.model)
+      : ((await lastModel(input.sessionID).catch(() => undefined)) ?? { providerID: "system", modelID: "command" })
+    const metadata = commandMetadata(command)
+
+    const userInfo: MessageV2.User = {
+      id: userID,
+      role: "user",
+      sessionID: input.sessionID,
+      time: { created: Date.now() },
+      agent: agentName,
+      model: parsedModel,
+      origin: { type: "user" },
+      isRoot: true,
+      rootID: userID,
+      visible: true,
+      // Canonical context switch: action commands (promptVisible === false) are
+      // kept out of the model context. metadata.command.promptVisible is retained
+      // only as a frontend hint for action-command rendering.
+      includeInContext: command.promptVisible !== false,
+      metadata,
+    }
+    const userPart: MessageV2.TextPart = {
+      id: Identifier.ascending("part"),
+      messageID: userInfo.id,
+      sessionID: input.sessionID,
+      type: "text",
+      origin: "user",
+      text: `/${input.command}${input.arguments ? ` ${input.arguments}` : ""}`,
+    }
+    const { info: user } = await SessionUserMessageMaterialization.write({ info: userInfo, parts: [userPart] })
+
+    const msg: MessageV2.Assistant = {
+      id: Identifier.ascending("message"),
+      sessionID: input.sessionID,
+      parentID: user.id,
+      rootID: user.id,
+      visible: true,
+      role: "assistant",
+      mode: agentName,
+      agent: agentName,
+      cost: 0,
+      path: {
+        cwd: ScopeContext.current.directory,
+        root: ScopeContext.current.directory,
+      },
+      time: { created: Date.now(), completed: Date.now() },
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      finish: "stop",
+      modelID: parsedModel.modelID,
+      providerID: parsedModel.providerID,
+      metadata,
+    }
+    await Session.updateMessage(msg)
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: msg.id,
+      sessionID: input.sessionID,
+      type: "text",
+      text: result.output,
+      metadata: result.metadata,
+    })
+    void SessionCommandRuntime.publishExecuted({
+      name: input.command,
+      sessionID: input.sessionID,
+      arguments: input.arguments,
+      messageID: user.id,
+    })
+    return { info: msg, parts: await MessageV2.parts({ sessionID: input.sessionID, messageID: msg.id }) }
+  }
+
+  export async function command(input: CommandInput) {
+    const messageID = input.messageID ?? Identifier.ascending("message")
+    const session = await Session.get(input.sessionID)
+    const configuration = await RolloutLifecycle.configuration(
+      session,
+      messageID,
+      input.experiment,
+      input.model ? Provider.parseModel(input.model) : undefined,
+    )
+    const owner = RolloutLifecycle.owner(session)
+    const segment = await RolloutLedger.beginSegment({
+      owner,
+      runID: messageID,
+      input: JSON.parse(JSON.stringify(input)),
+    })
+    let status: "completed" | "failed" = "failed"
+    try {
+      const result = await Experiment.provide(configuration, () => runCommand({ ...input, messageID }))
+      status = "completed"
+      return result
+    } finally {
+      await RolloutLedger.finishSegment(segment, status)
+      if (status === "failed") await RolloutLedger.finishRun(owner, messageID, "failed")
+      else await RolloutLifecycle.reconcile(input.sessionID, messageID)
+    }
+  }
+
+  async function runCommand(input: CommandInput) {
+    log.info("command", input)
+    const command = await SessionCommandRuntime.require(input.command)
+    if (command.kind === "action") {
+      if (!command.action) throw SessionCommandRuntime.unknownActionError("")
+      return SessionManager.run(input.sessionID, async () => {
+        const result = await SessionCommandRuntime.runAction({ action: command.action!, input, command })
+        return deterministicCommandResult(input, command, result)
+      })
+    }
+    if (!command.template) throw SessionCommandRuntime.notFoundError(input.command)
+    const agentName = command.agent ?? input.agent ?? (await Agent.defaultAgent())
+
+    const template = await command.template
+    const renderedTexts = await InstructionRegistry.render(command.source ?? "command", {
+      template,
+      arguments: input.arguments,
+    })
+
+    const model = await (async () => {
+      if (input.model) return Provider.parseModel(input.model)
+      const experimentModel = Experiment.current()?.overrides.model
+      if (experimentModel) return Provider.parseModel(experimentModel)
+      if (command.model) {
+        return Provider.parseModel(command.model)
+      }
+      if (command.agent) {
+        const cmdAgent = await Agent.get(command.agent)
+        if (cmdAgent?.model) {
+          return cmdAgent.model
+        }
+      }
+      return await lastModel(input.sessionID)
+    })()
+
+    try {
+      await Provider.getModel(model.providerID, model.modelID)
+    } catch (e) {
+      if (Provider.ModelNotFoundError.isInstance(e)) {
+        const { providerID, modelID, suggestions } = e.data
+        const hint = suggestions?.length ? ` Did you mean: ${suggestions.join(", ")}?` : ""
+        Bus.publish(SessionEvent.Error, {
+          sessionID: input.sessionID,
+          error: new NamedError.Unknown({ message: `Model not found: ${providerID}/${modelID}.${hint}` }).toObject(),
+        })
+      }
+      throw e
+    }
+    const agent = await Agent.get(agentName)
+    if (!agent) {
+      const available = await Agent.list().then((agents) => agents.filter((a) => !a.hidden).map((a) => a.name))
+      const hint = available.length ? ` Available agents: ${available.join(", ")}` : ""
+      const error = new NamedError.Unknown({ message: `Agent not found: "${agentName}".${hint}` })
+      Bus.publish(SessionEvent.Error, {
+        sessionID: input.sessionID,
+        error: error.toObject(),
+      })
+      throw error
+    }
+
+    const textParts: InvokeInput["parts"] = []
+    const attachments: InvokeInput["parts"] = []
+    for (const text of renderedTexts) {
+      const renderedParts = await resolveInputParts(text)
+      for (const part of renderedParts) {
+        if (part.type === "text") textParts.push(part)
+        else attachments.push(part)
+      }
+    }
+    const parts = [...textParts, ...attachments, ...(input.parts ?? [])]
+
+    const result = (await invoke({
+      sessionID: input.sessionID,
+      messageID: input.messageID,
+      model,
+      agent: agentName,
+      parts,
+      variant: input.variant,
+    })) as MessageV2.WithParts
+
+    void SessionCommandRuntime.publishExecuted({
+      name: input.command,
+      sessionID: input.sessionID,
+      arguments: input.arguments,
+      messageID: result.info.id,
+    })
+
+    return result
+  }
+
+  export const initialize = fn(
+    z.object({
+      sessionID: Identifier.schema("session"),
+      modelID: z.string(),
+      providerID: z.string(),
+      messageID: Identifier.schema("message"),
+    }),
+    async (input) => {
+      await command({
+        sessionID: input.sessionID,
+        messageID: input.messageID,
+        model: input.providerID + "/" + input.modelID,
+        command: SessionCommandRuntime.defaultInitCommand(),
+        arguments: "",
+      })
+    },
+  )
+
+  export async function resumePending(input?: { scopeID?: string; waitForProcessing?: boolean }): Promise<void> {
+    await reconcileInterruptedCortexDelegations(input?.scopeID)
+    const { SessionRecovery } = await import("./recovery")
+    await SessionRecovery.resumePendingStopRequests(input?.scopeID)
+    await SessionCortexRuntime.reconcileParentNotifications(input?.scopeID)
+
+    // Startup inbox discovery: sessions with a durable queued task are driven
+    // through the existing SessionDrive/wake path so the owning loop performs
+    // the peek/materialize/commit work. No direct materialization here.
+    const { SessionDrive } = await import("./drive")
+    for (const sessionID of await SessionInbox.listRunnableSessions(input?.scopeID)) {
+      if (SessionManager.isRunning(sessionID)) continue
+      try {
+        const handled = await SessionDrive.request(sessionID, "inbox-recovery", {
+          waitForProcessing: input?.waitForProcessing,
+        })
+        log.info("startup inbox recovery drive request", { sessionID, handled })
+      } catch (error) {
+        log.warn("startup inbox recovery drive failed", { sessionID, error })
+      }
+    }
+
+    const sessionIDs = await SessionManager.listPendingReply(input?.scopeID)
+    for (const sessionID of sessionIDs) {
+      try {
+        const session = await SessionManager.getSession(sessionID)
+        if (!session) continue
+        if (SessionExecutionContributions.ownsPendingReply(session)) continue
+
+        const messages = await effectiveCompactedMessages(sessionID)
+        const pendingReply = SessionProgress.pendingReply(messages)
+
+        if (session.pendingReply !== pendingReply) {
+          await Session.update(sessionID, (draft) => {
+            draft.pendingReply = pendingReply || undefined
+          })
+        }
+
+        if (!pendingReply) continue
+
+        if (!SessionManager.isRunning(sessionID)) {
+          const repaired = await repairAfterAbort(sessionID)
+          if (repaired) {
+            log.info("repaired incomplete assistant during startup recovery", { sessionID })
+            continue
+          }
+        }
+
+        log.info("pending reply found; automatic assistant resume is disabled", { sessionID })
+      } catch (error) {
+        log.warn("pending session startup recovery failed", { sessionID, error })
+      }
+    }
+  }
+
+  async function reconcileInterruptedCortexDelegations(scopeID?: string): Promise<void> {
+    const sessionIDs = await SessionManager.listInterruptedCortexDelegations(scopeID)
+    for (const sessionID of sessionIDs) {
+      const session = await SessionManager.getSession(sessionID)
+      if (!session?.cortex) continue
+      if (session.cortex.status !== "queued" && session.cortex.status !== "running") continue
+      if (SessionManager.isRunning(sessionID)) continue
+
+      log.warn("reconciling interrupted Cortex delegation", { sessionID, status: session.cortex.status })
+      await repairAfterAbort(sessionID)
+      const completedAt = Date.now()
+      const interruption = "Server restarted before this delegated task completed."
+      await Session.update(sessionID, (draft) => {
+        if (!draft.cortex) return
+        if (draft.cortex.status !== "queued" && draft.cortex.status !== "running") return
+        draft.cortex.status = "interrupted"
+        draft.cortex.completedAt ??= completedAt
+        draft.cortex.error ??= interruption
+        draft.pendingReply = undefined
+      })
+      const updated = await Session.get(sessionID)
+      if (!updated?.cortex) continue
+      const snapshot = SessionCortexRuntime.pluginTaskSnapshot(
+        { taskId: updated.cortex.taskID, sessionId: updated.id },
+        updated.cortex,
+      )
+      if (!snapshot) continue
+      void Observability.emit("plugin.task.interrupted", {
+        traceId: snapshot.owner.correlationId,
+        sessionID: snapshot.sessionId,
+        scopeID: snapshot.owner.scopeId,
+        level: "error",
+        data: {
+          pluginId: snapshot.owner.pluginId,
+          pluginGeneration: snapshot.owner.pluginGeneration,
+          correlationId: snapshot.owner.correlationId,
+          taskId: snapshot.taskId,
+          status: snapshot.status,
+          agent: snapshot.agent,
+          model: snapshot.model,
+          startedAt: snapshot.startedAt,
+          completedAt: snapshot.completedAt,
+          durationMs: snapshot.completedAt ? snapshot.completedAt - snapshot.startedAt : undefined,
+          usage: snapshot.usage,
+        },
+      })
+      await ScopeContext.provide({
+        scope: updated.scope,
+        fn: () =>
+          Plugin.triggerForPlugin(
+            snapshot.owner.pluginId,
+            snapshot.owner.pluginGeneration,
+            "cortex.task.after",
+            { task: snapshot },
+            {},
+          ),
+      })
+    }
+  }
+
+  async function effectiveCompactedMessages(sessionID: string) {
+    return SessionHistory.modelMessages({ sessionID })
+  }
+
+  /**
+   * Build calibration data from the most recent assistant message that has
+   * real API-reported token counts. This lets PromptBudgeter use the model's
+   * native token count as a baseline and only estimate the small delta of
+   * new messages, rather than re-tokenizing the entire conversation through
+   * a mismatched tokenizer (o200k_base can overestimate by ~2x for Claude).
+   */
+  function buildCalibration(msgs: MessageV2.WithParts[]): PromptBudgeter.Calibration | undefined {
+    let calibrationIdx = -1
+    let calibrationTokens: MessageV2.Assistant["tokens"] | undefined
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const info = msgs[i].info
+      if (info.role !== "assistant") continue
+      const assistant = info as MessageV2.Assistant
+      if (assistant.summary) {
+        if (assistant.finish) break
+        continue
+      }
+      const tokens = assistant.tokens
+      if (ModelLimit.actualInput(tokens) > 0) {
+        calibrationIdx = i
+        calibrationTokens = tokens
+        break
+      }
+    }
+    if (calibrationIdx < 0 || !calibrationTokens) return undefined
+
+    const actualInput = ModelLimit.actualInput(calibrationTokens)
+    const outputTokens = calibrationTokens.output
+
+    let deltaChars = 0
+    for (let i = calibrationIdx + 1; i < msgs.length; i++) {
+      for (const part of msgs[i].parts) {
+        switch (part.type) {
+          case "text":
+            deltaChars += part.text?.length ?? 0
+            break
+          case "tool":
+            if (part.state.status === "completed") {
+              deltaChars += part.state.time.compacted ? 40 : (part.state.output?.length ?? 0)
+              deltaChars += JSON.stringify(part.state.input).length
+            }
+            break
+          case "attachment":
+            deltaChars += 200
+            break
+        }
+      }
+    }
+    // This deliberately uses the cheap four-chars-per-token heuristic instead
+    // of PromptBudgeter.measure's model-aware tokenizer path. Calibration runs
+    // between tool steps and starts from provider-reported actual input tokens,
+    // so only the small post-calibration delta is approximate.
+    const deltaTokens = Math.ceil(deltaChars / 4)
+
+    return { actualInput, outputTokens, deltaTokens }
+  }
+}

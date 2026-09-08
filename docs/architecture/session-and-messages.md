@@ -16,6 +16,8 @@ Session state includes, when applicable:
 
 ## Session Mutation and Index Projection
 
+Session storage and transcript imports use `Session.PersistedInfo`, which validates the base session fields while preserving optional domain metadata, including unknown workflow kinds and nested fields. `SessionSchemaRegistry` lets owners contribute the public API shape, creation behavior and import cleanup before runtime startup seals registration. Workflows owns the Blueprint, Agenda, SuperPlan and workflow schemas; its full composition preserves the existing API union. Unloaded owners do not validate or clear their persisted fields, and persistence tolerance does not add arbitrary fields to the generated SDK contract.
+
 Runtime mutation of an existing session is serialized per Scope and session. The mutation writes canonical session info once through `Storage.update()`, then projects the resulting state into the session, page, child, navigation, and endpoint indexes before the next mutation for that session can begin. Activity updates, completion acknowledgements, last-exchange updates, and removal participate in the same boundary, so a projection cannot rewrite canonical metadata from an older snapshot.
 
 Page and navigation indexes are shared by every session in a Scope, while a child index is shared by siblings under one parent. Their read-modify-write operations use separate domain locks so mutations for different sessions remain concurrent without overwriting one another's entries. Session update events are started in mutation order after canonical state and projections are durable; local subscriber work is not awaited inside the critical section, so an event handler may safely request a later mutation of the same session.

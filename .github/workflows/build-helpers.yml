@@ -7,16 +7,16 @@ on:
     branches: [dev, main]
     paths:
       - ".github/workflows/build-helpers.yml"
-      - "packages/synergy/src/sandbox/helper-linux/**"
-      - "packages/synergy/src/sandbox/helper/**"
-      - "packages/synergy/scripts/build-helper.ts"
+      - "packages/runtime-local/src/sandbox/helper-linux/**"
+      - "packages/runtime-local/src/sandbox/helper/**"
+      - "packages/product-runtime/scripts/build-helper.ts"
   push:
     branches: [dev, main]
     paths:
       - ".github/workflows/build-helpers.yml"
-      - "packages/synergy/src/sandbox/helper-linux/**"
-      - "packages/synergy/src/sandbox/helper/**"
-      - "packages/synergy/scripts/build-helper.ts"
+      - "packages/runtime-local/src/sandbox/helper-linux/**"
+      - "packages/runtime-local/src/sandbox/helper/**"
+      - "packages/product-runtime/scripts/build-helper.ts"
 
 permissions:
   contents: read
@@ -58,24 +58,24 @@ jobs:
       - name: Build and stage Linux helpers
         shell: bash
         run: |
-          bun run packages/synergy/scripts/build-helper.ts linux --target "${{ matrix.gnu_target }}"
-          bun run packages/synergy/scripts/build-helper.ts linux --target "${{ matrix.musl_target }}"
+          bun run packages/product-runtime/scripts/build-helper.ts linux --target "${{ matrix.gnu_target }}"
+          bun run packages/product-runtime/scripts/build-helper.ts linux --target "${{ matrix.musl_target }}"
           mkdir -p \
-            "packages/synergy/sandbox-assets/linux-${{ matrix.arch }}" \
-            "packages/synergy/sandbox-assets/linux-${{ matrix.arch }}-musl"
+            "packages/runtime-local/sandbox-assets/linux-${{ matrix.arch }}" \
+            "packages/runtime-local/sandbox-assets/linux-${{ matrix.arch }}-musl"
           cp \
-            "packages/synergy/src/sandbox/helper-linux/target/${{ matrix.gnu_target }}/release/synergy-sandbox-linux" \
-            "packages/synergy/sandbox-assets/linux-${{ matrix.arch }}/synergy-sandbox-linux"
+            "packages/runtime-local/src/sandbox/helper-linux/target/${{ matrix.gnu_target }}/release/synergy-sandbox-linux" \
+            "packages/runtime-local/sandbox-assets/linux-${{ matrix.arch }}/synergy-sandbox-linux"
           cp \
-            "packages/synergy/src/sandbox/helper-linux/target/${{ matrix.musl_target }}/release/synergy-sandbox-linux" \
-            "packages/synergy/sandbox-assets/linux-${{ matrix.arch }}-musl/synergy-sandbox-linux"
-          chmod 755 packages/synergy/sandbox-assets/linux-*/synergy-sandbox-linux
+            "packages/runtime-local/src/sandbox/helper-linux/target/${{ matrix.musl_target }}/release/synergy-sandbox-linux" \
+            "packages/runtime-local/sandbox-assets/linux-${{ matrix.arch }}-musl/synergy-sandbox-linux"
+          chmod 755 packages/runtime-local/sandbox-assets/linux-*/synergy-sandbox-linux
 
       - name: Upload Linux sandbox assets
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sandbox-assets-linux-${{ matrix.arch }}
-          path: packages/synergy/sandbox-assets
+          path: packages/runtime-local/sandbox-assets
           if-no-files-found: error
 
   windows:
@@ -99,15 +99,15 @@ jobs:
       - name: Build and stage Windows helper
         shell: bash
         run: |
-          bun run packages/synergy/scripts/build-helper.ts windows --target x86_64-pc-windows-msvc
-          mkdir -p packages/synergy/sandbox-assets/windows-x64
+          bun run packages/product-runtime/scripts/build-helper.ts windows --target x86_64-pc-windows-msvc
+          mkdir -p packages/runtime-local/sandbox-assets/windows-x64
           cp \
-            packages/synergy/src/sandbox/helper/target/x86_64-pc-windows-msvc/release/synergy-sandbox-windows.exe \
-            packages/synergy/sandbox-assets/windows-x64/synergy-sandbox-windows.exe
+            packages/runtime-local/src/sandbox/helper/target/x86_64-pc-windows-msvc/release/synergy-sandbox-windows.exe \
+            packages/runtime-local/sandbox-assets/windows-x64/synergy-sandbox-windows.exe
 
       - name: Upload Windows sandbox assets
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sandbox-assets-windows-x64
-          path: packages/synergy/sandbox-assets
+          path: packages/runtime-local/sandbox-assets
           if-no-files-found: error

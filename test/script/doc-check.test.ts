@@ -140,7 +140,7 @@ describe("doc-check staged scope", () => {
 
   test("drops staged markdown outside the full document scope", () => {
     const scope = ["/repo/AGENTS.md"]
-    const staged = ["AGENTS.md", "packages/app/PRODUCT.md"]
+    const staged = ["AGENTS.md", "apps/web/PRODUCT.md"]
     expect(filterStagedFiles(staged, scope, "/repo")).toEqual(["AGENTS.md"])
   })
   test("resolves staged paths against the repository root, not the cwd", () => {
@@ -154,7 +154,7 @@ describe("doc-check staged scope", () => {
 
   test("drops out-of-scope staged files resolved from the repository root", () => {
     const scope = ["/repo/docs/decisions/implemented/feature/x.md"]
-    const staged = ["packages/app/PRODUCT.md", "docs/decisions/implemented/feature/x.md"]
+    const staged = ["apps/web/PRODUCT.md", "docs/decisions/implemented/feature/x.md"]
     expect(filterStagedFiles(staged, scope, "/repo")).toEqual(["docs/decisions/implemented/feature/x.md"])
   })
 })

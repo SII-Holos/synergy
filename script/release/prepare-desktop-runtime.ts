@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import path from "node:path"
-import { SYNERGY_DIST_DIR } from "./shared/packages"
+import { PRODUCT_RUNTIME_DIST_DIR } from "./shared/packages"
 import { prepareRuntimeAssets } from "./shared/runtime-assets"
 
 export function desktopRuntimePackageNames(targets: string) {
@@ -20,7 +20,7 @@ export async function prepareDesktopRuntimes(targets: string) {
   const names = desktopRuntimePackageNames(targets)
   for (const name of names) {
     await prepareRuntimeAssets(name)
-    const runtimeDir = path.join(SYNERGY_DIST_DIR, name)
+    const runtimeDir = path.join(PRODUCT_RUNTIME_DIST_DIR, name)
     console.log(`prepared Desktop runtime ${runtimeDir}`)
   }
   return names

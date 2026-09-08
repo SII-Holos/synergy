@@ -1,13 +1,13 @@
 ---
 name: develop-frontend
-description: Implement or review Synergy Web and shared UI changes across packages/app and packages/ui. Use for components, contexts/stores, navigation, settings, dialogs, workbench surfaces, semantic icons, themes, responsive behavior, accessibility, frontend API calls, event sync, and product interaction changes.
+description: Implement or review Synergy Web and shared UI changes across apps/web and packages/ui. Use for components, contexts/stores, navigation, settings, dialogs, workbench surfaces, semantic icons, themes, responsive behavior, accessibility, frontend API calls, event sync, and product interaction changes.
 ---
 
 # Develop the Frontend
 
 ## Read the Contracts
 
-1. Read `packages/app/AGENTS.md` and [Web product contract](../../../packages/app/PRODUCT.md).
+1. Read `apps/web/AGENTS.md` and [Web product contract](../../../apps/web/PRODUCT.md).
 2. Read [Frontend data sync](../../../docs/architecture/frontend-data-sync.md) for contexts, snapshots, events, streaming, composer intent, or loaded buckets.
 3. Read [Browser runtime](../../../docs/architecture/browser-runtime.md) for Browser UI or Desktop/Web presentation changes.
 4. Load `change-server-api` when the UI needs a new or changed server contract; load `add-tool` for tool-card presentation.
@@ -41,7 +41,7 @@ Read [Frontend localization](../../../docs/architecture/localization.md) before 
 2. Keep descriptors statically extractable with an English default message and a translator comment when product context is not obvious. Use ICU variables, plural/select syntax, and component placeholders for complete messages.
 3. Translate Synergy-owned chrome, actions, states, recovery guidance, and accessibility labels together. Keep user, LLM, Note, source-code, terminal, browser-page, plugin-author, brand, path, identifier, and raw diagnostic content verbatim.
 4. Use the shared active-locale formatter for dates, time, numbers, percentages, currency, lists, and relative time. Do not hard-code locale tags or use a regional locale to imply an unrelated preference such as 24-hour time.
-5. `packages/app` owns locale state, catalog loading, Settings, persistence, bootstrap mirror reconciliation, and the global `I18nProvider`. `packages/ui` consumes that provider through peer dependencies; it does not create a second runtime, import App contexts, inspect browser locale, or own catalogs.
+5. `apps/web` owns locale state, catalog loading, Settings, persistence, bootstrap mirror reconciliation, and the global `I18nProvider`. `packages/ui` consumes that provider through peer dependencies; it does not create a second runtime, import App contexts, inspect browser locale, or own catalogs.
 6. Keep the Settings language control global, responsive, and recoverable: Follow System, English, and Simplified Chinese apply without refresh, do not follow project Scope, and must preserve language self-names so a user can switch back after a mistake.
 7. Run extraction after each coherent copy change, translate every new `zh-CN` message, remove obsolete entries, and keep strict compilation green. Finish with the repository localization contract so new hard-coded product text cannot bypass the catalog.
 
@@ -76,7 +76,7 @@ Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplica
 2. Keep heavyweight feature engines behind the interaction that needs them: Tiptap and Mermaid behind Notes, Monaco behind file Source view, and Ghostty behind Terminal.
 3. Do not evaluate JSX child getters to detect detail presence: use an explicit availability value or property presence, then instantiate children only inside the mounted disclosure. Test closed → open → closed imperative-renderer counts. Bound tool previews and retained expanded-render caches by capacity; use resource identity to open full content on demand. See [bounded tool rendering](../../../docs/decisions/implemented/bug-fix/2026-09-07-bound-tool-rendering-memory.md).
 4. Import only fonts used by the active product typography contract. A dormant family must not be emitted by the default App build.
-5. Preserve `packages/app/test/app-build-css-contract.test.ts` as the production build regression gate for initial module preloads, emitted product fonts, and core compiled CSS.
+5. Preserve `apps/web/test/app-build-css-contract.test.ts` as the production build regression gate for initial module preloads, emitted product fonts, and core compiled CSS.
 
 ## Change Themes and Color Tokens
 
@@ -92,7 +92,7 @@ Read `docs/reference/frontend-theming.md` before changing the color contract, ad
 
 ```bash
 bun test --cwd packages/ui test/theme.test.ts test/theme-generation.test.ts
-bun test --cwd packages/app test/testing/color-token-contract.test.ts
+bun test --cwd apps/web test/testing/color-token-contract.test.ts
 ```
 
 ## Verify
@@ -101,23 +101,23 @@ bun test --cwd packages/app test/testing/color-token-contract.test.ts
 2. Run:
 
 ```bash
-bun run --cwd packages/app test
-bun run --cwd packages/app typecheck
+bun run --cwd apps/web test
+bun run --cwd apps/web typecheck
 bun run --cwd packages/ui test
-bun run --cwd packages/app build
+bun run --cwd apps/web build
 ```
 
 For browser capability or bootstrap changes, also run:
 
 ```bash
-bun test --cwd packages/app test/testing/browser-crypto-contract.test.ts
-bun packages/app/script/private-http-smoke.ts
+bun test --cwd apps/web test/testing/browser-crypto-contract.test.ts
+bun apps/web/script/private-http-smoke.ts
 ```
 
 For localized UI changes, also run:
 
 ```bash
-bun run --cwd packages/app i18n:extract
+bun run --cwd apps/web i18n:extract
 bun run localization:check
 ```
 

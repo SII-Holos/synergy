@@ -2,13 +2,12 @@
 
 # CLI Reference
 
-Generated from the CLI registration in `packages/synergy/src/cli/commands.ts`. Concept and lifecycle guidance lives in [CLI guide](cli-guide.md); use `synergy --help` or `synergy <command> --help` for the exact options of the installed version.
+Generated from the core and product CLI catalogs and explicit command contributions. This reference describes the full product; standalone core installations expose the locally composed subset through the same `synergy` command. Concept and lifecycle guidance lives in [CLI guide](cli-guide.md); use `synergy --help` or `synergy <command> --help` for the exact options of the installed version.
 
 ## Commands
 
 | Command | Description |
 | --- | --- |
-| `$0` | start synergy server |
 | `acp` | start ACP (Agent Client Protocol) server |
 | `agent` | manage agents |
 | `auth` | manage credentials |
@@ -32,6 +31,7 @@ Generated from the CLI registration in `packages/synergy/src/cli/commands.ts`. C
 | `models` | list all available models |
 | `plugin` | install, remove, update, and inspect plugins |
 | `send` | send a message to synergy |
+| `server` | start synergy server |
 | `session` | manage sessions |
 | `start` | start synergy background service |
 | `stats` | show token usage and cost statistics |

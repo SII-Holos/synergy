@@ -1,0 +1,49 @@
+{
+  "name": "@ericsanchezok/synergy-note",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./event": "./src/event.ts",
+    "./migration": "./src/migration.ts",
+    "./tools": "./src/tools.ts",
+    "./session-access": "./src/session-access.ts",
+    "./virtual-file-source": "./src/virtual-file-source.ts",
+    "./routes/note": "./src/routes/note.ts",
+    "./tools/note-archive": "./src/tools/note-archive.ts",
+    "./tools/note-edit": "./src/tools/note-edit.ts",
+    "./tools/note-write": "./src/tools/note-write.ts",
+    "./tools/note-delete": "./src/tools/note-delete.ts",
+    "./tools/note-read": "./src/tools/note-read.ts",
+    "./register": "./src/register.ts",
+    "./session-contract": "./src/session-contract.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/note",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-server": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "remeda": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-link-protocol": "workspace:*",
+    "@ericsanchezok/synergy-runtime-local": "workspace:*",
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "typescript": "catalog:"
+  }
+}

@@ -97,7 +97,7 @@ import { createSignal } from "solid-js"
 import { render } from "solid-js/web"
 import { Code } from ${JSON.stringify(codePath)}
 import { CodeComponentProvider } from ${JSON.stringify(path.join(uiRoot, "src/context/code.tsx"))}
-import { RawMessageCodePreview } from ${JSON.stringify(path.resolve(uiRoot, "../app/src/components/session/raw-message-code-preview.tsx"))}
+import { RawMessageCodePreview } from ${JSON.stringify(path.resolve(uiRoot, "../../apps/web/src/components/session/raw-message-code-preview.tsx"))}
 const [wrap, setWrap] = createSignal(false)
 const [range, setRange] = createSignal({ startingLine: 2, totalLines: 1, bufferBefore: 16, bufferAfter: 24 })
 const [disableBuffers, setDisableBuffers] = createSignal(false)

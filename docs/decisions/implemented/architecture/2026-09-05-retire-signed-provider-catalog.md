@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-Synergy resolved provider metadata through two parallel channels: built-in `ProviderProfile` definitions in `packages/synergy/src/provider/builtin.ts`, and a signed remote catalog (`catalog.v1.json` + Ed25519 `.sig`) served by the `SII-Holos/synergy-provider-registry` repository, consumed through `config.providerCatalog` with an embedded public key.
+Synergy resolved provider metadata through two parallel channels: built-in `ProviderProfile` definitions in `packages/harness/src/provider/builtin.ts`, and a signed remote catalog (`catalog.v1.json` + Ed25519 `.sig`) served by the `SII-Holos/synergy-provider-registry` repository, consumed through `config.providerCatalog` with an embedded public key.
 
 In practice the remote catalog duplicated the built-in data without adding a capability:
 
@@ -12,7 +12,7 @@ In practice the remote catalog duplicated the built-in data without adding a cap
 - The remote recommendation data was dead: provider metadata resolution always prefers the profile recommendation, and all catalog providers had builtin profiles, so the catalog value was never surfaced.
 - The duplication also froze the mirror. The registry's publish gate validates that catalog-referenced models still exist in the upstream `models.dev` snapshot before committing the mirror. When models.dev removed `github-copilot/gemini-3.1-pro-preview`, every sync run failed on the stale catalog reference and the `models.json` mirror stopped updating with no alerting — the gate was working as designed, but the catalog it protected had no reason to exist.
 
-The `models.json` mirror itself has real value: `packages/synergy/src/provider/models.ts` uses it as a fallback when `models.dev` is unreachable, and the client validates it with its own schema, so a bad mirror degrades gracefully instead of breaking.
+The `models.json` mirror itself has real value: `packages/harness/src/provider/models.ts` uses it as a fallback when `models.dev` is unreachable, and the client validates it with its own schema, so a bad mirror degrades gracefully instead of breaking.
 
 ## Decision
 

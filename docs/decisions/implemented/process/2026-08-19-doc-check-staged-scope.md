@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-The pre-commit hook ran `doc-check --staged`, which checked every staged Markdown file for the one-physical-line paragraph rule. The full `doc:check` gate only checks the engineering document scope (README, CONTRIBUTING, AGENTS, `docs/`, `.synergy/skill`, package AGENTS files). Files outside that scope — such as `packages/app/PRODUCT.md`, which deliberately keeps one principle per line — were never subject to the wrap rule, so any PR touching them failed the hook on pre-existing lines even when the edit itself was correct.
+The pre-commit hook ran `doc-check --staged`, which checked every staged Markdown file for the one-physical-line paragraph rule. The full `doc:check` gate only checks the engineering document scope (README, CONTRIBUTING, AGENTS, `docs/`, `.synergy/skill`, package AGENTS files). Files outside that scope — such as `apps/web/PRODUCT.md`, which deliberately keeps one principle per line — were never subject to the wrap rule, so any PR touching them failed the hook on pre-existing lines even when the edit itself was correct.
 
 ## Decision
 

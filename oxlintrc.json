@@ -43,8 +43,8 @@
     "packages/**/dist/**",
     "packages/**/release/**",
     "packages/sdk/js/src/gen/**",
-    "packages/synergy/schema/**",
-    "packages/synergy/test/tool/fixtures/**",
+    "packages/product-runtime/schema/**",
+    "packages/runtime-local/test/tool/fixtures/**",
     "**/*.min.js"
   ],
   "overrides": [

@@ -6,13 +6,12 @@ import { access, mkdtemp, rm } from "fs/promises"
 import os from "os"
 import path from "path"
 import {
-  SYNERGY_LINK_PROTOCOL_DIR,
-  PLUGIN_DIR,
-  PLUGIN_KIT_DIR,
+  PRODUCT_RUNTIME_DIST_DIR,
+  PRODUCT_RUNTIME_DIR,
+  CLI_DIR,
   SDK_DIR,
-  SYNERGY_DIST_DIR,
-  SYNERGY_DIR,
-  UTIL_DIR,
+  RELEASE_CATALOG,
+  REPO_ROOT,
 } from "./release/shared/packages"
 import {
   createPublishablePackageJson,
@@ -23,31 +22,25 @@ import {
 } from "./release/shared/package-manifest"
 import { currentGitRemoteUrl } from "./release/shared/git"
 
-const publishablePackages: PublishablePackage[] = [
-  { name: "@ericsanchezok/synergy-sdk", dir: SDK_DIR, build: true, attw: true },
-  { name: "@ericsanchezok/synergy-util", dir: UTIL_DIR, build: true, attw: true },
-  { name: "@ericsanchezok/synergy-link-protocol", dir: SYNERGY_LINK_PROTOCOL_DIR, build: true, attw: false },
-  {
-    name: "@ericsanchezok/synergy-plugin",
-    dir: PLUGIN_DIR,
-    build: true,
-    attw: true,
-    dependencyVersions: {
-      "@ericsanchezok/synergy-sdk": packageVersion(SDK_DIR),
-      "@ericsanchezok/synergy-util": packageVersion(UTIL_DIR),
+const dependencyVersions = Object.fromEntries(
+  Object.values(RELEASE_CATALOG).map((entry) => {
+    const manifest = JSON.parse(readFileSync(path.join(REPO_ROOT, entry.directory, "package.json"), "utf8"))
+    return [manifest.name, manifest.version]
+  }),
+)
+
+const publishablePackages: PublishablePackage[] = Object.entries(RELEASE_CATALOG).flatMap(([id, entry]) => {
+  if (!entry.registry || id === "productRuntime") return []
+  return [
+    {
+      name: entry.registry,
+      dir: path.join(REPO_ROOT, entry.directory),
+      build: true,
+      attw: id !== "linkProtocol",
+      dependencyVersions,
     },
-  },
-  {
-    name: "@ericsanchezok/synergy-plugin-kit",
-    dir: PLUGIN_KIT_DIR,
-    build: true,
-    attw: true,
-    dependencyVersions: {
-      "@ericsanchezok/synergy-plugin": packageVersion(PLUGIN_DIR),
-      "@ericsanchezok/synergy-util": packageVersion(UTIL_DIR),
-    },
-  },
-]
+  ]
+})
 
 type PublishablePackage = {
   name: string
@@ -114,10 +107,10 @@ async function validateSynergyWrapper(tempDir: string) {
   console.log(`\n=== package check: @ericsanchezok/synergy wrapper ===\n`)
   const wrapperDir = path.join(tempDir, "synergy-wrapper")
   await $`mkdir -p ${path.join(wrapperDir, "bin")}`
-  await $`cp ${path.join(SYNERGY_DIR, "bin", "synergy")} ${path.join(wrapperDir, "bin", "synergy")}`
-  await $`cp ${path.join(SYNERGY_DIR, "script", "postinstall.mjs")} ${path.join(wrapperDir, "postinstall.mjs")}`
+  await $`cp ${path.join(CLI_DIR, "bin", "synergy")} ${path.join(wrapperDir, "bin", "synergy")}`
+  await $`cp ${path.join(CLI_DIR, "script", "postinstall.mjs")} ${path.join(wrapperDir, "postinstall.mjs")}`
 
-  const version = packageVersion(SYNERGY_DIR)
+  const version = packageVersion(PRODUCT_RUNTIME_DIR)
   const platformVersions = await availableSynergyPlatformVersions(version)
   const repositoryUrl = await currentGitRemoteUrl()
   await Bun.write(
@@ -139,11 +132,11 @@ async function validateSynergyWrapper(tempDir: string) {
 }
 
 async function availableSynergyPlatformVersions(version: string) {
-  if (!(await exists(SYNERGY_DIST_DIR))) {
+  if (!(await exists(PRODUCT_RUNTIME_DIST_DIR))) {
     console.warn("No Synergy dist directory found; validating wrapper manifest without optional platform packages.")
     return {}
   }
-  const entries = await Array.fromAsync(new Bun.Glob("synergy-*/package.json").scan({ cwd: SYNERGY_DIST_DIR }))
+  const entries = await Array.fromAsync(new Bun.Glob("synergy-*/package.json").scan({ cwd: PRODUCT_RUNTIME_DIST_DIR }))
   if (entries.length === 0) {
     console.warn(
       "No built Synergy platform packages found; validating wrapper manifest without optional platform packages.",

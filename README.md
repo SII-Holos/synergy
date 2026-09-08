@@ -179,10 +179,12 @@ Default local preflight:
 bun run quality:quick
 ```
 
-Core runtime tests run from `packages/synergy`:
+For programmatic experiments, `packages/harness` exposes the execution and lifecycle APIs, and `packages/runtime-local` supplies local tools, native execution and provider SDKs. `packages/cli` keeps the same `synergy` command with an injected runtime; the complete product composes optional capabilities in `packages/product-runtime`. See the [package map](docs/reference/packages.md) for build and installation checks.
+
+Core runtime tests run from `packages/harness`:
 
 ```bash
-cd packages/synergy
+cd packages/harness
 bun test
 bun run test:ci # CI-equivalent sequential shards
 ```
@@ -190,16 +192,16 @@ bun run test:ci # CI-equivalent sequential shards
 Frontend package suites run through their standard scripts and are included in `bun run quality`:
 
 ```bash
-bun run --cwd packages/app test
+bun run --cwd apps/web test
 bun run --cwd packages/ui test
 ```
 
 Browser capability or App bootstrap changes also verify the source boundary and a genuine non-loopback HTTP origin:
 
 ```bash
-bun test --cwd packages/app test/testing/browser-crypto-contract.test.ts
-bun run --cwd packages/app build
-bun packages/app/script/private-http-smoke.ts
+bun test --cwd apps/web test/testing/browser-crypto-contract.test.ts
+bun run --cwd apps/web build
+bun apps/web/script/private-http-smoke.ts
 ```
 
 Tests live under each package's `test/` directory; repository-level tests live under the root `test/` directory. `bun run quality:quick` enforces this layout.
@@ -207,7 +209,7 @@ Tests live under each package's `test/` directory; repository-level tests live u
 Frontend product copy is extracted into English and Simplified Chinese catalogs, plus a development-only pseudo catalog. Changes to visible text or locale formatting also run:
 
 ```bash
-bun run --cwd packages/app i18n:extract
+bun run --cwd apps/web i18n:extract
 bun run localization:check
 ```
 

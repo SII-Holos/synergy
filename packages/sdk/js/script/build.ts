@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { fileURLToPath } from "url"
+import { generateOpenApi } from "../../../../script/generate-openapi"
 const dir = fileURLToPath(new URL("..", import.meta.url))
 process.chdir(dir)
 
@@ -118,10 +119,7 @@ function removeExpandedPerformanceParameterComponents(spec: OpenApiDocument) {
   for (const name of Object.keys(performanceQueryParameters)) delete spec.components?.parameters?.[name]
 }
 
-await writeFile(
-  path.join(dir, "openapi.json"),
-  await $`bun dev generate`.cwd(path.resolve(dir, "../../synergy")).text(),
-)
+await writeFile(path.join(dir, "openapi.json"), await generateOpenApi())
 await prepareSdkOpenApi()
 
 await createClient({

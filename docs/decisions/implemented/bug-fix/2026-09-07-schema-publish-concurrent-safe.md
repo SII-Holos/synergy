@@ -10,7 +10,7 @@ The bug hid behind test-harness timeouts for days: the 2026-09-06 Windows CI fai
 
 ## Decision
 
-The boot-time schema sync in `packages/synergy/src/global/index.ts` now:
+The boot-time schema sync in `packages/harness/src/global/index.ts` now:
 
 1. reads the bundled schema and skips all writing when the destination already holds identical contents (the common second-boot path becomes a no-op read outside any lock);
 2. otherwise serializes under the schema file lock (`withFileLock` on `schema/.locks/config-schema`, introduced by the shared file-snapshot-storage work) and re-checks the destination inside the lock, so a concurrent publisher's finished work short-circuits instead of rewriting;

@@ -25,4 +25,4 @@ All rename call sites address the session-update API through the same scope cont
 - Home-scope sessions can be renamed from both the top-bar action menu and the mobile session-row menu; the UI updates live because the update event reaches the Home channel.
 - Rename requests for Home sessions no longer create a phantom project scope rooted at the user's home directory, and no longer emit stray `scope.updated` events.
 - Project sessions are unaffected: their rename requests still carry the project directory, exactly as before.
-- `packages/app/PRODUCT.md` now documents Rename as available in both scopes with Home addressed via scope ID.
+- `apps/web/PRODUCT.md` now documents Rename as available in both scopes with Home addressed via scope ID.

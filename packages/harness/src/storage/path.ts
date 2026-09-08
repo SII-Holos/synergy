@@ -1,0 +1,383 @@
+import { Identifier } from "../id/id"
+
+type ScopeID = Identifier.ScopeID
+type SessionID = Identifier.SessionID
+type MessageID = Identifier.MessageID
+type PartID = Identifier.PartID
+type HistoryID = Identifier.HistoryID
+
+export namespace StoragePath {
+  const endpointSessionStorageKey = (endpointKey: string) => encodeURIComponent(endpointKey)
+
+  export const metaVersion = () => ["meta", "version"]
+  export const snapshotRepository = (scopeID: string) => ["snapshot-v2", scopeID, "repository"]
+  export const snapshotFormat = () => ["snapshot-v2", "format"]
+  export const snapshotOwner = (scopeID: string, sessionID: string) => ["snapshot-v2", scopeID, "owners", sessionID]
+  export const snapshotOwners = (scopeID: string) => ["snapshot-v2", scopeID, "owners"]
+  export const snapshotHomeLeases = () => ["snapshot-v2", "leases"]
+  export const snapshotLeases = (scopeID: string) => ["snapshot-v2", scopeID, "leases"]
+  export const snapshotMigration = (scopeID: string, sessionID: string) => [
+    "snapshot-v2",
+    scopeID,
+    "migrations",
+    sessionID,
+  ]
+  export const snapshotDeletion = (scopeID: string, sessionID: string) => [
+    "snapshot-v2",
+    scopeID,
+    "deletions",
+    sessionID,
+  ]
+  export const metaMigrationLog = () => ["meta", "migration", "log"]
+  export const metaMigrationLogDomain = (domain: string) => ["meta", "migration", `log-${domain}`]
+
+  export const scopeRoot = () => ["projects"]
+  export const scope = (scopeID: ScopeID) => ["projects", scopeID as string]
+
+  export const sessionIndexRoot = () => ["session_index"]
+  export const sessionIndex = (sessionID: SessionID) => ["session_index", sessionID as string]
+
+  export const endpointSessionRoot = (endpointKey: string) => [
+    "endpoint_session",
+    endpointSessionStorageKey(endpointKey),
+  ]
+  export const endpointSession = (endpointKey: string, sessionID: SessionID) => [
+    "endpoint_session",
+    endpointSessionStorageKey(endpointKey),
+    sessionID as string,
+  ]
+
+  export const sessionsRoot = (scopeID: ScopeID) => ["sessions", scopeID as string]
+  export const sessionsPageIndex = (scopeID: ScopeID) => ["sessions_page_index", scopeID as string]
+  export const sessionChildIndexRoot = (scopeID: ScopeID) => ["session_child_index", scopeID as string]
+  export const sessionChildIndex = (scopeID: ScopeID, parentSessionID: SessionID) => [
+    "session_child_index",
+    scopeID as string,
+    parentSessionID as string,
+  ]
+  export const sessionNavIndexRoot = () => ["session_nav_v2"]
+  export const sessionNavIndex = (scopeID: ScopeID) => ["session_nav_v2", scopeID as string]
+  export const sessionSearchIndexRoot = () => ["session_search_v1"]
+  export const sessionSearchIndex = (scopeID: ScopeID, sessionID: SessionID) => [
+    "session_search_v1",
+    scopeID as string,
+    sessionID as string,
+  ]
+  export const sessionSearchDirtyRoot = () => ["session_search_dirty_v1"]
+  export const sessionSearchDirty = (scopeID: ScopeID, sessionID: SessionID) => [
+    "session_search_dirty_v1",
+    scopeID as string,
+    sessionID as string,
+  ]
+  export const sessionMessageOrderRoot = (scopeID: ScopeID, sessionID: SessionID) => [
+    "session_message_order_v1",
+    scopeID as string,
+    sessionID as string,
+  ]
+  export const sessionMessageOrderMarkersRoot = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionMessageOrderRoot(scopeID, sessionID),
+    "markers",
+  ]
+  export const sessionMessageOrderMarker = (scopeID: ScopeID, sessionID: SessionID, marker: string) => [
+    ...sessionMessageOrderMarkersRoot(scopeID, sessionID),
+    marker,
+  ]
+  export const sessionMessageOrderState = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionMessageOrderRoot(scopeID, sessionID),
+    "state",
+  ]
+
+  export const sessionRoot = (scopeID: ScopeID, sessionID: SessionID) => [
+    "sessions",
+    scopeID as string,
+    sessionID as string,
+  ]
+  export const sessionInfo = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "info"]
+  export const sessionRolloutRoot = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionRoot(scopeID, sessionID),
+    "rollout",
+  ]
+  export const operationRolloutRoot = (scopeID: ScopeID, operationID: string) => [
+    "operations",
+    scopeID as string,
+    operationID,
+    "rollout",
+  ]
+  export const sessionSummary = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionRoot(scopeID, sessionID),
+    "summary",
+  ]
+  export const sessionSummaryCursor = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionRoot(scopeID, sessionID),
+    "summary_cursor",
+  ]
+  export const sessionTodo = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "todo"]
+  export const sessionDag = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "dag"]
+  export const sessionLightLoopTerminal = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionRoot(scopeID, sessionID),
+    "lightloop_terminal",
+  ]
+  export const sessionInboxRoot = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionRoot(scopeID, sessionID),
+    "inbox",
+  ]
+  export const sessionInboxItem = (scopeID: ScopeID, sessionID: SessionID, itemID: string) => [
+    ...sessionInboxRoot(scopeID, sessionID),
+    itemID,
+  ]
+  export const sessionMessagesRoot = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionRoot(scopeID, sessionID),
+    "messages",
+  ]
+  export const sessionHistoryRoot = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionRoot(scopeID, sessionID),
+    "history",
+  ]
+  export const sessionHistoryEvent = (scopeID: ScopeID, sessionID: SessionID, historyID: HistoryID) => [
+    ...sessionHistoryRoot(scopeID, sessionID),
+    historyID as string,
+  ]
+
+  export const messageInfo = (scopeID: ScopeID, sessionID: SessionID, messageID: MessageID) => [
+    ...sessionMessagesRoot(scopeID, sessionID),
+    messageID as string,
+    "info",
+  ]
+
+  export const messageParts = (scopeID: ScopeID, sessionID: SessionID, messageID: MessageID) => [
+    ...sessionMessagesRoot(scopeID, sessionID),
+    messageID as string,
+    "parts",
+  ]
+
+  export const messagePart = (scopeID: ScopeID, sessionID: SessionID, messageID: MessageID, partID: PartID) => [
+    ...messageParts(scopeID, sessionID, messageID),
+    partID as string,
+  ]
+
+  export const permission = (scopeID: ScopeID) => ["permissions", scopeID as string]
+  export const permissionRules = () => ["permission-rules"]
+
+  export const share = (shareID: string) => ["shares", shareID]
+
+  export const channelResponseCardsRoot = () => ["channel", "response_cards"]
+  export const channelResponseCardAccountRoot = (channelType: string, accountId: string) => [
+    ...channelResponseCardsRoot(),
+    encodeURIComponent(channelType),
+    encodeURIComponent(accountId),
+  ]
+  export const channelResponseCard = (channelType: string, accountId: string, requestId: string) => [
+    ...channelResponseCardAccountRoot(channelType, accountId),
+    encodeURIComponent(requestId),
+  ]
+  export const channelFeishuStreamingCardsRoot = () => ["channel", "feishu", "streaming_cards"]
+  export const channelFeishuStreamingCardAccountRoot = (accountId: string) => [
+    ...channelFeishuStreamingCardsRoot(),
+    encodeURIComponent(accountId),
+  ]
+  export const channelFeishuStreamingCardSessionRoot = (accountId: string, sessionID: string) => [
+    ...channelFeishuStreamingCardAccountRoot(accountId),
+    encodeURIComponent(sessionID),
+  ]
+  export const channelFeishuStreamingCard = (accountId: string, sessionID: string, cardId: string) => [
+    ...channelFeishuStreamingCardSessionRoot(accountId, sessionID),
+    encodeURIComponent(cardId),
+  ]
+  export const channelFeishuThreadBindingsRoot = () => ["channel", "feishu", "thread_bindings"]
+  export const channelFeishuThreadBinding = (accountId: string, chatId: string, threadId: string) => [
+    ...channelFeishuThreadBindingsRoot(),
+    encodeURIComponent(accountId),
+    encodeURIComponent(chatId),
+    encodeURIComponent(threadId),
+  ]
+
+  export const agendaItemsRoot = (scopeID: ScopeID) => ["agenda", "items", scopeID as string]
+  export const agendaItem = (scopeID: ScopeID, itemID: string) => ["agenda", "items", scopeID as string, itemID]
+  export const agendaRunsRoot = (scopeID: ScopeID, itemID: string) => ["agenda", "runs", scopeID as string, itemID]
+  export const agendaRun = (scopeID: ScopeID, itemID: string, runID: string) => [
+    "agenda",
+    "runs",
+    scopeID as string,
+    itemID,
+    runID,
+  ]
+
+  export const agendaRunIndex = (scopeID: ScopeID) => ["agenda", "run_index", scopeID as string]
+
+  export const agendaSessionsRoot = (itemID: string) => ["agenda", "sessions", itemID]
+  export const agendaSession = (itemID: string, sessionID: string) => ["agenda", "sessions", itemID, sessionID]
+
+  export const notesRoot = (scopeID: ScopeID) => ["notes", scopeID as string]
+  export const note = (scopeID: ScopeID, noteID: string) => ["notes", scopeID as string, noteID]
+
+  export const blueprintLoopsRoot = (scopeID: ScopeID) => ["blueprint_loops", scopeID as string]
+  export const blueprintLoop = (scopeID: ScopeID, id: string) => ["blueprint_loops", scopeID as string, id]
+
+  export const superPlanRunsRoot = (scopeID: ScopeID) => ["superplan", "runs", scopeID as string]
+  export const superPlanRun = (scopeID: ScopeID, runID: string) => [...superPlanRunsRoot(scopeID), runID]
+  export const superPlanEventsRoot = (scopeID: ScopeID, runID: string) => [
+    "superplan",
+    "events",
+    scopeID as string,
+    runID,
+  ]
+  export const superPlanEvent = (scopeID: ScopeID, runID: string, eventID: string) => [
+    ...superPlanEventsRoot(scopeID, runID),
+    eventID,
+  ]
+
+  export const latticeRoot = () => ["lattice"]
+  export function latticeRunsRoot(): string[]
+  export function latticeRunsRoot(scopeID: ScopeID): string[]
+  export function latticeRunsRoot(scopeID?: ScopeID) {
+    return scopeID ? [...latticeRoot(), "runs", scopeID as string] : [...latticeRoot(), "runs"]
+  }
+  export const latticeRun = (scopeID: ScopeID, runID: string) => [...latticeRunsRoot(scopeID), runID]
+  export const latticeCurrentRoot = (scopeID: ScopeID) => [...latticeRoot(), "current", scopeID as string]
+  export const latticeCurrent = (scopeID: ScopeID, sessionID: string) => [...latticeCurrentRoot(scopeID), sessionID]
+  export const latticeEventsRoot = (scopeID: ScopeID, runID: string) => [
+    ...latticeRoot(),
+    "events",
+    scopeID as string,
+    runID,
+  ]
+  export const latticeEvent = (scopeID: ScopeID, runID: string, eventID: string) => [
+    ...latticeEventsRoot(scopeID, runID),
+    eventID,
+  ]
+
+  // v1 used the same collection roots but keyed records by sessionID. These
+  // helpers are migration-only and must not be used by the v2 runtime.
+  export const latticeLegacyRun = (scopeID: ScopeID, sessionID: string) => [...latticeRunsRoot(scopeID), sessionID]
+  export const latticeLegacyEventsRoot = (scopeID: ScopeID, sessionID: string) => [
+    ...latticeRoot(),
+    "events",
+    scopeID as string,
+    sessionID,
+  ]
+  export const latticeLegacyEvent = (scopeID: ScopeID, sessionID: string, eventID: string) => [
+    ...latticeLegacyEventsRoot(scopeID, sessionID),
+    eventID,
+  ]
+
+  export const holosContactsRoot = () => ["holos", "contacts"]
+  export const holosContact = (id: string) => ["holos", "contacts", id]
+
+  export const holosMailboxInboxRoot = (contactId: string) => ["holos", "mailbox", "inbox", contactId]
+  export const holosMailboxInboxItem = (contactId: string, messageId: string) => [
+    "holos",
+    "mailbox",
+    "inbox",
+    contactId,
+    messageId,
+  ]
+  export const holosMailboxOutboxRoot = (contactId: string) => ["holos", "mailbox", "outbox", contactId]
+  export const holosMailboxOutboxItem = (contactId: string, messageId: string) => [
+    "holos",
+    "mailbox",
+    "outbox",
+    contactId,
+    messageId,
+  ]
+
+  export const synergyLinkTargetsRoot = () => ["synergy_link", "targets"]
+  export const synergyLinkTarget = (id: string) => ["synergy_link", "targets", id]
+
+  export const channelManagedOwnership = (identityHash: string) => ["channel", "managed_ownership", identityHash]
+  export const channelManagedOwnershipReverse = (scopeID: string) => ["channel", "managed_ownership_reverse", scopeID]
+  export const clarusProviderAccountRoot = (accountHash: string) => [
+    "channel",
+    "providers",
+    "clarus",
+    "accounts",
+    accountHash,
+  ]
+  export const clarusProviderAccountsRoot = () => ["channel", "providers", "clarus", "accounts"]
+  export const clarusProviderAssignment = (accountHash: string, assignmentHash: string) => [
+    ...clarusProviderAccountRoot(accountHash),
+    "assignments",
+    assignmentHash,
+  ]
+  export const clarusProviderAssignmentSession = (accountHash: string, sessionID: string) => [
+    ...clarusProviderAccountRoot(accountHash),
+    "assignment_session_index",
+    sessionID,
+  ]
+  export const clarusProviderResultOutboxRoot = (accountHash: string) => [
+    ...clarusProviderAccountRoot(accountHash),
+    "outbox",
+    "results",
+  ]
+  export const clarusProviderResultOutbox = (accountHash: string, recordHash: string) => [
+    ...clarusProviderResultOutboxRoot(accountHash),
+    recordHash,
+  ]
+  export const clarusProviderExtensionOutboxRoot = (accountHash: string) => [
+    ...clarusProviderAccountRoot(accountHash),
+    "outbox",
+    "extensions",
+  ]
+  export const clarusProviderExtensionOutbox = (accountHash: string, recordHash: string) => [
+    ...clarusProviderExtensionOutboxRoot(accountHash),
+    recordHash,
+  ]
+
+  export const githubChannelAccountRoot = (accountHash: string) => [
+    "channel",
+    "providers",
+    "github",
+    "accounts",
+    accountHash,
+  ]
+  export const githubChannelAccountsRoot = () => ["channel", "providers", "github", "accounts"]
+  export const githubChannelPollState = (accountHash: string, repository: string) => [
+    ...githubChannelAccountRoot(accountHash),
+    "poll-state",
+    encodeURIComponent(repository),
+  ]
+  export const githubChannelWorkspaceIndexRoot = (accountHash: string) => [
+    ...githubChannelAccountRoot(accountHash),
+    "workspaces",
+    "index",
+  ]
+  export const githubChannelWorkspaceIndexEntry = (accountHash: string, workspaceHash: string) => [
+    ...githubChannelAccountRoot(accountHash),
+    "workspaces",
+    "index",
+    workspaceHash,
+  ]
+
+  // Stats
+  export const statsOperations = () => ["stats", "operations"]
+  export const statsOperation = (scopeID: string, operationID: string) => [...statsOperations(), scopeID, operationID]
+  export const statsRoot = () => ["stats"]
+  export const statsWatermark = () => ["stats", "watermark"]
+  export const statsSnapshot = () => ["stats", "snapshot"]
+  export const librarySnapshot = () => ["library", "stats", "snapshot"]
+  /** Per-session digest: stats/digests/{sessionID} */
+  export const statsDigestsRoot = () => ["stats", "digests"]
+  export const statsDigest = (sessionID: SessionID) => ["stats", "digests", sessionID as string]
+  /** Daily buckets: stats/daily/{YYYY-MM-DD} */
+  export const statsDailyRoot = () => ["stats", "daily"]
+  export const statsDaily = (day: string) => ["stats", "daily", day]
+
+  // Push notifications (global: subscriptions and VAPID keys are not scope-scoped)
+  export const pushSubscriptionsRoot = () => ["push", "subscriptions"]
+  export const pushSubscription = (id: string) => ["push", "subscriptions", id]
+  export const pushVapid = () => ["push", "vapid"]
+  // Channel diagnostics (independently addressable records per account)
+  export const channelDiagnosticsRoot = () => ["channel", "diagnostics"]
+  export const channelDiagnosticsAccountsRoot = () => [...channelDiagnosticsRoot(), "accounts"]
+  export const channelDiagnosticsAccountRoot = (accountHash: string) => [
+    ...channelDiagnosticsAccountsRoot(),
+    accountHash,
+  ]
+  export const channelDiagnosticsRecordsRoot = (accountHash: string) => [
+    ...channelDiagnosticsAccountRoot(accountHash),
+    "records",
+  ]
+  export const channelDiagnosticsRecord = (accountHash: string, recordID: string) => [
+    ...channelDiagnosticsRecordsRoot(accountHash),
+    recordID,
+  ]
+}

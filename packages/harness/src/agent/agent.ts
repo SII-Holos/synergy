@@ -1,0 +1,544 @@
+import { Config } from "../config/config"
+import z from "zod"
+import { Provider } from "../provider/provider"
+import { ScopedState } from "../scope/scoped-state"
+import { Truncate } from "../tool/truncation"
+
+import { createBuiltinInternalAgents } from "./builtin-internal"
+import { AgentBuiltins } from "./builtins"
+import { createBuiltinLegacySubagents } from "./builtin-legacy-subagents"
+import { createBuiltinPrimaryAgents } from "./builtin-primary"
+import { createBuiltinMaxSubagents } from "./builtin-max-subagents"
+import { AgentCall } from "./call"
+import { buildSynergyPrompt } from "./prompt/synergy/builder"
+import { buildSynergyMaxPrompt } from "./prompt/synergy-max/builder"
+import { buildSynergyFlashPrompt } from "./prompt/synergy-flash/builder"
+import { buildSupervisorPrompt } from "./prompt/supervisor/builder"
+import { buildLightLoopReviewerPrompt } from "./prompt/lightloop-reviewer/builder"
+
+import { PermissionNext } from "../permission/next"
+import { mergeDeep, pipe, sortBy, values } from "remeda"
+import { Log } from "../util/log"
+import { AgentExternal, AgentExternalSource } from "./external-source"
+import { AgentPluginSource } from "./plugin-source"
+import { MODEL_ROLE_IDS, ModelRole, type ModelRole as ModelRoleType } from "../provider/model-role"
+
+export namespace Agent {
+  const log = Log.create({ service: "agent" })
+  export type PluginOwner = {
+    pluginId: string
+    pluginGeneration: string
+  }
+  // Host-only provenance: ownership authorizes programmatic invocation but is
+  // not part of the public Agent descriptor or model-visible Agent metadata.
+  const pluginOwners = new WeakMap<Info, PluginOwner>()
+
+  const ModelRef = z.object({
+    providerID: z.string(),
+    modelID: z.string(),
+  })
+
+  const MODEL_ROLE_SUMMARY_IDS = ["default", ...MODEL_ROLE_IDS] as const
+  const ModelRoleSummaryID = z.enum(MODEL_ROLE_SUMMARY_IDS)
+
+  const ModelRoleField = z.enum([
+    "model",
+    "nano_model",
+    "mini_model",
+    "mid_model",
+    "thinking_model",
+    "long_context_model",
+    "creative_model",
+    "vision_model",
+  ])
+
+  const ModelRoleUsage = z
+    .object({
+      name: z.string(),
+      description: z.string().optional(),
+      mode: z.enum(["subagent", "primary", "all"]),
+      hidden: z.boolean().optional(),
+      visibleTo: z.array(z.string()).optional(),
+      delegationGroups: z.array(z.string()).optional(),
+      native: z.boolean().optional(),
+      source: z.enum(["builtin", "config", "plugin", "external"]).optional(),
+      modelSource: z.enum(["role", "explicit"]).optional(),
+      model: ModelRef.optional(),
+      defaultVariant: z.string().optional(),
+    })
+    .meta({ ref: "ModelRoleUsage" })
+
+  export const ModelRoleSummary = z
+    .object({
+      id: ModelRoleSummaryID,
+      role: ModelRole.optional(),
+      field: ModelRoleField,
+      label: z.string(),
+      summary: z.string(),
+      fallbackChain: z.array(ModelRoleField),
+      configuredModel: ModelRef.optional(),
+      resolvedModel: ModelRef.extend({ via: ModelRoleField }).optional(),
+      usedBy: z.array(ModelRoleUsage),
+      requiresExplicitModel: z.boolean().optional(),
+      disabledReason: z.string().optional(),
+    })
+    .meta({ ref: "ModelRoleSummary" })
+  export type ModelRoleSummary = z.infer<typeof ModelRoleSummary>
+
+  const MODEL_ROLE_DEFINITIONS: Array<{
+    id: z.infer<typeof ModelRoleSummaryID>
+    role?: ModelRoleType
+    field: z.infer<typeof ModelRoleField>
+    label: string
+    summary: string
+    requiresExplicitModel?: boolean
+    disabledReason?: string
+  }> = [
+    {
+      id: "default",
+      field: "model",
+      label: "Default",
+      summary: "Main conversation model when no specialist role applies.",
+    },
+    {
+      id: "nano",
+      role: "nano",
+      field: "nano_model",
+      label: "Nano",
+      summary: "Cheap quick tasks like titles and summaries.",
+    },
+    {
+      id: "mini",
+      role: "mini",
+      field: "mini_model",
+      label: "Mini",
+      summary: "Lightweight routing, intent, and extraction.",
+    },
+    {
+      id: "mid",
+      role: "mid",
+      field: "mid_model",
+      label: "Mid",
+      summary: "Routine background agents and code exploration.",
+    },
+    {
+      id: "thinking",
+      role: "thinking",
+      field: "thinking_model",
+      label: "Thinking",
+      summary: "Deep reasoning for architecture, implementation, and reviews.",
+    },
+    {
+      id: "long",
+      role: "long",
+      field: "long_context_model",
+      label: "Long context",
+      summary: "Compaction and very long inputs.",
+    },
+    {
+      id: "creative",
+      role: "creative",
+      field: "creative_model",
+      label: "Creative",
+      summary: "Writing, design, and visual work.",
+    },
+    {
+      id: "vision",
+      role: "vision",
+      field: "vision_model",
+      label: "Vision",
+      summary: "Enables screenshot and image analysis.",
+      requiresExplicitModel: true,
+      disabledReason: "Image analysis is disabled until a vision model is configured.",
+    },
+  ]
+
+  export const Info = z
+    .object({
+      name: z.string(),
+      description: z.string().optional(),
+      mode: z.enum(["subagent", "primary", "all"]),
+      native: z.boolean().optional(),
+      hidden: z.boolean().optional(),
+      visibleTo: z.array(z.string()).optional(),
+      delegationGroups: z.array(z.string()).optional(),
+      deferredTools: z.array(z.string()).optional(),
+      topP: z.number().optional(),
+      temperature: z.number().optional(),
+      color: z.string().optional(),
+      permission: PermissionNext.Ruleset,
+      controlProfile: z.enum(["guarded", "autonomous", "full_access"]).optional(),
+      model: z
+        .object({
+          modelID: z.string(),
+          providerID: z.string(),
+        })
+        .optional(),
+      modelRole: ModelRole.optional(),
+      modelSource: z.enum(["role", "explicit"]).optional(),
+      source: z.enum(["builtin", "config", "plugin", "external"]).optional(),
+      prompt: z.string().optional(),
+      options: z.record(z.string(), z.any()),
+      steps: z.number().int().positive().optional(),
+      external: AgentExternal.Info.optional(),
+      defaultVariant: z.string().optional(),
+    })
+    .meta({
+      ref: "Agent",
+    })
+  export type Info = z.infer<typeof Info>
+
+  const state = ScopedState.create(async () => {
+    const cfg = await Config.current()
+    const evolutionActive =
+      ((cfg as any).library?.memory?.enabled ?? true) && (cfg as any).library?.experience?.encode !== false
+    const role = (r: ModelRoleType) => Provider.resolveRoleModelSync(cfg, r)
+
+    const defaults = PermissionNext.fromConfig({
+      "*": "allow",
+
+      read: {
+        "*.env": "ask",
+        "*.env.*": "ask",
+        ".env": "ask",
+        "*.pem": "ask",
+        "*.key": "ask",
+        "*_rsa": "ask",
+        "*credentials*": "ask",
+        "*secret*": "ask",
+      },
+
+      edit: "ask",
+      write: "ask",
+
+      question: "deny",
+      dagwrite: "deny",
+      dagread: "deny",
+      dagpatch: "deny",
+      external_directory: {
+        "*": "ask",
+        [Truncate.DIR]: "allow",
+      },
+    })
+    const user = PermissionNext.fromConfig(cfg.permission ?? {})
+
+    const builtinContext = { defaults, user, role, evolutionActive }
+    const result: Record<string, Info> = {
+      ...createBuiltinPrimaryAgents(builtinContext),
+      ...createBuiltinLegacySubagents(builtinContext),
+      ...createBuiltinMaxSubagents(builtinContext),
+      ...createBuiltinInternalAgents(builtinContext),
+      ...AgentBuiltins.collect(builtinContext),
+    }
+    for (const item of Object.values(result)) {
+      item.source ??= "builtin"
+    }
+
+    for (const [key, value] of Object.entries(cfg.agent ?? {})) {
+      if (value.disable) {
+        delete result[key]
+        continue
+      }
+      let item = result[key]
+      if (!item)
+        item = result[key] = {
+          name: key,
+          mode: "all",
+          permission: PermissionNext.merge(defaults, user),
+          options: {},
+          native: false,
+          source: "config",
+        }
+      if (value.modelRole) {
+        item.modelRole = value.modelRole
+        item.model = role(value.modelRole)
+        item.modelSource = "role"
+      }
+      if (value.model) {
+        item.model = Provider.parseModel(value.model)
+        item.modelSource = "explicit"
+      }
+      item.prompt = value.prompt ?? item.prompt
+      item.description = value.description ?? item.description
+      item.temperature = value.temperature ?? item.temperature
+      item.topP = value.top_p ?? item.topP
+      item.mode = value.mode ?? item.mode
+      item.hidden = value.hidden ?? item.hidden
+      item.visibleTo = value.visibleTo ?? item.visibleTo
+      item.delegationGroups = value.delegationGroups ?? item.delegationGroups
+      item.deferredTools = value.deferredTools ?? item.deferredTools
+      item.name = value.name ?? item.name
+      item.color = value.color ?? item.color
+      item.steps = value.steps ?? item.steps
+      item.options = mergeDeep(item.options, value.options ?? {})
+      item.permission = PermissionNext.merge(item.permission, PermissionNext.fromConfig(value.permission ?? {}))
+      item.defaultVariant = value.defaultVariant ?? item.defaultVariant
+      if (value.controlProfile !== undefined) item.controlProfile = value.controlProfile as Agent.Info["controlProfile"]
+    }
+
+    // Merge plugin-contributed agents (lower priority than config agents)
+    const pluginAgents = (await AgentPluginSource.get()?.agentEntries()) ?? []
+    for (const agent of pluginAgents) {
+      if (result[agent.name]) {
+        log.info("plugin agent skipped, name already exists", {
+          name: agent.name,
+          contributionId: agent.contributionId,
+          pluginId: agent.pluginId,
+        })
+        continue
+      }
+      const registered: Info = {
+        name: agent.name,
+        description: agent.description,
+        prompt: agent.prompt,
+        mode: agent.mode ?? "all",
+        permission: PermissionNext.merge(defaults, user, PermissionNext.fromConfig(agent.permission ?? {})),
+        options: {},
+        native: false,
+        source: "plugin",
+        ...(agent.modelRole
+          ? { modelRole: agent.modelRole, model: role(agent.modelRole), modelSource: "role" as const }
+          : {}),
+        ...(agent.model ? { model: Provider.parseModel(agent.model), modelSource: "explicit" as const } : {}),
+        temperature: agent.temperature,
+        topP: agent.topP,
+        steps: agent.steps,
+        hidden: agent.hidden,
+        visibleTo: agent.visibleTo,
+        delegationGroups: agent.delegationGroups,
+        color: agent.color,
+      }
+      result[agent.name] = registered
+      pluginOwners.set(registered, {
+        pluginId: agent.pluginId,
+        pluginGeneration: agent.pluginGeneration,
+      })
+    }
+
+    for (const [name, item] of Object.entries(result)) {
+      // Skip agents that explicitly deny memory_write/memory_edit (e.g. synergy-max).
+      // The blanket allow-patch uses PermissionNext.merge() which appends rules, and
+      // PermissionNext.evaluate() uses findLast() — so this patch would silently
+      // override any explicit "deny" configured in the agent's own permission builder.
+      const hasExplicitMemoryDeny = item.permission.some(
+        (r) => (r.permission === "memory_write" || r.permission === "memory_edit") && r.action === "deny",
+      )
+      if (hasExplicitMemoryDeny) continue
+
+      if (item.mode === "primary" && item.hidden !== true) {
+        item.permission = PermissionNext.merge(
+          item.permission,
+          PermissionNext.fromConfig({
+            memory_write: "allow",
+            memory_edit: "allow",
+          }),
+        )
+      }
+    }
+
+    // Ensure Truncate.DIR is allowed unless explicitly configured
+
+    for (const name in result) {
+      const agent = result[name]
+      const explicit = agent.permission.some(
+        (r) => r.permission === "external_directory" && r.pattern === Truncate.DIR && r.action === "deny",
+      )
+      if (explicit) continue
+
+      result[name].permission = PermissionNext.merge(
+        result[name].permission,
+        PermissionNext.fromConfig({ external_directory: { [Truncate.DIR]: "allow" } }),
+      )
+    }
+
+    // Discover and register external agents
+    const externalSource = AgentExternalSource.get()
+    if (externalSource) {
+      await externalSource.loadAdapters().catch((e) => {
+        log.warn("failed to import external agent adapters", { error: String(e) })
+      })
+    }
+    const discovered = (await externalSource?.discover()) ?? new Map<string, AgentExternal.Info>()
+    log.info("external agent discovery results", {
+      discovered: [...discovered.keys()],
+    })
+    for (const [name, info] of discovered) {
+      const externalField = info
+      if (result[name]) {
+        // Merge external info into existing agent entry
+        log.info("merging external agent into existing agent", { name })
+        result[name].external = externalField
+      } else {
+        result[name] = {
+          name,
+          description: externalSource?.description(name) ?? `External agent: ${name}`,
+          mode: "all",
+          native: false,
+          permission: PermissionNext.merge(defaults, user),
+          options: {},
+          external: externalField,
+          source: "external",
+        }
+      }
+    }
+
+    const agentInfos = Object.values(result).map((agent) => ({
+      name: agent.name,
+      description: agent.description ?? "",
+      mode: agent.mode,
+      hidden: agent.hidden,
+      visibleTo: agent.visibleTo,
+      delegationGroups: agent.delegationGroups,
+    }))
+    if (result.synergy) result.synergy.prompt = buildSynergyPrompt(agentInfos)
+    if (result["synergy-max"]) result["synergy-max"].prompt = buildSynergyMaxPrompt(agentInfos)
+    if (result["synergy-flash"]) result["synergy-flash"].prompt = buildSynergyFlashPrompt()
+    if (result.supervisor) result.supervisor.prompt = buildSupervisorPrompt(agentInfos)
+    if (result["lightloop-reviewer"]) {
+      result["lightloop-reviewer"].prompt = buildLightLoopReviewerPrompt(agentInfos)
+    }
+
+    return result
+  })
+
+  export async function reload() {
+    log.info("reloading agent state")
+    await state.resetAll()
+    log.info("agent state reloaded")
+  }
+
+  export async function get(agent: string) {
+    return state().then((x) => x[agent])
+  }
+
+  export function pluginOwner(agent: Info): PluginOwner | undefined {
+    return pluginOwners.get(agent)
+  }
+
+  export async function getAvailableModel(agent: Info): Promise<{ providerID: string; modelID: string } | undefined> {
+    if (!agent.model) return undefined
+    const available = await Provider.isModelAvailable(agent.model)
+    return available ? agent.model : undefined
+  }
+
+  export async function list() {
+    const cfg = await Config.current()
+    return pipe(
+      await state(),
+      values(),
+      sortBy([(x) => (cfg.default_agent ? x.name === cfg.default_agent : x.name === "synergy"), "desc"]),
+    )
+  }
+
+  export async function modelRoleSummaries(): Promise<ModelRoleSummary[]> {
+    const cfg = await Config.current()
+    const agents = await list()
+
+    return MODEL_ROLE_DEFINITIONS.map((definition) => {
+      const fallbackChain = (
+        definition.role ? Provider.getRoleFallbackChain(definition.role) : [definition.field]
+      ) as Array<z.infer<typeof ModelRoleField>>
+      const configuredModel = parseConfigModel(cfg[definition.field])
+      const resolvedModel = resolveSummaryModel(cfg, definition.role, fallbackChain)
+      const usedBy = agents
+        .filter((agent) =>
+          definition.role ? agent.modelRole === definition.role : !agent.modelRole && agent.modelSource !== "explicit",
+        )
+        .map((agent) => ({
+          name: agent.name,
+          description: agent.description,
+          mode: agent.mode,
+          hidden: agent.hidden,
+          visibleTo: agent.visibleTo,
+          delegationGroups: agent.delegationGroups,
+          native: agent.native,
+          source: agent.source,
+          modelSource: agent.modelSource,
+          model: agent.model,
+          defaultVariant: agent.defaultVariant ?? cfg.role_variant?.[agent.modelRole || "default"],
+        }))
+
+      return {
+        id: definition.id,
+        role: definition.role,
+        field: definition.field,
+        label: definition.label,
+        summary: definition.summary,
+        fallbackChain,
+        configuredModel,
+        resolvedModel,
+        usedBy,
+        requiresExplicitModel: definition.requiresExplicitModel,
+        disabledReason: definition.requiresExplicitModel && !resolvedModel ? definition.disabledReason : undefined,
+      }
+    })
+  }
+
+  function parseConfigModel(value: unknown): { providerID: string; modelID: string } | undefined {
+    if (typeof value !== "string" || !value) return undefined
+    return Provider.parseModel(value)
+  }
+
+  function resolveSummaryModel(
+    cfg: Config.Info,
+    role: ModelRoleType | undefined,
+    fallbackChain: Array<z.infer<typeof ModelRoleField>>,
+  ): ({ providerID: string; modelID: string } & { via: z.infer<typeof ModelRoleField> }) | undefined {
+    for (const field of fallbackChain) {
+      const model = parseConfigModel(cfg[field])
+      if (model) return { ...model, via: field }
+    }
+    if (!role) return undefined
+    const resolved = Provider.resolveRoleModelSync(cfg, role)
+    if (!resolved) return undefined
+    return { ...resolved, via: fallbackChain[0] }
+  }
+
+  export async function defaultAgent() {
+    return (await list())[0]?.name
+  }
+
+  export async function generate(input: { description: string; model?: { providerID: string; modelID: string } }) {
+    const agent = await get("agent-generator")
+    if (!agent) throw new Error("agent-generator agent is unavailable")
+
+    const model = input.model ? await Provider.getModel(input.model.providerID, input.model.modelID) : undefined
+    let fallbackModel: Provider.Model | undefined
+    if (!input.model) {
+      const agentModel = await getAvailableModel(agent)
+      if (!agentModel) {
+        fallbackModel = await Provider.defaultModel().then((ref) => Provider.getModel(ref.providerID, ref.modelID))
+      }
+    }
+    const existing = await list()
+    let text = ""
+    try {
+      const result = await AgentCall.text({
+        agent: "agent-generator",
+        model,
+        fallbackModel,
+        timeoutMs: 30_000,
+        retries: 1,
+        maxOutputChars: 4_000,
+        messages: [
+          {
+            role: "user",
+            content: `Create an agent configuration based on this request: \"${input.description}\".\n\nIMPORTANT: The following identifiers already exist and must NOT be used: ${existing.map((i) => i.name).join(", ")}\n  Return ONLY the JSON object, no other text, do not wrap in backticks`,
+          },
+        ],
+      })
+      text = result.text
+    } catch {
+      text = ""
+    }
+    const match = text.match(/\{[\s\S]*\}/)
+    if (!match) throw new Error("agent generator did not return JSON")
+    return z
+      .object({
+        identifier: z.string(),
+        whenToUse: z.string(),
+        systemPrompt: z.string(),
+      })
+      .parse(JSON.parse(match[0]))
+  }
+}

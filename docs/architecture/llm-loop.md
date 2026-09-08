@@ -138,6 +138,8 @@ Plugins can transform the system prompt at budget and final phases. If a transfo
 
 ## Library Recall
 
+The harness requests optional context through `SessionContextContributions`. It owns the contribution deadline, cancellation signal, fallback boundary, and loop cache; Library owns retrieval, embedding, prompt rendering, injection metadata, and experience completion callbacks. With no registered contributor, or when Library retrieval is disabled, context collection performs no Library retrieval or embedding work. `registerLibrary()` installs the Library contribution for hosts that need it.
+
 Top-level sessions build memory and experience context in parallel from the current task text.
 
 - `always` memories are included without semantic matching.

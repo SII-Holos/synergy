@@ -1,17 +1,19 @@
 #!/usr/bin/env bun
+import ts from "typescript"
 
 /**
  * Generates docs/reference/cli.md from the static CLI registration in
- * packages/synergy/src/cli/commands.ts and the command modules reachable from it.
+ * the core and product command catalogs and their explicit lazy contributions.
  * Deterministic; supports --check for freshness.
  */
 
 import path from "node:path"
 import { readFile } from "node:fs/promises"
-import { findAssign, findBlock, isFresh, REPO_ROOT, stringLiteral, writeGenerated } from "./shared"
+import { findAssign, findBlock, isFresh, REPO_ROOT, writeGenerated, resolveWorkspaceModule } from "./shared"
 
-const MAIN = path.join(REPO_ROOT, "packages/synergy/src/cli/commands.ts")
-const CLI_ROOT = path.join(REPO_ROOT, "packages/synergy/src/cli")
+const MAIN = path.join(REPO_ROOT, "packages/cli/src/cli/commands.ts")
+const PRODUCT_COMMANDS = path.join(REPO_ROOT, "packages/product-runtime/src/cli-commands.ts")
+const PRODUCT_ENTRY = path.join(REPO_ROOT, "packages/product-runtime/src/index.ts")
 const OUT = path.join(REPO_ROOT, "docs/reference/cli.md")
 const GENERATOR = "gen-cli-reference.ts"
 
@@ -21,6 +23,7 @@ interface CliCommand {
   module: string
   describe: string | null
   file: string
+  sources: string[]
 }
 
 interface CliOption {
@@ -29,31 +32,42 @@ interface CliOption {
   type: string | null
 }
 
-async function resolveModuleFile(baseDir: string, specifier: string): Promise<string | null> {
-  const base = path.resolve(baseDir, specifier)
-  for (const candidate of [`${base}.ts`, `${base}.tsx`, path.join(base, "index.ts")]) {
-    const exists = await readFile(candidate, "utf8")
-      .then(() => true)
-      .catch(() => false)
-    if (exists) return candidate
+const resolveModuleFile = resolveWorkspaceModule
+
+function moduleSpecifiers(node: ts.Node): string[] {
+  const result = new Set<string>()
+  function visit(child: ts.Node) {
+    if (
+      (ts.isImportDeclaration(child) || ts.isExportDeclaration(child)) &&
+      child.moduleSpecifier &&
+      ts.isStringLiteralLike(child.moduleSpecifier)
+    )
+      result.add(child.moduleSpecifier.text)
+    if (
+      ts.isCallExpression(child) &&
+      child.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      child.arguments[0] &&
+      ts.isStringLiteralLike(child.arguments[0])
+    )
+      result.add(child.arguments[0].text)
+    ts.forEachChild(child, visit)
   }
-  return null
+  visit(node)
+  return [...result]
 }
 
-/** Relative imports reachable from one file, kept inside the CLI tree. */
-async function collectSources(startFile: string): Promise<string[]> {
+export async function collectCommandSources(startFiles: string[]): Promise<string[]> {
   const seen = new Set<string>()
-  const queue = [startFile]
+  const queue = [...startFiles]
   while (queue.length > 0) {
     const file = queue.shift()!
     if (seen.has(file)) continue
     seen.add(file)
-    const source = await readFile(file, "utf8").catch(() => "")
-    for (const match of source.matchAll(/import[\s\S]*?from\s*"(\.[^"]+)"/g)) {
-      const specifier = match[1]!
+    const source = ts.createSourceFile(file, await readFile(file, "utf8"), ts.ScriptTarget.Latest, true)
+    for (const specifier of moduleSpecifiers(source)) {
       if (specifier.includes(".txt") || specifier.includes(".json")) continue
       const resolved = await resolveModuleFile(path.dirname(file), specifier)
-      if (resolved && resolved.startsWith(CLI_ROOT) && !seen.has(resolved)) queue.push(resolved)
+      if (resolved && /\/(?:cli|daemon)\//.test(resolved) && !seen.has(resolved)) queue.push(resolved)
     }
   }
   return [...seen]
@@ -86,28 +100,77 @@ export function parseCommandBlocks(source: string): CommandBlock[] {
 }
 
 async function commandRegistrations(): Promise<CliCommand[]> {
-  const main = await readFile(MAIN, "utf8")
-  const commands: CliCommand[] = []
-  for (const match of main.matchAll(
-    /\{\s*command:\s*([\s\S]*?)load:\s*async\s*\(\)\s*=>\s*\(await import\("([^"]+)"\)\)\.(\w+)/g,
-  )) {
-    const definition = match[1]!
-    const name = stringLiteral(definition.split(",")[0]!.trim()) ?? definition.match(/"([^"]+)"/)?.[1]
-    if (!name) continue
-    const modulePath = await resolveModuleFile(path.dirname(MAIN), match[2]!)
-    commands.push({
-      name: name.split(" ")[0]!,
-      module: match[3]!,
-      describe: findAssign(definition, "describe"),
-      file: modulePath ? path.relative(REPO_ROOT, modulePath) : "(unresolved)",
-    })
+  const commands = new Map<string, CliCommand>()
+  for (const registry of [MAIN, PRODUCT_COMMANDS]) {
+    const main = await readFile(registry, "utf8")
+    const source = ts.createSourceFile(registry, main, ts.ScriptTarget.Latest, true)
+    const entries: Array<{ name: string; describe: string | null; specifiers: string[] }> = []
+    function visit(node: ts.Node) {
+      if (ts.isObjectLiteralExpression(node)) {
+        const properties = new Map(
+          node.properties
+            .filter(ts.isPropertyAssignment)
+            .map((property) => [property.name.getText(source), property.initializer]),
+        )
+        const command = properties.get("command")
+        const load = properties.get("load")
+        if (command && load) {
+          const names = ts.isArrayLiteralExpression(command) ? command.elements : [command]
+          const name = names.find((name) => ts.isStringLiteralLike(name) && name.text !== "$0")
+          const specifiers = moduleSpecifiers(load)
+          const description = properties.get("describe")
+          if (name && ts.isStringLiteralLike(name) && specifiers.length)
+            entries.push({
+              name: name.text.split(" ")[0]!,
+              describe: description && ts.isStringLiteralLike(description) ? description.text : null,
+              specifiers,
+            })
+        }
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(source)
+    for (const entry of entries) {
+      const sources = await Promise.all(
+        entry.specifiers.map(async (specifier) => {
+          const resolved = await resolveModuleFile(path.dirname(registry), specifier)
+          if (!resolved) throw new Error(`Unresolved CLI contribution ${entry.name}: ${specifier}`)
+          return resolved
+        }),
+      )
+      const modulePath = sources[0]!
+      commands.set(entry.name, {
+        name: entry.name,
+        describe: entry.describe,
+        module: entry.name,
+        file: path.relative(REPO_ROOT, modulePath),
+        sources,
+      })
+    }
   }
-  return commands.sort((a, b) => a.name.localeCompare(b.name))
+  const productEntry = ts.createSourceFile(
+    PRODUCT_ENTRY,
+    await readFile(PRODUCT_ENTRY, "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+  )
+  const dataSpecifiers: string[] = []
+  function findDataContribution(node: ts.Node) {
+    if (ts.isPropertyAssignment(node) && node.name.getText(productEntry) === "dataCommands")
+      dataSpecifiers.push(...moduleSpecifiers(node.initializer))
+    ts.forEachChild(node, findDataContribution)
+  }
+  findDataContribution(productEntry)
+  for (const specifier of dataSpecifiers) {
+    const resolved = await resolveModuleFile(path.dirname(PRODUCT_ENTRY), specifier)
+    if (!resolved) throw new Error(`Unresolved data command contribution: ${specifier}`)
+    commands.get("data")?.sources.push(resolved)
+  }
+  return [...commands.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export async function generate(): Promise<string> {
   const topLevel = await commandRegistrations()
-  const topNames = new Set(topLevel.map((command) => command.name))
 
   // Collect every command block reachable from the top-level modules. Blocks
   // are tracked globally (detail sections) and per top-level module (command
@@ -119,7 +182,7 @@ export async function generate(): Promise<string> {
   for (const command of topLevel) {
     if (!command.file || command.file === "(unresolved)") continue
     const own = new Map<string, CommandBlock>()
-    const sources = await collectSources(path.join(REPO_ROOT, command.file))
+    const sources = await collectCommandSources(command.sources)
     for (const file of sources) {
       const source = await readFile(file, "utf8").catch(() => "")
       for (const block of parseCommandBlocks(source)) {
@@ -154,7 +217,7 @@ export async function generate(): Promise<string> {
   return [
     "# CLI Reference",
     "",
-    "Generated from the CLI registration in `packages/synergy/src/cli/commands.ts`. Concept and lifecycle guidance lives in [CLI guide](cli-guide.md); use `synergy --help` or `synergy <command> --help` for the exact options of the installed version.",
+    "Generated from the core and product CLI catalogs and explicit command contributions. This reference describes the full product; standalone core installations expose the locally composed subset through the same `synergy` command. Concept and lifecycle guidance lives in [CLI guide](cli-guide.md); use `synergy --help` or `synergy <command> --help` for the exact options of the installed version.",
     "",
     "## Commands",
     "",

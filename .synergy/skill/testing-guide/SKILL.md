@@ -23,7 +23,7 @@ For non-blocking and ordering contracts, hold the downstream operation behind an
 - Web/UI: component/context behavior plus the smallest browser or integration check needed
 - package/release: build, pack, and validate the published artifact rather than source layout alone
 
-Inspect two nearby tests and `packages/synergy/test/preload.ts` before introducing a new harness pattern.
+Inspect two nearby tests and `packages/harness/test/support/preload.ts` before introducing a new harness pattern.
 
 Place every test under the owning package's `test/` directory, mirroring the relevant source domain when that helps navigation. Place repository-level script and policy tests under the root `test/` directory. Never cascade `*.test.*` or `*.spec.*` files beside implementation files in `src/`, `script/`, or another source directory. Run `bun run test-layout:check` when adding or moving tests.
 
@@ -33,7 +33,7 @@ For localized UI behavior, use a real Lingui `I18nProvider` with minimal English
 
 Use `tmpdir()` and `ScopeContext` instead of mocking Storage, Session, or the filesystem. The preload-managed `SYNERGY_TEST_ROOT` contains temporary fixtures for process-level cleanup, so do not move fixtures back to unmanaged operating-system temp paths or delete them while Scope-owned asynchronous work may still reference them. Restore environment variables and singleton state in cleanup hooks. A module-level replacement of a process global — `globalThis.fetch` above all — is visible to every sibling file in the same shard process: capture the original before installing the replacement and restore it in `afterAll`, because a per-test `finally` that re-reads `globalThis.fetch` restores the replacement, not the original. Honor abort signals and dispose processes, Browser pages, servers, and timers.
 
-Provider/model tests rely on `test/preload.ts` to seed the model catalog. The preload writes the pinned `test/tool/fixtures/models-api.json` fixture to `cache/models.json` under `SYNERGY_TEST_HOME` so the runtime disk-cache path resolves deterministically, sets `MODELS_DEV_API_JSON` to that cached path so the build-time macro and direct macro tests resolve the same fixture, and sets `SYNERGY_DISABLE_MODELS_FETCH=true` to suppress background network refresh. Update the fixture deliberately; never make deterministic tests depend on the live model catalog or real API keys.
+Provider/model tests use the package preload configured in `bunfig.toml`; `packages/testing/src/preload.ts` seeds the model catalog. The preload writes the pinned `packages/testing/fixtures/models-api.json` fixture to `cache/models.json` under `SYNERGY_TEST_HOME` so the runtime disk-cache path resolves deterministically, sets `MODELS_DEV_API_JSON` to that cached path so the build-time macro and direct macro tests resolve the same fixture, and sets `SYNERGY_DISABLE_MODELS_FETCH=true` to suppress background network refresh. Update the fixture deliberately; never make deterministic tests depend on the live model catalog or real API keys.
 
 Core binary builds also default to that pinned fixture. Test build behavior through `script/models-catalog.ts`: the selected catalog must satisfy the runtime schema and contain non-empty OpenAI, Anthropic, and Google providers before compilation. Ordinary local builds may use `MODELS_DEV_API_JSON` as an explicit override; release builds must force the repository-pinned snapshot so network and build-machine cache state cannot alter the artifact.
 
@@ -45,22 +45,22 @@ Playwright DOM-test fixtures that boot a Vite dev server must declare their pack
 
 ## Run Core Suites Through the Orchestrators
 
-Run `packages/synergy` tests through the package scripts, never a raw `bun test --coverage --parallel`:
+Run `packages/harness` tests through the package scripts, never a raw `bun test --coverage --parallel`:
 
 ```bash
-cd packages/synergy
+cd packages/harness
 bun test test/<domain>/<file>.test.ts
 bun run test:ci
 bun run test:coverage
 ```
 
-`test:ci` and `test:coverage` spawn every Bun child with an injected `SYNERGY_TEST_HOME`/`SYNERGY_TEST_ROOT` and no `SYNERGY_HOME`, because Bun 1.3.x does not propagate `test/preload.ts` environment into `--parallel` worker processes — a raw parallel/coverage run falls through to the real user home and writes fixtures into `~/.synergy/data`.
+`test:ci` and `test:coverage` spawn every Bun child with an injected `SYNERGY_TEST_HOME`/`SYNERGY_TEST_ROOT` and no `SYNERGY_HOME`, because Bun 1.3.x does not propagate preload environment into `--parallel` worker processes — a raw parallel/coverage run falls through to the real user home and writes fixtures into `~/.synergy/data`.
 
 `src/global/index.ts` enforces this at module load: a test-entry process (`Bun.main`/argv matching `*.test.*`/`*.spec.*`, or `BUN_TEST_WORKER_ID`/`JEST_WORKER_ID` present) must carry the positive `SYNERGY_TEST_HOME` isolation marker, and is additionally blocked when the root is `os.homedir()/.synergy` or inside it (Windows paths normalized case-insensitively). If you see `TestHomeGuardError`, the run bypassed isolation: re-run through the package scripts or set `SYNERGY_TEST_HOME` to a dedicated test home. `SYNERGY_ALLOW_REAL_HOME=1` is the only escape hatch for a deliberate real-home run.
 
 ## Run Narrow to Broad
 
-Core runtime commands run from `packages/synergy`:
+Core runtime commands run from `packages/harness`:
 
 ```bash
 bun test test/<domain>/<file>.test.ts
@@ -82,9 +82,9 @@ bun run quality
 Localized frontend changes also run:
 
 ```bash
-bun run --cwd packages/app i18n:extract
+bun run --cwd apps/web i18n:extract
 bun run localization:check
-bun run --cwd packages/app build
+bun run --cwd apps/web build
 ```
 
 Extraction must leave tracked PO catalogs unchanged, strict compilation must reject missing Simplified Chinese or invalid ICU messages, and the production build must keep non-English catalogs lazy while excluding development-only pseudo-localization. Exercise a Chinese cold start, rapid switching, catalog-load failure, `html.lang`, keyboard labels, and 375 px layout through an isolated Web/Desktop runtime.
@@ -117,3 +117,5 @@ Use [Development reference](../../../docs/reference/development.md) and [Open-so
 Report the invariant, test location, red/green evidence, commands run, pass/fail counts, unrun gates, platform limitations, and any remaining nondeterminism.
 
 The root `coverage:check` command builds the public Plugin package through the dependency graph before instrumented suites run. Browser fixtures and Plugin Kit scaffolds resolve the published `import` entries; a clean checkout must not rely on artifacts left by another test or package-validation job.
+
+Coverage is attributed to source owners after all commands in a complete root gate succeed. The gate deletes old canonical and shard reports before each command; failed or missing reports cannot contribute cross-package hits. Keep owner thresholds and exact-file exemption reasons when relocating code. Use `bun script/coverage-check.ts --package packages/<owner>` for a fresh local check; `--existing` is diagnostic only, keeps measurements package-local, and cannot certify command success or freshness. Never report a passing `test:coverage` command alone as a threshold pass.

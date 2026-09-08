@@ -8,7 +8,7 @@ import { PLUGIN_TEMPLATES, scaffoldPluginProject } from "../../packages/plugin-k
 import { buildPluginProject } from "../../packages/plugin-kit/src/commands/build"
 import { packPluginProject } from "../../packages/plugin-kit/src/commands/pack"
 import { importPreviewConversation } from "./session-fixture"
-const require = createRequire(path.resolve(import.meta.dir, "../../packages/app/package.json"))
+const require = createRequire(path.resolve(import.meta.dir, "../../apps/web/package.json"))
 const { chromium } = await import(require.resolve("playwright"))
 
 test("all eight packed templates register and their contributed presentations mount in the production host", async () => {
@@ -29,7 +29,7 @@ test("all eight packed templates register and their contributed presentations mo
     }
     preview = await startPluginPreview({
       artifacts,
-      command: [process.execPath, path.resolve(import.meta.dir, "../../packages/synergy/src/index.ts")],
+      command: [process.execPath, path.resolve(import.meta.dir, "../../packages/product-runtime/src/index.ts")],
     })
     await approvePreviewPlugins(preview)
     const tools = await preview.client.tool.ids({ scopeID: "home" }, { throwOnError: true })

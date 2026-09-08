@@ -1,6 +1,6 @@
-import { $ } from "bun"
+import fs from "node:fs/promises"
 import { join } from "path"
-import { SYNERGY_DIR, SYNERGY_DIST_DIR } from "../shared/packages"
+import { CLI_DIR, PRODUCT_RUNTIME_DIST_DIR, RUNTIME_RELEASE_TARGETS } from "../shared/packages"
 import { currentGitRemoteUrl } from "../shared/git"
 import { createSynergyWrapperPackageJson } from "../shared/package-manifest"
 import { prepareRuntimeAssets } from "../shared/runtime-assets"
@@ -8,18 +8,13 @@ import { prepareRuntimeAssets } from "../shared/runtime-assets"
 export async function prepareSynergyPackages(version: string, platformNames: string[]) {
   console.log("\n=== prepare synergy packages ===\n")
 
-  const pkg = (await Bun.file(join(SYNERGY_DIR, "package.json")).json()) as { name: string }
   const repositoryUrl = await currentGitRemoteUrl()
-
-  await $`mkdir -p ${join(SYNERGY_DIST_DIR, pkg.name)}`
-  await $`cp -r ${join(SYNERGY_DIR, "bin")} ${join(SYNERGY_DIST_DIR, pkg.name, "bin")}`
-  await $`cp ${join(SYNERGY_DIR, "script/postinstall.mjs")} ${join(SYNERGY_DIST_DIR, pkg.name, "postinstall.mjs")}`
 
   const scopedBinaries: Record<string, string> = {}
   for (const name of platformNames) {
     const scopedName = `@ericsanchezok/${name}`
     scopedBinaries[scopedName] = version
-    const distDir = join(SYNERGY_DIST_DIR, name)
+    const distDir = join(PRODUCT_RUNTIME_DIST_DIR, name)
     await prepareRuntimeAssets(name)
 
     await Bun.write(
@@ -41,19 +36,42 @@ export async function prepareSynergyPackages(version: string, platformNames: str
     )
   }
 
+  await stageSynergyWrapper({
+    cliDir: CLI_DIR,
+    runtimeDistDir: PRODUCT_RUNTIME_DIST_DIR,
+    version,
+    optionalDependencies: scopedBinaries,
+    repositoryUrl,
+  })
+
+  return platformNames.map((name) => `@ericsanchezok/${name}`)
+}
+
+export async function stageSynergyWrapper(options: {
+  cliDir: string
+  runtimeDistDir: string
+  version: string
+  optionalDependencies: Record<string, string>
+  repositoryUrl: string
+}) {
+  const binName = RUNTIME_RELEASE_TARGETS.full.executable
+  const directory = join(options.runtimeDistDir, binName)
+  await fs.mkdir(directory, { recursive: true })
+  await fs.rm(join(directory, "bin"), { recursive: true, force: true })
+  await fs.cp(join(options.cliDir, "bin"), join(directory, "bin"), { recursive: true })
+  await fs.copyFile(join(options.cliDir, "script/postinstall.mjs"), join(directory, "postinstall.mjs"))
   await Bun.write(
-    join(SYNERGY_DIST_DIR, pkg.name, "package.json"),
+    join(directory, "package.json"),
     JSON.stringify(
       createSynergyWrapperPackageJson({
-        version,
-        binName: pkg.name,
-        optionalDependencies: scopedBinaries,
-        repositoryUrl,
+        version: options.version,
+        binName,
+        optionalDependencies: options.optionalDependencies,
+        repositoryUrl: options.repositoryUrl,
       }),
       null,
       2,
     ),
   )
-
-  return platformNames.map((name) => `@ericsanchezok/${name}`)
+  return directory
 }

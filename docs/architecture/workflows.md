@@ -2,7 +2,7 @@
 
 This document defines session-local workflow execution. A session's workflow field stores one active kind—`plan`, `lightloop`, `lattice`, or `boss`—while BlueprintLoop keeps a separate execution record bound to that session. Workflow state is session-local; Boss Mode is the exception that spans sessions, deriving its worker tree from the session parent chain rather than a shared execution record.
 
-These workflows provide durable orchestration above the ordinary serial LLM loop.
+Workflows owns these schemas, state transitions, recovery rules and prompt contributions in `packages/workflows`. Harness retains the serial LLM loop, generic execution/recovery contributions and session schema registry. Full composition registers the workflow implementation before startup; an unloaded workflow owner leaves stored metadata intact.
 
 ## Mutual Exclusion and Ownership
 

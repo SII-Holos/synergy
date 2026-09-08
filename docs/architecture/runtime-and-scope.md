@@ -17,6 +17,12 @@ The same runtime can be launched through several ownership surfaces:
 
 `SYNERGY_HOME` redirects the complete installation home, including config, data, state, logs, credentials, daemon records, and locks. One server owns a given `SYNERGY_HOME` at a time.
 
+## Composition and migration registration
+
+Backend capabilities register before `RuntimeHandle.open()`. The handle acquires the home process lock, permanently locks migration registration for that process, and then runs the registered migrations before resolving execution configuration. Registering a new migration domain or replacing its migration list after that boundary fails; repeating registration with the same list is idempotent. Closing a handle does not reopen composition. Runtime lifecycle tests therefore run in isolated processes, while offline migration tests can build their own registry before opening any runtime.
+
+The migration tracking upgrade moves only IDs recognized by registered owners out of the old combined log. Unregistered IDs remain in that log so a later process with the owning capability can recover its history. `registerLibrary()` and `registerNote()` assemble each domain's migrations, tools, and lifecycle contributions before runtime startup; they do not require the full product manifest or plugin delivery to be installed.
+
 ## Global Runtime
 
 `GlobalRuntime.start()` runs once per server process inside the home Scope. It starts or initializes:
@@ -215,3 +221,5 @@ The exact domain files and precedence are defined in the [configuration referenc
 - Project runtimes start lazily, once per Scope ID, and are disposable.
 - Project Scope disposal cancels only its detached plugin Agent calls before scoped state is removed; explicit reactivation is required before new calls are admitted.
 - Runtime ownership follows the launch surface; one client must not stop or replace a runtime owned by another surface.
+
+Runtime extension shutdown follows execution and background-job draining. The complete composition invokes Browser and Library owner disposal; independent hosts connect the same public `disposeBrowser()` and `disposeLibrary()` operations through `RuntimeServices.disposeExtensions`. Browser registration and suspended owner-state reads do not launch Chromium. The root `script/runtime-composition-check.ts` installs packed dependency closures outside the repository and verifies execution, persistence, optional-package absence, resource closure and natural process exit.

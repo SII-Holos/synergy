@@ -113,7 +113,8 @@
     "dist"
   ],
   "dependencies": {
-    "@ericsanchezok/synergy-sdk": "workspace:*"
+    "@ericsanchezok/synergy-sdk": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*"
   },
   "peerDependencies": {
     "solid-js": ">=1.9.10 <2.0.0",

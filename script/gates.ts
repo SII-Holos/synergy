@@ -40,7 +40,7 @@ const LOCAL_GATES: Gate[] = [
   { id: "deadcode", run: "bun run deadcode", needs: [] },
   {
     id: "browser-crypto:check",
-    run: "bun test --cwd packages/app test/testing/browser-crypto-contract.test.ts",
+    run: "bun test --cwd apps/web test/testing/browser-crypto-contract.test.ts",
     needs: [],
   },
   { id: "coverage:check", run: "bun run coverage:check", needs: [] },

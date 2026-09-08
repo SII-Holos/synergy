@@ -12,11 +12,11 @@ A related display drift existed: `global-sync.tsx` filtered `scope.list()` with 
 
 Make the scope domain the single authoritative filter, archive existing artifacts once via migration, and add a defensive basename-prefix filter on the frontend:
 
-1. **Domain filter** — `packages/synergy/src/scope/test-artifacts.ts` exports `isEphemeralTestWorktreeBasename` (pure basename prefix match for `synergy-test-` / `synergy-orchestrated-`) and `isEphemeralTestWorktree` (basename match + realpath containment under `os.tmpdir()`, tolerant of macOS `/var` vs `/private/var`). `Scope.list()` filters records whose worktree matches, so every backend consumer (scope.list, scope.index / `getAllScopeIDs`, queryGlobal, queryPinned, unread counts, boss, session-search, CLI scrap) stops surfacing them.
+1. **Domain filter** — `packages/harness/src/scope/test-artifacts.ts` exports `isEphemeralTestWorktreeBasename` (pure basename prefix match for `synergy-test-` / `synergy-orchestrated-`) and `isEphemeralTestWorktree` (basename match + realpath containment under `os.tmpdir()`, tolerant of macOS `/var` vs `/private/var`). `Scope.list()` filters records whose worktree matches, so every backend consumer (scope.list, scope.index / `getAllScopeIDs`, queryGlobal, queryPinned, unread counts, boss, session-search, CLI scrap) stops surfacing them.
 
 2. **Archive migration** — `20260827-scope-archive-ephemeral-test-artifacts` in `scope/migration.ts` enumerates scope records, archives non-archived records whose worktree is ephemeral via `Scope.remove()` (reuses `archiveGuards`, sets `time.archived`). Idempotent; preserves all session/note data on disk.
 
-3. **Frontend defensive filter** — `packages/app/src/utils/ephemeral-test-worktree.ts` mirrors the basename-prefix predicate (browser has no `os.tmpdir()`). `global-sync.tsx` replaces the loose `.includes("synergy-test")`; `layout/index.tsx` `list()` filters both the locally-tracked and supplemented branches so stale localStorage entries never render.
+3. **Frontend defensive filter** — `apps/web/src/utils/ephemeral-test-worktree.ts` mirrors the basename-prefix predicate (browser has no `os.tmpdir()`). `global-sync.tsx` replaces the loose `.includes("synergy-test")`; `layout/index.tsx` `list()` filters both the locally-tracked and supplemented branches so stale localStorage entries never render.
 
 ## Alternatives considered
 

@@ -1,6 +1,6 @@
 ---
 name: change-server-api
-description: Add or modify a Synergy HTTP route, request/response schema, OpenAPI operation, generated SDK method, frontend API call, scoped snapshot, upload/download endpoint, or stream boundary. Use for packages/synergy/src/server, packages/sdk, or packages/app calls to internal server APIs.
+description: Add or modify a Synergy HTTP route, request/response schema, OpenAPI operation, generated SDK method, frontend API call, scoped snapshot, upload/download endpoint, or stream boundary. Use for packages/server/src/server, packages/sdk, or apps/web calls to internal server APIs.
 ---
 
 # Change a Server API

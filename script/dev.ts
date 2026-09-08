@@ -825,14 +825,14 @@ async function runPrepare(repoRoot: string, bunPath: string): Promise<number> {
   const sandbox = await runSerial([
     {
       label: "sandbox",
-      command: [bunPath, "run", "packages/synergy/scripts/build-helper.ts", target, "--local"],
+      command: [bunPath, "run", "packages/product-runtime/scripts/build-helper.ts", target, "--local"],
       cwd: repoRoot,
     },
   ])
   if (sandbox !== 0) return sandbox
   if (platform === "linux" && !(await commandExists("bwrap"))) {
     process.stderr.write(
-      "[sandbox] bwrap not found; install bubblewrap or run packages/synergy/scripts/download-bwrap.sh\n",
+      "[sandbox] bwrap not found; install bubblewrap or run packages/runtime-local/script/download-bwrap.sh\n",
     )
   }
   return 0

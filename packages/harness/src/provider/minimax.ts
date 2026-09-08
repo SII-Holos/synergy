@@ -1,0 +1,276 @@
+import { RolloutTransport } from "../session/rollout/transport"
+import { Auth } from "./api-key"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
+import type { AuthOuathResult } from "./auth-types"
+import z from "zod"
+import { ProviderAuthRecovery } from "./auth-recovery"
+import type { ProviderProfile } from "./profile"
+
+export namespace MiniMaxProvider {
+  export const PROVIDER_ID = "minimax-oauth"
+  export const CLIENT_ID = "78257093-7e40-4613-99e0-527b14b39113"
+  export const SCOPE = "group_id profile model.completion"
+  export const GRANT_TYPE = "urn:ietf:params:oauth:grant-type:user_code"
+  export const GLOBAL_BASE = "https://api.minimax.io"
+  export const GLOBAL_INFERENCE = "https://api.minimax.io/anthropic"
+  export const AUTH_REFRESH_SKEW_SECONDS = 60
+
+  type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+
+  export const AuthError = NamedError.create(
+    "MiniMaxOAuthError",
+    z.object({
+      providerID: z.string(),
+      code: z.string(),
+      message: z.string(),
+      reloginRequired: z.boolean(),
+    }),
+  )
+
+  function nowSeconds() {
+    return Math.floor(Date.now() / 1000)
+  }
+
+  function randomToken(bytes = 32) {
+    return Buffer.from(crypto.getRandomValues(new Uint8Array(bytes))).toString("base64url")
+  }
+
+  // Provenance: RFC 7636 (PKCE) §4.2 code_challenge derivation ( https://www.rfc-editor.org/rfc/rfc7636#section-4.2 ).
+  // Local adaptation: S256 challenge over a 96-char base64url verifier; MiniMax's
+  // device-style flow takes the challenge at /oauth/code and the verifier at /oauth/token.
+  async function sha256(input: string) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input))
+    return Buffer.from(new Uint8Array(digest)).toString("base64url")
+  }
+
+  async function safeJson(response: Response): Promise<Record<string, any>> {
+    try {
+      const value = await response.json()
+      return value && typeof value === "object" ? value : {}
+    } catch {
+      return {}
+    }
+  }
+
+  function expiresFrom(raw: unknown) {
+    const value = Number(raw)
+    if (!Number.isFinite(value) || value <= 0) return nowSeconds() + 15 * 60
+    if (value > Date.now() / 2) return Math.floor(value / 1000)
+    return nowSeconds() + value
+  }
+
+  export async function authorizeOAuth(fetchFn: FetchLike = fetch): Promise<AuthOuathResult> {
+    const verifier = randomToken(48).slice(0, 96)
+    const challenge = await sha256(verifier)
+    const state = randomToken(16)
+    const response = await fetchFn(`${GLOBAL_BASE}/oauth/code`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+        "x-request-id": crypto.randomUUID(),
+      },
+      body: new URLSearchParams({
+        response_type: "code",
+        client_id: CLIENT_ID,
+        scope: SCOPE,
+        code_challenge: challenge,
+        code_challenge_method: "S256",
+        state,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (!response.ok) {
+      throw new AuthError({
+        providerID: PROVIDER_ID,
+        code: "authorization_failed",
+        message: `MiniMax OAuth authorization failed with status ${response.status}.`,
+        reloginRequired: false,
+      })
+    }
+    const payload = await safeJson(response)
+    if (
+      payload.state !== state ||
+      typeof payload.user_code !== "string" ||
+      typeof payload.verification_uri !== "string"
+    ) {
+      throw new AuthError({
+        providerID: PROVIDER_ID,
+        code: "authorization_incomplete",
+        message: "MiniMax OAuth response was missing user_code, verification_uri, or valid state.",
+        reloginRequired: false,
+      })
+    }
+    const userCode = payload.user_code
+    const expiresAt = expiresFrom(payload.expired_in)
+    const intervalMs = Number(payload.interval ?? 2000)
+    return {
+      url: payload.verification_uri,
+      method: "auto",
+      instructions: userCode,
+      async callback() {
+        while (nowSeconds() < expiresAt) {
+          await Bun.sleep(Math.max(2000, Number.isFinite(intervalMs) ? intervalMs : 2000))
+          const poll = await fetchFn(`${GLOBAL_BASE}/oauth/token`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              Accept: "application/json",
+            },
+            body: new URLSearchParams({
+              grant_type: GRANT_TYPE,
+              client_id: CLIENT_ID,
+              user_code: userCode,
+              code_verifier: verifier,
+            }),
+            signal: AbortSignal.timeout(15_000),
+          })
+          if (!poll.ok) return { type: "failed" }
+          const token = await safeJson(poll)
+          if (token.status === "pending") continue
+          if (token.status !== "success") return { type: "failed" }
+          if (typeof token.access_token !== "string" || typeof token.refresh_token !== "string")
+            return { type: "failed" }
+          return {
+            type: "success",
+            provider: PROVIDER_ID,
+            access: token.access_token,
+            refresh: token.refresh_token,
+            expires: expiresFrom(token.expired_in),
+          }
+        }
+        return { type: "failed" }
+      },
+    }
+  }
+
+  export async function refreshOAuth(
+    auth: z.infer<typeof Auth.Oauth>,
+    fetchFn: FetchLike = fetch,
+    providerID = PROVIDER_ID,
+  ) {
+    const response = await fetchFn(`${GLOBAL_BASE}/oauth/token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: CLIENT_ID,
+        refresh_token: auth.refresh,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (!response.ok) {
+      throw new AuthError({
+        providerID,
+        code: "refresh_failed",
+        message: `MiniMax OAuth refresh failed with status ${response.status}.`,
+        reloginRequired: response.status === 401 || response.status === 403,
+      })
+    }
+    const payload = await safeJson(response)
+    if (typeof payload.access_token !== "string") {
+      throw new AuthError({
+        providerID,
+        code: "missing_access_token",
+        message: "MiniMax OAuth refresh response was missing access_token.",
+        reloginRequired: true,
+      })
+    }
+    return {
+      access: payload.access_token,
+      refresh: typeof payload.refresh_token === "string" ? payload.refresh_token : auth.refresh,
+      expires: expiresFrom(payload.expired_in),
+    }
+  }
+
+  export async function resolveToken(options?: { providerID?: string; allowMissing?: boolean; fetch?: FetchLike }) {
+    const providerID = options?.providerID ?? PROVIDER_ID
+    const selected = await Auth.select(providerID)
+    const auth = selected?.auth
+    if (!selected || !auth || auth.type !== "oauth") {
+      if (options?.allowMissing) return undefined
+      throw new AuthError({
+        providerID,
+        code: "minimax_oauth_missing",
+        message: "No MiniMax OAuth credentials stored.",
+        reloginRequired: true,
+      })
+    }
+    if (auth.expires > nowSeconds() + AUTH_REFRESH_SKEW_SECONDS) return auth.access
+    let refreshCredentialID = selected.credentialID
+    try {
+      return await Auth.withLock(`${providerID}:oauth-refresh`, async () => {
+        const latestSelected = await Auth.select(providerID)
+        const latest = latestSelected?.auth
+        refreshCredentialID = latestSelected?.credentialID ?? refreshCredentialID
+        if (latest?.type === "oauth" && latest.expires > nowSeconds() + AUTH_REFRESH_SKEW_SECONDS) return latest.access
+        const refreshed = await refreshOAuth(latest?.type === "oauth" ? latest : auth, options?.fetch, providerID)
+        await Auth.replaceSelectedCredential(
+          providerID,
+          {
+            type: "oauth",
+            access: refreshed.access,
+            refresh: refreshed.refresh,
+            expires: refreshed.expires,
+          },
+          { credentialID: latestSelected?.credentialID ?? selected.credentialID },
+        )
+        return refreshed.access
+      })
+    } catch (error) {
+      if (AuthError.isInstance(error) && error.data.reloginRequired) {
+        await Auth.markDead(providerID, error.data.code, { credentialID: refreshCredentialID }).catch(() => {})
+        if (options?.allowMissing) return undefined
+      }
+      throw error
+    }
+  }
+
+  export function minimaxFetchFor(providerID = PROVIDER_ID) {
+    return async (input: RequestInfo | URL, init?: RequestInit) =>
+      ProviderAuthRecovery.execute({
+        providerID,
+        request: async () => {
+          const token = await resolveToken({ providerID })
+          const headers = new Headers(init?.headers)
+          headers.set("Authorization", `Bearer ${token}`)
+          return RolloutTransport.fetch(fetch, input, { ...init, headers })
+        },
+        refresh: (auth) => refreshAuth(auth, fetch, providerID),
+        classify: classifyError,
+      })
+  }
+
+  export const minimaxFetch = minimaxFetchFor(PROVIDER_ID)
+
+  export async function refreshAuth(
+    auth: Auth.Info,
+    fetchFn: FetchLike = fetch,
+    providerID = PROVIDER_ID,
+  ): Promise<Auth.Info | undefined> {
+    if (auth.type !== "oauth") return undefined
+    const refreshed = await refreshOAuth(auth, fetchFn, providerID)
+    return {
+      type: "oauth",
+      access: refreshed.access,
+      refresh: refreshed.refresh,
+      expires: refreshed.expires,
+    }
+  }
+
+  export function classifyError(input: {
+    status?: number
+    body?: unknown
+  }): ProviderProfile.ClassifiedError | undefined {
+    const payload = input.body && typeof input.body === "object" ? (input.body as Record<string, any>) : {}
+    const code = String(payload.error?.code ?? payload.error ?? payload.base_resp?.status_code ?? "")
+    if (input.status === 429) return { code: code || "rate_limited", retryable: true, exhausted: true }
+    if (input.status === 401 || ["invalid_token", "1004", "2049"].includes(code)) {
+      return { code: code || "credential_rejected", retryable: false, reloginRequired: true }
+    }
+    return undefined
+  }
+}

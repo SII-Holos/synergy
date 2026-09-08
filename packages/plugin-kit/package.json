@@ -28,8 +28,8 @@
       "import": "./dist/index.js"
     },
     "./commands": {
-      "bun": "./src/commands/index.ts",
       "types": "./src/commands/index.ts",
+      "bun": "./src/commands/index.ts",
       "import": "./dist/commands/index.js"
     },
     "./market-entry": {

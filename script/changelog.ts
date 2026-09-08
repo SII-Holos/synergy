@@ -36,8 +36,7 @@ export async function getCommits(from: string, to: string): Promise<Commit[]> {
     commitData.set(data.sha, { login: data.login, message: data.message.split("\n")[0] ?? "" })
   }
 
-  const log =
-    await $`git log ${fromRef}..${toRef} --oneline --format="%H" -- packages/synergy packages/sdk packages/plugin packages/app`.text()
+  const log = await $`git log ${fromRef}..${toRef} --oneline --format="%H" -- packages apps`.text()
   const hashes = log.split("\n").filter(Boolean)
 
   const commits: Commit[] = []
@@ -52,8 +51,14 @@ export async function getCommits(from: string, to: string): Promise<Commit[]> {
     const areas = new Set<string>()
 
     for (const file of files.split("\n").filter(Boolean)) {
-      if (file.startsWith("packages/synergy/")) areas.add("core")
-      else if (file.startsWith("packages/app/")) areas.add("app")
+      if (
+        file.startsWith("packages/harness/") ||
+        file.startsWith("packages/runtime-local/") ||
+        file.startsWith("packages/product-runtime/") ||
+        file.startsWith("packages/cli/")
+      )
+        areas.add("core")
+      else if (file.startsWith("apps/web/")) areas.add("app")
       else if (file.startsWith("packages/sdk/")) areas.add("sdk")
       else if (file.startsWith("packages/plugin/")) areas.add("plugin")
     }

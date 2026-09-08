@@ -7,6 +7,7 @@ const root = path.resolve(import.meta.dir, "..", "..")
 const ciSource = await readFile(path.join(root, ".github/workflows/ci.yml"), "utf8")
 
 const REQUIRED_NEEDS = [
+  "core-artifact",
   "quality",
   "typecheck",
   "windows",
@@ -68,7 +69,7 @@ describe("CI topology", () => {
     expect(block).toContain("timeout-minutes: 45")
   })
 
-  test("the blocking matrix has exactly the ten required jobs", () => {
+  test("the blocking matrix has exactly the required jobs including installed core artifacts", () => {
     const jobs = parseJobNames(ciSource)
     const blocking = jobs.filter((job) => job !== "all-checks-passed")
     expect(blocking.sort()).toEqual([...REQUIRED_NEEDS].sort())
