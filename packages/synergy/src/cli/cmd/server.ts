@@ -1,4 +1,5 @@
 import { cmd } from "./cmd"
+import { createManagedMigrationReporter } from "../managed-startup"
 import { withNetworkOptions, resolveNetworkOptions } from "../network"
 import { run as runServerRuntime } from "../../server/runtime"
 import { UI } from "../../util/ui"
@@ -31,7 +32,11 @@ export const ServerCommand = cmd({
   handler: async (args) => {
     let network: RuntimeOptions["network"] | undefined
     try {
-      network = await resolveNetworkOptions(args)
+      const managed = process.env.SYNERGY_DESKTOP_STARTUP_PROGRESS === "1"
+      network = await resolveNetworkOptions(args, {
+        output: managed ? "silent" : "interactive",
+        reporter: managed ? createManagedMigrationReporter() : undefined,
+      })
       const managedService = args.managedService
 
       await runServerRuntime({

@@ -19,6 +19,20 @@ describe("managed startup progress", () => {
     expect(startup.remainingMs()).toBe(300_000)
   })
 
+  test("renews the deadline during a second scan with smaller independent counts", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(line({ phase: "migration", step: 1, current: 10_000, total: 10_000 }))
+    now = 200_000
+    startup.receive(line({ phase: "migration", step: 2, current: 0, total: 0 }))
+    now = 400_000
+    startup.receive(line({ phase: "migration", step: 2, current: 1, total: 100 }))
+    now = 600_000
+    startup.receive(line({ phase: "migration", step: 2, current: 2, total: 100 }))
+    expect(startup.remainingMs()).toBe(300_000)
+    expect(startup.status()).toMatchObject({ progress: { current: 2, total: 100 } })
+  })
+
   test("does not let repeated counts, stale steps or ordinary logs hide a stalled migration", () => {
     let now = 0
     const startup = new DesktopServerStartup({ now: () => now })
