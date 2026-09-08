@@ -52,7 +52,11 @@ console.log(`SHA-256: ${hash}`)
 console.log("Runtime release builds embed this hash while packaging the matching helper asset.")
 
 if (localMode) {
-  const destinationDirectory = path.join(os.homedir(), ".synergy", "sandbox-helper")
+  const destinationDirectory = path.join(
+    process.env.SYNERGY_HOME || process.env.SYNERGY_TEST_HOME || os.homedir(),
+    ".synergy",
+    "sandbox-helper",
+  )
   const destination = path.join(destinationDirectory, binaryName)
   if (dryRun) {
     console.log(`[dry-run] Would install helper at: ${destination}`)

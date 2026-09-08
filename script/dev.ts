@@ -4,6 +4,7 @@ import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"
 import { randomBytes } from "node:crypto"
+import { RELEASE_CATALOG } from "./release/shared/packages"
 
 const DEFAULT_SERVER_PORT = 4096
 const DEFAULT_APP_PORT = 3000
@@ -78,10 +79,11 @@ function appUrl(hostname: string, port: number) {
 
 function directories(repoRoot: string) {
   return {
-    app: path.join(repoRoot, "packages", "app"),
-    desktop: path.join(repoRoot, "packages", "desktop"),
-    plugin: path.join(repoRoot, "packages", "plugin"),
-    synergy: path.join(repoRoot, "packages", "synergy"),
+    app: path.join(repoRoot, RELEASE_CATALOG.web.directory),
+    desktop: path.join(repoRoot, RELEASE_CATALOG.desktop.directory),
+    plugin: path.join(repoRoot, RELEASE_CATALOG.plugin.directory),
+    product: path.join(repoRoot, RELEASE_CATALOG.productRuntime.directory),
+    local: path.join(repoRoot, RELEASE_CATALOG.runtimeLocal.directory),
   }
 }
 
@@ -197,7 +199,7 @@ function serverProcess(input: {
   return {
     label: "server",
     command,
-    cwd: dirs.synergy,
+    cwd: dirs.product,
     env: {
       SYNERGY_CWD: process.env.SYNERGY_CWD ?? input.launchCwd,
       SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: input.browserHostSecret,
@@ -482,7 +484,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
         {
           label: "send",
           command: [bunPath, "run", "--conditions=browser", "./src/index.ts", "send", ...parsed.positionals],
-          cwd: dirs.synergy,
+          cwd: dirs.product,
           env: { SYNERGY_CWD: process.env.SYNERGY_CWD ?? launchCwd },
         },
       ],
@@ -811,8 +813,8 @@ async function runPrepare(repoRoot: string, bunPath: string): Promise<number> {
 
   const helperDir =
     platform === "linux"
-      ? path.join(dirs.synergy, "src", "sandbox", "helper-linux")
-      : path.join(dirs.synergy, "src", "sandbox", "helper")
+      ? path.join(dirs.local, "src", "sandbox", "helper-linux")
+      : path.join(dirs.local, "src", "sandbox", "helper")
   if (!fs.existsSync(path.join(helperDir, "Cargo.toml"))) {
     process.stderr.write("[sandbox] helper source not found; sandbox helper was not compiled\n")
     return 0
@@ -825,7 +827,7 @@ async function runPrepare(repoRoot: string, bunPath: string): Promise<number> {
   const sandbox = await runSerial([
     {
       label: "sandbox",
-      command: [bunPath, "run", "packages/product-runtime/scripts/build-helper.ts", target, "--local"],
+      command: [bunPath, "run", path.join(dirs.local, "script", "build-helper.ts"), target, "--local"],
       cwd: repoRoot,
     },
   ])

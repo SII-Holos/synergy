@@ -195,7 +195,7 @@ export class DesktopServerManager {
       }
     }
 
-    const sourceRoot = sourceSynergyRoot()
+    const sourceRoot = sourceProductRoot()
     if (!sourceRoot) {
       throw new Error("Packaged Synergy runtime was not found and source fallback is unavailable")
     }
@@ -697,13 +697,9 @@ function packagedServerBinary(resourcesPath: string): string | null {
   return path.join(resourcesPath, "synergy", "bin", binaryName)
 }
 
-function sourceSynergyRoot(): string | null {
-  const candidates = [
-    path.resolve(dirname, "../../synergy"),
-    path.resolve(dirname, "../../packages/synergy"),
-    path.resolve(dirname, "../../../packages/synergy"),
-  ]
-  return candidates.find((candidate) => fs.existsSync(path.join(candidate, "src/index.ts"))) ?? null
+export function sourceProductRoot(directory = dirname): string | null {
+  const candidate = path.resolve(directory, "../../../packages/product-runtime")
+  return fs.existsSync(path.join(candidate, "src/index.ts")) ? candidate : null
 }
 
 async function readLogTail(logFile: string | null): Promise<string | null> {

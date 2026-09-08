@@ -102,8 +102,8 @@ describe("dev orchestrator planner", () => {
     const repoRoot = await mkdtemp(path.join(os.tmpdir(), "synergy-dev-plan-"))
     try {
       await mkdir(path.join(repoRoot, "node_modules"), { recursive: true })
-      await mkdir(path.join(repoRoot, "packages", "app", "dist"), { recursive: true })
-      await writeFile(path.join(repoRoot, "packages", "app", "dist", "index.html"), "<!doctype html>")
+      await mkdir(path.join(repoRoot, "apps", "web", "dist"), { recursive: true })
+      await writeFile(path.join(repoRoot, "apps", "web", "dist", "index.html"), "<!doctype html>")
 
       const plan = createDevPlan(["desktop", "--managed"], { ...options, repoRoot })
 
@@ -111,7 +111,7 @@ describe("dev orchestrator planner", () => {
       expect(plan.mode).toBe("serial")
       expect(plan.processes.map((process) => process.label)).toEqual(["build:plugin", "build", "desktop"])
       expect(plan.processes[1]?.command).toEqual(["/bun", "run", "build"])
-      expect(plan.processes[1]?.cwd).toBe(path.join(repoRoot, "packages", "app"))
+      expect(plan.processes[1]?.cwd).toBe(path.join(repoRoot, "apps", "web"))
       expect(plan.processes[1]?.env).toEqual({ SYNERGY_APP_BUILD_KIND: "local" })
       expect(plan.processes[2]?.env).toMatchObject({
         BUN_BIN: "/bun",

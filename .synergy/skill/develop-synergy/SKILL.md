@@ -69,11 +69,11 @@ Route main-process broadcasts for the application renderer through `DesktopRende
 
 ## Verify and Diagnose
 
-1. Confirm health on the selected server port before opening dependent clients.
+1. Confirm health on the selected server port before opening dependent clients. After workspace or startup entry changes, run `bun test --config /dev/null test/script/dev-entrypoints.test.ts` against the real checkout, start the root development command in an isolated home, and verify Web rendering in a browser. For managed Desktop changes, verify source backend startup, restart and shutdown separately from packaged startup; serving HTML alone does not establish that the UI rendered.
 2. Reproduce the behavior with a new isolated Scope/session. Record only redacted IDs and project-relative evidence in shareable output.
 3. Use `SYNERGY_HOME="$DEV_HOME" synergy logs --dev`, `status --verbose`, or `diagnostics` against the isolated environment. Never inspect the main runtime by accident.
 4. Restart only the isolated process when server or Desktop main-process code changes; Vite handles Web hot reload.
-5. Run narrow automated tests and `bun run quality:quick` independently of the manual instance.
+5. Run narrow automated tests and `bun run quality:quick` independently of the manual instance. Workflow path changes also require checking the referenced executable files and supported dry-run commands; YAML validation alone cannot prove that a command exists. Keep local helper preparation inside the selected isolated home.
 
 ## Clean Up
 

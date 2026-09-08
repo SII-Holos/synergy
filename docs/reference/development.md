@@ -84,7 +84,7 @@ The root `bun run coverage:check` clears each package’s old reports, runs ever
 
 For the full isolation procedure, the guard predicate, and the escape hatch, see the `testing-guide` Skill (`.synergy/skill/testing-guide/SKILL.md`). Run core suites through the package scripts; the only escape hatch for a deliberate real-home test run is `SYNERGY_ALLOW_REAL_HOME=1` (see [Configuration layout](configuration-layout.md)).
 
-The same pinned catalog is the default input for core binary builds. `packages/product-runtime/script/models-catalog.ts` validates it and requires non-empty OpenAI, Anthropic, and Google entries before compilation; `MODELS_DEV_API_JSON` can override the input for an ordinary local build, while release builds always force the repository-pinned snapshot.
+The same pinned catalog is the default input for core binary builds. `script/release/shared/build/models-catalog.ts` validates it and requires non-empty OpenAI, Anthropic, and Google entries before compilation; `MODELS_DEV_API_JSON` can override the input for an ordinary local build, while release builds always force the repository-pinned snapshot.
 
 Other package tests can run through Turbo or their package scripts:
 
@@ -148,13 +148,14 @@ After modifying server routes or OpenAPI-visible schemas:
 ./script/generate.ts
 ```
 
-Build the core single binary/runtime artifact with:
+Build the standalone core CLI or the complete product binary with the corresponding entry:
 
 ```bash
-./packages/product-runtime/script/build.ts --single
+bun packages/cli/script/build.ts --single
+bun packages/product-runtime/script/build.ts --single
 ```
 
-The build validates and embeds the pinned `test/tool/fixtures/models-api.json` catalog before compiling. Use `MODELS_DEV_API_JSON=/path/to/models.json` only for a deliberate local build override; release workflows ignore that override and embed the repository snapshot.
+The build validates and embeds the pinned `packages/testing/fixtures/models-api.json` catalog before compiling. Use `MODELS_DEV_API_JSON=/path/to/models.json` only for a deliberate local build override; release workflows ignore that override and embed the repository snapshot.
 
 Frontend code should use `createSynergyClient()` and generated methods for internal routes. Raw browser transports remain appropriate for WebSocket/EventSource streams, external URLs, browser file/blob handling, and endpoints whose semantics cannot be represented by the SDK.
 

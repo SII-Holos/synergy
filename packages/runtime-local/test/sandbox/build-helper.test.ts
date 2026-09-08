@@ -53,3 +53,13 @@ describe("build-helper.ts", () => {
     expect(result.stderr.toString()).toContain("hashes are embedded")
   })
 })
+
+test("local helper preparation respects an isolated runtime home", async () => {
+  const isolated = path.join(import.meta.dir, "isolated-home-fixture")
+  const result = await $`bun run ${BUILD_HELPER} linux --local --dry-run`
+    .env({ ...process.env, SYNERGY_HOME: isolated })
+    .nothrow()
+    .quiet()
+  expect(result.exitCode).toBe(0)
+  expect(result.stdout.toString()).toContain(path.join(isolated, ".synergy", "sandbox-helper", "synergy-sandbox-linux"))
+})

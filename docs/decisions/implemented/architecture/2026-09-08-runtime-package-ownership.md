@@ -18,7 +18,7 @@ There is one CLI implementation and its command remains `synergy`. Standalone pa
 
 Configuration and migrations follow capability ownership. Unloaded domain data remains intact, including unknown persisted session fields and legacy migration log entries. Runtime startup seals migration registration. Full API generation composes the complete domain schemas and preserves the public SDK operations. The [persistence workflow](../../../../.synergy/skill/change-persistence/SKILL.md) owns compatibility verification.
 
-Workspace manifests own dependencies. Explicit exports identify module resolution; dependency rules reject private cross-package imports, package cycles and core-to-product dependencies. The typed release catalog chooses build artifacts. Source and binary workers use the same selected runtime composition, and independent package verification installs actual tarballs outside the workspace.
+Workspace manifests own dependencies. Explicit exports identify module resolution; dependency rules reject private cross-package imports, package cycles and core-to-product dependencies. The typed release catalog chooses build artifacts and supplies workspace directories to root development and benchmark commands. Development entry checks resolve actual checkout manifests and executable files; synthetic command-plan tests alone cannot establish that moved paths are runnable. Workflow helper commands are checked from their YAML definitions with supported dry-run invocations. Source Desktop startup and packaged startup receive separate validation. Source and binary workers use the same selected runtime composition, and independent package verification installs actual tarballs outside the workspace.
 
 ## Alternatives considered
 
