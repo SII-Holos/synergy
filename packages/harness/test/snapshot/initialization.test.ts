@@ -73,3 +73,17 @@ test("reports Git initialization diagnostics and leaves failed stores retryable"
   const expected = { version: 2, objectFormat: "sha1" }
   expect(await SnapshotStore.optional<typeof expected>(StoragePath.snapshotRepository(scopeID))).toEqual(expected)
 })
+
+test("reports hash-object verification diagnostics from an incomplete store", async () => {
+  await using tmp = await tmpdir()
+  const scopeID = path.basename(tmp.path)
+  const repo = SnapshotStore.repository(scopeID)
+  await fs.mkdir(repo, { recursive: true })
+  await Bun.write(path.join(repo, "HEAD"), "ref: refs/heads/main\n")
+  await Bun.write(path.join(repo, "config"), "this is not a valid config\n")
+  const error = await SnapshotStore.initializeRepository(scopeID).catch((error: unknown) => error)
+  expect(error).toBeInstanceOf(SnapshotStore.StorageError)
+  expect((error as Error).message).toMatch(/Snapshot git hash-object failed.*exit code 128/s)
+  expect((error as Error).cause).toMatchObject({ exitCode: 128, stderr: expect.stringContaining("fatal:") })
+  expect(await SnapshotStore.optional(StoragePath.snapshotRepository(scopeID))).toBeUndefined()
+})

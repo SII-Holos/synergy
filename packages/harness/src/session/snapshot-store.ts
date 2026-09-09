@@ -122,7 +122,10 @@ export namespace SnapshotStore {
 
   export async function command(repo: string, args: string[], signal?: AbortSignal) {
     const result = await SnapshotGit.run(["git", "--git-dir", repo, ...args], path.dirname(repo), undefined, signal)
-    if (result.exitCode !== 0) throw new StorageError(`Snapshot git ${args[0]} failed: ${result.stderr.trim()}`)
+    if (result.exitCode !== 0)
+      throw new StorageError(`Snapshot git ${args[0]} failed (exit code ${result.exitCode}): ${result.stderr.trim()}`, {
+        cause: { exitCode: result.exitCode, stderr: result.stderr },
+      })
     return result.text.trim()
   }
 
