@@ -14,5 +14,5 @@ export interface PluginComposerLayoutService {
   branch(): string | undefined
   lastModified(): string | null | undefined
   links(): readonly { id: string; label: string; title: string; icon: SemanticIconTokenName; open(): void }[]
-  render(part: "priority" | "greeting" | "inbox" | "delegation" | "status"): JSX.Element
+  render(part: "priority" | "greeting" | "inbox" | "delegation" | "status" | "decision"): JSX.Element
 }

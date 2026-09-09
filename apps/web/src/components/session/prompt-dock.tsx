@@ -32,6 +32,7 @@ export function PromptDock(props: PluginComponentProps<PluginComposerLayoutServi
           }
         >
           <Show when={!layout.readOnly()} fallback={layout.render("delegation")}>
+            {layout.render("decision")}
             <For each={layout.links()}>
               {(link) => (
                 <div class="flex items-center justify-center pb-2">

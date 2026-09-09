@@ -1746,6 +1746,7 @@ function SessionPageContent() {
             {(id) => <PromptDockFloatLayer sessionID={id()} priorityControl={priorityControl()} />}
           </Show>
         )
+      if (part === "decision") return <SessionDecisionSurface sessionId={params.id} />
       if (part === "greeting")
         return (
           <>
@@ -1942,7 +1943,6 @@ function SessionPageContent() {
   }
   return (
     <>
-      <SessionDecisionSurface sessionId={params.id} />
       <BrowserViewEffects timeline={timeline} />
       <Show when={composer()}>{(controller) => controller().extensions()}</Show>
       <PluginPageOutlet

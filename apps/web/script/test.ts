@@ -39,6 +39,7 @@ const playwrightIsolated = [
   "test/components/session/session-inbox-anchor-layout.test.ts",
   "test/components/session/conversation-row-retention.test.ts",
   "test/components/session/dialog-fork-confirm.dom.test.tsx",
+  "test/components/session/decision-surface.dom.test.tsx",
   "test/components/scopes/session-row.dom.test.tsx",
   "test/components/sidebar/session-draft-badge.dom.test.tsx",
   "test/components/sidebar/sidebar-attention-notice.dom.test.tsx",

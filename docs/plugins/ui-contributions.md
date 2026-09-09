@@ -59,7 +59,7 @@ Create dialogs with `context.overlays.dialog(handle => <Dialog title="Preference
 - `session` reads the existing bounded message/part window, status and history state and delegates history loading, return-to-latest, refresh, rewind and fork to the session owner.
 - `conversation` supplies the shared turn projection, bounded render window, history controls, viewport bindings and canonical message actions. Replacing its view does not create another message store or derive message semantics.
 - `input` supplies revisioned text and selection, IME state, attachments, agent/model/variant choices and explicit submit/stop. Its optional native editor mounting API uses the same document as headless edits. Native workflow controls can be composed through the service's named control views.
-- `composerLayout` supplies layout state, navigation links and host-owned inbox, delegation, greeting, status and priority views. It does not expose the SDK or synchronization store.
+- `composerLayout` supplies layout state, navigation links and host-owned inbox, delegation, greeting, status, priority and decision views. It does not expose the SDK or synchronization store.
 
 Draft edits reject stale revisions, read-only state, overlapping ranges and file-pill crossings. Model selection retains explicit draft → session default → fallback resolution. Preflight work and late upload/submission results retain the captured draft identity; failed submission cannot overwrite subsequent user edits. IME prevents settlement/submission until composition ends. Detaching the presentation releases editor and scroll bindings without disposing domain state.
 
