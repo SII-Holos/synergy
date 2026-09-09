@@ -109,13 +109,14 @@ describe("CI test matrix", () => {
     expect(upload?.run).toBeUndefined()
   })
 
-  test("the anchored Test check fans in exactly the three test jobs", () => {
+  test("the anchored Test check includes the benchmark contracts", () => {
     const fanIn = workflow.jobs["test"]!
     expect(fanIn.name).toBe("Test")
-    expect(fanIn.needs).toEqual(["test-shards", "test-aux", "test-harness"])
+    expect(fanIn.needs).toEqual(["test-shards", "test-aux", "test-harness", "test-benchmark"])
     const verify = fanIn.steps?.find((step) => step.run?.includes("needs.test-shards.result"))
     expect(verify?.run).toContain("needs.test-aux.result")
     expect(verify?.run).toContain("needs.test-harness.result")
+    expect(verify?.run).toContain("needs.test-benchmark.result")
     expect(verify?.run).toContain("exit 1")
   })
 
@@ -123,7 +124,7 @@ describe("CI test matrix", () => {
     const needs = workflow.jobs["all-checks-passed"]!.needs
     const flat = Array.isArray(needs) ? needs : [needs]
     expect(flat).toContain("test")
-    for (const leaf of ["test-shards", "test-aux", "test-harness"]) {
+    for (const leaf of ["test-shards", "test-aux", "test-harness", "test-benchmark"]) {
       expect(flat).not.toContain(leaf)
     }
   })

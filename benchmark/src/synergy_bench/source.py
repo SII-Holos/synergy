@@ -67,6 +67,13 @@ def verify_source(root: Path, receipt: dict[str, Any]) -> None:
     for item in receipt["files"]:
         if entry(root, item["path"]) != item:
             raise ValueError(f"Source content changed: {item['path']}")
+    names = set()
+    for directory, dirs, files in os.walk(root):
+        dirs[:] = [name for name in dirs if name not in EXCLUDED]
+        for name in files + [name for name in dirs if (Path(directory) / name).is_symlink()]:
+            names.add((Path(directory) / name).relative_to(root).as_posix())
+    if names != {item["path"] for item in receipt["files"]}:
+        raise ValueError("Source inventory changed")
 
 
 def freeze_source(root: Path, destination: Path, revision: str | None = None) -> dict[str, Any]:

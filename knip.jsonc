@@ -114,6 +114,7 @@
     "benchmark": {
       "entry": [
         "runtime/entry.ts",
+        "runtime/trial.ts",
         "runtime/worker.ts",
         "runtime/inspect.ts",
         "runtime/compositions/*.ts",

@@ -63,3 +63,11 @@ def test_rejects_escape_link(repo: Path, tmp_path: Path):
     (repo / "escape").symlink_to("../../outside")
     with pytest.raises(ValueError, match="escapes"):
         freeze_source(repo, tmp_path / "snapshot")
+
+
+def test_snapshot_rejects_new_unrecorded_source(repo: Path, tmp_path: Path):
+    target = tmp_path / "snapshot"
+    receipt = freeze_source(repo, target)
+    (target / "injected.ts").write_text("export default 1")
+    with pytest.raises(ValueError, match="inventory"):
+        verify_source(target, receipt)

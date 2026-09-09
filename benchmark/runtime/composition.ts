@@ -1,5 +1,6 @@
 import { pathToFileURL } from "node:url"
 import path from "node:path"
+import { realpath } from "node:fs/promises"
 import type { openLocalRuntime } from "@ericsanchezok/synergy-runtime-local"
 
 export interface Composition {
@@ -14,12 +15,11 @@ export async function loadComposition(name: string): Promise<Composition> {
     "core-library": () => import("./compositions/core-library"),
     full: () => import("./compositions/full"),
   }
-  const loader = builtin[name as keyof typeof builtin]
-  const module = loader
-    ? await loader()
-    : name.startsWith("./")
-      ? await import(pathToFileURL(path.resolve(import.meta.dir, name)).href)
-      : undefined
+  const loader = Object.hasOwn(builtin, name) ? builtin[name as keyof typeof builtin] : undefined
+  const custom = !loader && name.startsWith("./") ? await realpath(path.resolve(import.meta.dir, name)) : undefined
+  if (custom && !custom.startsWith(import.meta.dir + path.sep))
+    throw new Error("Custom compositions must stay inside the frozen runtime directory")
+  const module = loader ? await loader() : custom ? await import(pathToFileURL(custom).href) : undefined
   const value = module?.default as Composition | undefined
   if (
     !value ||

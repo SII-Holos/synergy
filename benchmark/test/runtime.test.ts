@@ -31,6 +31,12 @@ test("core rejects settings for unloaded capabilities", async () => {
   expect(result.stderr).toContain("library")
 })
 
+test("custom recipes cannot import outside the frozen runtime", async () => {
+  const result = await inspect("./../package.json")
+  expect(result.code).not.toBe(0)
+  expect(result.stderr).toContain("inside the frozen runtime")
+})
+
 test("each named composition reports its own capabilities", async () => {
   for (const runtime of ["core", "core-library", "full"]) {
     const result = await inspect(runtime)
