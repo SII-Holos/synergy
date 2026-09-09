@@ -43,6 +43,7 @@ import { describeToolPartApply } from "./session-sync-plan"
 import { findSessionByID, findSessionIndex } from "./session-collection"
 import { createSessionMessageLoader } from "./session-message-loader"
 import { createScopeReconnectRecovery } from "./scope-reconnect-recovery"
+import { createRecoveryRetryScheduler } from "./scope-recovery-retry"
 import { SessionPartSnapshotFreshness, type SessionPartSnapshotRequest } from "./session-part-snapshot-freshness"
 import {
   applyLatestPage,
@@ -288,6 +289,21 @@ function createGlobalSync() {
   const resourceFreshness = new SyncResourceFreshness()
   const partSnapshotFreshness = new SessionPartSnapshotFreshness()
   const replayPending = new Set<string>()
+  // A silently failed recovery never publishes the scope generation and the
+  // session page waits for it, so failures are retried per scope until the
+  // attempt budget is exhausted instead of stranding the viewed conversation.
+  const recoveryRetryScheduler = createRecoveryRetryScheduler({
+    schedule: (fn, ms) => {
+      const timer = setTimeout(fn, ms)
+      return () => clearTimeout(timer)
+    },
+    isRecoverable: (scopeKey) => !disposed && !!children[scopeKey],
+    retry: async (scopeKey) => {
+      const generation = reconnectVersion() + 1
+      await resyncInstances([scopeKey])
+      return scopeReconnectRecovery.version(scopeKey) >= generation
+    },
+  })
 
   async function runInstanceRequests<T>(
     items: T[],
@@ -519,6 +535,7 @@ function createGlobalSync() {
     watermarks.delete(scopeKey)
     replayInFlight.delete(scopeKey)
     replayPending.delete(scopeKey)
+    recoveryRetryScheduler.cancel(scopeKey)
     resourceFreshness.releaseScope(scopeKey)
     partSnapshotFreshness.releaseScope(scopeKey)
     bootstrapQueued.delete(scopeKey)
@@ -1812,6 +1829,7 @@ function createGlobalSync() {
     inboxRefreshTimers.clear()
     cortexRefreshTimers.clear()
     compactionMessageLoader.dispose()
+    recoveryRetryScheduler.dispose()
   })
 
   // Reconnect recovery: try to replay only the events missed since our
@@ -1858,6 +1876,8 @@ function createGlobalSync() {
       if (replayInFlight.get(scopeKey) !== tracked) return recovered
       replayInFlight.delete(scopeKey)
       if (replayPending.delete(scopeKey)) return replayOrResync(scopeKey)
+      if (recovered) recoveryRetryScheduler.cancel(scopeKey)
+      else recoveryRetryScheduler.schedule(scopeKey)
       return recovered
     })
     replayInFlight.set(scopeKey, tracked)
