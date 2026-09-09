@@ -660,8 +660,7 @@ describe("Activity summary DOM behavior", () => {
   test("renders minimal summaries without a nano topic parent row", () => {
     expect(document.querySelector('#activity-main-host [data-slot="activity-trace-title"]')).toBeNull()
     const now = document.querySelector('[data-slot="minimal-activity-now"]')
-    expect(now?.textContent).toBe("Verifying compressed activity")
-    expect(now?.getAttribute("aria-hidden")).toBe("true")
+    expect(now).toBeNull()
   })
 })
 

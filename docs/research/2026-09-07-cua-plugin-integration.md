@@ -12,18 +12,18 @@ This investigation includes alternatives considered before selecting native, win
 
 ## 当前平台已经具备什么
 
-| 需求               | 当前证据                                                                                                                                                         | 可以直接利用的部分                                                             |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| 声明 MCP           | [MCP schemas](../../packages/plugin/src/mcp.ts)、[contribution](../../packages/plugin/src/contribution.ts)、[注册桥接](../../packages/synergy/src/plugin/mcp.ts) | 本地 argv、环境变量、手动/懒启动、工具过滤、连接与调用超时                     |
-| 按配置启用         | [声明解析](../../packages/synergy/src/plugin/lifecycle.ts)、[行为测试](../../packages/synergy/test/plugin/settings-conditioned-mcp.test.ts)                      | `enabledWhen` 与设置更新后的服务器集合替换；这是配置条件，不是有效控制模式检查 |
-| 正式插件工具       | [tool-source](../../packages/synergy/src/plugin/tool-source.ts)                                                                                                  | 每次调用注入 Scope、Session、Agent、message/call/root user message 和取消信号  |
-| 插件能力审批       | [capability](../../packages/synergy/src/plugin/capability.ts)、[运行时规则](../plugins/runtime-and-permissions.md)                                               | 声明能力、安装授权、具体调用再校验；需要新增 Computer 能力和运行时映射         |
-| 图片与界面         | [公开 context](../../packages/plugin/src/context.ts)、[UI 文档](../plugins/ui-contributions.md)                                                                  | Host-owned 图片附件、工具结果、设置和受信任 UI contributions                   |
-| 插件取消和版本代次 | [context-factory](../../packages/synergy/src/plugin-runtime/context-factory.ts)、[manager](../../packages/synergy/src/plugin-runtime/manager.ts)                 | 单次调用取消、旧代次结果拒绝和插件进程管理；不代表 Cua daemon 已停止           |
+| 需求               | 当前证据                                                                                                                                                             | 可以直接利用的部分                                                             |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| 声明 MCP           | [MCP schemas](../../packages/plugin/src/mcp.ts)、[contribution](../../packages/plugin/src/contribution.ts)、[注册桥接](../../packages/plugin-host/src/plugin/mcp.ts) | 本地 argv、环境变量、手动/懒启动、工具过滤、连接与调用超时                     |
+| 按配置启用         | [声明解析](../../packages/plugin-host/src/plugin/lifecycle.ts)、[行为测试](../../packages/plugin-host/test/plugin/settings-conditioned-mcp.test.ts)                  | `enabledWhen` 与设置更新后的服务器集合替换；这是配置条件，不是有效控制模式检查 |
+| 正式插件工具       | [tool-source](../../packages/plugin-host/src/plugin/tool-source.ts)                                                                                                  | 每次调用注入 Scope、Session、Agent、message/call/root user message 和取消信号  |
+| 插件能力审批       | [capability](../../packages/plugin-host/src/plugin/capability.ts)、[运行时规则](../plugins/runtime-and-permissions.md)                                               | 声明能力、安装授权、具体调用再校验；需要新增 Computer 能力和运行时映射         |
+| 图片与界面         | [公开 context](../../packages/plugin/src/context.ts)、[UI 文档](../plugins/ui-contributions.md)                                                                      | Host-owned 图片附件、工具结果、设置和受信任 UI contributions                   |
+| 插件取消和版本代次 | [context-factory](../../packages/plugin-host/src/plugin-runtime/context-factory.ts)、[manager](../../packages/plugin-host/src/plugin-runtime/manager.ts)             | 单次调用取消、旧代次结果拒绝和插件进程管理；不代表 Cua daemon 已停止           |
 
 公开 `PluginInvocationContext` 没有 `computer` 服务，也没有权威的有效控制模式字段。普通 Session 读取不能代替集中解析继承模式和与执行竞争的撤销。插件 runtime 是一个 Synergy runtime 内跨 Scope 共享的代次；模块级 mutex 无法协调另一个 runtime/home 对同一桌面的输入。
 
-当前 `MCP.convertMcpTool()` 在 [mcp/index.ts](../../packages/synergy/src/mcp/index.ts) 中调用 `client.callTool()` 时只传工具名、参数和超时选项，没有转发调用取消信号或注入 Synergy 的任务所有者。[工具解析器](../../packages/synergy/src/session/tool-resolver.ts) 可以在上层取消时终结结果，但物理执行仍由下游负责。这是接入时必须验证和补齐的路径，不应将超时错误当作原生停止确认。
+当前 `MCP.convertMcpTool()` 在 [mcp/index.ts](../../packages/agent-integrations/src/mcp/index.ts) 中调用 `client.callTool()` 时只传工具名、参数和超时选项，没有转发调用取消信号或注入 Synergy 的任务所有者。[工具解析器](../../packages/harness/src/session/tool-resolver.ts) 可以在上层取消时终结结果，但物理执行仍由下游负责。这是接入时必须验证和补齐的路径，不应将超时错误当作原生停止确认。
 
 ## 三种交付路线
 
@@ -110,7 +110,7 @@ Cua 的权限模式在启动时固定。正式 Full Access 路线可评估其受
 | 官方 Computer 插件                                    | `definePlugin()`、工具、设置、文档与 UI；目录和发布身份在实现时确定         |
 | `packages/app` / `packages/ui`                        | 复用已有插件呈现；宿主提供不可被插件故障阻塞的全局控制状态和 Stop/恢复入口  |
 
-当前 Desktop 构建只把 `electron` 标记为 external；[构建配置](../../packages/desktop/package.json) 和 [打包资源](../../packages/desktop/electron-builder.json) 没有 Cua 组件。新增依赖时需核实生成 SDK 动态资源、native addon 及 daemon 的实际打包位置，不能假设 Bun bundle 或现有 `**/*.node` 解包规则会覆盖全部文件。[U2]
+当前 Desktop 构建只把 `electron` 标记为 external；[构建配置](../../apps/desktop/package.json) 和 [打包资源](../../apps/desktop/electron-builder.json) 没有 Cua 组件。新增依赖时需核实生成 SDK 动态资源、native addon 及 daemon 的实际打包位置，不能假设 Bun bundle 或现有 `**/*.node` 解包规则会覆盖全部文件。[U2]
 
 初版建议将经过验证的 Cua 组件随 Desktop 的签名产物发布，插件保持可选启用。驱动可执行文件放在 ASAR 外，嵌套签名、执行位、架构、协议/SDK 配对和升级行为进入 Desktop 发布验证；不由插件安装时在线下载 latest 或修改已经签名的应用包。如果希望插件独立下载 native runtime，应另行设计有签名和版本校验的组件分发能力，不能假定现有插件系统已提供它。
 

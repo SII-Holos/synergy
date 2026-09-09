@@ -88,6 +88,12 @@ The session index, paged-session index, child-session index, navigation index, m
 
 Lattice stores every v2 run by immutable run ID. A session's `lattice/current` record selects the run shown as current without overwriting older terminal runs; it is a repairable index over canonical Run records. Per-run event files are idempotent, best-effort audit records, not an event-sourced reconstruction of the Run. Run, Step, Blueprint binding, and BlueprintLoop records remain the recovery facts.
 
+## Rollout Artifacts
+
+The rollout artifact store uses `rollout/` beneath its owning session, or `data/operations/<scope>/<operation>/rollout/` for sessionless operations. `artifacts/<id>/info.json` commits the readable byte/chunk count and completeness state; individually addressed chunk descriptors reference owner-local, SHA-256-addressed binary blobs. Payloads are streamed in bounded chunks and verified on read. Interrupted streams retain their committed prefix. Under the same rollout owner, `runs/<run>/info.json` stores run state, `runs/<run>/calls/<call>.json` stores logical calls, and `runs/<run>/attempts/<call>/<attempt>.json` stores actual provider attempts with ordered indices and body references. Private records use owner-only permissions and durable atomic writes; they are separate from public product assets and telemetry retention.
+
+Externalized files in `data/tool-output/` have no age-based expiration. Creating a new tool-output file does not delete older observations.
+
 ## Library Database
 
 Library uses:
@@ -176,10 +182,14 @@ Stop the server before raw filesystem backup or relocation. For supported select
 
 Never include `data/auth/` in a public diagnostics bundle, issue attachment, or repository commit.
 
+Rollout runs also own `tools/<executionID>` and `processes/<processID>` metadata through `RolloutLedger`. Tool inputs, original results, returned observations, and channel-framed process streams use the same private artifact store as model evidence. A process record can remain active after an explicitly backgrounded tool returns; exports must preserve its partial stream boundary rather than infer completion from the tool result.
+
 ## File snapshot persistence
+
+The server's Git executable initializes snapshot stores as SHA-1 repositories, including on Git 2.25.1. Initialization explicitly selects SHA-1 through `GIT_DEFAULT_HASH`, verifies the actual object hash format before recording success, and reports the Git exit code and stderr on initialization failure. A non-SHA-1 repository is rejected without conversion or deletion. The browser's operating system does not determine snapshot Git compatibility.
 
 `data/snapshot-v2/<scope>/store.git` holds self-contained Git objects and all historical retention refs. `repository.json` records object format; `owners/<session>.json` selects `legacy`, `shared`, or the permanent deletion tombstone. `migrations/<session>.json` and `deletions/<session>.json` are durable recovery state. Scope `leases.json`, the root `leases.json`, and `.locks/` coordinate processes and are regenerated rather than merged into archives. `format.json` marks the installed layout version.
 
-`cache/snapshot-index/<scope>/<session>/<workspace-hash>/index` is rebuildable working state. It can be removed independently of historical objects. The workspace hash uses its canonical filesystem path. Legacy owners resolve only to `data/snapshot/<scope>/<session>` until explicit migration switches their ownership; unknown and reclaimed repositories remain intact and are reported separately.
+`cache/snapshot-index/<scope>/<session>/<workspace-hash>/index` is rebuildable working state. It can be removed independently of historical objects. The workspace hash uses its canonical filesystem path. Legacy owners resolve only to `data/snapshot/<scope>/<session>` until explicit migration switches their ownership; unknown and reclaimed repositories remain intact and are reported separately. Legacy directories with no owner record and no session record (including the `__reclaimed__` scope) are reclaimable through `synergy data snapshots clean` and `POST /global/storage/snapshot/clean`: both default to a dry run, refuse a scope that fails its integrity check, and never touch the shared store or directories with owners. The HTTP endpoint rejects an empty `scopeID`; scope-targeted requests return 409 on busy or failed integrity checks, while batch requests (no `scopeID`) return `{ results, failures }` and keep the completed work of scopes processed before a failure. The `20260907-snapshot-release-orphan-owners` migration releases legacy owner records that the shared-store migration created for directories without session records, so such orphans reach `clean` on upgraded installations. Owned legacy repositories move through `synergy data snapshots migrate` or `POST /global/storage/snapshot/migrate`, and the shared store packs through `compact` or `POST /global/storage/snapshot/compact`; both HTTP endpoints default to a dry run and return 409 when storage is busy or a scope fails its integrity check. Clean before running `migrate` — a registered repository is migration's responsibility and is no longer a clean candidate.
 
 JSON session export does not contain file objects. Complete `data pack`, `move`, and `merge` preserve file history through the snapshot domain's object/ref transfer. Owner-backend or maintenance-record conflicts abort that data transfer so the source remains available for resolution. These commands acquire offline ownership and never stop a running server. Migration changes are not backward-readable by an older runtime after shared snapshots have been captured.

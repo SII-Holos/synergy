@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-The Coverage CI job (`bun script/gates.ts ci-coverage`) runs `packages/app` tests with no build step, so workspace packages that publish their `import` condition from a gitignored `dist/` are unresolvable inside Playwright DOM-test fixtures. `packages/plugin`'s exports map serves `@ericsanchezok/synergy-plugin/theme` from `dist/theme/index.js`, which a fresh checkout lacks; the real Lingui runtime additionally pulls `@messageformat/parser` (CJS) through `@lingui/message-utils`, whose named `parse` import breaks under Vite's on-demand dependency optimization. The `open-in-browser.dom.test.ts` suite from #1290 failed in Coverage CI (page 500 → 30s selector timeouts, reported as `ECONNREFUSED` in the gate's failure signals) because its fixture lacked the mitigations that `ThemePicker.behavior.test.tsx` had already accumulated over three earlier fixes (`e7fbc3974`, `43c4905ad`, `cd63660e5`). The same failure class had already surfaced there and was fixed per-file, but no shared rule captured it, so the next Playwright fixture re-introduced it.
+The Coverage CI job (`bun script/gates.ts ci-coverage`) runs `apps/web` tests with no build step, so workspace packages that publish their `import` condition from a gitignored `dist/` are unresolvable inside Playwright DOM-test fixtures. `packages/plugin`'s exports map serves `@ericsanchezok/synergy-plugin/theme` from `dist/theme/index.js`, which a fresh checkout lacks; the real Lingui runtime additionally pulls `@messageformat/parser` (CJS) through `@lingui/message-utils`, whose named `parse` import breaks under Vite's on-demand dependency optimization. The `open-in-browser.dom.test.ts` suite from #1290 failed in Coverage CI (page 500 → 30s selector timeouts, reported as `ECONNREFUSED` in the gate's failure signals) because its fixture lacked the mitigations that `ThemePicker.behavior.test.tsx` had already accumulated over three earlier fixes (`e7fbc3974`, `43c4905ad`, `cd63660e5`). The same failure class had already surfaced there and was fixed per-file, but no shared rule captured it, so the next Playwright fixture re-introduced it.
 
 ## Decision
 
@@ -13,7 +13,7 @@ Playwright DOM-test fixtures that boot a Vite dev server must be hermetic agains
 - Alias workspace-package entries whose `import` condition points at gitignored `dist/` output to their source entry (`packages/plugin/src/theme/index.ts` for the theme contract).
 - Resolve runtime packages that break under dependency pre-bundling (Lingui's `@messageformat/parser` chain) to minimal fixture-local stubs when the suite asserts behavior unrelated to i18n rendering, or add them to `optimizeDeps.include` when the real runtime is the subject.
 - Set `optimizeDeps.include` for the Solid runtime/JSX runtime/zod with `noDiscovery: true` so the optimizer never re-runs mid-load and reloads the page.
-- Scope `cacheDir` to the fixture temp directory so sibling Playwright servers sharing `packages/app/node_modules/.vite` cannot invalidate each other's optimizer cache.
+- Scope `cacheDir` to the fixture temp directory so sibling Playwright servers sharing `apps/web/node_modules/.vite` cannot invalidate each other's optimizer cache.
 - `warmupRequest` the fixture entry before launching the browser, and surface page/console/HTTP errors in the failure message instead of a bare 30s selector timeout.
 - Register the suite in the package's `playwrightIsolated` list so bun's worker reaping cannot kill its Chromium process mid-suite.
 

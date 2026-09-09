@@ -8,7 +8,7 @@ The fatal-error and initialization-error footers print the app's build identity 
 
 ## Decision
 
-Both error footers call the accessor (`version()`) before passing it to the i18n version label. The rendering path is locked by a Playwright DOM fixture (`packages/app/test/pages/fatal-error.dom.test.tsx`, registered in the serial Playwright batch) that asserts the literal version text, the buildLabel-over-version preference, and the same path on the initialization-error page; against the unfixed code the fixture fails by rendering the accessor source. The Solid rule — callback children of non-keyed `<Show>` and `<Index>` receive accessors that must be called before interpolation, formatting, or attribute binding, while `<Show keyed>` and `<For>` pass the raw value — is recorded in the `develop-frontend` skill so the mistake class cannot silently recur.
+Both error footers call the accessor (`version()`) before passing it to the i18n version label. The rendering path is locked by a Playwright DOM fixture (`apps/web/test/pages/fatal-error.dom.test.tsx`, registered in the serial Playwright batch) that asserts the literal version text, the buildLabel-over-version preference, and the same path on the initialization-error page; against the unfixed code the fixture fails by rendering the accessor source. The Solid rule — callback children of non-keyed `<Show>` and `<Index>` receive accessors that must be called before interpolation, formatting, or attribute binding, while `<Show keyed>` and `<For>` pass the raw value — is recorded in the `develop-frontend` skill so the mistake class cannot silently recur.
 
 ## Alternatives considered
 
@@ -20,4 +20,4 @@ Both error footers call the accessor (`version()`) before passing it to the i18n
 
 - Both error footers render `Version: <version or buildLabel>` again; the remaining i18n interpolation sites were audited and none passes an uncalled accessor.
 - The error pages gain DOM coverage, so footer regressions fail the app suite instead of waiting for the next field crash report.
-- `packages/app` gains one serial Playwright fixture; Chromium-launching suites keep running after the main batch, and the covered page components stay outside bun coverage instrumentation exactly as before.
+- `apps/web` gains one serial Playwright fixture; Chromium-launching suites keep running after the main batch, and the covered page components stay outside bun coverage instrumentation exactly as before.

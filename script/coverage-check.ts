@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { parseArgs } from "node:util"
 
 /**
  * Coverage gate. Runs each package's coverage command from the manifest,
@@ -12,9 +13,11 @@
  *   bun script/coverage-check.ts                 run commands, evaluate, report
  *   bun script/coverage-check.ts --validate      manifest self-consistency only
  *   bun script/coverage-check.ts --json          emit machine-readable summary
+ *   bun script/coverage-check.ts --package packages/library  check one owner
+ *   bun script/coverage-check.ts --existing      evaluate already-produced reports
  */
 
-import { readFile, readdir, stat } from "node:fs/promises"
+import { readFile, readdir, stat, rm } from "node:fs/promises"
 import path from "node:path"
 import { $ } from "bun"
 
@@ -352,32 +355,37 @@ async function runPackage(
   name: string,
   config: PackageCoverageConfig,
   root: string,
+  existing = false,
 ): Promise<{ lcov: LcovRecord[]; universe: string[] }> {
   const packageRoot = path.join(root, name)
-  // Force a deterministic locale: coverage numbers must not vary with the
-  // developer's LANG (e.g. zh_CN `ps -o lstart` output breaks process-lock
-  // identity parsing in suites that shell out).
-  const output = await $`sh -c ${config.command}`
-    .cwd(packageRoot)
-    .env({ ...process.env, LC_ALL: "C" })
-    .nothrow()
-    .quiet()
-  if (output.exitCode !== 0) {
-    // A failing test batch used to surface only as phantom "missing" files
-    // (the shard orchestrator aborted every remaining batch). Report the
-    // underlying failure with its output so the gate names the real culprit.
-    // bun test prints its failure summary at the END of the stream, so keep
-    // a small head prefix for the command banner plus the tail when the
-    // output exceeds the cap instead of truncating from the front.
-    const stderr = output.stderr.toString().trim()
-    const stdout = output.stdout.toString().trim()
-    const detail = stdout ? `${stderr}\n--- stdout ---\n${stdout}` : stderr
-    const signals = extractFailureSignals(detail)
-    const MAX = 30_000
-    const HEAD = 20_000
-    const shown = detail.length > MAX ? `${detail.slice(0, HEAD)}\n…\n${detail.slice(-(MAX - HEAD))}` : detail
-    const prefix = signals.length > 0 ? `\n--- failure signals ---\n${signals.join("\n")}\n` : ""
-    throw new Error(`${name}: coverage command exited ${output.exitCode}${prefix}\n${shown}`)
+  if (!existing) {
+    await rm(path.join(packageRoot, config.lcov), { force: true })
+    await rm(path.join(packageRoot, path.dirname(config.lcov), "shards"), { recursive: true, force: true })
+    // Force a deterministic locale: coverage numbers must not vary with the
+    // developer's LANG (e.g. zh_CN `ps -o lstart` output breaks process-lock
+    // identity parsing in suites that shell out).
+    const output = await $`sh -c ${config.command}`
+      .cwd(packageRoot)
+      .env({ ...process.env, LC_ALL: "C" })
+      .nothrow()
+      .quiet()
+    if (output.exitCode !== 0) {
+      // A failing test batch used to surface only as phantom "missing" files
+      // (the shard orchestrator aborted every remaining batch). Report the
+      // underlying failure with its output so the gate names the real culprit.
+      // bun test prints its failure summary at the END of the stream, so keep
+      // a small head prefix for the command banner plus the tail when the
+      // output exceeds the cap instead of truncating from the front.
+      const stderr = output.stderr.toString().trim()
+      const stdout = output.stdout.toString().trim()
+      const detail = stdout ? `${stderr}\n--- stdout ---\n${stdout}` : stderr
+      const signals = extractFailureSignals(detail)
+      const MAX = 30_000
+      const HEAD = 20_000
+      const shown = detail.length > MAX ? `${detail.slice(0, HEAD)}\n…\n${detail.slice(-(MAX - HEAD))}` : detail
+      const prefix = signals.length > 0 ? `\n--- failure signals ---\n${signals.join("\n")}\n` : ""
+      throw new Error(`${name}: coverage command exited ${output.exitCode}${prefix}\n${shown}`)
+    }
   }
   // Sharded orchestrators (app, ui, synergy coverage-run) write one lcov per
   // batch under coverage/shards/; merge them when present, otherwise read the
@@ -399,18 +407,37 @@ async function runPackage(
 }
 
 export async function runCoverageCheck(
-  options: { validateOnly?: boolean; root?: string; json?: boolean } = {},
-): Promise<{ verdicts: PackageVerdict[]; errors: string[]; passed: boolean }> {
+  options: { validateOnly?: boolean; root?: string; json?: boolean; packages?: string[]; existing?: boolean } = {},
+): Promise<{
+  verdicts: PackageVerdict[]
+  errors: string[]
+  passed: boolean
+  verification: { source: "fresh" | "existing"; shared: boolean; packages: string[] }
+}> {
   const root = options.root ?? REPO_ROOT
   const manifest = await loadManifest(root)
+  const selected = Object.keys(manifest.packages).filter(
+    (name) => !options.packages?.length || options.packages.includes(name),
+  )
+  const verification = {
+    source: options.existing ? ("existing" as const) : ("fresh" as const),
+    shared: false,
+    packages: selected,
+  }
   const errors = await validateManifest(manifest, root)
+  for (const name of options.packages ?? []) {
+    if (!(name in manifest.packages)) errors.push(`Unknown coverage package: ${name}`)
+  }
   if (options.validateOnly || errors.length > 0) {
-    return { verdicts: [], errors, passed: errors.length === 0 }
+    return { verdicts: [], errors, passed: errors.length === 0, verification }
   }
   const verdicts: PackageVerdict[] = []
+  const reports = new Map<string, { lcov: LcovRecord[]; universe: string[] }>()
   for (const [name, config] of Object.entries(manifest.packages)) {
     try {
-      const { lcov, universe } = await runPackage(name, config, root)
+      if (options.packages?.length && !options.packages.includes(name)) continue
+      const { lcov, universe } = await runPackage(name, config, root, options.existing)
+      reports.set(name, { lcov, universe })
       verdicts.push(evaluatePackage(name, config, universe, lcov))
     } catch (error) {
       verdicts.push({
@@ -429,38 +456,92 @@ export async function runCoverageCheck(
       })
     }
   }
+  // Only a complete, successful invocation may share measurements. Reports
+  // from --existing have no execution provenance and remain package-local.
+  if (!options.existing && !options.packages?.length && reports.size === selected.length) {
+    const combined = mergeLcov(
+      [...reports].map(([name, report]) =>
+        report.lcov.map((record) => ({
+          ...record,
+          file: path.resolve(root, name, record.file),
+        })),
+      ),
+    )
+    verification.shared = true
+    for (let index = 0; index < verdicts.length; index++) {
+      const name = verdicts[index]!.package
+      const report = reports.get(name)!
+      const lcov = combined.map((record) => ({ ...record, file: path.relative(path.join(root, name), record.file) }))
+      verdicts[index] = evaluatePackage(name, manifest.packages[name]!, report.universe, lcov)
+    }
+  }
   const passed = verdicts.every((verdict) => verdict.passed)
-  return { verdicts, errors, passed }
+  return { verdicts, errors, passed, verification }
 }
 
 function fmt(pct: number): string {
   return `${pct.toFixed(1)}%`
 }
 
+export function parseCoverageArguments(args: string[]) {
+  const { values } = parseArgs({
+    args,
+    strict: true,
+    allowPositionals: false,
+    options: {
+      help: { type: "boolean" },
+      validate: { type: "boolean" },
+      json: { type: "boolean" },
+      existing: { type: "boolean" },
+      package: { type: "string", multiple: true },
+    },
+  })
+  return {
+    help: !!values.help,
+    validateOnly: !!values.validate,
+    json: !!values.json,
+    existing: !!values.existing,
+    packages: values.package ?? [],
+  }
+}
+
 if (import.meta.main) {
-  const validateOnly = process.argv.includes("--validate")
-  const asJson = process.argv.includes("--json")
-  const result = await runCoverageCheck({ validateOnly, json: asJson })
-  if (asJson) {
-    console.log(JSON.stringify({ passed: result.passed, errors: result.errors, verdicts: result.verdicts }, null, 2))
+  const options = parseCoverageArguments(process.argv.slice(2))
+  if (options.help) {
+    console.log(
+      "Usage: bun script/coverage-check.ts [--validate] [--existing] [--json] [--package <workspace>]\nDefault: run all configured coverage commands. --existing only inspects reports. --validate only checks policy.",
+    )
   } else {
-    for (const verdict of result.verdicts) {
-      const status = verdict.passed ? "PASS" : "FAIL"
-      console.log(
-        `${status} ${verdict.package}: lines ${fmt(verdict.linesPct)}/${verdict.thresholds.lines}% functions ${fmt(verdict.functionsPct)}/${verdict.thresholds.functions}% (measured ${verdict.measured}, missing ${verdict.missing}, exempted ${verdict.exempted})`,
-      )
-      for (const error of verdict.errors) console.error(`- ${error}`)
-      if (!verdict.passed) {
-        for (const entry of verdict.uncovered) {
-          console.error(`  ${entry.file}${entry.lines.length > 0 ? `:${entry.lines.join(",")}` : " (never loaded)"}`)
+    const { validateOnly, json: asJson } = options
+    const result = await runCoverageCheck(options)
+    if (asJson) {
+      console.log(JSON.stringify(result, null, 2))
+    } else {
+      if (!validateOnly)
+        console.log(
+          `Coverage source: ${result.verification.source}; ${result.verification.shared ? "complete invocation, shared source hits" : "package-local reports"}${result.verification.source === "existing" ? "; command success and report freshness are not verified" : ""}`,
+        )
+      for (const verdict of result.verdicts) {
+        for (const error of verdict.errors) console.error(`- ${error}`)
+      }
+      for (const error of result.errors) console.error(`- ${error}`)
+      for (const verdict of result.verdicts) {
+        const status = verdict.passed ? "PASS" : "FAIL"
+        console.log(
+          `${status} ${verdict.package}: lines ${fmt(verdict.linesPct)}/${verdict.thresholds.lines}% functions ${fmt(verdict.functionsPct)}/${verdict.thresholds.functions}% (measured ${verdict.measured}, missing ${verdict.missing}, exempted ${verdict.exempted})`,
+        )
+        if (!verdict.passed) {
+          for (const entry of verdict.uncovered) {
+            console.error(`  ${entry.file}${entry.lines.length > 0 ? `:${entry.lines.join(",")}` : " (never loaded)"}`)
+          }
         }
       }
+      if (!result.passed || result.errors.length > 0) {
+        console.error("Coverage gate failed.")
+        process.exit(1)
+      }
+      console.log("Coverage gate passed.")
     }
-    for (const error of result.errors) console.error(`- ${error}`)
-    if (!result.passed || result.errors.length > 0) {
-      console.error("Coverage gate failed.")
-      process.exit(1)
-    }
-    console.log("Coverage gate passed.")
+    if (!result.passed) process.exit(1)
   }
 }

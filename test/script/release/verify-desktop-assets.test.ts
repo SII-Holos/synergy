@@ -2,7 +2,7 @@ import { createHash } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { describe, expect, test } from "bun:test"
-import { desktopChecksumsName } from "../../../packages/desktop/src/release-assets"
+import { desktopChecksumsName } from "../../../apps/desktop/src/release-assets"
 import {
   assertDesktopAssetChecksums,
   assertDesktopAssetNames,

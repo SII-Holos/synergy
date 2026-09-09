@@ -40,7 +40,7 @@ const LOCAL_GATES: Gate[] = [
   { id: "deadcode", run: "bun run deadcode", needs: [] },
   {
     id: "browser-crypto:check",
-    run: "bun test --cwd packages/app test/testing/browser-crypto-contract.test.ts",
+    run: "bun test --cwd apps/web test/testing/browser-crypto-contract.test.ts",
     needs: [],
   },
   { id: "coverage:check", run: "bun run coverage:check", needs: [] },
@@ -108,15 +108,15 @@ export function concurrencyLimit(): number {
 async function runGate(gate: Gate, root: string): Promise<GateError | null> {
   const output = await $`sh -c ${gate.run}`.cwd(root).nothrow().quiet()
   if (output.exitCode === 0) return null
-  // Keep the full failure detail: coverage gates print per-file uncovered
-  // lines that a 1000-char slice truncates to the alphabetically last file,
-  // hiding the real gap list. Include stdout too — coverage-check's per-package
-  // verdict lines go there and are otherwise invisible. Cap only to avoid
-  // pathological logs.
-  const stderr = output.stderr.toString()
-  const stdout = output.stdout.toString()
-  const detail = stdout ? `${stderr}\n--- stdout ---\n${stdout}` : stderr
-  return { gate: gate.id, exitCode: output.exitCode, stderr: detail.slice(0, 100_000) }
+  function bounded(stream: Uint8Array) {
+    const text = Buffer.from(stream).toString()
+    if (text.length <= 49_000) return text
+    return `${text.slice(0, 24_000)}\n… output truncated …\n${text.slice(-24_000)}`
+  }
+  const stderr = bounded(output.stderr)
+  const stdout = bounded(output.stdout)
+  const detail = stdout ? `--- stdout ---\n${stdout}\n--- stderr ---\n${stderr}` : stderr
+  return { gate: gate.id, exitCode: output.exitCode, stderr: detail }
 }
 
 export function validateGateGraph(gates: Gate[]): string[] {
@@ -151,7 +151,7 @@ export async function runGateSet(
   await new Promise<void>((resolve, reject) => {
     const pump = () => {
       while (running < limit) {
-        const ready = gates.find((gate) => pending.has(gate.id) && gate.needs.every((need) => !pending.has(need)))
+        const ready = gates.find((gate) => pending.has(gate.id) && gate.needs.every((need) => results.has(need)))
         if (!ready) break
         pending.delete(ready.id)
         running++

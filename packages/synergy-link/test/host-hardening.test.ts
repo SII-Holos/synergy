@@ -167,7 +167,12 @@ describe("synergy-link host hardening", () => {
     const host = createHost()
     try {
       const sessionA = await openSession(host)
-      const started = await execute(host, sessionA, "req_finished_owner", "printf owner-only-output")
+      const started = await execute(
+        host,
+        sessionA,
+        "req_finished_owner",
+        "printf 'owner-only-output\\nsecond line\\nlast line'",
+      )
       const id = processID(started)
 
       let ownerPoll = await processRequest(host, leaseA(sessionA), "poll", id)
@@ -180,6 +185,25 @@ describe("synergy-link host hardening", () => {
         ownerPoll = await processRequest(host, leaseA(sessionA), "poll", id)
       }
       expect(ownerPoll.ok).toBe(true)
+
+      const ownerLog = await processRequest(host, leaseA(sessionA), "log", id, { offset: 1, limit: 1 })
+      expect(ownerLog.ok).toBe(true)
+      if (!ownerLog.ok || ownerLog.tool !== "process") throw new Error("Owner log request failed")
+      expect(ownerLog.result.output).toBe("second line")
+      expect(ownerLog.result.metadata.nextOffset).toBe(2)
+      expect(ownerLog.result.metadata.status).toBe("completed")
+
+      const lastPage = await processRequest(host, leaseA(sessionA), "log", id, { offset: 2, limit: 10 })
+      expect(lastPage.ok).toBe(true)
+      if (!lastPage.ok || lastPage.tool !== "process") throw new Error("Final log page failed")
+      expect(lastPage.result.output).toBe("last line")
+      expect(lastPage.result.metadata.nextOffset).toBe(3)
+
+      const exhausted = await processRequest(host, leaseA(sessionA), "log", id, { offset: 3 })
+      expect(exhausted.ok).toBe(true)
+      if (!exhausted.ok || exhausted.tool !== "process") throw new Error("Exhausted log page failed")
+      expect(exhausted.result.output).toBe("(no output)")
+      expect(exhausted.result.metadata.nextOffset).toBe(3)
 
       const foreignLog = await processRequest(host, leaseB(), "log", id)
       expect(foreignLog.ok).toBe(false)

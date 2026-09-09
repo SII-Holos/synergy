@@ -441,13 +441,6 @@ export function MinimalActivitySummary(props: { item: ActivitySummaryItem }) {
           </>
         )}
       </For>
-      <Show when={props.item.now?.text}>
-        {(now) => (
-          <span data-slot="minimal-activity-now" aria-hidden="true">
-            {now()}
-          </span>
-        )}
-      </Show>
     </div>
   )
 }

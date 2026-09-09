@@ -5,8 +5,8 @@
   "files": {
     "AGENTS.md": 1700,
     "docs/AGENTS.md": 1600,
-    "packages/synergy/AGENTS.md": 1100,
-    "packages/app/AGENTS.md": 1100,
+    "packages/product-runtime/AGENTS.md": 1100,
+    "apps/web/AGENTS.md": 1100,
     "docs/decisions/README.md": 1200,
     "docs/postmortem/README.md": 800
   }

@@ -1,0 +1,1015 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "ref": "Config",
+  "type": "object",
+  "properties": {
+    "$schema": { "description": "JSON schema reference for configuration validation", "type": "string" },
+    "logLevel": {
+      "description": "Log level",
+      "ref": "LogLevel",
+      "type": "string",
+      "enum": ["DEBUG", "INFO", "WARN", "ERROR"]
+    },
+    "server": {
+      "description": "Server configuration for synergy serve and web commands",
+      "ref": "ServerConfig",
+      "type": "object",
+      "properties": {
+        "port": {
+          "description": "Port to listen on",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "hostname": { "description": "Hostname to listen on", "type": "string" },
+        "mdns": { "description": "Enable mDNS service discovery", "type": "boolean" },
+        "cors": {
+          "description": "Additional origins allowed for CORS and Browser viewer WebSockets",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "command": {
+      "description": "Command configuration",
+      "type": "object",
+      "propertyNames": { "type": "string" },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "template": { "type": "string" },
+          "description": { "type": "string" },
+          "agent": { "type": "string" },
+          "model": { "type": "string" }
+        },
+        "required": ["template"],
+        "additionalProperties": false
+      }
+    },
+    "timeout": {
+      "description": "Timeout configuration for assistant steps, provider requests, tool execution, and permission prompts",
+      "type": "object",
+      "properties": {
+        "invoke_sec": {
+          "description": "Max wall-clock seconds for one assistant step (default: 21600 = 6h)",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "provider": {
+          "type": "object",
+          "properties": {
+            "ttfb_sec": {
+              "description": "Max seconds to wait for first byte (TTFB) from provider. Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). Default: 3600 = 1h",
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "idle_sec": {
+              "description": "Idle timeout in seconds (0/false = disable, default: 900 = 15min). Resets on each data chunk.",
+              "anyOf": [
+                { "type": "number", "minimum": 0 },
+                { "type": "boolean", "const": false }
+              ]
+            },
+            "wall_sec": {
+              "description": "Hard wall-clock timeout per HTTP request in seconds (0 = disabled, default: 0). CAUTION: conflicts with streaming — will interrupt normal token output. Only enable if you need a hard cap beyond idle+TTFB",
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "tool": {
+          "type": "object",
+          "properties": {
+            "default_sec": {
+              "description": "Default timeout per tool execution in seconds (default: 7200 = 2h)",
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "overrides": {
+              "description": "Per-tool timeout overrides by tool name, e.g. { bash: 600, webfetch: 120 }",
+              "type": "object",
+              "propertyNames": { "type": "string" },
+              "additionalProperties": { "type": "number", "exclusiveMinimum": 0 }
+            }
+          },
+          "additionalProperties": false
+        },
+        "permission": {
+          "type": "object",
+          "properties": {
+            "ask_sec": {
+              "description": "Max seconds to wait for permission approval before auto-denying (default: 3600 = 1h)",
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "cortex": {
+      "description": "Cortex task scheduling configuration",
+      "type": "object",
+      "properties": {
+        "primaryOnlyTools": {
+          "description": "Tools excluded from delegated agents",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "maxConcurrentTasks": {
+          "description": "Maximum number of Cortex subagent tasks that may run concurrently (default: 8)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    },
+    "execution": {
+      "description": "Process isolation, worker recycling, and bounded execution scheduling",
+      "type": "object",
+      "properties": {
+        "continueOnDeny": {
+          "description": "Continue the loop after a denied tool call (default: false)",
+          "type": "boolean"
+        },
+        "messageCache": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" }, "verify": { "type": "boolean" } },
+          "additionalProperties": false
+        },
+        "lspIdleReap": { "description": "Reap idle language servers (default: true)", "type": "boolean" },
+        "agentWorkers": {
+          "description": "Maximum number of isolated Agent workers (default: min(4, available CPUs - 1), at least 1)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 64
+        },
+        "agentWorkerMinIdle": {
+          "description": "Minimum number of idle Agent workers kept warm (default: 0; cannot exceed agentWorkers)",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "agentWorkerIdleTimeoutMs": {
+          "description": "Time an excess idle Agent worker remains warm before retirement (default: 60000)",
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 3600000
+        },
+        "agentQueueMax": {
+          "description": "Maximum queued Agent turns waiting for a worker (default: 256)",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32768
+        },
+        "agentQueueMaxMb": {
+          "description": "Maximum aggregate queued Agent-turn payload size in MiB (default: 256)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 4096
+        },
+        "agentWorkerMaxTurns": {
+          "description": "Turns completed before an Agent worker is recycled (default: 64)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 10000
+        },
+        "agentWorkerMaxRssMb": {
+          "description": "Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 3072)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 131072
+        },
+        "agentWorkerMaxHeapMb": {
+          "description": "Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 2048)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 131072
+        },
+        "agentWorkerIdleBaselineRecycle": {
+          "description": "Recycle idle Agent workers after post-GC memory grows beyond their warm baseline (default: Linux only)",
+          "type": "boolean"
+        },
+        "agentWorkerIdleBaselineRssGrowthMb": {
+          "description": "Allowed post-GC RSS growth above an Agent worker's warm idle baseline in MiB (default: 256)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 131072
+        },
+        "agentWorkerIdleBaselineExternalGrowthMb": {
+          "description": "Allowed post-GC external-memory growth above an Agent worker's warm idle baseline in MiB (default: 128)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 131072
+        },
+        "agentCancelGraceMs": {
+          "description": "Grace period before terminating an Agent worker that ignores cancellation (default: 5000)",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        },
+        "agentHeartbeatTimeoutMs": {
+          "description": "Maximum time without an Agent worker heartbeat before forced replacement (default: 45000)",
+          "type": "integer",
+          "minimum": 30000,
+          "maximum": 300000
+        },
+        "policyWorkers": {
+          "description": "Number of isolated Policy workers (default: min(2, available CPUs - 1), at least 1)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 16
+        },
+        "policyQueueMax": {
+          "description": "Maximum queued Policy classifications waiting for a worker (default: 256)",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32768
+        },
+        "policyQueueMaxMb": {
+          "description": "Maximum aggregate queued Policy-classification payload size in MiB (default: 64)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 1024
+        },
+        "policyTimeoutMs": {
+          "description": "Maximum total time for a Policy classification before conservative fallback (default: 1000)",
+          "type": "integer",
+          "minimum": 50,
+          "maximum": 10000
+        },
+        "policyWorkerMaxRequests": {
+          "description": "Classifications completed before a Policy worker is recycled (default: 512)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 100000
+        },
+        "policyWorkerMaxRssMb": {
+          "description": "RSS threshold in MiB for terminating or recycling a Policy worker (default: 512)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 16384
+        },
+        "policyWorkerMaxHeapMb": {
+          "description": "Heap-used threshold in MiB for terminating or recycling a Policy worker (default: 256)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 16384
+        },
+        "policyCancelGraceMs": {
+          "description": "Shutdown grace period before terminating a Policy worker (default: 25)",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "policyHeartbeatTimeoutMs": {
+          "description": "Maximum time without a Policy worker heartbeat before forced replacement (default: 15000)",
+          "type": "integer",
+          "minimum": 10000,
+          "maximum": 120000
+        },
+        "toolConcurrency": {
+          "description": "Maximum process-wide concurrent ToolTasks (default: twice available CPUs, bounded to 4-32)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 512
+        },
+        "toolQueueMax": {
+          "description": "Maximum queued ToolTasks waiting for execution capacity (default: 32 per tool slot)",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65536
+        },
+        "toolQueueMaxMb": {
+          "description": "Maximum aggregate queued ToolTask input size in MiB (default: 128)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 4096
+        },
+        "toolCancelGraceMs": {
+          "description": "Grace period for active ToolTasks during runtime shutdown (default: 3000)",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        },
+        "toolExecutorConcurrency": {
+          "description": "Optional concurrency limits for each Tool Executor class",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": ["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]
+          },
+          "additionalProperties": { "type": "integer", "exclusiveMinimum": 0, "maximum": 512 }
+        }
+      },
+      "additionalProperties": false
+    },
+    "watcher": {
+      "type": "object",
+      "properties": { "ignore": { "type": "array", "items": { "type": "string" } } },
+      "additionalProperties": false
+    },
+    "snapshot": { "type": "boolean" },
+    "disabled_providers": {
+      "description": "Disable providers that are loaded automatically. Empty arrays are ignored in each config layer, preserving lower-priority filters",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "enabled_providers": {
+      "description": "When non-empty, ONLY these providers will be enabled. Empty arrays are ignored in each config layer, preserving lower-priority filters",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "model": {
+      "description": "Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5",
+      "type": "string"
+    },
+    "nano_model": {
+      "description": "Cheapest model for trivial extraction tasks like title generation, in the format of provider/model. Falls back to mini_model → mid_model → model.",
+      "type": "string"
+    },
+    "mini_model": {
+      "description": "Lightweight model for simple tasks like intent extraction, in the format of provider/model. Falls back to mid_model → model.",
+      "type": "string"
+    },
+    "mid_model": {
+      "description": "Mid-tier model for internal agents that need moderate reasoning (script extraction, reward evaluation, code exploration), in the format of provider/model. Falls back to the default model.",
+      "type": "string"
+    },
+    "thinking_model": {
+      "description": "Deep thinking model for complex reasoning and architecture tasks, in the format of provider/model. Falls back to the default model if not set.",
+      "type": "string"
+    },
+    "long_context_model": {
+      "description": "Model with extra-large context window for processing very long inputs, in the format of provider/model. Falls back to the default model if not set.",
+      "type": "string"
+    },
+    "creative_model": {
+      "description": "Model for creative and visual tasks (UI design, writing, artistry), in the format of provider/model. Falls back to the default model if not set.",
+      "type": "string"
+    },
+    "vision_model": {
+      "description": "Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability.",
+      "type": "string"
+    },
+    "role_variant": {
+      "description": "Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.",
+      "type": "object",
+      "propertyNames": { "type": "string" },
+      "additionalProperties": { "type": "string" }
+    },
+    "default_agent": {
+      "description": "Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.",
+      "type": "string"
+    },
+    "username": {
+      "description": "Custom username to display in conversations instead of system username",
+      "type": "string"
+    },
+    "agent": {
+      "description": "Agent configuration",
+      "type": "object",
+      "properties": {
+        "synergy": { "ref": "AgentConfig" },
+        "synergy-max": { "ref": "AgentConfig" },
+        "synergy-flash": { "ref": "AgentConfig" },
+        "developer": { "ref": "AgentConfig" },
+        "general": { "ref": "AgentConfig" },
+        "explore": { "ref": "AgentConfig" },
+        "title": { "ref": "AgentConfig" },
+        "summary": { "ref": "AgentConfig" },
+        "compaction": { "ref": "AgentConfig" }
+      },
+      "additionalProperties": { "ref": "AgentConfig" }
+    },
+    "provider": {
+      "description": "Custom provider configurations and model overrides",
+      "type": "object",
+      "propertyNames": { "type": "string" },
+      "additionalProperties": {
+        "ref": "ProviderConfig",
+        "type": "object",
+        "properties": {
+          "api": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "signupUrl": { "type": "string" },
+          "recommendation": {
+            "type": "object",
+            "properties": {
+              "level": { "type": "string", "enum": ["featured", "recommended", "standard"] },
+              "rank": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
+              "headline": { "type": "string" },
+              "reason": { "type": "string" },
+              "cta": {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "const": "external" },
+                  "label": { "type": "string" },
+                  "url": { "type": "string" }
+                },
+                "required": ["kind", "label", "url"],
+                "additionalProperties": false
+              },
+              "defaultModel": { "type": "string" }
+            },
+            "required": ["level"],
+            "additionalProperties": false
+          },
+          "env": { "type": "array", "items": { "type": "string" } },
+          "id": { "type": "string" },
+          "npm": { "type": "string" },
+          "models": {
+            "type": "object",
+            "propertyNames": { "type": "string" },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "family": { "type": "string" },
+                "release_date": { "type": "string" },
+                "attachment": { "type": "boolean" },
+                "reasoning": { "type": "boolean" },
+                "reasoning_options": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": { "type": { "type": "string" }, "values": { "type": "array", "items": {} } },
+                    "required": ["type"],
+                    "additionalProperties": false
+                  }
+                },
+                "temperature": { "default": false, "type": "boolean" },
+                "tool_call": { "type": "boolean" },
+                "interleaved": {
+                  "anyOf": [
+                    { "type": "boolean", "const": true },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "field": { "type": "string", "enum": ["reasoning_content", "reasoning_details"] }
+                      },
+                      "required": ["field"],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "cost": {
+                  "type": "object",
+                  "properties": {
+                    "input": { "type": "number", "minimum": 0 },
+                    "output": { "type": "number", "minimum": 0 },
+                    "cache_read": { "type": "number", "minimum": 0 },
+                    "cache_write": { "type": "number", "minimum": 0 },
+                    "cache_write_1h": { "type": "number", "minimum": 0 },
+                    "context_over_200k": {
+                      "type": "object",
+                      "properties": {
+                        "input": { "type": "number", "minimum": 0 },
+                        "output": { "type": "number", "minimum": 0 },
+                        "cache_read": { "type": "number", "minimum": 0 },
+                        "cache_write": { "type": "number", "minimum": 0 },
+                        "cache_write_1h": { "type": "number", "minimum": 0 }
+                      },
+                      "additionalProperties": false
+                    },
+                    "tiers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "input": { "type": "number", "minimum": 0 },
+                          "output": { "type": "number", "minimum": 0 },
+                          "cache_read": { "type": "number", "minimum": 0 },
+                          "cache_write": { "type": "number", "minimum": 0 },
+                          "cache_write_1h": { "type": "number", "minimum": 0 },
+                          "tier": {
+                            "type": "object",
+                            "properties": {
+                              "type": { "type": "string", "const": "context" },
+                              "size": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+                            },
+                            "required": ["type", "size"],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": ["tier"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "units": {
+                      "type": "object",
+                      "properties": {
+                        "audio_seconds": {
+                          "type": "object",
+                          "properties": {
+                            "price": { "type": "number", "minimum": 0 },
+                            "per": { "type": "number", "exclusiveMinimum": 0 }
+                          },
+                          "required": ["price", "per"],
+                          "additionalProperties": false
+                        },
+                        "audio_input_tokens": {
+                          "type": "object",
+                          "properties": {
+                            "price": { "type": "number", "minimum": 0 },
+                            "per": { "type": "number", "exclusiveMinimum": 0 }
+                          },
+                          "required": ["price", "per"],
+                          "additionalProperties": false
+                        },
+                        "audio_output_tokens": {
+                          "type": "object",
+                          "properties": {
+                            "price": { "type": "number", "minimum": 0 },
+                            "per": { "type": "number", "exclusiveMinimum": 0 }
+                          },
+                          "required": ["price", "per"],
+                          "additionalProperties": false
+                        },
+                        "characters": {
+                          "type": "object",
+                          "properties": {
+                            "price": { "type": "number", "minimum": 0 },
+                            "per": { "type": "number", "exclusiveMinimum": 0 }
+                          },
+                          "required": ["price", "per"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "input_audio": { "type": "number", "minimum": 0 },
+                    "output_audio": { "type": "number", "minimum": 0 },
+                    "reasoning": { "type": "number", "minimum": 0 }
+                  },
+                  "additionalProperties": {}
+                },
+                "limit": {
+                  "type": "object",
+                  "properties": {
+                    "context": { "type": "number" },
+                    "input": { "type": "number" },
+                    "output": { "type": "number" }
+                  },
+                  "required": ["context", "output"],
+                  "additionalProperties": false
+                },
+                "modalities": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "array",
+                      "items": { "type": "string", "enum": ["text", "audio", "image", "video", "pdf"] }
+                    },
+                    "output": {
+                      "type": "array",
+                      "items": { "type": "string", "enum": ["text", "audio", "image", "video", "pdf"] }
+                    }
+                  },
+                  "required": ["input", "output"],
+                  "additionalProperties": false
+                },
+                "supported_image_media_types": { "type": "array", "items": { "type": "string" } },
+                "status": { "type": "string", "enum": ["alpha", "beta", "deprecated"] },
+                "catalog_state": { "type": "string", "enum": ["active", "retained"] },
+                "options": {
+                  "default": {},
+                  "type": "object",
+                  "propertyNames": { "type": "string" },
+                  "additionalProperties": {}
+                },
+                "headers": {
+                  "type": "object",
+                  "propertyNames": { "type": "string" },
+                  "additionalProperties": { "type": "string" }
+                },
+                "provider": {
+                  "type": "object",
+                  "properties": { "npm": { "type": "string" } },
+                  "additionalProperties": false
+                },
+                "variants": {
+                  "description": "Variant-specific configuration",
+                  "type": "object",
+                  "propertyNames": { "type": "string" },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "disabled": { "description": "Disable this variant for the model", "type": "boolean" }
+                    },
+                    "additionalProperties": {}
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "profile": {
+            "description": "Canonical provider profile whose runtime behavior this account connection uses",
+            "type": "string",
+            "minLength": 1
+          },
+          "modelsDevProviderID": {
+            "description": "Models.dev provider id to use as this provider connection's model catalog source",
+            "type": "string",
+            "minLength": 1
+          },
+          "whitelist": { "type": "array", "items": { "type": "string" } },
+          "blacklist": { "type": "array", "items": { "type": "string" } },
+          "options": {
+            "type": "object",
+            "properties": {
+              "apiKey": { "type": "string" },
+              "baseURL": { "type": "string" },
+              "enterpriseUrl": { "description": "GitHub Enterprise URL for copilot authentication", "type": "string" },
+              "setCacheKey": {
+                "description": "Enable promptCacheKey for this provider (default false)",
+                "type": "boolean"
+              },
+              "mergeSystemMessages": {
+                "description": "Merge leading system messages into a single system message for strict OpenAI-compatible endpoints that reject multiple or non-leading system messages (e.g. vLLM Qwen chat templates). Default false.",
+                "type": "boolean"
+              },
+              "timeout": {
+                "description": "Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.",
+                "anyOf": [
+                  {
+                    "description": "Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.",
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  { "description": "Disable timeout for this provider entirely.", "type": "boolean", "const": false }
+                ]
+              }
+            },
+            "additionalProperties": {}
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "sandbox": {
+      "description": "Sandbox configuration for workspace boundary enforcement",
+      "ref": "SandboxConfig",
+      "type": "object",
+      "properties": {
+        "enabled": { "description": "Enable the sandbox runtime when available (default: true)", "type": "boolean" },
+        "fallbackPolicy": {
+          "description": "How to proceed when the requested sandbox runtime is unavailable (default: 'warn')",
+          "type": "string",
+          "enum": ["warn", "allow", "deny"]
+        },
+        "backend": {
+          "description": "Force a specific sandbox backend. 'auto' (default) selects the platform-native backend. Valid: 'auto' (platform default), 'seatbelt-deny-default' (macOS deny-default SBPL), 'seatbelt-legacy-allow-default' (macOS allow-default SBPL), 'synergy-sandbox-linux' (Linux bundled bwrap), 'bwrap-inline-debug' (Linux in-tree bwrap debug), 'windows-restricted-token' (Windows MVP), 'windows-elevated' (Windows full, future).",
+          "type": "string",
+          "enum": [
+            "auto",
+            "seatbelt-deny-default",
+            "seatbelt-legacy-allow-default",
+            "synergy-sandbox-linux",
+            "bwrap-inline-debug",
+            "windows-restricted-token",
+            "windows-elevated"
+          ]
+        },
+        "network": {
+          "description": "Network configuration for sandbox enforcement",
+          "type": "object",
+          "properties": {
+            "mode": {
+              "description": "Network access mode within the sandbox (default: 'restricted')",
+              "type": "string",
+              "enum": ["restricted", "proxy_only", "full"]
+            }
+          },
+          "additionalProperties": false
+        },
+        "macos": {
+          "description": "macOS-specific sandbox settings",
+          "type": "object",
+          "properties": {
+            "denialLogger": {
+              "description": "Log sandbox denials via macOS Seatbelt (default: true)",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "linux": {
+          "description": "Linux-specific sandbox settings",
+          "type": "object",
+          "properties": {
+            "bundledBwrap": {
+              "description": "Use the bundled bwrap binary instead of system bwrap (default: true)",
+              "type": "boolean"
+            },
+            "landlockFallback": {
+              "description": "Fall back to Landlock LSM when bwrap is unavailable (default: true)",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "windows": {
+          "description": "Windows-specific sandbox settings",
+          "type": "object",
+          "properties": {
+            "level": {
+              "description": "Windows sandbox level (default: 'restricted-token')",
+              "type": "string",
+              "enum": ["disabled", "restricted-token", "elevated"]
+            },
+            "helperPath": { "description": "Path to the synergy-sandbox-windows.exe helper binary", "type": "string" },
+            "verifyHelperHash": {
+              "description": "Verify the helper binary SHA-256 hash before use (default: true)",
+              "type": "boolean"
+            },
+            "privateDesktop": {
+              "description": "Create a private desktop for the sandboxed process (default: true)",
+              "type": "boolean"
+            },
+            "conpty": { "description": "Use ConPTY for pseudo-terminal support (default: true)", "type": "boolean" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "observability": {
+      "description": "Local logs, indexed telemetry, and diagnostics settings",
+      "ref": "ObservabilityConfig",
+      "type": "object",
+      "properties": {
+        "modelSpans": { "description": "Record AI SDK model spans (default: false)", "type": "boolean" },
+        "enabled": {
+          "description": "Enable local indexed observability events, spans, metrics, issues, and diagnostics (default: true)",
+          "type": "boolean"
+        },
+        "retentionDays": {
+          "description": "Days to retain optional observability mirror files (default: 7)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxBytes": {
+          "description": "Maximum total local observability storage in bytes (default: 250MB)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "stalledToolMs": {
+          "description": "Milliseconds without tool activity before emitting a stalled-tool observability event",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "performance": {
+          "description": "Structured local performance observability settings",
+          "type": "object",
+          "properties": {
+            "enabled": { "description": "Enable structured local performance metrics and traces", "type": "boolean" },
+            "samplingRate": {
+              "description": "Default performance metric sampling rate",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "metricRetentionMs": {
+              "description": "Milliseconds to retain raw performance metrics",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "traceRetentionMs": {
+              "description": "Milliseconds to retain performance spans and trace details",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "resourceSampleIntervalMs": {
+              "description": "Runtime resource sampling interval",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "slowTraceThresholdMs": {
+              "description": "Default slow trace issue threshold",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxTraceEvents": {
+              "description": "Maximum related events returned for a trace detail",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxTimelineBuckets": {
+              "description": "Maximum timeline buckets returned to the dashboard",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxTraceListLimit": {
+              "description": "Maximum trace list rows returned",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxAttributeStringLength": {
+              "description": "Maximum redacted attribute string length",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "dashboardRefreshMs": {
+              "description": "Performance dashboard polling refresh interval",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "sseHeartbeatMs": {
+              "description": "Performance SSE heartbeat interval",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "sseBufferSize": {
+              "description": "Performance event stream replay buffer size",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "perClientSseQueueSize": {
+              "description": "Per-client performance SSE queue size",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "redactAttributeKeys": {
+              "description": "Additional performance telemetry attribute keys to redact",
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "rateLimits": {
+              "type": "object",
+              "propertyNames": { "type": "string" },
+              "additionalProperties": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+            },
+            "storage": {
+              "type": "object",
+              "properties": {
+                "sqliteEnabled": { "type": "boolean" },
+                "jsonlMirrorEnabled": {
+                  "description": "Enable optional JSONL mirror files for debugging exports",
+                  "type": "boolean"
+                },
+                "maxSqliteBytes": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                "walCheckpointIntervalMs": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 }
+              },
+              "additionalProperties": false
+            },
+            "thresholds": {
+              "type": "object",
+              "propertyNames": { "type": "string" },
+              "additionalProperties": { "type": "number", "exclusiveMinimum": 0 }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "controlProfile": {
+      "description": "Default control profile applied to all agents",
+      "ref": "ControlProfileId",
+      "type": "string",
+      "enum": ["guarded", "autonomous", "full_access"]
+    },
+    "instructions": {
+      "description": "Additional instruction files or patterns to include",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "project_doc_fallback_filenames": {
+      "description": "Ordered fallback instruction filenames to try when AGENTS.md is missing in a directory",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "project_doc_max_bytes": {
+      "description": "Maximum bytes to include from each automatically discovered instruction file (default: 32768; 0 disables automatic discovery)",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "permission": { "ref": "PermissionConfig" },
+    "smartAllow": {
+      "description": "Use the SmartAllow internal agent to auto-allow high-confidence safe asks in guarded mode and eligible false-positive denies in autonomous mode using metadata or redacted evidence only; full_access does not need SmartAllow",
+      "type": "boolean"
+    },
+    "tools": { "type": "object", "propertyNames": { "type": "string" }, "additionalProperties": { "type": "boolean" } },
+    "question": {
+      "type": "object",
+      "properties": {
+        "timeout": {
+          "description": "Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h)",
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "compaction": {
+      "type": "object",
+      "properties": {
+        "auto": {
+          "description": "Enable automatic compaction when context is full (default: true)",
+          "type": "boolean"
+        },
+        "prune": { "description": "Enable pruning of old tool outputs (default: true)", "type": "boolean" },
+        "overflowThreshold": {
+          "description": "Fraction of usable context that triggers auto-compaction (default: 0.85)",
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 1
+        },
+        "maxHistoryImages": {
+          "description": "Maximum number of historical images to send as base64 per request (older images replaced with text placeholders). Default: 8.",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "codexRemote": {
+          "description": "Enable Codex Remote Compaction V2 for openai-codex sessions: request an opaque server-side compaction artifact alongside the local text summary and replay it on later same-model turns (default: false).",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "prompt": {
+      "type": "object",
+      "properties": {
+        "coauthorReminder": {
+          "description": "Include the git coauthor reminder in agent prompts (default: true)",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "category": {
+      "description": "Custom category configurations for background tasks. Categories define model and prompt presets.",
+      "type": "object",
+      "propertyNames": { "type": "string" },
+      "additionalProperties": {
+        "ref": "CategoryConfig",
+        "type": "object",
+        "properties": {
+          "model": { "description": "Model to use for this category (e.g., 'sii-openai/GPT-5.2')", "type": "string" },
+          "temperature": { "description": "Temperature override for this category", "type": "number" },
+          "promptAppend": { "description": "Additional prompt context to inject for this category", "type": "string" },
+          "description": { "description": "Description of when to use this category", "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "skills": {
+      "ref": "SkillsConfig",
+      "type": "object",
+      "properties": {
+        "compatibility": {
+          "description": "Per-source compatibility toggles for discovering Skills from other agent tools",
+          "ref": "SkillsCompatibilityConfig",
+          "type": "object",
+          "properties": {
+            "agents": {
+              "description": "Load Agent Skills from .agents/skills directories (default: true)",
+              "type": "boolean"
+            },
+            "claude": {
+              "description": "Load Claude Code Skills from .claude/skills directories (default: true)",
+              "type": "boolean"
+            },
+            "codex": {
+              "description": "Load Codex Skills from .codex/skills directories (default: true)",
+              "type": "boolean"
+            },
+            "openclaw": {
+              "description": "Load OpenClaw Skills from .openclaw/skills and workspace skills directories (default: true)",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": {}
+}

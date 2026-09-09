@@ -6,7 +6,7 @@ The channel reuses the standard Channel runtime: providers register through `Cha
 
 ## Why a channel (migration from the legacy integration)
 
-The former first-party GitHub integration (`packages/synergy/src/github/`) used a bespoke delivery store, gate, worker, and Cortex-anchored subagents. It was migrated into a channel provider so GitHub reuses the same lifecycle, session persistence, sidebar projection, diagnostics, and settings UI as Feishu/Clarus:
+The GitHub provider in `packages/connections/src/channel/provider/github/` uses the shared Channel lifecycle, session persistence, sidebar projection, diagnostics and settings UI:
 
 - **Lifecycle** — the provider connects when the account is enabled; polling loops start and stop with the account; status surfaces in Settings → Channels.
 - **Sessions** — every issue/PR thread maps to one persistent channel Session (endpoint `channel:github:<accountId>:chat:<owner/repo>#<number>`), so the sidebar shows the whole conversation history and follow-up comments continue the same thread.

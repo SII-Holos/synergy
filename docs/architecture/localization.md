@@ -16,7 +16,7 @@ The preference belongs to global General configuration. Project Scope changes do
 
 ## Runtime ownership
 
-`packages/app` owns:
+`apps/web` owns:
 
 - locale preference and active-locale state
 - bootstrap and global-config reconciliation
@@ -85,9 +85,9 @@ Canonical commands are:
 
 ```bash
 bun run localization:source
-bun run --cwd packages/app i18n:extract
+bun run --cwd apps/web i18n:extract
 bun run localization:check
-bun run --cwd packages/app build
+bun run --cwd apps/web build
 bun run quality:quick
 ```
 

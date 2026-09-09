@@ -93,6 +93,14 @@ Approval records are tied to publisher identity and the structured access grant.
 
 ## Live Development
 
+For a complete isolated host, run:
+
+```bash
+synergy-plugin preview
+```
+
+Open the printed URL, approve the built plugin in Plugins, and select a Shell or Skin in General settings if needed. Preview runs the production App with a temporary home and its own port. It watches compiled dependencies and declared resources; restart it after capability changes to review the new grant. `synergy-plugin typegen` generates typed operation/event declarations. The public `@ericsanchezok/synergy-plugin-kit/testing` entry provides preview and browser helpers for authors' tests.
+
 Use an isolated Synergy instance with an explicit `SYNERGY_HOME`, then run:
 
 ```bash
@@ -111,3 +119,5 @@ synergy-plugin publish-market --repo https://github.com/owner/my-plugin
 ```
 
 Publishing is an explicit command. Build, validate, test, and pack never mutate a remote registry. See [Marketplace](marketplace.md).
+
+The [functional example](../../packages/plugin-kit/test/fixtures/ui5-functional/README.md) and [workbench example](../../packages/plugin-kit/test/fixtures/ui5-workbench/README.md) are complete buildable author projects. The repository's `bun run plugin-ui:test` verifies their packed artifacts against the production host. For a local performance comparison, build the App in both checkouts, then run `bun test/plugin-ui5/benchmark.ts <baseline-checkout> <output.json>` from the updated checkout. The benchmark uses isolated homes and reports three trials of startup resources, session navigation, 60 message-part updates, bounded rows and first plugin navigation; it never uses a configured model provider.

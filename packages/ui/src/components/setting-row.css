@@ -1,0 +1,25 @@
+.settings-row-title {
+  color: var(--text-base);
+  font-size: var(--settings-type-row-title-size, 13px);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--settings-type-row-title-line-height, 1.5);
+}
+.ds-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 54px;
+  padding: 8px 0;
+}
+.settings-row-state {
+  color: var(--text-weak);
+  font-size: var(--settings-type-caption-size, 12px);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--settings-type-caption-line-height, 1.5);
+}
+.settings-row-description {
+  color: var(--text-weak);
+  font-size: var(--settings-type-body-size, 13px);
+  line-height: var(--settings-type-body-line-height, 1.5);
+}

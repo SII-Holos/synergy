@@ -38,7 +38,7 @@ sessions/<scope-id>/<session-id>/messages/<message-id>/info.json
 sessions/<scope-id>/<session-id>/messages/<message-id>/parts/<part-id>.json
 ```
 
-Use `jq`, `rg`, `find`, and `ls` only for read-only inspection. Derive exact paths from `packages/synergy/src/storage/path.ts` when a collection name is uncertain; do not rely on an old directory diagram.
+Use `jq`, `rg`, `find`, and `ls` only for read-only inspection. Derive exact paths from `packages/harness/src/storage/path.ts` when a collection name is uncertain; do not rely on an old directory diagram.
 
 ## Reconstruct the Invariants
 

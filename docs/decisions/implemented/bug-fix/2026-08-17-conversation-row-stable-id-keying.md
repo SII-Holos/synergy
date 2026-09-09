@@ -12,7 +12,7 @@ The conversation list rendered rows with Solid's reference-keyed `<For each={pro
 
 Key conversation rows by the stable message id instead of by message object reference:
 
-- New helper `buildConversationTimelineSnapshot()` (`packages/app/src/components/session/conversation-timeline.ts`) builds `{ keys, map }` from the timeline, keyed by `message.id`.
+- New helper `buildConversationTimelineSnapshot()` (`apps/web/src/components/session/conversation-timeline.ts`) builds `{ keys, map }` from the timeline, keyed by `message.id`.
 - `conversation.tsx` renders `<For each={timelineSnapshot().keys}>` and reads the current message object through a snapshot getter (`timelineSnapshot().map.get(key)`), so object replacement propagates updated data without remounting the row.
 - The assistant variant switch uses `Dynamic` instead of per-render component selection so it stays reactive inside the stable row.
 - Regression coverage: `conversation-timeline.test.ts` (helper) and `conversation-row-retention.test.ts` (behavioral Playwright fixture mounting `SessionConversation`, replacing message objects with same ids, asserting the row owner stays mounted while updated text propagates).

@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-The Feishu channel outbound bridge projects the completed tool attachments of a task tree (`projectChannelTaskParts` in `packages/synergy/src/channel/outbound-parts.ts`) onto every terminal reply. `AttachmentDiscovery` (`packages/synergy/src/tool/attachment-discovery.ts`) attaches any supported file path that merely appears in a bash command's stdout (`detectedFrom: "line" | "path"`) as a first-class attachment, indistinguishable from explicit deliverables. In boss-session flows a debug probe once matched a Flutter pub-cache test image; that incidental attachment was then re-projected onto every later channel message.
+The Feishu channel outbound bridge projects the completed tool attachments of a task tree (`projectChannelTaskParts` in `packages/connections/src/channel/outbound-parts.ts`) onto every terminal reply. `AttachmentDiscovery` (`packages/runtime-local/src/tools/attachment-discovery.ts`) attaches any supported file path that merely appears in a bash command's stdout (`detectedFrom: "line" | "path"`) as a first-class attachment, indistinguishable from explicit deliverables. In boss-session flows a debug probe once matched a Flutter pub-cache test image; that incidental attachment was then re-projected onto every later channel message.
 
 ## Decision
 

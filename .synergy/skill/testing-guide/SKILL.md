@@ -11,7 +11,7 @@ description: Design, write, run, and diagnose Synergy tests with Bun, temporary 
 2. For a bug or new behavior, write the smallest failing test before the implementation. Skip a new test only for a pure refactor whose existing tests already cover unchanged behavior.
 3. Assert public results, state transitions, emitted contracts, permissions, or recovery behavior. Avoid source-text assertions, private call counts, and snapshots of irrelevant structure.
 
-For non-blocking and ordering contracts, hold the downstream operation behind an explicit promise and assert the upstream result while it remains pending. Use a generous timeout only to detect deadlocks, release the barrier in cleanup, and avoid wall-clock performance thresholds in instrumented correctness suites.
+For non-blocking and ordering contracts, hold the downstream operation behind an explicit promise and assert the upstream result while it remains pending. When asserting that an inbox item remains queued after an operation that schedules a wake, hold a real SessionManager loop lease on the worker; clean up its queued work before releasing the lease so a delayed wake cannot escape the fixture. Use a generous test-framework timeout only to detect deadlocks, release the barrier in cleanup, and avoid wall-clock performance thresholds in instrumented correctness suites. Do not wrap correctness-only completion signals in shorter `Promise.race` timers: filesystem and worktree startup contention can exceed those incidental budgets on CI.
 
 ## Choose the Lowest Useful Level
 
@@ -21,9 +21,10 @@ For non-blocking and ordering contracts, hold the downstream operation behind an
 - route/SDK: call the route or generated client contract
 - session/LLM loop: real session state with deterministic provider/model fixtures
 - Web/UI: component/context behavior plus the smallest browser or integration check needed
-- package/release: build, pack, and validate the published artifact rather than source layout alone
+- external agent adapters: execute a deterministic protocol fixture as a real child through the public Adapter interface; verify stdin, event framing, tool errors, usage, thread isolation/resume, credential filtering and shutdown rather than only private argument builders
+- package/release: build, pack, and validate the published artifact rather than source layout alone; run the shared CLI artifact behavior suite against both core and full binaries with `SYNERGY_TEST_ARTIFACT_BIN`, including actual model/tool execution. Help and health checks do not validate product lifecycle delegation.
 
-Inspect two nearby tests and `packages/synergy/test/preload.ts` before introducing a new harness pattern.
+Inspect two nearby tests and `packages/harness/test/support/preload.ts` before introducing a new harness pattern.
 
 Place every test under the owning package's `test/` directory, mirroring the relevant source domain when that helps navigation. Place repository-level script and policy tests under the root `test/` directory. Never cascade `*.test.*` or `*.spec.*` files beside implementation files in `src/`, `script/`, or another source directory. Run `bun run test-layout:check` when adding or moving tests.
 
@@ -33,34 +34,38 @@ For localized UI behavior, use a real Lingui `I18nProvider` with minimal English
 
 Use `tmpdir()` and `ScopeContext` instead of mocking Storage, Session, or the filesystem. The preload-managed `SYNERGY_TEST_ROOT` contains temporary fixtures for process-level cleanup, so do not move fixtures back to unmanaged operating-system temp paths or delete them while Scope-owned asynchronous work may still reference them. Restore environment variables and singleton state in cleanup hooks. A module-level replacement of a process global — `globalThis.fetch` above all — is visible to every sibling file in the same shard process: capture the original before installing the replacement and restore it in `afterAll`, because a per-test `finally` that re-reads `globalThis.fetch` restores the replacement, not the original. Honor abort signals and dispose processes, Browser pages, servers, and timers.
 
-Provider/model tests rely on `test/preload.ts` to seed the model catalog. The preload writes the pinned `test/tool/fixtures/models-api.json` fixture to `cache/models.json` under `SYNERGY_TEST_HOME` so the runtime disk-cache path resolves deterministically, sets `MODELS_DEV_API_JSON` to that cached path so the build-time macro and direct macro tests resolve the same fixture, and sets `SYNERGY_DISABLE_MODELS_FETCH=true` to suppress background network refresh. Update the fixture deliberately; never make deterministic tests depend on the live model catalog or real API keys.
+Process lifecycle assertions must wait for the observable completion state within the configured startup/shutdown deadlines, not a fixed number of millisecond sleeps. Keep generation, PID, cleanup and recovery-evidence assertions, and dispose owned processes in `finally`. For persistence jobs, reserve cleanup time within the package test deadline and cancel/drain unfinished jobs before restoring dependencies or deleting their database. Installed binary jobs must align `SYNERGY_BUILD_TARGETS` with the runner ABI and staged required helpers; `--single` alone can select both GNU and musl on Linux.
 
-Core binary builds also default to that pinned fixture. Test build behavior through `script/models-catalog.ts`: the selected catalog must satisfy the runtime schema and contain non-empty OpenAI, Anthropic, and Google providers before compilation. Ordinary local builds may use `MODELS_DEV_API_JSON` as an explicit override; release builds must force the repository-pinned snapshot so network and build-machine cache state cannot alter the artifact.
+Provider/model tests use the package preload configured in `bunfig.toml`; `packages/testing/src/preload.ts` seeds the model catalog. The preload writes the pinned `packages/testing/fixtures/models-api.json` fixture to `cache/models.json` under `SYNERGY_TEST_HOME` so the runtime disk-cache path resolves deterministically, sets `MODELS_DEV_API_JSON` to that cached path so the build-time macro and direct macro tests resolve the same fixture, and sets `SYNERGY_DISABLE_MODELS_FETCH=true` to suppress background network refresh. Update the fixture deliberately; never make deterministic tests depend on the live model catalog or real API keys.
+
+Core binary builds also default to that pinned fixture. Test build behavior through `script/release/shared/build/models-catalog.ts`: the selected catalog must satisfy the runtime schema and contain non-empty OpenAI, Anthropic, and Google providers before compilation. Ordinary local builds may use `MODELS_DEV_API_JSON` as an explicit override; release builds must force the repository-pinned snapshot so network and build-machine cache state cannot alter the artifact.
 
 Tests that exercise the cold-cache path — where no disk or memory cache exists — must spawn a fresh Bun subprocess with a clean isolated home directory. The Bun preloader populates process-global state for the test harness, so the existing process always has a warm cache. A cold-cache test strips `SYNERGY_TEST_HOME` and `MODELS_DEV_API_JSON` from the child environment, sets `SYNERGY_HOME` to a fresh temp directory, and asserts against the child process output.
 
+Full runtime fixtures that exercise model execution must serve both chat and embedding protocols when Library is enabled; a fresh home must not silently turn an execution test into a Hugging Face model-download test. Keep Library retrieval/encoding enabled and assert the normal execution evidence; validate real embedding assets separately.
+
 Use a fake or local boundary only where the external system is not the subject of the test. Do not add Jest/Vitest mocks to the Bun suite without an established package-specific reason.
 
-Playwright DOM-test fixtures that boot a Vite dev server must be hermetic against a no-build checkout (the `ci-coverage` gate runs no build step): alias workspace-package entries whose `import` condition points at gitignored `dist/` output to their source entry; resolve runtime packages that break under dependency pre-bundling (Lingui's `@messageformat/parser` chain) to minimal fixture-local stubs when the suite asserts behavior unrelated to i18n rendering, or add them to `optimizeDeps.include` when the real runtime is the subject; set `optimizeDeps.include` for the Solid runtime/JSX runtime/zod with `noDiscovery: true` so the optimizer never re-runs mid-load and reloads the page; scope `cacheDir` to the fixture temp directory so sibling Playwright servers sharing `node_modules/.vite` cannot invalidate each other; `warmupRequest` the fixture entry before launching the browser and surface page/console/HTTP errors in the failure message instead of a bare 30s selector timeout; and register the suite in the package's `playwrightIsolated` list so bun's worker reaping cannot kill its Chromium process mid-suite. See the [hermetic Vite fixtures decision](../../../docs/decisions/implemented/testing/2026-08-31-hermetic-vite-fixtures-for-playwright-dom-tests.md).
+Playwright DOM-test fixtures that boot a Vite dev server must declare their package prerequisites: published Plugin entries use the root coverage command’s dependency build; alias other workspace-package entries whose `import` condition points at gitignored `dist/` output to their source entry when the fixture tests source behavior; resolve runtime packages that break under dependency pre-bundling (Lingui's `@messageformat/parser` chain) to minimal fixture-local stubs when the suite asserts behavior unrelated to i18n rendering, or add them to `optimizeDeps.include` when the real runtime is the subject; set `optimizeDeps.include` for the Solid runtime/JSX runtime/zod with `noDiscovery: true` so the optimizer never re-runs mid-load and reloads the page; scope `cacheDir` to the fixture temp directory so sibling Playwright servers sharing `node_modules/.vite` cannot invalidate each other; `warmupRequest` the fixture entry before launching the browser and surface page/console/HTTP errors in the failure message instead of a bare 30s selector timeout; and register the suite in the package's `playwrightIsolated` list so bun's worker reaping cannot kill its Chromium process mid-suite. See the [hermetic Vite fixtures decision](../../../docs/decisions/implemented/testing/2026-08-31-hermetic-vite-fixtures-for-playwright-dom-tests.md). Root production-host UI acceptance follows the same process isolation: run `bun run plugin-ui:test`, which starts one Bun process per suite in sequence, instead of passing the entire browser directory to `bun test`.
 
 ## Run Core Suites Through the Orchestrators
 
-Run `packages/synergy` tests through the package scripts, never a raw `bun test --coverage --parallel`:
+Run `packages/harness` tests through the package scripts, never a raw `bun test --coverage --parallel`:
 
 ```bash
-cd packages/synergy
+cd packages/harness
 bun test test/<domain>/<file>.test.ts
 bun run test:ci
 bun run test:coverage
 ```
 
-`test:ci` and `test:coverage` spawn every Bun child with an injected `SYNERGY_TEST_HOME`/`SYNERGY_TEST_ROOT` and no `SYNERGY_HOME`, because Bun 1.3.x does not propagate `test/preload.ts` environment into `--parallel` worker processes — a raw parallel/coverage run falls through to the real user home and writes fixtures into `~/.synergy/data`.
+`test:ci` and `test:coverage` spawn every Bun child with an injected `SYNERGY_TEST_HOME`/`SYNERGY_TEST_ROOT` and no `SYNERGY_HOME`, because Bun 1.3.x does not propagate preload environment into `--parallel` worker processes — a raw parallel/coverage run falls through to the real user home and writes fixtures into `~/.synergy/data`.
 
 `src/global/index.ts` enforces this at module load: a test-entry process (`Bun.main`/argv matching `*.test.*`/`*.spec.*`, or `BUN_TEST_WORKER_ID`/`JEST_WORKER_ID` present) must carry the positive `SYNERGY_TEST_HOME` isolation marker, and is additionally blocked when the root is `os.homedir()/.synergy` or inside it (Windows paths normalized case-insensitively). If you see `TestHomeGuardError`, the run bypassed isolation: re-run through the package scripts or set `SYNERGY_TEST_HOME` to a dedicated test home. `SYNERGY_ALLOW_REAL_HOME=1` is the only escape hatch for a deliberate real-home run.
 
 ## Run Narrow to Broad
 
-Core runtime commands run from `packages/synergy`:
+Core runtime commands run from `packages/harness`:
 
 ```bash
 bun test test/<domain>/<file>.test.ts
@@ -82,9 +87,9 @@ bun run quality
 Localized frontend changes also run:
 
 ```bash
-bun run --cwd packages/app i18n:extract
+bun run --cwd apps/web i18n:extract
 bun run localization:check
-bun run --cwd packages/app build
+bun run --cwd apps/web build
 ```
 
 Extraction must leave tracked PO catalogs unchanged, strict compilation must reject missing Simplified Chinese or invalid ICU messages, and the production build must keep non-English catalogs lazy while excluding development-only pseudo-localization. Exercise a Chinese cold start, rapid switching, catalog-load failure, `html.lang`, keyboard labels, and 375 px layout through an isolated Web/Desktop runtime.
@@ -96,6 +101,7 @@ Run the narrow failing test during iteration, then the affected package/domain s
 Coverage has a floor. `bun run coverage:check` enforces per-package line/function thresholds (the only metrics Bun 1.3.14 exposes in lcov) with an auditable exemption list in `script/coverage-exempt.json`. The rules:
 
 - Cover product logic with real behavioral tests before exempting anything.
+- Assert the complete asynchronous state being tested, not the first intermediate event. For time-budgeted maintenance, drive deferred passes through the public maintenance operation before asserting the final cap; preserve a bounded overall deadline.
 - Register each new workspace package in `script/coverage-exempt.json` with a coverage command and thresholds. When adding nested test directories, verify that the package's coverage command includes them as well as its ordinary test command.
 - Every exemption entry carries a `reason`; entries that match nothing, overlap, or cover more than 25% of a package fail validation.
 - Bun 1.3.14 supports no ignore comments (`istanbul ignore`, `v8 ignore`, and `c8 ignore` are all inert), so whole-file exemption is the only exclusion mechanism. Do not add ignore comments expecting them to work.
@@ -114,3 +120,9 @@ Use [Development reference](../../../docs/reference/development.md) and [Open-so
 ## Handoff
 
 Report the invariant, test location, red/green evidence, commands run, pass/fail counts, unrun gates, platform limitations, and any remaining nondeterminism.
+
+The root `coverage:check` command builds the public Plugin package through the dependency graph before instrumented suites run. Browser fixtures and Plugin Kit scaffolds resolve the published `import` entries; a clean checkout must not rely on artifacts left by another test or package-validation job.
+
+Coverage is attributed to source owners after all commands in a complete root gate succeed. The gate deletes old canonical and shard reports before each command; failed or missing reports cannot contribute cross-package hits. Keep owner thresholds and exact-file exemption reasons when relocating code. Use `bun script/coverage-check.ts --package packages/<owner>` for a fresh local check; `--existing` is diagnostic only, keeps measurements package-local, and cannot certify command success or freshness. Never report a passing `test:coverage` command alone as a threshold pass.
+
+CI workspace test concurrency must account for each package spawning native workers and browser/build processes. After splitting packages, explicitly bound Turbo task concurrency on shared runners and retain the full suite graph. Failure diagnostics must reserve output space for both stream summaries; print failed coverage commands before the uncovered-line listing. Native watcher readiness probes must finish pending writes and observe their deletion before testing a neighboring file creation, so fixture events cannot be mistaken for a rename.

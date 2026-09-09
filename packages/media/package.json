@@ -1,0 +1,49 @@
+{
+  "name": "@ericsanchezok/synergy-media",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./util/document": "./src/util/document.ts",
+    "./voice/routes/voice-route": "./src/voice/routes/voice-route.ts",
+    "./tools/speak": "./src/tools/speak.ts",
+    "./tools/openai-image-gen": "./src/tools/openai-image-gen.ts",
+    "./tools/openai-image-edit": "./src/tools/openai-image-edit.ts",
+    "./tools/lookat": "./src/tools/lookat.ts",
+    "./tools/scan-document": "./src/tools/scan-document.ts",
+    "./tools/render": "./src/tools/render.ts",
+    "./config-schema": "./src/config-schema.ts",
+    "./register-tools": "./src/register-tools.ts",
+    "./register-documents": "./src/register-documents.ts",
+    "./agents": "./src/agents.ts",
+    "./voice": "./src/voice/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/media",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "2.0.111",
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-runtime-local": "workspace:*",
+    "@ericsanchezok/synergy-server": "workspace:*",
+    "@zip.js/zip.js": "2.8.26",
+    "ai": "catalog:",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "markitdown-ts": "0.0.10",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "typescript": "catalog:"
+  }
+}

@@ -65,7 +65,7 @@ function expectAtMostAsBright(theme: ResolvedTheme, inner: ThemeTokenName, outer
  * Every entry here MUST be present in resolved output.
  *
  * Sources scanned:
- *   packages/app/src/components/**\/*.tsx
+ *   apps/web/src/components/**\/*.tsx
  *   packages/ui/src/components/**\/*.css
  *   packages/ui/src/components/**\/*.tsx
  */

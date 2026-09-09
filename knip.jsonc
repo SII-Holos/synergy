@@ -1,3 +1,6 @@
+// Explicit test-runner devDependencies are invoked through Bun package scripts.
+// Server retains hono-openapi runtime peers that its vendor code imports dynamically.
+// dependency-cruiser is invoked with Bun forced as the runtime in deps:check.
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignore": [
@@ -12,7 +15,10 @@
     "packages/**/dist/**",
     "packages/**/release/**",
     "packages/sdk/js/src/gen/**",
-    "packages/synergy/test/tool/fixtures/large-image.png",
+    "apps/**/dist/**",
+    "apps/**/release/**",
+    "apps/web/test/**/.*-fixture-*/**",
+    "packages/ui/test/**/.*-fixture-*/**",
   ],
   "ignoreDependencies": [
     "@babel/preset-typescript",
@@ -37,14 +43,8 @@
     "solid-tiptap",
     "tailwindcss",
     "virtua",
-    "@ai-sdk/provider-utils",
-    "@hono/zod-validator",
-    "chromium-bidi",
-    "mammoth",
-    "onnxruntime-common",
     "electron-builder-squirrel-windows",
     "tree-sitter-bash",
-    "xlsx",
     "turbo",
     "@tsconfig/bun",
     "@tsconfig/node22",
@@ -103,24 +103,13 @@
     "rev-parse",
     "pkg",
     "HEAD",
+    "generate",
   ],
   "ignoreUnresolved": [".json", ".svg"],
   "rules": {
     "catalog": "off",
   },
   "workspaces": {
-    "packages/synergy": {
-      "entry": ["bin/synergy", "script/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
-      "project": ["src/**/*.ts", "script/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
-    },
-    "packages/app": {
-      "entry": ["lingui.config.ts", "src/**/*.{ts,tsx}", "script/**/*.ts", "test/**/*.{ts,tsx}"],
-      "project": ["src/**/*.{ts,tsx}", "script/**/*.ts", "test/**/*.{ts,tsx}"],
-    },
-    "packages/desktop": {
-      "entry": ["script/**/*.ts", "test/**/*.ts"],
-      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
-    },
     "packages/ui": {
       "entry": [
         "src/components/**/*.{ts,tsx}",
@@ -148,6 +137,91 @@
     "packages/util": {
       "entry": ["src/**/*.ts"],
       "project": ["src/**/*.ts"],
+    },
+    "packages/harness": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+    },
+    "packages/runtime-local": {
+      "entry": ["script/**/*.ts", "test/**/*.ts"],
+      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+    },
+    "packages/cli": {
+      "entry": ["bin/synergy", "script/**/*.ts", "test/**/*.ts"],
+      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+    },
+    "packages/server": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@hono/standard-validator", "zod-openapi"],
+    },
+    "packages/product-runtime": {
+      "entry": ["script/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
+      "project": ["src/**/*.ts", "script/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
+    },
+    "packages/browser-runtime": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/computer-runtime": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing", "@hono/standard-validator"],
+    },
+    "packages/library": {
+      "entry": ["script/**/*.ts", "test/**/*.ts"],
+      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/note": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/workflows": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/connections": {
+      "entry": ["script/**/*.ts", "test/**/*.ts"],
+      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/workbench": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/agent-integrations": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/media": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+    },
+    "packages/plugin-host": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/testing": {
+      "entry": ["script/**/*.ts", "test/**/*.ts"],
+      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+    },
+    "apps/web": {
+      "entry": ["lingui.config.ts", "src/**/*.{ts,tsx}", "script/**/*.ts", "test/**/*.{ts,tsx}"],
+      "project": ["src/**/*.{ts,tsx}", "script/**/*.ts", "test/**/*.{ts,tsx}"],
+    },
+    "apps/desktop": {
+      "entry": ["script/**/*.ts", "test/**/*.ts"],
+      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+    },
+    ".": {
+      "ignoreDependencies": ["dependency-cruiser"],
     },
   },
 }

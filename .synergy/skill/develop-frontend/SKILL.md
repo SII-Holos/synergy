@@ -1,13 +1,13 @@
 ---
 name: develop-frontend
-description: Implement or review Synergy Web and shared UI changes across packages/app and packages/ui. Use for components, contexts/stores, navigation, settings, dialogs, workbench surfaces, semantic icons, themes, responsive behavior, accessibility, frontend API calls, event sync, and product interaction changes.
+description: Implement or review Synergy Web and shared UI changes across apps/web and packages/ui. Use for components, contexts/stores, navigation, settings, dialogs, workbench surfaces, semantic icons, themes, responsive behavior, accessibility, frontend API calls, event sync, and product interaction changes.
 ---
 
 # Develop the Frontend
 
 ## Read the Contracts
 
-1. Read `packages/app/AGENTS.md` and [Web product contract](../../../packages/app/PRODUCT.md).
+1. Read `apps/web/AGENTS.md` and [Web product contract](../../../apps/web/PRODUCT.md).
 2. Read [Frontend data sync](../../../docs/architecture/frontend-data-sync.md) for contexts, snapshots, events, streaming, composer intent, or loaded buckets.
 3. Read [Browser runtime](../../../docs/architecture/browser-runtime.md) for Browser UI or Desktop/Web presentation changes.
 4. Load `change-server-api` when the UI needs a new or changed server contract; load `add-tool` for tool-card presentation.
@@ -24,6 +24,8 @@ description: Implement or review Synergy Web and shared UI changes across packag
 8. Read session-shaped store fields through the session data view only: ui components use `useData().view` (`partsFor`/`messagesFor`/`permissionsFor`/`statusFor`/`inboxFor`/`hasInboxBucket`/`todosFor`/`dagNodesFor`/`questionsFor`/`cortexTasks`/`sessions`/`sessionFor`), app components use `useSessionDataView()`. Do not read `data.store.part/permission/...` or `sync.data.<field>[sessionID]` directly in render code — session switches race store intermediate states (missing buckets, released scope stores) and `createMemo` defaults stop applying after first compute, so a direct read can surface `undefined` and crash with a rotating set of TypeErrors. The view accessors apply their empty fallback inside the function body. Missing array buckets must resolve to the shared constants in `packages/ui/src/context/session-data-view.ts` (`EMPTY_PARTS`, `EMPTY_MESSAGES`, …) — never a fresh array literal, because the render chain's `same()` equality guards short-circuit on reference identity and a fresh literal would invalidate every downstream memo on each store tick. `hasInboxBucket` is the only accessor that reports bucket presence: use it to preserve an "not loaded yet" gate when `undefined` semantics matter (e.g. inbox loading state).
 9. Callback parameters are accessors or raw values depending on the control: non-keyed `<Show>` and `<Index>` pass an accessor — call it (`param()`) before rendering or passing it into i18n values, formatters, or attributes — while `<Show keyed>` and `<For>` pass the raw value itself. Passing an accessor uncalled renders its minified source (the crash-page footer once displayed `Version: () => { if (!untrack(condition)) … }`), and calling a keyed `<Show>` or `For` parameter fails typechecking. Prefer the non-callback form reading the source signal directly when no narrowing is needed.
 
+10. Publish page-owned entries in global reactive registries from `onMount`, after transition commit; synchronous setup writes can stage old entries and overwrite their cleanup during commit. Register all cleanup before returning, and use leases for state shared by overlapping owners. Test nested navigation and a suspended transition, asserting that old registry entries disappear, the visible page keeps its commands until commit, disposed loaders abort, and stale replies cannot mutate reopened state. See the [transition lifecycle decision](../../../docs/decisions/implemented/bug-fix/2026-09-07-transition-lifecycle-retention.md).
+
 ## Preserve Browser Capability Boundaries
 
 1. Route ordinary App/UI identifiers through `generateUUID()` or `generateRandomBytes()` from the shared utility package. Do not call `crypto.randomUUID()` or `crypto.getRandomValues()` directly from browser source.
@@ -39,7 +41,7 @@ Read [Frontend localization](../../../docs/architecture/localization.md) before 
 2. Keep descriptors statically extractable with an English default message and a translator comment when product context is not obvious. Use ICU variables, plural/select syntax, and component placeholders for complete messages.
 3. Translate Synergy-owned chrome, actions, states, recovery guidance, and accessibility labels together. Keep user, LLM, Note, source-code, terminal, browser-page, plugin-author, brand, path, identifier, and raw diagnostic content verbatim.
 4. Use the shared active-locale formatter for dates, time, numbers, percentages, currency, lists, and relative time. Do not hard-code locale tags or use a regional locale to imply an unrelated preference such as 24-hour time.
-5. `packages/app` owns locale state, catalog loading, Settings, persistence, bootstrap mirror reconciliation, and the global `I18nProvider`. `packages/ui` consumes that provider through peer dependencies; it does not create a second runtime, import App contexts, inspect browser locale, or own catalogs.
+5. `apps/web` owns locale state, catalog loading, Settings, persistence, bootstrap mirror reconciliation, and the global `I18nProvider`. `packages/ui` consumes that provider through peer dependencies; it does not create a second runtime, import App contexts, inspect browser locale, or own catalogs.
 6. Keep the Settings language control global, responsive, and recoverable: Follow System, English, and Simplified Chinese apply without refresh, do not follow project Scope, and must preserve language self-names so a user can switch back after a mistake.
 7. Run extraction after each coherent copy change, translate every new `zh-CN` message, remove obsolete entries, and keep strict compilation green. Finish with the repository localization contract so new hard-coded product text cannot bypass the catalog.
 
@@ -60,6 +62,8 @@ Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplica
 
 ## Preserve Product Presentation
 
+Derive activity steps and counts from canonical tool parts. Display preferences must not schedule background inference or make session completion depend on presentation work; historical derived summary metadata does not control grouping.
+
 1. Reuse shared workbench, dialog, form, toolbar, and surface primitives before creating local variants.
 2. Preserve polarity: dark content/selection surfaces step brighter inward; light surfaces step darker inward.
 3. Use semantic color/type/spacing tokens. Reserve state colors for real state rather than decoration.
@@ -74,7 +78,8 @@ Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplica
 2. Keep heavyweight feature engines behind the interaction that needs them: Tiptap and Mermaid behind Notes, Monaco behind file Source view, and Ghostty behind Terminal.
 3. Do not evaluate JSX child getters to detect detail presence: use an explicit availability value or property presence, then instantiate children only inside the mounted disclosure. Test closed → open → closed imperative-renderer counts. Bound tool previews and retained expanded-render caches by capacity; use resource identity to open full content on demand. See [bounded tool rendering](../../../docs/decisions/implemented/bug-fix/2026-09-07-bound-tool-rendering-memory.md).
 4. Import only fonts used by the active product typography contract. A dormant family must not be emitted by the default App build.
-5. Preserve `packages/app/test/app-build-css-contract.test.ts` as the production build regression gate for initial module preloads, emitted product fonts, and core compiled CSS.
+5. Preserve `apps/web/test/app-build-css-contract.test.ts` as the production build regression gate for initial module preloads, emitted product fonts, and core compiled CSS.
+6. Keep the Web HTML entry in Tailwind's explicit source inputs when moving package roots. Validate the built HTML and CSS together in a browser with overflowing sidebar content and composer focus: the root must stay within the viewport and the list must scroll without moving the document or navigation header.
 
 ## Change Themes and Color Tokens
 
@@ -90,7 +95,7 @@ Read `docs/reference/frontend-theming.md` before changing the color contract, ad
 
 ```bash
 bun test --cwd packages/ui test/theme.test.ts test/theme-generation.test.ts
-bun test --cwd packages/app test/testing/color-token-contract.test.ts
+bun test --cwd apps/web test/testing/color-token-contract.test.ts
 ```
 
 ## Verify
@@ -99,23 +104,23 @@ bun test --cwd packages/app test/testing/color-token-contract.test.ts
 2. Run:
 
 ```bash
-bun run --cwd packages/app test
-bun run --cwd packages/app typecheck
+bun run --cwd apps/web test
+bun run --cwd apps/web typecheck
 bun run --cwd packages/ui test
-bun run --cwd packages/app build
+bun run --cwd apps/web build
 ```
 
 For browser capability or bootstrap changes, also run:
 
 ```bash
-bun test --cwd packages/app test/testing/browser-crypto-contract.test.ts
-bun packages/app/script/private-http-smoke.ts
+bun test --cwd apps/web test/testing/browser-crypto-contract.test.ts
+bun apps/web/script/private-http-smoke.ts
 ```
 
 For localized UI changes, also run:
 
 ```bash
-bun run --cwd packages/app i18n:extract
+bun run --cwd apps/web i18n:extract
 bun run localization:check
 ```
 
@@ -127,3 +132,9 @@ bun run localization:check
 ## Handoff
 
 Report state ownership, API path, semantic icon token, shared primitives, accessibility states, tests, visual checks, and any durable `PRODUCT.md` or Skill update.
+
+## Replaceable plugin presentation
+
+Read [frontend plugin ownership](../../../docs/architecture/frontend-plugin-platform.md) before changing Shell, conversation, composer, resource or overlay composition. Keep domain owners above replaceable presentation and test their public services with native and external views. Capture draft identity before asynchronous work and restore only at an unchanged owning revision. Dispose DOM references, pending UI work and portals by surface identity; accepted server work keeps its domain lifetime.
+
+For UI API 5 changes, build the production App and run bun run plugin-ui:test. Its public preview helper installs extracted archives into an isolated real host. Also run the owning App/UI tests, private HTTP smoke, typecheck, localization and package gates. Browser fixtures must pre-discover their actual module entry so dependency optimization cannot reload the page during interaction assertions. Verify styles on ordinary inherited text and protected portals, not only elements that explicitly restate font variables.

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { appendFile, mkdtemp, rm, stat, writeFile } from "node:fs/promises"
 import { spawn } from "node:child_process"
+import { appendFileSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { SynergyLinkLocalService, parsePsEtime } from "../src/service/local"
@@ -142,7 +143,9 @@ describe("synergy-link local service log files", () => {
     await writeFile(logPath, "first\n")
 
     const chunks: string[] = []
+    const controller = new AbortController()
     const following = SynergyLinkLocalService.followLogsFile({
+      signal: controller.signal,
       outputPath: logPath,
       onChunk: (chunk) => chunks.push(chunk),
     })
@@ -160,12 +163,44 @@ describe("synergy-link local service log files", () => {
       expect(chunks.some((chunk) => chunk.includes(content))).toBe(true)
     }
 
-    await waitForContent("first\n")
-    await appendFile(logPath, "second\n")
-    await waitForContent("second\n")
-    await writeFile(logPath, "restarted\n")
-    await waitForContent("restarted\n")
-    await appendFile(logPath, "after-truncate\n")
-    await waitForContent("after-truncate\n")
+    try {
+      await waitForContent("first\n")
+      await appendFile(logPath, "second\n")
+      await waitForContent("second\n")
+      await writeFile(logPath, "restarted\n")
+      await waitForContent("restarted\n")
+      await appendFile(logPath, "after-truncate\n")
+      await waitForContent("after-truncate\n")
+    } finally {
+      controller.abort()
+      await following
+    }
   })
+})
+
+test("log following observes writes from the initial callback and releases signal listeners", async () => {
+  const root = await createRoot()
+  const logPath = path.join(root, "runtime.log")
+  await writeFile(logPath, "first\n")
+  const controller = new AbortController()
+  const before = [process.listenerCount("SIGINT"), process.listenerCount("SIGTERM")]
+  const chunks: string[] = []
+  const following = SynergyLinkLocalService.followLogsFile({
+    outputPath: logPath,
+    signal: controller.signal,
+    onChunk(chunk) {
+      chunks.push(chunk)
+      if (chunks.length === 1) appendFileSync(logPath, "during-initial\n")
+      if (chunk.includes("during-initial")) controller.abort()
+    },
+  })
+  const timeout = setTimeout(() => controller.abort(), 2000)
+  try {
+    await following
+    expect(chunks.join("")).toBe("first\nduring-initial\n")
+    expect([process.listenerCount("SIGINT"), process.listenerCount("SIGTERM")]).toEqual(before)
+  } finally {
+    clearTimeout(timeout)
+    controller.abort()
+  }
 })

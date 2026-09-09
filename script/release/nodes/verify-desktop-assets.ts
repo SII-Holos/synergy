@@ -8,7 +8,7 @@ import {
   expectedBrowserHostArtifacts,
   expectedChromiumManifestArtifacts,
   expectedDesktopPrimaryArtifacts,
-} from "../../../packages/desktop/src/release-assets"
+} from "../../../apps/desktop/src/release-assets"
 import { downloadReleaseAsset, viewRelease } from "../shared/github"
 import type { ReleaseState } from "../shared/packages"
 

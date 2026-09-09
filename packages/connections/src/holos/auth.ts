@@ -1,0 +1,116 @@
+import { Auth } from "@ericsanchezok/synergy-harness/provider/api-key"
+import { Config } from "@ericsanchezok/synergy-harness/config/config"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { HolosEndpoint } from "./endpoint"
+import { HolosProtocol } from "./protocol"
+import { HolosAccounts } from "./accounts"
+
+export namespace HolosAuth {
+  export type VerifyResult = { valid: true; agentId: string } | { valid: false; reason: string }
+
+  export async function verifyCredentials(
+    agentSecret: string,
+  ): Promise<{ valid: true } | { valid: false; reason: string }> {
+    const endpoints = await HolosEndpoint.resolve()
+    const res = await fetch(HolosEndpoint.url("/api/v1/holos/agent_tunnel/ws_token", endpoints.apiUrl), {
+      headers: { Authorization: `Bearer ${agentSecret}` },
+    })
+    const body = HolosProtocol.WsTokenResponse.safeParse(await res.json())
+    if (!body.success || !res.ok || body.data.code !== 0) {
+      const message = body.success ? body.data.message : "Unexpected response"
+      return { valid: false, reason: message ?? `Validation failed: ${res.status}` }
+    }
+    return { valid: true }
+  }
+
+  export type StoredCredential = {
+    agentId: string
+    agentSecret: string
+    maskedSecret: string
+  }
+
+  export async function getStoredCredential(): Promise<StoredCredential | undefined> {
+    await HolosAccounts.migrateFromLegacy()
+    const account = await HolosAccounts.getActiveAccount()
+    if (!account) return undefined
+    const secret = account.agentSecret
+    const masked =
+      secret.length > 8 ? secret.slice(0, 4) + "\u2022".repeat(12) + secret.slice(-4) : "\u2022".repeat(secret.length)
+    return {
+      agentId: account.agentId,
+      agentSecret: account.agentSecret,
+      maskedSecret: masked,
+    }
+  }
+
+  export async function verifyStoredCredentials(): Promise<VerifyResult> {
+    const credential = await getStoredCredential()
+    if (!credential) {
+      return { valid: false, reason: "No Holos credentials stored" }
+    }
+    const result = await verifyCredentials(credential.agentSecret)
+    if (!result.valid) {
+      return result
+    }
+    return { valid: true, agentId: credential.agentId }
+  }
+
+  export async function getCredentialOrThrow(): Promise<StoredCredential> {
+    const credential = await getStoredCredential()
+    if (!credential) {
+      throw new Error("Holos credentials are required. Run `synergy holos login` first.")
+    }
+    return credential
+  }
+
+  export async function saveCredentialsAndConfigure(agentId: string, agentSecret: string): Promise<void> {
+    await HolosAccounts.saveAndActivateAccount(agentId, agentSecret)
+    await configureHolos()
+  }
+
+  export async function clearActiveAccount(): Promise<void> {
+    const active = await HolosAccounts.getActiveAccount()
+    if (active) {
+      await HolosAccounts.deleteAccount(active.agentId)
+    }
+  }
+
+  export async function configureHolos(): Promise<void> {
+    const endpoints = await HolosEndpoint.resolve()
+    await Config.domainUpdate("holos", {
+      holos: { enabled: true, ...endpoints },
+    })
+    const credential = await getStoredCredential()
+    if (!credential) return
+    await ensureClarusChannelAccount(credential.agentId)
+  }
+
+  export async function ensureClarusChannelAccount(agentId: string): Promise<boolean> {
+    const stored = await Config.domainGet("channels")
+    const existing = stored.channel?.clarus
+    if (existing?.type === "clarus" && existing.accounts[agentId]) return false
+    await Config.domainUpdate("channels", {
+      channel: {
+        clarus: {
+          type: "clarus",
+          accounts: {
+            ...(existing?.type === "clarus" ? existing.accounts : {}),
+            [agentId]: { enabled: false },
+          },
+        },
+      },
+    })
+    return true
+  }
+
+  export async function reloadRuntime(): Promise<void> {
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const { HolosRuntime } = await import("./runtime")
+        await HolosRuntime.reload()
+      },
+    })
+  }
+}

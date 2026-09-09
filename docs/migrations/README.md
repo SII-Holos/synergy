@@ -9,3 +9,5 @@ This directory documents host-data migrations and explicit clean breaks that sti
 - [Lattice v2 reset](lattice-v2-reset.md) — removes incompatible Lattice v1 run and event records while preserving authored Blueprint Notes.
 
 For current product and developer behavior, start at [Documentation](../README.md).
+
+- [Plugin UI 4 to UI 5](plugin-ui-4-to-5.md) — executable frontend component, service, style and artifact migration.

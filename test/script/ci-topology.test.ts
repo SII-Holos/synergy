@@ -7,6 +7,7 @@ const root = path.resolve(import.meta.dir, "..", "..")
 const ciSource = await readFile(path.join(root, ".github/workflows/ci.yml"), "utf8")
 
 const REQUIRED_NEEDS = [
+  "runtime-artifacts",
   "quality",
   "typecheck",
   "windows",
@@ -56,6 +57,24 @@ describe("CI topology", () => {
     expect(block).toContain("GitHub counts a skipped required check as passing")
   })
 
+  test("installed runtime builds match the executable Linux ABI and staged helper", () => {
+    const workflow = Bun.YAML.parse(ciSource) as {
+      jobs: Record<string, { "runs-on": string; env?: Record<string, string> }>
+    }
+    const job = workflow.jobs["runtime-artifacts"]!
+    expect(job["runs-on"]).toBe("ubuntu-latest")
+    expect(job.env?.SYNERGY_BUILD_TARGETS).toBe("linux-x64")
+  })
+
+  test("workspace suites bound concurrent native processes on the CI runner", () => {
+    const workflow = Bun.YAML.parse(ciSource) as {
+      jobs: Record<string, { steps: Array<{ name?: string; run?: string }> }>
+    }
+    const command = workflow.jobs.test!.steps.find((step) => step.name === "Run non-Harness package tests")?.run
+    expect(command).toContain("--concurrency=2")
+    expect(command).toContain("--filter='!@ericsanchezok/synergy-harness'")
+  })
+
   test("quality job runs the ci-static gate cluster", () => {
     const block = ciSource.split("  quality:")[1]?.split("  typecheck:")[0] ?? ""
     expect(block).toContain("bun script/gates.ts ci-static")
@@ -68,7 +87,7 @@ describe("CI topology", () => {
     expect(block).toContain("timeout-minutes: 45")
   })
 
-  test("the blocking matrix has exactly the ten required jobs", () => {
+  test("the blocking matrix has exactly the required jobs including installed core artifacts", () => {
     const jobs = parseJobNames(ciSource)
     const blocking = jobs.filter((job) => job !== "all-checks-passed")
     expect(blocking.sort()).toEqual([...REQUIRED_NEEDS].sort())

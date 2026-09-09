@@ -1,6 +1,6 @@
 # Shared UI Package Rules
 
-These rules apply to reusable Solid components, rendering, styles, themes, icon registries, and plugin UI primitives. Root `AGENTS.md`, `packages/app/AGENTS.md`, and `packages/app/PRODUCT.md` define the consuming product contract.
+These rules apply to reusable Solid components, rendering, styles, themes, icon registries, and plugin UI primitives. Root `AGENTS.md`, `apps/web/AGENTS.md`, and `apps/web/PRODUCT.md` define the consuming product contract.
 
 Load `develop-frontend` for shared UI changes and `change-plugin-runtime` for plugin registries or contribution primitives.
 
@@ -16,7 +16,7 @@ Load `develop-frontend` for shared UI changes and `change-plugin-runtime` for pl
 - The published color contract is owned by `packages/plugin/src/theme`; `src/theme/*` keeps compatibility facades and owns Solid runtime application, the single theme registry, and shell snapshots. Themes provide validated light/dark seeds plus typed overrides. Built-in curated skins pre-register from `src/theme/default-themes.ts`; the default Synergy skin keeps its curated overrides in `themes/synergy.json`, while the other built-in skins stay seeds-only. Plugin themes register into the same registry and may not shadow built-in skin ids. Run `bun run generate:theme` after changing the contract or built-in theme and do not hand-edit generated CSS, schema, Web boot fallback, or Desktop fallback skin.
 - Consumer color utilities must name canonical tokens. Add or change a semantic token at the theme boundary instead of inventing component-local aliases such as `*-soft`, `*-muted`, or unregistered foreground names. Keep status foreground/surface pairs at WCAG AA contrast.
 - Follow [Frontend themes and color](../../docs/reference/frontend-theming.md) for the complete consumer contract and theme-authoring workflow. New distributable selectable themes belong in structured plugin contributions; the other built-in skins stay seeds-only in `default-themes.ts`, and `themes/synergy.json` owns the built-in default's curated overrides.
-- Public exports are package contracts. Add exports deliberately and keep App-only components in `packages/app`.
+- Public exports are package contracts. Add exports deliberately and keep App-only components in `apps/web`.
 
 ## Verify
 
@@ -27,6 +27,6 @@ Run the narrow test, `bun test test/semantic-icon.test.ts` for icon changes, and
 For Synergy-owned copy in shared UI, run the App-owned shared-catalog gates from the repository root:
 
 ```bash
-bun run --cwd packages/app i18n:extract
+bun run --cwd apps/web i18n:extract
 bun run localization:check
 ```

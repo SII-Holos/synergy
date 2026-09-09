@@ -1,0 +1,315 @@
+import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
+import z from "zod"
+import { Config } from "@ericsanchezok/synergy-harness/config/config"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
+import { CommandSourceProviders } from "@ericsanchezok/synergy-harness/instruction/source-provider"
+import { InstructionRegistry } from "@ericsanchezok/synergy-harness/instruction/registry"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
+import { Skill } from "../skill/skill"
+import PROMPT_COMMIT from "./template/commit.txt"
+import PROMPT_INITIALIZE from "./template/initialize.txt"
+import PROMPT_NOTE from "./template/note.txt"
+import PROMPT_CONTINUE from "./template/continue.txt"
+import PROMPT_AUDIT from "./template/audit.txt"
+import PROMPT_START from "./template/start.txt"
+import PROMPT_REVIEW from "./template/review.txt"
+import PROMPT_RMSLOP from "./template/rmslop.txt"
+export namespace Command {
+  const log = Log.create({ service: "command" })
+
+  export const Event = {
+    Executed: BusEvent.define(
+      "command.executed",
+      z.object({
+        name: z.string(),
+        sessionID: Identifier.schema("session"),
+        arguments: z.string(),
+        messageID: Identifier.schema("message"),
+      }),
+    ),
+  }
+
+  export const Kind = z.enum(["prompt", "action"])
+  export type Kind = z.infer<typeof Kind>
+
+  export const Surface = z.enum(["web", "cli", "channel"])
+  export type Surface = z.infer<typeof Surface>
+
+  export const Result = z
+    .object({
+      title: z.string(),
+      output: z.string(),
+      metadata: z.record(z.string(), z.any()).optional(),
+    })
+    .meta({ ref: "CommandResult" })
+  export type Result = z.infer<typeof Result>
+
+  export const Info = z
+    .object({
+      name: z.string(),
+      description: z.string().optional(),
+      kind: Kind.default("prompt"),
+      surfaces: z.array(Surface).default(["web", "cli"]),
+      promptVisible: z.boolean().default(true),
+      agent: z.string().optional(),
+      model: z.string().optional(),
+      mcp: z.boolean().optional(),
+      source: z.enum(["command", "mcp", "skill"]).optional(),
+      action: z.string().optional(),
+      // Runtime command templates can be lazy because MCP prompts and file-backed
+      // skills are resolved only when executed. The API shape is normalized by
+      // callers before it reaches clients.
+      template: z.promise(z.string()).or(z.string()).optional(),
+      hints: z.array(z.string()),
+    })
+    .meta({ ref: "Command" })
+
+  export type Info = Omit<z.infer<typeof Info>, "template"> & { template?: Promise<string> | string }
+
+  export type ActionInput = {
+    messageID?: string
+    sessionID: string
+    agent?: string
+    model?: string
+    arguments: string
+    command: string
+    variant?: string
+    parts?: unknown[]
+  }
+
+  export type ActionHandler = (input: ActionInput, command: Info) => Promise<Result>
+
+  export const NotFoundError = NamedError.create("CommandNotFoundError", z.object({ name: z.string() }))
+  export const UnknownActionError = NamedError.create("CommandUnknownActionError", z.object({ action: z.string() }))
+
+  const actionHandlers = new Map<string, ActionHandler>()
+
+  export function registerAction(action: string, handler: ActionHandler) {
+    actionHandlers.set(action, handler)
+    return () => {
+      if (actionHandlers.get(action) === handler) actionHandlers.delete(action)
+    }
+  }
+
+  export async function runAction(input: { action: string; input: ActionInput; command?: Info }) {
+    const handler = actionHandlers.get(input.action)
+    if (!handler) throw new UnknownActionError({ action: input.action })
+    const command =
+      input.command ??
+      actionCommand({
+        name: input.input.command,
+        action: input.action,
+        hints: [],
+      })
+    return handler(input.input, command)
+  }
+
+  export function hints(template: string): string[] {
+    const result: string[] = []
+    const numbered = template.match(/\$\d+/g)
+    if (numbered) {
+      for (const match of [...new Set(numbered)].sort()) result.push(match)
+    }
+    if (template.includes("$ARGUMENTS")) result.push("$ARGUMENTS")
+    return result
+  }
+
+  function promptCommand(input: Omit<Info, "kind" | "surfaces" | "promptVisible">): Info {
+    return { ...input, kind: "prompt", surfaces: ["web", "cli"], promptVisible: true }
+  }
+
+  function actionCommand(input: Omit<Info, "kind" | "surfaces" | "promptVisible">): Info {
+    return { ...input, kind: "action", surfaces: ["web", "cli"], promptVisible: false }
+  }
+
+  export const Default = {
+    INIT: "init",
+    REVIEW: "review",
+    COMMIT: "commit",
+    RMSLOP: "rmslop",
+    NOTE: "note",
+    CONTINUE: "continue",
+    AUDIT: "audit",
+    START: "start",
+    WORKTREE: "worktree",
+  } as const
+
+  registerAction(Default.WORKTREE, async (input) => {
+    const { WorktreeCommand } = await import("../workspace/worktree-command")
+    return WorktreeCommand.run(WorktreeCommand.parse(input.sessionID, input.arguments))
+  })
+
+  const subscriptions = ScopedState.create(
+    () => {
+      const unsubscribers: Array<() => void> = []
+      const reset = () => {
+        void reload().catch((error) => {
+          log.warn("failed to reload command state after MCP change", {
+            error: error instanceof Error ? error.message : String(error),
+          })
+        })
+      }
+
+      unsubscribers.push(CommandSourceProviders.subscribeAll(reset))
+
+      return unsubscribers
+    },
+    async (unsubscribers) => {
+      for (const unsubscribe of unsubscribers) unsubscribe()
+    },
+  )
+
+  function registerMcpSubscriptions() {
+    subscriptions()
+  }
+
+  const state = ScopedState.create(async () => {
+    const cfg = await Config.current()
+
+    const result: Record<string, Info> = {
+      [Default.INIT]: promptCommand({
+        name: Default.INIT,
+        description: "create/update AGENTS.md",
+        get template() {
+          return PROMPT_INITIALIZE.replace("${path}", ScopeContext.current.directory)
+        },
+        hints: hints(PROMPT_INITIALIZE),
+      }),
+      [Default.REVIEW]: promptCommand({
+        name: Default.REVIEW,
+        description: "review changes [commit|branch|pr], defaults to uncommitted",
+        get template() {
+          return PROMPT_REVIEW.replace("${path}", ScopeContext.current.directory)
+        },
+        hints: hints(PROMPT_REVIEW),
+      }),
+      [Default.COMMIT]: promptCommand({
+        name: Default.COMMIT,
+        description: "stage, commit, and push changes with a well-crafted message",
+        get template() {
+          return PROMPT_COMMIT
+        },
+        hints: hints(PROMPT_COMMIT),
+      }),
+      [Default.RMSLOP]: promptCommand({
+        name: Default.RMSLOP,
+        description: "remove AI-generated code slop from recent changes",
+        get template() {
+          return PROMPT_RMSLOP
+        },
+        hints: hints(PROMPT_RMSLOP),
+      }),
+      [Default.NOTE]: promptCommand({
+        name: Default.NOTE,
+        description: "save the last substantive response as a note",
+        get template() {
+          return PROMPT_NOTE
+        },
+        hints: hints(PROMPT_NOTE),
+      }),
+      [Default.CONTINUE]: promptCommand({
+        name: Default.CONTINUE,
+        description: "continue where the session left off",
+        get template() {
+          return PROMPT_CONTINUE
+        },
+        hints: hints(PROMPT_CONTINUE),
+      }),
+      [Default.AUDIT]: promptCommand({
+        name: Default.AUDIT,
+        description: "audit recent changes and list issues without fixing them",
+        get template() {
+          return PROMPT_AUDIT
+        },
+        hints: hints(PROMPT_AUDIT),
+      }),
+      [Default.START]: promptCommand({
+        name: Default.START,
+        description: "start implementing the current plan",
+        get template() {
+          return PROMPT_START
+        },
+        hints: hints(PROMPT_START),
+      }),
+      [Default.WORKTREE]: actionCommand({
+        name: Default.WORKTREE,
+        description: "manage this session's git worktree workspace: list, new, enter, status, leave, remove",
+        hints: ["list | new <name> | enter <name> | status | leave | remove <name>"],
+        action: "worktree",
+      }),
+    }
+
+    for (const [name, command] of Object.entries(cfg.command ?? {})) {
+      result[name] = promptCommand({
+        name,
+        agent: command.agent,
+        model: command.model,
+        description: command.description,
+        get template() {
+          return command.template
+        },
+        hints: hints(command.template),
+      })
+    }
+
+    for (const [name, prompt] of Object.entries(await CommandSourceProviders.prompts())) {
+      result[name] = promptCommand({
+        name,
+        mcp: true,
+        source: "mcp",
+        description: prompt.description,
+        get template() {
+          return CommandSourceProviders.getPrompt(
+            prompt.client,
+            prompt.name,
+            prompt.arguments
+              ? Object.fromEntries(prompt.arguments.map((argument, i) => [argument.name, `$${i + 1}`]))
+              : {},
+          ).then((template) => template ?? "")
+        },
+        hints: prompt.arguments?.map((_, i) => `$${i + 1}`) ?? [],
+      })
+    }
+
+    for (const skill of await Skill.all()) {
+      if (!skill.invocation.user || result[skill.name]) continue
+      result[skill.name] = promptCommand({
+        name: skill.name,
+        description: skill.description,
+        source: "skill",
+        get template() {
+          return Skill.content(skill)
+        },
+        hints: InstructionRegistry.get("skill")?.hints() ?? [],
+      })
+    }
+
+    return result
+  })
+
+  export async function reload() {
+    registerMcpSubscriptions()
+    log.info("reloading command state")
+    await state.resetAll()
+    log.info("command state reloaded")
+  }
+
+  export async function get(name: string) {
+    registerMcpSubscriptions()
+    return state().then((x) => x[name])
+  }
+
+  export async function require(name: string) {
+    const command = await get(name)
+    if (!command) throw new NotFoundError({ name })
+    return command
+  }
+
+  export async function list() {
+    registerMcpSubscriptions()
+    return state().then((x) => Object.values(x))
+  }
+}

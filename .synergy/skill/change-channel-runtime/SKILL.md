@@ -1,6 +1,6 @@
 ---
 name: change-channel-runtime
-description: Add, modify, or review Synergy Channel targets, provider lifecycle, managed Project ownership, ChannelHost Scope/Session routing, native Clarus task handling over Holos, durable result or extension delivery, Channel diagnostics and routes, or Channel account navigation. Use across packages/synergy/src/channel, adjacent Holos/Session/Agenda/server owners, generated SDK contracts, and packages/app Channel surfaces.
+description: Add, modify, or review Synergy Channel targets, provider lifecycle, managed Project ownership, ChannelHost Scope/Session routing, native Clarus task handling over Holos, durable result or extension delivery, Channel diagnostics and routes, or Channel account navigation. Use across packages/connections/src/channel, adjacent Holos/Session/Agenda/server owners, generated SDK contracts, and apps/web Channel surfaces.
 ---
 
 # Change the Channel Runtime
@@ -14,7 +14,7 @@ description: Add, modify, or review Synergy Channel targets, provider lifecycle,
 
 ## GitHub Channel Provider
 
-The `github` provider (`packages/synergy/src/channel/provider/github/`) connects a GitHub App installation as a conversation channel. It is `self_connected` and polls the GitHub REST API outbound — no inbound webhook.
+The `github` provider (`packages/connections/src/channel/provider/github/`) connects a GitHub App installation as a conversation channel. It is `self_connected` and polls the GitHub REST API outbound — no inbound webhook.
 
 - **Conversation ingress only** — synthesized repository events (`issue.opened`, `pull_request.opened`, `pull_request.synchronize`, `comment.created`) flow through `ChannelHost.conversations.receive()` with `chatId = "owner/repo#<number>"`.
 - **Per-thread Scope** — implement `resolveConversationScope()` to bind each thread to its own random-hash checkout directory (see `GithubChannelWorkspace.ensure()`), so sessions are isolated per issue/PR. `workspaceDir` is configured per account.
@@ -51,14 +51,14 @@ Preserve these invariants when changing the provider: deterministic per-thread d
 2. Bound and redact durable diagnostics before persistence and export. Never expose credentials, auth headers, raw local paths, or unbounded prompt/result payloads.
 3. Project managed Projects once under the owning Channel account from canonical Scope/Session navigation state. Do not add a provider-specific Project store, duplicate generic Projects, or a dedicated Clarus hierarchy.
 4. Present provider-capability actions, account and remote Project states, semantic icons, keyboard access, localized labels, and archive-guard guidance through shared components.
-5. Update [Channels](../../../docs/architecture/channels.md), product connection/workspace docs, storage paths, and `packages/app/PRODUCT.md` when their contracts change.
+5. Update [Channels](../../../docs/architecture/channels.md), product connection/workspace docs, storage paths, and `apps/web/PRODUCT.md` when their contracts change.
 
 ## Verify
 
 1. Write the smallest failing behavioral test first. Use real temporary Scope, Storage, Session, inbox, Agenda, and filesystem state; fake only Holos/Clarus network boundaries.
 2. When Channel behavior depends on Scope-local subscriptions, cover both the first account connection and `ScopeRuntime.dispose()` followed by `ScopeRuntime.ensure()`; an active account must rebind its bridges exactly once before startup recovery can terminalize pending Channel messages, so recovery-time events are delivered rather than lost.
 3. Run the focused Channel, Holos native tunnel, Session endpoint/navigation, Agenda guidance, tool, server route, and frontend account/navigation tests affected by the change.
-4. Run `bun test test/channel/` and the relevant Holos, Agenda, Session, tool, and server suites from `packages/synergy`; preserve Feishu compatibility coverage.
+4. Run `bun test test/channel/` and the relevant Holos, Agenda, Session, tool, and server suites from `packages/harness`; preserve Feishu compatibility coverage.
 5. For route changes, run `./script/generate.ts` twice and confirm generated OpenAPI/SDK output is stable. Run App/UI tests, localization checks, typecheck, build, Skill validation, and `bun run quality:quick` as applicable.
 6. Exercise the protocol in an isolated second runtime with a separate `SYNERGY_HOME` and explicit ports. Verify disabled and zero-Project idle behavior, discovery, one Task Session per Task ID, result/extension settlement, reconnect recovery, diagnostics download, and cleanup without using the active runtime.
 

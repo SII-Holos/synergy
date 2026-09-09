@@ -43,6 +43,7 @@ Entries are added only when an incident qualifies; the table stays empty until t
 | 0005   | Linux inotify exhaustion stormed the file watcher and degraded the process | implemented | 2026-09-03 |
 | 0006   | Sequential lock-worker spawns consumed the CI test budget                  | implemented | 2026-09-05 |
 | 0007   | Hidden tool renderers retained highlight state                             | implemented | 2026-09-07 |
+| 0008   | Transition cleanup retained disposed frontend pages                        | implemented | 2026-09-07 |
 
 ## History rules
 

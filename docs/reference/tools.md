@@ -2,7 +2,7 @@
 
 # Tools Reference
 
-Generated from the builtin tool registry in `packages/synergy/src/tool/registry.ts` and the canonical taxonomy in `packages/synergy/src/tool/taxonomy.ts`.
+Generated from the builtin tool registry in `packages/harness/src/tool/registry.ts` and the canonical taxonomy in `packages/harness/src/tool/taxonomy.ts`.
 
 ## Tools
 
@@ -129,9 +129,7 @@ Cancel an agenda item. The item will no longer fire, but its configuration and e
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
+| `id` | string | yes | Agenda item ID to cancel |
 
 ## agenda_list
 
@@ -141,12 +139,9 @@ List agenda items visible from the current scope — both watches (one-time) and
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
+| `status` | AgendaTypes.ItemStatus.optional |  | Filter by status |
+| `tag` | string |  | Filter by tag |
+| `scope` | "current" \| "global" \| "all" |  | Which items to show: 'current' (project only), 'global' (global only), 'all' (current + global, default) |
 
 ## agenda_logs
 
@@ -156,12 +151,9 @@ View execution history for an agenda item. Shows recent runs with status, durati
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
+| `id` | string | yes | Agenda item ID to get logs for |
+| `offset` | z.coerce.number |  | Number of logs to skip |
+| `limit` | z.coerce.number |  | Maximum number of logs to return |
 
 ## agenda_schedule
 
@@ -171,34 +163,21 @@ Create a recurring task that runs in its own separate session, isolated from thi
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | AgendaDedup.formatConflictMessage | yes |  |
-| `metadata` | - | yes |  |
-| `title` | params.title | yes |  |
-| `prompt` | params.prompt | yes |  |
-| `tags` | params.tags | yes |  |
-| `global` | params.global | yes |  |
-| `wake` | params.wake | yes |  |
-| `silent` | params.silent | yes |  |
-| `agent` | params.agent | yes |  |
-| `model` | params.model | yes |  |
-| `controlProfile` | params.controlProfile | yes |  |
-| `sessionMode` | params.sessionMode | yes |  |
-| `sessionRefs` | params.sessionRefs | yes |  |
-| `timeout` | params.timeout | yes |  |
-| `createdBy` | - | yes |  |
-| `sessionID` | ctx.sessionID | yes |  |
-| `endpoint` | session | yes |  |
-| `title` | item.title | yes |  |
-| `output` | lines.join | yes |  |
-| `metadata` | - | yes |  |
-| `id` | item.id | yes |  |
-| `status` | item.status | yes |  |
-| `scheduledTimeoutMs` | item.timeout | yes |  |
-| `scheduledTimeoutLabel` | ToolTimeout.scheduledTimeoutLabel | yes |  |
+| `title` | string | yes | Task title |
+| `prompt` | string | yes | Instruction for the agent to execute when triggered. Write as a complete brief — the executing agent has no access to this conversation. |
+| `trigger` | AgendaTypes.ScheduleTrigger.describe | yes |  |
+| `tags` | string |  | Tags for organization and filtering |
+| `global` | boolean |  | If true, visible from all scopes. Default: false (current project only) |
+| `wake` | boolean |  | If true, wake this session's agent when execution completes. Default: true |
+| `silent` | boolean |  | If true, suppress result delivery entirely. Default: false |
+| `agent` | string |  | Agent to use, defaults to configured default |
+| `model` | object |  | Model override |
+| `controlProfile` | AgendaTypes.ControlProfile.optional |  |  |
+| `timeout` | number |  | Execution timeout in milliseconds |
+| `sessionMode` | "ephemeral" \| "persistent" |  | Session mode override. Recurring triggers (cron, every) default to 'persistent' (reuse session across fires). Set 'ephemeral' to start a fresh session on every fire — useful for tasks that must not carry history from previous runs, such as daily reports. |
+| `sessionRefs` | object |  | Sessions whose content is relevant context for execution |
+| `sessionID` | string | yes | Session ID to reference |
+| `hint` | string |  | What to focus on in this session |
 
 ## agenda_trigger
 
@@ -208,9 +187,7 @@ Manually trigger an agenda item to execute immediately, regardless of its config
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | lines.join | yes |  |
-| `metadata` | - | yes |  |
+| `id` | string | yes | Agenda item ID to trigger |
 
 ## agenda_update
 
@@ -220,13 +197,23 @@ Update an existing agenda item. Only provided fields are changed — omitted fie
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | item.title | yes |  |
-| `output` | lines.join | yes |  |
-| `metadata` | - | yes |  |
-| `id` | item.id | yes |  |
-| `status` | item.status | yes |  |
-| `scheduledTimeoutMs` | item.timeout | yes |  |
-| `scheduledTimeoutLabel` | ToolTimeout.scheduledTimeoutLabel | yes |  |
+| `id` | string | yes | Agenda item ID to update |
+| `title` | string |  | New title |
+| `description` | string |  | New description |
+| `status` | AgendaTypes.ItemStatus.optional |  | New status: pending, active, paused, done, cancelled |
+| `tags` | string |  | New tags (replaces existing) |
+| `triggers` | array |  | New triggers (replaces existing, recomputes nextRunAt) |
+| `prompt` | string |  | New execution prompt |
+| `wake` | boolean |  | Whether to wake the origin session on completion |
+| `silent` | boolean |  | Whether to suppress result delivery |
+| `agent` | string |  | Agent to use, defaults to configured default |
+| `model` | object |  | Model override |
+| `controlProfile` | AgendaTypes.ControlProfile.optional |  |  |
+| `timeout` | number |  | Execution timeout in milliseconds |
+| `sessionMode` | "ephemeral" \| "persistent" |  | Session mode override. Set 'ephemeral' to create a fresh session on every fire. |
+| `sessionRefs` | object |  | Sessions whose content is relevant context for execution |
+| `sessionID` | string | yes | Session ID to reference |
+| `hint` | string |  | What to focus on in this session |
 
 ## agenda_watch
 
@@ -236,46 +223,20 @@ Set a one-time wake-up in THIS session. The primary use case is **recursive adap
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `blocked` | true | yes |  |
-| `reason` | - | yes |  |
-| `runningSubagentCount` | runningSubagents.length | yes |  |
-| `runningSubagentIds` | runningSubagents.map | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `type` | - | yes |  |
-| `sessionID` | params.onSessionEnd.sessionID | yes |  |
-| `event` | - | yes |  |
-| `agent` | params.onSessionEnd.agent | yes |  |
-| `finish` | params.onSessionEnd.finish | yes |  |
-| `once` | true | yes |  |
-| `type` | - | yes |  |
-| `resource` | params.onGithub.resource | yes |  |
-| `repository` | params.onGithub.repository | yes |  |
-| `number` | params.onGithub.number | yes |  |
-| `ref` | params.onGithub.ref | yes |  |
-| `states` | params.onGithub.states | yes |  |
-| `title` | - | yes |  |
-| `output` | AgendaDedup.formatConflictMessage | yes |  |
-| `metadata` | - | yes |  |
-| `title` | params.title | yes |  |
-| `prompt` | params.prompt | yes |  |
-| `triggers` | - | yes |  |
-| `global` | params.global | yes |  |
-| `wake` | true | yes |  |
-| `silent` | false | yes |  |
-| `autoDone` | true | yes |  |
-| `createdBy` | - | yes |  |
-| `sessionID` | ctx.sessionID | yes |  |
-| `endpoint` | session | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `id` | item.id | yes |  |
-| `status` | item.status | yes |  |
+| `title` | string | yes | Short name, e.g. 'Check pipeline health' |
+| `prompt` | string | yes | Instruction you'll receive when woken up. Write it for yourself — you'll see it with full conversation history. |
+| `delay` | string |  | How long to wait before waking you, e.g. '30m', '2h', '1d' |
+| `onSessionEnd` | object |  | Wake when another session ends a turn instead of after a delay |
+| `sessionID` | string | yes | Session to watch — wake when it ends a turn |
+| `agent` | string |  | Only wake when the turn's agent matches |
+| `finish` | string |  | Only wake when the turn's finish state matches (e.g. 'stop', 'error') |
+| `onGithub` | "pr" \| "issue" \| "workflow" \| "check" |  | Wake when a GitHub PR / issue / workflow / check changes state instead of after a delay |
+| `resource` | "pr" \| "issue" \| "workflow" \| "check" | yes | GitHub resource kind to watch |
+| `repository` | string | yes | Repository in owner/repo form |
+| `number` | number |  | PR/issue number or workflow run id. Omit for repository-wide pr/issue watch. For checks this is the commit's latest run set |
+| `ref` | string |  | Branch/tag/commit ref for workflow and check targeting (e.g. 'main', full SHA). Defaults to HEAD for checks and the default branch for workflows |
+| `states` | string |  | Only wake on transitions into these states (e.g. ['merged'], ['failure'], ['completed']) |
+| `global` | boolean |  | If true, visible from all scopes. Default: false (current project only) |
 
 ## ast_grep
 
@@ -285,27 +246,11 @@ Search code using AST-aware pattern matching. Unlike regex-based grep, ast_grep 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `permission` | - | yes |  |
-| `patterns` | - | yes |  |
-| `metadata` | - | yes |  |
-| `pattern` | params.pattern | yes |  |
-| `lang` | params.lang | yes |  |
-| `paths` | params.paths | yes |  |
-| `globs` | params.globs | yes |  |
-| `pattern` | params.pattern | yes |  |
-| `lang` | params.lang | yes |  |
-| `paths` | params.paths | yes |  |
-| `globs` | params.globs | yes |  |
-| `context` | params.context | yes |  |
-| `signal` | ctx.abort | yes |  |
-| `metadata` | - | yes |  |
-| `matches` | result.matches.length | yes |  |
-| `truncated` | result.truncated | yes |  |
-| `truncatedReason` | result.truncatedReason | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `matches` | result.matches.length | yes |  |
-| `truncated` | result.truncated | yes |  |
+| `pattern` | string | yes | AST pattern with meta-variables ($VAR for single node, $$$ for multiple nodes). Must be a complete AST node. |
+| `lang` | z.enum | yes | Target language for AST parsing |
+| `paths` | string |  | Paths to search (default: current directory) |
+| `globs` | string |  | Include/exclude globs (prefix ! to exclude) |
+| `context` | number |  | Number of context lines around each match |
 
 ## attach
 
@@ -326,12 +271,14 @@ Executes a bash command in a persistent shell session. All commands run in ${dir
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `targetID` | params.targetID | yes |  |
-| `targetIDSupplied` | Object.hasOwn | yes |  |
-| `linkID` | params.linkID | yes |  |
-| `linkIDSupplied` | Object.hasOwn | yes |  |
-| `tool` | - | yes |  |
-| `agent` | ctx.agent | yes |  |
+| `command` | string | yes | The command to execute |
+| `workdir` | string |  | The working directory to run the command in. Defaults to the project directory. Use this instead of 'cd' commands. |
+| `description` | string | yes | Clear, concise description of what this command does in 5-10 words. Examples: Input: ls Output: Lists files in current directory Input: git status Output: Shows working tree status Input: npm install Output: Installs package dependencies Input: mkdir foo Output: Creates directory 'foo' |
+| `background` | boolean |  | Run command in background. Returns immediately with processId. Use process tool to monitor/interact with the process. |
+| `yieldSeconds` | number |  | Seconds to wait before auto-backgrounding a long-running command. If the command completes before this time, returns normally. Default: 10 (10 seconds). For remote Synergy Link execution, the host clamps this value to at most 5 seconds so it can return a tracked process handle before the transport deadline. A timeout does not prove the remote command was cancelled, so never auto-retry mutating commands after an ambiguous timeout. |
+| `linkID` | string |  | Legacy Synergy Link instance ID. Prefer targetID. Omit both fields for intentional local execution. A supplied remote target never falls back locally. |
+| `targetID` | string |  | Persisted Synergy Link target ID returned by connect list_targets. |
+| `detach` | boolean |  | Remote-only: detach the command from the Synergy Link session lifecycle when the connected host explicitly reports support. The process is spawned without the session owner marker, so it survives session close and cleanup; the caller is responsible for managing it. Unsupported hosts reject detach=true, and the field is never sent to hosts that do not advertise support. Ignored for local execution. |
 
 ## blueprint_loop_approve
 
@@ -341,32 +288,8 @@ Use this when the BlueprintLoop review confirms every required outcome is fully 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `agent` | ctx.agent | yes |  |
-| `reviewSessionID` | ctx.sessionID | yes |  |
-| `targetSessionID` | params.sessionID | yes |  |
-| `action` | - | yes |  |
-| `target` | loop.sessionID | yes |  |
-| `waitForProcessing` | false | yes |  |
-| `mail` | - | yes |  |
-| `type` | - | yes |  |
-| `summary` | - | yes |  |
-| `parts` | - | yes |  |
-| `id` | Identifier.ascending | yes |  |
-| `sessionID` | loop.sessionID | yes |  |
-| `messageID` | - | yes |  |
-| `type` | - | yes |  |
-| `text` | completionText | yes |  |
-| `origin` | - | yes |  |
-| `metadata` | - | yes |  |
-| `source` | - | yes |  |
-| `sourceSessionID` | ctx.sessionID | yes |  |
-| `loopID` | loop.id | yes |  |
-| `noteID` | loop.noteID | yes |  |
-| `title` | loop.title | yes |  |
-| `status` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | completionText | yes |  |
-| `metadata` | - | yes |  |
+| `sessionID` | string | yes | The execution session ID provided in your launch context |
+| `summary` | string | yes | Concise approved completion verdict |
 
 ## blueprint_loop_reject
 
@@ -376,51 +299,11 @@ Use this when the BlueprintLoop review finds missing, incorrect, or unverified r
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `agent` | ctx.agent | yes |  |
-| `reviewSessionID` | ctx.sessionID | yes |  |
-| `targetSessionID` | params.sessionID | yes |  |
-| `action` | - | yes |  |
-| `status` | - | yes |  |
-| `error` | - | yes |  |
-| `audit` | - | yes |  |
-| `lastReason` | reason | yes |  |
-| `lastAuditedAt` | Date.now | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `sessionID` | loop.sessionID | yes |  |
-| `loopID` | loop.id | yes |  |
-| `loopRejected` | true | yes |  |
-| `iterationExhausted` | true | yes |  |
-| `lastReason` | reason | yes |  |
-| `lastAuditedAt` | Date.now | yes |  |
-| `target` | loop.sessionID | yes |  |
-| `waitForProcessing` | false | yes |  |
-| `mail` | - | yes |  |
-| `type` | - | yes |  |
-| `summary` | - | yes |  |
-| `parts` | - | yes |  |
-| `id` | Identifier.ascending | yes |  |
-| `sessionID` | loop.sessionID | yes |  |
-| `messageID` | - | yes |  |
-| `type` | - | yes |  |
-| `origin` | - | yes |  |
-| `metadata` | - | yes |  |
-| `source` | - | yes |  |
-| `sourceSessionID` | ctx.sessionID | yes |  |
-| `loopID` | loop.id | yes |  |
-| `noteID` | loop.noteID | yes |  |
-| `title` | loop.title | yes |  |
-| `completed` | params.completed | yes |  |
-| `status` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | text | yes |  |
-| `metadata` | - | yes |  |
-| `sessionID` | loop.sessionID | yes |  |
-| `loopID` | loop.id | yes |  |
-| `loopRejected` | true | yes |  |
-| `attempts` | audit.attempts | yes |  |
-| `iterationExhausted` | false | yes |  |
+| `sessionID` | string | yes | The execution session ID provided in your launch context |
+| `reason` | string | yes | Clear explanation of why the Blueprint outcome is not complete |
+| `completed` | string |  | Optional summary of work that is already correct |
+| `remaining` | string | yes | Missing or incorrect work, marking each item BLOCKING or NON-BLOCKING |
+| `instructions` | string | yes | Concrete next actions the execution agent can follow without clarification |
 
 ## blueprint_loop_stop
 
@@ -430,16 +313,10 @@ Request independent review only when the one current Blueprint outcome is comple
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `code` | loop.auditSessionID | yes |  |
-| `duplicate` | true | yes |  |
-| `sessionID` | ctx.sessionID | yes |  |
-| `operation` | - | yes |  |
-| `completed` | params.completed | yes |  |
-| `evidence` | params.evidence | yes |  |
-| `remaining` | params.remaining | yes |  |
-| `requestedAt` | Date.now | yes |  |
-| `requesterSessionID` | ctx.sessionID | yes |  |
-| `requesterMessageID` | ctx.messageID | yes |  |
+| `summary` | string | yes | Summary of what was completed. |
+| `completed` | string |  | Completed Blueprint requirement statements. |
+| `evidence` | string |  | Concrete verification evidence such as checks, artifacts, and file paths. |
+| `remaining` | string |  | Any known remaining work or limitations. |
 
 ## boss_assign
 
@@ -449,10 +326,11 @@ Assign a task to a direct-child worker session in the Boss Mode tree. The task i
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `anchorMessageID` | typeof | yes |  |
-| `title` | result.created | yes |  |
-| `metadata` | - | yes |  |
-| `output` | result.created | yes |  |
+| `sessionID` | string | yes | Worker session ID (ses_xxx) to assign the task to. |
+| `taskID` | string | yes | Stable task ID chosen by the caller; idempotent per (caller, taskID). |
+| `task` | string | yes | The task text the worker must complete. |
+| `context` | string |  | Optional context to include with the task. |
+| `acceptance` | string |  | Optional acceptance criteria. |
 
 ## boss_cancel
 
@@ -462,9 +340,8 @@ Cancel a task (or all tasks) assigned to a direct-child worker in the Boss Mode 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | result.cancelled | yes |  |
-| `metadata` | - | yes |  |
-| `output` | result.cancelled | yes |  |
+| `sessionID` | string | yes | Worker session ID (ses_xxx) to cancel work on. |
+| `taskID` | string |  | Specific task ID to cancel. Omit to cancel all tasks from this caller. |
 
 ## boss_project
 
@@ -474,13 +351,10 @@ Create a new project as a runtime colleague: create the project directory if mis
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `fn` | - | yes |  |
-| `agentOverride` | agent | yes |  |
-| `interaction` | SessionInteraction.interactive | yes |  |
-| `workflow` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `output` | - | yes |  |
+| `directory` | string | yes | Absolute path of the project directory to create/bind. |
+| `title` | string |  | Title of the project boss session. Defaults to the directory basename. |
+| `agent` | string |  | Agent to run the project boss session. Defaults to the session's agent. |
+| `instructions` | string |  | Optional standing instructions for the project boss. When omitted, the default layered-reporting discipline is used. |
 
 ## boss_report
 
@@ -490,10 +364,9 @@ Report a worker's outcome to its parent in the Boss Mode tree. Only workers may 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `anchorMessageID` | typeof | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `output` | - | yes |  |
+| `summary` | string | yes | Summary of what was done, blocked, or needed. |
+| `status` | "completed" \| "blocked" \| "needs_input" |  | Outcome status. Defaults to completed. |
+| `refs` | string |  | Optional references (files, IDs, links). |
 
 ## boss_spawn
 
@@ -503,15 +376,10 @@ Spawn a persistent specialist worker session as a direct child of the current bo
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `permission` | - | yes |  |
-| `patterns` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `sessionID` | session.id | yes |  |
-| `role` | params.role | yes |  |
-| `agent` | session.agentOverride | yes |  |
-| `output` | - | yes |  |
+| `role` | string | yes | Specialist role label for the worker (e.g. code, review, research). |
+| `agent` | string |  | Agent to run the worker session. Defaults to the session's agent. |
+| `instructions` | string |  | Optional standing instructions for the worker. |
+| `workspace` | "main" \| "worktree" |  | Where the worker should work: "main" runs in the caller's checkout (default), "worktree" creates and binds a fresh git worktree (requires the caller scope to be a Git project). |
 
 ## boss_status
 
@@ -521,9 +389,7 @@ Show the current Boss Mode worker tree under the calling session. The tree is de
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `output` | lines.join | yes |  |
+| `depth` | number |  | Maximum tree depth to render. Default 16. |
 
 ## browser_action
 
@@ -543,28 +409,15 @@ Read or manage user annotations on browser pages. Annotations are user comments 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | formatted.output | yes |  |
-| `metadata` | - | yes |  |
-| `count` | annotations.length | yes |  |
-| `pending` | pending.length | yes |  |
-| `outputTruncated` | formatted.truncated | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `ref` | params.ref | yes |  |
-| `element` | params.element | yes |  |
-| `comment` | params.comment | yes |  |
-| `styleFeedback` | params.styleFeedback | yes |  |
-| `createdBy` | - | yes |  |
-| `pageID` | page.id | yes |  |
-| `pageURL` | page.url | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
+| `action` | "list" \| "read" \| "resolve" \| "create" | yes | Action: list all annotations, read a specific one, resolve, or create a new annotation |
+| `annotationId` | string |  | Annotation ID for read/resolve actions |
+| `pageId` | string |  |  |
+| `ref` | string |  | Reference ID for create action |
+| `element` | string |  | Element selector for create action |
+| `comment` | string |  | Annotation comment text for create action |
+| `styleFeedback` | string |  | Style feedback for create action |
+| `page` | number |  | Valid only for list; defaults to 0. |
+| `pageSize` | number |  | Valid only for list; defaults to 50. |
 
 ## browser_assets
 
@@ -634,18 +487,12 @@ List, wait for, cancel, or export owner-isolated managed browser downloads.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | formatted.output | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | formatted.output | yes |  |
-| `metadata` | - | yes |  |
-| `commandId` | - | yes |  |
-| `command` | - | yes |  |
-| `signal` | ctx.abort | yes |  |
-| `title` | - | yes |  |
-| `output` | formatted.output | yes |  |
-| `metadata` | - | yes |  |
+| `action` | "list" \| "wait" \| "cancel" \| "export" | yes |  |
+| `id` | string |  | Required for wait, cancel, and export. |
+| `timeoutMs` | number |  | Valid only for wait; defaults to 30000. |
+| `path` | string |  | Required only for export. |
+| `page` | number |  | Valid only for list; defaults to 0. |
+| `pageSize` | number |  | Valid only for list; defaults to 100. |
 
 ## browser_emulate
 
@@ -689,29 +536,12 @@ Navigate, resume, close, or read the one browser page owned by the current sessi
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | page | yes |  |
-| `output` | lines.join | yes |  |
-| `metadata` | - | yes |  |
-| `status` | session.status | yes |  |
-| `pageId` | page | yes |  |
-| `url` | page | yes |  |
-| `title` | page | yes |  |
-| `type` | - | yes |  |
-| `url` | params.url | yes |  |
-| `source` | - | yes |  |
-| `type` | - | yes |  |
-| `ignoreCache` | params.ignoreCache | yes |  |
-| `snapshotAvailable` | Boolean | yes |  |
-| `snapshotUnavailable` | settled | yes |  |
-| `title` | - | yes |  |
-| `output` | page | yes |  |
-| `metadata` | - | yes |  |
-| `action` | params.action | yes |  |
-| `resultType` | result.type | yes |  |
-| `status` | session.status | yes |  |
-| `pageId` | page | yes |  |
-| `url` | page | yes |  |
-| `title` | page | yes |  |
+| `action` | z.enum | yes |  |
+| `url` | string |  | Required only for goto. |
+| `ignoreCache` | boolean |  | Valid only for reload. |
+| `settleMode` | "networkquiet" \| "load" \| "none" |  | How long to wait after navigation before returning. load is the default for agent navigation (up to 15s); networkquiet waits up to settleTimeoutMs for the page to stop loading and go quiet; none returns immediately. |
+| `settleTimeoutMs` | number |  | Maximum milliseconds to wait for the page to settle (default 15s for navigation, hard cap 30s). A timeout does not fail the navigation; the result reports settled:false so you can decide what to wait for with browser_wait. |
+| `includeSnapshot` | boolean |  | Return a fresh accessibility snapshot after navigation settles (default true). Set false when the destination is a download or you only need the URL/title. |
 
 ## browser_network
 
@@ -798,34 +628,7 @@ Control the Browser Side Workspace panel. Show or hide the Browser UI, switch fo
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `workspaceCommand` | - | yes |  |
-| `workspaceTool` | - | yes |  |
-| `workspaceOpen` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `workspaceCommand` | - | yes |  |
-| `workspaceTool` | - | yes |  |
-| `workspaceOpen` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `workspaceCommand` | - | yes |  |
-| `workspaceTool` | - | yes |  |
-| `workspaceOpen` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `workspaceCommand` | - | yes |  |
-| `workspaceTool` | - | yes |  |
-| `workspaceOpen` | hostStatus | yes |  |
+| `action` | "show" \| "hide" \| "focus" \| "status" | yes | show: open the Browser Side Workspace panel. hide: close the Side Workspace. focus: switch the Side Workspace to Browser. status: query current host connection state. |
 
 ## browser_wait
 
@@ -846,19 +649,10 @@ Kind: `orchestration.session`
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `sessionID` | ctx.sessionID | yes |  |
-| `messageID` | ctx.messageID | yes |  |
-| `permission` | - | yes |  |
-| `patterns` | - | yes |  |
-| `metadata` | - | yes |  |
-| `messageId` | params.replyToMessageId | yes |  |
-| `scopeKey` | channel.scopeKey | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `output` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `output` | - | yes |  |
+| `text` | string | yes | Text to push to the channel chat. |
+| `accountId` | string |  | Channel account ID. Defaults to the session's channel endpoint. |
+| `chatId` | string |  | Target chat (group or DM) ID. Defaults to the chat the current message arrived from. |
+| `replyToMessageId` | string |  | Reply to this message ID instead of pushing a new message. |
 
 ## clarus_extend_task
 
@@ -946,122 +740,11 @@ Discover persisted Synergy Link targets and manage explicit remote sessions. Pre
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `targets` | targets.map | yes |  |
-| `id` | target.id | yes |  |
-| `name` | target.name | yes |  |
-| `enabled` | target.enabled | yes |  |
-| `authorization` | target.authorization | yes |  |
-| `availability` | target.availability | yes |  |
-| `platform` | target.host | yes |  |
-| `arch` | target.host | yes |  |
-| `runtime` | target.host | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `sessions` | sessions.map | yes |  |
-| `registered` | session.targetID | yes |  |
-| `sourceAgent` | ctx.agent | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `targetID` | registeredTarget | yes |  |
-| `targetAgentID` | undefined | yes |  |
-| `sessionID` | undefined | yes |  |
-| `status` | - | yes |  |
-| `output` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `targetID` | registeredTarget | yes |  |
-| `targetAgentID` | session.targetAgentID | yes |  |
-| `sessionID` | session.sessionID | yes |  |
-| `status` | - | yes |  |
-| `output` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `targetID` | registeredTarget | yes |  |
-| `targetAgentID` | session.targetAgentID | yes |  |
-| `sessionID` | session.sessionID | yes |  |
-| `status` | - | yes |  |
-| `output` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `targetID` | registeredTarget | yes |  |
-| `targetAgentID` | session.targetAgentID | yes |  |
-| `sessionID` | session.sessionID | yes |  |
-| `status` | - | yes |  |
-| `output` | JSON.stringify | yes |  |
-| `client` | SynergyLinkExecution.getClient | yes |  |
-| `registeredTargetID` | registeredTarget | yes |  |
-| `targetAgentID` | activeSession.targetAgentID | yes |  |
-| `sourceAgent` | ctx.agent | yes |  |
-| `cachedSessionID` | activeSession.sessionID | yes |  |
-| `label` | params.label | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `targetID` | registeredTarget | yes |  |
-| `targetAgentID` | activeSession.targetAgentID | yes |  |
-| `sessionID` | activeSession.sessionID | yes |  |
-| `status` | activeSession.status | yes |  |
-| `output` | - | yes |  |
-| `message` | - | yes |  |
-| `status` | opened.metadata.status | yes |  |
-| `host` | opened.metadata.host | yes |  |
-| `title` | opened.title | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `targetID` | registeredTarget | yes |  |
-| `sessionID` | opened.metadata.sessionID | yes |  |
-| `status` | opened.metadata.status | yes |  |
-| `output` | opened.output | yes |  |
-| `targetID` | registeredTarget | yes |  |
-| `sourceAgent` | ctx.agent | yes |  |
-| `status` | - | yes |  |
-| `supportsBashDetach` | opened.metadata.host | yes |  |
-| `label` | params.label | yes |  |
-| `openedAt` | Date.now | yes |  |
-| `lastUsedAt` | Date.now | yes |  |
-| `lastAttemptAt` | Date.now | yes |  |
-| `lastVerifiedAt` | Date.now | yes |  |
-| `status` | - | yes |  |
-| `host` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `targetID` | registeredTarget | yes |  |
-| `status` | opened.metadata.status | yes |  |
-| `output` | opened.output | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `targetID` | registeredTarget | yes |  |
-| `targetAgentID` | session.targetAgentID | yes |  |
-| `sessionID` | session.sessionID | yes |  |
-| `status` | - | yes |  |
-| `output` | - | yes |  |
-| `message` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `targetID` | registeredTarget | yes |  |
-| `targetAgentID` | session.targetAgentID | yes |  |
-| `sessionID` | session.sessionID | yes |  |
-| `status` | - | yes |  |
-| `output` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `targetID` | registeredTarget | yes |  |
-| `targetAgentID` | session.targetAgentID | yes |  |
-| `sessionID` | session.sessionID | yes |  |
-| `status` | closed.metadata.status | yes |  |
-| `output` | closed.output | yes |  |
+| `action` | "open" \| "close" \| "status" \| "list" \| "list_targets" \| "clear" | yes | Synergy Link action to perform |
+| `targetID` | string |  | Stable persisted Synergy Link target ID. Preferred for open, close, and status. |
+| `linkID` | string |  | Raw Synergy Link locator. Must start with link_. |
+| `targetAgentID` | string |  | Holos target agent ID. Required with linkID for open. |
+| `label` | string |  | Optional label for the Synergy Link session. |
 
 ## dagpatch
 
@@ -1116,36 +799,18 @@ Read emails from an IMAP inbox. Use this tool when the user asks to check email,
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `permission` | - | yes |  |
-| `patterns` | - | yes |  |
-| `metadata` | - | yes |  |
-| `nonBypassable` | true | yes |  |
-| `action` | params.action | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | lines.join | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | results.join | yes |  |
-| `metadata` | - | yes |  |
-| `uids` | uids.slice | yes |  |
-| `count` | results.length | yes |  |
-| `truncated` | anyTruncated | yes |  |
-| `attachments` | allAttachments | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
+| `folder` | string |  | Mailbox folder name, defaults to INBOX |
+| `action` | "search" \| "summaries" \| "read" \| "markSeen" | yes | What to do: search for UIDs, get summaries, read full email, or mark as seen |
+| `uids` | number |  | Email UIDs to fetch or mark as seen |
+| `search` | object |  | Search criteria for finding emails |
+| `from` | string |  | Filter by sender email address |
+| `subject` | string |  | Filter by subject keyword |
+| `text` | string |  | Filter by keyword in the message body |
+| `since` | dateString.optional |  | Emails received on or after this date (ISO 8601) |
+| `before` | dateString.optional |  | Emails received before this date (ISO 8601) |
+| `unseen` | boolean |  | Only unread emails |
+| `flagged` | boolean |  | Only flagged/starred emails |
+| `limit` | number |  | Maximum results to return (default 20) |
 
 ## email_send
 
@@ -1155,24 +820,10 @@ Send an email via SMTP. Use this tool when the user asks you to send an email, n
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `permission` | - | yes |  |
-| `patterns` | - | yes |  |
-| `metadata` | - | yes |  |
-| `nonBypassable` | true | yes |  |
-| `action` | - | yes |  |
-| `to` | recipients | yes |  |
-| `subject` | params.subject | yes |  |
-| `to` | recipients | yes |  |
-| `subject` | params.subject | yes |  |
-| `text` | params.body | yes |  |
-| `html` | params.html | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `truncated` | false | yes |  |
-| `messageId` | result.messageId | yes |  |
-| `to` | recipients | yes |  |
-| `subject` | params.subject | yes |  |
+| `to` | string | yes | Recipient email address(es). A single address, comma-separated string, or array of addresses |
+| `subject` | string | yes | Email subject line |
+| `body` | string | yes | Email body in plain text |
+| `html` | string |  | Optional HTML version of the email body for rich formatting |
 
 ## expand_tools
 
@@ -1180,6 +831,11 @@ Kind: `platform.tooling`
 
 Change tool visibility for the current session by expanding deferred groups or activating search-only tools. The expanded state is stored on the session and remains stable across future turns, session restore, and context compaction until the session ends or the state is explicitly cleared. This tool does not execute external actions, does not call the expanded tools, and does not bypass permissions, agent policy, sandboxing, disabled user tools, or runtime availability. Tools that are permission-hidden may still remain hidden after expansion. Known built-in groups: Usage guidance: if the capability domain is known, call expand_tools({ groups: [...] }) directly. If the tool or group name is uncertain, call search_tools first, then expand the returned group or activate the returned search-only tool. After expand_tools returns, use the listed tools directly. Tools omitted from the list may still be hidden by permissions, user settings, policy, or runtime availability.
 
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `groups` | string |  | Tool group IDs to expand, such as browser, agenda, session, note, memory. |
+| `tools` | string |  | Search-only individual tool IDs to activate. |
+| `reason` | string |  | Brief reason this capability is needed. |
 
 ## file_search
 
@@ -1251,23 +907,8 @@ Use this when the LightLoop review audit confirms the task is fully and correctl
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `agent` | ctx.agent | yes |  |
-| `reviewSessionID` | ctx.sessionID | yes |  |
-| `targetSessionID` | sessionID | yes |  |
-| `action` | - | yes |  |
-| `target` | sessionID | yes |  |
-| `mail` | - | yes |  |
-| `type` | - | yes |  |
-| `summary` | - | yes |  |
-| `parts` | - | yes |  |
-| `id` | Identifier.ascending | yes |  |
-| `messageID` | - | yes |  |
-| `type` | - | yes |  |
-| `origin` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | text | yes |  |
-| `metadata` | - | yes |  |
+| `sessionID` | string | yes | The execution session ID provided in your launch context |
+| `summary` | string | yes | Concise approved completion verdict |
 
 ## light_loop_reject
 
@@ -1277,48 +918,11 @@ Use this when the LightLoop audit finds missing or incorrect work. Parameters: -
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `agent` | ctx.agent | yes |  |
-| `reviewSessionID` | ctx.sessionID | yes |  |
-| `targetSessionID` | sessionID | yes |  |
-| `action` | - | yes |  |
-| `stopRequest` | undefined | yes |  |
-| `review` | - | yes |  |
-| `attempts` | currentAttempts | yes |  |
-| `lastReason` | reason | yes |  |
-| `lastReviewedAt` | now | yes |  |
-| `target` | sessionID | yes |  |
-| `mail` | - | yes |  |
-| `type` | - | yes |  |
-| `summary` | - | yes |  |
-| `parts` | - | yes |  |
-| `id` | Identifier.ascending | yes |  |
-| `messageID` | - | yes |  |
-| `type` | - | yes |  |
-| `text` | exhaustText | yes |  |
-| `origin` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | exhaustText | yes |  |
-| `metadata` | - | yes |  |
-| `status` | - | yes |  |
-| `stopRequest` | undefined | yes |  |
-| `review` | - | yes |  |
-| `attempts` | currentAttempts | yes |  |
-| `lastReason` | reason | yes |  |
-| `lastReviewedAt` | now | yes |  |
-| `target` | sessionID | yes |  |
-| `mail` | - | yes |  |
-| `type` | - | yes |  |
-| `summary` | - | yes |  |
-| `parts` | - | yes |  |
-| `id` | Identifier.ascending | yes |  |
-| `messageID` | - | yes |  |
-| `type` | - | yes |  |
-| `origin` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | text | yes |  |
-| `metadata` | - | yes |  |
+| `sessionID` | string | yes | The execution session ID provided in your launch context |
+| `reason` | string | yes | Clear explanation of why the task is not complete |
+| `completed` | string |  | Optional summary of work that is already correct |
+| `remaining` | string | yes | Summary of missing or incorrect work, marking each item BLOCKING or NON-BLOCKING |
+| `instructions` | string | yes | Concrete next actions the execution agent can follow without further clarification |
 
 ## look_at
 
@@ -1328,52 +932,10 @@ Analyze image files (screenshots, diagrams, charts, UI mockups, photos) with a s
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | nonImages | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | files.length | yes |  |
-| `metadata` | files.length | yes |  |
-| `parentID` | ctx.sessionID | yes |  |
-| `title` | sessionTitle | yes |  |
-| `interaction` | SessionInteraction.unattended | yes |  |
-| `permission` | - | yes |  |
-| `completionNotice` | - | yes |  |
-| `Goal` | - | yes |  |
-| `Goal` | - | yes |  |
-| `messageID` | Identifier.ascending | yes |  |
-| `sessionID` | session.id | yes |  |
-| `agent` | MULTIMODAL_AGENT | yes |  |
-| `origin` | - | yes |  |
-| `parts` | - | yes |  |
-| `type` | - | yes |  |
-| `mime` | file.mimeType | yes |  |
-| `url` | pathToFileURL | yes |  |
-| `filename` | file.filename | yes |  |
-| `localPath` | file.filepath | yes |  |
-| `model` | - | yes |  |
-| `mode` | - | yes |  |
-| `summary` | - | yes |  |
-| `title` | timedOut | yes |  |
-| `metadata` | - | yes |  |
-| `filePath` | files | yes |  |
-| `mimeType` | files | yes |  |
-| `shownToUser` | params.show_to_user | yes |  |
-| `title` | timedOut | yes |  |
-| `metadata` | - | yes |  |
-| `fileCount` | files.length | yes |  |
-| `shownToUser` | params.show_to_user | yes |  |
+| `file_path` | string | yes | Absolute path or array of up to ${MAX_IMAGES} paths to the image(s) to analyze |
+| `goal` | string | yes | What specific information to extract from the file(s) |
+| `timeout` | number |  | Optional timeout in seconds. If not specified, analysis will time out after ${DEFAULT_TIMEOUT_S} seconds (${DEFAULT_TIMEOUT_S / 60} minutes). |
+| `show_to_user` | boolean |  | When true, also deliver the analyzed image(s) to the user as visible attachments. Use this when the user should see the same visual result you are analyzing. |
 
 ## loop_stop
 
@@ -1383,23 +945,10 @@ Request a completion review for the active Light Loop. Use this when you believe
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | reviewSessionID | yes |  |
-| `metadata` | - | yes |  |
-| `loopStopRequested` | true | yes |  |
-| `reviewTaskID` | session.workflow.stopRequest.reviewTaskID | yes |  |
-| `sessionID` | ctx.sessionID | yes |  |
-| `scopeID` | ScopeContext.current.scope.id | yes |  |
-| `operation` | - | yes |  |
-| `stopRequest` | - | yes |  |
-| `completed` | params.completed | yes |  |
-| `evidence` | params.evidence | yes |  |
-| `remaining` | params.remaining | yes |  |
-| `requesterSessionID` | ctx.sessionID | yes |  |
-| `requesterMessageID` | ctx.messageID | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
+| `summary` | string | yes | Summary of what was completed. |
+| `completed` | string |  | Completed deliverable or requirement statements. |
+| `evidence` | string |  | Concrete verification evidence (test results, file paths, checks). |
+| `remaining` | string |  | Any known remaining work or limitations. |
 
 ## lsp
 
@@ -1510,12 +1059,8 @@ Archive notes by ID. Archived notes are hidden from the active list but preserve
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
+| `ids` | string | yes | IDs of notes to archive. Notes must be archived before they can be deleted. |
+| `unarchive` | boolean |  | Set to true to restore archived notes back to active state. |
 
 ## note_delete
 
@@ -1525,11 +1070,7 @@ Permanently delete one note by ID. Only archived notes can be permanently delete
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
+| `id` | string | yes | Note ID to permanently delete. The note must already be archived. |
 
 ## note_edit
 
@@ -1539,62 +1080,12 @@ Performs precise anchored edits to note content. Blueprint notes are editable on
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | params.id | yes |  |
-| `code` | - | yes |  |
-| `message` | - | yes |  |
-| `workflowKind` | session.workflow | yes |  |
-| `action` | - | yes |  |
-| `existingKind` | existing.kind | yes |  |
-| `id` | params.id | yes |  |
-| `message` | error | yes |  |
-| `note` | existing | yes |  |
-| `blockIds` | - | yes |  |
-| `id` | params.id | yes |  |
-| `code` | - | yes |  |
-| `message` | error | yes |  |
-| `note` | existing | yes |  |
-| `blockIds` | - | yes |  |
-| `failedOpIndex` | error | yes |  |
-| `failedAction` | error | yes |  |
-| `id` | params.id | yes |  |
-| `code` | - | yes |  |
-| `message` | freshenError | yes |  |
-| `note` | existing | yes |  |
-| `blockIds` | - | yes |  |
-| `failedOpIndex` | freshenError | yes |  |
-| `failedAction` | freshenError | yes |  |
-| `operations` | params.ops.length | yes |  |
-| `changedBlocks` | changed.length | yes |  |
-| `directChangedBlocks` | directChangedBlockIds.size | yes |  |
-| `ancestorChangedBlocks` | ancestorChangedBlockIds.size | yes |  |
-| `unexpectedChangedBlocks` | unexpectedChangedBlockIds.size | yes |  |
-| `noopOperations` | operationResults.filter | yes |  |
-| `content` | nextDoc | yes |  |
-| `expectedVersion` | existing.version | yes |  |
-| `content` | retry.nextDoc | yes |  |
-| `expectedVersion` | existing.version | yes |  |
-| `id` | params.id | yes |  |
-| `code` | - | yes |  |
-| `message` | retryError | yes |  |
-| `note` | conflict.data.note | yes |  |
-| `id` | params.id | yes |  |
-| `code` | - | yes |  |
-| `message` | - | yes |  |
-| `note` | conflict.data.note | yes |  |
-| `id` | params.id | yes |  |
-| `code` | - | yes |  |
-| `message` | - | yes |  |
-| `title` | existing.title | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `id` | params.id | yes |  |
-| `title` | existing.title | yes |  |
-| `dryRun` | params.dryRun | yes |  |
-| `version` | finalVersion | yes |  |
-| `docHash` | nextHash | yes |  |
-| `opCount` | params.ops.length | yes |  |
-| `changedBlockIds` | changed.map | yes |  |
-| `changedBlocks` | changed | yes |  |
+| `id` | string | yes | The note ID to edit. |
+| `baseVersion` | number | yes | Note version returned by note_read(format:'blocks'\|'json'). |
+| `baseDocHash` | string |  | DocHash returned by note_read. If provided, mismatches fail safely. |
+| `freshen` | "safe" \| "never" |  | How to handle stale anchors. 'safe' re-reads and replays low-risk operations; 'never' preserves strict version/hash guards. |
+| `dryRun` | boolean |  | Preview the edit without writing the note. |
+| `ops` | array | yes | Ordered list of anchored note edit operations. |
 
 ## note_list
 
@@ -1604,16 +1095,13 @@ List notes in the current scope. By default shows only active notes. Use the `ar
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `count` | shown | yes |  |
-| `scope` | params.scope | yes |  |
-| `kind` | params.kind | yes |  |
-| `tags` | Object.fromEntries | yes |  |
+| `scope` | "current" \| "global" \| "all" |  | Which scope to list from: 'current' (project only), 'global' (global only), 'all' (current project + global). |
+| `kind` | "all" \| "note" \| "blueprint" |  | Filter by document kind. Blueprints are executable notes. |
+| `archived` | "active" \| "archived" \| "all" |  | Filter by archive status: 'active' (default), 'archived', or 'all'. |
+| `since` | string |  | Only include notes updated on or after this date (ISO 8601, e.g. '2026-03-15' or '2026-03-15T18:00:00'). |
+| `before` | string |  | Only include notes updated before this date (ISO 8601). |
+| `offset` | z.coerce.number |  | Number of notes to skip. |
+| `limit` | z.coerce.number |  | Maximum number of notes to return (max 100). |
 
 ## note_read
 
@@ -1623,16 +1111,12 @@ Read the full content of one or more notes by ID. Blueprint documents are notes 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | note.id | yes |  |
-| `title` | note.title | yes |  |
-| `version` | note.version | yes |  |
-| `tags` | note.tags | yes |  |
-| `pinned` | note.pinned | yes |  |
-| `global` | note.global | yes |  |
-| `blockCount` | blocks.length | yes |  |
-| `title` | titleLabel | yes |  |
-| `output` | entries.join | yes |  |
-| `metadata` | - | yes |  |
+| `ids` | string | yes | List of note IDs to read (max 10) |
+| `offset` | z.coerce.number |  | Line or block offset to start reading from (0-based) |
+| `limit` | z.coerce.number |  | Maximum number of lines or blocks to return per note (max 2000) |
+| `format` | "markdown" \| "blocks" \| "json" |  | Output format. 'markdown': content as markdown (default). 'blocks': editable block anchors for note_edit. 'json': structured note data. |
+| `detail` | "summary" \| "json" |  | Detail level for blocks/json output. Use 'json' when exact node JSON is needed for edits. |
+| `includeHashes` | boolean |  | Include docHash and block hashes for note_edit safety checks. |
 
 ## note_search
 
@@ -1642,32 +1126,14 @@ Search notes using regex patterns. Searches across note titles and content, retu
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `scopeID` | currentScopeID | yes |  |
-| `pattern` | params.pattern | yes |  |
-| `scope` | params.scope | yes |  |
-| `since` | params.since | yes |  |
-| `before` | params.before | yes |  |
-| `tags` | params.tags | yes |  |
-| `pinned` | params.pinned | yes |  |
-| `kind` | params.kind | yes |  |
-| `archived` | params.archived | yes |  |
-| `title` | search.pattern | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `start` | Math.max | yes |  |
-| `end` | Math.min | yes |  |
-| `scopeID` | currentScopeID | yes |  |
-| `pattern` | search.pattern | yes |  |
-| `notes` | matched | yes |  |
-| `title` | search.pattern | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | search.pattern | yes |  |
-| `metadata` | - | yes |  |
-| `matchCount` | totalMatches | yes |  |
-| `noteCount` | matchedNotes | yes |  |
-| `pattern` | search.pattern | yes |  |
-| `kind` | search.kind | yes |  |
+| `pattern` | string | yes | Regex pattern to search for in note titles and content. |
+| `scope` | "current" \| "global" \| "all" |  | Which scope to search: 'current', 'global', or 'all'. |
+| `kind` | "all" \| "note" \| "blueprint" |  | Filter by document kind. Blueprints are executable notes. |
+| `archived` | "active" \| "archived" \| "all" |  | Filter by archive status: 'active' (default), 'archived', or 'all'. |
+| `since` | string |  | Only include notes updated on or after this date (ISO 8601, e.g. '2026-03-15' or '2026-03-15T18:00:00'). |
+| `before` | string |  | Only include notes updated before this date (ISO 8601). |
+| `tags` | string |  | Only search notes that have ALL of these tags. |
+| `pinned` | boolean |  | Filter by pinned status. |
 
 ## note_write
 
@@ -1677,48 +1143,14 @@ Create a new note or overwrite an existing note with complete markdown content. 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `kind` | params.kind | yes |  |
-| `description` | params.description | yes |  |
-| `fallback` | - | yes |  |
-| `workflowKind` | session.workflow | yes |  |
-| `action` | - | yes |  |
-| `requestedKind` | kind | yes |  |
-| `title` | params.title | yes |  |
-| `content` | tiptapContent | yes |  |
-| `tags` | params.tags | yes |  |
-| `description` | params.description | yes |  |
-| `title` | note.title | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `id` | note.id | yes |  |
-| `action` | - | yes |  |
-| `title` | note.title | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `id` | params.id | yes |  |
-| `action` | - | yes |  |
-| `title` | params.title | yes |  |
-| `tags` | params.tags | yes |  |
-| `kind` | params.kind | yes |  |
-| `description` | params.description | yes |  |
-| `content` | - | yes |  |
-| `type` | - | yes |  |
-| `content` | - | yes |  |
-| `id` | params.id | yes |  |
-| `action` | - | yes |  |
-| `title` | params.title | yes |  |
-| `tags` | params.tags | yes |  |
-| `kind` | params.kind | yes |  |
-| `description` | params.description | yes |  |
-| `content` | - | yes |  |
-| `optimistic` | false | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
+| `id` | string |  | Note ID to update. If omitted, creates a new note. |
+| `title` | string |  | Note title. Required when creating a new note. |
+| `content` | string | yes | Note content in markdown format. |
+| `mode` | "create" \| "append" \| "replace" |  | 'create': new note, 'append': add content to end of existing note, 'replace': overwrite content. |
+| `tags` | string |  | Tags for the note. |
+| `kind` | "note" \| "blueprint" |  | Document kind. Use 'blueprint' when this note should be executable as a BlueprintLoop. |
+| `description` | string |  | Short blueprint description. Only used when kind is 'blueprint'. |
+| `scope` | "current" \| "home" |  | Which scope to create the note in. Only used for create mode. |
 
 ## openai_image_edit
 
@@ -1788,20 +1220,6 @@ Kind: `orchestration.dag`
 
 Read the current Lattice Run and ordered Pathway. The result separates pathway.history and pathway.current, which are read-only, from pathway.editableFuture, which is the complete list accepted by pathway_write.futureSteps. Internal pending actions, effects, delivery receipts, message IDs, and content digests are never returned. Read this before replanning or choosing the next state-valid Lattice action.
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | JSON.stringify | yes |  |
-| `pathway` | - | yes |  |
-| `metadata` | - | yes |  |
-| `runID` | view.id | yes |  |
-| `state` | view.state | yes |  |
-| `status` | view.status | yes |  |
-| `currentStepID` | view.currentStepID | yes |  |
-| `currentStepTitle` | current | yes |  |
-| `preservedStepCount` | history.length | yes |  |
-| `editableFutureCount` | editableFuture.length | yes |  |
-| `total` | view.pathway.length | yes |  |
 
 ## pathway_write
 
@@ -1811,27 +1229,7 @@ Replace the complete ordered list of pending future Steps in the current Lattice
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `code` | - | yes |  |
-| `toolName` | - | yes |  |
-| `message` | - | yes |  |
-| `code` | - | yes |  |
-| `toolName` | - | yes |  |
-| `message` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | JSON.stringify | yes |  |
-| `pathwayRevision` | view.pathwayRevision | yes |  |
-| `preserved` | - | yes |  |
-| `historyStepCount` | history.length | yes |  |
-| `metadata` | - | yes |  |
-| `runID` | view.id | yes |  |
-| `state` | view.state | yes |  |
-| `status` | view.status | yes |  |
-| `pathwayRevision` | view.pathwayRevision | yes |  |
-| `currentStepID` | view.currentStepID | yes |  |
-| `currentStepTitle` | current | yes |  |
-| `preservedStepCount` | history.length | yes |  |
-| `editableFutureCount` | editableFuture.length | yes |  |
-| `total` | view.pathway.length | yes |  |
+| `futureSteps` | array | yes | Complete ordered replacement for pathway_read.pathway.editableFuture. Never include history or current Steps. |
 
 ## process
 
@@ -1841,11 +1239,16 @@ Manage background bash processes: list, poll, log, write, send-keys, kill, clear
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `targetID` | params.targetID | yes |  |
-| `targetIDSupplied` | Object.hasOwn | yes |  |
-| `linkID` | params.linkID | yes |  |
-| `tool` | - | yes |  |
-| `agent` | ctx.agent | yes |  |
+| `action` | "list" \| "poll" \| "log" \| "write" \| "send-keys" \| "kill" \| "clear" \| "remove" | yes | Action to perform on the process |
+| `processId` | string |  | Process ID (required for all actions except list) |
+| `data` | string |  | Data to write to stdin (for write action) |
+| `keys` | string |  | Key tokens to send (for send-keys action) |
+| `offset` | number |  | Line offset for log retrieval |
+| `limit` | number |  | Number of lines to retrieve for log |
+| `block` | boolean |  | Wait for process to exit before returning (for poll action) |
+| `timeout` | number |  | Max seconds to wait when block is true (default: ${ToolTimeout.DEFAULTS.processPollWaitMs / 1_000}) |
+| `linkID` | string |  | Legacy Synergy Link instance ID. Prefer targetID. Omit both fields for intentional local execution. A supplied remote target never falls back locally. |
+| `targetID` | string |  | Persisted Synergy Link target ID returned by connect list_targets. |
 
 ## question
 
@@ -1855,14 +1258,7 @@ Use this tool when you need to ask the user questions during execution. This all
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `sessionID` | ctx.sessionID | yes |  |
-| `questions` | params.questions | yes |  |
-| `tool` | ctx.callID | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
+| `questions` | array | yes | Questions to ask |
 
 ## read
 
@@ -1928,12 +1324,10 @@ Reload Synergy runtime state after self-configuration changes. Use this when con
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `scope` | params.scope | yes |  |
-| `force` | params.force | yes |  |
-| `reason` | params.reason | yes |  |
-| `title` | - | yes |  |
-| `output` | lines.join | yes |  |
-| `metadata` | result | yes |  |
+| `target` | array | yes | One target or an array of targets to reload |
+| `scope` | RuntimeSchema.ReloadScope.optional |  | Config reload scope. Defaults to auto |
+| `force` | boolean |  | Reserved for future expansion |
+| `reason` | string |  | Optional short note about why the reload is happening |
 
 ## save_file
 
@@ -1984,29 +1378,10 @@ List available Synergy scopes (projects + home) so you can choose a valid `scope
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `id` | item.scopeID | yes |  |
-| `type` | item.scopeType | yes |  |
-| `name` | item.name | yes |  |
-| `directory` | item.directory | yes |  |
-| `sessionCount` | item.sessionCount | yes |  |
-| `latestActivityAt` | item.latestActivityAt | yes |  |
-| `icon` | item.icon | yes |  |
-| `current` | item.scopeID | yes |  |
-| `title` | - | yes |  |
-| `output` | params.query | yes |  |
-| `metadata` | - | yes |  |
-| `count` | - | yes |  |
-| `total` | - | yes |  |
-| `query` | params.query | yes |  |
-| `includeHome` | params.includeHome | yes |  |
-| `scopes` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `count` | shown | yes |  |
-| `query` | params.query | yes |  |
-| `includeHome` | params.includeHome | yes |  |
-| `scopes` | page | yes |  |
+| `query` | string |  | Optional case-insensitive filter matched against scope id, name, and directory. |
+| `includeHome` | boolean |  | Whether to include the home scope. Defaults to true. |
+| `limit` | z.coerce.number |  | Maximum number of scopes to return (max 100). |
+| `offset` | z.coerce.number |  | Number of scopes to skip for pagination. |
 
 ## search_tools
 
@@ -2016,26 +1391,8 @@ Discover non-resident tool capabilities that are not currently visible to the mo
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `error` | - | yes |  |
-| `guidance` | - | yes |  |
-| `providerID` | ToolDiscovery.providerIDFromModel | yes |  |
-| `userTools` | ctx.extra | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `query` | params.query | yes |  |
-| `changed` | false | yes |  |
-| `results` | - | yes |  |
-| `groups` | availableGroups.map | yes |  |
-| `guidance` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `query` | params.query | yes |  |
-| `changed` | false | yes |  |
-| `results` | resultMetadata | yes |  |
+| `query` | string | yes | Capability, tool, group, or task to search for. |
+| `limit` | z.coerce.number |  | Maximum number of matches to return. |
 
 ## session_control
 
@@ -2043,6 +1400,29 @@ Kind: `orchestration.session_control`
 
 Control a target session remotely — inspect its state and perform actions as if you were the user in that session. The `target` parameter identifies which session to control: - A session ID (e.g. "ses_xxx") to target a specific session - A Holos contact/agent ID ## Actions ### `create` — Create a standalone primary session Creates a normal top-level session in the sidebar. `target` is not used. Optional parameters: - `title`: session title - `scopeID` or `directory`: where to create it; defaults to the current scope. If you need a valid `scopeID`, call `scope_list` first. If you already know the absolute project path, pass `directory` instead. - `workspace`: `{ "mode": "current" }`, `{ "mode": "existing", "target": "..." }`, or `{ "mode": "create", "name": "...", "baseRef": "current|fresh" }` - `agent`: per-session agent override for new user messages - `model`: per-session model override, `{ "providerID": "...", "modelID": "..." }` - `mode`: `interactive` or `unattended` - `controlProfile`: `guarded`, `autonomous`, or `full_access` - `initialMessage`: enqueue a first user message and wake the new session asynchronously ### `status` — Query session state Returns the session's current runtime status, pending questions, and pending permission requests. Use this before other actions to understand what the session needs. For example, before answering a question, call `status` first to see what questions are pending and what options are available. ### `compact` — Trigger compaction Forces the target session to compact its conversation history. Useful when a child session is approaching context limits. ### `abort` — Abort execution Stops any ongoing processing in the target session. Use when a delegated agent is stuck or doing the wrong thing. ### `worktree_enter` — Create, enter, or switch the target session's worktree Uses `worktreeTarget` as an existing worktree name/ID/branch/path when it matches; otherwise creates a new worktree using `worktreeTarget` as the name. Omit `worktreeTarget` to create a uniquely named worktree. Use `baseRef`, `baseRevision`, and `force` as needed. ### `worktree_leave` — Return the target session to the main checkout Use `cleanup: "keep"` or `cleanup: "remove_if_clean"` to control whether a clean managed worktree is removed after leaving. ### `set_agent` — Set the target session's agent override Requires `agent`. Future user messages without an explicit agent use this override. ### `set_model` — Set the target session's model override Requires `model: { "providerID": "...", "modelID": "..." }`. Future user messages without an explicit model use this override. ### `set_mode` — Set interactive vs unattended behavior Requires `mode: "interactive"` or `mode: "unattended"`. `modeSource` defaults to `session_control`. ### `set_control_profile` — Set the target session's permission control profile Requires `controlProfile`. This changes the target session's guarded/autonomous/full-access profile. ### `question_reply` — Answer a pending question Provide answers to a question that the target session's agent has asked. The `answers` format is an array of arrays of selected labels — one array per question, each containing the label(s) the user selected. For single-select questions, pass one label; for multiple-select, pass multiple. Use `status` first to discover pending question IDs and available options. ### `question_reject` — Dismiss a pending question Reject a question the target session's agent has asked. The agent will receive an error and can adjust its approach. ### `permission_reply` — Approve or deny a permission request Respond to a pending permission request in the target session. Use `reply: "once"` to approve this specific request, or `reply: "reject"` to deny it. When rejecting, you can optionally provide a `message` to guide the agent. Use `status` first to discover pending permission IDs. ## Typical workflow 1. To create a session in another project, call `scope_list` to discover available scope IDs, then call `session_control` with `action: "create"` and the chosen `scopeID`. For an existing session, call `action: "status"` first. 2. Use `set_agent`, `set_model`, `set_mode`, or worktree actions to adjust the target session. 3. Use `question_reply` or `permission_reply` when `status` reports pending user input.
 
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `target` | string |  | Target session ID (ses_xxx). Required for every action except create. |
+| `action` | Action.describe | yes | The control action to perform on the target session. |
+| `title` | string |  | Title for create, or an updated title when supported by future actions. |
+| `initialMessage` | string |  | Initial user message to enqueue after create. The new session processes it asynchronously. |
+| `scopeID` | string |  | Scope ID for create. Defaults to the current scope. |
+| `directory` | string |  | Project directory for create when scopeID is not provided. |
+| `workspace` | WorkspaceSelection.optional |  | Workspace selection for create. |
+| `agent` | string |  | Agent name for create or set_agent. |
+| `model` | ModelRef.optional |  | Model override for create or set_model. |
+| `mode` | SessionInteraction.Mode.optional |  | Interaction mode for create or set_mode. |
+| `modeSource` | string |  | Optional source label for set_mode; defaults to session_control. |
+| `controlProfile` | "guarded" \| "autonomous" \| "full_access" |  | Control profile for create or set_control_profile. |
+| `worktreeTarget` | string |  | Worktree name, ID, branch, or path for worktree_enter. |
+| `baseRef` | "current" \| "fresh" |  | Base reference for worktree creation from worktree_enter. |
+| `baseRevision` | string |  | Explicit git revision/ref/commit for worktree creation. |
+| `force` | boolean |  | Force worktree switch/remove operations when supported. |
+| `cleanup` | "keep" \| "remove_if_clean" |  | Cleanup behavior for worktree_leave. |
+| `requestID` | string |  | ID of the pending question or permission request. Required for question_reply, question_reject, and permission_reply. |
+| `answers` | string |  | Answers for question_reply. An array of arrays of selected labels — one array per question, each containing the label(s) selected. |
+| `reply` | "once" \| "reject" |  | Reply for permission_reply. 'once' approves this request; 'reject' denies it. |
+| `message` | string |  | Optional feedback message when rejecting a permission request. |
 
 ## session_list
 
@@ -2052,17 +1432,12 @@ List sessions by scope. Returns session metadata, scope info, and the latest mes
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `sinceMs` | params.since | yes |  |
-| `beforeMs` | params.before | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | scopeID | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
+| `scope` | "project" \| "home" \| "feishu" | yes | 'project' = ordinary sessions across all projects or one project selected by scopeID, 'home' = all top-level sessions in the Home Scope, including channel sessions, 'feishu' = Feishu/Lark channel sessions across Home and project Scopes. |
+| `scopeID` | string |  | When scope is 'project', filter to one project using an id from scope_list. Omit to list ordinary sessions across all projects. |
+| `limit` | z.coerce.number |  | Maximum number of items to return. |
+| `offset` | z.coerce.number |  | Number of items to skip. |
+| `since` | string |  | Only include sessions updated on or after this date (ISO 8601, e.g. '2026-03-15' or '2026-03-15T18:00:00'). |
+| `before` | string |  | Only include sessions updated before this date (ISO 8601). |
 
 ## session_read
 
@@ -2072,9 +1447,10 @@ Read messages from a session. Returns session metadata and a paginated list of m
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `sessionID` | ctx.sessionID | yes |  |
-| `messageID` | ctx.messageID | yes |  |
-| `phase` | - | yes |  |
+| `target` | string | yes | Session to read. A session ID (ses_xxx). |
+| `limit` | z.coerce.number |  | Number of messages to return. |
+| `offset` | z.coerce.number |  | Number of messages to skip (0 = most recent). |
+| `around` | string |  | Message ID to center the view around. When provided, returns messages surrounding this message instead of using offset. Useful after session_search to read context around a match. |
 
 ## session_search
 
@@ -2084,9 +1460,15 @@ Search across session message content using regex patterns. Searches messages in
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `sessionID` | ctx.sessionID | yes |  |
-| `messageID` | ctx.messageID | yes |  |
-| `phase` | - | yes |  |
+| `pattern` | string | yes | Regex pattern to search for in message content. |
+| `scope` | "all" \| "current" \| "project" \| "home" |  | Which scopes to search: 'all' (default, all project scopes plus the Home scope with channel sessions), 'project' (all project scopes, or one project selected with scopeID), 'home' (Home scope only), or 'current' (the current scope only). |
+| `scopeID` | string |  | When scope is 'project', filter to one project using an id from scope_list. Omit to search across all projects. |
+| `includeChildren` | boolean |  | Include child sessions (delegated/Cortex/background sessions with a parentID). Defaults to false — only top-level sessions are searched. |
+| `timeField` | "session" \| "message" |  | Which timestamp the since/before filters apply to: 'session' (default, session last-updated time, matching session_list) or 'message' (each message's creation time). |
+| `content` | "text" \| "tool" \| "all" |  | Which message content to search: 'text' (default, message text parts only), 'tool' (text plus tool-call inputs and completed tool outputs, excerpt-level), or 'all' (text, tool payloads, and attachment filenames/URLs, excerpt-level). |
+| `since` | string |  | Only include content updated/created on or after this date (ISO 8601, e.g. '2026-03-15' or '2026-03-15T18:00:00'), interpreted by timeField. |
+| `before` | string |  | Only include content before this date (ISO 8601), interpreted by timeField. |
+| `limit` | z.coerce.number |  | Maximum number of matches to return across all sessions. |
 
 ## session_send
 
@@ -2094,6 +1476,12 @@ Kind: `orchestration.session`
 
 Send an actionable user message to a session. The target session's agent will process and respond to the message. The `target` parameter identifies which session to send to: - A session ID (e.g. "ses_xxx") to send to a specific session Only `role: "user"` is supported. Omitting `role` defaults to `user`. Calls with `role: "assistant"` are rejected; retry them with `role: "user"`.
 
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `target` | string | yes | Target session. A session ID (ses_xxx). |
+| `content` | string | yes | The text content to send. |
+| `role` | literal |  | Must be 'user'. This is the only supported delivery role. |
+| `sourceName` | string |  | Display name for the source of this message. Shown in the target session's UI. |
 
 ## skill
 
@@ -2101,12 +1489,8 @@ Kind: `knowledge.skill`
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | content.trim | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | parts.join | yes |  |
-| `metadata` | - | yes |  |
+| `name` | string | yes | The skill identifier from available_skills (e.g., 'code-review' or 'category/helper') |
+| `reference` | string |  | Load a specific reference file instead of the main skill content (e.g., 'references/providers.txt') |
 
 ## speak
 
@@ -2124,76 +1508,23 @@ Synthesize the given text into spoken audio and deliver it as a playable attachm
 
 Kind: `orchestration.task`
 
-Launch a new agent to handle complex, multistep tasks. Available agent types: {agents} ## When to use the Task tool Task delegation enables parallel execution and access to specialized agents. Use this when: - The work can run independently - You can parallelize across multiple agents - A specialized agent is better suited for the task - The task is non-trivial (more than a single quick action) Do NOT use this when: - The task requires immediate back-and-forth with the user ## Blocking vs Background ### `background: true` (non-blocking, recommended) Launches the task and **returns immediately** with `task_id`. You continue working while the subagent runs in the background. When the task completes, the system will send a lightweight notification that wakes you. ### `background: false` / omitted (blocking, default) Launches the task and **waits up to 300 seconds** for it to complete. If the subagent finishes within that time, returns the full result. Otherwise, the task is **auto-backgrounded** — you get a `task_id` and continue. > **Prefer `background=true` by default.** This lets you launch multiple tasks in parallel and continue working. Use `background=false` only when you truly cannot proceed without the result. ## Checking on background tasks When a background task completes, the system sends a **lightweight notification** that wakes you — it tells you which task finished and instructs you to retrieve the result. The notification does NOT contain the final result. **To retrieve the final result**, call `task_output` with `mode="full"` once: - `task_output(task_id="...", mode="full")` — returns the complete result, progress summary, and structured output as rendered JSON - `task_output(task_id="...", mode="full", block: true)` — wait once (up to 300s) for completion, then return the full result Reading the full result with `mode="full"` (or default mode) **acknowledges the completion** — the notification is cleared and will not reappear. Diagnostic modes (`progress`, `tail`, `summary`) do **not** acknowledge completion; the notification persists until you retrieve the full result. **Diagnostic modes** are one-shot checks for live status — do not use them as a polling loop: - `mode="summary"` — Compact one-liner: status, health, elapsed time - `mode="progress"` — Detailed progress: tool call list, health, duration - `mode="tail"` — Recent session activity from the subagent's conversation **`block=true` is only valid with `mode="full"` or the default mode.** Diagnostic modes + `block=true` are rejected. > **Do not poll.** Continue independent work while tasks run. Use diagnostic modes only as a one-shot check when you need specific status information. A later diagnostic is still allowed when new evidence, a stale health signal, or a cancellation decision warrants it — but do not loop. The system wakes you automatically when a task completes. Use **`task_list()`** once when you need an overview of all visible background tasks. **Do NOT use `agenda_watch` or `agenda_schedule` to wait for subagent completion.** No watch, schedule, or manual polling is needed. ## Usage notes 1. Launch multiple agents concurrently whenever possible 2. The result is not visible to the user - summarize it back to them 3. Provide `session_id` to reuse an existing session (must be idle and belong to this parent). - **Why reuse**: The subagent retains prior conversation context, useful for iterative refinement, debugging, or breaking long tasks into separate invocations without losing state. - **Context hint**: Since the subagent remembers prior turns in the reused session, you do NOT need to restate all context — focus your prompt on what's new or different this time. - **Busy sessions**: If the session is busy, the tool will error — wait for it to finish or use a different session. 4. Pass `output` when the caller needs a specific completion contract: `{ mode: "summary" }`, `{ mode: "final_response" }`, or `{ mode: "structured", schema, maxRepairTurns }`. Structured schemas can describe top-level objects, arrays, primitives, `anyOf`, or `oneOf`; the result is rendered as JSON for tool text and also exposed in metadata. 5. Clearly tell the agent whether to write code or just research ## Writing effective prompts Structure your prompt with: - **What to do**: Clear, specific goal - **Expected outcome**: What success looks like - **Context**: Relevant file paths, patterns, constraints - **What NOT to do**: Scope boundaries to prevent over-engineering ## Examples ### Parallel exploration ``` task(background: true, subagent_type: "code-cartographer", description: "Find auth logic", prompt: "...") task(background: true, subagent_type: "dependency-tracer", description: "Trace auth callers", prompt: "...") ``` ### Broad research ``` task(background: true, subagent_type: "research-scout", description: "Survey ecosystem", prompt: "...") task(background: true, subagent_type: "docs-researcher", description: "Verify API docs", prompt: "...") task(background: true, subagent_type: "literature-searcher", description: "Find papers", prompt: "...") ``` ### Parallel implementation and review ``` task(background: true, subagent_type: "implementation-engineer", description: "Add validation", prompt: "...") task(background: true, subagent_type: "security-reviewer", description: "Review trust boundary", prompt: "...") ``` ### Synchronous (when result needed immediately) ``` task(background: false, subagent_type: "code-cartographer", description: "Find config", prompt: "I need this to proceed...") ``` ## DAG Integration When executing a DAG node via background task, pass `dag_node_id` to link them: ``` task(background: true, dag_node_id: "research", subagent_type: "research-scout", description: "Research ecosystem", prompt: "...") ``` The DAG node will auto-complete when the task finishes (or auto-fail on error). No manual DAG update needed.
+Launch a new agent to handle complex, multistep tasks. Available agent types: {agents} ## When to use the Task tool Task delegation enables parallel execution and access to specialized agents. Use this when: - The work can run independently - The work decomposes into independent, ready subtasks (see "Parallelism and task boundaries") - A specialized agent is better suited for the task - The task is non-trivial (more than a single quick action) Do NOT use this when: - The task requires immediate back-and-forth with the user ## Parallelism and task boundaries Parallelism is a scheduling decision; task boundaries are a scoping decision — do not let one drive the other. Launch independent tasks concurrently when their inputs are ready and their write/resource ownership does not conflict. While background tasks run, continue useful independent parent work. Scope each assignment around one coherent, independently verifiable deliverable. A task may include every step needed to produce and verify that deliverable — do not bundle separately decidable goals into one assignment, and do not split tightly coupled work by file, step count, or duration merely to create parallelism. Start dependent tasks after the inputs they need exist. Do not serialize unrelated ready work just because the final integration will be sequential — run the integration or acceptance check yourself once its inputs are ready. Resolve material design decisions before dispatching dependent implementation, or delegate a clearly bounded investigation first. Do not disguise an open-ended planning problem as an implementation task. The parent composes the handoff — settled decisions, evidence, allowed changes, deliverable, verification criteria, and escalation conditions — and owns decomposition, integration, and acceptance. Do not ask the user to write a task contract. ## Blocking vs Background ### `background: true` (non-blocking, recommended) Launches the task and **returns immediately** with `task_id`. You continue working while the subagent runs in the background. When the task completes, the system will send a lightweight notification that wakes you. ### `background: false` / omitted (blocking, default) Launches the task and **waits up to 300 seconds** for it to complete. If the subagent finishes within that time, returns the full result. Otherwise, the task is **auto-backgrounded** — you get a `task_id` and continue. > **Prefer `background=true` by default** for independent, ready tasks. This lets you launch them concurrently and continue working. Use `background=false` only when you truly cannot proceed without the result. ## Checking on background tasks When a background task completes, the system sends a **lightweight notification** that wakes you — it tells you which task finished and instructs you to retrieve the result. The notification does NOT contain the final result. **To retrieve the final result**, call `task_output` with `mode="full"` once: - `task_output(task_id="...", mode="full")` — returns the complete result, progress summary, and structured output as rendered JSON - `task_output(task_id="...", mode="full", block: true)` — wait once (up to 300s) for completion, then return the full result Reading the full result with `mode="full"` (or default mode) **acknowledges the completion** — the notification is cleared and will not reappear. Diagnostic modes (`progress`, `tail`, `summary`) do **not** acknowledge completion; the notification persists until you retrieve the full result. **Diagnostic modes** are one-shot checks for live status — do not use them as a polling loop: - `mode="summary"` — Compact one-liner: status, health, elapsed time - `mode="progress"` — Detailed progress: tool call list, health, duration - `mode="tail"` — Recent session activity from the subagent's conversation **`block=true` is only valid with `mode="full"` or the default mode.** Diagnostic modes + `block=true` are rejected. > **Do not poll.** Continue independent work while tasks run. Use diagnostic modes only as a one-shot check when you need specific status information. A later diagnostic is still allowed when new evidence, a stale health signal, or a cancellation decision warrants it — but do not loop. The system wakes you automatically when a task completes. Use **`task_list()`** once when you need an overview of all visible background tasks. **Do NOT use `agenda_watch` or `agenda_schedule` to wait for subagent completion.** No watch, schedule, or manual polling is needed. ## Usage notes 1. Launch tasks concurrently when they are independent and ready — inputs available and write/resource ownership compatible (see "Parallelism and task boundaries") 2. The result is not visible to the user - summarize it back to them 3. Provide `session_id` to reuse an existing session (must be idle and belong to this parent). - **Why reuse**: The subagent retains prior conversation context, useful for iterative refinement, debugging, or breaking long tasks into separate invocations without losing state. - **Context hint**: Since the subagent remembers prior turns in the reused session, you do NOT need to restate all context — focus your prompt on what's new or different this time. - **Busy sessions**: If the session is busy, the tool will error — wait for it to finish or use a different session. 4. Pass `output` when the caller needs a specific completion contract: `{ mode: "summary" }`, `{ mode: "final_response" }`, or `{ mode: "structured", schema, maxRepairTurns }`. Structured schemas can describe top-level objects, arrays, primitives, `anyOf`, or `oneOf`; the result is rendered as JSON for tool text and also exposed in metadata. 5. State clearly whether the agent should implement or investigate — while a material design decision is still open, delegate a bounded investigation instead of dependent implementation ## Writing effective prompts Structure your prompt with: - **What to do**: Clear, specific goal - **Expected outcome**: What success looks like - **Context**: Relevant file paths, patterns, constraints - **What NOT to do**: Scope boundaries to prevent over-engineering ## Examples ### Parallel exploration ``` task(background: true, subagent_type: "code-cartographer", description: "Find auth logic", prompt: "...") task(background: true, subagent_type: "dependency-tracer", description: "Trace auth callers", prompt: "...") ``` ### Broad research ``` task(background: true, subagent_type: "research-scout", description: "Survey ecosystem", prompt: "...") task(background: true, subagent_type: "docs-researcher", description: "Verify API docs", prompt: "...") task(background: true, subagent_type: "literature-searcher", description: "Find papers", prompt: "...") ``` ### Parallel implementation and review Two implementations with settled interfaces and separate ownership run concurrently; you run integration and acceptance yourself once both finish. ``` task(background: true, subagent_type: "implementation-engineer", description: "Add validation", prompt: "...") task(background: true, subagent_type: "implementation-engineer", description: "Add error handling", prompt: "...") ``` Reviewing an existing trust boundary is independent of unrelated implementation — it may run alongside it. ``` task(background: true, subagent_type: "security-reviewer", description: "Review existing trust boundary", prompt: "...") task(background: true, subagent_type: "implementation-engineer", description: "Add error handling", prompt: "...") ``` Review of new implementation waits until the implementation produces a reviewable artifact. ``` task(background: true, subagent_type: "implementation-engineer", description: "Add validation", prompt: "...") ``` Once that task completes, dispatch the review. ``` task(background: true, subagent_type: "security-reviewer", description: "Review validation change", prompt: "...") ``` ### Synchronous (when result needed immediately) ``` task(background: false, subagent_type: "code-cartographer", description: "Find config", prompt: "I need this to proceed...") ``` ## DAG Integration When executing a DAG node via background task, pass `dag_node_id` to link them: ``` task(background: true, dag_node_id: "research", subagent_type: "research-scout", description: "Research ecosystem", prompt: "...") ``` The DAG node will auto-complete when the task finishes (or auto-fail on error). No manual DAG update needed.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `permission` | - | yes |  |
-| `patterns` | - | yes |  |
-| `metadata` | - | yes |  |
-| `description` | params.description | yes |  |
-| `subagent_type` | params.subagent_type | yes |  |
-| `scopeID` | ScopeContext.current.scope.id | yes |  |
-| `sessionID` | ctx.sessionID | yes |  |
-| `messageID` | ctx.messageID | yes |  |
-| `modelID` | msg.info.modelID | yes |  |
-| `providerID` | msg.info.providerID | yes |  |
-| `description` | params.description | yes |  |
-| `prompt` | fullPrompt | yes |  |
-| `agent` | params.subagent_type | yes |  |
-| `executionRole` | - | yes |  |
-| `category` | params.category | yes |  |
-| `dagNodeId` | params.dag_node_id | yes |  |
-| `parentSessionID` | ctx.sessionID | yes |  |
-| `parentMessageID` | ctx.messageID | yes |  |
-| `worktree` | params.worktree | yes |  |
-| `output` | params.output | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `taskId` | task.id | yes |  |
-| `sessionId` | task.sessionID | yes |  |
-| `background` | true | yes |  |
-| `summary` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `taskId` | task.id | yes |  |
-| `sessionId` | task.sessionID | yes |  |
-| `background` | true | yes |  |
-| `summary` | - | yes |  |
-| `output` | - | yes |  |
-| `Description` | - | yes |  |
-| `Agent` | - | yes |  |
-| `Status` | running | yes |  |
-| `title` | params.description | yes |  |
-| `metadata` | - | yes |  |
-| `id` | part.id | yes |  |
-| `tool` | part.tool | yes |  |
-| `state` | - | yes |  |
-| `status` | part.state.status | yes |  |
-| `title` | part.state.status | yes |  |
-| `title` | params.description | yes |  |
-| `metadata` | - | yes |  |
-| `summary` | Object.values | yes |  |
-| `sessionId` | task.sessionID | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `output` | - | yes |  |
-| `Description` | - | yes |  |
-| `Agent` | - | yes |  |
-| `Status` | still | yes |  |
-| `id` | part.id | yes |  |
-| `tool` | part.tool | yes |  |
-| `state` | - | yes |  |
-| `status` | part.state.status | yes |  |
-| `title` | part.state.status | yes |  |
-| `title` | params.description | yes |  |
-| `metadata` | - | yes |  |
-| `sessionId` | task.sessionID | yes |  |
-| `taskId` | undefined | yes |  |
-| `background` | false | yes |  |
-| `output` | completed.output | yes |  |
+| `description` | string | yes | A short (3-5 words) description of the task |
+| `prompt` | string | yes | The task for the agent to perform. Include: what to do, expected outcome, context. Recommend also specifying what NOT to do (scope boundaries, forbidden actions) to prevent scope creep. |
+| `subagent_type` | string | yes | The type of specialized agent to use for this task |
+| `session_id` | string |  | Reuse an existing session for this task instead of creating a new one. The session must be idle (not currently running) and must have been created by the same parent. If the session is busy, the call will fail with an error — wait or use a different session. Omit to create a new session (default). |
+| `command` | string |  | The command that triggered this task |
+| `dag_node_id` | string |  | DAG node ID to auto-update when this task completes |
+| `background` | boolean |  | Run task in background (async). Returns immediately with task_id. Use for parallel exploration or long-running tasks. Default: false (sync) |
+| `category` | string |  | Category preset to override model and inject context: Default: none (uses subagent's original model and prompt) |
+| `output` | CortexTypes.OutputConfig.optional |  |  |
+| `worktree` | "current" \| "fresh" |  |  |
+| `create` | literal | yes |  |
+| `name` | string |  |  |
+| `baseRef` | "current" \| "fresh" |  |  |
 
 ## task_cancel
 
@@ -2203,18 +1534,8 @@ Cancel visible background tasks. Subagents commonly run 5–30 minutes. Before c
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `output` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `output` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `output` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `output` | - | yes |  |
+| `task_id` | string |  | Specific task ID to cancel |
+| `all` | boolean |  | Cancel all running tasks for this session |
 
 ## task_list
 
@@ -2222,14 +1543,6 @@ Kind: `orchestration.task`
 
 List background tasks visible from the current session. Use this before `task_output` when you need to ground yourself in which background tasks are actually available. ## Usage ``` task_list() ```
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `output` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `output` | - | yes |  |
 
 ## task_output
 
@@ -2239,34 +1552,10 @@ Retrieve output from a visible background task. ## Parameters - **task_id** (opt
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `output` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `found` | false | yes |  |
-| `visibleTaskIds` | visibleTasks.map | yes |  |
-| `output` | - | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `output` | - | yes |  |
-| `title` | task.description | yes |  |
-| `metadata` | - | yes |  |
-| `taskId` | params.task_id | yes |  |
-| `status` | task.status | yes |  |
-| `found` | true | yes |  |
-| `description` | task.description | yes |  |
-| `timeout` | params.timeout | yes |  |
-| `mode` | params.mode | yes |  |
-| `title` | - | yes |  |
-| `metadata` | - | yes |  |
-| `taskId` | params.task_id | yes |  |
-| `status` | current.status | yes |  |
-| `found` | true | yes |  |
-| `description` | current.description | yes |  |
-| `timeout` | params.timeout | yes |  |
-| `mode` | params.mode | yes |  |
-| `output` | current.output | yes |  |
+| `task_id` | string |  | Task ID from a visible background task |
+| `mode` | "summary" \| "progress" \| "tail" \| "full" |  | Output mode: progress for live status, tail for recent session activity, full for final output. Default: full |
+| `block` | boolean |  | Wait for completion if still running |
+| `timeout` | number |  | Max seconds to wait (default: ${DEFAULT_WAIT_S}) |
 
 ## todoread
 
@@ -2306,40 +1595,7 @@ Load a local image file into the current model context for direct visual inspect
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `filePath` | filepath | yes |  |
-| `error` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `filePath` | filepath | yes |  |
-| `error` | - | yes |  |
-| `permission` | - | yes |  |
-| `patterns` | - | yes |  |
-| `metadata` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `filePath` | filepath | yes |  |
-| `error` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | preview | yes |  |
-| `metadata` | - | yes |  |
-| `filePath` | filepath | yes |  |
-| `modelContext` | true | yes |  |
-| `truncated` | false | yes |  |
-| `attachments` | - | yes |  |
-| `mime` | mimeType | yes |  |
-| `localPath` | filepath | yes |  |
-| `sessionID` | ctx.sessionID | yes |  |
-| `messageID` | ctx.messageID | yes |  |
-| `presentation` | - | yes |  |
-| `model` | - | yes |  |
+| `filePath` | string | yes | Absolute path to the local image file to load into the current model context |
 
 ## webfetch
 
@@ -2361,46 +1617,11 @@ Create or enter a git worktree for the current session.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `reason` | - | yes |  |
-| `created` | false | yes |  |
-| `message` | - | yes |  |
-| `worktree` | undefined | yes |  |
-| `workspace` | currentWorkspace | yes |  |
-| `permission` | - | yes |  |
-| `patterns` | - | yes |  |
-| `metadata` | - | yes |  |
-| `target` | params.target | yes |  |
-| `baseRef` | params.baseRef | yes |  |
-| `baseRevision` | params.baseRevision | yes |  |
-| `reason` | params.reason | yes |  |
-| `sessionID` | ctx.sessionID | yes |  |
-| `target` | params.target | yes |  |
-| `force` | params.force | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `created` | false | yes |  |
-| `message` | - | yes |  |
-| `worktree` | entered | yes |  |
-| `workspace` | buildWorkspaceMetadata | yes |  |
-| `name` | params.target | yes |  |
-| `sessionID` | ctx.sessionID | yes |  |
-| `baseRef` | params.baseRef | yes |  |
-| `baseRevision` | params.baseRevision | yes |  |
-| `bind` | true | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `created` | true | yes |  |
-| `message` | - | yes |  |
-| `worktree` | created | yes |  |
-| `workspace` | buildWorkspaceMetadata | yes |  |
+| `target` | string |  | Target worktree name, ID, branch, or path to enter |
+| `baseRef` | "current" \| "fresh" |  | Base reference for new worktree: current HEAD or fresh from origin |
+| `baseRevision` | string |  | Explicit git revision/ref/commit to create the worktree from. Overrides baseRef when provided. |
+| `reason` | string |  | Optional short note about why the worktree is being entered |
+| `force` | boolean |  | Force enter even if the current or target worktree has uncommitted changes |
 
 ## worktree_leave
 
@@ -2410,29 +1631,8 @@ Leave the current git worktree and return to the main checkout. Unbinds the sess
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `reason` | - | yes |  |
-| `message` | - | yes |  |
-| `permission` | - | yes |  |
-| `patterns` | - | yes |  |
-| `metadata` | - | yes |  |
-| `previous` | - | yes |  |
-| `cleanup` | params.cleanup | yes |  |
-| `title` | - | yes |  |
-| `output` | - | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `reason` | - | yes |  |
-| `message` | - | yes |  |
-| `title` | - | yes |  |
-| `output` | lines.join | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `cleanup` | cleanupResult | yes |  |
-| `message` | lines.join | yes |  |
+| `cleanup` | "keep" \| "remove_if_clean" |  | Whether to remove the worktree after leaving. 'remove_if_clean' only removes when no uncommitted changes exist. |
+| `reason` | string |  | Optional short note about why the session is leaving the worktree |
 
 ## worktree_list
 
@@ -2440,14 +1640,6 @@ Kind: `platform.config`
 
 List all git worktrees in the current repository. Returns each worktree's path, branch, state, and a cleanup recommendation for non-main managed worktrees. The currently active worktree is marked.
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `title` | - | yes |  |
-| `output` | message | yes |  |
-| `metadata` | - | yes |  |
-| `action` | - | yes |  |
-| `active` | activeWt | yes |  |
-| `worktrees` | enriched | yes |  |
 
 ## write
 

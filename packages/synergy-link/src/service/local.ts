@@ -1,7 +1,7 @@
 import process from "node:process"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
-import { readFile, stat, unlink } from "node:fs/promises"
+import { readFile, unlink } from "node:fs/promises"
 import { watch } from "node:fs"
 import { Platform } from "../platform.js"
 
@@ -95,49 +95,63 @@ export namespace SynergyLinkLocalService {
     tailLines?: number
     since?: string
     onChunk: (chunk: string) => void
+    signal?: AbortSignal
   }): Promise<void> {
-    const initial = await readLogsFile(input.outputPath, {
-      tailLines: input.tailLines,
-      since: input.since,
-      maxBytes: Number.MAX_SAFE_INTEGER,
-    })
-    if (initial.content.length > 0) {
-      input.onChunk(initial.content.endsWith("\n") ? initial.content : `${initial.content}\n`)
-    }
-
-    let offset = 0
-    try {
-      offset = (await stat(input.outputPath)).size
-    } catch {
-      offset = 0
-    }
-
+    if (input.signal?.aborted) return
     await new Promise<void>((resolve, reject) => {
-      const watcher = watch(input.outputPath, async (eventType) => {
-        if (eventType !== "change") return
+      let closed = false
+      let reading = false
+      let queued = false
+      let initial = true
+      let offset = 0
+      const watcher = watch(input.outputPath, (eventType) => {
+        if (eventType === "change") void read()
+      })
+      const close = () => {
+        closed = true
+        watcher.close()
+        process.removeListener("SIGINT", stop)
+        process.removeListener("SIGTERM", stop)
+        input.signal?.removeEventListener("abort", stop)
+      }
+      const stop = () => {
+        close()
+        resolve()
+      }
+      const fail = (error: unknown) => {
+        close()
+        reject(error)
+      }
+      const read = async () => {
+        if (closed) return
+        queued = true
+        if (reading) return
+        reading = true
         try {
-          const next = await readFile(input.outputPath, "utf8")
-          const nextBytes = Buffer.byteLength(next)
-          if (nextBytes < offset) {
-            offset = 0
+          while (queued && !closed) {
+            queued = false
+            const next = await readFile(input.outputPath)
+            if (closed) return
+            if (next.length < offset) offset = 0
+            let content = initial
+              ? filterLogContent(next.toString("utf8"), input)
+              : next.subarray(offset).toString("utf8")
+            if (initial && content && !content.endsWith("\n")) content += "\n"
+            initial = false
+            offset = next.length
+            if (content) input.onChunk(content)
           }
-          const slice = Buffer.from(next).subarray(offset).toString("utf8")
-          offset = nextBytes
-          if (slice.length > 0) input.onChunk(slice)
         } catch (error) {
-          watcher.close()
-          reject(error)
+          fail(error)
+        } finally {
+          reading = false
         }
-      })
-      watcher.once("error", reject)
-      process.once("SIGINT", () => {
-        watcher.close()
-        resolve()
-      })
-      process.once("SIGTERM", () => {
-        watcher.close()
-        resolve()
-      })
+      }
+      watcher.once("error", fail)
+      process.once("SIGINT", stop)
+      process.once("SIGTERM", stop)
+      input.signal?.addEventListener("abort", stop, { once: true })
+      void read()
     })
   }
 }

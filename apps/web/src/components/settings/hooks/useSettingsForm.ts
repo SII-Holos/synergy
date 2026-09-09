@@ -1,0 +1,330 @@
+import type { Config } from "@ericsanchezok/synergy-sdk/client"
+import type { SetStoreFunction } from "solid-js/store"
+import type { SendShortcut } from "@/context/input"
+import type { QuickSwitcherPreference, SettingsState, BuiltinMcpInfo } from "../types"
+import {
+  MODEL_DEFAULTS,
+  TOAST_TYPES,
+  UI_DEFAULTS,
+  emptyToastDurationOverrides,
+  resolvePermissionForUi,
+  snapToastDuration,
+} from "../types"
+
+export type EnsureInitParams = {
+  cfg: Config | undefined
+  setName: string | undefined
+  refreshing: () => boolean
+  initialized: () => boolean
+  initializedForSet: string | undefined
+  sendShortcut: () => SendShortcut
+  colorScheme: () => SettingsState["general"]["colorScheme"]
+  setSettings: SetStoreFunction<SettingsState>
+  setInitialized: (value: boolean) => void
+  originalMcpsRef: { current: Record<string, Record<string, unknown>> }
+  /** Built-in MCP servers reported by the server; undefined keeps the defaults. */
+  builtinMcps?: BuiltinMcpInfo[]
+}
+
+export function ensureInit(params: EnsureInitParams): string | undefined {
+  if (params.refreshing()) return undefined
+  const cfg = params.cfg
+  const setName = params.setName
+  if (!cfg || !setName) return undefined
+  if (params.initialized() && params.initializedForSet === setName) return undefined
+
+  params.setSettings("general", {
+    colorScheme: params.colorScheme(),
+    snapshot: cfg.snapshot ?? UI_DEFAULTS.snapshot,
+    compactReasoning: cfg.compactReasoning ?? UI_DEFAULTS.compactReasoning,
+    username: cfg.username ?? UI_DEFAULTS.username,
+    theme: cfg.theme ?? UI_DEFAULTS.theme,
+    locale: cfg.locale ?? UI_DEFAULTS.locale,
+    activityDisplay: cfg.activityDisplay ?? UI_DEFAULTS.activityDisplay,
+    defaultSessionWorkspace: cfg.defaultSessionWorkspace ?? UI_DEFAULTS.defaultSessionWorkspace,
+    mutedToasts: cfg.toast?.muted ?? [],
+    toastDurations: formatToastDurations(cfg.toast?.durationOverrides),
+    sendShortcut: params.sendShortcut(),
+  })
+
+  params.setSettings("models", {
+    model: cfg.model ?? MODEL_DEFAULTS.model,
+    nano_model: cfg.nano_model ?? MODEL_DEFAULTS.nano_model,
+    mini_model: cfg.mini_model ?? MODEL_DEFAULTS.mini_model,
+    mid_model: cfg.mid_model ?? MODEL_DEFAULTS.mid_model,
+    vision_model: cfg.vision_model ?? MODEL_DEFAULTS.vision_model,
+    thinking_model: cfg.thinking_model ?? MODEL_DEFAULTS.thinking_model,
+    long_context_model: cfg.long_context_model ?? MODEL_DEFAULTS.long_context_model,
+    creative_model: cfg.creative_model ?? MODEL_DEFAULTS.creative_model,
+    quick_switcher: cfg.quick_switcher?.models ?? readLegacyQuickSwitcherPreferences(),
+  })
+
+  params.setSettings("agents", {
+    defaultAgent: cfg.default_agent ?? UI_DEFAULTS.defaultAgent,
+  })
+  params.setSettings("roleVariant", cfg.role_variant ?? {})
+
+  params.setSettings("providers", {
+    enabledProviders: formatList(cfg.enabled_providers),
+    disabledProviders: formatList(cfg.disabled_providers),
+  })
+
+  params.setSettings("plugins", {
+    entries: (cfg.plugin ?? []).map((value) => ({ value })),
+  })
+
+  params.originalMcpsRef.current = {}
+  if (cfg.mcp) {
+    for (const [key, value] of Object.entries(cfg.mcp)) {
+      params.originalMcpsRef.current[key] = { ...(value as Record<string, unknown>) }
+    }
+  }
+  const userMcpEntries = cfg.mcp
+    ? Object.entries(cfg.mcp).filter(([, value]) => {
+        const mcp = value as Record<string, unknown>
+        // `enabled`-only stubs (builtin opt-out/opt-in markers) are not
+        // user-defined servers and must not render as editable cards.
+        return typeof mcp.type === "string"
+      })
+    : []
+  params.setSettings("mcps", {
+    entries: userMcpEntries.map(([key, value]) => {
+      const mcp = value as Record<string, unknown>
+      const isLocal = mcp.type === "local"
+      const env = mcp.environment as Record<string, string> | undefined
+      const headers = mcp.headers as Record<string, string> | undefined
+      return {
+        key,
+        type: (isLocal ? "local" : "remote") as "local" | "remote",
+        enabled: mcp.enabled !== false,
+        expandByDefault:
+          mcp.expandByDefault === true ||
+          (mcp.expandByDefault === undefined && cfg.mcpDefaults?.expandByDefault === true),
+        command: isLocal && Array.isArray(mcp.command) ? (mcp.command as string[]).join(" ") : "",
+        url: !isLocal && typeof mcp.url === "string" ? mcp.url : "",
+        timeout: mcp.timeout !== undefined ? String(mcp.timeout) : "",
+        environment: formatRecord(env, "="),
+        headers: formatRecord(headers, ": "),
+      }
+    }),
+    builtins: (params.builtinMcps ?? []).map((info) => ({
+      ...info,
+      toggle: info.status.status !== "disabled",
+      apiKeyDraft: "",
+      clearApiKey: false,
+    })),
+  })
+
+  params.setSettings("safety", {
+    controlProfile: cfg.controlProfile ?? UI_DEFAULTS.controlProfile,
+    permission: resolvePermissionForUi(cfg.permission),
+    smartAllow: cfg.smartAllow === true ? "true" : "false",
+    sandboxEnabled: cfg.sandbox?.enabled === false ? "false" : UI_DEFAULTS.sandboxEnabled,
+    sandboxFallbackPolicy: cfg.sandbox?.fallbackPolicy ?? UI_DEFAULTS.sandboxFallbackPolicy,
+  })
+
+  params.setSettings("runtime", {
+    lspWriteDiagnostics: cfg.lspWriteDiagnostics === false ? "false" : UI_DEFAULTS.lspWriteDiagnostics,
+    lspDiagnosticsSeverity: cfg.lspDiagnostics?.severity ?? UI_DEFAULTS.lspDiagnosticsSeverity,
+    lspDiagnosticsScope: cfg.lspDiagnostics?.scope ?? UI_DEFAULTS.lspDiagnosticsScope,
+    questionTimeout: String(cfg.question?.timeout ?? UI_DEFAULTS.questionTimeout),
+    compactionAuto: cfg.compaction?.auto !== false ? UI_DEFAULTS.compactionAuto : "false",
+    compactionPrune: cfg.compaction?.prune !== false ? UI_DEFAULTS.compactionPrune : "false",
+    compactionOverflowThreshold: String(
+      cfg.compaction?.overflowThreshold ?? Number(UI_DEFAULTS.compactionOverflowThreshold),
+    ),
+    compactionMaxHistoryImages: String(
+      cfg.compaction?.maxHistoryImages ?? Number(UI_DEFAULTS.compactionMaxHistoryImages),
+    ),
+    compactionCodexRemote: cfg.compaction?.codexRemote === true ? "true" : UI_DEFAULTS.compactionCodexRemote,
+    cortexConcurrency:
+      cfg.cortex?.maxConcurrentTasks !== undefined
+        ? String(cfg.cortex.maxConcurrentTasks)
+        : UI_DEFAULTS.cortexConcurrency,
+    agentWorkers:
+      cfg.execution?.agentWorkers !== undefined ? String(cfg.execution.agentWorkers) : UI_DEFAULTS.agentWorkers,
+    invokeTimeout: cfg.timeout?.invoke_sec !== undefined ? String(cfg.timeout.invoke_sec) : UI_DEFAULTS.invokeTimeout,
+    providerTtfbTimeout:
+      cfg.timeout?.provider?.ttfb_sec !== undefined
+        ? String(cfg.timeout.provider.ttfb_sec)
+        : UI_DEFAULTS.providerTtfbTimeout,
+    providerIdleTimeout:
+      cfg.timeout?.provider?.idle_sec !== undefined
+        ? String(cfg.timeout.provider.idle_sec)
+        : UI_DEFAULTS.providerIdleTimeout,
+    providerWallTimeout:
+      cfg.timeout?.provider?.wall_sec !== undefined
+        ? String(cfg.timeout.provider.wall_sec)
+        : UI_DEFAULTS.providerWallTimeout,
+    toolDefaultTimeout:
+      cfg.timeout?.tool?.default_sec !== undefined
+        ? String(cfg.timeout.tool.default_sec)
+        : UI_DEFAULTS.toolDefaultTimeout,
+    toolOverrides: formatRecord(cfg.timeout?.tool?.overrides),
+    watcherIgnore: formatList(cfg.watcher?.ignore),
+    logLevel: cfg.logLevel ?? UI_DEFAULTS.logLevel,
+    performanceEnabled:
+      (cfg.observability?.performance?.enabled ?? cfg.observability?.enabled ?? true) === false ? "false" : "true",
+    coauthorReminder: cfg.prompt?.coauthorReminder !== false ? "true" : "false",
+    bossMode: cfg.boss?.enabled === true ? "true" : "false",
+    bossIdentityText: cfg.boss?.identityText ?? "",
+    bossBriefingIntervalDays: cfg.boss?.briefingIntervalDays != null ? String(cfg.boss.briefingIntervalDays) : "",
+    bossPersonaPreset: cfg.boss?.persona ? cfg.boss.persona.preset : UI_DEFAULTS.bossPersonaPreset,
+    bossPersonaFormality:
+      cfg.boss?.persona?.preset === "custom" ? String(cfg.boss.persona.formality) : UI_DEFAULTS.bossPersonaFormality,
+    bossPersonaConciseness:
+      cfg.boss?.persona?.preset === "custom"
+        ? String(cfg.boss.persona.conciseness)
+        : UI_DEFAULTS.bossPersonaConciseness,
+    bossPersonaProactiveness:
+      cfg.boss?.persona?.preset === "custom"
+        ? String(cfg.boss.persona.proactiveness)
+        : UI_DEFAULTS.bossPersonaProactiveness,
+    bossPersonaWarmth:
+      cfg.boss?.persona?.preset === "custom" ? String(cfg.boss.persona.warmth) : UI_DEFAULTS.bossPersonaWarmth,
+  })
+
+  params.setSettings("email", {
+    enabled: cfg.email?.enabled ?? true,
+    fromAddress: cfg.email?.from?.address ?? "",
+    fromName: cfg.email?.from?.name ?? "",
+    smtpHost: cfg.email?.smtp?.host ?? "",
+    smtpPort: cfg.email?.smtp?.port !== undefined ? String(cfg.email.smtp.port) : "",
+    smtpSecure: cfg.email?.smtp?.secure ?? true,
+    smtpUsername: cfg.email?.smtp?.username ?? "",
+    smtpPassword: cfg.email?.smtp?.password ?? "",
+    imapHost: cfg.email?.imap?.host ?? "",
+    imapPort: cfg.email?.imap?.port !== undefined ? String(cfg.email.imap.port) : "",
+    imapSecure: cfg.email?.imap?.secure ?? true,
+    imapUsername: cfg.email?.imap?.username ?? "",
+    imapPassword: cfg.email?.imap?.password ?? "",
+  })
+
+  params.setSettings("channels", {
+    feishuAccounts: cfg.channel?.feishu?.accounts
+      ? Object.entries(cfg.channel.feishu.accounts).map(([key, account]) => ({
+          key,
+          enabled: account.enabled !== false,
+          model: account.model ?? "",
+          variant: account.variant ?? "",
+        }))
+      : [],
+    clarusAccounts: cfg.channel?.clarus?.accounts
+      ? Object.entries(cfg.channel.clarus.accounts).map(([key, account]) => ({
+          key,
+          enabled: account.enabled !== false,
+        }))
+      : [],
+    githubAccounts: cfg.channel?.github?.accounts
+      ? Object.entries(cfg.channel.github.accounts).map(([key, account]) => ({
+          key,
+          enabled: account.enabled !== false,
+          repositories: (account.repositories ?? []).join(", "),
+          workspaceDir: account.workspaceDir ?? "",
+          workspaceTtlHours: account.workspaceTtlHours !== undefined ? String(account.workspaceTtlHours) : "24",
+          pollingIntervalMs: account.pollingIntervalMs !== undefined ? String(account.pollingIntervalMs) : "300000",
+          autoReview: account.autoReview !== false,
+          autoRespond: account.autoRespond !== false,
+          mention: account.mention ?? "",
+        }))
+      : [],
+  })
+
+  params.setSettings("github", {
+    identitySyncEnabled: cfg.github?.identitySync?.enabled ?? false,
+    identitySyncName: cfg.github?.identitySync?.name ?? "",
+    identitySyncEmail: cfg.github?.identitySync?.email ?? "",
+    watchEnabled: cfg.github?.watch?.enabled ?? true,
+  })
+
+  const library = cfg.library
+  const memory = library?.memory
+  const experience = library?.experience
+  const memoryRetrieve = typeof memory?.retrieval === "object" ? memory.retrieval : undefined
+  const experienceRetrieve = typeof experience?.retrieve === "object" ? experience.retrieve : undefined
+  params.setSettings("library", {
+    learning:
+      memory?.enabled === false && experience?.encode === false && experience?.retrieve === false ? "false" : "true",
+    autonomy: library?.autonomy === undefined ? UI_DEFAULTS.libraryAutonomy : library.autonomy ? "true" : "false",
+    memorySimThreshold:
+      memoryRetrieve?.simThreshold !== undefined ? String(memoryRetrieve.simThreshold) : UI_DEFAULTS.memorySimThreshold,
+    memoryTopK: memoryRetrieve?.topK !== undefined ? String(memoryRetrieve.topK) : UI_DEFAULTS.memoryTopK,
+    experienceSimThreshold:
+      experienceRetrieve?.simThreshold !== undefined
+        ? String(experienceRetrieve.simThreshold)
+        : UI_DEFAULTS.experienceSimThreshold,
+    experienceTopK:
+      experienceRetrieve?.topK !== undefined ? String(experienceRetrieve.topK) : UI_DEFAULTS.experienceTopK,
+    experienceEpsilon:
+      experienceRetrieve?.epsilon !== undefined ? String(experienceRetrieve.epsilon) : UI_DEFAULTS.experienceEpsilon,
+    embeddingSource: cfg.embedding?.local?.source ?? UI_DEFAULTS.embeddingSource,
+    embeddingRemoteHost: cfg.embedding?.local?.remoteHost ?? UI_DEFAULTS.embeddingRemoteHost,
+    embeddingCacheDir: cfg.embedding?.local?.cacheDir ?? UI_DEFAULTS.embeddingCacheDir,
+  })
+  params.setSettings("skills", {
+    agents: cfg.skills?.compatibility?.agents !== false,
+    claude: cfg.skills?.compatibility?.claude !== false,
+    codex: cfg.skills?.compatibility?.codex !== false,
+    openclaw: cfg.skills?.compatibility?.openclaw !== false,
+  })
+
+  params.setInitialized(true)
+  return setName
+}
+
+export function readLegacyQuickSwitcherPreferences(storage: Storage = localStorage): QuickSwitcherPreference[] {
+  const raw = storage.getItem("synergy.global.dat:model")
+  if (!raw) return []
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return []
+  }
+  if (!parsed || typeof parsed !== "object") return []
+
+  const record = parsed as Record<string, unknown>
+  const preferences = Array.isArray(record.quickSwitcher)
+    ? (record.quickSwitcher as QuickSwitcherPreference[])
+    : Array.isArray(record.user)
+      ? record.user.flatMap((item) => {
+          if (!item || typeof item !== "object") return []
+          const entry = item as Record<string, unknown>
+          if (typeof entry.providerID !== "string" || typeof entry.modelID !== "string") return []
+          const state = entry.visibility === "hide" ? "remove" : "add"
+          return [{ providerID: entry.providerID, modelID: entry.modelID, state: state as "add" | "remove" }]
+        })
+      : []
+
+  return preferences.filter(
+    (item) =>
+      typeof item.providerID === "string" &&
+      typeof item.modelID === "string" &&
+      (item.state === "add" || item.state === "remove"),
+  )
+}
+
+function formatList(values: string[] | undefined): string {
+  return values?.join("\n") ?? ""
+}
+
+function formatRecord(values: Record<string, string | number> | undefined, separator = "="): string {
+  return values
+    ? Object.entries(values)
+        .map(([key, value]) => `${key}${separator}${value}`)
+        .join("\n")
+    : ""
+}
+
+function formatToastDurations(values: Record<string, number> | undefined) {
+  const result = emptyToastDurationOverrides()
+  if (!values) return result
+  for (const type of TOAST_TYPES) {
+    const value = values[type]
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      result[type] = String(snapToastDuration(value))
+    }
+  }
+  return result
+}

@@ -519,91 +519,14 @@ describe("session turn activity projection", () => {
     expect(JSON.stringify(streaming)).not.toContain('"text":"Thinking"')
   })
 
-  test("keeps persisted tool topics separate from the generic reasoning status", () => {
+  test("ignores historical model summaries and groups tools deterministically", () => {
     const message = assistant()
-    message.metadata = {
-      activity: {
-        v: 1,
-        seq: 2,
-        reasoning: {
-          thinking: {
-            state: "live",
-            text: "Locating the activity rendering boundary",
-            updatedAt: 10,
-          },
-        },
-        groups: {
-          "activity:assistant-a:inspect-local::read-a": {
-            state: "stable",
-            text: "Checked the relevant UI entry points",
-            updatedAt: 11,
-          },
-        },
-      },
-    }
-    const projected = project({
-      message,
-      parts: [reasoning("thinking"), tool({ id: "read-a" })],
-      working: true,
-    })
-
-    const reasoningItems = projected.filter((item) => item.kind === "activity-reasoning-summary")
-    expect(reasoningItems).toHaveLength(1)
-    expect(reasoningItems[0]?.text).toBeUndefined()
-    expect(activities(projected)).toHaveLength(1)
-    expect(activities(projected)[0]).toMatchObject({
-      state: "done",
-      topic: {
-        state: "stable",
-        text: "Checked the relevant UI entry points",
-      },
-    })
-  })
-
-  test("ignores legacy reasoning text when persisted semantic grouping has no topic", () => {
-    const message = assistant()
-    message.metadata = {
-      activity: {
-        v: 1,
-        seq: 2,
-        reasoning: {
-          planning: {
-            state: "live",
-            text: "Researching the ZERO project",
-            source: "nano",
-            updatedAt: 10,
-          },
-        },
-        groups: {
-          "activity:assistant-a:inspect-local::read-zero": {
-            state: "fallback",
-            signature: "read-zero:web-zero",
-            updatedAt: 11,
-          },
-        },
-      },
-    }
-    const projected = project({
-      message,
-      parts: [
-        reasoning("planning"),
-        tool({ id: "read-zero", tool: "read" }),
-        tool({ id: "web-zero", tool: "webfetch" }),
-      ],
-      working: true,
-    })
-    const groups = activities(projected)
-
-    const reasoningItems = projected.filter((item) => item.kind === "activity-reasoning-summary")
-    expect(reasoningItems).toHaveLength(1)
-    expect(reasoningItems[0]?.text).toBeUndefined()
-    expect(groups).toHaveLength(1)
-    expect(groups[0]?.steps.map((step) => step.family)).toEqual(["inspect-local", "research-web"])
-    expect(groups[0]?.topic).toBeUndefined()
-  })
-
-  test("projects persisted nano topics across heterogeneous tool families", () => {
-    const message = assistant()
+    const parts = [
+      tool({ id: "read-flow", tool: "read", args: { filePath: "/workspace/src/activity.ts" } }),
+      tool({ id: "edit-flow", tool: "revise_file", args: { filePath: "/workspace/src/activity.ts" } }),
+      tool({ id: "test-flow", tool: "bash", args: { command: "bun test" } }),
+    ]
+    const expected = activities(project({ message, parts }))
     message.metadata = {
       activity: {
         v: 1,
@@ -612,137 +535,17 @@ describe("session turn activity projection", () => {
           "activity:assistant-a:inspect-local:path:/workspace:read-flow": {
             state: "stable",
             signature: "read-flow:edit-flow:test-flow",
-            text: "Implemented and verified the activity trace",
+            text: "Historical model summary",
             updatedAt: 10,
           },
         },
       },
     }
-    const groups = activities(
-      project({
-        message,
-        parts: [
-          tool({ id: "read-flow", tool: "read", args: { filePath: "/workspace/src/activity.ts" } }),
-          tool({ id: "edit-flow", tool: "revise_file", args: { filePath: "/workspace/src/activity.ts" } }),
-          tool({ id: "test-flow", tool: "bash", args: { command: "bun test" } }),
-        ],
-      }),
+    const actual = activities(project({ message, parts }))
+    expect(actual.map((group) => group.steps.map((step) => step.part.id))).toEqual(
+      expected.map((group) => group.steps.map((step) => step.part.id)),
     )
-
-    expect(groups).toHaveLength(1)
-    expect(groups[0]?.steps.map((step) => step.part.id)).toEqual(["read-flow", "edit-flow", "test-flow"])
-    expect(groups[0]?.steps.map((step) => step.family)).toEqual(["inspect-local", "modify-files", "execute"])
-    expect(groups[0]).toMatchObject({
-      key: "activity:assistant-a:inspect-local:path:/workspace:read-flow",
-      topic: { state: "stable", text: "Implemented and verified the activity trace" },
-    })
-  })
-
-  test("does not use legacy reasoning text to merge an unsettled heterogeneous tail", () => {
-    const message = assistant()
-    message.metadata = {
-      activity: {
-        v: 1,
-        seq: 1,
-        reasoning: {
-          planning: {
-            state: "live",
-            text: "Planning the ZERO refactor",
-            source: "nano",
-            updatedAt: 10,
-          },
-        },
-        now: {
-          text: "Planning the ZERO refactor",
-          source: "reasoning",
-          updatedAt: 10,
-        },
-      },
-    }
-    const projected = project({
-      message,
-      parts: [
-        reasoning("planning"),
-        tool({ id: "read-zero", tool: "read", args: { filePath: "/workspace/ZERO/README.md" }, status: "running" }),
-        tool({ id: "web-zero", tool: "webfetch", args: { url: "https://example.com/ZERO" }, status: "running" }),
-      ],
-      working: true,
-    })
-    const groups = activities(projected)
-
-    const reasoningItems = projected.filter((item) => item.kind === "activity-reasoning-summary")
-    expect(reasoningItems).toHaveLength(1)
-    expect(reasoningItems[0]?.text).toBeUndefined()
-    expect(groups).toHaveLength(2)
-    expect(groups.map((group) => group.steps[0]?.family)).toEqual(["inspect-local", "research-web"])
-    expect(groups.every((group) => group.topic?.text === undefined)).toBe(true)
-  })
-
-  test("ignores persisted semantic membership that crosses a presentation boundary", () => {
-    const message = assistant()
-    message.metadata = {
-      activity: {
-        v: 1,
-        seq: 1,
-        groups: {
-          "activity:assistant-a:inspect-local::read-before": {
-            state: "stable",
-            signature: "read-before:plugin-card:read-after",
-            text: "Invalid legacy group",
-            updatedAt: 10,
-          },
-        },
-      },
-    }
-    const groups = activities(
-      project({
-        message,
-        parts: [
-          tool({ id: "read-before" }),
-          tool({ id: "plugin-card", tool: "plugin_owned_tool" }),
-          tool({ id: "read-after" }),
-        ],
-        isToolRenderBoundary: (name) => name === "plugin_owned_tool",
-      }),
-    )
-
-    expect(groups.map((group) => group.steps.map((step) => step.part.id))).toEqual([["read-before"], ["read-after"]])
-    expect(groups.every((group) => group.topic === undefined)).toBe(true)
-  })
-
-  test("does not merge an unsettled streaming tail into a persisted semantic group", () => {
-    const message = assistant()
-    message.metadata = {
-      activity: {
-        v: 1,
-        seq: 1,
-        groups: {
-          "activity:assistant-a:inspect-local:path:/workspace:read-flow": {
-            state: "stable",
-            signature: "read-flow:edit-flow:test-flow",
-            text: "Implemented and verified the activity trace",
-            updatedAt: 10,
-          },
-        },
-      },
-    }
-    const groups = activities(
-      project({
-        message,
-        parts: [
-          tool({ id: "read-flow", tool: "read", args: { filePath: "/workspace/src/activity.ts" } }),
-          tool({ id: "edit-flow", tool: "revise_file", args: { filePath: "/workspace/src/activity.ts" } }),
-          tool({ id: "test-flow", tool: "bash", args: { command: "bun test" } }),
-          tool({ id: "read-tail", tool: "read", args: { filePath: "/workspace/src/next.ts" } }),
-        ],
-      }),
-    )
-
-    expect(groups.map((group) => group.steps.map((step) => step.part.id))).toEqual([
-      ["read-flow", "edit-flow", "test-flow"],
-      ["read-tail"],
-    ])
-    expect(groups[1]?.topic).toBeUndefined()
+    expect(actual.every((group) => !("topic" in group))).toBe(true)
   })
 
   test("caps a group at 24 steps and gives continuation groups their own first-part key", () => {
@@ -981,7 +784,7 @@ describe("minimal activity projection", () => {
     ])
   })
 
-  test("adds the latest bounded activity summary as the minimal now line", () => {
+  test("ignores historical summary text in minimal mode", () => {
     const message = assistant()
     message.metadata = {
       activity: {
@@ -998,15 +801,10 @@ describe("minimal activity projection", () => {
     const minimal = projectMinimalActivityItems(projected, "root-user", false)
     const summary = minimal.find((item) => item.kind === "activity-summary")
 
-    expect(summary).toMatchObject({
-      kind: "activity-summary",
-      now: {
-        text: "Verifying the compressed activity trace",
-        source: "reasoning",
-      },
-    })
+    expect(summary).toMatchObject({ kind: "activity-summary", total: 1 })
+    expect(summary).not.toHaveProperty("now")
   })
-  test("drops reasoning summary items while preserving the minimal now line", () => {
+  test("drops reasoning summary items while preserving activity counts", () => {
     const message = assistant()
     message.metadata = {
       activity: {
@@ -1024,7 +822,7 @@ describe("minimal activity projection", () => {
 
     expect(minimal.some((item) => item.kind === "activity-reasoning-summary")).toBe(false)
     expect(minimal.find((item) => item.kind === "activity-summary")).toMatchObject({
-      now: { text: "Verifying the compressed activity trace", source: "reasoning" },
+      total: 1,
     })
   })
   test("renders no summary without ordinary activity", () => {

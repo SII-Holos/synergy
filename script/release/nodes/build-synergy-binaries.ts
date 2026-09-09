@@ -1,16 +1,16 @@
 import { $ } from "bun"
-import { REPO_ROOT, SYNERGY_DIST_DIR } from "../shared/packages"
-import { PINNED_MODELS_CATALOG_PATH } from "../../../packages/synergy/script/models-catalog"
+import { REPO_ROOT, PRODUCT_RUNTIME_DIST_DIR } from "../shared/packages"
+import { PINNED_MODELS_CATALOG_PATH } from "../shared/build/models-catalog"
 
 export async function buildSynergyBinaries(version: string, runtimeChannel: string): Promise<string[]> {
   console.log("\n=== build synergy binaries ===\n")
-  await $`bun run ./packages/synergy/script/build.ts`.cwd(REPO_ROOT).env({
+  await $`bun run ./packages/product-runtime/script/build.ts`.cwd(REPO_ROOT).env({
     ...process.env,
     MODELS_DEV_API_JSON: PINNED_MODELS_CATALOG_PATH,
     SYNERGY_VERSION: version,
     SYNERGY_CHANNEL: runtimeChannel,
   })
 
-  const directories = await Array.fromAsync(new Bun.Glob("*").scan({ cwd: SYNERGY_DIST_DIR, onlyFiles: false }))
+  const directories = await Array.fromAsync(new Bun.Glob("*").scan({ cwd: PRODUCT_RUNTIME_DIST_DIR, onlyFiles: false }))
   return directories.map(String).filter((entry) => !entry.includes(".") && entry !== "synergy")
 }
