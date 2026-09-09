@@ -104,7 +104,7 @@
     "reason": "Literal tool-parameter prefix echoing the API field name — not a user-facing label."
   },
   {
-    "path": "packages/app/src/components/dialog/dialog-select-server.tsx",
+    "path": "apps/web/src/components/dialog/dialog-select-server.tsx",
     "kind": "jsx-attribute",
     "literal": "http://localhost:4096",
     "occurrence": 1,
@@ -112,7 +112,7 @@
     "reason": "Server URL syntax example shown as an input placeholder, not natural-language product copy."
   },
   {
-    "path": "packages/app/src/components/performance/PerformanceDashboard.tsx",
+    "path": "apps/web/src/components/performance/PerformanceDashboard.tsx",
     "kind": "jsx-attribute",
     "literal": "INP",
     "occurrence": 1,
@@ -120,7 +120,7 @@
     "reason": "Standard Web Vitals metric acronym; translating it would break diagnostic terminology."
   },
   {
-    "path": "packages/app/src/components/performance/PerformanceDashboard.tsx",
+    "path": "apps/web/src/components/performance/PerformanceDashboard.tsx",
     "kind": "jsx-attribute",
     "literal": "LCP",
     "occurrence": 1,
@@ -128,7 +128,7 @@
     "reason": "Standard Web Vitals metric acronym; translating it would break diagnostic terminology."
   },
   {
-    "path": "packages/app/src/components/performance/PerformanceDashboard.tsx",
+    "path": "apps/web/src/components/performance/PerformanceDashboard.tsx",
     "kind": "jsx-attribute",
     "literal": "CLS",
     "occurrence": 1,
@@ -136,7 +136,7 @@
     "reason": "Standard Web Vitals metric acronym; translating it would break diagnostic terminology."
   },
   {
-    "path": "packages/app/src/components/performance/PerformanceDashboard.tsx",
+    "path": "apps/web/src/components/performance/PerformanceDashboard.tsx",
     "kind": "jsx-attribute",
     "literal": "FCP",
     "occurrence": 1,
@@ -144,7 +144,7 @@
     "reason": "Standard Web Vitals metric acronym; translating it would break diagnostic terminology."
   },
   {
-    "path": "packages/app/src/components/performance/PerformanceDashboard.tsx",
+    "path": "apps/web/src/components/performance/PerformanceDashboard.tsx",
     "kind": "jsx-attribute",
     "literal": "TTFB",
     "occurrence": 1,
@@ -152,7 +152,7 @@
     "reason": "Standard Web Vitals metric acronym; translating it would break diagnostic terminology."
   },
   {
-    "path": "packages/app/src/components/settings/panels/RuntimePanels.tsx",
+    "path": "apps/web/src/components/settings/panels/RuntimePanels.tsx",
     "kind": "jsx-attribute",
     "literal": "bash=600\\nwebfetch=120",
     "occurrence": 1,
@@ -160,7 +160,7 @@
     "reason": "Configuration syntax example shown as an input placeholder, not natural-language product copy."
   },
   {
-    "path": "packages/app/src/components/settings/panels/RuntimePanels.tsx",
+    "path": "apps/web/src/components/settings/panels/RuntimePanels.tsx",
     "kind": "jsx-attribute",
     "literal": "info",
     "occurrence": 1,
@@ -168,7 +168,7 @@
     "reason": "Canonical logging-level value shown as configuration input syntax."
   },
   {
-    "path": "packages/app/src/components/settings/panels/RuntimePanels.tsx",
+    "path": "apps/web/src/components/settings/panels/RuntimePanels.tsx",
     "kind": "jsx-attribute",
     "literal": "node_modules\\n.git",
     "occurrence": 1,
@@ -176,7 +176,7 @@
     "reason": "Filesystem ignore-pattern syntax shown as an input placeholder, not natural-language product copy."
   },
   {
-    "path": "packages/app/src/components/workspace/browser/address-bar.tsx",
+    "path": "apps/web/src/components/workspace/browser/address-bar.tsx",
     "kind": "user-visible-property",
     "literal": "localhost:3000",
     "occurrence": 1,
@@ -184,7 +184,7 @@
     "reason": "Literal development server host and port used by the browser navigation preset."
   },
   {
-    "path": "packages/app/src/components/workspace/browser/address-bar.tsx",
+    "path": "apps/web/src/components/workspace/browser/address-bar.tsx",
     "kind": "user-visible-property",
     "literal": "localhost:5173",
     "occurrence": 1,
@@ -192,7 +192,7 @@
     "reason": "Literal development server host and port used by the browser navigation preset."
   },
   {
-    "path": "packages/app/src/components/workspace/browser/address-bar.tsx",
+    "path": "apps/web/src/components/workspace/browser/address-bar.tsx",
     "kind": "user-visible-property",
     "literal": "localhost:8080",
     "occurrence": 1,
@@ -200,7 +200,7 @@
     "reason": "Literal development server host and port used by the browser navigation preset."
   },
   {
-    "path": "packages/app/src/components/workspace/browser/annotation-input.tsx",
+    "path": "apps/web/src/components/workspace/browser/annotation-input.tsx",
     "kind": "jsx-attribute",
     "literal": "14px",
     "occurrence": 1,
@@ -208,7 +208,7 @@
     "reason": "CSS font-size syntax example shown as an annotation style placeholder."
   },
   {
-    "path": "packages/app/src/components/workspace/browser/annotation-input.tsx",
+    "path": "apps/web/src/components/workspace/browser/annotation-input.tsx",
     "kind": "jsx-attribute",
     "literal": "#3b82f6",
     "occurrence": 1,
@@ -216,7 +216,7 @@
     "reason": "CSS hexadecimal color syntax example shown as an annotation style placeholder."
   },
   {
-    "path": "packages/app/src/components/settings/panels/language-self-names.ts",
+    "path": "apps/web/src/components/settings/panels/language-self-names.ts",
     "kind": "chinese-literal",
     "literal": "简体中文",
     "occurrence": 1,
@@ -224,7 +224,7 @@
     "reason": "Language selectors preserve each supported language's self-name so users can always recover from an unreadable locale."
   },
   {
-    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
+    "path": "apps/web/src/components/settings/panels/library-embedding-section.tsx",
     "kind": "jsx-attribute",
     "literal": "https://models.example",
     "occurrence": 1,
@@ -232,7 +232,7 @@
     "reason": "Example HTTPS origin placeholder illustrating the expected input format."
   },
   {
-    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
+    "path": "apps/web/src/components/settings/panels/library-embedding-section.tsx",
     "kind": "jsx-attribute",
     "literal": "~/.synergy/data/embedding/models",
     "occurrence": 1,
@@ -240,7 +240,7 @@
     "reason": "Default filesystem cache path placeholder illustrating the expected input format."
   },
   {
-    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
+    "path": "apps/web/src/components/settings/panels/library-embedding-section.tsx",
     "kind": "invalid-message-descriptor",
     "literal": "model.description",
     "occurrence": 1,
@@ -248,7 +248,7 @@
     "reason": "The checker cannot resolve EmbeddingModelPresentation types across module boundaries, but the property is statically a MessageDescriptor."
   },
   {
-    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
+    "path": "apps/web/src/components/settings/panels/library-embedding-section.tsx",
     "kind": "invalid-message-descriptor",
     "literal": "model.stateLabel",
     "occurrence": 1,
@@ -256,7 +256,7 @@
     "reason": "The checker cannot resolve EmbeddingModelPresentation types across module boundaries, but the property is statically a MessageDescriptor."
   },
   {
-    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
+    "path": "apps/web/src/components/settings/panels/library-embedding-section.tsx",
     "kind": "invalid-message-descriptor",
     "literal": "model.modeLabel",
     "occurrence": 1,
@@ -264,7 +264,7 @@
     "reason": "The checker cannot resolve EmbeddingModelPresentation types across module boundaries, but the property is statically a MessageDescriptor."
   },
   {
-    "path": "packages/app/src/pages/error-presentation.ts",
+    "path": "apps/web/src/pages/error-presentation.ts",
     "kind": "user-visible-property",
     "literal": "reload-interface",
     "occurrence": 1,
@@ -272,7 +272,7 @@
     "reason": "i18n-action lookup key, not user-visible text. Rendered through AP.fatalErrorAction."
   },
   {
-    "path": "packages/app/src/pages/error-presentation.ts",
+    "path": "apps/web/src/pages/error-presentation.ts",
     "kind": "user-visible-property",
     "literal": "try-again",
     "occurrence": 1,
@@ -280,7 +280,7 @@
     "reason": "i18n-action lookup key, not user-visible text. Rendered through AP.fatalErrorAction."
   },
   {
-    "path": "packages/app/src/pages/error-presentation.ts",
+    "path": "apps/web/src/pages/error-presentation.ts",
     "kind": "user-visible-property",
     "literal": "try-again",
     "occurrence": 2,
@@ -288,7 +288,7 @@
     "reason": "i18n-action lookup key, not user-visible text. Rendered through AP.fatalErrorAction."
   },
   {
-    "path": "packages/app/src/pages/error-presentation.ts",
+    "path": "apps/web/src/pages/error-presentation.ts",
     "kind": "user-visible-property",
     "literal": "try-again",
     "occurrence": 3,
@@ -296,7 +296,7 @@
     "reason": "i18n-action lookup key, not user-visible text. Rendered through AP.fatalErrorAction."
   },
   {
-    "path": "packages/app/src/pages/error-presentation.ts",
+    "path": "apps/web/src/pages/error-presentation.ts",
     "kind": "user-visible-property",
     "literal": "change-server",
     "occurrence": 1,
@@ -304,7 +304,7 @@
     "reason": "i18n-action lookup key, not user-visible text. Rendered through AP.fatalErrorAction."
   },
   {
-    "path": "packages/app/src/pages/error-presentation.ts",
+    "path": "apps/web/src/pages/error-presentation.ts",
     "kind": "user-visible-property",
     "literal": "renderer",
     "occurrence": 1,
@@ -312,7 +312,7 @@
     "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
   },
   {
-    "path": "packages/app/src/pages/error-presentation.ts",
+    "path": "apps/web/src/pages/error-presentation.ts",
     "kind": "user-visible-property",
     "literal": "renderer",
     "occurrence": 2,
@@ -320,7 +320,7 @@
     "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
   },
   {
-    "path": "packages/app/src/pages/error-presentation.ts",
+    "path": "apps/web/src/pages/error-presentation.ts",
     "kind": "user-visible-property",
     "literal": "connection",
     "occurrence": 1,
@@ -328,7 +328,7 @@
     "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
   },
   {
-    "path": "packages/app/src/pages/error-presentation.ts",
+    "path": "apps/web/src/pages/error-presentation.ts",
     "kind": "user-visible-property",
     "literal": "connection",
     "occurrence": 2,
@@ -336,7 +336,7 @@
     "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
   },
   {
-    "path": "packages/app/src/pages/error-presentation.ts",
+    "path": "apps/web/src/pages/error-presentation.ts",
     "kind": "user-visible-property",
     "literal": "initialization",
     "occurrence": 1,
@@ -344,7 +344,7 @@
     "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
   },
   {
-    "path": "packages/app/src/pages/error-presentation.ts",
+    "path": "apps/web/src/pages/error-presentation.ts",
     "kind": "user-visible-property",
     "literal": "initialization",
     "occurrence": 2,
@@ -352,7 +352,7 @@
     "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
   },
   {
-    "path": "packages/app/src/pages/error-presentation.ts",
+    "path": "apps/web/src/pages/error-presentation.ts",
     "kind": "user-visible-property",
     "literal": "scope",
     "occurrence": 1,
@@ -360,7 +360,7 @@
     "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
   },
   {
-    "path": "packages/app/src/pages/error-presentation.ts",
+    "path": "apps/web/src/pages/error-presentation.ts",
     "kind": "user-visible-property",
     "literal": "scope",
     "occurrence": 2,
@@ -368,7 +368,7 @@
     "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
   },
   {
-    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
+    "path": "apps/web/src/components/settings/panels/library-embedding-section.tsx",
     "kind": "user-visible-property",
     "literal": "Hugging Face",
     "occurrence": 1,
@@ -376,7 +376,7 @@
     "reason": "Third-party brand name shown as a download-source option label."
   },
   {
-    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
+    "path": "apps/web/src/components/settings/panels/library-embedding-section.tsx",
     "kind": "user-visible-property",
     "literal": "HF Mirror",
     "occurrence": 1,
@@ -440,7 +440,7 @@
     "reason": "The checker cannot resolve the dynamic property lookup into the descriptor object, but every ACTIVITY_TRACE_DESC.family entry is a static Lingui MessageDescriptor with an extracted ID."
   },
   {
-    "path": "packages/app/src/plugin/shell-outlet.tsx",
+    "path": "apps/web/src/plugin/shell-outlet.tsx",
     "kind": "user-visible-property",
     "literal": "Synergy",
     "occurrence": 1,

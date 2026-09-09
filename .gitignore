@@ -11,7 +11,7 @@ playground
 tmp
 dist
 ts-dist
-packages/desktop/release/
+apps/desktop/release/
 .release/
 .turbo
 **/.serena
@@ -24,14 +24,14 @@ target
 .scripts
 
 # Declarations emitted beside sources when a composite project type-checks a
-# file outside its rootDir (packages/app tsconfig includes script/shared/)
+# file outside its rootDir (apps/web tsconfig includes script/shared/)
 script/shared/*.d.ts
 log/
 
 # Bun build temp files
 *.bun-build
 .bun-version.info
-packages/synergy/coverage/
+packages/*/coverage/
 
 # Test coverage artifacts
 coverage/
@@ -40,7 +40,7 @@ coverage*/
 # Windows special device files
 nul
 **/nul
-packages/synergy/nul
+packages/*/nul
 
 # Local dev files
 synergy-dev
@@ -96,4 +96,14 @@ weekly-report/
 synergy-frontend-kit/
 
 # Verified native Computer driver build output
-packages/desktop/build/computer/
+apps/desktop/build/computer/
+
+# Locally packed workspace artifacts
+.artifacts/
+
+# Disposable DOM test hosts created next to their owning tests
+apps/web/test/**/.*-fixture-*/
+packages/ui/test/**/.*-fixture-*/
+
+# Isolated Browser Host packaging input
+apps/desktop/build/browser-host-app/

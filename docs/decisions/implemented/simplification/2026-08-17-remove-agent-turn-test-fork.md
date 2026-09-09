@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-`packages/synergy/src/session/agent-turn/index.ts` shipped a second stream implementation selected by the `SYNERGY_TEST_HOME` env var: it called `LLM.stream` in-process, projected text into synthetic `"test-text"` deltas, and bypassed the worker pool entirely. Consequences:
+`packages/harness/src/session/agent-turn/index.ts` shipped a second stream implementation selected by the `SYNERGY_TEST_HOME` env var: it called `LLM.stream` in-process, projected text into synthetic `"test-text"` deltas, and bypassed the worker pool entirely. Consequences:
 
 - Tests (`test/preload.ts` sets `SYNERGY_TEST_HOME` for every test file) never exercised the production stream path (pool + `prepared.system` + `FrameStream`), while production never exercised the fork.
 - The fork embedded test-only semantics in production code (synthetic `"test-text"` ids, a noop `dispose` in one sub-case).
@@ -33,7 +33,7 @@ Worker processes inherit `SYNERGY_TEST_HOME` but never consulted the fork (`runn
 
 ## Consequences
 
-- The `packages/synergy` suites stay green: `test/agent/call.test.ts`, `test/session/agent-turn.test.ts`, `agent-turn-protocol`, `llm-stream-lifecycle`, `agent-worker-pool`, `agent-worker-process`, `agent-worker-runtime-boundary`, `restart-while-queued`, `test/server/shutdown-admission.test.ts`.
+- The `packages/harness` suites stay green: `test/agent/call.test.ts`, `test/session/agent-turn.test.ts`, `agent-turn-protocol`, `llm-stream-lifecycle`, `agent-worker-pool`, `agent-worker-process`, `agent-worker-runtime-boundary`, `restart-while-queued`, `test/server/shutdown-admission.test.ts`.
 - No `SYNERGY_TEST_HOME` reference remains in `src/session/agent-turn/**`; `"test-text"` appears only inside the in-process module.
 - The production stream path contains no env check; the pool path is unchanged; the moved fork body keeps coverage via the preload-registered hook.
 - Cost: the hook is a test-only seam registered in preload; a future test that forgets to unregister it (as `agent-turn.test.ts` must) would silently keep the in-process path. Mitigated by the explicit `setInProcessStream(undefined)` pattern and the comment in `preload.ts`.

@@ -11,7 +11,7 @@ import {
 } from "../../src/components/turn-change-summary-panel-model"
 
 const diffs: TurnChangeSummaryDiff[] = [
-  { file: "packages/app/src/pages/session.tsx", additions: 10, deletions: 2 },
+  { file: "apps/web/src/pages/session.tsx", additions: 10, deletions: 2 },
   { file: "packages/ui/src/components/session-turn.tsx", additions: 5, deletions: 1 },
   { file: "README.md", additions: 1, deletions: 0 },
   { file: "assets/logo.png", additions: 0, deletions: 0, binary: true },
@@ -26,7 +26,7 @@ describe("TurnChangeSummaryPanel helpers", () => {
   test("shows first three files while collapsed and all files while expanded", () => {
     expect(turnChangeSummaryHiddenCount(diffs)).toBe(1)
     expect(turnChangeSummaryVisibleDiffs(diffs).map((diff) => diff.file)).toEqual([
-      "packages/app/src/pages/session.tsx",
+      "apps/web/src/pages/session.tsx",
       "packages/ui/src/components/session-turn.tsx",
       "README.md",
     ])
@@ -38,7 +38,7 @@ describe("TurnChangeSummaryPanel helpers", () => {
   test("supports custom preview limits and footer labels", () => {
     expect(turnChangeSummaryHiddenCount(diffs, 2)).toBe(2)
     expect(turnChangeSummaryVisibleDiffs(diffs, { previewLimit: 2 }).map((diff) => diff.file)).toEqual([
-      "packages/app/src/pages/session.tsx",
+      "apps/web/src/pages/session.tsx",
       "packages/ui/src/components/session-turn.tsx",
     ])
     expect(turnChangeSummaryToggleLabel({ expanded: false, hiddenCount: 1 })).toBe("Show 1 more file")

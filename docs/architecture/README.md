@@ -6,9 +6,11 @@ Code is authoritative. When code changes one of these contracts, update the owni
 
 ## System Shape
 
-Synergy is a client-server system built around a persistent runtime:
+Synergy separates execution mechanisms, concrete host implementations, optional business capabilities and product interfaces. Harness owns the session loop, scheduling, permissions, budgets, persistence and lifecycle. Runtime Local supplies the default model and local-system implementations. Product Runtime chooses the complete set of business services before startup; CLI and HTTP/WS are access paths to that runtime.
 
-1. The global runtime owns installation-wide services such as plugins, Channels, Holos, MCP, Agenda, recovery, and marketplace state.
+The full product is a client-server system built around the same persistent runtime:
+
+1. Product composition selects installation-wide services such as plugins, Channels, Holos, MCP, Agenda, recovery, and marketplace state.
 2. A `Scope` selects home or project context for each request and session.
 3. A lazily started project `ScopeRuntime` owns project-sensitive services such as file watching, LSP, formatting, VCS, and command state.
 4. A durable session owns messages, inbox state, session-local workflow state, workspace binding, and at most one active LLM loop.
@@ -35,6 +37,28 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 | [GitHub Channel](github-channel.md)              | GitHub as a Channel: polling, event gating, per-thread checkouts, agentic review/QA/fix sessions, and comment delivery.         |
 | [Push notifications](push.md)                    | Web Push delivery: event bridge, per-subscription categories, VAPID keys, routes, service-worker contract, and iOS PWA limits.  |
 
+## Dependency and deployment principles
+
+A business operation has one service owner. Its tools, routes, configuration, durable upgrades and command contributions stay with that owner; interface adapters call the same service. Generic execution accepts typed contributions without importing the concrete business package. Registration is explicit and complete before migrations or execution start, with no package scanning or universal service container.
+
+Package boundaries express independently consumable code and dependency weight. Process boundaries express lifecycle or native execution requirements. Shared Browser, Computer and Link protocols let both sides communicate without importing either host implementation. Plugin author APIs and development tools remain separate from the process that executes plugins. Only actual native hosting requires Electron; optional business backends can run without Desktop.
+
+```mermaid
+flowchart TD
+  Desktop[Desktop native host and UI] --> Product[Product Runtime]
+  Web[Web UI] --> Server[HTTP / WebSocket Server]
+  Product --> CLI[Single CLI implementation]
+  Product --> Server
+  Product --> Domains[Business capabilities]
+  Product --> Local[Runtime Local]
+  CLI --> Local
+  Local --> Harness[Harness execution and lifecycle]
+  Domains --> Harness
+  Server --> Harness
+```
+
+The diagram shows assembly and access relationships, not one process per box. Programmatic callers can use Harness directly; the local CLI uses Runtime Local; the ordinary installed product enables the complete product composition. Public executable names, full-product defaults, configuration/data formats and release resource names do not follow internal source renames.
+
 ## Cross-Cutting Invariants
 
 - The server is independent of any single project directory, but its state is persistent.
@@ -52,47 +76,57 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 
 ## Ownership Map
 
-### Harness-core layering
+### Workspace packages
 
-The runtime enforces a hard layer boundary with `dependency-cruiser` (`bun run deps:check`, snapshot `bun run deps:analyze` from the repository root):
+Workspace membership and dependency versions come from the root and package `package.json` files. `bun run deps:check` verifies declared imports, public exports, package cycles, and the allowed dependency directions in `script/dependency-rules.json`. The release catalog identifies distributable entries; it does not duplicate dependencies.
 
-| Layer           | Directories                                                                                                                                                                                                                                                                                            | Rule                                                                                                                                                                                                                                                   |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| L0 shared base  | `util/`, `id/`, `flag/`, `global/`, `asset/`, `hashline/`, `vector/`, `process/`, `stats/`                                                                                                                                                                                                             | never imports product or assembly layers                                                                                                                                                                                                               |
-| L1 harness-core | `agent/`, `session/`, `tool/`, `enforcement/`, `permission/`, `sandbox/`, `control-profile/`, `bus/`, `scope/`, `storage/`, `migration/`, `file/`, `workspace-file/`, `provider/`, `config/`, `observability/`, `instruction/`                                                                         | zero product-layer and zero assembly-layer imports (R1, error); product domains attach through the L1 port registries (`SessionPluginHooks`, `SessionToolContext`, `ToolMcpSource`, `InstructionRegistry`, `ScopeStartup`, `RuntimeReloadExecutor`, …) |
-| Product layer   | `boss/`, `light-loop/`, `blueprint/`, `lattice/`, `channel/`, `cortex/`, `agenda/`, `browser/`, `plugin/`, `library/`, `note/`, `mcp/`, `holos/`, `email/`, `synergy-link/`, `remote/`, `acp/`, `external-agent/`, `project/`, `question/`, `lsp/`, `performance/`, `skill/`, `command/`, `superplan/` | acyclic (R2); internal composition follows the recorded allowlist (R3); each domain registers through `src/product-registration.ts`                                                                                                                    |
-| L4 assembly     | `server/`, `runtime/`, `cli/`, `daemon/`, `main/`, `src/product-registration.ts`                                                                                                                                                                                                                       | the only place that may compose product domains                                                                                                                                                                                                        |
+| Owner                                                                     | Responsibility                                                                                                                             |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `packages/harness`                                                        | Session execution, Scope, generic tool scheduling and enforcement, budgets, cancellation, recovery, rollout evidence and runtime lifecycle |
+| `packages/runtime-local`                                                  | Default model SDK factories, local tools, native PTY/watchers/OS sandboxes, workspace/Git integration and registration                     |
+| `packages/cli`                                                            | The single `synergy` parser, command execution, local client and remote SDK client                                                         |
+| `packages/server`                                                         | HTTP/WS transport, core routes and explicit route contributions                                                                            |
+| `packages/product-runtime`                                                | Full configuration, tools, agents, services, routes and CLI composition; packaged product entry                                            |
+| `packages/browser-runtime`, `packages/computer-runtime`                   | Browser and Computer backend capabilities, tools, ownership, recovery and host connections                                                 |
+| `packages/library`, `packages/note`                                       | Knowledge processing and retrieval; documents and note operations                                                                          |
+| `packages/workflows`                                                      | Blueprint, Light Loop, Lattice, Agenda and Boss                                                                                            |
+| `packages/connections`                                                    | Email, Channels, Holos and GitHub integration                                                                                              |
+| `packages/workbench`                                                      | Product Projects, statistics, notifications and read models                                                                                |
+| `packages/agent-integrations`                                             | MCP, LSP, formatting, ACP, external agents and Link client                                                                                 |
+| `packages/media`                                                          | Document extraction, voice and image operations                                                                                            |
+| `packages/plugin-host`                                                    | Plugin discovery, process execution, trust and registered Host Services                                                                    |
+| `packages/browser`, `packages/computer`, `packages/synergy-link-protocol` | Shared schemas and host protocols                                                                                                          |
+| `packages/synergy-link`                                                   | Independently distributed Link host and CLI                                                                                                |
+| `packages/plugin`, `packages/plugin-kit`                                  | Plugin author API, theme contracts and development tools                                                                                   |
+| `packages/sdk/js`, `packages/ui`, `packages/util`                         | HTTP SDK, shared UI and product-independent utilities                                                                                      |
+| `packages/testing`                                                        | Development-only isolation and test orchestration                                                                                          |
+| `apps/web`, `apps/desktop`                                                | Web UI; Desktop UI, Electron and native Browser/Computer hosting                                                                           |
 
-Product domains own their tools (`<domain>/tools/` + `<domain>/tools.ts`), migrations (`<domain>/migration.ts`), and startup contributions (`<domain>/startup.ts`), registered through the L4 manifest that every real entry point loads.
+Business packages own their backend, tools, routes, configuration, storage upgrades and CLI contributions together. Within a package, folders represent business domains; small domains can use individual files. The CLI owns common parsing and output. A domain command delegates to the same service used by its routes and tools.
 
-### Areas
+### Composition and public imports
 
-| Area                     | Primary implementation                                                                     |
-| ------------------------ | ------------------------------------------------------------------------------------------ |
-| Runtime and server       | `packages/synergy/src/server/`, `daemon/`, `global/`                                       |
-| Scope and workspace      | `packages/synergy/src/scope/`, `session/types.ts`, worktree tools                          |
-| Files and coding harness | `packages/synergy/src/workspace-file/`, `file/`, `hashline/`, anchored file tools          |
-| Sessions and messages    | `packages/synergy/src/session/`, `storage/`                                                |
-| Agents and tools         | `packages/synergy/src/agent/`, `tool/`, `mcp/`                                             |
-| Execution policy         | `packages/synergy/src/enforcement/`, `control-profile/`, `permission/`, `sandbox/`         |
-| Delegation               | `packages/synergy/src/cortex/`                                                             |
-| Workflow loops           | `packages/synergy/src/blueprint/`, `lattice/`, `session/*continuation*`                    |
-| Knowledge                | `packages/synergy/src/library/`, `note/`                                                   |
-| Activity statistics      | `packages/synergy/src/stats/`, server Stats routes, Web Stats components                   |
-| Automation               | `packages/synergy/src/agenda/`                                                             |
-| Channels                 | `packages/synergy/src/channel/`, Channel server routes, and Web Channel account projection |
-| Other connections        | `packages/synergy/src/email/`, `holos/`, `synergy-link/`, `remote/`, `mcp/`                |
-| External agents and ACP  | `packages/synergy/src/external-agent/`, `acp/`                                             |
-| Browser                  | `packages/synergy/src/browser/`, `packages/desktop`, Browser UI modules                    |
-| Frontend sync            | `packages/app/src/context/`, `packages/synergy/src/bus/`, server event routes              |
-| Plugins                  | `packages/synergy/src/plugin/`, `packages/plugin`, `packages/plugin-kit`                   |
-| Observability            | `packages/synergy/src/observability/`, `performance/`, diagnostics and trace UI            |
+Harness is callable without CLI, Server or optional product capabilities. Its `RuntimeHandle` owns admission, cancellation, draining, evidence flushing, worker cleanup and failed-start recovery. `runtime-local` registers the default host sources. `product-runtime` selects the complete capability set before opening the runtime. Each process owns one runtime and one home lock.
+
+Public package exports are the cross-package resolution authority. Source development resolves these entries to the owning source files; package builds resolve the same entries to one corresponding compiled module. Private relative imports across workspace packages are rejected. Optional capabilities register through the existing registries and typed sources rather than automatic package discovery.
+
+The CLI exposes an injectable runtime factory and command contributions. Its standalone entry uses the local runtime; the product entry uses full product composition. Both execute the same commands named `synergy`. Local requests call the runtime directly, while remote requests use the HTTP SDK. Browser Host remains a second Desktop entry with an independent artifact and lightweight protocol dependencies.
+
+Detailed lifecycle, configuration, persistence, Browser presentation and session semantics remain in their owning documents above.
 
 ## Related Contracts
 
 - [Product overview](../product/overview.md) defines user-facing objects and boundaries.
-- [Web product contract](../../packages/app/PRODUCT.md) defines durable interaction and visual principles.
+- [Web product contract](../../apps/web/PRODUCT.md) defines durable interaction and visual principles.
 - [Reference documentation](../README.md#reference) owns commands, configuration, paths, packages, and development procedures.
 - Root and package `AGENTS.md` files contain change rules and link back to these architecture contracts.
 
 Native application automation is described in [Native Computer Use](computer-use.md).
+
+## Harness public entry points
+
+The programmatic entry points are `@ericsanchezok/synergy-harness/session`, `/scope`, `/tools`, `/context`, `/lifecycle`, `/config`, `/persistence`, and `/rollout`. They expose execution operations, schemas and explicit host contribution contracts. Additional leaf exports are declared individually for host implementations and domain composition; there is no source wildcard export.
+
+`ToolInvocation.invoke` owns processor setup, permission checks, cancellation and execution evidence. Hosts do not construct partial processors. Every invocation enters global tool admission and scheduling. An active plugin parent identified by the same session, assistant message and call ID can lend one scheduling slot to a nested invocation; siblings remain serialized and other executor limits still apply. Parent termination cancels its unfinished children. `readRuntimeStats` and `readRolloutRevision` expose read-only views; the processor, tool resolver, scheduler and rollout journal are internal. White-box integration fixtures use explicit `test/` exports, which are removed from published tarballs and forbidden in production imports.
+
+File browsing, indexing, Ripgrep, Hashline editing and conflict resolution belong to Runtime Local. Harness retains session read evidence and execution locking. Imports within Harness resolve relative to their owner module, so public entry points cannot create a second core instance or become internal dependency hubs.

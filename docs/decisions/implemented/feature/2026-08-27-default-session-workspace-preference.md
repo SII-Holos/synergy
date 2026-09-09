@@ -4,15 +4,15 @@ Status: implemented
 
 ## Problem
 
-Creating a new session chat offered no durable way to prefer a worktree workspace. The backend defaulted `Session.create` to the main checkout (`packages/synergy/src/session/index.ts`), and the Web composer hardcoded `workspace: { mode: "current" }`, keeping any worktree choice only in a transient per-scope store that reset after each submit. Users who want every session isolated had to re-pick "Worktree" from the start-options menu for every conversation.
+Creating a new session chat offered no durable way to prefer a worktree workspace. The backend defaulted `Session.create` to the main checkout (`packages/harness/src/session/index.ts`), and the Web composer hardcoded `workspace: { mode: "current" }`, keeping any worktree choice only in a transient per-scope store that reset after each submit. Users who want every session isolated had to re-pick "Worktree" from the start-options menu for every conversation.
 
 ## Decision
 
 The default workspace for new sessions is a persisted general-domain preference, `defaultSessionWorkspace: "main" | "worktree"` (optional, default `main`), following the established config-domain pattern:
 
-- The key lives in `packages/synergy/src/config/schema.ts` (`Config.Info`) and is registered under the general domain (`00-general.jsonc`) in `packages/synergy/src/config/domain.ts`, so global/project fragment merging and project-level overrides work for free.
+- The key lives in `packages/harness/src/config/schema.ts` (`Config.Info`) and is registered under the general domain (`00-general.jsonc`) in `packages/harness/src/config/domain.ts`, so global/project fragment merging and project-level overrides work for free.
 - Runtime reload classifies it as client-side (`RuntimeReload.CONFIG_CLIENT_SIDE`): the server runtime never reads it; only the Web composer consumes it.
-- The Web session page resolves the preference (`sync.data.config.defaultSessionWorkspace`) with safe fallbacks — home scope or non-git directories always resolve to `main` — and feeds it into `defaultNewSessionWorkspaceSelection` (`packages/app/src/components/session/worktree-session.ts`). Precedence: explicit in-composer selection > current directory already being a worktree (`existing`) > persisted preference > `main`. A `worktree` preference yields `{ mode: "create" }`, reusing the existing two-step create-and-bind flow, its progress UI, and its failure handling unchanged.
+- The Web session page resolves the preference (`sync.data.config.defaultSessionWorkspace`) with safe fallbacks — home scope or non-git directories always resolve to `main` — and feeds it into `defaultNewSessionWorkspaceSelection` (`apps/web/src/components/session/worktree-session.ts`). Precedence: explicit in-composer selection > current directory already being a worktree (`existing`) > persisted preference > `main`. A `worktree` preference yields `{ mode: "create" }`, reusing the existing two-step create-and-bind flow, its progress UI, and its failure handling unchanged.
 - Settings → General exposes a two-option control (Main checkout / Worktree) wired through the standard settings form/patch pipeline; the settings catalog gains a "New Session Workspace" row and search aliases.
 - SDK types, `packages/sdk/openapi.json`, and `docs/reference/configuration.md` are regenerated artifacts.
 

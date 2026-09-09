@@ -12,7 +12,7 @@ test("preview starts a real isolated host and removes only its owned home on clo
     expect(await buildPluginProject(project.root)).toBe(true)
     preview = await startPluginPreview({
       artifacts: [path.join(project.root, "dist")],
-      command: [process.execPath, path.resolve(import.meta.dir, "../../packages/synergy/src/index.ts")],
+      command: [process.execPath, path.resolve(import.meta.dir, "../../packages/product-runtime/src/index.ts")],
     })
     expect((await preview.client.global.health()).data?.healthy).toBe(true)
     expect(await (await fetch(preview.url)).text()).toContain("<title>Synergy</title>")

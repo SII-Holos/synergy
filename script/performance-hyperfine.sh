@@ -8,4 +8,4 @@ fi
 
 hyperfine --warmup 1 --runs "${SYNERGY_HYPERFINE_RUNS:-5}" \
   'bun dev --help' \
-  'bun run --cwd packages/synergy src/index.ts --help'
+  'bun run --cwd packages/product-runtime src/index.ts --help'

@@ -4,6 +4,8 @@ Source development is orchestrated from the repository root with `bun dev`. The 
 
 One-shot and persistent-server execution share the runtime lifecycle. [Rollout execution](rollout.md) documents task configuration, durable evidence, import/export and accounting boundaries.
 
+Workspace `build` commands compile dependency modules. CLI and Product Runtime modules use `dist/modules`; their explicit `script/build.ts` entries produce executable distributions. Running workspace tests does not request cross-platform release artifacts.
+
 ## Requirements and Preparation
 
 The root manifest pins Bun `1.3.14`. Install that version, then run:
@@ -40,7 +42,7 @@ Use `--port` for standalone `server` and `app` modes. Use `--server-port`, `--ap
 
 Managed Desktop rebuilds the Web distribution before launch so packaged-server behavior is not tested against stale frontend assets. Its server also watches the Electron parent and shuts down if Electron is force-terminated without running normal quit handlers. Normal daily Desktop work should use external mode for Vite reload speed.
 
-Managed Desktop shows data-update progress before the application opens. Each percentage applies to the current migration step or scan phase. Advancing migration work renews a five-minute inactivity deadline; after migrations complete, the server has 30 seconds to become healthy. The same waiting policy applies to source and packaged runtimes.
+Managed Desktop shows data-update progress before the application opens. Each percentage applies to the current migration step or scan phase. Execution-history recovery reports a cumulative count of checked items without estimating a total. Advancing migration or recovery work renews a five-minute inactivity deadline; after each stage completes, the server has 30 seconds to become healthy or announce recovery. Duplicate counts and ordinary logs do not extend either deadline. The same waiting policy applies to source and packaged runtimes.
 
 CLI startup displays pending migration steps, a progress bar, percentages and processed/total counts on stderr. This applies to foreground server startup, background-service setup and local `synergy send`, including JSON output mode. Redirected stderr uses plain append-only lines; terminals update the current line. Unknown totals show preparation status until counts are available. Percentages describe the current migration step or scan phase, and completion or failure restores terminal wrapping. `NO_COLOR` suppresses color, and `TERM=dumb` also suppresses cursor control. The managed server command selects Desktop’s structured progress stream. ACP startup keeps migrations silent, including when it inherits the Desktop progress environment flag, so stdout remains an ACP protocol stream.
 
@@ -68,10 +70,10 @@ The config copy preserves provider setup while `SYNERGY_HOME` isolates data, log
 
 ## Tests
 
-Core runtime tests run from `packages/synergy`:
+Core runtime tests run from `packages/harness`:
 
 ```bash
-cd packages/synergy
+cd packages/harness
 bun test
 bun run test:ci
 bun test test/tool/read.test.ts
@@ -82,18 +84,22 @@ bun test --watch
 
 `bun run test:ci` matches the CI core-suite boundary: sequential batches run in separate Bun processes (four hash-shards of the main batch plus one process per isolated suite), limiting process-global state and temporary fixture accumulation while avoiding concurrent port and environment collisions. Set `SYNERGY_TEST_JUNIT_DIR` to a package-relative directory when per-shard JUnit reports are needed.
 
-`bun run test:coverage` runs through `script/coverage-run.ts`, which splits the main batch by stable file-name hash into sequential single-process shards (default 4, `SYNERGY_BATCH_SHARDS`) plus per-file batches for known shared-process-sensitive suites, and spawns every coverage batch with an injected isolated test home. `bun run test:ci` consumes the same batch plan (`script/test-ci.ts` imports the planner from `coverage-run.ts`), so the isolation list protects both the Test and Coverage jobs — Bun's native `--shard` cannot exclude files, which is why the orchestrators pass explicit file lists. Because shard assignment hashes the file path, editing the isolation list never reshuffles the remaining files' shard neighbors. Both orchestrators (`test-ci.ts`, `coverage-run.ts`) set `SYNERGY_TEST_HOME`/`SYNERGY_TEST_ROOT` in the child environment and delete `SYNERGY_HOME`, because Bun 1.3.x does not propagate `test/preload.ts` environment into `--parallel` worker processes — a raw `bun test --coverage --parallel` run would fall through to the real user home and write fixtures into `~/.synergy/data`…
+`bun run test:coverage` runs through `packages/testing/script/coverage-run.ts`, which splits the main batch by stable file-name hash into sequential single-process shards (default 4, `SYNERGY_BATCH_SHARDS`) plus per-file batches for known shared-process-sensitive suites, and spawns every coverage batch with an injected isolated test home. `bun run test:ci` consumes the same batch plan (`packages/testing/script/test-ci.ts` imports the shared coverage planner), so the isolation list protects both the Test and Coverage jobs — Bun's native `--shard` cannot exclude files, which is why the orchestrators pass explicit file lists. Because shard assignment hashes the file path, editing the isolation list never reshuffles the remaining files' shard neighbors. Both orchestrators (`test-ci.ts`, `coverage-run.ts`) set `SYNERGY_TEST_HOME`/`SYNERGY_TEST_ROOT` in the child environment and delete `SYNERGY_HOME`, because Bun 1.3.x does not propagate `test/preload.ts` environment into `--parallel` worker processes — a raw `bun test --coverage --parallel` run would fall through to the real user home and write fixtures into `~/.synergy/data`…
+
+The root `bun run coverage:check` clears each package’s old reports, runs every registered coverage command, and unions source hits from that same successful invocation before enforcing thresholds by source owner. This includes product integration tests that exercise a backend package. A failed command or missing report prevents shared coverage from being credited. Newly extracted runtime packages retain the previous 75% line/function floor; existing packages retain their own floors and exact-file exemptions. `bun script/coverage-check.ts --package packages/library` runs a local owner gate. Add `--existing` only to diagnose existing reports: that mode never unions across packages and does not verify report freshness or command success.
 
 For the full isolation procedure, the guard predicate, and the escape hatch, see the `testing-guide` Skill (`.synergy/skill/testing-guide/SKILL.md`). Run core suites through the package scripts; the only escape hatch for a deliberate real-home test run is `SYNERGY_ALLOW_REAL_HOME=1` (see [Configuration layout](configuration-layout.md)).
 
-The same pinned catalog is the default input for core binary builds. `packages/synergy/script/models-catalog.ts` validates it and requires non-empty OpenAI, Anthropic, and Google entries before compilation; `MODELS_DEV_API_JSON` can override the input for an ordinary local build, while release builds always force the repository-pinned snapshot.
+The same pinned catalog is the default input for core binary builds. `script/release/shared/build/models-catalog.ts` validates it and requires non-empty OpenAI, Anthropic, and Google entries before compilation; `MODELS_DEV_API_JSON` can override the input for an ordinary local build, while release builds always force the repository-pinned snapshot.
+
+Workspace `build` scripts write only their own outputs. Build a package and its dependencies from the root, for example `bun turbo build --filter=@ericsanchezok/synergy-plugin-kit`; `bun dev prepare` and managed Desktop preparation arrange these dependencies automatically.
 
 Other package tests can run through Turbo or their package scripts:
 
 ```bash
 bun turbo test
 bun run desktop:test
-bun run --cwd packages/app test
+bun run --cwd apps/web test
 bun run --cwd packages/ui test
 ```
 
@@ -112,11 +118,11 @@ Frontend product colors must use the canonical semantic theme contract. Do not a
 Localized frontend changes also update and validate the shared App/UI Lingui catalog:
 
 ```bash
-bun run --cwd packages/app i18n:extract
+bun run --cwd apps/web i18n:extract
 bun run localization:check
 ```
 
-`i18n:extract` is App-owned because `packages/app/lingui.config.ts` includes both `packages/app/src` and `packages/ui/src`. The single root `localization:check` gate re-extracts catalogs and rejects drift, rejects missing or blank Simplified Chinese translations, strictly compiles every locale, then enforces the App/UI source contract for hard-coded visible strings, Chinese source literals, hard-coded locale tags, invalid descriptors, dynamic IDs, and Lingui macro imports. Keep tracked PO catalogs unchanged after extraction before handing off a localization change.
+`i18n:extract` is App-owned because `apps/web/lingui.config.ts` includes both `apps/web/src` and `packages/ui/src`. The single root `localization:check` gate re-extracts catalogs and rejects drift, rejects missing or blank Simplified Chinese translations, strictly compiles every locale, then enforces the App/UI source contract for hard-coded visible strings, Chinese source literals, hard-coded locale tags, invalid descriptors, dynamic IDs, and Lingui macro imports. Keep tracked PO catalogs unchanged after extraction before handing off a localization change.
 
 Write behavior tests around public invariants. Avoid source-text assertions that fail when an implementation is refactored without changing behavior.
 
@@ -150,13 +156,14 @@ After modifying server routes or OpenAPI-visible schemas:
 ./script/generate.ts
 ```
 
-Build the core single binary/runtime artifact with:
+Build the standalone core CLI or the complete product binary with the corresponding entry:
 
 ```bash
-./packages/synergy/script/build.ts --single
+bun packages/cli/script/build.ts --single
+bun packages/product-runtime/script/build.ts --single
 ```
 
-The build validates and embeds the pinned `test/tool/fixtures/models-api.json` catalog before compiling. Use `MODELS_DEV_API_JSON=/path/to/models.json` only for a deliberate local build override; release workflows ignore that override and embed the repository snapshot.
+The build validates and embeds the pinned `packages/testing/fixtures/models-api.json` catalog before compiling. Use `MODELS_DEV_API_JSON=/path/to/models.json` only for a deliberate local build override; release workflows ignore that override and embed the repository snapshot.
 
 Frontend code should use `createSynergyClient()` and generated methods for internal routes. Raw browser transports remain appropriate for WebSocket/EventSource streams, external URLs, browser file/blob handling, and endpoints whose semantics cannot be represented by the SDK.
 
@@ -195,7 +202,7 @@ When implementation or review reveals a reusable required pattern, registration,
 
 - Server route/schema: regenerate SDK, typecheck runtime and SDK, run affected route tests.
 - Session/message loop: read the session and frontend-sync contracts, run focused session tests, then shared checks.
-- Frontend: typecheck `packages/app`, run relevant UI tests, preserve generated SDK usage and `PRODUCT.md` principles.
+- Frontend: typecheck `apps/web`, run relevant UI tests, preserve generated SDK usage and `PRODUCT.md` principles.
 - Desktop/release: run Desktop typecheck/tests/build validation and review the Desktop release runbook.
 - Plugin/public package: build package, run `package:check`, and verify exported ESM/type paths.
 - Config/auth examples: run secret scanning and verify both global and project configuration behavior.

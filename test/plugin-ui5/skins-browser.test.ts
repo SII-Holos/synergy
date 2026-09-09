@@ -6,7 +6,7 @@ import { startPluginPreview, approvePreviewPlugins, openPluginPreviewPage } from
 import { createFixtureProject } from "../../packages/plugin-kit/test/fixtures"
 import { buildPluginProject } from "../../packages/plugin-kit/src/commands/build"
 import { packPluginProject } from "../../packages/plugin-kit/src/commands/pack"
-const require = createRequire(path.resolve(import.meta.dir, "../../packages/app/package.json"))
+const require = createRequire(path.resolve(import.meta.dir, "../../apps/web/package.json"))
 const { chromium } = await import(require.resolve("playwright"))
 
 test("two packed Skins apply packaged fonts, textures, decoration, modes and narrow recovery in the real host", async () => {
@@ -25,7 +25,7 @@ test("two packed Skins apply packaged fonts, textures, decoration, modes and nar
     expect(Bun.spawnSync(["tar", "-xzf", archive, "-C", installed]).exitCode).toBe(0)
     preview = await startPluginPreview({
       artifacts: [installed],
-      command: [process.execPath, path.resolve(import.meta.dir, "../../packages/synergy/src/index.ts")],
+      command: [process.execPath, path.resolve(import.meta.dir, "../../packages/product-runtime/src/index.ts")],
     })
     await approvePreviewPlugins(preview)
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme: "light" })

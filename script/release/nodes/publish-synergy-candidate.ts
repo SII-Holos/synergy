@@ -1,13 +1,15 @@
 import { $ } from "bun"
 import path from "path"
-import { NPM_REGISTRY, SYNERGY_DIST_DIR } from "../shared/packages"
+import { NPM_REGISTRY, PRODUCT_RUNTIME_DIST_DIR } from "../shared/packages"
 import { npmAuthArgs, npmEnsureDistTag, npmVersionExists, retry } from "../shared/runtime"
 
 export async function publishSynergyCandidate(version: string, channel: string) {
   console.log("\n=== publish synergy candidate ===\n")
 
-  const mainPackagePath = path.join(SYNERGY_DIST_DIR, "synergy")
-  const entries = await Array.fromAsync(new Bun.Glob("synergy-*").scan({ cwd: SYNERGY_DIST_DIR, onlyFiles: false }))
+  const mainPackagePath = path.join(PRODUCT_RUNTIME_DIST_DIR, "synergy")
+  const entries = await Array.fromAsync(
+    new Bun.Glob("synergy-*").scan({ cwd: PRODUCT_RUNTIME_DIST_DIR, onlyFiles: false }),
+  )
   const platformNames = entries.filter((entry) => entry !== "synergy")
   const authArgs = npmAuthArgs()
 
@@ -16,7 +18,7 @@ export async function publishSynergyCandidate(version: string, channel: string) 
     await Promise.all(
       batch.map(async (name) => {
         const packageName = `@ericsanchezok/${name}`
-        const cwd = path.join(SYNERGY_DIST_DIR, name)
+        const cwd = path.join(PRODUCT_RUNTIME_DIST_DIR, name)
         if (!(await npmVersionExists(packageName, version))) {
           if (process.platform !== "win32") {
             await $`chmod -R 755 .`.cwd(cwd)

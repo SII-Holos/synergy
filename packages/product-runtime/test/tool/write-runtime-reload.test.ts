@@ -1,0 +1,46 @@
+import { describe, expect, test } from "bun:test"
+import path from "path"
+import { WriteTool } from "@ericsanchezok/synergy-runtime-local/tools/write"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { RuntimeReload } from "@ericsanchezok/synergy-product-runtime/runtime/reload"
+import { RuntimeReloadExecutor } from "@ericsanchezok/synergy-harness/config/reload-executor"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+
+RuntimeReloadExecutor.setExecutor((input, options) => RuntimeReload.reload(input, options))
+RuntimeReloadExecutor.setGlobalExecutor((input, options) => RuntimeReload.reloadGlobal(input, options))
+
+const ctx = {
+  sessionID: "test",
+  messageID: "",
+  callID: "",
+  agent: "synergy",
+  abort: AbortSignal.any([]),
+  metadata: () => {},
+  ask: async () => {},
+}
+
+describe("tool.write auto runtime reload", () => {
+  test("reloads config when writing synergy config file", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await WriteTool.init()
+        const result = await tool.execute(
+          {
+            filePath: path.join(tmp.path, ".synergy", "synergy.jsonc"),
+            content: JSON.stringify({
+              $schema: "file:///test/config.schema.json",
+              model: "openai/gpt-5",
+            }),
+          },
+          ctx,
+        )
+
+        expect(result.metadata.runtimeReload).toBeDefined()
+        const runtimeReload = result.metadata.runtimeReload!
+        expect(runtimeReload.requested).toContain("config")
+      },
+    })
+  })
+})

@@ -2,7 +2,7 @@
 
 ## Runtime Model
 
-Synergy has one server runtime that can serve multiple clients and multiple project contexts. The process is not bound to the directory from which it was started; each scoped request supplies a `scopeID` or directory, and each session persists its own Scope and workspace binding.
+Synergy has one execution runtime and one writing owner per home in a process. Harness can run without an HTTP server; a server composition exposes that runtime to multiple clients and project contexts. The runtime is not bound to the launch directory: scoped operations select a `scopeID` or directory, and each session persists its own Scope and workspace binding.
 
 The same runtime can be launched through several ownership surfaces:
 
@@ -12,16 +12,22 @@ The same runtime can be launched through several ownership surfaces:
 | `synergy server`                             | Runs the server in the foreground for direct operation or debugging.                  |
 | Desktop managed mode                         | The Electron app owns a packaged local server and its lifecycle.                      |
 | Source `bun dev server`, `web`, or `desktop` | The source development orchestrator owns the selected development processes.          |
-| `synergy send` without `--attach`            | Starts an ephemeral local server for the one-off invocation.                          |
+| `synergy send` without `--attach`            | Opens an in-process task runtime, executes directly, flushes evidence and closes.     |
 | `web` or `send --attach`                     | Connects to an already running runtime and does not own it.                           |
 
-`SYNERGY_HOME` redirects the complete installation home, including config, data, state, logs, credentials, daemon records, and locks. One server owns a given `SYNERGY_HOME` at a time.
+`SYNERGY_HOME` redirects the complete installation home, including config, data, state, logs, credentials, daemon records, and locks. One writing runtime owns a given `SYNERGY_HOME` at a time.
+
+## Composition and migration registration
+
+Backend capabilities register before Harness `RuntimeHandle.open()`; the full product connects its services through `ProductRuntimeHandle`. The handle acquires the home process lock, permanently locks migration registration for that process, and then runs the registered migrations before resolving execution configuration. Registering a new migration domain or replacing its migration list after that boundary fails; repeating registration with the same list is idempotent. Closing a handle does not reopen composition. Runtime lifecycle tests therefore run in isolated processes, while offline migration tests can build their own registry before opening any runtime.
+
+The migration tracking upgrade moves only IDs recognized by registered owners out of the old combined log. Unregistered IDs remain in that log so a later process with the owning capability can recover its history. `registerLibrary()` and `registerNote()` assemble each domain's migrations, tools, and lifecycle contributions before runtime startup; they do not require the full product manifest or plugin delivery to be installed.
 
 Startup migrations finish before HTTP requests are admitted. Managed Desktop receives versioned aggregate migration progress from the CLI reporter, keeps waiting while work advances, and displays the current step in its startup overlay. Migration callbacks accept an optional nonnegative phase index, starting at zero. Multi-scan migrations advance the phase before preparing each independent scan; the runner announces a new reporter step and resets progress throttling. Counts are monotonic within a phase, and reports from earlier phases are ignored. The [development reference](../reference/development.md) defines startup waiting limits; the [decision record](../decisions/implemented/bug-fix/2026-09-08-desktop-migration-progress-wait.md) explains the progress-based deadline.
 
 ## Global Runtime
 
-`GlobalRuntime.start()` runs once per server process inside the home Scope. It starts or initializes:
+The full product’s `GlobalRuntime.start()` runs once per resident server process inside the home Scope. Product Runtime selects the services below; a standalone local task enables its selected execution services without starting resident product services:
 
 - plugin discovery and runtime initialization
 - home-scope session recovery
@@ -40,7 +46,7 @@ Global services may still perform scoped work. They must enter the relevant `Sco
 
 ## Execution Topology
 
-The server process is the Control Plane. It owns HTTP and WebSocket availability, session generation leases, canonical Session/Message writes, event ordering, permission state, tool scheduling, recovery, and aggregate observability. It assembles and releases the immutable turn snapshot, while provider request serialization, network streaming, response parsing, and their retained working sets run outside its event loop.
+The runtime host process is the Control Plane. It owns session generation leases, canonical Session/Message writes, event ordering, permission state, tool scheduling, recovery, and aggregate observability. Server compositions additionally own HTTP and WebSocket availability. It assembles and releases the immutable turn snapshot, while provider request serialization, network streaming, response parsing, and their retained working sets run outside its event loop.
 
 ```mermaid
 flowchart LR
@@ -203,6 +209,8 @@ The exact domain files and precedence are defined in the [configuration referenc
 
 ## Invariants
 
+Runtime startup recovers committed execution history under exclusive Home ownership before opening HTTP admission. The host may observe aggregate recovery work through `RuntimeHandle` without changing journal replay or evidence validation. Managed Desktop uses those advancing counts to distinguish active recovery from a stalled startup; [Development](../reference/development.md) defines its waiting policy.
+
 - A server process is installation-scoped, not project-scoped.
 - Every project-sensitive operation runs inside an explicit Scope.
 - The selected directory is the project boundary; no upward discovery occurs.
@@ -217,3 +225,5 @@ The exact domain files and precedence are defined in the [configuration referenc
 - Project runtimes start lazily, once per Scope ID, and are disposable.
 - Project Scope disposal cancels only its detached plugin Agent calls before scoped state is removed; explicit reactivation is required before new calls are admitted.
 - Runtime ownership follows the launch surface; one client must not stop or replace a runtime owned by another surface.
+
+Runtime extension shutdown follows execution and background-job draining. The complete composition invokes Browser and Library owner disposal; independent hosts connect the same public `disposeBrowser()` and `disposeLibrary()` operations through `RuntimeServices.disposeExtensions`. Browser registration and suspended owner-state reads do not launch Chromium. The root `script/runtime-composition-check.ts` installs packed dependency closures outside the repository and verifies execution, persistence, optional-package absence, resource closure and natural process exit.

@@ -1,6 +1,6 @@
 # Synergy Desktop Release Runbook
 
-`packages/desktop` is the production Electron application for Synergy. This runbook covers its `electron-builder` packaging, app id `io.holosai.synergy`, product name `Synergy`, desktop shell executable `synergy-desktop`, public runtime CLI `synergy`, and `synergy://` protocol.
+`apps/desktop` is the production Electron application for Synergy. This runbook covers its `electron-builder` packaging, app id `io.holosai.synergy`, product name `Synergy`, desktop shell executable `synergy-desktop`, public runtime CLI `synergy`, and `synergy://` protocol.
 
 ## Channels
 
@@ -27,7 +27,7 @@ bun run desktop:pack
 bun run desktop:dist
 ```
 
-`desktop:pack` and `desktop:dist` build the Electron main/preload bundles, prepare a current-platform Synergy runtime with the Web application, schema, and native runtime assets, and run `electron-builder`. Release workflows build the exact runtime targets with `SYNERGY_BUILD_TARGETS`, run the same runtime preparation step, and inject each complete runtime with `packages/desktop/script/after-pack.cjs`. Packaging fails before copying when the runtime lacks its executable, `app/index.html`, schema, required sandbox helper, or a valid `runtime-manifest.sha256`.
+`desktop:pack` and `desktop:dist` build the Electron main/preload bundles, prepare a current-platform Synergy runtime with the Web application, schema, and native runtime assets, and run `electron-builder`. Release workflows build the exact runtime targets with `SYNERGY_BUILD_TARGETS`, run the same runtime preparation step, and inject each complete runtime with `apps/desktop/script/after-pack.cjs`. Packaging fails before copying when the runtime lacks its executable, `app/index.html`, schema, required sandbox helper, or a valid `runtime-manifest.sha256`.
 
 The product icon is generated from `packages/ui/src/assets/brand/synergy-product-icon-source.png` with `bun run brand:gen`. Desktop packaging consumes only `build/icon.png`; electron-builder converts that PNG into the platform-specific macOS, Windows, and Linux formats. Run `bun run brand:gen:check` to reject stale Web, UI, social, notification, or Desktop derivatives.
 
@@ -58,6 +58,8 @@ Linux x64 artifact names follow each format's native architecture label: `amd64`
 The Linux `.deb` depends on the system `bubblewrap` package. Linux portable artifacts require users to install Bubblewrap separately.
 
 The product release also publishes the minimal remote Browser Host for every supported OS/architecture:
+
+`browser-host:build` stages an independent manifest and bundled entry in `apps/desktop/build/browser-host-app`. Browser Host packaging explicitly excludes node_modules, and its afterPack hook verifies the actual ASAR contains only the entry and manifest. It must never inherit Desktop Computer drivers, runtime packages, source trees or test/coverage outputs.
 
 - `synergy-browser-host-{darwin|win32|linux}-{x64|arm64}-${version}.zip`
 - the matching `.manifest.json`
@@ -157,11 +159,11 @@ Registry read-after-write checks use cache-busted, no-store requests. A successf
 ## Validation Checklist
 
 - `bun run release:test`
-- `bun run --cwd packages/desktop desktop:test`
-- `bun run --cwd packages/desktop desktop:build`
-- `bun run --cwd packages/desktop test:runtime`
-- `bun run --cwd packages/desktop browser-host:dist`
-- `cd packages/desktop && SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME=1 bunx electron-builder --dir --publish=never --config electron-builder.json` for config-only CI validation
+- `bun run --cwd apps/desktop desktop:test`
+- `bun run --cwd apps/desktop desktop:build`
+- `bun run --cwd apps/desktop test:runtime`
+- `bun run --cwd apps/desktop browser-host:dist`
+- `cd apps/desktop && SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME=1 bunx electron-builder --dir --publish=never --config electron-builder.json` for config-only CI validation
 - Install `.pkg`, `.exe`, and `.deb` in platform runners or VMs and check `synergy --version` plus `synergy doctor`
 - Confirm every packaged Desktop runtime contains `app/index.html`, `schema/config.schema.json`, and a valid `runtime-manifest.sha256`, and that its managed server returns HTML from `/` after `/global/health` becomes healthy.
 - Confirm every Linux/Windows runtime archive contains `sandbox/synergy-sandbox-*` and `synergy doctor` reports a verified helper
@@ -178,4 +180,4 @@ Registry read-after-write checks use cache-busted, no-store requests. A successf
 
 ## Native Computer Driver
 
-macOS Desktop builds run `desktop:prepare-computer` to prepare the Cua release pinned in `packages/desktop/src/computer/release.ts`. Both archive and executable digests must match before packaging. The `mac.extraResources` entry includes the executable and MIT notices from `build/computer`, and `mac.binaries` includes the executable for nested signing. Keep the notices with every distributed copy; the driver runs as a private child of Desktop for host-attributed macOS permissions. Other platforms do not bundle this driver.
+macOS Desktop builds run `desktop:prepare-computer` to prepare the Cua release pinned in `apps/desktop/src/computer/release.ts`. Both archive and executable digests must match before packaging. The `mac.extraResources` entry includes the executable and MIT notices from `build/computer`, and `mac.binaries` includes the executable for nested signing. Keep the notices with every distributed copy; the driver runs as a private child of Desktop for host-attributed macOS permissions. Other platforms do not bundle this driver.

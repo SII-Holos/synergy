@@ -1,0 +1,51 @@
+{
+  "name": "@ericsanchezok/synergy-browser-runtime",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./cli/browser": "./src/cli/browser.ts",
+    "./playwright-runtime": "./src/playwright-runtime.ts",
+    "./runtime": "./src/runtime.ts",
+    "./migration": "./src/migration.ts",
+    "./tools": "./src/tools.ts",
+    "./routes/browser-route": "./src/routes/browser-route.ts",
+    "./host-broker-process": "./src/host-broker-process.ts",
+    "./tools/browser-action": "./src/tools/browser-action.ts",
+    "./tools/browser-shared": "./src/tools/browser-shared.ts",
+    "./tools/browser-navigation": "./src/tools/browser-navigation.ts",
+    "./tools/browser-screenshot": "./src/tools/browser-screenshot.ts",
+    "./tools/browser-wait": "./src/tools/browser-wait.ts",
+    "./install-deps-runner": "./src/install-deps-runner.ts",
+    "./register": "./src/register.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/browser-runtime",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-browser": "workspace:*",
+    "@ericsanchezok/synergy-cli": "workspace:*",
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-server": "workspace:*",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "playwright-core": "1.61.0",
+    "unzipper": "^0.12.3",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@types/unzipper": "0.10.11",
+    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "@zip.js/zip.js": "2.8.26",
+    "typescript": "catalog:"
+  }
+}

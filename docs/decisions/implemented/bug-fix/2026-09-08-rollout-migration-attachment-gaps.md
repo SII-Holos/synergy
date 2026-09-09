@@ -8,7 +8,7 @@ Startup rollout migration traverses historical message attachments and completed
 
 ## Decision
 
-Attachment URL validation emits a dedicated input error. The shared data URL decoder preserves percent-decoded bytes, handles Base64 and non-Base64 payloads, and rejects malformed Base64 instead of fabricating empty content. It follows the byte-processing rules in the [Fetch data URL processor](https://fetch.spec.whatwg.org/#data-url-processor), with provenance recorded beside the authoritative decoder in `packages/synergy/src/attachment/index.ts`. The existing MIME-essence return value is retained.
+Attachment URL validation emits a dedicated input error. The shared data URL decoder preserves percent-decoded bytes, handles Base64 and non-Base64 payloads, and rejects malformed Base64 instead of fabricating empty content. It follows the byte-processing rules in the [Fetch data URL processor](https://fetch.spec.whatwg.org/#data-url-processor), with provenance recorded beside the authoritative decoder in `packages/harness/src/attachment/index.ts`. The existing MIME-essence return value is retained.
 
 The rollout migration treats this input error, a missing source file, or capture returning no artifact as unrecoverable historical attachment content. It preserves the original attachment and records an explicit gap, then continues processing readable attachments and sessions. Read/write, permission and authoritative recording failures still propagate. Live ingestion retains strict validation. Existing migration identifiers and audit checkpoints remain unchanged.
 

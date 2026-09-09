@@ -1,0 +1,42 @@
+{
+  "name": "@ericsanchezok/synergy-server",
+  "version": "1.1.26",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    "./server/server": "./src/server/server.ts",
+    "./server/error": "./src/server/error.ts",
+    "./server/request-body-limit": "./src/server/request-body-limit.ts",
+    "./server/sse-metrics": "./src/server/sse-metrics.ts",
+    "./server/config-route": "./src/server/config-route.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/server",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-runtime-local": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "@hono/standard-validator": "^0.2.0",
+    "bonjour-service": "1.3.0",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "remeda": "catalog:",
+    "zod": "catalog:",
+    "zod-openapi": "4.2.4",
+    "zod-to-json-schema": "3.24.5"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "typescript": "catalog:"
+  }
+}

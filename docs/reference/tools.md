@@ -2,7 +2,7 @@
 
 # Tools Reference
 
-Generated from the builtin tool registry in `packages/synergy/src/tool/registry.ts` and the canonical taxonomy in `packages/synergy/src/tool/taxonomy.ts`.
+Generated from the builtin tool registry in `packages/harness/src/tool/registry.ts` and the canonical taxonomy in `packages/harness/src/tool/taxonomy.ts`.
 
 ## Tools
 

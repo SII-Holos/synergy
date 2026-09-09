@@ -21,7 +21,7 @@ export type TestRunnerOptions = {
 }
 
 /**
- * Sharded test runner shared by packages/app and packages/ui.
+ * Sharded test runner shared by apps/web and packages/ui.
  *
  * Collects `*.test.{ts,tsx}` files under `<root>/test`, runs the main batch in
  * one `bun test` process, then runs isolated files and the browser-only batch
@@ -92,10 +92,10 @@ export async function runBatchedTests(options: TestRunnerOptions) {
   )
   let shard = 1
   for (const file of files.filter((file) => isolatedSet.has(file))) {
-    await run([file], shard++, { timeout: isolatedTimeoutMs })
+    await run([file], shard++, { timeout: isolatedTimeoutMs, browser: browserSet.has(file) })
   }
   await run(
-    files.filter((file) => browserSet.has(file)),
+    files.filter((file) => browserSet.has(file) && !isolatedSet.has(file)),
     shard++,
     { browser: true, timeout: browserTimeoutMs },
   )

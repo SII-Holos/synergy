@@ -1960,6 +1960,42 @@ export class Session extends HeyApiClient {
   }
 
   /**
+   * Get session agenda wakeups
+   *
+   * Retrieve agenda items that can wake the specified session.
+   */
+  public agenda<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      limit?: number
+      offset?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "offset" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionAgendaResponses, SessionAgendaErrors, ThrowOnError>({
+      url: "/session/{sessionID}/agenda",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * List session navigation entries
    *
    * Get paginated session navigation entries for the current scope with filtering and cursor support.
@@ -2449,42 +2485,6 @@ export class Session extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<SessionDagResponses, SessionDagErrors, ThrowOnError>({
       url: "/session/{sessionID}/dag",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Get session agenda wakeups
-   *
-   * Retrieve agenda items that can wake the specified session.
-   */
-  public agenda<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      directory?: string
-      scopeID?: string
-      limit?: number
-      offset?: number
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "limit" },
-            { in: "query", key: "offset" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<SessionAgendaResponses, SessionAgendaErrors, ThrowOnError>({
-      url: "/session/{sessionID}/agenda",
       ...options,
       ...params,
     })
@@ -6375,19 +6375,19 @@ export class Domain extends HeyApiClient {
         | "general"
         | "models"
         | "providers"
-        | "library"
-        | "mcp"
-        | "plugins"
-        | "skills"
         | "agents"
         | "commands"
         | "permissions"
+        | "runtime"
+        | "plugins"
         | "channels"
         | "holos"
         | "email"
         | "github"
+        | "library"
+        | "mcp"
+        | "skills"
         | "voice"
-        | "runtime"
       directory?: string
       scopeID?: string
     },
@@ -6423,19 +6423,19 @@ export class Domain extends HeyApiClient {
         | "general"
         | "models"
         | "providers"
-        | "library"
-        | "mcp"
-        | "plugins"
-        | "skills"
         | "agents"
         | "commands"
         | "permissions"
+        | "runtime"
+        | "plugins"
         | "channels"
         | "holos"
         | "email"
         | "github"
+        | "library"
+        | "mcp"
+        | "skills"
         | "voice"
-        | "runtime"
       directory?: string
       scopeID?: string
       configDomainUpdateInput?: ConfigDomainUpdateInput
@@ -6478,19 +6478,19 @@ export class Domain extends HeyApiClient {
         | "general"
         | "models"
         | "providers"
-        | "library"
-        | "mcp"
-        | "plugins"
-        | "skills"
         | "agents"
         | "commands"
         | "permissions"
+        | "runtime"
+        | "plugins"
         | "channels"
         | "holos"
         | "email"
         | "github"
+        | "library"
+        | "mcp"
+        | "skills"
         | "voice"
-        | "runtime"
       directory?: string
       scopeID?: string
     },
@@ -6734,36 +6734,36 @@ export class Config extends HeyApiClient {
         | "general"
         | "models"
         | "providers"
-        | "library"
-        | "mcp"
-        | "plugins"
-        | "skills"
         | "agents"
         | "commands"
         | "permissions"
+        | "runtime"
+        | "plugins"
         | "channels"
         | "holos"
         | "email"
         | "github"
+        | "library"
+        | "mcp"
+        | "skills"
         | "voice"
-        | "runtime"
         | Array<
             | "general"
             | "models"
             | "providers"
-            | "library"
-            | "mcp"
-            | "plugins"
-            | "skills"
             | "agents"
             | "commands"
             | "permissions"
+            | "runtime"
+            | "plugins"
             | "channels"
             | "holos"
             | "email"
             | "github"
+            | "library"
+            | "mcp"
+            | "skills"
             | "voice"
-            | "runtime"
           >
       includeSecrets?: string
     },
@@ -12620,9 +12620,9 @@ export class SynergyClient extends HeyApiClient {
 
   worktree = new Worktree({ client: this.client })
 
-  vcs = new Vcs({ client: this.client })
-
   session = new Session({ client: this.client })
+
+  vcs = new Vcs({ client: this.client })
 
   part = new Part({ client: this.client })
 

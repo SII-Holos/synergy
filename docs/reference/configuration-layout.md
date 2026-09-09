@@ -4,6 +4,14 @@ The field-level reference is generated at [configuration.md](configuration.md); 
 
 Synergy uses JSONC domain files. Global and project configuration share the same domain names so one setting has one owning file.
 
+## Package ownership
+
+The harness owns configuration loading, file transactions, core schemas, and the `ConfigExtensions` registry. Each optional backend owns its field schemas, defaults, provider-reference checks, and exact credential redaction/restoration in `src/config-schema.ts`. The full product composes these through `packages/product-runtime/src/configuration.ts` before validating configuration or generating its schema. Schema references obtained before registration resolve the current composition, including registered domain IDs.
+
+A reduced composition preserves unregistered fields in shared files and leaves unregistered domain files untouched. Replacing a known domain retains its unregistered fields on disk. Client-facing redaction omits fields whose owner is absent because the core cannot classify that owner's credentials. Explicit requests for an unregistered domain or unsupported experiment override fail validation; dormant optional experiment settings in an existing home do not activate that capability. Full composition retains the strict root validation and recovery rules of the product.
+
+The host supplies the published configuration schema path to `Global.initialize()`. The core does not locate product schema assets or create embedding-model directories at startup.
+
 ## Locations
 
 Global configuration:
@@ -44,7 +52,7 @@ Clarus accounts live in the Channel domain and reuse Holos credentials:
 
 Holos login creates the matching Clarus Channel account when it is absent and preserves explicit account settings. A versioned Holos migration provisions the same disabled account for an existing active identity. There is no top-level `clarus` domain or Clarus workspace-root setting.
 
-Monolithic `synergy.json` and `synergy.jsonc` files are migration inputs, not active runtime config paths. Startup migrates legacy global and project files into domain files and archives the originals.
+Monolithic `synergy.json` and `synergy.jsonc` files are migration inputs. Startup migrates legacy global and project files into domain files and archives the originals once every field has a registered owner. A reduced composition defers a migration containing unregistered fields, retains the original file, and reads its core values beneath canonical domain overrides until the complete owner set is available.
 
 ### Execution isolation
 
@@ -156,12 +164,12 @@ The frontend may mirror the value locally to choose a catalog before the server 
 
 `balanced` is the default when the field is absent. Settings manages the preference globally in the installation config. If the key is declared manually in project config, ordinary project-over-global precedence still applies.
 
-- `full` preserves the detailed turn timeline: every reasoning, text, tool, media, and attachment part stays in its original part order, matching pre-preference behavior. It never invokes the activity-summary nano model.
+- `full` preserves the detailed turn timeline: every reasoning, text, tool, media, and attachment part stays in its original part order, matching pre-preference behavior. Activity display never invokes a model.
 - `balanced` replaces raw reasoning with one root-turn status row rather than model-generated reasoning text. After reasoning begins, the working turn shows one stable `Thinking…` row across all assistant messages, or — when `compactReasoning` is enabled — one live single-line reasoning row. When the turn completes, that row disappears if the turn produced text, tool activity, or a receipt; an otherwise empty reasoning-only turn keeps one deterministic `Reasoning` fallback. With `compactReasoning` enabled, each settled assistant message instead keeps one collapsed expandable reasoning row anchored at its original part position, so the complete reasoning stays available. Reasoning never invokes the `nano` model or writes derived activity metadata.
-  Settled ordinary tool tails (completed or error) are grouped by shared user-facing intent through one bounded `nano` call; stable semantic groups carry a concise summary, while deterministic fallback tail groups may omit text. Text, reasoning, attachment, receipt-tool, and message boundaries remain hard boundaries; in settled and persisted semantic membership, an error step stays in its current group, promotes that group to error, and prevents later steps from joining, while transient unpersisted streaming grouping uses deterministic family-and-scope adjacency until persisted signatures arrive. File and URL hints sent for semantic grouping are reduced to bounded non-sensitive forms such as a basename or origin; tool inputs, outputs, full paths, raw errors, and secrets are excluded. The model output must cover every step once, preserve order, and stay within the 24-step group limit. Invalid output, timeout, provider failure, or a manifest larger than 48 steps falls back for the whole unsettled tail. Tool-group nano summaries and semantic group signatures remain internal presentation metadata rather than visible parent rows. The group's original tool calls render as flat, independently expandable rows, may span different activity families, and keep their own family action labels, titles, states, results, and specialized content. Balanced mode does not render a group topic, progress marker, step count, connector, or parent indentation.
-- `minimal` collapses each turn into one compact per-turn activity summary with animated count updates and, when available, one latest high-level tool-activity line. Raw reasoning and reasoning-status rows are not rendered. Permission, failure, external-action, and production communication receipts stay standalone, and other non-tool timeline items continue to render in their original position.
+  Ordinary tool activity uses deterministic family-and-scope grouping. Each original tool call renders as a flat, independently expandable row with its own family action label, title, state, result, and specialized content. Text, reasoning, attachments, receipts, and message boundaries keep their original order.
+- `minimal` collapses each turn into one compact per-turn activity summary with animated count updates. Raw reasoning and reasoning-status rows are not rendered. Permission, failure, external-action, and production communication receipts stay standalone, and other non-tool timeline items continue to render in their original position.
 
-The mode changes only activity presentation. It never hides permission requests, failures, or external-action and production communication receipts, and it never rewrites message parts or changes model context. In `balanced` and `minimal`, bounded tool-group nano summaries and semantic group signatures may be persisted as derived assistant `metadata.activity` so reconnects and historical turns retain the same presentation. Historical `reasoning` entries and `now.source: "reasoning"` remain schema-valid read-only compatibility data but are not produced or used by the Balanced reasoning projection. Mode changes update already rendered turns reactively without remounting them.
+The mode changes only activity presentation. It never hides permission requests, failures, or external-action and production communication receipts, and it never rewrites message parts or changes model context. Historical derived activity metadata is preserved in storage but ignored by presentation. Mode changes update already rendered turns reactively without remounting them.
 
 ## Compact reasoning
 

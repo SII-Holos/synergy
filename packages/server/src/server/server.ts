@@ -1,0 +1,1605 @@
+import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
+import { Bus } from "@ericsanchezok/synergy-harness/bus"
+import { GlobalBus } from "@ericsanchezok/synergy-harness/bus/global"
+import { EventWire } from "./event-wire"
+import { GlobalEventClients } from "./global-event-clients"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { describeRoute, generateSpecs, validator, resolver } from "hono-openapi"
+import { Hono, type Context, type MiddlewareHandler, type Next } from "hono"
+import { compress } from "hono/compress"
+import { cors } from "hono/cors"
+import { streamSSE } from "hono/streaming"
+import z from "zod"
+import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { Config } from "@ericsanchezok/synergy-harness/config/config"
+import { ConfigImport } from "@ericsanchezok/synergy-harness/config/import"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { ScopeRuntime } from "@ericsanchezok/synergy-harness/scope/runtime"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
+import { Auth } from "@ericsanchezok/synergy-harness/provider/api-key"
+import { Command } from "@ericsanchezok/synergy-runtime-local/command/command"
+import { Global } from "@ericsanchezok/synergy-harness/global"
+import { createScopeRoute } from "./scope"
+import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
+import { zodToJsonSchema } from "zod-to-json-schema"
+import { lazy } from "@ericsanchezok/synergy-harness/util/lazy"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import type { ContentfulStatusCode } from "hono/utils/http-status"
+import { upgradeWebSocket, websocket } from "hono/bun"
+import { errors, RuntimeShuttingDownError } from "./error"
+import { QuestionRoute } from "./question"
+import { SessionExportRoute } from "./session-export"
+import { CortexRoute } from "./cortex"
+import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
+import { MDNS } from "./mdns"
+import { Worktree } from "@ericsanchezok/synergy-runtime-local/workspace/worktree"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { SessionRoute } from "./session"
+import { PtyRoute } from "./pty"
+import { createProviderRoute } from "./provider"
+import { PermissionRoute } from "./permission"
+import { WorkspaceFilesRoute } from "./workspace-files"
+import { File as SynergyFile } from "@ericsanchezok/synergy-runtime-local/file"
+import { ConfigRoute } from "./config-route"
+import { AssetRoute } from "./asset"
+import { SkillRoute } from "./skill-route"
+import { RuntimeRoute } from "./runtime-route"
+import { GlobalSessionRoute } from "./global-session"
+import { SessionNavRoute } from "./session-nav"
+import { ControlProfileRoute } from "./control-profile-route"
+import { SandboxReadinessRoute } from "./sandbox-readiness-route"
+import { GlobalStorageRoute } from "./storage-route"
+import { ObservabilityRoute } from "./observability-route"
+import { Observability } from "@ericsanchezok/synergy-harness/observability"
+import { ObservabilityIssues } from "@ericsanchezok/synergy-harness/observability/issues"
+import { ServerSseMetrics } from "./sse-metrics"
+import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
+import { ObservabilitySpans } from "@ericsanchezok/synergy-harness/observability/spans"
+import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observability/redaction"
+import {
+  DEFAULT_SERVER_HOST,
+  DEFAULT_SERVER_PORT,
+  DEFAULT_SERVER_URL,
+} from "@ericsanchezok/synergy-harness/util/server-defaults"
+import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability/store"
+import { ObservabilityContext } from "@ericsanchezok/synergy-harness/observability/context"
+import { UpdateRoute } from "./update-route"
+import { createScopeBootstrapRoute, type BootstrapContributions } from "./scope-bootstrap-route"
+import { SessionVolatileBatchRoute } from "./session-volatile-batch-route"
+
+// @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
+globalThis.AI_SDK_LOG_WARNINGS = false
+
+export namespace Server {
+  export const DEFAULT_PORT = DEFAULT_SERVER_PORT
+  export const DEFAULT_HOST = DEFAULT_SERVER_HOST
+  export const DEFAULT_URL = DEFAULT_SERVER_URL
+
+  const log = Log.create({ service: "server" })
+  // Bound on how long /global/health waits for the provider state build.
+  // The daemon readiness probe aborts after 1200ms and the CLI probe after 3s,
+  // so a slow build must never hold the health response past this window.
+  const HEALTH_PROVIDER_WAIT_MS = 1000
+  /**
+   * Decide modelReady for the global health handler within a bounded wait.
+   * Races the provider-state build against `waitMs`; on timeout or build
+   * error it falls back to the last settled provider state instead of
+   * reporting ready optimistically. Pure function for direct testing.
+   */
+  export async function resolveHealthModelReady(input: {
+    list: () => Promise<Record<string, Provider.Info>>
+    listSettled: () => Record<string, Provider.Info>
+    waitMs?: number
+    onError?: (error: unknown) => void
+  }): Promise<boolean> {
+    const providers = await Promise.race([
+      input.list().catch((error) => {
+        input.onError?.(error)
+        return undefined as Record<string, Provider.Info> | undefined
+      }),
+      new Promise<Record<string, Provider.Info> | undefined>((resolve) => {
+        setTimeout(() => resolve(undefined), input.waitMs ?? HEALTH_PROVIDER_WAIT_MS)
+      }),
+    ])
+    return Object.keys(providers ?? input.listSettled()).length > 0
+  }
+
+  // Baseline Content-Security-Policy for SPA responses.
+  // script-src 'unsafe-inline' and style-src 'unsafe-inline' are required for:
+  //   - Solid's reactive CSS-in-JS <style> injection
+  //   - Ghostty Web WASM terminal (creates scripts dynamically)
+  //   - the theme preloader and route-tag inline scripts in index.html
+  // Hash/nonce are deliberately NOT used in script-src because CSP Level 2
+  // dictates that browsers ignore 'unsafe-inline' when hash or nonce is present.
+  const CSP_BASELINE =
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; " +
+    "style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data: https: blob:; " +
+    "font-src 'self' data:; " +
+    "connect-src 'self' ws: wss: blob: data:; " +
+    "frame-src 'self'; " +
+    "media-src 'self'; " +
+    "object-src 'none'; " +
+    "base-uri 'self'; " +
+    "form-action 'self'"
+
+  // script-src uses 'unsafe-inline' in the baseline — see CSP_BASELINE.
+  // Hash and nonce are NOT added to script-src because browsers ignore
+  // 'unsafe-inline' when either is present (CSP Level 2), which would break
+  // third-party components that dynamically create scripts (e.g., Ghostty Web).
+
+  export function spaCsp(_nonce?: string): string {
+    return CSP_BASELINE
+  }
+
+  export function cspMiddleware(): MiddlewareHandler {
+    return async (c, next) => {
+      await next()
+      if (!c.res.headers.get("Content-Security-Policy")) {
+        c.res.headers.set("Content-Security-Policy", CSP_BASELINE)
+      }
+      if (!c.res.headers.get("X-Frame-Options")) {
+        c.res.headers.set("X-Frame-Options", "DENY")
+      }
+    }
+  }
+
+  let _url: URL | undefined
+  let _corsWhitelist = new Set<string>()
+  let _appMounted = false
+  let _globalEventBroadcastOff: (() => void) | undefined
+  let _globalEventHeartbeatInterval: ReturnType<typeof setInterval> | undefined
+  let _globalEventClients: ReturnType<typeof GlobalEventClients.createRegistry> | undefined
+  let _shuttingDown = false
+
+  export function beginShutdown(): void {
+    _shuttingDown = true
+  }
+
+  export function resumeRequests(): void {
+    _shuttingDown = false
+  }
+
+  function isLoopbackOrigin(input: string) {
+    try {
+      const url = new URL(input)
+      if (url.protocol !== "http:" && url.protocol !== "https:") return false
+      return (
+        url.hostname === "localhost" ||
+        url.hostname === "127.0.0.1" ||
+        url.hostname === "::1" ||
+        url.hostname === "0.0.0.0"
+      )
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Normalize a configured CORS/WS allowlist entry to the canonical origin
+   * form browsers send in the Origin header (lowercased host, default port
+   * stripped). Without this, `--cors https://EXAMPLE.com:443` would be stored
+   * verbatim and silently never match the normalized `https://example.com`
+   * the browser sends.
+   */
+  export function normalizeCorsOrigin(input: string): string | undefined {
+    try {
+      const url = new URL(input)
+      if (url.protocol !== "http:" && url.protocol !== "https:") return undefined
+      return url.origin
+    } catch {
+      return undefined
+    }
+  }
+
+  /**
+   * The global event stream carries full session traffic. Accept only clients
+   * whose Origin matches the server's own scheme+host (the Synergy SPA on web
+   * and Desktop), a loopback peer, or an origin on the same allowlist the CORS
+   * middleware enforces — never opaque origins such as sandboxed attachment
+   * pages (`Origin: null`) or cross-origin web pages. WebSocket is not covered
+   * by CORS, so the check must live here at the route.
+   */
+  export function globalEventOriginAllowed(
+    origin: string | undefined,
+    requestURL: string,
+    extraAllows: readonly string[] = [..._corsWhitelist],
+  ): boolean {
+    if (!origin) return false
+    try {
+      const parsed = new URL(origin)
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false
+      const request = new URL(requestURL)
+      // The request URL must itself be part of the {http,https,ws,wss} scheme
+      // family; anything else never represents a real upgrade and must not be
+      // accepted by the host comparison below.
+      if (
+        request.protocol !== "http:" &&
+        request.protocol !== "https:" &&
+        request.protocol !== "ws:" &&
+        request.protocol !== "wss:"
+      ) {
+        return false
+      }
+      // Behind a TLS-terminating reverse proxy the browser's Origin is https:
+      // while the upgrade request arrives as ws:; compare host+port and treat
+      // the {http,https,ws,wss} scheme family as equivalent for the same
+      // origin, per RFC 6455 §4 and RFC 9110 §4.2.2.
+      if (parsed.host === request.host) return true
+      if (extraAllows.includes(parsed.origin)) return true
+      const requestOrigin = request.origin.replace(/^ws:/, "http:").replace(/^wss:/, "https:")
+      return isLoopbackOrigin(parsed.origin) && isLoopbackOrigin(requestOrigin)
+    } catch {
+      return false
+    }
+  }
+
+  function isGlobalRoute(pathname: string) {
+    return (
+      contributions.isGlobalRoute?.(pathname) === true ||
+      pathname === "/" ||
+      pathname === "/doc" ||
+      pathname === "/log" ||
+      pathname.startsWith("/assets/") ||
+      pathname === "/global" ||
+      pathname.startsWith("/global/") ||
+      pathname === "/asset" ||
+      pathname.startsWith("/asset/") ||
+      pathname === "/scope" ||
+      pathname === "/scope/index" ||
+      pathname === "/auth" ||
+      pathname.startsWith("/auth/")
+    )
+  }
+
+  function isScopeRequiredRoute(pathname: string) {
+    return (
+      contributions.isScopeRequiredRoute?.(pathname) === true ||
+      pathname === "/git" ||
+      pathname.startsWith("/git/") ||
+      pathname === "/pty" ||
+      pathname.startsWith("/pty/") ||
+      pathname === "/path" ||
+      pathname.startsWith("/path/") ||
+      pathname === "/experimental/worktree" ||
+      pathname.startsWith("/experimental/worktree/") ||
+      pathname === "/workspace/files" ||
+      pathname.startsWith("/workspace/files/")
+    )
+  }
+
+  function requestDirectory(c: Context) {
+    const directory = c.req.query("directory") || c.req.header("x-synergy-directory")
+    if (!directory) return undefined
+    try {
+      return decodeURIComponent(directory)
+    } catch {
+      return directory
+    }
+  }
+
+  function requestScopeID(c: Context) {
+    const scopeID = c.req.query("scopeID") || c.req.header("x-synergy-scope-id")
+    if (!scopeID) return undefined
+    try {
+      return decodeURIComponent(scopeID)
+    } catch {
+      return scopeID
+    }
+  }
+
+  const RawHtmlScopePattern = /^\/workspace\/files\/raw\/([^/]+)\//
+
+  function rawHtmlScope(c: Context): { scopeID?: string; directory?: string } | undefined {
+    const token = RawHtmlScopePattern.exec(c.req.path)?.[1]
+    if (!token) return undefined
+    if (token === "home") return { scopeID: "home" }
+    try {
+      const directory = Buffer.from(token, "base64url").toString("utf-8").trim()
+      return directory ? { directory } : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  function safeHeaderId(value: string | undefined) {
+    if (!value) return undefined
+    const trimmed = value.trim()
+    if (!trimmed || trimmed.length > 128) {
+      log.debug("safeHeaderId rejected: value too long or empty", { trimmed: trimmed.slice(0, 64) })
+      return undefined
+    }
+    if (!/^[a-zA-Z0-9_.:-]+$/.test(trimmed)) {
+      log.debug("safeHeaderId rejected: invalid characters", { trimmed: trimmed.slice(0, 64) })
+      return undefined
+    }
+    return trimmed
+  }
+
+  function assertWorktreeSessionIdle(sessionID: string | undefined) {
+    if (!sessionID) return
+    if (!SessionManager.isRunning(sessionID)) return
+    throw new Worktree.SessionBusyError({
+      sessionID,
+      message: "Stop the session before changing worktree.",
+    })
+  }
+
+  async function resolveScopedRequestScope(
+    c: Context,
+    input: { scopeID?: string; directory?: string },
+  ): Promise<Scope | Response> {
+    if (!input.scopeID && !input.directory) {
+      return c.json(
+        {
+          name: "ScopeRequired",
+          data: {
+            message:
+              "This route requires an explicit scopeID, directory, x-synergy-scope-id, or x-synergy-directory header.",
+          },
+        },
+        400,
+      )
+    }
+    if (input.scopeID) {
+      const scope = await Scope.fromID(input.scopeID)
+      if (!scope) {
+        return c.json(
+          {
+            name: "ScopeNotFound",
+            data: {
+              message: `Scope not found: ${input.scopeID}`,
+            },
+          },
+          404,
+        )
+      }
+      return scope
+    }
+    return (await Scope.fromDirectory(input.directory!)).scope
+  }
+
+  async function provideRequestScope(c: Context, next: Next) {
+    const directory = requestDirectory(c)
+    const scopeID = requestScopeID(c)
+    const rawScope = !directory && !scopeID ? rawHtmlScope(c) : undefined
+    const scope =
+      isGlobalRoute(c.req.path) || (!directory && !scopeID && !rawScope && !isScopeRequiredRoute(c.req.path))
+        ? Scope.home()
+        : await resolveScopedRequestScope(c, {
+            scopeID: scopeID ?? rawScope?.scopeID,
+            directory: directory ?? rawScope?.directory,
+          })
+    if (scope instanceof Response) return scope
+    return ScopeContext.provide({
+      scope,
+      async fn() {
+        // Snapshot watermark: capture the scope's event seq before the handler
+        // reads data, then advertise it as a response header. It is a
+        // conservative lower bound on the snapshot's freshness, so the client
+        // apply-gate never rejects a newer event as stale (frontend sync gate).
+        const stampSeq = c.req.method === "GET" ? Bus.currentSeq() : undefined
+        const stampEpoch = stampSeq !== undefined ? Bus.epoch() : undefined
+        await next()
+        if (stampSeq !== undefined && c.res) {
+          if (!c.res.headers.has("x-synergy-seq")) c.res.headers.set("x-synergy-seq", String(stampSeq))
+          if (stampEpoch && !c.res.headers.has("x-synergy-epoch")) c.res.headers.set("x-synergy-epoch", stampEpoch)
+        }
+      },
+    })
+  }
+
+  export function url(): URL {
+    return _url ?? new URL(DEFAULT_URL)
+  }
+
+  export const Event = {
+    Connected: BusEvent.define("server.connected", z.object({})),
+    Disposed: BusEvent.define("global.disposed", z.object({})),
+  }
+
+  export type RouteStage =
+    | "global-tools"
+    | "global-performance"
+    | "global-services"
+    | "global-navigation"
+    | "scoped-version-control"
+    | "scoped-before-assets"
+    | "scoped-after-assets"
+    | "scoped-integrations"
+
+  export interface Contributions {
+    routes?: Partial<Record<RouteStage, Hono>>
+    providerRoutes?: Hono
+    bootstrap?: BootstrapContributions
+    scopeConflictSchema?: z.ZodType
+    isGlobalRoute?: (pathname: string) => boolean
+    isScopeRequiredRoute?: (pathname: string) => boolean
+    errorStatus?: (error: NamedError) => ContentfulStatusCode | undefined
+    mountApp?: (app: Hono) => void
+    configureOrigins?: (origins: string[]) => void
+    listening?: (url: URL) => void
+  }
+
+  let contributions: Contributions = {}
+  let appInitialized = false
+
+  export function registerContributions(value: Contributions) {
+    if (appInitialized) throw new Error("Server contributions must be registered before constructing the application")
+    contributions = value
+  }
+
+  function contributionRoutes(stage: RouteStage): Hono {
+    return contributions.routes?.[stage] ?? new Hono()
+  }
+
+  const app = new Hono()
+  export const App: () => Hono = lazy((): Hono => {
+    appInitialized = true
+    return app
+      .onError((err, c) => {
+        if (err instanceof Storage.NotFoundError) return c.json(err.toObject(), { status: 404 })
+        if (err && typeof err === "object" && "code" in err && err.code === "ENOENT") {
+          return c.json(new Storage.NotFoundError({ message: "Resource not found" }).toObject(), { status: 404 })
+        }
+        log.error("failed", {
+          method: c.req.method,
+          route: ObservabilityRedaction.routePath(c.req.path),
+          error: err,
+        })
+        if (err instanceof NamedError) {
+          let status: ContentfulStatusCode
+          const contributedStatus = contributions.errorStatus?.(err)
+          if (contributedStatus !== undefined) status = contributedStatus
+          else if (
+            err instanceof ConfigImport.RevisionConflictError ||
+            err instanceof ConfigImport.LockedError ||
+            err instanceof Worktree.UnavailableError ||
+            err instanceof Session.ForkPointMissingError
+          )
+            status = 409
+          else if (err instanceof ConfigImport.SourceTooLargeError) status = 413
+          else if (
+            err instanceof ConfigImport.ProjectScopeRequiredError ||
+            err instanceof ConfigImport.SourceParseError ||
+            err instanceof ConfigImport.SourceFetchError ||
+            err instanceof Config.InvalidError ||
+            err instanceof Provider.ModelNotFoundError
+          )
+            status = 400
+          else if (err.name.startsWith("Worktree") || err.name.startsWith("Command")) status = 400
+          else if (err.name.startsWith("ProviderAuth")) status = 400
+          else status = 500
+          return c.json(err.toObject(), { status })
+        }
+        return c.json(new NamedError.Unknown({ message: "Internal server error" }).toObject(), {
+          status: 500,
+        })
+      })
+      .use(async (c, next) => {
+        const reqPath = c.req.path
+        const routePath = ObservabilityRedaction.routePath(reqPath)
+        const skipLogging = reqPath === "/log" || reqPath === "/global/health" || reqPath.startsWith("/assets/")
+        const skipPerformance = skipLogging || reqPath.startsWith("/global/performance/")
+        const start = Date.now()
+        const requestId = crypto.randomUUID().slice(0, 8)
+        const incomingCorrelationId = safeHeaderId(c.req.header("x-synergy-correlation-id"))
+        const incomingTraceId = safeHeaderId(c.req.header("x-synergy-trace-id"))
+        const correlationId = incomingCorrelationId ?? `corr_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`
+        const rootTraceId = `http_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`
+
+        return ObservabilityContext.withContextAsync(
+          {
+            correlationId,
+            traceId: rootTraceId,
+            rid: requestId,
+            source: "backend",
+            module: "server",
+          },
+          async () => {
+            const span = skipPerformance
+              ? undefined
+              : ObservabilitySpans.start({
+                  name: "http.request",
+                  module: "server",
+                  rid: requestId,
+                  attributes: { method: c.req.method, route: routePath, externalTraceId: incomingTraceId },
+                })
+            const traceId = span?.traceId ?? rootTraceId
+            c.header("x-synergy-correlation-id", correlationId)
+            c.header("x-synergy-trace-id", traceId)
+            c.header("x-synergy-request-id", requestId)
+
+            const requestLength = Number(c.req.header("content-length") ?? 0)
+            if (span && Number.isFinite(requestLength) && requestLength > 0) {
+              ObservabilityMetrics.record({
+                name: "http.request.size",
+                value: requestLength,
+                unit: "bytes",
+                module: "server",
+                rid: requestId,
+                labels: { method: c.req.method, route: routePath },
+              })
+            }
+            try {
+              await next()
+            } finally {
+              const duration = Date.now() - start
+              const status = c.res.status
+              if (span) {
+                ObservabilitySpans.end(span, {
+                  status: status >= 500 ? "error" : "ok",
+                  attributes: { method: c.req.method, route: routePath, status, externalTraceId: incomingTraceId },
+                })
+              }
+              const responseLength = Number(c.res.headers.get("content-length") ?? 0)
+              if (span && Number.isFinite(responseLength) && responseLength > 0) {
+                ObservabilityMetrics.record({
+                  name: "http.response.size",
+                  value: responseLength,
+                  unit: "bytes",
+                  module: "server",
+                  traceId: span.traceId,
+                  spanId: span.spanId,
+                  rid: requestId,
+                  labels: { method: c.req.method, route: routePath, status },
+                })
+              }
+              if (span && (status >= 500 || duration >= 1000)) {
+                ObservabilityIssues.raise({
+                  code: status >= 500 ? "PERF_HTTP_ERROR" : "PERF_HTTP_SLOW_REQUEST",
+                  severity: status >= 500 ? "error" : "warning",
+                  module: "server",
+                  title: status >= 500 ? "HTTP request failed" : "Slow HTTP request",
+                  message: `${c.req.method} ${routePath} returned ${status} in ${duration}ms`,
+                  recommendation: "Open the trace detail to identify the owning server route or downstream module.",
+                  traceId: span.traceId,
+                  spanId: span.spanId,
+                  rid: requestId,
+                  evidence: {
+                    method: c.req.method,
+                    route: routePath,
+                    status,
+                    durationMs: duration,
+                    externalTraceId: incomingTraceId,
+                  },
+                })
+              }
+              if (!skipLogging) {
+                log.info("request", {
+                  rid: requestId,
+                  method: c.req.method,
+                  route: routePath,
+                  status,
+                  duration,
+                })
+                void Observability.emit("http.request", {
+                  rid: requestId,
+                  traceId: span?.traceId,
+                  level: status >= 500 ? "error" : status >= 400 ? "warn" : "info",
+                  data: {
+                    externalTraceId: incomingTraceId,
+                    method: c.req.method,
+                    route: routePath,
+                    status,
+                    duration,
+                  },
+                })
+              }
+            }
+          },
+        )
+      })
+      .use(
+        cors({
+          origin(input) {
+            if (!input) return
+
+            if (isLoopbackOrigin(input)) return input
+
+            // *.holosai.io (https only)
+            if (/^https:\/\/([a-z0-9-]+\.)*holosai\.io$/.test(input)) {
+              return input
+            }
+            if (_corsWhitelist.has(input)) {
+              return input
+            }
+
+            return
+          },
+          // Expose the snapshot sync watermark so the client apply-gate can
+          // read it cross-origin (frontend sync redesign).
+          exposeHeaders: ["x-synergy-seq", "x-synergy-epoch"],
+          maxAge: 600,
+        }),
+      )
+      .use(compress({ encoding: "gzip" }))
+      .use(async (c, next) => {
+        if (!_shuttingDown) return next()
+        return c.json(
+          {
+            name: "RuntimeShuttingDown",
+            data: { message: "Synergy runtime is shutting down" },
+          },
+          503,
+        )
+      })
+      .use(provideRequestScope)
+      .use(cspMiddleware())
+      .get(
+        "/global/health",
+        describeRoute({
+          summary: "Get health",
+          description: "Get health information about the Synergy server.",
+          operationId: "global.health",
+          responses: {
+            200: {
+              description: "Health information",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z.object({
+                      healthy: z.literal(true),
+                      version: z.string(),
+                      modelReady: z.boolean().meta({
+                        description: "Whether at least one AI provider with a usable model is configured",
+                      }),
+                    }),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          // Bound the wait for the provider state build so a slow build can
+          // never stall the readiness probe (daemon 1.2s / CLI 3s windows).
+          // On timeout or build error, answer from the last settled provider
+          // state; never report ready optimistically when nothing has
+          // settled yet.
+          const modelReady = await resolveHealthModelReady({
+            list: () => Provider.list(),
+            listSettled: () => Provider.listSettled(),
+            onError: (error) => {
+              log.warn("failed to load providers for global health", {
+                error: error instanceof Error ? error : new Error(String(error)),
+              })
+            },
+          })
+          return c.json({ healthy: true, version: Installation.VERSION, modelReady })
+        },
+      )
+      .get(
+        "/global/paths",
+        describeRoute({
+          summary: "Get global server paths",
+          description: "Retrieve process-level Synergy paths that do not require a scope context.",
+          operationId: "global.paths.get",
+          responses: {
+            200: {
+              description: "Global paths",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z
+                      .object({
+                        home: z.string(),
+                        root: z.string(),
+                        data: z.string(),
+                        config: z.string(),
+                        state: z.string(),
+                        cache: z.string(),
+                        log: z.string(),
+                      })
+                      .meta({ ref: "GlobalPaths" }),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          return c.json({
+            home: Global.Path.home,
+            root: Global.Path.root,
+            data: Global.Path.data,
+            config: Global.Path.config,
+            state: Global.Path.state,
+            cache: Global.Path.cache,
+            log: Global.Path.log,
+          })
+        },
+      )
+      .get(
+        "/global/filesystem/browse",
+        describeRoute({
+          summary: "Browse server directories",
+          description: "Browse filesystem directories by path with optional fuzzy search. Returns absolute paths.",
+          operationId: "global.filesystem.browse",
+          responses: {
+            200: {
+              description: "Directory paths",
+              content: {
+                "application/json": {
+                  schema: resolver(z.string().array()),
+                },
+              },
+            },
+          },
+        }),
+        validator(
+          "query",
+          z.object({
+            path: z.string(),
+            query: z.string().optional(),
+            limit: z.coerce.number().int().min(1).max(200).optional(),
+            depth: z.coerce.number().int().min(1).max(10).optional(),
+          }),
+        ),
+        async (c) => {
+          const { path, query, limit, depth } = c.req.valid("query")
+          const results = await SynergyFile.browse({ path, query, limit: limit ?? 50, depth: depth ?? 4 })
+          return c.json(results)
+        },
+      )
+      .route("", contributionRoutes("global-tools"))
+      .route("/global/update", UpdateRoute)
+      .route("/global", ObservabilityRoute)
+      .route("", contributionRoutes("global-performance"))
+      .route("/global/storage", GlobalStorageRoute)
+      .get(
+        "/global/event/ws",
+        (() => {
+          // Track clients by stable raw socket identity. Hono's Bun adapter
+          // constructs a fresh WSContext wrapper per callback, so Map keys based
+          // on the wrapper leak across reconnects (#551). The registry also
+          // applies send backpressure limits so a slow UI cannot hard-stall the
+          // event loop (#524).
+          const globalEventClients = GlobalEventClients.createRegistry()
+          // One encoder shared by all delta clients on this route: they receive
+          // identical frames, so the checkpoint throttle is shared correctly.
+          const wire = EventWire.createEncoder()
+          const broadcastHandler = (event: any) => {
+            const result = globalEventClients.broadcast((mode) => {
+              if (mode === "full") return JSON.stringify(event)
+              const dp = wire.deltaPayload(event.payload)
+              return dp === event.payload
+                ? JSON.stringify(event)
+                : JSON.stringify({ directory: event.directory, payload: dp })
+            })
+            const payload = event?.payload
+            const part = payload?.properties?.part
+            if (result.dropped > 0 && payload?.type === "message.part.updated" && part?.type === "tool") {
+              log.warn("global event ws tool part send failed", {
+                sessionID: part.sessionID,
+                messageID: part.messageID,
+                partID: part.id,
+                callID: part.callID,
+                tool: part.tool,
+                status: part.state?.status,
+                dropped: result.dropped,
+                removed: result.removed,
+                clients: result.clients,
+              })
+            }
+          }
+          GlobalBus.on("event", broadcastHandler)
+          _globalEventBroadcastOff = () => GlobalBus.off("event", broadcastHandler)
+          const heartbeatData = JSON.stringify({
+            payload: {
+              type: "server.heartbeat",
+              properties: {},
+            },
+          })
+          const heartbeat = setInterval(() => {
+            globalEventClients.heartbeat(heartbeatData)
+          }, 30000)
+          _globalEventHeartbeatInterval = heartbeat
+          _globalEventClients = globalEventClients
+          return upgradeWebSocket((c) => {
+            if (!globalEventOriginAllowed(c.req.header("origin"), c.req.url, [..._corsWhitelist])) {
+              log.warn("global event ws rejected", { origin: c.req.header("origin") })
+              return {
+                onOpen(_event, ws) {
+                  ws.close(1008, "Origin not allowed")
+                },
+                onMessage() {},
+                onClose() {},
+                onError() {},
+              }
+            }
+            const mode: "full" | "delta" = c.req.query("stream") === "delta" ? "delta" : "full"
+            return {
+              onOpen(_event, ws) {
+                log.info("global event ws connected", { mode })
+                globalEventClients.add(ws, mode)
+                ws.send(
+                  JSON.stringify({
+                    payload: {
+                      type: "server.connected",
+                      properties: {},
+                    },
+                  }),
+                )
+              },
+              onClose(_event, ws) {
+                globalEventClients.remove(ws)
+                log.info("global event ws disconnected")
+              },
+              onError(_event, ws) {
+                globalEventClients.remove(ws)
+              },
+              onMessage(_event, ws) {
+                try {
+                  if (typeof _event.data !== "string") return
+                  const data = JSON.parse(_event.data)
+                  if (data?.payload?.type === "client.ping") {
+                    ws.send(
+                      JSON.stringify({
+                        payload: {
+                          type: "server.pong",
+                          properties: {},
+                        },
+                      }),
+                    )
+                  }
+                } catch {}
+              },
+            }
+          })
+        })(),
+      )
+      .post(
+        "/global/dispose",
+        describeRoute({
+          summary: "Dispose scope runtimes",
+          description: "Clean up and dispose all scope runtimes, releasing all scoped resources.",
+          operationId: "global.dispose",
+          responses: {
+            200: {
+              description: "Global disposed",
+              content: {
+                "application/json": {
+                  schema: resolver(z.boolean()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          await ScopeRuntime.disposeAll()
+          GlobalBus.emit("event", {
+            directory: "global",
+            payload: {
+              type: Event.Disposed.type,
+              properties: {},
+            },
+          })
+          return c.json(true)
+        },
+      )
+      .route("", contributionRoutes("global-services"))
+      .route("/global/session", GlobalSessionRoute)
+      .route("", contributionRoutes("global-navigation"))
+      .get("/doc", async (c) => c.json(await openapi()))
+      .use(validator("query", z.object({ directory: z.string().optional(), scopeID: z.string().optional() })))
+
+      .route("/scope", createScopeRoute(contributions.scopeConflictSchema))
+      .route("/scope", createScopeBootstrapRoute(contributions.bootstrap))
+      .route("/pty", PtyRoute)
+      .route("/config", ConfigRoute)
+      .route("/runtime", RuntimeRoute)
+      .route("", ControlProfileRoute)
+      .route("", SandboxReadinessRoute)
+      .get(
+        "/experimental/tool/ids",
+        describeRoute({
+          summary: "List tool IDs",
+          description:
+            "Get a list of all available tool IDs, including both built-in tools and dynamically registered tools.",
+          operationId: "tool.ids",
+          responses: {
+            200: {
+              description: "Tool IDs",
+              content: {
+                "application/json": {
+                  schema: resolver(z.array(z.string()).meta({ ref: "ToolIDs" })),
+                },
+              },
+            },
+            ...errors(400),
+          },
+        }),
+        async (c) => {
+          return c.json(await ToolRegistry.ids())
+        },
+      )
+      .get(
+        "/experimental/tool",
+        describeRoute({
+          summary: "List tools",
+          description:
+            "Get a list of available tools with their JSON schema parameters for a specific provider and model combination.",
+          operationId: "tool.list",
+          responses: {
+            200: {
+              description: "Tools",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z
+                      .array(
+                        z
+                          .object({
+                            id: z.string(),
+                            description: z.string(),
+                            parameters: z.any(),
+                          })
+                          .meta({ ref: "ToolListItem" }),
+                      )
+                      .meta({ ref: "ToolList" }),
+                  ),
+                },
+              },
+            },
+            ...errors(400),
+          },
+        }),
+        validator(
+          "query",
+          z.object({
+            provider: z.string(),
+            model: z.string(),
+          }),
+        ),
+        async (c) => {
+          const { provider } = c.req.valid("query")
+          const tools = await ToolRegistry.tools(provider)
+          return c.json(
+            tools.map((t) => ({
+              id: t.id,
+              description: t.description,
+              // Handle both Zod schemas and plain JSON schemas
+              parameters: (t.parameters as any)?._def ? zodToJsonSchema(t.parameters as any) : t.parameters,
+            })),
+          )
+        },
+      )
+      .post(
+        "/scope/runtime/dispose",
+        describeRoute({
+          summary: "Dispose scope runtime",
+          description: "Clean up and dispose the current scope runtime, releasing scoped resources.",
+          operationId: "scope.runtime.dispose",
+          responses: {
+            200: {
+              description: "Scope runtime disposed",
+              content: {
+                "application/json": {
+                  schema: resolver(z.boolean()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          await ScopeRuntime.dispose()
+          return c.json(true)
+        },
+      )
+      .get(
+        "/path",
+        describeRoute({
+          summary: "Get paths",
+          description:
+            "Retrieve the current working directory and related path information for the active scope context.",
+          operationId: "path.get",
+          responses: {
+            200: {
+              description: "Path",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z
+                      .object({
+                        home: z.string(),
+                        state: z.string(),
+                        config: z.string(),
+                        worktree: z.string(),
+                        directory: z.string(),
+                      })
+                      .meta({
+                        ref: "Path",
+                      }),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          return c.json({
+            home: Global.Path.home,
+            state: Global.Path.state,
+            config: Global.Path.config,
+            worktree: ScopeContext.current.worktree,
+            directory: ScopeContext.current.directory,
+          })
+        },
+      )
+      .post(
+        "/experimental/worktree",
+        describeRoute({
+          summary: "Create worktree",
+          description: "Create a new git worktree for the current project.",
+          operationId: "worktree.create",
+          responses: {
+            200: {
+              description: "Worktree created",
+              content: {
+                "application/json": {
+                  schema: resolver(Worktree.Info),
+                },
+              },
+            },
+            ...errors(400),
+          },
+        }),
+        validator("json", Worktree.PublicCreateInput),
+        async (c) => {
+          const body = c.req.valid("json")
+          if (body.bind !== false) assertWorktreeSessionIdle(body.sessionID)
+          const worktree = await Worktree.create(body)
+          return c.json(worktree)
+        },
+      )
+      .get(
+        "/experimental/worktree",
+        describeRoute({
+          summary: "List worktrees",
+          description:
+            "List git worktrees for the current project, combining git worktree state with Synergy metadata.",
+          operationId: "worktree.list",
+          responses: {
+            200: {
+              description: "List of git worktrees",
+              content: {
+                "application/json": {
+                  schema: resolver(Worktree.Info.array()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          const worktrees = await Worktree.list()
+          return c.json(worktrees)
+        },
+      )
+      .post(
+        "/experimental/worktree/session/:sessionID/enter",
+        describeRoute({
+          summary: "Enter worktree",
+          description: "Bind an existing git worktree to a session.",
+          operationId: "worktree.enter",
+          responses: {
+            200: {
+              description: "Session moved to worktree",
+              content: {
+                "application/json": {
+                  schema: resolver(Session.Info),
+                },
+              },
+            },
+            ...errors(400, 404),
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            sessionID: z.string(),
+          }),
+        ),
+        validator(
+          "json",
+          z
+            .object({
+              target: z.string().min(1),
+              force: z.boolean().optional().default(false),
+            })
+            .meta({ ref: "WorktreeEnterInput" }),
+        ),
+        async (c) => {
+          const sessionID = c.req.valid("param").sessionID
+          const body = c.req.valid("json")
+          const existing = await Session.get(sessionID)
+          if (!existing) {
+            return c.json({ name: "SessionNotFound", data: { message: `Session not found: ${sessionID}` } }, 404)
+          }
+          assertWorktreeSessionIdle(sessionID)
+          await Worktree.enter({ sessionID, target: body.target, force: body.force })
+          const session = await Session.get(sessionID)
+          return c.json(session)
+        },
+      )
+      .post(
+        "/experimental/worktree/session/:sessionID/leave",
+        describeRoute({
+          summary: "Leave worktree",
+          description: "Leave the current git worktree for a session and return it to the main checkout.",
+          operationId: "worktree.leave",
+          responses: {
+            200: {
+              description: "Session returned to main checkout",
+              content: {
+                "application/json": {
+                  schema: resolver(Session.Info),
+                },
+              },
+            },
+            ...errors(400, 404),
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            sessionID: z.string(),
+          }),
+        ),
+        async (c) => {
+          const sessionID = c.req.valid("param").sessionID
+          assertWorktreeSessionIdle(sessionID)
+          const session = await Worktree.leave(sessionID)
+          return c.json(session)
+        },
+      )
+      .post(
+        "/experimental/worktree/remove",
+        describeRoute({
+          summary: "Remove worktree",
+          description: "Remove a git worktree after leaving every bound session. Dirty worktrees require force=true.",
+          operationId: "worktree.remove",
+          responses: {
+            200: {
+              description: "Worktree removed",
+              content: {
+                "application/json": {
+                  schema: resolver(Worktree.Info),
+                },
+              },
+            },
+            ...errors(400, 404),
+          },
+        }),
+        validator("json", Worktree.RemoveInput),
+        async (c) => {
+          const body = c.req.valid("json")
+          const worktree = await Worktree.remove(body)
+          return c.json(worktree)
+        },
+      )
+      .route("", contributionRoutes("scoped-version-control"))
+      .route("/session", SessionNavRoute)
+      .route("/session", SessionRoute)
+      .route("/session", SessionVolatileBatchRoute)
+      .route("", PermissionRoute)
+      .route("/question", QuestionRoute)
+      .route("/session", SessionExportRoute)
+      .route("/cortex/tasks", CortexRoute)
+
+      .get(
+        "/command",
+        describeRoute({
+          summary: "List commands",
+          description: "Get a list of all available commands in the Synergy system.",
+          operationId: "command.list",
+          responses: {
+            200: {
+              description: "List of commands",
+              content: {
+                "application/json": {
+                  schema: resolver(Command.Info.array()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          const commands = await Command.list()
+          return c.json(commands)
+        },
+      )
+
+      .route("/provider", createProviderRoute(contributions.providerRoutes))
+      .route("/skill", SkillRoute)
+      .route("/workspace/files", WorkspaceFilesRoute)
+      .route("", contributionRoutes("scoped-before-assets"))
+      .route("/asset", AssetRoute)
+      .route("", contributionRoutes("scoped-after-assets"))
+      .post(
+        "/log",
+        describeRoute({
+          summary: "Write log",
+          description: "Write a log entry to the server logs with specified level and metadata.",
+          operationId: "app.log",
+          responses: {
+            200: {
+              description: "Log entry written successfully",
+              content: {
+                "application/json": {
+                  schema: resolver(z.boolean()),
+                },
+              },
+            },
+            ...errors(400),
+          },
+        }),
+        validator(
+          "json",
+          z.object({
+            service: z.string().max(64).meta({ description: "Service name for the log entry" }),
+            level: z.enum(["debug", "info", "error", "warn"]).meta({ description: "Log level" }),
+            message: z.string().max(4096).meta({ description: "Log message" }),
+            extra: z
+              .record(z.string(), z.any())
+              .optional()
+              .meta({ description: "Additional metadata for the log entry" }),
+          }),
+        ),
+        async (c) => {
+          const { service, level, message, extra } = c.req.valid("json")
+          const safeExtra = extra ? Object.fromEntries(Object.entries(extra).slice(0, 20)) : undefined
+          const logger = Log.create({ service: `client.${service}` })
+
+          switch (level) {
+            case "debug":
+              logger.debug(message, safeExtra)
+              break
+            case "info":
+              logger.info(message, safeExtra)
+              break
+            case "error":
+              logger.error(message, safeExtra)
+              break
+            case "warn":
+              logger.warn(message, safeExtra)
+              break
+          }
+
+          return c.json(true)
+        },
+      )
+      .get(
+        "/agent",
+        describeRoute({
+          summary: "List agents",
+          description: "Get a list of all available AI agents in the Synergy system.",
+          operationId: "app.agents",
+          responses: {
+            200: {
+              description: "List of agents",
+              content: {
+                "application/json": {
+                  schema: resolver(Agent.Info.array()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          const modes = await Agent.list()
+          return c.json(modes)
+        },
+      )
+      .get(
+        "/agent/model-roles",
+        describeRoute({
+          summary: "List model role summaries",
+          description: "Get model role configuration, fallback, and usage metadata for the settings UI.",
+          operationId: "app.agentModelRoles",
+          responses: {
+            200: {
+              description: "List of model role summaries",
+              content: {
+                "application/json": {
+                  schema: resolver(Agent.ModelRoleSummary.array()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          return c.json(await Agent.modelRoleSummaries())
+        },
+      )
+
+      .route("", contributionRoutes("scoped-integrations"))
+      .put(
+        "/auth/:providerID",
+        describeRoute({
+          summary: "Set auth credentials",
+          description: "Set authentication credentials",
+          operationId: "auth.set",
+          responses: {
+            200: {
+              description: "Successfully set authentication credentials",
+              content: {
+                "application/json": {
+                  schema: resolver(z.boolean()),
+                },
+              },
+            },
+            ...errors(400),
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            providerID: z.string(),
+          }),
+        ),
+        validator("json", Auth.Info),
+        async (c) => {
+          const providerID = c.req.valid("param").providerID
+          const info = c.req.valid("json")
+          await Auth.set(providerID, info)
+          await Provider.reload()
+          return c.json(true)
+        },
+      )
+      .get(
+        "/event/replay",
+        describeRoute({
+          summary: "Replay missed events",
+          description:
+            "After a reconnect, return the state events published for this scope since `since`. " +
+            'Returns status "reset" when the client\'s epoch is stale or the required events have ' +
+            "aged out of the journal, in which case the client must resync from snapshots.",
+          operationId: "event.replay",
+          responses: {
+            200: { description: "Replay result" },
+            ...errors(400),
+          },
+        }),
+        validator(
+          "query",
+          z.object({
+            since: z.coerce.number().int().min(0),
+            epoch: z.string().optional(),
+            directory: z.string().optional(),
+            scopeID: z.string().optional(),
+          }),
+        ),
+        async (c) => {
+          const { since, epoch } = c.req.valid("query")
+          const currentEpoch = Bus.epoch()
+          // Epoch mismatch means the runtime restarted; the seq space is
+          // unrelated, so force a full resync.
+          if (epoch && epoch !== currentEpoch) {
+            return c.json({ status: "reset" as const, epoch: currentEpoch, seq: Bus.currentSeq() })
+          }
+          return c.json(Bus.replay(since))
+        },
+      )
+      .get(
+        "/event",
+        describeRoute({
+          summary: "Subscribe to events",
+          description: "Get events",
+          operationId: "event.subscribe",
+          responses: {
+            200: {
+              description: "Event stream",
+              content: {
+                "text/event-stream": {
+                  schema: resolver(BusEvent.payloads()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          log.info("event connected")
+          c.header("X-Accel-Buffering", "no")
+          c.header("Cache-Control", "no-cache, no-transform")
+          // Opt-in compact streaming protocol (#350 D1). Each SSE connection
+          // owns its own encoder so its checkpoint throttle is independent.
+          const deltaMode = c.req.query("stream") === "delta"
+          const wire = deltaMode ? EventWire.createEncoder() : undefined
+          return streamSSE(c, async (stream) => {
+            const connectedAt = Date.now()
+            ServerSseMetrics.open("events")
+            stream.writeSSE({
+              data: JSON.stringify({
+                type: "server.connected",
+                properties: {},
+              }),
+            })
+            const unsub = Bus.subscribeAll(async (event) => {
+              const outbound = wire ? wire.deltaPayload(event) : event
+              await stream
+                .writeSSE({
+                  data: JSON.stringify(outbound),
+                })
+                .catch(() => {
+                  ServerSseMetrics.writeFailure("events")
+                })
+              if (event.type === Bus.ScopeRuntimeDisposed.type) {
+                stream.close()
+              }
+            })
+
+            // Send heartbeat every 30s to prevent WKWebView timeout (60s default)
+            const heartbeat = setInterval(() => {
+              void stream
+                .writeSSE({
+                  data: JSON.stringify({
+                    type: "server.heartbeat",
+                    properties: {},
+                  }),
+                })
+                .then(() => ServerSseMetrics.heartbeat("events"))
+                .catch(() => ServerSseMetrics.writeFailure("events", "heartbeat"))
+            }, 30000)
+
+            await new Promise<void>((resolve) => {
+              stream.onAbort(() => {
+                clearInterval(heartbeat)
+                ServerSseMetrics.duration("events", connectedAt)
+                unsub()
+                resolve()
+                log.info("event disconnected")
+              })
+            })
+          })
+        },
+      ) as unknown as Hono
+  })
+
+  export function mountApp() {
+    if (_appMounted) return
+    // Ensure API routes are registered before SPA fallback routes.
+    App()
+
+    if (!contributions.mountApp) return
+    contributions.mountApp(app)
+    _appMounted = true
+  }
+
+  // Spec generation consumes describeRoute resolvers in one pass (hono-openapi
+  // rewrites each entry in place), so a second generation in the same process
+  // would emit $refs without components. Both /doc and the CLI share this
+  // singleton to make once-per-process the public invariant.
+  type OpenAPISpecs = Awaited<ReturnType<typeof generateSpecs>>
+  let _openapiSpecs: Promise<OpenAPISpecs> | undefined
+
+  export function openapi(): Promise<OpenAPISpecs> {
+    _openapiSpecs ??= buildOpenAPISpecs()
+    return _openapiSpecs
+  }
+
+  async function buildOpenAPISpecs() {
+    // Cast to break excessive type recursion from long route chains
+    const result = await generateSpecs(App() as Hono, {
+      documentation: {
+        info: {
+          title: "synergy",
+          version: "1.0.0",
+          description: "synergy api",
+        },
+        openapi: "3.1.1",
+      },
+    })
+    const shutdown = await resolver(RuntimeShuttingDownError).toOpenAPISchema()
+    result.components = {
+      ...result.components,
+      schemas: {
+        ...result.components?.schemas,
+        ...shutdown.components?.schemas,
+      },
+    }
+    const methods = ["get", "put", "post", "delete", "patch"] as const
+    for (const item of Object.values(result.paths)) {
+      if (!item) continue
+      for (const method of methods) {
+        const operation = item[method]
+        if (!operation || operation.responses?.["503"]) continue
+        operation.responses ??= {}
+        operation.responses["503"] = {
+          description: "Runtime shutting down",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/RuntimeShuttingDownError" },
+            },
+          },
+        }
+      }
+    }
+    return result
+  }
+
+  function lanOrigins(): string[] {
+    const { networkInterfaces } = require("os") as typeof import("os")
+    const nets = networkInterfaces()
+    const ips: string[] = []
+    for (const interfaces of Object.values(nets)) {
+      if (!interfaces) continue
+      for (const iface of interfaces) {
+        if (!iface.internal && iface.family === "IPv4") {
+          ips.push(iface.address)
+        }
+      }
+    }
+    const ports = [3000, 3001]
+    return ips.flatMap((ip) => ports.map((port) => `http://${ip}:${port}`))
+  }
+
+  export function listen(opts: {
+    port: number
+    hostname: string
+    mdns?: boolean
+    cors?: string[]
+    preferDefaultPort?: boolean
+  }) {
+    const isExternalHost = opts.hostname !== "127.0.0.1" && opts.hostname !== "localhost" && opts.hostname !== "::1"
+    const configuredOrigins = (opts.cors ?? []).flatMap((origin) => {
+      const normalized = normalizeCorsOrigin(origin)
+      return normalized ? [normalized] : []
+    })
+    _corsWhitelist = new Set([...configuredOrigins, ...(isExternalHost ? lanOrigins() : [])])
+    contributions.configureOrigins?.(configuredOrigins)
+
+    const args = {
+      hostname: opts.hostname,
+      idleTimeout: 0,
+      fetch: App().fetch,
+      websocket: websocket,
+    } as const
+    const tryServe = (port: number) => {
+      try {
+        return Bun.serve({ ...args, port })
+      } catch {
+        return undefined
+      }
+    }
+    const server =
+      opts.port === 0 && opts.preferDefaultPort !== false
+        ? (tryServe(DEFAULT_PORT) ?? tryServe(0))
+        : tryServe(opts.port)
+    if (!server) throw new Error(`Failed to start server on port ${opts.port}`)
+
+    _url = server.url
+    contributions.listening?.(server.url)
+
+    if (isExternalHost && _corsWhitelist.size > 0) {
+      log.info("cors auto-detected LAN origins", { origins: _corsWhitelist })
+    }
+
+    const shouldPublishMDNS =
+      opts.mdns &&
+      server.port &&
+      opts.hostname !== "127.0.0.1" &&
+      opts.hostname !== "localhost" &&
+      opts.hostname !== "::1"
+    if (shouldPublishMDNS) {
+      MDNS.publish(server.port!, `synergy-${server.port!}`)
+    } else if (opts.mdns) {
+      log.warn("mDNS enabled but hostname is loopback; skipping mDNS publish")
+    }
+
+    const originalStop = server.stop.bind(server)
+    server.stop = async (closeActiveConnections?: boolean) => {
+      if (shouldPublishMDNS) MDNS.unpublish()
+      _globalEventBroadcastOff?.()
+      if (_globalEventHeartbeatInterval) clearInterval(_globalEventHeartbeatInterval)
+      _globalEventClients?.clear()
+      return originalStop(closeActiveConnections)
+    }
+
+    return server
+  }
+}

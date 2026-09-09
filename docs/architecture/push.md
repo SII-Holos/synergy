@@ -6,7 +6,7 @@ The chain is deliberately additive: it stores data under `data/push/`, adds one 
 
 ## Ownership
 
-`packages/synergy/src/push/` owns the whole server side and is wired into the runtime in `GlobalRuntime.start()` (immediately after `startChannels()`) via `PushBridge.init()`, which returns a dispose function. The delivery chain:
+`packages/workbench/src/push/` owns the whole server side and is wired into the runtime in `GlobalRuntime.start()` (immediately after `startChannels()`) via `PushBridge.init()`, which returns a dispose function. The delivery chain:
 
 1. **Event bridge** (`bridge.ts`) — subscribes to four global bus events and turns them into push payloads:
    - `SessionEvent.Completion` → "Response ready", `badge` = unread count.
@@ -37,7 +37,7 @@ All state lives under the data home (`Global.Path.data`):
 
 ## HTTP routes
 
-`PushRoute` (`packages/synergy/src/server/push.ts`) mounts at `/push` on the server's authenticated global route chain, inheriting its auth and request-scope middleware. OpenAPI metadata feeds the regenerated SDK.
+`PushRoute` (`packages/workbench/src/push/routes/push.ts`) mounts at `/push` on the server's authenticated global route chain, inheriting its auth and request-scope middleware. OpenAPI metadata feeds the regenerated SDK.
 
 | Method | Path                                 | OperationId             | Behavior                                                                                                               |
 | ------ | ------------------------------------ | ----------------------- | ---------------------------------------------------------------------------------------------------------------------- |
@@ -48,11 +48,11 @@ All state lives under the data home (`Global.Path.data`):
 | POST   | `/push/test`                         | `push.test`             | Sends a test-category notification to one endpoint (404 if unknown, 502 if delivery fails) or to every subscription.   |
 | PATCH  | `/push/subscriptions/:id/categories` | `push.updateCategories` | Updates one subscription's completion/error/input toggles; unknown id returns 404.                                     |
 
-**SSRF boundary** — `subscribe`/`unsubscribe`/`test` validate the endpoint against `isAllowedPushEndpoint()` (`packages/synergy/src/push/types.ts`): only `https:` URLs whose host is `*.push.apple.com`, `fcm.googleapis.com`, or `updates.push.services.mozilla.com` are accepted. Push endpoints are attacker-controllable URLs that the server later POSTs to, so this allowlist is the security boundary of the route group.
+**SSRF boundary** — `subscribe`/`unsubscribe`/`test` validate the endpoint against `isAllowedPushEndpoint()` (`packages/workbench/src/push/types.ts`): only `https:` URLs whose host is `*.push.apple.com`, `fcm.googleapis.com`, or `updates.push.services.mozilla.com` are accepted. Push endpoints are attacker-controllable URLs that the server later POSTs to, so this allowlist is the security boundary of the route group.
 
 ## Service worker contract
 
-`packages/app/public/sw.js` is a plain-JavaScript service worker with no build step, registered by `entry.tsx` only in secure contexts with service-worker support (registration failure is silent). It enforces four constraints:
+`apps/web/public/sw.js` is a plain-JavaScript service worker with no build step, registered by `entry.tsx` only in secure contexts with service-worker support (registration failure is silent). It enforces four constraints:
 
 - **A received push must immediately call `showNotification`** — Safari revokes notification permission when a push is handled silently, so even a malformed or missing payload shows a fallback ("Synergy" / "You have a new notification"). Upstream: [Sending web push notifications in web apps and browsers](https://developer.apple.com/documentation/usernotifications/sending-web-push-notifications-in-web-apps-and-browsers) and [Web Push for Web Apps on iPhone and iPad (WebKit)](https://webkit.org/blog/14335/web-push-for-web-apps-on-iphone-and-ipad/). There is no notification-dedup or quiet-mode branch in the worker.
 - **No fetch handler** — the worker never intercepts `fetch`, protecting the app's asset negotiation and release-update mechanism. Payload validation is minimal and defensive (`href` must start with `/`), never a reason to drop a notification.
@@ -61,7 +61,7 @@ All state lives under the data home (`Global.Path.data`):
 
 ## Client enablement
 
-The settings General panel exposes the device-push state and actions; the subscribe flow lives in `packages/app/src/utils/web-push.ts`:
+The settings General panel exposes the device-push state and actions; the subscribe flow lives in `apps/web/src/utils/web-push.ts`:
 
 - **Capability probe** (`pushCapability`) — distinguishes insecure context, missing service worker/PushManager, and an iOS Safari _tab_ (iOS exposes the Push API only inside an installed home-screen web app), so the UI can explain why Enable is unavailable.
 - **Enable** (`enableDevicePush`) — must run inside the user-gesture handler: `Notification.requestPermission()`, then `pushManager.subscribe({ userVisibleOnly: true, applicationServerKey })` with the VAPID key fetched from `/push/vapid-key`, then POST the resulting endpoint/keys to `/push/subscribe`. An existing local subscription is reused only when its application-server key still matches the fetched VAPID key; after a VAPID rotation the stale subscription is dropped and recreated so deliveries keep validating. Permission denial surfaces as a typed error the panel turns into the "denied" guidance.

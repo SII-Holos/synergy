@@ -11,22 +11,22 @@ const SOCIAL_SHARE_TEMPLATE = path.join(REPO_ROOT, "script/gen/assets/synergy-so
 
 export const BRAND_ASSET_OUTPUTS = [
   "packages/ui/src/assets/brand/synergy-product-icon.png",
-  "packages/app/public/brand/synergy-product-icon.png",
-  "packages/app/public/favicon-96x96.png",
-  "packages/app/public/favicon.svg",
-  "packages/app/public/favicon.ico",
-  "packages/app/public/apple-touch-icon.png",
-  "packages/app/public/web-app-manifest-192x192.png",
-  "packages/app/public/web-app-manifest-512x512.png",
-  "packages/app/public/social-share.png",
-  "packages/desktop/build/icon.png",
-  "packages/desktop/build/icon-unread.png",
+  "apps/web/public/brand/synergy-product-icon.png",
+  "apps/web/public/favicon-96x96.png",
+  "apps/web/public/favicon.svg",
+  "apps/web/public/favicon.ico",
+  "apps/web/public/apple-touch-icon.png",
+  "apps/web/public/web-app-manifest-192x192.png",
+  "apps/web/public/web-app-manifest-512x512.png",
+  "apps/web/public/social-share.png",
+  "apps/desktop/build/icon.png",
+  "apps/desktop/build/icon-unread.png",
 ] as const
 
 export const OBSOLETE_BRAND_ASSETS = [
-  "packages/desktop/build/icon.icns",
-  "packages/desktop/build/icon.ico",
-  "packages/desktop/build/icons",
+  "apps/desktop/build/icon.icns",
+  "apps/desktop/build/icon.ico",
+  "apps/desktop/build/icons",
 ] as const
 
 function absolute(relative: string): string {
@@ -197,16 +197,16 @@ export async function generateBrandAssets(): Promise<Map<string, Buffer>> {
 
   return new Map<string, Buffer>([
     ["packages/ui/src/assets/brand/synergy-product-icon.png", icon512],
-    ["packages/app/public/brand/synergy-product-icon.png", icon512],
-    ["packages/app/public/favicon-96x96.png", icon96],
-    ["packages/app/public/favicon.svg", faviconSvg(icon512)],
-    ["packages/app/public/favicon.ico", createIco(faviconImages)],
-    ["packages/app/public/apple-touch-icon.png", icon180],
-    ["packages/app/public/web-app-manifest-192x192.png", icon192],
-    ["packages/app/public/web-app-manifest-512x512.png", icon512],
-    ["packages/app/public/social-share.png", socialShare],
-    ["packages/desktop/build/icon.png", sourceBytes],
-    ["packages/desktop/build/icon-unread.png", unreadIcon],
+    ["apps/web/public/brand/synergy-product-icon.png", icon512],
+    ["apps/web/public/favicon-96x96.png", icon96],
+    ["apps/web/public/favicon.svg", faviconSvg(icon512)],
+    ["apps/web/public/favicon.ico", createIco(faviconImages)],
+    ["apps/web/public/apple-touch-icon.png", icon180],
+    ["apps/web/public/web-app-manifest-192x192.png", icon192],
+    ["apps/web/public/web-app-manifest-512x512.png", icon512],
+    ["apps/web/public/social-share.png", socialShare],
+    ["apps/desktop/build/icon.png", sourceBytes],
+    ["apps/desktop/build/icon-unread.png", unreadIcon],
   ])
 }
 

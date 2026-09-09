@@ -283,15 +283,6 @@
     margin-inline: 2px;
     color: var(--text-subtle);
   }
-  [data-slot="minimal-activity-now"] {
-    flex: 1 1 100%;
-    min-width: 0;
-    margin-inline-start: 24px;
-    overflow: hidden;
-    color: var(--text-weak);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 }
 
 [data-component="animated-activity-count"] {

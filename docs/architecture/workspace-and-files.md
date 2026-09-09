@@ -1,5 +1,7 @@
 # Workspace and File Operations
 
+Runtime Local owns native filesystem subscriptions in `packages/runtime-local/src/file/watcher.ts` and registers them with Scope startup. Harness owns generic Scope, storage and file contracts; importing Harness alone does not start a native watcher.
+
 Synergy keeps project ownership (`Scope`) separate from the directory in which a session executes (`workspace`). The normal workspace is the selected project directory; a session can instead bind to a Synergy-managed worktree without changing its owning Scope, config, Notes, or session index.
 
 ## Scope Runtime Services
@@ -62,7 +64,7 @@ A successful write invalidates the Git-status cache and the frontend refreshes t
 
 ## File Workbench Ownership and Bounds
 
-`packages/app/src/context/file/index.tsx` is the single frontend data owner for the File workbench. File tabs live in the Side Workspace as resource tabs. The Context panel is a separate session-scoped Side Workspace singleton and does not own files. Web and Desktop use generated `workspace.files.*` SDK calls against the active Scope rather than renderer or Electron-main filesystem reads.
+`apps/web/src/context/file/index.tsx` is the single frontend data owner for the File workbench. File tabs live in the Side Workspace as resource tabs. The Context panel is a separate session-scoped Side Workspace singleton and does not own files. Web and Desktop use generated `workspace.files.*` SDK calls against the active Scope rather than renderer or Electron-main filesystem reads.
 
 Each session persists its open files, active tab, source/preview mode, selection, scroll state, and Explorer layout. Scope-level directory state keeps the expanded tree and hidden/ignored preference warm across sessions in the same project.
 
