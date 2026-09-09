@@ -1,4 +1,5 @@
 import { normalizeSlashes } from "../util/path"
+import * as fs from "fs"
 import * as path from "path"
 
 // ------------------------------------------------------------------
@@ -74,6 +75,65 @@ export function expandGitProtectedSubpaths(paths: string[]): string[] {
       return flavor.basename(p) === ".git" ? gitProtectedSubpaths(flavor.dirname(p)) : [p]
     }),
   )
+}
+
+/**
+ * Enumerated sandbox read grants for a linked git worktree session.
+ *
+ * A worktree resolves its object store through the original checkout's .git
+ * directory, which the trust boundary keeps external — under deny-default
+ * sandbox profiles every git command would fail with "not a git repository".
+ * Rather than granting the whole shared .git directory (which would expose
+ * hooks, FETCH_HEAD, and reflogs to sandboxed processes), this returns the
+ * enumerated paths git read commands need: the per-worktree gitdir plus the
+ * common store's objects, refs, packed-refs, and config. Config is required —
+ * git refuses to run without reading it — and carries the same risk as the
+ * already-granted ~/.gitconfig.
+ *
+ * Every grant is fail-closed: the worktree .git pointer file must resolve
+ * inside <originalCheckout>/.git/worktrees/ and its commondir must resolve
+ * exactly to <originalCheckout>/.git. Any mismatch (or a directory-style .git,
+ * i.e. not actually a linked worktree) returns an empty set. Granted paths are
+ * read-only; common-store writes (index.lock, objects, refs) stay outside the
+ * sandbox writable roots, so commits fail with a lock error instead of
+ * silently corrupting the shared store.
+ */
+export function worktreeSandboxReadGrants(workspace: string, originalCheckout?: string): string[] {
+  if (!originalCheckout) return []
+  const flavor = pathFlavor(workspace)
+  const pointer = joinPathLike(workspace, ".git")
+  let gitdirLine: string
+  try {
+    if (!fs.statSync(pointer).isFile()) return []
+    gitdirLine = fs.readFileSync(pointer, "utf8").trim()
+  } catch {
+    return []
+  }
+  if (!gitdirLine.startsWith("gitdir:")) return []
+  const gitdir = flavor.resolve(workspace, gitdirLine.slice("gitdir:".length).trim())
+
+  const checkout = flavor.resolve(originalCheckout)
+  const metaRoot = joinPathLike(checkout, ".git", "worktrees")
+  const rel = flavor.relative(metaRoot, gitdir)
+  if (!rel || flavor.isAbsolute(rel) || rel.split(/[\\/]/).some((segment) => segment === "..")) return []
+
+  const commondirPath = joinPathLike(gitdir, "commondir")
+  let commonRaw: string
+  try {
+    commonRaw = fs.readFileSync(commondirPath, "utf8").trim()
+  } catch {
+    return []
+  }
+  const common = flavor.resolve(gitdir, commonRaw)
+  if (common !== joinPathLike(checkout, ".git")) return []
+
+  return uniqueRoots([
+    gitdir,
+    joinPathLike(common, "objects"),
+    joinPathLike(common, "refs"),
+    joinPathLike(common, "packed-refs"),
+    joinPathLike(common, "config"),
+  ])
 }
 
 export function ancestorLiterals(root: string): string[] {

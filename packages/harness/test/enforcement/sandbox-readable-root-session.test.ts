@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { $ } from "bun"
 import * as fs from "node:fs"
 import * as path from "node:path"
 const { EnforcementGate } = await import("../../src/enforcement/gate")
@@ -79,5 +80,104 @@ describe("sandbox readable roots and session key (PR #1308 follow-up)", () => {
     const policy = gate.getSandboxPolicy()
     expect(policy).not.toBeNull()
     expect(policy!.fileSystem.readableRoots).not.toContain(path.join(tmp.path, ".git"))
+  })
+})
+
+describe("worktree gitdir enumerated sandbox grants", () => {
+  async function linkedWorktree(main: string) {
+    await $`git init -q`.cwd(main).quiet()
+    await $`git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init`.cwd(main).quiet()
+    const wt = path.join(main, "wt")
+    await $`git worktree add -q ${wt} -b feature`.cwd(main).quiet()
+    return wt
+  }
+
+  test("linked worktree seeds enumerated gitdir grants without the whole .git", async () => {
+    await using tmp = await tmpdir()
+    const main = fs.realpathSync(tmp.path)
+    const wt = await linkedWorktree(main)
+    const gate = await EnforcementGate.create({
+      activeWorkspace: wt,
+      workspaceType: "worktree",
+      profileId: "autonomous",
+      sessionKey: "ses_abc",
+      originalCheckout: main,
+    })
+    const policy = gate.getSandboxPolicy()
+    expect(policy).not.toBeNull()
+    const roots = policy!.fileSystem.readableRoots
+    expect(roots).toContain(path.join(main, ".git", "worktrees", "wt"))
+    expect(roots).toContain(path.join(main, ".git", "objects"))
+    expect(roots).toContain(path.join(main, ".git", "refs"))
+    expect(roots).toContain(path.join(main, ".git", "packed-refs"))
+    expect(roots).toContain(path.join(main, ".git", "config"))
+    expect(roots).not.toContain(path.join(main, ".git"))
+    const grants = [
+      path.join(main, ".git", "worktrees", "wt"),
+      path.join(main, ".git", "objects"),
+      path.join(main, ".git", "refs"),
+      path.join(main, ".git", "packed-refs"),
+      path.join(main, ".git", "config"),
+    ]
+    for (const grant of grants) {
+      expect(policy!.fileSystem.writableRoots).not.toContain(grant)
+    }
+  })
+
+  test("gitdir pointer escaping the checkout metadata root yields no grants", async () => {
+    await using tmp = await tmpdir()
+    const main = tmp.path
+    fs.mkdirSync(path.join(main, ".git", "worktrees"), { recursive: true })
+    const fake = path.join(main, "fake-wt")
+    fs.mkdirSync(fake, { recursive: true })
+    fs.writeFileSync(path.join(fake, ".git"), `gitdir: ${path.join(main, "elsewhere", "wt")}\n`)
+    const gate = await EnforcementGate.create({
+      activeWorkspace: fake,
+      workspaceType: "worktree",
+      profileId: "autonomous",
+      sessionKey: "ses_abc",
+      originalCheckout: main,
+    })
+    const policy = gate.getSandboxPolicy()
+    expect(policy).not.toBeNull()
+    expect(policy!.fileSystem.readableRoots).not.toContain(path.join(main, "elsewhere", "wt"))
+    expect(policy!.fileSystem.readableRoots).not.toContain(path.join(main, ".git", "objects"))
+  })
+
+  test("commondir resolving outside the checkout .git yields no grants", async () => {
+    await using tmp = await tmpdir()
+    const main = tmp.path
+    const meta = path.join(main, ".git", "worktrees", "wt")
+    fs.mkdirSync(meta, { recursive: true })
+    const fake = path.join(main, "fake-wt")
+    fs.mkdirSync(fake, { recursive: true })
+    fs.writeFileSync(path.join(fake, ".git"), `gitdir: ${meta}\n`)
+    fs.writeFileSync(path.join(meta, "commondir"), "../../elsewhere\n")
+    const gate = await EnforcementGate.create({
+      activeWorkspace: fake,
+      workspaceType: "worktree",
+      profileId: "autonomous",
+      sessionKey: "ses_abc",
+      originalCheckout: main,
+    })
+    const policy = gate.getSandboxPolicy()
+    expect(policy).not.toBeNull()
+    expect(policy!.fileSystem.readableRoots).not.toContain(path.join(main, ".git", "objects"))
+  })
+
+  test("worktree-typed session on a non-linked directory yields no grants", async () => {
+    await using tmp = await tmpdir()
+    const main = tmp.path
+    fs.mkdirSync(path.join(main, ".git"), { recursive: true })
+    const gate = await EnforcementGate.create({
+      activeWorkspace: main,
+      workspaceType: "worktree",
+      profileId: "autonomous",
+      sessionKey: "ses_abc",
+      originalCheckout: main,
+    })
+    const policy = gate.getSandboxPolicy()
+    expect(policy).not.toBeNull()
+    expect(policy!.fileSystem.readableRoots).not.toContain(path.join(main, ".git", "config"))
   })
 })

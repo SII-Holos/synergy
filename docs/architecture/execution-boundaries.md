@@ -155,6 +155,8 @@ A project Scope can declare multiple project folders (its main worktree plus add
 
 In a `git_worktree` session the original main checkout is excluded from the project trust roots and stays outside the trust boundary. An autonomous worktree session can inspect its original checkout but cannot write there or run commands from it. Approved external roots can be added to the execution sandbox for the authorized operation. Sibling worktrees declared as project folders are trusted — only the original checkout remains external.
 
+Sandboxed worktree sessions still run git against the original checkout's object store. The gate seeds enumerated sandbox-only read grants — the worktree's per-worktree gitdir plus the store's `objects`, `refs`, `packed-refs`, and `config` — after validating that the worktree `.git` pointer resolves under `<checkout>/.git/worktrees/` and its `commondir` resolves exactly to `<checkout>/.git`. Hooks, reflogs, `FETCH_HEAD`, and the original working tree stay unreadable, the grants never enter writable roots, and any validation mismatch yields no grants (fail closed), so common-store writes fail at the sandbox instead of mutating the shared repository.
+
 Configured skill roots and plugin skill roots are trusted runtime areas. Access inside those roots is not treated as an arbitrary external write or execution unless the requested path escapes the trusted root. Read roots grant only read access; they never authorize modifying or executing an attachment or other external file.
 
 ## Sandbox Enforcement
