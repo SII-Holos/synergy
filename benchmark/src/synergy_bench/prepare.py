@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import platform as host_platform
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -12,7 +14,7 @@ from typing import Any
 
 from .catalog import tree_digest
 from .config import Source
-from .source import entry, freeze_source, verify_source
+from .source import entry, freeze_source, safe_path, verify_source
 from .storage import atomic_json, digest, locked, read_json
 
 BENCHMARK = Path(__file__).resolve().parents[2]
@@ -23,7 +25,22 @@ def evaluator_identity() -> dict[str, str]:
         "python": tree_digest(BENCHMARK / "src" / "synergy_bench"),
         "runtime": tree_digest(BENCHMARK / "runtime"),
         "lock": digest((BENCHMARK / "uv.lock").read_text()),
+        "python_version": host_platform.python_version(),
+        "recipe_dependencies": digest(read_json(BENCHMARK / "package.json")["dependencies"]),
     }
+
+
+def recipe_links(source: Path, dependencies: dict[str, str]) -> dict[str, str]:
+    packages = {}
+    for workspace in read_json(source / "package.json")["workspaces"]["packages"]:
+        safe_path(workspace)
+        for manifest in source.glob(f"{workspace}/package.json"):
+            packages[read_json(manifest)["name"]] = manifest.parent.relative_to(source).as_posix()
+    for name, version in dependencies.items():
+        safe_path(name)
+        if version != "workspace:*" or name not in packages:
+            raise ValueError(f"Recipe dependency is not provided by the measured workspace: {name}")
+    return {name: packages[name] for name in sorted(dependencies)}
 
 
 def command(args: list[str], log: Path | None = None) -> str:
@@ -67,6 +84,8 @@ def prepare_source(source: Source, base: Path, cache: Path, platform: str) -> Pa
             raise ValueError("Prepared artifact platform mismatch")
         if receipt["identity"]["runtime"] != tree_digest(BENCHMARK / "runtime"):
             raise ValueError("Prepared runtime recipe differs from this evaluator; prepare a new artifact")
+        if receipt["identity"]["recipe_dependencies"] != read_json(BENCHMARK / "package.json")["dependencies"]:
+            raise ValueError("Prepared recipe dependencies changed")
         return path
     work = cache / "preparing"
     work.mkdir(parents=True, exist_ok=True)
@@ -80,9 +99,10 @@ def prepare_source(source: Source, base: Path, cache: Path, platform: str) -> Pa
         identity = {
             "source": receipt["digest"],
             "runtime": tree_digest(BENCHMARK / "runtime"),
+            "recipe_dependencies": read_json(BENCHMARK / "package.json")["dependencies"],
             "bun": version,
             "platform": platform,
-            "build": 2,
+            "build": 4,
         }
         artifact_id = digest(identity)
         target = cache / "prepared" / artifact_id
@@ -106,14 +126,26 @@ def prepare_source(source: Source, base: Path, cache: Path, platform: str) -> Pa
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(manifest, destination)
             shutil.copytree(stage / "source" / "patches", manifests / "patches")
+            links = recipe_links(stage / "source", identity["recipe_dependencies"])
+            link_commands = []
+            for name, relative in links.items():
+                link_path = Path("/opt/synergy/runtime/node_modules") / name
+                linked = Path("/opt/synergy/source") / relative
+                link_commands.extend(
+                    [
+                        shlex.join(["mkdir", "-p", str(link_path.parent)]),
+                        shlex.join(["ln", "-s", os.path.relpath(linked, link_path.parent), str(link_path)]),
+                    ]
+                )
             (stage / "Dockerfile").write_text(
                 f"FROM {image_id}\nUSER root\nWORKDIR /opt/synergy/source\n"
                 "COPY manifests/ ./\nENV HUSKY=0 ELECTRON_SKIP_BINARY_DOWNLOAD=1\n"
                 "RUN bun install --frozen-lockfile\n"
                 "COPY source/ ./\n"
                 "COPY runtime/ /opt/synergy/runtime/\n"
-                "RUN ln -s ../source/node_modules /opt/synergy/runtime/node_modules "
-                "&& mkdir -p /opt/synergy/bin && cp /usr/local/bin/bun /opt/synergy/bin/bun\n"
+                f"RUN {' && '.join(link_commands)}\n"
+                "RUN mkdir -p /opt/synergy/bin && cp /usr/local/bin/bun /opt/synergy/bin/bun\n"
+                "RUN SYNERGY_HOME=/tmp/benchmark-prepare bun /opt/synergy/runtime/prepare.ts\n"
             )
             image = f"synergy-bench:{artifact_id}"
             container = f"synergy-bench-prepare-{uuid.uuid4().hex[:16]}"

@@ -7,7 +7,37 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def do_POST(self):
-        request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        body = bytearray()
+        if self.headers.get("Transfer-Encoding", "").lower() == "chunked":
+            while True:
+                size = int(self.rfile.readline().split(b";", 1)[0], 16)
+                if not size:
+                    while self.rfile.readline().strip():
+                        pass
+                    break
+                body.extend(self.rfile.read(size))
+                self.rfile.read(2)
+        else:
+            body.extend(self.rfile.read(int(self.headers["Content-Length"])))
+        request = json.loads(body)
+        if self.headers.get("Authorization") != "Bearer deterministic-local-fixture":
+            self.send_error(401)
+            return
+        if self.path.endswith("/embeddings"):
+            data = json.dumps(
+                {
+                    "object": "list",
+                    "data": [{"object": "embedding", "index": 0, "embedding": [1.0] + [0.0] * 383}],
+                    "model": "fixture-embedding",
+                    "usage": {"prompt_tokens": 1, "total_tokens": 1},
+                }
+            ).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         usage = {
             "prompt_tokens": 100,
             "completion_tokens": 10,

@@ -38,3 +38,25 @@ async def test_trial_failure_does_not_drop_other_pairs(tmp_path: Path) -> None:
     assert len(state["trials"]) == 2
     assert all(trial["status"] == "completed" for trial in state["trials"].values())
     assert read_json(tmp_path / "trials/0000/attempt-001/evidence.json")["infrastructure_error"]["type"] == "ValueError"
+
+
+@pytest.mark.asyncio
+async def test_cancellation_preserves_evidence_and_marks_attempt_interrupted(tmp_path: Path) -> None:
+    import asyncio
+
+    started = asyncio.Event()
+    plan = {"schedule": [{"pair": "p", "variant": "A"}], "concurrency": 1}
+
+    async def execute(item: dict, attempt: Path) -> dict:
+        (attempt / "partial.log").write_text("retained")
+        started.set()
+        await asyncio.Future()
+        return {}
+
+    running = asyncio.create_task(execute_plan(tmp_path, plan, execute))
+    await started.wait()
+    running.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await running
+    assert read_json(tmp_path / "state.json")["trials"]["0000"]["status"] == "interrupted"
+    assert (tmp_path / "trials/0000/attempt-001/partial.log").read_text() == "retained"

@@ -4,7 +4,7 @@
 
 ## 开始一次 A/B
 
-需要 Python 3.12、uv、Docker Linux containers 和源码声明的 Bun 版本。首次准备会下载任务、Linux 依赖和镜像；后续实验复用准备产物。依赖安装使用完整 monorepo 的 frozen lockfile，不运行整套产品发布构建。
+需要 POSIX 宿主环境（Linux、macOS 或 WSL）、Python 3.12、uv、Docker Linux containers 和源码声明的 Bun 版本。首次准备会下载任务、Linux 依赖和镜像；后续实验复用准备产物。依赖安装使用完整 monorepo 的 frozen lockfile，不运行整套产品发布构建。准备产物包含 Bun 和由被测 runtime 下载的 ripgrep；缺少 Git 的任务镜像通过 Pier 安装步骤补齐 Git。
 
 ```bash
 bun bench list
@@ -67,9 +67,9 @@ Local adaptation: 仅固定子集、冻结源码与运行组合、配对调度�
 
 ## 源码与结果管理
 
-评测工程、被测源码、运行组合和数据集分别标识。源码准备读取 Git 内容，不改分支、index 或创建实验 commit；保存未提交改动、删除、新文件、可执行位和内部 symlink。忽略文件不进入快照，外部 symlink 与 submodule 被拒绝。试验执行只挂载冻结副本及 Linux 依赖，全部只读。
+评测工程、被测源码、运行组合和数据集分别标识。源码准备读取 Git 内容，不改分支、index 或创建实验 commit；保存未提交改动、删除、新文件、可执行位和内部 symlink。忽略文件不进入快照，外部 symlink 与 submodule 被拒绝。试验执行只挂载冻结副本及 Linux 依赖，全部只读。包装器按冻结 workspace manifest 的公开包名建立依赖链接，不依赖根目录依赖提升，也不要求被测 revision 已包含 `benchmark/`。
 
-运行前校验源码文件清单和内容、依赖 bundle、recipe、输入及任务摘要。原 checkout 后续变化不影响已有实验。`resume` 拒绝使用变化后的评测器或输入继续已有实验；已结束的失败也是结束，不能借 resume 自动重抽样。中断重跑使用新 attempt，并保留旧 Home 和证据。固定输入仍不能冻结外部模型服务版本或消除服务端缓存、网络负载变化。
+运行前校验源码文件清单和内容、依赖 bundle、recipe、输入及任务摘要。原 checkout 后续变化不影响已有实验。`resume` 拒绝使用变化后的评测器、Python 版本或输入继续已有实验；已结束的失败也是结束，不能借 resume 自动重抽样。中断重跑使用新 attempt，并保留旧 Home 和证据。固定输入仍不能冻结外部模型服务版本或消除服务端缓存、网络负载变化。
 
 ```text
 run/
@@ -125,4 +125,4 @@ bun run --cwd benchmark typecheck
 SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/test/test_docker.py
 ```
 
-普通测试不启动 Docker 或付费模型。显式 Docker 测试使用固定本地 provider，验证真实工具执行、A/B、reward、cache token、rollout 和 resume。24 个官方任务的全套 oracle/nop 结果必须实际运行后另行记录，静态清单校验不能替代这些结果。
+普通测试不启动 Docker 或付费模型。显式 Docker 测试使用固定本地 chat/embedding provider，覆盖三种 runtime、共享及独立 verifier、真实工具执行、A/B、reward、cache token、rollout 和 resume。24 个官方任务的全套 oracle/nop 结果必须实际运行后另行记录，静态清单校验不能替代这些结果。

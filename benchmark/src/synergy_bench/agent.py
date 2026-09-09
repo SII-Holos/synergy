@@ -11,6 +11,7 @@ from pier.agents.base import BaseAgent
 from pier.agents.installed.base import NonZeroAgentExitCodeError
 from pier.environments.base import BaseEnvironment
 from pier.models.agent.context import AgentContext
+from pier.models.agent.install import AgentInstallSpec, InstallStep
 from pier.models.agent.network import NetworkAllowlist
 
 from .prepare import command
@@ -31,6 +32,25 @@ class SynergyAgent(BaseAgent):
 
     def network_allowlist(self) -> NetworkAllowlist:
         return NetworkAllowlist(domains=self.settings["network_domains"])
+
+    def install_spec(self) -> AgentInstallSpec:
+        return AgentInstallSpec(
+            agent_name="synergy-prerequisites",
+            version="1",
+            steps=[
+                InstallStep(
+                    user="root",
+                    run=(
+                        "if command -v git >/dev/null; then exit 0; fi; "
+                        "if command -v apt-get >/dev/null; then apt-get update && "
+                        "apt-get install -y --no-install-recommends git ca-certificates; "
+                        "elif command -v apk >/dev/null; then apk add --no-cache git ca-certificates; "
+                        "else echo 'Synergy requires Git in this task image' >&2; exit 1; fi"
+                    ),
+                )
+            ],
+            verification_command="git --version",
+        )
 
     async def setup(self, environment: BaseEnvironment) -> None:
         if self.mcp_servers or self.skills_dir:

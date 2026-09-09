@@ -115,6 +115,7 @@
       "entry": [
         "runtime/entry.ts",
         "runtime/trial.ts",
+        "runtime/prepare.ts",
         "runtime/worker.ts",
         "runtime/inspect.ts",
         "runtime/compositions/*.ts",

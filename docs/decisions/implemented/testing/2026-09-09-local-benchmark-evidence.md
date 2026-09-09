@@ -20,11 +20,11 @@ Snapshots consume local disk space and require content validation. A source iden
 
 ## Verification
 
-Behavioral tests verify working-tree changes, deletions, new files, executable bits, symlink confinement, immutable revision snapshots, configuration validation and balanced paired schedules.
+Behavioral tests verify working-tree changes, deletions, new files, executable bits, symlink confinement, immutable revision snapshots, configuration validation, balanced paired schedules, interrupted evidence retention and cleanup ownership. A deterministic local-provider Docker test executes eight trials across the three runtime compositions and both shared and separate verifier environments, checking real tool execution, reward, cache usage, rollout integrity and idempotent resume. It does not establish results for the official task subset.
 
 ## Runtime and workload contracts
 
-The evaluator is a private root workspace with a pinned Python/Pier dependency graph. Runtime recipes compose the public core, Library or full product packages; both the CLI parent and agent worker register the same recipe before configuration locks. Prepared Linux Bun source and dependencies are mounted read-only into fresh original-task environments. Evaluator content, measured source, recipe, installed bundle and task content have separate identities.
+The evaluator is a private root workspace with a pinned Python/Pier dependency graph. Runtime recipes compose the public core, Library or full product packages; both the CLI parent and agent worker register the same recipe before configuration locks. Prepared Linux Bun source and dependencies are mounted read-only into fresh original-task environments. Evaluator content, measured source, recipe, installed bundle and task content have separate identities. Recipe dependencies resolve by public package name from the frozen workspace manifests, with explicit links beside the wrapper; they do not depend on root dependency hoisting or require the measured revision to contain the evaluator workspace.
 
 The fixed development suite selects twelve DeepSWE 1.1 tasks and twelve Terminal-Bench 2.1 tasks using metadata strata and seed zero. Original instructions, time limits, artifact collection and verifiers are preserved. The suite does not claim official leaderboard equivalence or calibrated population estimates.
 

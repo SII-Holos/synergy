@@ -7,6 +7,7 @@ await mkdir(logs, { recursive: true })
 await Bun.write(path.join(logs, "runner.pid"), String(process.pid))
 const env = {
   ...process.env,
+  PATH: `/opt/synergy/bin:${process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin"}`,
   SYNERGY_HOME: path.join(logs, "home"),
   SYNERGY_CONFIG: options.config,
   SYNERGY_CONFIG_CONTENT: "{}",

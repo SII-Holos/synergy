@@ -24,8 +24,9 @@ def clean(root: Path) -> None:
     if read_json(root / "owner.json") != {"kind": "synergy-benchmark-run", "version": 1}:
         raise ValueError("Not a benchmark-owned run")
     with locked(root):
-        for record in root.glob("**/environment.json"):
-            remove_environment(root, record)
+        for category in ["trials", "debug"]:
+            for record in (root / category).glob("*/attempt-*/environment.json"):
+                remove_environment(root, record)
         shutil.rmtree(root)
 
 

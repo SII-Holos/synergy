@@ -23,3 +23,12 @@ def test_evidence_preserves_raw_accounting_and_hashes(tmp_path: Path) -> None:
     result = collect_evidence(tmp_path, {})
     assert result["accounting"] == accounting
     assert len(result["files"]["agent/accounting.json"]["sha256"]) == 64
+
+
+def test_truncated_execution_does_not_discard_verifier_result(tmp_path: Path) -> None:
+    (tmp_path / "agent").mkdir()
+    (tmp_path / "agent/execution.json").write_text('{"exit_code":')
+    result = collect_evidence(tmp_path, {"verifier_result": {"rewards": {"reward": 1.0}}})
+    assert result["execution"] is None
+    assert result["verifier"]["rewards"]["reward"] == 1.0
+    assert "execution_invalid" in result["evidence"]["missing"]

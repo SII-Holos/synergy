@@ -80,7 +80,7 @@ def initialize(path: Path) -> Path:
         if source_key not in artifacts:
             artifacts[source_key] = prepare_source(variant.source, base, cache, config.platform)
         artifact = artifacts[source_key]
-        receipt = verify_prepared(artifact)
+        receipt = read_json(artifact / "receipt.json")
         capability = preflight(artifact, variant.model_dump(), inputs, config.platform)
         variants[name] = {
             **variant.model_dump(),
@@ -231,11 +231,16 @@ def remove_environment(root: Path, record: Path) -> None:
     project = read_json(record)["project"]
     if not re.fullmatch(rf"sb-{re.escape(root.name[-8:])}-[a-z0-9-]+", project):
         raise ValueError("Unexpected Docker project ownership")
-    selector = f"label=com.docker.compose.project={project}"
-    for container in command(["docker", "ps", "-aq", "--filter", selector]).splitlines():
-        command(["docker", "rm", "-f", container])
-    for network in command(["docker", "network", "ls", "-q", "--filter", selector]).splitlines():
-        command(["docker", "network", "rm", network])
+    label = '{{.Label "com.docker.compose.project"}}'
+    names = set(command(["docker", "ps", "-a", "--format", label]).splitlines())
+    names.update(command(["docker", "network", "ls", "--format", label]).splitlines())
+    projects = {name for name in names if name == project or name.startswith(project + "__verifier__")}
+    for name in sorted(projects):
+        selector = f"label=com.docker.compose.project={name}"
+        for container in command(["docker", "ps", "-aq", "--filter", selector]).splitlines():
+            command(["docker", "rm", "-f", container])
+        for network in command(["docker", "network", "ls", "-q", "--filter", selector]).splitlines():
+            command(["docker", "network", "rm", network])
 
 
 async def resume(root: Path, *, debug_trial: str | None = None) -> None:
