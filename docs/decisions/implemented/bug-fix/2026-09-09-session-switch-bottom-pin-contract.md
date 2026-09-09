@@ -16,7 +16,7 @@ Four defects compounded on one path:
 ## Decision
 
 - `createAutoScroll` treats every forced pin as a short follow contract: scheduling a forced pin opens a settle window (default 1000 ms) during which the hook is active, resize-driven content growth re-pins to the bottom, and each such growth extends the window. An upward wheel interaction still releases follow immediately.
-- Remounting a scroller element resets the hook's `userScrolled` state, because a fresh scroller always starts at the top; an in-flight settle window is left to self-expire.
+- Remounting a scroller element resets the hook's `userScrolled` state, because a fresh scroller always starts at the top; pending frames and settling are cleared so hash-target navigation cannot inherit another session's bottom pin. Ordinary work-completion settling does not extend on growth or shorten an explicit forced-pin window.
 - While follow is inactive, content growth reports the bottom distance through a new `onMeasure` callback (rAF-coalesced) so consumers can keep scrolled-up state honest without scroll events.
 - The session page re-arms the init chain whenever readiness flips false, gates `onMeasure` until the initial pin has consumed (so partially laid-out content cannot flash the button), and resets `scrolledUp` on session switch. Kanban panes wire `onMeasure` with the same 100 px threshold and no gate, since their panes do not run a loading switch.
 

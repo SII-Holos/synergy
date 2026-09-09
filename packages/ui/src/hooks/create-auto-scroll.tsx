@@ -14,6 +14,7 @@ export interface AutoScrollOptions {
 export function createAutoScroll(options: AutoScrollOptions) {
   let scroll: HTMLElement | undefined
   let settling = false
+  let forcedSettling = false
   let settleTimer: ReturnType<typeof setTimeout> | undefined
   let scrollFrame: number | undefined
   let measureFrame: number | undefined
@@ -36,11 +37,14 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
   const settleWindow = () => options.settleMs ?? 1000
 
-  const beginSettle = (ms: number) => {
+  const beginSettle = (ms: number, forced = false) => {
+    if (forcedSettling && !forced) return
     settling = true
+    forcedSettling = forced
     if (settleTimer) clearTimeout(settleTimer)
     settleTimer = setTimeout(() => {
       settling = false
+      forcedSettling = false
       settleTimer = undefined
     }, ms)
   }
@@ -78,7 +82,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
     // A forced pin lands on whatever layout exists right now; open the settle
     // window immediately so late content growth keeps re-pinning underneath.
-    if (force) beginSettle(settleWindow())
+    if (force) beginSettle(settleWindow(), true)
     forceNextScroll ||= force
     if (scrollFrame !== undefined) return
     scrollFrame = requestAnimationFrame(flushScrollToBottom)
@@ -142,7 +146,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
       // window). Otherwise content grows without scroll events, so report the
       // distance so "scrolled up" state stays honest in idle sessions.
       if (active() && !store.userScrolled) {
-        if (settling) beginSettle(settleWindow())
+        if (forcedSettling) beginSettle(settleWindow(), true)
         scrollToBottom(false)
         return
       }
@@ -152,13 +156,9 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
   createEffect(
     on(options.working, (working) => {
-      settling = false
-      if (settleTimer) clearTimeout(settleTimer)
-      settleTimer = undefined
-
       if (working) {
         if (!store.userScrolled) {
-          scrollToBottom(true)
+          scrollToBottom(false)
         }
         return
       }
@@ -183,15 +183,21 @@ export function createAutoScroll(options: AutoScrollOptions) {
         cleanup = undefined
       }
 
+      if (scroll !== el) {
+        if (settleTimer) clearTimeout(settleTimer)
+        settleTimer = undefined
+        settling = false
+        forcedSettling = false
+        if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
+        if (measureFrame !== undefined) cancelAnimationFrame(measureFrame)
+        scrollFrame = undefined
+        measureFrame = undefined
+        forceNextScroll = false
+      }
       scroll = el
       down = false
 
       if (!el) return
-      // A fresh scroller starts at the top: drop a previous element/session's
-      // user-scrolled state or follow stays disabled there. An in-flight settle
-      // window is left alone: it self-expires within settleMs and only causes
-      // an early bottom pin of the fresh scroller, which the initial forced
-      // pin performs anyway.
       if (store.userScrolled) setStore("userScrolled", false)
 
       el.style.overflowAnchor = "none"

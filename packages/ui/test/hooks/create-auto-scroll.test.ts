@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test"
 import * as SolidWeb from "solid-js/web"
-import { createRoot } from "solid-js"
+import { createRoot, createSignal } from "solid-js"
 
 // The hook's resize wiring is browser-only: the @solid-primitives package
 // short-circuits on the server build. Force the client build's flag so the
@@ -21,8 +21,8 @@ class FakeResizeObserver {
   observe(): void {}
   unobserve(): void {}
   disconnect(): void {}
-  fire(element: unknown): void {
-    this.dispatch([{ target: element, contentRect: { width: 800, height: 600 } }], this)
+  fire(element: { scrollHeight: number }): void {
+    this.dispatch([{ target: element, contentRect: { width: 800, height: element.scrollHeight } }], this)
   }
 }
 
@@ -31,13 +31,14 @@ function createScrollHarness() {
   const originalCancel = globalThis.cancelAnimationFrame
   const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window")
   const originalResizeObserver = (globalThis as { ResizeObserver?: unknown }).ResizeObserver
-  let frames: FrameCallback[] = []
+  const frames = new Map<number, FrameCallback>()
+  let nextFrame = 0
 
   globalThis.requestAnimationFrame = ((callback: FrameCallback) => {
-    frames.push(callback)
-    return frames.length
+    frames.set(++nextFrame, callback)
+    return nextFrame
   }) as typeof requestAnimationFrame
-  globalThis.cancelAnimationFrame = (() => {}) as typeof cancelAnimationFrame
+  globalThis.cancelAnimationFrame = ((id: number) => frames.delete(id)) as typeof cancelAnimationFrame
   ;(globalThis as { ResizeObserver?: unknown }).ResizeObserver = FakeResizeObserver as unknown as
     | typeof ResizeObserver
     | undefined
@@ -50,9 +51,9 @@ function createScrollHarness() {
   FakeResizeObserver.instances = []
 
   const flushFrames = () => {
-    while (frames.length > 0) {
-      const pending = frames
-      frames = []
+    while (frames.size > 0) {
+      const pending = [...frames.values()]
+      frames.clear()
       for (const frame of pending) frame(16)
     }
   }
@@ -164,6 +165,7 @@ describe("createAutoScroll", () => {
       const observer = harness.lastObserver()
       expect(observer).toBeDefined()
 
+      await Bun.sleep(350)
       element.scrollHeight = 1600
       observer!.fire(element)
       harness.flushFrames()
@@ -206,3 +208,72 @@ describe("createAutoScroll", () => {
     }
   })
 })
+
+for (const pending of [false, true]) {
+  test(`a remounted hash-target scroller does not inherit ${pending ? "pending" : "settled"} forced scrolling`, async () => {
+    const harness = createScrollHarness()
+    let dispose = () => {}
+    try {
+      let autoScroll!: ReturnType<typeof createAutoScroll>
+      const first = harness.makeScroller()
+      createRoot((cleanup) => {
+        dispose = cleanup
+        autoScroll = createAutoScroll({ working: () => false })
+        autoScroll.scrollRef(first)
+        autoScroll.contentRef(first)
+      })
+      autoScroll.forceScrollToBottom()
+      if (!pending) harness.flushFrames()
+      const second = harness.makeScroller()
+      autoScroll.scrollRef(second)
+      autoScroll.contentRef(second)
+      second.scrollTop = 200
+      await harness.tick()
+      harness.lastObserver()!.fire(second)
+      harness.flushFrames()
+      expect(second.calls).toEqual([])
+      expect(second.scrollTop).toBe(200)
+    } finally {
+      dispose()
+      harness.restore()
+    }
+  })
+}
+
+for (const force of [false, true]) {
+  test(`work completion ${force ? "preserves the explicit pin" : "does not extend ordinary settling"}`, async () => {
+    const harness = createScrollHarness()
+    let dispose = () => {}
+    try {
+      let setWorking!: (value: boolean) => boolean
+      let autoScroll!: ReturnType<typeof createAutoScroll>
+      const element = harness.makeScroller()
+      createRoot((cleanup) => {
+        dispose = cleanup
+        const [working, update] = createSignal(true)
+        setWorking = update
+        autoScroll = createAutoScroll({ working })
+        autoScroll.scrollRef(element)
+        autoScroll.contentRef(element)
+      })
+      await harness.tick()
+      harness.flushFrames()
+      if (force) autoScroll.forceScrollToBottom()
+      harness.flushFrames()
+      setWorking(false)
+      await Bun.sleep(200)
+      element.scrollHeight = 2200
+      harness.lastObserver()!.fire(element)
+      harness.flushFrames()
+      await Bun.sleep(200)
+      element.calls.length = 0
+      element.scrollHeight = 3200
+      harness.lastObserver()!.fire(element)
+      harness.flushFrames()
+      expect(element.calls.length).toBe(force ? 1 : 0)
+    } finally {
+      dispose()
+      harness.restore()
+    }
+  })
+}
