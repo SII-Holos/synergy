@@ -437,3 +437,81 @@ test("full fresh runs union hits across source owners and cannot reuse stale rep
   expect(failed.verdicts.find((verdict) => verdict.package === "packages/a")?.linesPct).toBe(50)
   expect(failed.verdicts.find((verdict) => verdict.package === "packages/b")?.errors.join(" ")).toContain("exited 1")
 })
+
+test("aggregate mode unions reports from disk without running commands and fails on gaps", async () => {
+  const root = await fixture()
+  await mkdir(path.join(root, "script"), { recursive: true })
+  const packages: CoverageManifest["packages"] = {}
+  for (const owner of ["a", "b"]) {
+    const directory = path.join(root, "packages", owner)
+    await mkdir(path.join(directory, "src"), { recursive: true })
+    await mkdir(path.join(directory, "coverage"), { recursive: true })
+    await writeFile(path.join(directory, "src/value.ts"), "export const value = 1\n")
+    packages[`packages/${owner}`] = {
+      command: "exit 99",
+      lcov: "coverage/lcov.info",
+      thresholds: { lines: 100, functions: 100 },
+      exempt: [],
+    }
+  }
+  await writeFile(
+    path.join(root, "packages/a/coverage/lcov.info"),
+    "SF:src/value.ts\nDA:1,1\nDA:2,0\nLF:2\nLH:1\nFNF:1\nFNH:1\nend_of_record\n",
+  )
+  await writeFile(
+    path.join(root, "packages/b/coverage/lcov.info"),
+    "SF:src/value.ts\nDA:1,1\nLF:1\nLH:1\nFNF:1\nFNH:1\nend_of_record\nSF:../a/src/value.ts\nDA:1,0\nDA:2,1\nLF:2\nLH:1\nFNF:1\nFNH:1\nend_of_record\n",
+  )
+  await writeFile(path.join(root, "script/coverage-exempt.json"), JSON.stringify({ packages }))
+  const result = await runCoverageCheck({ root, aggregate: true })
+  expect(result.passed).toBe(true)
+  expect(result.verification.shared).toBe(true)
+  expect(result.verification.source).toBe("existing")
+  expect(result.verdicts.map((verdict) => verdict.linesPct)).toEqual([100, 100])
+  const partial = await runCoverageCheck({ root, aggregate: true, packages: ["packages/b"] })
+  expect(partial.passed).toBe(false)
+  expect(partial.errors.join(" ")).toContain("complete manifest")
+  for (const flags of [{ existing: true }, { executeOnly: true }]) {
+    const conflicting = await runCoverageCheck({ root, aggregate: true, ...flags })
+    expect(conflicting.passed).toBe(false)
+    expect(conflicting.errors.join(" ")).toContain("cannot be combined")
+  }
+  await rm(path.join(root, "packages/b/coverage/lcov.info"))
+  const gapped = await runCoverageCheck({ root, aggregate: true })
+  expect(gapped.passed).toBe(false)
+  expect(gapped.verification.shared).toBe(false)
+  expect(gapped.verdicts.find((verdict) => verdict.package === "packages/b")?.errors.join(" ")).toContain(
+    "no lcov output",
+  )
+})
+
+test("execute-only runs shard commands, collects failures, and never evaluates thresholds", async () => {
+  const root = await fixture()
+  await mkdir(path.join(root, "script"), { recursive: true })
+  const packages: CoverageManifest["packages"] = {}
+  const lcov = "SF:src/value.ts\nDA:1,1\nLF:1\nLH:1\nFNF:1\nFNH:1\nend_of_record\n"
+  for (const owner of ["a", "b"]) {
+    const directory = path.join(root, "packages", owner)
+    await mkdir(path.join(directory, "src"), { recursive: true })
+    await writeFile(path.join(directory, "src/value.ts"), "export const value = 1\n")
+    packages[`packages/${owner}`] = {
+      command: owner === "a" ? "exit 3" : "bun coverage-fixture.ts",
+      lcov: "coverage/lcov.info",
+      thresholds: { lines: 100, functions: 100 },
+      exempt: [],
+    }
+    if (owner === "b") {
+      await writeFile(
+        path.join(directory, "coverage-fixture.ts"),
+        `await Bun.write("coverage/lcov.info", ${JSON.stringify(lcov)})`,
+      )
+    }
+  }
+  await writeFile(path.join(root, "script/coverage-exempt.json"), JSON.stringify({ packages }))
+  const result = await runCoverageCheck({ root, executeOnly: true, packages: ["packages/a", "packages/b"] })
+  expect(result.passed).toBe(false)
+  expect(result.verdicts).toEqual([])
+  expect(result.errors).toHaveLength(1)
+  expect(result.errors[0]).toContain("packages/a")
+  expect(result.errors[0]).toContain("exited 3")
+})

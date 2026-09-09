@@ -66,13 +66,13 @@ describe("CI topology", () => {
     expect(job.env?.SYNERGY_BUILD_TARGETS).toBe("linux-x64")
   })
 
-  test("workspace suites bound concurrent native processes on the CI runner", () => {
+  test("workspace suites bound concurrent native processes on every test shard", () => {
     const workflow = Bun.YAML.parse(ciSource) as {
-      jobs: Record<string, { steps: Array<{ name?: string; run?: string }> }>
+      jobs: Record<string, { steps?: Array<{ name?: string; run?: string }> }>
     }
-    const command = workflow.jobs.test!.steps.find((step) => step.name === "Run non-Harness package tests")?.run
-    expect(command).toContain("--concurrency=2")
-    expect(command).toContain("--filter='!@ericsanchezok/synergy-harness'")
+    const turboSteps = workflow.jobs["test-shards"]!.steps?.filter((step) => step.run?.includes("bun turbo test")) ?? []
+    expect(turboSteps).toHaveLength(1)
+    expect(turboSteps[0]!.run).toContain("--concurrency=2")
   })
 
   test("quality job runs the ci-static gate cluster", () => {
@@ -81,38 +81,34 @@ describe("CI topology", () => {
     expect(block).toContain("SYNERGY_GATE_CONCURRENCY: 4")
   })
 
-  test("coverage job runs the ci-coverage gate cluster", () => {
+  test("coverage aggregates shard reports instead of running the gate cluster", () => {
     const block = ciSource.split("  coverage:")[1]?.split("  all-checks-passed:")[0] ?? ""
-    expect(block).toContain("bun script/gates.ts ci-coverage")
-    expect(block).toContain("timeout-minutes: 45")
+    expect(block).toContain("bun script/coverage-check.ts --aggregate")
+    expect(block).toContain("timeout-minutes: 10")
+    expect(block).not.toContain("gates.ts")
   })
 
-  test("the blocking matrix has exactly the required jobs including installed core artifacts", () => {
+  test("the blocking matrix has exactly the required jobs plus coverage and test shards", () => {
     const jobs = parseJobNames(ciSource)
     const blocking = jobs.filter((job) => job !== "all-checks-passed")
-    expect(blocking.sort()).toEqual([...REQUIRED_NEEDS].sort())
+    expect(blocking.sort()).toEqual(
+      [...REQUIRED_NEEDS, "coverage-shards", "test-shards", "test-aux", "test-harness"].sort(),
+    )
   })
 })
 
 describe("gate modes", () => {
-  test("ci-static excludes secrets, workflow, and coverage", () => {
+  test("ci-static excludes secrets and workflow", () => {
     const ids = gatesForMode("ci-static").map((gate) => gate.id)
     expect(ids).not.toContain("secrets:check")
     expect(ids).not.toContain("workflow:check")
-    expect(ids).not.toContain("coverage:check")
     expect(ids).toContain("doc:check")
     expect(ids).toContain("decision:check")
     expect(ids).toContain("browser-crypto:check")
   })
 
-  test("ci-coverage runs exactly the coverage gate", () => {
-    const ids = gatesForMode("ci-coverage").map((gate) => gate.id)
-    expect(ids).toEqual(["coverage:check"])
-  })
-
-  test("local excludes coverage and browser-crypto but keeps the rest", () => {
+  test("local excludes browser-crypto but keeps the rest", () => {
     const ids = gatesForMode("local").map((gate) => gate.id)
-    expect(ids).not.toContain("coverage:check")
     expect(ids).not.toContain("browser-crypto:check")
     expect(ids).toContain("format:check")
     expect(ids).toContain("workflow:check")
