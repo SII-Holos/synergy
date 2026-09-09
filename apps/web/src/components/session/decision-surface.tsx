@@ -1,53 +1,76 @@
-import { createEffect, createMemo, on, onCleanup, Show } from "solid-js"
-import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
-import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { createContext, createSignal, onCleanup, onMount, Show, useContext, type ParentProps } from "solid-js"
+import { Portal } from "solid-js/web"
+import { PortalStyleOwner, UIStyleProvider } from "@ericsanchezok/synergy-ui/context/ui-style"
 import { useSessionDataView } from "@/context/session-data-view"
-import { useLocale } from "@/context/locale"
 import { PermissionDock } from "./permission-dock"
 import { QuestionPrompt } from "./question-prompt"
 
-const decisionLabel = { id: "session.decisions.label", message: "Session decision required" }
-
 export function SessionDecisionSurface(props: { sessionId?: string }) {
   const view = useSessionDataView()
-  const dialog = useDialog()
-  const { i18n } = useLocale()
-  const question = () => (props.sessionId ? view().questionsFor(props.sessionId)[0] : undefined)
-  const pending = createMemo(() => {
-    const id = props.sessionId
-    if (!id) return false
-    return (
-      Boolean(question()) ||
-      view().permissionsFor(id).length > 0 ||
-      view()
-        .sessions()
-        .some((child) => child.parentID === id && view().permissionsFor(child.id).length > 0)
-    )
-  })
-  let dialogId: string | undefined
-  const close = () => {
-    if (dialogId) dialog.close(dialogId)
-    dialogId = undefined
-  }
-  createEffect(
-    on(
-      () => [props.sessionId, pending()] as const,
-      ([id, required]) => {
-        close()
-        if (!id || !required) return
-        dialogId = dialog.push(
-          () => (
-            <Dialog ariaLabel={i18n._(decisionLabel)} dismissible={false} size="wide">
-              <PermissionDock sessionID={id} />
-              <Show when={question()}>{(request) => <QuestionPrompt request={request()} />}</Show>
-            </Dialog>
-          ),
-          undefined,
-          { protected: true },
-        )
-      },
-    ),
+  return (
+    <Show when={props.sessionId}>
+      {(id) => (
+        <div data-session-decision-stack style={{ "max-height": "min(50dvh, 32rem)", overflow: "auto" }}>
+          <PermissionDock sessionID={id()} />
+          <Show when={view().questionsFor(id())[0]}>
+            {(request) => (
+              <div class="mb-3">
+                <QuestionPrompt request={request()} />
+              </div>
+            )}
+          </Show>
+        </div>
+      )}
+    </Show>
   )
-  onCleanup(close)
-  return null
+}
+
+const DecisionOutletContext = createContext<(element: HTMLDivElement) => () => void>()
+
+export function SessionDecisionOutlet() {
+  const register = useContext(DecisionOutletContext)
+  let element!: HTMLDivElement
+  let release: (() => void) | undefined
+  onMount(() => {
+    release = register?.(element)
+  })
+  onCleanup(() => release?.())
+  return <div ref={element} data-session-decision-outlet />
+}
+
+export function SessionDecisionHost(props: ParentProps<{ sessionId?: string }>) {
+  const [outlet, setOutlet] = createSignal<HTMLDivElement>()
+  return (
+    <DecisionOutletContext.Provider
+      value={(element) => {
+        setOutlet(element)
+        return () => setOutlet((current) => (current === element ? undefined : current))
+      }}
+    >
+      {props.children}
+      <UIStyleProvider reset>
+        <Portal mount={outlet()}>
+          <PortalStyleOwner>
+            <div
+              data-session-decision-host
+              style={
+                outlet()
+                  ? undefined
+                  : {
+                      position: "fixed",
+                      bottom: "1rem",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      width: "min(48rem, calc(100vw - 2rem))",
+                      "z-index": 1000,
+                    }
+              }
+            >
+              <SessionDecisionSurface sessionId={props.sessionId} />
+            </div>
+          </PortalStyleOwner>
+        </Portal>
+      </UIStyleProvider>
+    </DecisionOutletContext.Provider>
+  )
 }

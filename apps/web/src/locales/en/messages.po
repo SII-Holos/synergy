@@ -12687,10 +12687,6 @@ msgstr "Return to latest"
 msgid "session.conversation.withdraw"
 msgstr "Withdraw"
 
-#. js-lingui-explicit-id
-msgid "session.decisions.label"
-msgstr "Session decision required"
-
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.dock.back"

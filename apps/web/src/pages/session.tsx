@@ -19,7 +19,7 @@ import { DefaultSession } from "@/plugin/default-session"
 import { PluginPageOutlet } from "@/plugin/shell-outlet"
 import { BrowserViewEffects } from "@/components/workspace/browser/browser-view-effects"
 import { createPromptInputController } from "@/components/prompt-input/prompt-controller"
-import { SessionDecisionSurface } from "@/components/session/decision-surface"
+import { SessionDecisionHost } from "@/components/session/decision-surface"
 import { Show, Match, Switch, createMemo, createEffect, createSignal, on, onCleanup, untrack, type JSX } from "solid-js"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -1967,21 +1967,22 @@ function SessionPageContent() {
   }
   return (
     <>
-      <SessionDecisionSurface sessionId={params.id} />
       <BrowserViewEffects timeline={timeline} />
       <Show when={composer()}>{(controller) => controller().extensions()}</Show>
-      <PluginPageOutlet
-        page="session"
-        sessionId={params.id}
-        session={session}
-        conversation={params.id ? conversation : undefined}
-        composerLayout={composerLayout}
-        input={composer()?.input}
-        layout={sessionLayout}
-        workbench={workbenchService}
-        views={views}
-        fallback={() => <DefaultSession context={{ layout: sessionLayout }} />}
-      />
+      <SessionDecisionHost sessionId={params.id}>
+        <PluginPageOutlet
+          page="session"
+          sessionId={params.id}
+          session={session}
+          conversation={params.id ? conversation : undefined}
+          composerLayout={composerLayout}
+          input={composer()?.input}
+          layout={sessionLayout}
+          workbench={workbenchService}
+          views={views}
+          fallback={() => <DefaultSession context={{ layout: sessionLayout }} />}
+        />
+      </SessionDecisionHost>
     </>
   )
 }
