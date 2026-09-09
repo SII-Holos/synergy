@@ -84,24 +84,39 @@ export function expandGitProtectedSubpaths(paths: string[]): string[] {
  * directory, which the trust boundary keeps external — under deny-default
  * sandbox profiles every git command would fail with "not a git repository".
  * Rather than granting the whole shared .git directory (which would expose
- * hooks, FETCH_HEAD, and reflogs to sandboxed processes), this returns the
- * enumerated paths git read commands need: the per-worktree gitdir plus the
- * common store's objects, refs, packed-refs, and config. Config is required —
- * git refuses to run without reading it — and carries the same risk as the
- * already-granted ~/.gitconfig.
+ * hooks and executable configuration) or the per-worktree gitdir directory
+ * (which would expose that worktree's reflogs and fetch metadata), this
+ * returns the enumerated files and store paths git read commands need:
+ *
+ * - per-worktree files: HEAD, commondir, and the gitdir backlink (required
+ *   for git to recognize a linked worktree at all), plus index, ORIG_HEAD,
+ *   and config.worktree when present;
+ * - common store: objects and refs directories, plus config, packed-refs,
+ *   info/exclude, and info/attributes when present. Config is required — git
+ *   refuses to run without reading it — and carries the same risk as the
+ *   already-granted ~/.gitconfig; info/exclude and info/attributes keep
+ *   repository-local ignore rules authoritative so `git status` does not
+ *   report locally ignored files as untracked.
+ *
+ * File grants are existence-filtered so backends that bind every readable
+ * root (the Linux helper) never receive a missing source, which would fail
+ * every command before git starts. Unread optional files simply stay denied.
  *
  * Every grant is fail-closed: the worktree .git pointer file must resolve
- * inside <originalCheckout>/.git/worktrees/ and its commondir must resolve
- * exactly to <originalCheckout>/.git. Any mismatch (or a directory-style .git,
- * i.e. not actually a linked worktree) returns an empty set. Granted paths are
- * read-only; common-store writes (index.lock, objects, refs) stay outside the
- * sandbox writable roots, so commits fail with a lock error instead of
- * silently corrupting the shared store.
+ * inside <originalCheckout>/.git/worktrees/, its commondir must resolve
+ * exactly to <originalCheckout>/.git, and the metadata entry's gitdir
+ * backlink must resolve exactly to this workspace's .git pointer — a pointer
+ * aimed at a sibling worktree's metadata entry yields an empty set. Any
+ * mismatch (or a directory-style .git, i.e. not actually a linked worktree)
+ * returns no grants. Granted paths are read-only; common-store writes
+ * (index.lock, objects, refs) stay outside the sandbox writable roots, so
+ * commits fail with a lock error instead of silently corrupting the shared
+ * store.
  */
 export function worktreeSandboxReadGrants(workspace: string, originalCheckout?: string): string[] {
   if (!originalCheckout) return []
   const flavor = pathFlavor(workspace)
-  const pointer = joinPathLike(workspace, ".git")
+  const pointer = flavor.resolve(workspace, ".git")
   let gitdirLine: string
   try {
     if (!fs.statSync(pointer).isFile()) return []
@@ -127,12 +142,41 @@ export function worktreeSandboxReadGrants(workspace: string, originalCheckout?: 
   const common = flavor.resolve(gitdir, commonRaw)
   if (common !== joinPathLike(checkout, ".git")) return []
 
+  let backlinkRaw: string
+  try {
+    backlinkRaw = fs
+      .readFileSync(joinPathLike(gitdir, "gitdir"), "utf8")
+      .trim()
+      .replace(/[\\/]+$/, "")
+  } catch {
+    return []
+  }
+  if (flavor.resolve(gitdir, backlinkRaw) !== pointer) return []
+
+  const existingFile = (p: string): string[] => {
+    try {
+      return fs.statSync(p).isFile() ? [p] : []
+    } catch {
+      return []
+    }
+  }
   return uniqueRoots([
-    gitdir,
+    ...[
+      joinPathLike(gitdir, "HEAD"),
+      commondirPath,
+      joinPathLike(gitdir, "gitdir"),
+      joinPathLike(gitdir, "index"),
+      joinPathLike(gitdir, "ORIG_HEAD"),
+      joinPathLike(gitdir, "config.worktree"),
+    ].flatMap(existingFile),
     joinPathLike(common, "objects"),
     joinPathLike(common, "refs"),
-    joinPathLike(common, "packed-refs"),
-    joinPathLike(common, "config"),
+    ...[
+      joinPathLike(common, "config"),
+      joinPathLike(common, "packed-refs"),
+      joinPathLike(common, "info", "exclude"),
+      joinPathLike(common, "info", "attributes"),
+    ].flatMap(existingFile),
   ])
 }
 

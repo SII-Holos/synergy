@@ -92,10 +92,12 @@ describe("worktree gitdir enumerated sandbox grants", () => {
     return wt
   }
 
-  test("linked worktree seeds enumerated gitdir grants without the whole .git", async () => {
+  test("linked worktree seeds enumerated gitdir file grants without directory roots", async () => {
     await using tmp = await tmpdir()
     const main = fs.realpathSync(tmp.path)
     const wt = await linkedWorktree(main)
+    await $`git pack-refs --all`.cwd(main).quiet()
+    fs.writeFileSync(path.join(main, ".git", "info", "exclude"), "secret-local.txt\n")
     const gate = await EnforcementGate.create({
       activeWorkspace: wt,
       workspaceType: "worktree",
@@ -106,22 +108,54 @@ describe("worktree gitdir enumerated sandbox grants", () => {
     const policy = gate.getSandboxPolicy()
     expect(policy).not.toBeNull()
     const roots = policy!.fileSystem.readableRoots
-    expect(roots).toContain(path.join(main, ".git", "worktrees", "wt"))
+    const meta = path.join(main, ".git", "worktrees", "wt")
+    for (const file of ["HEAD", "commondir", "gitdir"]) {
+      expect(roots).toContain(path.join(meta, file))
+    }
+    for (const file of ["index", "ORIG_HEAD", "config.worktree"]) {
+      if (fs.existsSync(path.join(meta, file))) expect(roots).toContain(path.join(meta, file))
+    }
+    expect(roots).not.toContain(meta)
+    expect(roots).not.toContain(path.join(meta, "logs"))
     expect(roots).toContain(path.join(main, ".git", "objects"))
     expect(roots).toContain(path.join(main, ".git", "refs"))
-    expect(roots).toContain(path.join(main, ".git", "packed-refs"))
     expect(roots).toContain(path.join(main, ".git", "config"))
+    expect(roots).toContain(path.join(main, ".git", "packed-refs"))
+    expect(roots).toContain(path.join(main, ".git", "info", "exclude"))
     expect(roots).not.toContain(path.join(main, ".git"))
-    const grants = [
-      path.join(main, ".git", "worktrees", "wt"),
+    expect(roots).not.toContain(path.join(main, ".git", "hooks"))
+    const neverWritable = [
+      meta,
       path.join(main, ".git", "objects"),
       path.join(main, ".git", "refs"),
-      path.join(main, ".git", "packed-refs"),
       path.join(main, ".git", "config"),
+      path.join(main, ".git", "packed-refs"),
     ]
-    for (const grant of grants) {
+    for (const grant of neverWritable) {
       expect(policy!.fileSystem.writableRoots).not.toContain(grant)
     }
+  })
+
+  test("pointer aimed at a sibling worktree metadata entry yields no grants", async () => {
+    await using tmp = await tmpdir()
+    const main = fs.realpathSync(tmp.path)
+    const wt = await linkedWorktree(main)
+    const fake = path.join(main, "fake-wt")
+    fs.mkdirSync(fake, { recursive: true })
+    fs.writeFileSync(path.join(fake, ".git"), `gitdir: ${path.join(main, ".git", "worktrees", "wt")}\n`)
+    const gate = await EnforcementGate.create({
+      activeWorkspace: fake,
+      workspaceType: "worktree",
+      profileId: "autonomous",
+      sessionKey: "ses_abc",
+      originalCheckout: main,
+    })
+    const policy = gate.getSandboxPolicy()
+    expect(policy).not.toBeNull()
+    const roots = policy!.fileSystem.readableRoots
+    expect(roots).not.toContain(path.join(main, ".git", "worktrees", "wt", "HEAD"))
+    expect(roots).not.toContain(path.join(main, ".git", "objects"))
+    expect(wt).toBeTruthy()
   })
 
   test("gitdir pointer escaping the checkout metadata root yields no grants", async () => {
