@@ -468,6 +468,14 @@ test("aggregate mode unions reports from disk without running commands and fails
   expect(result.verification.shared).toBe(true)
   expect(result.verification.source).toBe("existing")
   expect(result.verdicts.map((verdict) => verdict.linesPct)).toEqual([100, 100])
+  const partial = await runCoverageCheck({ root, aggregate: true, packages: ["packages/b"] })
+  expect(partial.passed).toBe(false)
+  expect(partial.errors.join(" ")).toContain("complete manifest")
+  for (const flags of [{ existing: true }, { executeOnly: true }]) {
+    const conflicting = await runCoverageCheck({ root, aggregate: true, ...flags })
+    expect(conflicting.passed).toBe(false)
+    expect(conflicting.errors.join(" ")).toContain("cannot be combined")
+  }
   await rm(path.join(root, "packages/b/coverage/lcov.info"))
   const gapped = await runCoverageCheck({ root, aggregate: true })
   expect(gapped.passed).toBe(false)

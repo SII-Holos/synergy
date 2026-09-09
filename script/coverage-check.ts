@@ -15,6 +15,8 @@ import { parseArgs } from "node:util"
  *   bun script/coverage-check.ts --json          emit machine-readable summary
  *   bun script/coverage-check.ts --package packages/library  check one owner
  *   bun script/coverage-check.ts --existing      evaluate already-produced reports
+ *   bun script/coverage-check.ts --execute-only  run selected shard commands
+ *   bun script/coverage-check.ts --aggregate     evaluate every shard report
  */
 
 import { readFile, readdir, stat, rm } from "node:fs/promises"
@@ -433,6 +435,15 @@ export async function runCoverageCheck(
     packages: selected,
   }
   const errors = await validateManifest(manifest, root)
+  if (options.aggregate && options.packages?.length) {
+    errors.push("Aggregate coverage requires the complete manifest; --package is not supported")
+  }
+  if (options.aggregate && (options.existing || options.executeOnly)) {
+    errors.push("--aggregate cannot be combined with --existing or --execute-only")
+  }
+  if (options.executeOnly && options.existing) {
+    errors.push("--execute-only cannot be combined with --existing")
+  }
   for (const name of options.packages ?? []) {
     if (!(name in manifest.packages)) errors.push(`Unknown coverage package: ${name}`)
   }
@@ -481,7 +492,7 @@ export async function runCoverageCheck(
     }
   }
   // Only a complete, successful invocation may share measurements. Reports
-  // from --existing have no execution provenance and remain package-local.
+  // from --existing remain package-local; --aggregate requires the full manifest.
   if (!options.existing && reports.size === selected.length && (options.aggregate || !options.packages?.length)) {
     const combined = mergeLcov(
       [...reports].map(([name, report]) =>

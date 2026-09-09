@@ -93,6 +93,10 @@ describe("CI test matrix", () => {
     expect(runs.some((run) => run.includes("private-http-smoke"))).toBe(true)
     expect(runs.some((run) => run.includes("plugin-ui:test"))).toBe(true)
     expect(runs.some((run) => run.includes("release:test"))).toBe(true)
+    const install = runs.findIndex((run) => run.includes("playwright install chromium"))
+    const smoke = runs.findIndex((run) => run.includes("private-http-smoke"))
+    expect(install).toBeGreaterThanOrEqual(0)
+    expect(install).toBeLessThan(smoke)
   })
 
   test("the harness job keeps isolated fresh-process shards and JUnit reports", () => {

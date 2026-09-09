@@ -94,7 +94,7 @@ describe("CI coverage matrix", () => {
 
   test("concurrency cancels superseded PR runs but never dev pushes", () => {
     const concurrency = workflow.concurrency
-    expect(concurrency?.group).toBe("ci-${{ github.ref }}")
+    expect(concurrency?.group).toBe("ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}")
     expect(String(concurrency?.["cancel-in-progress"])).toContain("pull_request")
   })
 
