@@ -109,6 +109,36 @@ export namespace RolloutLifecycle {
     return RolloutLedger.finishRun(identity, runID, "cancelled")
   }
 
+  /**
+   * A silent run (no running segment) whose call/tool/process records are
+   * still "running" holds orphans from an interrupted turn: the abort path
+   * skips their completion and finishRun would refuse the run forever
+   * after. Settle them as interrupted so finalize can proceed; the ledger
+   * finishers are idempotent, so repeated reconciles stay safe.
+   */
+  async function settleOrphanedRecords(identity: RolloutSchema.Owner, runID: string) {
+    for (const call of await RolloutLedger.calls(identity, runID)) {
+      if (call.status !== "running") continue
+      await RolloutLedger.finishCall(identity, runID, call.id, {
+        status: "interrupted",
+        error: "Turn ended before call completion",
+      })
+    }
+    for (const tool of await RolloutLedger.tools(identity, runID)) {
+      if (tool.status !== "running") continue
+      await RolloutLedger.writeTool({
+        ...tool,
+        status: "interrupted",
+        ended: Date.now(),
+        error: "Turn ended; external side-effect completion is unknown",
+      })
+    }
+    for (const process of await RolloutLedger.processes(identity, runID)) {
+      if (process.status !== "running" || RolloutProcess.isActive(identity, runID, process.id)) continue
+      await RolloutLedger.writeProcess({ ...process, status: "interrupted", ended: Date.now() })
+    }
+  }
+
   export async function reconcile(sessionID: string, runID: string, outcome?: "failed" | "cancelled") {
     const session = await Session.get(sessionID)
     const identity = owner(session)
@@ -122,6 +152,7 @@ export namespace RolloutLifecycle {
     }
     const segments = await RolloutLedger.segments(identity, runID)
     if (segments.some((segment) => segment.status === "running")) return run
+    await settleOrphanedRecords(identity, runID)
     const lastSegment = segments.sort((a, b) => a.started - b.started || a.id.localeCompare(b.id)).at(-1)
     outcome ??= lastSegment?.status === "failed" || lastSegment?.status === "cancelled" ? lastSegment.status : undefined
     for (const child of await Session.children(sessionID)) {

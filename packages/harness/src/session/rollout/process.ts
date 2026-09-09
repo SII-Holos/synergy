@@ -6,6 +6,11 @@ import type { RolloutSchema } from "./schema"
 export namespace RolloutProcess {
   const active = new Map<string, { owner: RolloutSchema.Owner; runID: string; done: Promise<void> }>()
 
+  export function isActive(owner: RolloutSchema.Owner, runID: string, processID: string) {
+    const entry = active.get(processID)
+    return entry?.runID === runID && JSON.stringify(entry.owner) === JSON.stringify(owner)
+  }
+
   export async function cancel(owner: RolloutSchema.Owner, runID: string) {
     const owned = [...active.entries()].filter(
       ([, entry]) => entry.runID === runID && JSON.stringify(entry.owner) === JSON.stringify(owner),
