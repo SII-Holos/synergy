@@ -1,5 +1,5 @@
 import { SynergyLinkEnvelope, SynergyLinkError } from "@ericsanchezok/synergy-link-protocol"
-import { ProcessRegistry } from "../exec/process-registry"
+import { ProcessRegistry, type ProcessRegistryOptions } from "../exec/process-registry"
 import { SynergyLinkHost, type SynergyLinkHostOptions } from "../host"
 import { BashRunner } from "../exec/bash-runner"
 import { RPCRequestSchema, type RPCResult } from "./schema"
@@ -16,15 +16,19 @@ interface CachedRequest {
   isSettled: () => boolean
 }
 
+export interface RPCHandlerOptions extends SynergyLinkHostOptions {
+  registry?: ProcessRegistryOptions
+}
+
 export class RPCHandler {
   readonly host: SynergyLinkHost
   readonly processRegistry: ProcessRegistry
   readonly bashRunner: BashRunner
   readonly #requests = new Map<string, CachedRequest>()
 
-  constructor(options: SynergyLinkHostOptions = {}) {
+  constructor(options: RPCHandlerOptions = {}) {
     this.host = new SynergyLinkHost(options)
-    this.processRegistry = new ProcessRegistry(this.host)
+    this.processRegistry = new ProcessRegistry(this.host, options.registry)
     this.bashRunner = new BashRunner(this.processRegistry)
   }
 
