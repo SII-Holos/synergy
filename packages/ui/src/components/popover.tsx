@@ -14,7 +14,8 @@ import {
 import { Icon } from "./icon"
 
 export interface PopoverProps extends ParentProps, Omit<ComponentProps<typeof Kobalte>, "children"> {
-  trigger: JSXElement | Component<JSX.ButtonHTMLAttributes<HTMLButtonElement>>
+  trigger?: JSXElement
+  triggerAs?: Component<JSX.ButtonHTMLAttributes<HTMLButtonElement>>
   title?: JSXElement
   description?: JSXElement
   class?: ComponentProps<"div">["class"]
@@ -24,15 +25,23 @@ export interface PopoverProps extends ParentProps, Omit<ComponentProps<typeof Ko
 export function Popover(props: PopoverProps) {
   const parentLayer = useOverlayLayer()
   const [layer, setLayer] = createSignal<HTMLElement>()
-  const [local, rest] = splitProps(props, ["trigger", "title", "description", "class", "classList", "children"])
+  const [local, rest] = splitProps(props, [
+    "trigger",
+    "triggerAs",
+    "title",
+    "description",
+    "class",
+    "classList",
+    "children",
+  ])
 
   return (
     <Kobalte gutter={4} {...rest}>
       <Show
-        when={typeof local.trigger === "function" ? local.trigger : undefined}
+        when={local.triggerAs}
         fallback={
           <Kobalte.Trigger as="div" data-slot="popover-trigger">
-            {local.trigger as JSXElement}
+            {local.trigger}
           </Kobalte.Trigger>
         }
       >
