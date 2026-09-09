@@ -27,8 +27,8 @@ export namespace SnapshotStore {
   const context = Context.create<Operation>("snapshot")
 
   export class StorageError extends Error {
-    constructor(message: string) {
-      super(message)
+    constructor(message: string, options?: ErrorOptions) {
+      super(message, options)
       this.name = "SnapshotStorageError"
     }
   }
@@ -122,7 +122,10 @@ export namespace SnapshotStore {
 
   export async function command(repo: string, args: string[], signal?: AbortSignal) {
     const result = await SnapshotGit.run(["git", "--git-dir", repo, ...args], path.dirname(repo), undefined, signal)
-    if (result.exitCode !== 0) throw new StorageError(`Snapshot git ${args[0]} failed: ${result.stderr.trim()}`)
+    if (result.exitCode !== 0)
+      throw new StorageError(`Snapshot git ${args[0]} failed (exit code ${result.exitCode}): ${result.stderr.trim()}`, {
+        cause: { exitCode: result.exitCode, stderr: result.stderr },
+      })
     return result.text.trim()
   }
 
@@ -169,9 +172,20 @@ export namespace SnapshotStore {
   export async function initializeBareRepository(repo: string) {
     await fs.mkdir(path.dirname(repo), { recursive: true })
     if (!(await Bun.file(path.join(repo, "HEAD")).exists())) {
-      const init = await SnapshotGit.run(["git", "init", "--bare", "--object-format=sha1", repo], path.dirname(repo))
-      if (init.exitCode !== 0) throw new StorageError("Unable to initialize snapshot object store")
+      // Provenance: https://git-scm.com/docs/git-init (GIT_DEFAULT_HASH).
+      // Git before 2.29 only writes SHA-1; the environment also pins newer Git
+      // without requiring the newer --object-format command-line option.
+      const init = await SnapshotGit.run(["git", "init", "--bare", repo], path.dirname(repo), {
+        GIT_DEFAULT_HASH: "sha1",
+      })
+      if (init.exitCode !== 0)
+        throw new StorageError(
+          `Unable to initialize snapshot object store (exit code ${init.exitCode}): ${init.stderr.trim()}`,
+          { cause: { exitCode: init.exitCode, stderr: init.stderr } },
+        )
     }
+    const hash = await command(repo, ["hash-object", "-t", "tree", "--stdin"])
+    if (!OID.test(hash)) throw new StorageError("Snapshot object store must use SHA-1")
     for (const [key, value] of [
       ["core.autocrlf", "false"],
       ["core.quotepath", "false"],

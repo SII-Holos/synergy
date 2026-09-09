@@ -22,7 +22,7 @@ export namespace RolloutSnapshot {
 
   export async function read(
     owner: RolloutSchema.Owner,
-    options: { revision?: number; runID?: string } = {},
+    options: { revision?: number; runID?: string; onProgress?: () => void } = {},
   ): Promise<Info> {
     const revision = options.revision ?? (await RolloutJournal.head(owner)).committed
     const snapshot: Info = {
@@ -39,6 +39,7 @@ export namespace RolloutSnapshot {
     }
     const latest = new Map<string, Extract<RolloutJournal.Event, { kind: "record" }>>()
     for await (const event of RolloutJournal.events(owner, revision)) {
+      options.onProgress?.()
       if (event.kind === "gap") {
         snapshot.gaps.push(event.seq)
         continue
@@ -81,6 +82,7 @@ export namespace RolloutSnapshot {
         check(process, key)
         snapshot.processes.push(process)
       } else throw new Error("Unknown rollout journal record")
+      options.onProgress?.()
     }
     return snapshot
   }

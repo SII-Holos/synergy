@@ -25,6 +25,7 @@ const CHANNEL_CONNECT_TIMEOUT = 15_000
 const STATUS_POLL_INTERVAL = 320
 
 export interface RuntimeOptions {
+  recoveryReporter?: Parameters<typeof ProductRuntimeHandle.open>[0]["recoveryReporter"]
   interactive: boolean
   printBanner: boolean
   printChannelStatus: boolean
@@ -41,6 +42,7 @@ export async function run(options: RuntimeOptions) {
     mode: "server",
     network: options.network,
     reporter: reporter ? { summary: (summary) => reporter.migration(summary) } : undefined,
+    recoveryReporter: options.recoveryReporter,
   })
   const server = handle.server
   reporter?.migration(handle.migration)

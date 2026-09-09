@@ -4,6 +4,32 @@ import { DesktopServerStartup } from "../src/server-startup.js"
 const line = (value: unknown) => `SYNERGY_STARTUP_V1 ${JSON.stringify(value)}\n`
 
 describe("managed startup progress", () => {
+  test("waits for advancing recovery after migrations and bounds the final health check", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(line({ phase: "starting" }))
+    startup.receive(line({ phase: "recovery", current: 0 }))
+    now = 60_000
+    startup.receive(line({ phase: "recovery", current: 10_000 }))
+    expect(startup.remainingMs()).toBe(300_000)
+    expect(startup.status().title).toBe("Restoring saved work")
+    expect(startup.status().detail).toContain("10000")
+    now = 360_000
+    startup.receive(line({ phase: "recovery", current: 10_000 }))
+    startup.receive(line({ phase: "recovery", current: 9_000 }))
+    startup.receive("ordinary server output\n")
+    expect(startup.remainingMs()).toBe(0)
+    expect(startup.timeoutError().message).toContain("recovery made no progress")
+    expect(startup.timeoutError().message).toContain("10000")
+    startup.receive(line({ phase: "recovery", current: 10_001 }))
+    startup.receive(line({ phase: "starting" }))
+    expect(startup.remainingMs()).toBe(30_000)
+    now += 30_000
+    startup.receive(line({ phase: "recovery", current: 10_002 }))
+    startup.receive(line({ phase: "starting" }))
+    expect(startup.remainingMs()).toBe(0)
+  })
+
   test("keeps progressing upgrades alive beyond the ordinary startup deadline", () => {
     let now = 0
     const startup = new DesktopServerStartup({ now: () => now })

@@ -3,6 +3,7 @@ import { RolloutRecovery } from "../../src/session/rollout/recovery"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { RolloutArtifact } from "../../src/session/rollout/artifact"
 import { RolloutSnapshot } from "../../src/session/rollout/snapshot"
+import { RolloutJournal } from "../../src/session/rollout/journal"
 
 test("recovery preserves committed evidence, interrupts side effects, and resumes in a new segment", async () => {
   const owner = { kind: "operation" as const, scopeID: "test", operationID: crypto.randomUUID() }
@@ -27,7 +28,10 @@ test("recovery preserves committed evidence, interrupts side effects, and resume
     tool: "bash",
     args: {},
   })
-  await RolloutRecovery.owner(owner)
+  const revision = (await RolloutJournal.head(owner)).committed
+  let checked = 0
+  await RolloutRecovery.owner(owner, () => checked++)
+  expect(checked).toBeGreaterThanOrEqual(revision)
   const snapshot = await RolloutSnapshot.read(owner)
   expect(snapshot.segments[0].status).toBe("interrupted")
   expect(snapshot.calls[0].status).toBe("interrupted")
