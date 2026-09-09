@@ -6,6 +6,7 @@ export const RUNTIME_STARTUP_MAX_LINE_LENGTH = 1024
 const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 export const RuntimeStartupProgress = z.discriminatedUnion("phase", [
   z.object({ phase: z.literal("starting") }).strict(),
+  z.object({ phase: z.literal("recovery"), current: count }).strict(),
   z
     .object({
       phase: z.literal("migration"),

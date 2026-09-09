@@ -71,6 +71,19 @@ async function run() {
         await window.webContents.executeJavaScript(`document.querySelector('.startup-count').textContent`),
         "",
       )
+      startup.receive('SYNERGY_STARTUP_V1 {"phase":"recovery","current":10001}\n')
+      await window.webContents.executeJavaScript(startupStatusScript(startup.status()))
+      assert.equal(
+        await window.webContents.executeJavaScript(`document.querySelector('[role="status"]').textContent`),
+        "Restoring saved work",
+      )
+      assert.equal(await window.webContents.executeJavaScript(`document.body.textContent.includes('10001')`), true)
+      startup.receive('SYNERGY_STARTUP_V1 {"phase":"starting"}\n')
+      await window.webContents.executeJavaScript(startupStatusScript(startup.status()))
+      assert.equal(
+        await window.webContents.executeJavaScript(`document.querySelector('[role="status"]').textContent`),
+        "Starting Synergy",
+      )
     }
     console.log("Startup progress DOM checks passed")
   } finally {

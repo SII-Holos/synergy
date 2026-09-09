@@ -209,6 +209,8 @@ The exact domain files and precedence are defined in the [configuration referenc
 
 ## Invariants
 
+Runtime startup recovers committed execution history under exclusive Home ownership before opening HTTP admission. The host may observe aggregate recovery work through `RuntimeHandle` without changing journal replay or evidence validation. Managed Desktop uses those advancing counts to distinguish active recovery from a stalled startup; [Development](../reference/development.md) defines its waiting policy.
+
 - A server process is installation-scoped, not project-scoped.
 - Every project-sensitive operation runs inside an explicit Scope.
 - The selected directory is the project boundary; no upward discovery occurs.

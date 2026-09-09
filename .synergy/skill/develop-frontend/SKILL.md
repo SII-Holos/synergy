@@ -79,6 +79,7 @@ Derive activity steps and counts from canonical tool parts. Display preferences 
 3. Do not evaluate JSX child getters to detect detail presence: use an explicit availability value or property presence, then instantiate children only inside the mounted disclosure. Test closed → open → closed imperative-renderer counts. Bound tool previews and retained expanded-render caches by capacity; use resource identity to open full content on demand. See [bounded tool rendering](../../../docs/decisions/implemented/bug-fix/2026-09-07-bound-tool-rendering-memory.md).
 4. Import only fonts used by the active product typography contract. A dormant family must not be emitted by the default App build.
 5. Preserve `apps/web/test/app-build-css-contract.test.ts` as the production build regression gate for initial module preloads, emitted product fonts, and core compiled CSS.
+6. Keep the Web HTML entry in Tailwind's explicit source inputs when moving package roots. Validate the built HTML and CSS together in a browser with overflowing sidebar content and composer focus: the root must stay within the viewport and the list must scroll without moving the document or navigation header.
 
 ## Change Themes and Color Tokens
 
