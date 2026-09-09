@@ -44,7 +44,7 @@ export namespace RolloutJournal {
     }
   }
 
-  async function recoverPending(owner: RolloutSchema.Owner) {
+  async function recoverPending(owner: RolloutSchema.Owner, onProgress?: () => void) {
     const previous = await head(owner)
     const gaps: number[] = []
     for (let seq = previous.committed + 1; seq <= previous.allocated; seq++) {
@@ -60,6 +60,7 @@ export namespace RolloutJournal {
       if (event.kind === "record") {
         await Storage.write([...RolloutArtifact.root(owner), ...event.key], event.value, options)
       } else gaps.push(seq)
+      onProgress?.()
     }
     if (previous.committed !== previous.allocated) {
       await Storage.write([...root(owner), "head"], { ...previous, committed: previous.allocated }, options)
@@ -67,9 +68,9 @@ export namespace RolloutJournal {
     return { recovered: previous.allocated - previous.committed, gaps }
   }
 
-  export async function recover(owner: RolloutSchema.Owner) {
+  export async function recover(owner: RolloutSchema.Owner, onProgress?: () => void) {
     using lock = await Lock.write(lockKey(owner))
-    return record(() => recoverPending(owner))
+    return record(() => recoverPending(owner, onProgress))
   }
 
   export async function write(owner: RolloutSchema.Owner, key: string[], value: unknown) {

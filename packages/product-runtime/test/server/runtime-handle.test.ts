@@ -9,11 +9,22 @@ import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { AgentTurn } from "@ericsanchezok/synergy-harness/session/agent-turn"
 import { PolicyWorker } from "@ericsanchezok/synergy-harness/enforcement/policy-worker"
 import { ToolScheduler } from "@ericsanchezok/synergy-harness/test/support/internals"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 test("one-shot owns its Home, omits autonomous recovery, and awaits idempotent shutdown", async () => {
   const initialListeners = GlobalBus.listenerCount("event")
-  const runtime = await ProductRuntimeHandle.open({ mode: "oneshot", network: { hostname: "127.0.0.1", port: 0 } })
+  const recovery: Array<number | "completed"> = []
+  const runtime = await ProductRuntimeHandle.open({
+    mode: "oneshot",
+    network: { hostname: "127.0.0.1", port: 0 },
+    recoveryReporter: {
+      progress: (current) => recovery.push(current),
+      completed: () => recovery.push("completed"),
+    },
+  })
   try {
+    expect(recovery[0]).toBe(0)
+    expect(recovery.at(-1)).toBe("completed")
     expect((await ServerProcessLock.read())?.mode).toBe("oneshot")
     expect(ScopeStartup.resident()).toBe(false)
     expect(runtime.config.execution?.agentWorkers).toBe(DEFAULT_AGENT_WORKER_POOL_OPTIONS.size)
@@ -30,6 +41,35 @@ test("one-shot owns its Home, omits autonomous recovery, and awaits idempotent s
     expect(GlobalBus.listenerCount("event")).toBeLessThanOrEqual(initialListeners)
   } finally {
     await runtime.close()
+    SessionManager.openAdmission()
+    AgentTurn.configure()
+    PolicyWorker.configure()
+    ToolScheduler.configure()
+  }
+}, 30_000)
+
+test("failed recovery does not announce completion or retain home ownership", async () => {
+  const root = ["operations", "test", crypto.randomUUID(), "rollout", "journal"]
+  const event = [...root, "events", "000000000001"]
+  const recovery: Array<number | "completed"> = []
+  await Storage.write([...root, "head"], { allocated: 1, committed: 1 })
+  await Storage.write(event, { version: 1, seq: 2, time: 0, kind: "gap" })
+  try {
+    await expect(
+      ProductRuntimeHandle.open({
+        mode: "oneshot",
+        recoveryReporter: {
+          progress: (current) => recovery.push(current),
+          completed: () => recovery.push("completed"),
+        },
+      }),
+    ).rejects.toThrow()
+    expect(recovery[0]).toBe(0)
+    expect(recovery).not.toContain("completed")
+    expect(await ServerProcessLock.read()).toBeUndefined()
+  } finally {
+    await Storage.remove(event)
+    await Storage.remove([...root, "head"])
     SessionManager.openAdmission()
     AgentTurn.configure()
     PolicyWorker.configure()

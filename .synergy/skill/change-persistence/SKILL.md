@@ -43,6 +43,8 @@ Register optional session fields, creation/import hooks and indexes through the 
 
 ## File Snapshot Storage
 
+When changing snapshot Git commands, verify them with an actual supported older Git executable as well as the current version. Run the snapshot suites with that executable first on `PATH`; keep test homes isolated. Initialization must select and verify SHA-1 before publishing repository metadata, preserve existing objects, and retain exit code and stderr on failure. Avoid introducing a version-specific CLI option when the same operation has a compatible form.
+
 Use `SnapshotStore` for backend resolution, `SnapshotLifecycle` for copied/deleted ownership, and `SnapshotMaintenance` for offline migration and collection. Hold the Scope lease for all object/ref transactions and the session lock for mutable indexes. Publish refs before message hashes; remove canonical session records before releasing their refs. Preserve every historical root across archive, transcript rollback, and message compaction. Full-data copies must use `SnapshotArchive` for snapshot directories, never generic copy-skip-existing. Rollout ZIP export/import uses its session-scoped object transfer under Scope leases; retain imported roots before publishing message references. Test packed refs, alternates without refs, unknown objects, checkpoint interruptions, and cross-process exclusion. Run `bun packages/product-runtime/script/benchmark-snapshots.ts` from the repository root for an isolated storage-backend comparison; distinguish that measurement from old-binary timing or production capacity estimates.
 
 ## Verify
