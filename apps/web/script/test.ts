@@ -26,6 +26,7 @@ const playwrightIsolated = [
   "test/components/library/filter-menu-surface.test.ts",
   "test/components/menu-field/menu-field.test.ts",
   "test/components/prompt-input/prompt-input-hover-style.test.ts",
+  "test/components/prompt-input/pending-attachment-card.dom.test.tsx",
   "test/components/settings/components/ThemePicker.behavior.test.tsx",
   "test/components/settings/settings-dialog-dismiss.test.tsx",
   "test/components/settings/settings-mobile-layout.test.ts",
