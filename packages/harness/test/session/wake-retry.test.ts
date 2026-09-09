@@ -62,6 +62,33 @@ describe("session wake retry", () => {
     await Bun.sleep(30)
     expect(loop.mock.calls.length).toBe(MAX_ATTEMPTS)
   })
+  test("scheduleWake abandons the chain immediately on a permanent worktree failure", async () => {
+    fastDelays()
+    spyOn(SessionInbox, "hasRunnableItem").mockResolvedValue(true)
+    spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
+    const failure = new Error("Worktree directory not found: /tmp/gone")
+    failure.name = "WorktreeNotFoundError"
+    const loop = spyOn(SessionInvoke, "loop").mockRejectedValue(failure)
+
+    SessionManager.scheduleWake(sessionID, "user-input")
+    await waitFor(() => loop.mock.calls.length >= 1)
+    await Bun.sleep(40)
+    expect(loop.mock.calls.length).toBe(1)
+  })
+
+  test("scheduleWake abandons the chain immediately on an invalid attachment failure", async () => {
+    fastDelays()
+    spyOn(SessionInbox, "hasRunnableItem").mockResolvedValue(true)
+    spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
+    const failure = new Error("Invalid attachment URL")
+    failure.name = "InvalidUrlError"
+    const loop = spyOn(SessionInvoke, "loop").mockRejectedValue(failure)
+
+    SessionManager.scheduleWake(sessionID, "user-input")
+    await waitFor(() => loop.mock.calls.length >= 1)
+    await Bun.sleep(40)
+    expect(loop.mock.calls.length).toBe(1)
+  })
 
   test("scheduleWake coalesces duplicate requests for the same session", async () => {
     fastDelays()

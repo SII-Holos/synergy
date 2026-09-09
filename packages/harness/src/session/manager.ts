@@ -530,6 +530,14 @@ export namespace SessionManager {
 
   export const WAKE_RETRY_DELAYS_MS = [250, 1_000, 2_000, 4_000, 8_000]
   const activeWakeChains = new Map<string, { requested: boolean }>()
+  // Retrying cannot repair a removed worktree or a malformed attachment URL,
+  // and the worktree error class lives above this package boundary, so these
+  // permanent failures are recognized by error.name.
+  const PERMANENT_WAKE_ERROR_NAMES = new Set(["WorktreeNotFoundError", "InvalidUrlError"])
+
+  function isPermanentWakeFailure(error: unknown): boolean {
+    return error instanceof Error && PERMANENT_WAKE_ERROR_NAMES.has(error.name)
+  }
 
   function scheduleWakeAttempt(sessionID: string, reason: string, delayMs: number, failureCount: number): void {
     const timer = setTimeout(() => {
@@ -542,6 +550,11 @@ export namespace SessionManager {
           else activeWakeChains.delete(sessionID)
         })
         .catch((error) => {
+          if (isPermanentWakeFailure(error)) {
+            activeWakeChains.delete(sessionID)
+            log.error("async session wake failed permanently", { sessionID, reason, error, permanent: true })
+            return
+          }
           const delay = WAKE_RETRY_DELAYS_MS[failureCount]
           if (delay === undefined) {
             activeWakeChains.delete(sessionID)
