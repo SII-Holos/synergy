@@ -3,7 +3,7 @@ import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/regi
 import { runMigrations } from "@ericsanchezok/synergy-harness/migration"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
-import { createManagedMigrationReporter } from "../../src/cli/managed-startup"
+import { createManagedMigrationReporter, createManagedRecoveryReporter } from "../../src/cli/managed-startup"
 
 const domain = "test-desktop-progress"
 
@@ -13,6 +13,27 @@ afterEach(async () => {
 })
 
 describe("desktop migration reporting", () => {
+  test("reports recovery immediately, bounds output frequency and announces completion", () => {
+    const lines: string[] = []
+    let now = 0
+    const reporter = createManagedRecoveryReporter(
+      (line) => lines.push(line),
+      () => now,
+    )
+    reporter.progress(0)
+    expect(lines).toEqual(['SYNERGY_STARTUP_V1 {"phase":"recovery","current":0}\n'])
+    for (let current = 1; current <= 1000; current++) reporter.progress(current)
+    expect(lines).toHaveLength(1)
+    now = 250
+    reporter.progress(1001)
+    expect(lines.at(-1)).toBe('SYNERGY_STARTUP_V1 {"phase":"recovery","current":1001}\n')
+    now = 500
+    for (const current of [1001, 0, -1, 1.5, Infinity]) reporter.progress(current)
+    expect(lines).toHaveLength(2)
+    reporter.completed()
+    expect(lines.at(-1)).toBe('SYNERGY_STARTUP_V1 {"phase":"starting"}\n')
+  })
+
   test("announces pending work before it runs and returns to startup only after completion", async () => {
     const lines: string[] = []
     const reporter = createManagedMigrationReporter((line) => lines.push(line))

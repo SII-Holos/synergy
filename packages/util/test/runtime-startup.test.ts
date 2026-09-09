@@ -22,4 +22,11 @@ test("startup records round trip without accepting unbounded or private fields",
   ])
     expect(RuntimeStartupProgress.safeParse(invalid).success).toBe(false)
   expect(RuntimeStartupProgress.parse({ phase: "starting" })).toEqual({ phase: "starting" })
+  expect(RuntimeStartupProgress.parse({ phase: "recovery", current: 960450 })).toEqual({
+    phase: "recovery",
+    current: 960450,
+  })
+  for (const current of [-1, 0.1, Infinity, Number.MAX_SAFE_INTEGER + 1])
+    expect(RuntimeStartupProgress.safeParse({ phase: "recovery", current }).success).toBe(false)
+  expect(RuntimeStartupProgress.safeParse({ phase: "recovery", current: 1, sessionID: "private" }).success).toBe(false)
 })

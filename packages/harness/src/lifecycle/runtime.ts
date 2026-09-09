@@ -59,6 +59,7 @@ export namespace RuntimeHandle {
     services?: RuntimeServices
     reporter?: MigrationReporter
     migrationOutput?: RunOptions["output"]
+    recoveryReporter?: { progress(current: number): void; completed(): void }
   }) {
     const services = options.services ?? {}
     const ownership = await ServerProcessLock.acquire(undefined, options.mode === "oneshot" ? "oneshot" : undefined)
@@ -147,7 +148,8 @@ export namespace RuntimeHandle {
       Experiment.configureRuntime(config, options.experiment?.runtime)
       ScopeStartup.configure(options.mode)
       SessionManager.openAdmission()
-      await RolloutRecovery.all()
+      await RolloutRecovery.all((current) => options.recoveryReporter?.progress(current))
+      options.recoveryReporter?.completed()
       ObservabilityStore.releaseMigrationConnection()
       ObservabilityStore.markRuntimeReady()
       ObservabilityConfig.refresh(config)
