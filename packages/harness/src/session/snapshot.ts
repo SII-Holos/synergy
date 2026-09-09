@@ -466,32 +466,17 @@ export namespace Snapshot {
     }
 
     if (removable.length > 0) {
-      const pathspec = path.join(SnapshotStore.current().temporary, "remove-pathspec")
-      await fs.writeFile(pathspec, removable.join("\0") + "\0")
-      try {
-        const rm = await gitSpawn(
-          [
-            "git",
-            "--git-dir",
-            git,
-            "--work-tree",
-            cwd,
-            "rm",
-            "--cached",
-            "--ignore-unmatch",
-            "-r",
-            "--pathspec-from-file",
-            pathspec,
-            "--pathspec-file-nul",
-          ],
-          cwd,
-          undefined,
-          signal,
-        )
-        if (rm.exitCode !== 0) return false
-      } finally {
-        await fs.unlink(pathspec).catch(() => undefined)
-      }
+      // Provenance: https://git-scm.com/docs/git-update-index/2.25.0
+      // Remove literal NUL-delimited paths from only the snapshot index; older
+      // Git supports this form but not git rm --pathspec-from-file.
+      const rm = await gitSpawn(
+        ["git", "--git-dir", git, "--work-tree", cwd, "update-index", "--force-remove", "-z", "--stdin"],
+        cwd,
+        undefined,
+        signal,
+        removable.join("\0") + "\0",
+      )
+      if (rm.exitCode !== 0) return false
     }
 
     if (addable.length === 0) return true

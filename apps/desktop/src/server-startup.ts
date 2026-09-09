@@ -9,6 +9,7 @@ export class DesktopServerStartup {
   private buffer = ""
   private discarded = false
   private progress: RuntimeStartupProgress | undefined
+  private recoveryCompleted = false
   private deadline: number
   private readonly now: () => number
   private readonly healthTimeoutMs: number
@@ -52,16 +53,20 @@ export class DesktopServerStartup {
       return
     }
     const parsed = RuntimeStartupProgress.safeParse(value)
-    if (!parsed.success || this.progress?.phase === "starting") return
+    if (!parsed.success || this.recoveryCompleted) return
     const next = parsed.data
     const previous = this.progress
+    if (next.phase === "migration" && previous && previous.phase !== "migration") return
+    if (next.phase === "starting" && previous?.phase === "starting") return
+    if (next.phase === "recovery" && previous?.phase === "recovery" && next.current <= previous.current) return
     if (next.phase === "migration" && previous?.phase === "migration") {
       if (next.step < previous.step) return
       if (next.step === previous.step && !(next.current > previous.current || (previous.total === 0 && next.total > 0)))
         return
     }
     this.progress = next
-    this.deadline = this.now() + (next.phase === "migration" ? this.migrationIdleMs : this.healthTimeoutMs)
+    if (next.phase === "starting" && previous?.phase === "recovery") this.recoveryCompleted = true
+    this.deadline = this.now() + (next.phase === "starting" ? this.healthTimeoutMs : this.migrationIdleMs)
     this.options.onStatus?.(this.status())
   }
 
@@ -71,6 +76,11 @@ export class DesktopServerStartup {
 
   status(): DesktopStartupStatus {
     const progress = this.progress
+    if (progress?.phase === "recovery")
+      return {
+        title: "Restoring saved work",
+        detail: `${progress.current} items checked. Your execution history is being recovered.`,
+      }
     if (progress?.phase !== "migration")
       return {
         title: "Starting Synergy",
@@ -85,6 +95,10 @@ export class DesktopServerStartup {
 
   timeoutError(): Error {
     const progress = this.progress
+    if (progress?.phase === "recovery")
+      return new Error(
+        `Synergy recovery made no progress for ${this.migrationIdleMs}ms (${progress.current} items checked)`,
+      )
     if (progress?.phase !== "migration")
       return new Error(`Synergy server health check timed out after ${this.healthTimeoutMs}ms`)
     const count = progress.total ? `, ${progress.current}/${progress.total} items` : ""

@@ -1105,16 +1105,25 @@ function SessionPageContent() {
   }
 
   const isWorking = createMemo(() => status().type !== "idle")
+  const [scrolledUp, setScrolledUp] = createSignal(false)
+
   const autoScroll = createAutoScroll({
     working: isWorking,
+    onMeasure: (distance) => {
+      // Until the session's initial scroll lands, growth-driven measures only
+      // see the partially laid-out document and would flash the jump button;
+      // afterwards they keep the button honest when content grows without
+      // firing scroll events.
+      if (!initialScrollSettled) return
+      setScrolledUp(distance > 100)
+    },
   })
-
-  const [scrolledUp, setScrolledUp] = createSignal(false)
 
   let scrollSpyFrame: number | undefined
   let scrollSpyTarget: HTMLDivElement | undefined
   let initScrollFrame: number | undefined
   let historyScrollFrame: number | undefined
+  let initialScrollSettled = false
 
   const anchor = (id: string) => `message-${id}`
 
@@ -1301,6 +1310,7 @@ function SessionPageContent() {
       () => [params.id, messagesReady()] as const,
       ([id, ready]) => {
         setStore("turnStart", 0)
+        setScrolledUp(false)
         if (!id || !ready) return
 
         if (hydratedSessions.has(id)) return
@@ -1403,24 +1413,39 @@ function SessionPageContent() {
           initScrollFrame = undefined
         }
 
-        if (!sessionID || !ready) return
+        // Re-arm: a chain cancelled by a readiness flip must be able to run
+        // again when readiness returns, or the session opens scrolled to the top.
+        if (!sessionID || !ready) {
+          if (sessionID) initializedSessions.delete(sessionID)
+          return
+        }
 
         if (initializedSessions.has(sessionID)) return
         initializedSessions.add(sessionID)
+        initialScrollSettled = false
 
         const afterLayoutSettles = (fn: () => void) => {
-          requestAnimationFrame(() => requestAnimationFrame(fn))
+          initScrollFrame = requestAnimationFrame(() => {
+            initScrollFrame = requestAnimationFrame(() => {
+              initScrollFrame = undefined
+              fn()
+            })
+          })
         }
         initScrollFrame = requestAnimationFrame(() => {
           initScrollFrame = undefined
 
           const hash = window.location.hash.slice(1)
           if (!hash) {
-            afterLayoutSettles(() => autoScroll.forceScrollToBottom())
+            afterLayoutSettles(() => {
+              initialScrollSettled = true
+              autoScroll.forceScrollToBottom()
+            })
             return
           }
 
           afterLayoutSettles(() => {
+            initialScrollSettled = true
             const hashTarget = document.getElementById(hash)
             if (hashTarget) {
               hashTarget.scrollIntoView({ behavior: "auto", block: "start" })
