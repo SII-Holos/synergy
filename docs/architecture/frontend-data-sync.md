@@ -139,7 +139,7 @@ History page responses are intentionally applied without snapshot-version orderi
 
 ### Return to latest
 
-"Return to latest" refetches `messagePage()` without a cursor, resetting `mode` to `"latest"` and clearing `pendingLatest`. The UI force-scrolls to the bottom. Stale-cursor errors during `loadMore` also automatically trigger this recovery: the frontend catches `SessionMessagePageCursorStaleError` and refetches latest. Heading from a scrolled-up history view back to the local bottom reuses the same recovery when the window has a tail gap (`tailMissingLatest`) or unseen arrivals are pending and no history load is in flight; gap-less history keeps the previous scroll behavior.
+"Return to latest" refetches `messagePage()` without a cursor, resetting `mode` to `"latest"` and clearing `pendingLatest`. The UI force-scrolls to the bottom. Stale-cursor errors during `loadMore` also automatically trigger this recovery: the frontend catches `SessionMessagePageCursorStaleError` and refetches latest. Bounded-window bottom recovery reuses the same path whenever its predicate becomes true at the local bottom: the user is not scrolled up, the window is in history mode with a tail gap (`tailMissingLatest`) or unseen arrivals pending, and no history load is in flight. The session page evaluates this predicate as a level and fires once per false-to-true transition, so a history load finishing under an already-parked cursor or streamed arrivals parking into a history window the user never left recover too; gap-less history keeps the previous scroll behavior.
 
 ### Scroll anchor
 
