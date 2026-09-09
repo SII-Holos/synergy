@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test"
+import { createScopeReconnectRecovery } from "../../src/context/scope-reconnect-recovery"
 import {
   RECOVERY_RETRY_BASE_MS,
   RECOVERY_RETRY_MAX_ATTEMPTS,
   RECOVERY_RETRY_MAX_MS,
   createRecoveryRetryScheduler,
+  createScopeRecoveryCoordination,
   recoveryBackoffDelayMs,
 } from "../../src/context/scope-recovery-retry"
 
@@ -179,6 +181,64 @@ describe("createRecoveryRetryScheduler", () => {
     scheduler.schedule("/workspace/project")
     expect(scheduled).toHaveLength(2)
     scheduler.dispose()
+    expect(scheduled).toHaveLength(0)
+  })
+})
+
+describe("createScopeRecoveryCoordination", () => {
+  const setup = () => {
+    const published: Array<[string, number]> = []
+    const recovery = createScopeReconnectRecovery((scopeKey, generation) => published.push([scopeKey, generation]))
+    const { scheduled, scheduler, flush } = createHarness({})
+    const coordination = createScopeRecoveryCoordination({ recovery, retries: scheduler })
+    return { published, recovery, scheduled, scheduler, flush, coordination }
+  }
+
+  test("only a generation-owning success cancels a pending retry", async () => {
+    const { published, recovery, scheduled, scheduler, coordination } = setup()
+
+    scheduler.schedule("home")
+    expect(scheduled).toHaveLength(1)
+
+    // A bare event-gap replay success repairs the store but publishes no
+    // generation, so the pending retry must survive.
+    coordination.onReplaySettled("home", true)
+    expect(recovery.version("home")).toBe(0)
+    expect(scheduled).toHaveLength(1)
+
+    const recovered = await coordination.runWithGeneration("home", 3, async () => true)
+    expect(recovered).toBe(true)
+    expect(recovery.version("home")).toBe(3)
+    expect(published).toEqual([["home", 3]])
+    expect(scheduled).toHaveLength(0)
+  })
+
+  test("a failed recovery schedules exactly one retry and keeps it pending", async () => {
+    const { published, recovery, scheduled, coordination } = setup()
+
+    coordination.onReplaySettled("home", false)
+    expect(scheduled).toHaveLength(1)
+    coordination.onReplaySettled("home", false)
+    expect(scheduled).toHaveLength(1)
+
+    const recovered = await coordination.runWithGeneration("home", 2, async () => false)
+    expect(recovered).toBe(false)
+    expect(recovery.version("home")).toBe(0)
+    expect(published).toEqual([])
+    expect(scheduled).toHaveLength(1)
+  })
+
+  test("a stale generation-owning success still cancels without republishing", async () => {
+    const { published, scheduled, scheduler, coordination } = setup()
+
+    await coordination.runWithGeneration("home", 4, async () => true)
+    expect(published).toEqual([["home", 4]])
+
+    scheduler.schedule("home")
+    expect(scheduled).toHaveLength(1)
+
+    await coordination.runWithGeneration("home", 4, async () => true)
+    expect(published).toEqual([["home", 4]])
     expect(scheduled).toHaveLength(0)
   })
 })

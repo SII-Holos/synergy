@@ -29,13 +29,16 @@ export function createRecoveryRetryScheduler(input: RecoveryRetrySchedulerInput)
     const cancel = input.schedule(() => {
       pending.delete(scopeKey)
       if (!input.isRecoverable(scopeKey)) return
-      void input.retry(scopeKey).then((recovered) => {
-        if (recovered) {
-          attempts.delete(scopeKey)
-          return
-        }
-        schedule(scopeKey)
-      })
+      void input
+        .retry(scopeKey)
+        .then((recovered) => {
+          if (recovered) {
+            attempts.delete(scopeKey)
+            return
+          }
+          schedule(scopeKey)
+        })
+        .catch(() => schedule(scopeKey))
     }, recoveryBackoffDelayMs(attempt))
     pending.set(scopeKey, cancel)
   }
@@ -52,5 +55,36 @@ export function createRecoveryRetryScheduler(input: RecoveryRetrySchedulerInput)
       pending.clear()
       attempts.clear()
     },
+  }
+}
+
+type ScopeRecoveryCoordinationInput = {
+  recovery: {
+    run: (scopeKey: string, generation: number, recover: () => Promise<boolean>) => Promise<boolean>
+  }
+  retries: {
+    schedule: (scopeKey: string) => void
+    cancel: (scopeKey: string) => void
+  }
+}
+
+export function createScopeRecoveryCoordination(input: ScopeRecoveryCoordinationInput) {
+  return {
+    // A bare event-gap replay can repair the store without publishing a
+    // completed generation, so its success must not cancel a pending retry;
+    // only a failure arms the retry here.
+    onReplaySettled: (scopeKey: string, recovered: boolean) => {
+      if (recovered) return
+      input.retries.schedule(scopeKey)
+    },
+    // Generation-owning recovery path: publishes the completed generation on
+    // success and owns retry cancellation, including stale successes that
+    // return true without republishing.
+    runWithGeneration: (scopeKey: string, generation: number, recover: () => Promise<boolean>) =>
+      input.recovery.run(scopeKey, generation, recover).then((recovered) => {
+        if (recovered) input.retries.cancel(scopeKey)
+        else input.retries.schedule(scopeKey)
+        return recovered
+      }),
   }
 }

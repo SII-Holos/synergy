@@ -43,7 +43,7 @@ import { describeToolPartApply } from "./session-sync-plan"
 import { findSessionByID, findSessionIndex } from "./session-collection"
 import { createSessionMessageLoader } from "./session-message-loader"
 import { createScopeReconnectRecovery } from "./scope-reconnect-recovery"
-import { createRecoveryRetryScheduler } from "./scope-recovery-retry"
+import { createRecoveryRetryScheduler, createScopeRecoveryCoordination } from "./scope-recovery-retry"
 import { SessionPartSnapshotFreshness, type SessionPartSnapshotRequest } from "./session-part-snapshot-freshness"
 import {
   applyLatestPage,
@@ -298,11 +298,18 @@ function createGlobalSync() {
       return () => clearTimeout(timer)
     },
     isRecoverable: (scopeKey) => !disposed && !!children[scopeKey],
-    retry: async (scopeKey) => {
-      const generation = reconnectVersion() + 1
-      await resyncInstances([scopeKey])
-      return scopeReconnectRecovery.version(scopeKey) >= generation
-    },
+    // Retries run the generation-owning recovery path directly instead of the
+    // aggregated resync request, so a retry can neither suppress nor be
+    // suppressed by a concurrent global resync sharing the request singleton.
+    retry: (scopeKey) =>
+      recoveryCoordination.runWithGeneration(scopeKey, reconnectVersion() + 1, () => replayOrResync(scopeKey)),
+  })
+  // Generation-owning recovery completion is the only success that cancels a
+  // pending retry: a bare event-gap replay repairs the store without
+  // publishing a completed generation, so it must not disarm the scheduler.
+  const recoveryCoordination = createScopeRecoveryCoordination({
+    recovery: scopeReconnectRecovery,
+    retries: recoveryRetryScheduler,
   })
 
   async function runInstanceRequests<T>(
@@ -1876,8 +1883,7 @@ function createGlobalSync() {
       if (replayInFlight.get(scopeKey) !== tracked) return recovered
       replayInFlight.delete(scopeKey)
       if (replayPending.delete(scopeKey)) return replayOrResync(scopeKey)
-      if (recovered) recoveryRetryScheduler.cancel(scopeKey)
-      else recoveryRetryScheduler.schedule(scopeKey)
+      recoveryCoordination.onReplaySettled(scopeKey, recovered)
       return recovered
     })
     replayInFlight.set(scopeKey, tracked)
@@ -1890,7 +1896,7 @@ function createGlobalSync() {
     const generation = reconnectVersion() + 1
     setReconnectVersion(generation)
     resyncInstancesPromise = runInstanceRequests(directories, (directory) =>
-      scopeReconnectRecovery.run(directory, generation, () => replayOrResync(directory)),
+      recoveryCoordination.runWithGeneration(directory, generation, () => replayOrResync(directory)),
     ).finally(() => {
       resyncInstancesPromise = undefined
     })
