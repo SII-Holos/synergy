@@ -50,6 +50,25 @@ describe("Scope.fromDirectory", () => {
     expect((await Scope.list()).some((item) => item.id === scope.id)).toBe(false)
     expect(await Bun.file(path.join(tmp.path, ".git", "synergy")).exists()).toBe(false)
   })
+
+  test("unarchives a previously archived scope when the directory is re-opened", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    const { scope: first } = await Scope.fromDirectory(tmp.path)
+    expect(first.type).toBe("project")
+    if (first.type !== "project") throw new Error("expected project scope")
+    expect(first.time.archived).toBeUndefined()
+
+    await Scope.remove(first.id)
+    expect((await Scope.list()).some((item) => item.id === first.id)).toBe(false)
+
+    const { scope: reopened } = await Scope.fromDirectory(tmp.path)
+    expect(reopened.type).toBe("project")
+    if (reopened.type !== "project") throw new Error("expected project scope")
+    expect(reopened.id).toBe(first.id)
+    expect(reopened.time.archived).toBeUndefined()
+    expect((await Scope.list()).some((item) => item.id === first.id)).toBe(true)
+  })
 })
 
 describe("Scope.fromDirectory with worktrees", () => {

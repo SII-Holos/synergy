@@ -93,11 +93,15 @@ export namespace Scope {
     await Storage.write(StoragePath.scope(pid(data.id)), data)
   }
 
-  async function findByWorktree(worktree: string): Promise<z.infer<typeof Info> | undefined> {
+  async function findByWorktree(
+    worktree: string,
+    options?: { includeArchived?: boolean },
+  ): Promise<z.infer<typeof Info> | undefined> {
     const resolved = path.resolve(worktree)
     for (const rawID of await Storage.scan(StoragePath.scopeRoot())) {
       const data = await readPersisted(rawID).catch(() => undefined)
-      if (!data || data.time?.archived) continue
+      if (!data) continue
+      if (!options?.includeArchived && data.time?.archived) continue
       if (path.resolve(data.worktree) === resolved) return data
     }
     return undefined
@@ -275,9 +279,11 @@ export namespace Scope {
     // directory characteristics change (e.g. git init adds a commit-based ID
     // to a directory that was previously tracked by path hash). Rather than
     // creating a second scope and fragmenting data, we reuse the existing one
-    // and update its metadata.
+    // and update its metadata. Include archived scopes so that re-opening an
+    // archived project (which is the user's signal to unarchive it) reuses
+    // the same record instead of making a duplicate.
     if (!existing) {
-      const byWorktree = await findByWorktree(worktree)
+      const byWorktree = await findByWorktree(worktree, { includeArchived: true })
       if (byWorktree) {
         existing = byWorktree
         log.info("reusing existing scope for worktree", {
@@ -295,20 +301,14 @@ export namespace Scope {
       }
     }
 
-    if (existing?.time?.archived) {
-      const scope: Scope.Project = {
-        type: "project",
-        id: existing.id,
-        directory: sandbox,
-        worktree: existing.worktree,
-        vcs: existing.vcs,
-        name: existing.name,
-        icon: existing.icon,
-        pinned: existing.pinned,
-        sandboxes: existing.sandboxes ?? [],
-        time: existing.time,
-      }
-      return { scope, sandbox }
+    // When a user re-opens a directory whose scope was previously archived,
+    // treat that as an implicit unarchive: clear the archived timestamp and
+    // fall through to the normal create/update path so the record is
+    // persisted (and emitted) as an active scope again.
+    const wasArchived = !!existing?.time?.archived
+    if (existing && wasArchived) {
+      const { archived: _dropped, ...restTime } = existing.time
+      existing = { ...existing, time: { ...restTime, updated: Date.now() } }
     }
 
     const existed = !!existing
@@ -347,6 +347,7 @@ export namespace Scope {
     // and sidebar re-renders on unrelated navigation.
     const recordChanged =
       !existed ||
+      wasArchived ||
       project.directory !== existing.directory ||
       project.worktree !== existing.worktree ||
       project.vcs !== existing.vcs ||
