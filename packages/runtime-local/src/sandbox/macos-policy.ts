@@ -264,6 +264,23 @@ export namespace MacOSPolicy {
       lines.push(paramReadRule(readParamName(i)))
     }
 
+    // 3a. Ancestor metadata allows — git validates worktree gitdirs by
+    //     stat-ing every path component from the filesystem root down to the
+    //     gitdir; deny-default otherwise fails that stat with
+    //     "Invalid path '<ancestor>'". Metadata-only: permits stat, never
+    //     directory listing or data reads.
+    const ancestorMetadata = new Set<string>()
+    for (const root of fs.readableRoots) {
+      for (const ancestor of ancestorLiterals(root)) {
+        const canonical = canonicalize(ancestor)
+        if (canonical !== "/" && canonical !== canonicalize(root)) ancestorMetadata.add(canonical)
+      }
+    }
+    if (ancestorMetadata.size > 0) {
+      const filters = [...ancestorMetadata].map((p) => `(literal "${escapeSbpl(p)}")`).join(" ")
+      lines.push(`(allow file-read-metadata ${filters})`)
+    }
+
     // 4. Writable roots — parameterized allow rules
     for (let i = 0; i < fs.writableRoots.length; i++) {
       lines.push(paramWriteRule(writeParamName(i)))

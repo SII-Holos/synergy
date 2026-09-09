@@ -267,6 +267,10 @@
           "reason": "prompt input requires a live editor runtime"
         },
         {
+          "glob": "src/components/prompt-input/pending-attachment-card.tsx",
+          "reason": "Rendered by test/components/prompt-input/pending-attachment-card.dom.test.tsx in Playwright; browser execution is outside Bun lcov instrumentation"
+        },
+        {
           "glob": "src/components/prompt-input/permission-modes.ts",
           "reason": "prompt input requires a live editor runtime"
         },

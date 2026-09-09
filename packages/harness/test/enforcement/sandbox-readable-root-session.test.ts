@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import * as fs from "node:fs"
+import * as path from "node:path"
 const { EnforcementGate } = await import("../../src/enforcement/gate")
 const { controlledTempRoot } = await import("../../src/sandbox/policy")
 const { tmpdir } = await import("../support/fixture")
@@ -46,5 +47,37 @@ describe("sandbox readable roots and session key (PR #1308 follow-up)", () => {
     const policy = gate.getSandboxPolicy()
     expect(policy).not.toBeNull()
     expect(policy!.fileSystem.readableRoots).toContain("/etc/hosts")
+  })
+
+  test("worktree session does not implicitly authorize original checkout Git metadata", async () => {
+    await using tmp = await tmpdir()
+    const main = tmp.path
+    const worktree = path.join(main, ".synergy", "worktrees", "feature-x")
+    fs.mkdirSync(worktree, { recursive: true })
+    fs.mkdirSync(path.join(main, ".git"), { recursive: true })
+    const gate = await EnforcementGate.create({
+      activeWorkspace: worktree,
+      workspaceType: "worktree",
+      profileId: "autonomous",
+      sessionKey: "ses_abc",
+      originalCheckout: main,
+    })
+    const policy = gate.getSandboxPolicy()
+    expect(policy).not.toBeNull()
+    expect(policy!.fileSystem.readableRoots).not.toContain(path.join(main, ".git"))
+    expect(policy!.fileSystem.writableRoots).not.toContain(path.join(main, ".git"))
+  })
+
+  test("main sessions do not seed a git directory sandbox root", async () => {
+    await using tmp = await tmpdir()
+    const gate = await EnforcementGate.create({
+      activeWorkspace: tmp.path,
+      workspaceType: "main",
+      profileId: "autonomous",
+      sessionKey: "ses_abc",
+    })
+    const policy = gate.getSandboxPolicy()
+    expect(policy).not.toBeNull()
+    expect(policy!.fileSystem.readableRoots).not.toContain(path.join(tmp.path, ".git"))
   })
 })

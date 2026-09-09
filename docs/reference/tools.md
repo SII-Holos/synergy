@@ -736,7 +736,7 @@ Observe one native application window using pid and windowId from computer_apps.
 
 Kind: `platform.config`
 
-Discover persisted Synergy Link targets and manage explicit remote sessions. Prefer the stable targetID; linkID + targetAgentID is the bootstrap path for targets not yet persisted. Cached sessions are heartbeat-verified before they are reported open; a timeout or missed-pong liveness loss leaves already-dispatched results unknown and never authorizes an automatic mutating retry. Remote lifecycle actions never fall back locally.
+Discover persisted Synergy Link targets and manage explicit remote sessions. Prefer the stable targetID; linkID + targetAgentID is the bootstrap path for targets not yet persisted. Cached sessions are heartbeat-verified before they are reported open. When that verification is inconclusive (timeout, transport failure, or missed-pong liveness loss), connect open issues one caller-authenticated recovery open so the remote host can authoritatively reuse the session, open a fresh one, report busy under another caller, or refuse; already-dispatched results remain unknown and mutating requests are never replayed. connect clear removes only the local cached session and never contacts the host. Remote lifecycle actions never fall back locally.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |

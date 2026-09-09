@@ -9884,6 +9884,13 @@ msgstr "Lattice is active"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.attach.removeButton"
+msgstr "Remove {filename}"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.attach.requestFailed"
 msgstr "Request failed"
 
@@ -9893,6 +9900,17 @@ msgstr "Request failed"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.attach.slotOccupied"
 msgstr "Blueprint slot occupied"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.attach.uploadedStatus"
+msgstr "Uploaded"
+
+#. attachments.tsx — pending upload card states
+msgid "prompt.attach.uploadingStatus"
+msgstr "Uploading…"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -11254,6 +11272,20 @@ msgstr "Use a normal message"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.submit.useNormal.description"
 msgstr "Light Loop starts from the next text prompt, not shell mode."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.waitUploads.description"
+msgstr "Wait for attachments to finish uploading before sending."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.waitUploads.title"
+msgstr "Attachments still uploading"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -12686,10 +12718,6 @@ msgstr "Return to latest"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.conversation.withdraw"
 msgstr "Withdraw"
-
-#. js-lingui-explicit-id
-msgid "session.decisions.label"
-msgstr "Session decision required"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

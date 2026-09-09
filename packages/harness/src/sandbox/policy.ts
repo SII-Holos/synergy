@@ -14,7 +14,10 @@ export const DEFAULT_SYSTEM_RUNTIME_READ_ROOTS = ["/usr/lib", "/System/Library",
  * (`/opt/homebrew` on Apple Silicon, `/usr/local` on Intel) hosts the git,
  * language runtimes, and package managers a developer shell actually uses;
  * `/Library/Developer/CommandLineTools` and `/private/etc` cover CLT tools and
- * TLS/ssl configuration. Only meaningful on darwin; other platforms ignore it.
+ * TLS/ssl configuration. `/var/select` holds the /bin/sh selector symlink
+ * that picks the bash variant — deny-default profiles must read it or every
+ * wrapped command fails to start its interpreter. Only meaningful on darwin;
+ * other platforms ignore it.
  */
 export const MACOS_DEVELOPER_READ_ROOTS = [
   "/opt/homebrew",
@@ -22,6 +25,8 @@ export const MACOS_DEVELOPER_READ_ROOTS = [
   "/Library/Developer/CommandLineTools",
   "/etc",
   "/private/etc",
+  "/var/select",
+  "/private/var/select",
 ]
 
 export function macosPlatformReadRoots(): string[] {

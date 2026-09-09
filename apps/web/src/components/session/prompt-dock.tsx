@@ -1,3 +1,4 @@
+import { SessionDecisionOutlet } from "./decision-surface"
 import { For, Show, onCleanup } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
@@ -32,6 +33,7 @@ export function PromptDock(props: PluginComponentProps<PluginComposerLayoutServi
           }
         >
           <Show when={!layout.readOnly()} fallback={layout.render("delegation")}>
+            <SessionDecisionOutlet />
             <For each={layout.links()}>
               {(link) => (
                 <div class="flex items-center justify-center pb-2">

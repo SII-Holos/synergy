@@ -10,6 +10,7 @@ import {
   macosPlatformReadRoots,
 } from "@ericsanchezok/synergy-harness/sandbox/policy"
 import { MacBackend } from "../../src/sandbox/macos"
+import { MacOSPolicy } from "../../src/sandbox/macos-policy"
 import { LinuxBackend } from "../../src/sandbox/linux"
 
 const WORKSPACE = "/Users/test/synergy-control-profile"
@@ -161,8 +162,35 @@ describe("sandbox read-root parity (PR #1308 follow-up)", () => {
     expect(roots).toContain("/usr/local")
     expect(roots).toContain("/etc")
     expect(roots).toContain("/Library/Developer/CommandLineTools")
+    // macOS /bin/sh is a universal-binary selector that opens /var/select/sh
+    // to pick its bash variant; deny-default profiles must read it or every
+    // wrapped command logs "Error opening /private/var/select/sh".
+    expect(roots).toContain("/var/select")
+    expect(roots).toContain("/private/var/select")
     expect(roots).not.toContain("/tmp")
     expect(roots).not.toContain("/private/tmp")
+  })
+
+  test("deny-default wrapper exposes the /bin/sh selector path to the sandbox", () => {
+    const wrapper = MacBackend.prepare({
+      command: "/bin/sh",
+      args: ["-c", "true"],
+      workspace: WORKSPACE,
+      sandboxMode: "workspace_write",
+      forcePlatform: "macos",
+    })
+    try {
+      const dArgs = wrapper.args.filter((arg) => /^PATH_READ_\d+=/.test(arg))
+      expect(dArgs.some((arg) => arg.endsWith("=/var/select") || arg.endsWith("=/private/var/select"))).toBe(true)
+    } finally {
+      MacBackend.cleanupTemp(wrapper.tempPath!)
+    }
+  })
+
+  test("deny-default profile stats readable-root ancestors for git path validation", () => {
+    const sbpl = MacOSPolicy.compileProfile(profile())
+    expect(sbpl).toContain("(allow file-read-metadata")
+    expect(sbpl).toContain('(allow file-read-metadata (literal "/Users")')
   })
 
   test("runtime user roots under the homedir are not defeated by sibling denies", () => {

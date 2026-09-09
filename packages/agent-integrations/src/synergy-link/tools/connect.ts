@@ -1,5 +1,6 @@
 import z from "zod"
 import { SynergyLinkIdentity } from "@ericsanchezok/synergy-link-protocol"
+import type { SynergyLinkClient, SynergyLinkSession } from "@ericsanchezok/synergy-link-protocol"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { SynergyLinkExecution } from "@ericsanchezok/synergy-runtime-local/tools/synergy-link-execution"
 import { SynergyLinkTargetRuntime } from "../target-runtime"
@@ -55,7 +56,7 @@ type ConnectMetadata = {
 
 export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("connect", {
   description:
-    "Discover persisted Synergy Link targets and manage explicit remote sessions. Prefer the stable targetID; linkID + targetAgentID is the bootstrap path for targets not yet persisted. Cached sessions are heartbeat-verified before they are reported open; a timeout or missed-pong liveness loss leaves already-dispatched results unknown and never authorizes an automatic mutating retry. Remote lifecycle actions never fall back locally.",
+    "Discover persisted Synergy Link targets and manage explicit remote sessions. Prefer the stable targetID; linkID + targetAgentID is the bootstrap path for targets not yet persisted. Cached sessions are heartbeat-verified before they are reported open. When that verification is inconclusive (timeout, transport failure, or missed-pong liveness loss), connect open issues one caller-authenticated recovery open so the remote host can authoritatively reuse the session, open a fresh one, report busy under another caller, or refuse; already-dispatched results remain unknown and mutating requests are never replayed. connect clear removes only the local cached session and never contacts the host. Remote lifecycle actions never fall back locally.",
   parameters,
   async execute(params, ctx) {
     if (params.action === "list_targets") {
@@ -214,18 +215,15 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
       if (activeSession?.status === "opened") {
         const verification = await SynergyLinkExecution.verifySession(linkID, sessionSelector)
         if (verification.kind === "unverified") {
-          return {
-            title: "Connection status unknown",
-            metadata: {
-              action: "open",
-              targetID: registeredTarget?.id,
-              linkID,
-              targetAgentID: activeSession.targetAgentID,
-              sessionID: activeSession.sessionID,
-              status: "unknown",
-            },
-            output: `The cached session for link "${linkID}" could not be verified (${verification.reason === "timeout" ? "the check timed out" : "transport failure or heartbeat liveness loss"}). It may still be open remotely, so a fresh open was not attempted. Retry verification once the link is reachable; do not automatically repeat mutating work.`,
-          }
+          return await recoverUnverifiedOpen({
+            client: SynergyLinkExecution.getClient(),
+            registeredTargetID: registeredTarget?.id,
+            linkID,
+            targetAgentID: activeSession.targetAgentID,
+            sourceAgent: ctx.agent,
+            cachedSessionID: activeSession.sessionID,
+            label: params.label,
+          })
         }
         if (verification.kind === "verified") {
           SynergyLinkExecution.touchSession(linkID, sessionSelector)
@@ -400,3 +398,195 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
     }
   },
 })
+
+/**
+ * Bounded reconciliation after cached-session verification is inconclusive
+ * (heartbeat timeout or transport failure). One caller-authenticated open is
+ * issued so the host answers authoritatively: reused session (still alive),
+ * a fresh session (the cached one ended), busy (another caller owns the
+ * host), or refused (policy/block). The caller is never cleared on an
+ * unverified result, results of already-dispatched work stay unknown, and no
+ * mutating request is replayed under a new identity.
+ */
+async function recoverUnverifiedOpen(input: {
+  client: SynergyLinkClient.ExecutionClient | null
+  registeredTargetID?: string
+  linkID: string
+  targetAgentID: string
+  sourceAgent: string
+  cachedSessionID: string
+  label?: string
+}): Promise<{ title: string; metadata: ConnectMetadata; output: string }> {
+  const { linkID, targetAgentID, cachedSessionID } = input
+  const selector = {
+    targetID: input.registeredTargetID,
+    targetAgentID,
+    ...(input.registeredTargetID ? {} : { sourceAgent: input.sourceAgent }),
+  }
+  const unknownResult = (detail: string): { title: string; metadata: ConnectMetadata; output: string } => ({
+    title: "Connection status unknown",
+    metadata: {
+      action: "open",
+      targetID: input.registeredTargetID,
+      linkID,
+      targetAgentID,
+      sessionID: cachedSessionID,
+      status: "unknown",
+    },
+    output: `The cached session for link "${linkID}" could not be verified and the recovery open could not be answered (${detail}). It may still be active remotely, so the cached session was kept and no fresh session was assumed. Its status and any dispatched result remain unknown; retry once the link is reachable and do not automatically repeat mutating work.`,
+  })
+
+  if (!input.client) {
+    return unknownResult("the Synergy Link transport is not connected")
+  }
+
+  let opened: SynergyLinkSession.Result
+  try {
+    opened = await withTimeout(
+      input.client.executeSession(linkID, { action: "open", label: input.label }, { targetAgentID }),
+      ToolTimeout.DEFAULTS.connectMs,
+      {
+        message: `Recovering the connection to link "${linkID}" timed out after ${ToolTimeout.DEFAULTS.connectMs / 1000}s. The host may be unreachable, but a remote session may have opened; the result is unknown.`,
+      },
+    )
+  } catch (error) {
+    return unknownResult(error instanceof Error ? error.message : String(error))
+  }
+
+  const now = Date.now()
+  const probedLocator = { linkID, targetAgentID }
+  const recordMatches = () => {
+    const session = SynergyLinkExecution.getSession(linkID, selector)
+    return session !== undefined && session.sessionID === cachedSessionID
+  }
+  const recordGone = () => SynergyLinkExecution.getSession(linkID, selector) === undefined
+
+  if (opened.metadata.status === "opened" && opened.metadata.sessionID === cachedSessionID) {
+    // The host confirms the cached session is still the caller's. Refresh the
+    // local record when it is still cached; never resurrect a record that was
+    // concurrently cleared, and never touch a replaced session.
+    if (recordMatches()) {
+      const session = SynergyLinkExecution.getSession(linkID, selector)
+      if (session) {
+        session.lastVerifiedAt = now
+        session.lastUsedAt = now
+        session.lastAttemptAt = now
+        if (opened.metadata.host) {
+          session.supportsBashDetach = opened.metadata.host.capabilities.supportsBashDetach === true
+        }
+      }
+      if (input.registeredTargetID && opened.metadata.host) {
+        await SynergyLinkTargetService.recordProbe(
+          input.registeredTargetID,
+          { status: "reachable", host: { ...opened.metadata.host, observedAt: now } },
+          probedLocator,
+        )
+      }
+      return {
+        title: "Connected",
+        metadata: {
+          action: "open",
+          targetID: input.registeredTargetID,
+          linkID,
+          targetAgentID,
+          sessionID: cachedSessionID,
+          status: "opened",
+        },
+        output: `Connection to link "${linkID}" was verified by the host and is still open; the cached session was kept.`,
+      }
+    }
+    return unknownResult("the cached session changed while the recovery open was in flight")
+  }
+
+  if (opened.metadata.status === "opened" && opened.metadata.sessionID) {
+    // The host opened a new session because the cached one ended (or never
+    // existed there). Adopt it unless a different session was cached
+    // concurrently, in which case that record wins and stays untouched.
+    const sessionID = opened.metadata.sessionID
+    if (recordGone() || recordMatches()) {
+      if (recordMatches()) SynergyLinkExecution.clearSession(linkID, selector)
+      SynergyLinkExecution.upsertSession({
+        linkID,
+        targetID: input.registeredTargetID,
+        targetAgentID,
+        sourceAgent: input.sourceAgent,
+        sessionID,
+        status: "opened",
+        supportsBashDetach: opened.metadata.host?.capabilities.supportsBashDetach === true,
+        label: input.label,
+        openedAt: now,
+        lastUsedAt: now,
+        lastAttemptAt: now,
+        lastVerifiedAt: now,
+      })
+      if (input.registeredTargetID && opened.metadata.host) {
+        await SynergyLinkTargetService.recordProbe(
+          input.registeredTargetID,
+          { status: "reachable", host: { ...opened.metadata.host, observedAt: now } },
+          probedLocator,
+        )
+      }
+      return {
+        title: "Connected",
+        metadata: {
+          action: "open",
+          targetID: input.registeredTargetID,
+          linkID,
+          targetAgentID,
+          sessionID,
+          status: "opened",
+        },
+        output: `The cached session for link "${linkID}" is no longer active remotely; the host opened a fresh session (${sessionID}). Results from the previous session, if any were dispatched, remain unknown and were not replayed.`,
+      }
+    }
+    return unknownResult("the cached session changed while the recovery open was in flight")
+  }
+
+  if (input.registeredTargetID && (opened.metadata.status === "busy" || opened.metadata.status === "refused")) {
+    await SynergyLinkTargetService.recordProbe(
+      input.registeredTargetID,
+      {
+        status: opened.metadata.status === "busy" ? "busy" : "refused",
+        host: opened.metadata.host ? { ...opened.metadata.host, observedAt: now } : undefined,
+      },
+      probedLocator,
+    )
+  }
+
+  if (opened.metadata.status === "busy") {
+    // The host reused nothing, so its current session belongs to another
+    // caller and the cached record is stale. Drop only a matching record; a
+    // concurrently replaced session stays untouched.
+    const clearedMatching = recordMatches() ? SynergyLinkExecution.clearSession(linkID, selector) !== undefined : false
+    return {
+      title: opened.title,
+      metadata: {
+        action: "open",
+        targetID: input.registeredTargetID,
+        linkID,
+        targetAgentID,
+        sessionID: opened.metadata.sessionID,
+        status: "busy",
+      },
+      output: `The host for link "${linkID}" is busy with another caller's session${clearedMatching ? "; the cached session was cleared" : ""}. The busy session was not disturbed.`,
+    }
+  }
+
+  if (opened.metadata.status === "refused") {
+    const clearedMatching = recordMatches() ? SynergyLinkExecution.clearSession(linkID, selector) !== undefined : false
+    return {
+      title: opened.title,
+      metadata: {
+        action: "open",
+        targetID: input.registeredTargetID,
+        linkID,
+        targetAgentID,
+        sessionID: opened.metadata.sessionID,
+        status: "refused",
+      },
+      output: clearedMatching ? `${opened.output} The cached session was cleared.` : opened.output,
+    }
+  }
+
+  return unknownResult(`the host reported status ${opened.metadata.status}`)
+}
