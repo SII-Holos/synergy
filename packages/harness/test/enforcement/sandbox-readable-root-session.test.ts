@@ -49,15 +49,12 @@ describe("sandbox readable roots and session key (PR #1308 follow-up)", () => {
     expect(policy!.fileSystem.readableRoots).toContain("/etc/hosts")
   })
 
-  test("worktree session seeds the original checkout git directory as a sandbox read-only root", async () => {
+  test("worktree session does not implicitly authorize original checkout Git metadata", async () => {
     await using tmp = await tmpdir()
     const main = tmp.path
     const worktree = path.join(main, ".synergy", "worktrees", "feature-x")
     fs.mkdirSync(worktree, { recursive: true })
     fs.mkdirSync(path.join(main, ".git"), { recursive: true })
-    // A real worktree resolves its git store through <original>/.git; the
-    // gate must expose that directory read-only to the OS sandbox even
-    // though the original checkout itself stays outside the trust boundary.
     const gate = await EnforcementGate.create({
       activeWorkspace: worktree,
       workspaceType: "worktree",
@@ -67,7 +64,7 @@ describe("sandbox readable roots and session key (PR #1308 follow-up)", () => {
     })
     const policy = gate.getSandboxPolicy()
     expect(policy).not.toBeNull()
-    expect(policy!.fileSystem.readableRoots).toContain(path.join(main, ".git"))
+    expect(policy!.fileSystem.readableRoots).not.toContain(path.join(main, ".git"))
     expect(policy!.fileSystem.writableRoots).not.toContain(path.join(main, ".git"))
   })
 

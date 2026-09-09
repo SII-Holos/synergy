@@ -31,8 +31,6 @@ export class ApprovalCache {
   }
 }
 
-import * as fs from "fs"
-import * as path from "path"
 import { buildPermissionProfile, type SynergySandboxPermissionProfile } from "../sandbox/policy-engine"
 import { Filesystem } from "../util/filesystem"
 
@@ -941,16 +939,6 @@ export namespace EnforcementGate {
     // sandbox permission profile permits the same write set the profile
     // boundary declares.
     const approvedReadPaths = new Set<string>(trustedRootList)
-    // A git worktree resolves its object store through the original checkout's
-    // .git directory. The original checkout stays outside the trust boundary —
-    // this seed is sandbox-only and read-only — but without it every git
-    // command in a sandboxed worktree session fails with "not a git
-    // repository" because the pointed-to gitdir is unreadable under
-    // deny-default profiles.
-    if (workspaceType === "worktree" && originalCheckout) {
-      const gitDir = path.join(path.resolve(originalCheckout), ".git")
-      if (fs.existsSync(gitDir)) approvedReadPaths.add(gitDir)
-    }
     const approvedWritePaths = new Set<string>([...trustedRootList, ...(resolved.filesystem.writeRoots ?? [])])
     const pathOptions = { activeWorkspace, originalCheckout, readRoots, trustedRoots }
     let approvedNetwork = false
