@@ -330,6 +330,8 @@ The display projection preserves leading-trim behavior without rewriting model-a
 
 Streaming Markdown creates a fixed set of token elements through DOM APIs and rejects unsafe link and image URL protocols before setting attributes. Raw model HTML is never assigned to `innerHTML` during streaming. Automatic bottom-following is coalesced so content growth schedules at most one scroll operation per animation frame.
 
+A session switch opens the fresh scroller at the top; the page pins it to the bottom through one re-armed init chain once the message window becomes ready. A forced pin is a short follow contract: the auto-scroll hook stays active for a settle window (default 1000 ms), re-pins through late content growth (images, code highlighting), and extends the window per growth. While follow is inactive, content growth fires no scroll event, so the hook reports the bottom distance through `onMeasure` and consumers derive scrolled-up state from that measurement; the session page gates the reporting until its initial pin has consumed so partially laid-out content cannot flash the jump button, and remounting a scroller resets stale user-scrolled state.
+
 While the page is hidden, per-part delta frames are merged into one pending delta per part before application; a full `message.part.updated` checkpoint for the same part clears that pending delta (the checkpoint is authoritative, so merged deltas never double-append). Visible pages keep per-delta application so token receive telemetry stays intact.
 
 ## Server Part Write-Behind
@@ -431,6 +433,7 @@ Composer snapshots, settled-draft notifications, selected-text snapshots, comple
   (binary-search insertion point) instead of re-merging and re-sorting the whole window; the window order and eviction semantics stay canonical.
 - The rendered turn tree is bounded: while pinned at the bottom in latest mode,
   `turnStart` advances so at most `MAX_RENDERED_TURNS` user turns are mounted; the trim re-pins the scroller after layout settles.
+- The initial session pin re-arms when history readiness flips, so a cancelled init chain reruns on the next ready edge; a forced pin opens a settle window during which resize growth re-pins, and growth outside follow reports the bottom distance instead of relying on scroll events.
 - Each `SessionTurn` consumes a precomputed projection of its turn members
   instead of rescanning the message window, so a new message invalidates only the projection memo rather than every rendered turn.
 - `BrowserViewEffects` keeps its handled-callID set bounded to the timeline
