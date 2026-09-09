@@ -96,6 +96,7 @@
     "latest",
     "gitleaks",
     "uvx",
+    "uv",
     "rg",
     "linux",
     "windows",
@@ -110,6 +111,16 @@
     "catalog": "off",
   },
   "workspaces": {
+    "benchmark": {
+      "entry": [
+        "runtime/entry.ts",
+        "runtime/worker.ts",
+        "runtime/inspect.ts",
+        "runtime/compositions/*.ts",
+        "test/**/*.ts",
+      ],
+      "project": ["runtime/**/*.ts", "test/**/*.ts"],
+    },
     "packages/ui": {
       "entry": [
         "src/components/**/*.{ts,tsx}",

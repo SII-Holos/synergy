@@ -137,6 +137,23 @@
         "vite-plugin-solid": "catalog:",
       },
     },
+    "benchmark": {
+      "name": "@ericsanchezok/synergy-benchmark",
+      "version": "0.1.0",
+      "dependencies": {
+        "@ericsanchezok/synergy-cli": "workspace:*",
+        "@ericsanchezok/synergy-harness": "workspace:*",
+        "@ericsanchezok/synergy-library": "workspace:*",
+        "@ericsanchezok/synergy-product-runtime": "workspace:*",
+        "@ericsanchezok/synergy-runtime-local": "workspace:*",
+      },
+      "devDependencies": {
+        "@tsconfig/bun": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "catalog:",
+      },
+    },
     "packages/agent-integrations": {
       "name": "@ericsanchezok/synergy-agent-integrations",
       "version": "1.1.26",
@@ -1065,6 +1082,8 @@
     "@ericsanchezok/synergy-agent-integrations": ["@ericsanchezok/synergy-agent-integrations@workspace:packages/agent-integrations"],
 
     "@ericsanchezok/synergy-app": ["@ericsanchezok/synergy-app@workspace:apps/web"],
+
+    "@ericsanchezok/synergy-benchmark": ["@ericsanchezok/synergy-benchmark@workspace:benchmark"],
 
     "@ericsanchezok/synergy-browser": ["@ericsanchezok/synergy-browser@workspace:packages/browser"],
 
