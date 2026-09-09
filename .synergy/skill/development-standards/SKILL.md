@@ -39,22 +39,20 @@ A durable development convention is part of the implementation deliverable, not 
 1. Search `.synergy/skill/` before recording a new rule.
 2. Update the focused owning Skill in the same change when a reusable constraint, required registration, approved pattern, or verification step emerges.
 3. Create a new verb-led development Skill when no existing workflow would reliably trigger for that class of change. Keep it focused and link it from this router, root `AGENTS.md`, and `llms.txt`.
-4. Update canonical docs when the rule describes product or architecture truth; update `packages/app/PRODUCT.md` when it describes durable interaction or visual behavior.
+4. Update canonical docs when the rule describes product or architecture truth; update `apps/web/PRODUCT.md` when it describes durable interaction or visual behavior.
 5. Keep root/package `AGENTS.md` concise: retain safety, global invariants, and Skill routing there; put executable steps and examples in Skills.
-6. Validate every changed or added Skill and its links with `bun run skill:check` from the repository root.
+6. Review `.synergy/command/`, contribution/setup instructions, workspace guides and both ends of renamed symbols or file references when moving an owner. Keep historical evidence and public executable, package, configuration and installed-resource names intact. Validate every changed or added Skill and its links with `bun run skill:check` from the repository root.
 7. Keep one nearest `AGENTS.md` for every root workspace package and validate coverage with `bun run package-guide:check`.
 
 ## Preserve Harness-Core Layering
 
-The `packages/synergy/src/` layer boundary is machine-enforced. Before adding any import, classify both endpoints with the layer table in [Ownership Map](../../../docs/architecture/README.md#ownership-map):
+Package ownership is machine-enforced. Before adding an import, identify both package owners in the [Ownership Map](../../../docs/architecture/README.md#ownership-map).
 
-1. L1 harness-core directories (`session/`, `tool/`, `agent/`, `config/`, `provider/`, `enforcement/`, `permission/`, `scope/`, `bus/`, `storage/`, `file/`, `workspace-file/`, `observability/`, `instruction/`, `migration/`, `sandbox/`, `control-profile/`) must never import product domains (`plugin/`, `cortex/`, `channel/`, `browser/`, `mcp/`, `blueprint/`, `lattice/`, `boss/`, `light-loop/`, `library/`, `note/`, `agenda/`, `holos/`, `skill/`, `command/`, `project/`, `question/`, `lsp/`, `email/`, `synergy-link/`, `remote/`, `acp/`, `external-agent/`, `superplan/`, `performance/`) or assembly (`server/`, `runtime/`, `cli/`, `daemon/`, `main/`). R1 is error-level.
-2. When L1 needs product behavior, invert it through the existing L1 port registries — `SessionPluginHooks`, `SessionToolContext`, `SessionCortexRuntime`, `SessionBlueprintState`, `InstructionRegistry`, `ToolMcpSource`, `ScopeStartup`, `RuntimeReloadExecutor`, `SkillSourceProviders`, `CommandSourceProviders`, `SessionEnvContributor` — with the product-side adapter registered in `src/product-registration.ts`. Do not invent a parallel registry when one of these fits.
-3. Product domains stay acyclic (R2, error). Break a new product↔product ring with the established patterns: extract a shared leaf module, or use a domain-internal setter injection (precedent: `setTerminalHookDeliverer`).
-4. New product-domain tools, migrations, and startup steps belong in the owning domain (`<domain>/tools.ts`, `<domain>/migration.ts`, `<domain>/startup.ts`), wired through the manifest — never appended to `tool/registry.ts` builtin arrays or `scope/runtime.ts`.
-5. Verify with `bun run deps:check` (repo root) before finishing; refresh the recorded baseline with `bun run deps:snapshot` only when the change is intentional, and explain the edge movement in the decision record.
-
-Do not add a rule only to a PR comment, prompt, or one package guide if future agents need it to implement the same change correctly.
+1. Harness cannot import CLI, HTTP Server, the generated SDK, or business packages. Default model SDK factories, local tools, native PTY, filesystem watchers and OS sandbox implementations belong to `runtime-local`; Harness retains permission policy and typed host ports.
+2. Use an existing typed source or registry when core execution needs optional behavior. Register it from the owning capability or full product composition before runtime startup; do not add package scanning or a generic service container.
+3. Import only declared package exports. Keep one source module per export target; do not add private cross-package relative imports or forwarding copies to bypass a cycle.
+4. Put a business domain's tools, routes, configuration, migrations, storage and CLI commands with its service. Only generic tool execution and scheduling belong to Harness.
+5. Run `bun run deps:check` after package/import changes. Workspace manifests own actual dependencies, `script/dependency-rules.json` owns allowed dependency directions, and the release catalog owns artifact selection.
 
 ## Preserve External Provenance
 
@@ -70,3 +68,7 @@ Routine language usage, direct official API calls, and general patterns without 
 ## Handoff
 
 Report the owning workflows loaded, invariant changed, focused checks run, and any Skill or canonical document updated because a new development convention emerged.
+
+When splitting a namespace into a core mechanism and a business implementation, give the implementations distinct names and update value and type consumers. With the pinned Bun version, aliasing an imported namespace to avoid a same-name local namespace is insufficient after bundling. Verify real compiled behavior; see the [compiled runtime ownership decision](../../../docs/decisions/implemented/bug-fix/2026-09-08-compiled-runtime-namespace-ownership.md).
+
+Completion callbacks that perform model work must return all nested work and be awaited before rollout settlement; preserving only a top-level promise while detaching retries or reward evaluation still loses evidence. See the [completion contribution decision](../../../docs/decisions/implemented/bug-fix/2026-09-08-await-completion-context-contributions.md).

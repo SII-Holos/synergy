@@ -39,4 +39,4 @@ Synergy stores installation metadata, approval, per-Scope enablement, declarativ
 
 ## UI Model
 
-Simple metadata is rendered by the host. Complex surfaces are trusted Solid components loaded only after approval. plugin-kit compiles TSX and binds it to the host's shared Solid runtime. Every trusted component receives one `PluginSurfaceContext`; it reads complete state through query operations, sends intent through command operations, and treats events as scoped invalidation or small state-change notifications.
+[UI API 5](ui-contributions.md) versions trusted frontend presentation independently from Backend Plugin API 4. Components receive one `{ context }` entry with typed domain services, generated plugin data, owned overlays and explicit lifetimes. Shells replace workbench/page presentation while existing host controllers retain state; structured Skins provide fonts and materials independently from semantic-color themes. Plugin Kit validates and packages the complete UI resource graph, and the host rejects incompatible UI before execution while retaining compatible backend contributions.

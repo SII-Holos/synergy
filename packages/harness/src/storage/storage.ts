@@ -1,0 +1,358 @@
+import path from "path"
+import fs from "fs/promises"
+import { Global } from "../global"
+import { Lock } from "../util/lock"
+import { isRetryableIOError } from "../util/io-retry"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
+import z from "zod"
+import { ObservabilityIssues } from "../observability/issues"
+import { ObservabilityMetrics } from "../observability/metrics"
+import { ObservabilityResources } from "../observability/resources"
+
+export namespace Storage {
+  const READ_MANY_CONCURRENCY = 32
+  // Successful duration samples are high-cardinality and previously amplified
+  // telemetry write load under UI polling (#343). Keep errors at 100%.
+  const STORAGE_DURATION_SAMPLE_RATE = 0.02
+
+  export const NotFoundError = NamedError.create(
+    "NotFoundError",
+    z.object({
+      message: z.string(),
+    }),
+  )
+
+  function resolveDir() {
+    return Global.Path.data
+  }
+
+  export async function remove(key: string[]) {
+    const dir = resolveDir()
+    const target = path.join(dir, ...key) + ".json"
+    return measureStorage("remove", key, async () => {
+      await fs.unlink(target).catch(() => {})
+      await pruneEmptyParents(path.dirname(target), dir)
+    })
+  }
+
+  export async function read<T>(key: string[], options: { silentNotFound?: boolean } = {}) {
+    const dir = resolveDir()
+    const target = path.join(dir, ...key) + ".json"
+    return measureStorage(
+      "read",
+      key,
+      async () =>
+        withErrorHandling(async () => {
+          using _ = await Lock.read(target)
+          const file = Bun.file(target)
+          const result = await file.json()
+          const size = file.size
+          ObservabilityResources.addRead(size)
+          return result as T
+        }),
+      options,
+    )
+  }
+
+  export async function readMany<T>(keys: string[][]): Promise<(T | undefined)[]> {
+    const dir = resolveDir()
+    return measureStorage("readMany", [keys[0]?.[0] ?? "root"], async () => {
+      const result: (T | undefined)[] = new Array(keys.length)
+      let next = 0
+      let readBytes = 0
+      const workers = Array.from({ length: Math.min(READ_MANY_CONCURRENCY, keys.length) }, async () => {
+        while (next < keys.length) {
+          const index = next++
+          const key = keys[index]
+          const target = path.join(dir, ...key) + ".json"
+          try {
+            using _ = await Lock.read(target)
+            const file = Bun.file(target)
+            result[index] = (await file.json()) as T
+            readBytes += file.size
+          } catch {
+            result[index] = undefined
+          }
+        }
+      })
+      await Promise.all(workers)
+      if (readBytes) ObservabilityResources.addRead(readBytes)
+      return result
+    })
+  }
+
+  export interface WriteOptions {
+    compact?: boolean
+    durable?: boolean
+    private?: boolean
+  }
+
+  function serialize(content: unknown, options?: WriteOptions) {
+    return options?.compact ? JSON.stringify(content) : JSON.stringify(content, null, 2)
+  }
+
+  export async function update<T>(key: string[], fn: (draft: T) => void, options?: WriteOptions) {
+    const dir = resolveDir()
+    const target = path.join(dir, ...key) + ".json"
+    return measureStorage("update", key, async () =>
+      withErrorHandling(async () => {
+        using _ = await Lock.write(target)
+        const content = await Bun.file(target).json()
+        fn(content)
+        const serialized = serialize(content, options)
+        await writeJsonAtomic(target, serialized, options)
+        ObservabilityResources.addWrite(Buffer.byteLength(serialized, "utf8"))
+        return content as T
+      }),
+    )
+  }
+
+  export async function write<T>(key: string[], content: T, options?: WriteOptions) {
+    const dir = resolveDir()
+    const target = path.join(dir, ...key) + ".json"
+    return measureStorage("write", key, async () =>
+      withErrorHandling(async () => {
+        using _ = await Lock.write(target)
+        const serialized = serialize(content, options)
+        await writeJsonAtomic(target, serialized, options)
+        ObservabilityResources.addWrite(Buffer.byteLength(serialized, "utf8"))
+      }),
+    )
+  }
+
+  export async function scan(prefix: string[], options?: { strict?: boolean }): Promise<string[]> {
+    const dir = resolveDir()
+    const target = path.join(dir, ...prefix)
+    return measureStorage("scan", prefix, async () => {
+      try {
+        const entries = await fs.readdir(target)
+        return entries
+          .filter((e) => !isTempFile(e))
+          .map((e) => (e.endsWith(".json") ? e.slice(0, -5) : e))
+          .sort()
+      } catch (error) {
+        if (options?.strict && !(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error
+        return []
+      }
+    })
+  }
+
+  export async function writeBinary(key: string[], content: Uint8Array) {
+    const target = path.join(resolveDir(), ...key) + ".bin"
+    return measureStorage("write", key, async () =>
+      withErrorHandling(async () => {
+        using _ = await Lock.write(target)
+        await writeFileAtomic(target, content, { private: true, durable: true })
+        ObservabilityResources.addWrite(content.byteLength)
+      }),
+    )
+  }
+
+  export async function readBinary(key: string[], options?: { maxBytes?: number }): Promise<Uint8Array> {
+    const target = path.join(resolveDir(), ...key) + ".bin"
+    return measureStorage("read", key, async () =>
+      withErrorHandling(async () => {
+        using _ = await Lock.read(target)
+        const file = Bun.file(target)
+        if (options?.maxBytes !== undefined && file.size > options.maxBytes) {
+          throw new Error("Binary record exceeds its byte limit")
+        }
+        const content = await file.bytes()
+        ObservabilityResources.addRead(content.byteLength)
+        return content
+      }),
+    )
+  }
+
+  export async function removeTree(prefix: string[]) {
+    const dir = resolveDir()
+    const target = path.join(dir, ...prefix)
+    await fs.rm(target, { recursive: true, force: true })
+    await pruneEmptyParents(path.dirname(target), dir)
+  }
+
+  async function pruneEmptyParents(current: string, root: string) {
+    while (current !== root && current.startsWith(root)) {
+      try {
+        const entries = await fs.readdir(current)
+        if (entries.length > 0) break
+        await fs.rmdir(current)
+        current = path.dirname(current)
+      } catch {
+        break
+      }
+    }
+  }
+
+  async function measureStorage<T>(
+    operation: string,
+    key: string[],
+    body: () => Promise<T>,
+    options: { silentNotFound?: boolean } = {},
+  ) {
+    const start = performance.now()
+    let status = "ok"
+    try {
+      return await body()
+    } catch (error) {
+      status = "error"
+      // Expected "file does not exist" paths (note scope probing, index
+      // rebuilds) used try/catch as control flow; every miss raised a
+      // PERF_STORAGE_OPERATION_ERROR issue and amplified telemetry writes.
+      // Keep the error metric (observability still counts it) but skip the
+      // issue when the caller declared the miss expected.
+      const isNotFound = error instanceof NotFoundError
+      if (!(options.silentNotFound && isNotFound)) {
+        ObservabilityIssues.raise({
+          code: "PERF_STORAGE_OPERATION_ERROR",
+          severity: "warning",
+          module: "storage",
+          title: "Storage operation failed",
+          message: `${operation} failed for ${key[0] ?? "root"}`,
+          evidence: {
+            operation,
+            keyPrefix: key[0] ?? "root",
+            errorName: error instanceof Error ? error.name : "unknown",
+          },
+        })
+      }
+      throw error
+    } finally {
+      const durationMs = performance.now() - start
+      ObservabilityMetrics.record({
+        name: "storage.operation.duration",
+        value: durationMs,
+        unit: "ms",
+        module: "storage",
+        labels: { operation, keyPrefix: key[0] ?? "root", status },
+        sampleRate: status === "error" ? 1 : STORAGE_DURATION_SAMPLE_RATE,
+      })
+      ObservabilityMetrics.record({
+        name: "storage.operation.count",
+        value: 1,
+        unit: "count",
+        module: "storage",
+        labels: { operation, status },
+      })
+      if (status === "error") {
+        ObservabilityMetrics.record({
+          name: "storage.operation.error",
+          value: 1,
+          unit: "count",
+          module: "storage",
+          labels: { operation },
+        })
+      }
+    }
+  }
+
+  async function withErrorHandling<T>(body: () => Promise<T>) {
+    return body().catch((e) => {
+      if (!(e instanceof Error)) throw e
+      const errnoException = e as NodeJS.ErrnoException
+      if (errnoException.code === "ENOENT") {
+        throw new NotFoundError({ message: `Resource not found: ${errnoException.path}` })
+      }
+      throw e
+    })
+  }
+
+  const glob = new Bun.Glob("**/*")
+  export async function list(prefix: string[]) {
+    const dir = resolveDir()
+    return measureStorage("list", prefix, async () => {
+      try {
+        const result = await Array.fromAsync(
+          glob.scan({
+            cwd: path.join(dir, ...prefix),
+            onlyFiles: true,
+          }),
+        ).then((results) =>
+          results
+            .filter((x) => x.endsWith(".json") && !isTempFile(path.basename(x)))
+            .map((x) => [...prefix, ...x.slice(0, -5).split(path.sep)]),
+        )
+        result.sort()
+        return result
+      } catch {
+        return []
+      }
+    })
+  }
+
+  // Windows maps rename onto MoveFileEx: when another process (antivirus,
+  // OneDrive, a cross-process reader of these JSON files) briefly holds a
+  // handle on the source or target without FILE_SHARE_DELETE, the rename
+  // fails with EPERM/EACCES. Sharing violations clear within milliseconds,
+  // so retry the whole write+rename sequence with short backoff instead of
+  // failing session persistence and terminating the owning session (#1247).
+  const ATOMIC_WRITE_ATTEMPTS = 4
+  const ATOMIC_WRITE_RETRY_BASE_MS = 50
+  const ATOMIC_WRITE_RETRY_MAX_MS = 200
+
+  export async function writeJsonAtomic(target: string, serialized: string, options?: WriteOptions) {
+    return writeFileAtomic(target, serialized, options)
+  }
+
+  async function writeFileAtomic(target: string, content: string | Uint8Array, options?: WriteOptions) {
+    await fs.mkdir(path.dirname(target), { recursive: true, ...(options?.private ? { mode: 0o700 } : {}) })
+    const tmp = path.join(
+      path.dirname(target),
+      `.tmp-${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+    )
+    for (let attempt = 1; ; attempt++) {
+      try {
+        if (options?.private || options?.durable) {
+          const file = await fs.open(tmp, "w", options.private ? 0o600 : 0o666)
+          try {
+            await file.writeFile(content)
+            if (options.durable) await file.sync()
+          } finally {
+            await file.close()
+          }
+        } else {
+          await Bun.write(tmp, content)
+        }
+        await fs.rename(tmp, target)
+        if (options?.durable && process.platform !== "win32") {
+          const directory = await fs.open(path.dirname(target), "r")
+          try {
+            await directory.sync()
+          } finally {
+            await directory.close()
+          }
+        }
+        return
+      } catch (error) {
+        if (!isRetryableIOError(error) || attempt >= ATOMIC_WRITE_ATTEMPTS) {
+          await removeTempFile(tmp)
+          throw error
+        }
+        await new Promise((resolve) => setTimeout(resolve, atomicRetryDelayMs(attempt)))
+      }
+    }
+  }
+
+  // The terminal-failure cleanup can hit the same Windows sharing violation
+  // that failed the rename (antivirus holding the temp handle), so transient
+  // unlink errors retry with the same backoff before being suppressed (#1247).
+  async function removeTempFile(tmp: string) {
+    for (let attempt = 1; attempt <= ATOMIC_WRITE_ATTEMPTS; attempt++) {
+      try {
+        await fs.unlink(tmp)
+        return
+      } catch (error) {
+        if (!isRetryableIOError(error) || attempt >= ATOMIC_WRITE_ATTEMPTS) return
+        await new Promise((resolve) => setTimeout(resolve, atomicRetryDelayMs(attempt)))
+      }
+    }
+  }
+
+  function atomicRetryDelayMs(attempt: number) {
+    return Math.min(ATOMIC_WRITE_RETRY_MAX_MS, ATOMIC_WRITE_RETRY_BASE_MS * 2 ** (attempt - 1))
+  }
+
+  function isTempFile(name: string) {
+    return name.includes(".tmp-") || name.endsWith(".tmp")
+  }
+}

@@ -1,7 +1,9 @@
+import { PortalStyleOwner, UIStyleProvider } from "./ui-style"
 import {
   createContext,
   createRoot,
   createSignal,
+  onCleanup,
   getOwner,
   type Owner,
   type ParentProps,
@@ -20,6 +22,8 @@ type Active = {
   dispose: () => void
   owner: Owner
   onClose?: () => void
+  protected: boolean
+  returnFocus?: HTMLElement
 }
 
 const Context = createContext<ReturnType<typeof init>>()
@@ -31,21 +35,30 @@ function init() {
     const currentStack = stack()
     const current = id ? currentStack.find((item) => item.id === id) : currentStack[currentStack.length - 1]
     if (!current) return
-    current.onClose?.()
-    current.dispose()
+    const wasTop = currentStack.at(-1)?.id === current.id
     setStack((prev) => prev.filter((item) => item.id !== current.id))
-  }
-
-  const closeAll = () => {
-    const currentStack = stack()
-    for (const current of [...currentStack].reverse()) {
+    try {
       current.onClose?.()
+    } finally {
       current.dispose()
+      const remaining = stack().at(-1)?.id
+      if (wasTop)
+        requestAnimationFrame(() => {
+          if (stack().at(-1)?.id === remaining && current.returnFocus?.isConnected) current.returnFocus.focus()
+        })
     }
-    setStack([])
   }
 
-  const mount = (element: DialogElement, owner: Owner, onClose?: () => void) => {
+  const closeAll = (includeProtected = false) => {
+    for (const current of [...stack()].reverse()) {
+      if (current.protected && !includeProtected) continue
+      close(current.id)
+    }
+  }
+  onCleanup(() => closeAll(true))
+
+  const mount = (element: DialogElement, owner: Owner, onClose?: () => void, protectedSurface = false) => {
+    const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
     const id = generateUUID()
     let dispose: (() => void) | undefined
 
@@ -62,8 +75,12 @@ function init() {
             }}
           >
             <Kobalte.Portal>
-              <Kobalte.Overlay data-component="dialog-overlay" />
-              {element()}
+              <UIStyleProvider reset={protectedSurface}>
+                <PortalStyleOwner>
+                  <Kobalte.Overlay data-component="dialog-overlay" />
+                  {element()}
+                </PortalStyleOwner>
+              </UIStyleProvider>
             </Kobalte.Portal>
           </Kobalte>
         )
@@ -73,13 +90,22 @@ function init() {
     const activeDispose = dispose
     if (!activeDispose) return
 
-    const active: Active = { id, node, dispose: activeDispose, owner, onClose }
+    const active: Active = {
+      id,
+      node,
+      dispose: activeDispose,
+      owner,
+      onClose,
+      protected: protectedSurface,
+      returnFocus,
+    }
     setStack((prev) => [...prev, active])
+    return id
   }
 
   const show = (element: DialogElement, owner: Owner, onClose?: () => void) => {
     closeAll()
-    mount(element, owner, onClose)
+    return mount(element, owner, onClose)
   }
 
   return {
@@ -122,15 +148,13 @@ export function useDialog() {
       return ctx.active
     },
     show(element: DialogElement, onClose?: () => void) {
-      const base = ctx.active?.owner ?? owner
-      ctx.show(element, base, onClose)
+      return ctx.show(element, owner, onClose)
     },
-    push(element: DialogElement, onClose?: () => void) {
-      const base = ctx.active?.owner ?? owner
-      ctx.push(element, base, onClose)
+    push(element: DialogElement, onClose?: () => void, options?: { protected?: boolean }) {
+      return ctx.push(element, owner, onClose, options?.protected)
     },
-    close() {
-      ctx.close()
+    close(id?: string) {
+      ctx.close(id)
     },
   }
 }

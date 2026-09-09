@@ -1,6 +1,6 @@
 ---
 name: add-tool
-description: Add or modify a first-party Synergy tool, its Zod parameters, execution behavior, capability taxonomy, exposure, permission boundary, attachments, or Web tool-card registration. Use for packages/synergy/src/tool and the corresponding packages/ui registrations; use plugin docs for plugin-owned tools.
+description: Add or modify a first-party Synergy tool, its Zod parameters, execution behavior, capability taxonomy, exposure, permission boundary, attachments, or Web tool-card registration. Use for packages/harness/src/tool and the corresponding packages/ui registrations; use plugin docs for plugin-owned tools.
 ---
 
 # Add a First-party Tool
@@ -13,10 +13,10 @@ description: Add or modify a first-party Synergy tool, its Zod parameters, execu
 
 ## Implement the Backend
 
-1. Define the tool with the current `Tool.define(id, init, options?)` pattern in `packages/synergy/src/tool/`.
-2. Use precise Zod parameters and descriptions. Return the established `{ title, metadata, output, attachments? }` shape.
+1. Define the tool with `Tool.define(id, init, options?)` under the owning business package’s domain `tools/` directory. Harness owns generic definitions, discovery, execution and scheduling; concrete file/shell tools belong to `runtime-local`.
+2. Use precise Zod parameters and descriptions. Model-facing parameters must serialize to a JSON Schema object at the root; wrap a discriminated action union in an object field such as `input`. The production tool resolver excludes schemas without an object root. Test this boundary as well as individual variants. Return the established `{ title, metadata, output, attachments? }` shape.
 3. Honor `ctx.abort`, use `ctx.ask()` for operation-specific permission requests, and route filesystem, shell, network, remote, or external-write work through existing boundaries.
-4. Register the tool in `tool/registry.ts` using the local ordering and conditional-exposure pattern.
+4. Register through the owning package’s explicit tool contribution using `ToolRegistry.registerToolProvider`. Keep selection and ordering in the capability registration; only generic built-ins belong in the Harness registry.
 5. Add an exact `tool/taxonomy.ts` entry with the correct domain kind and `stateful` / `externalIO` traits. Verify enforcement classification when arguments change the operation, such as local versus remote execution.
 6. Add persisted-state migrations in the owning domain when the tool changes stored data shape.
 7. Bound subprocess output while reading it: stream records, cap individual records and retained bytes, drain stderr concurrently, honor cancellation, and terminate the child when the consumer has enough results. Never call `text()` on potentially unbounded output and truncate only afterward.
@@ -39,7 +39,7 @@ Complete all five first-party registrations:
 1. `packages/ui/src/components/icon.tsx` — tool icon registry
 2. `packages/ui/src/components/message-part.tsx` — title, subtitle, arguments, and tool-card metadata
 3. `packages/ui/src/components/tool-renders.tsx` — renderer group registration
-4. `packages/synergy/src/tool/taxonomy.ts` — runtime semantic classification
+4. `packages/harness/src/tool/taxonomy.ts` — runtime semantic classification
 5. `packages/ui/src/components/tool/classifier.ts` — fallback semantic category
 
 A renderer may either be registered by the render-group loop or self-register with `ToolRegistry.register()` and be imported for its side effect from the render-group entry point. In both cases, keep the registration reachable from the standard tool-render bundle and cover it with a render test.
@@ -55,7 +55,7 @@ The tool icon registry is separate from the product semantic-token registry. Loa
 
 ## Verify
 
-From `packages/synergy`, run the narrow tool test first. Add taxonomy, permission, migration, and server/UI tests when those contracts changed. Then run from the root:
+From the tool’s owning package, run the narrow tool test first. Add taxonomy, permission, migration, and server/UI tests when those contracts changed. Then run from the root:
 
 ```bash
 bun run typecheck

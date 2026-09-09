@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { generate as generateCli, parseCommandBlocks } from "../../script/gen/gen-cli-reference"
+import { generate as generateCli, parseCommandBlocks, collectCommandSources } from "../../script/gen/gen-cli-reference"
 import { generate as generateConfig, parseDefCall, parseDomainObject } from "../../script/gen/gen-config-reference"
 import { generate as generateTools, parseTaxonomy } from "../../script/gen/gen-tool-catalog"
 import { findBlock, isFresh, matchClose, stringLiteral, templateLiteral } from "../../script/gen/shared"
@@ -36,10 +36,20 @@ describe("catalog determinism", () => {
     const first = await generateTools()
     const second = await generateTools()
     expect(second).toBe(first)
+    const skill = first.split("## skill\n")[1]?.split("\n## ")[0]
+    expect(skill).toContain("| `name` | string | yes |")
+    expect(skill).toContain("| `reference` | string |  |")
+    expect(skill).not.toContain("| `sha256`")
   })
 })
 
 describe("generated catalog completeness", () => {
+  test("observe documentation lists its imported schema instead of the execution command", async () => {
+    const body = (await generateTools()).split("## computer_observe\n")[1]!.split("\n## ")[0]!
+    expect(body).toContain("| `pid` | number | yes |")
+    expect(body).toContain("| `windowId` | number | yes |")
+    expect(body).not.toContain("| `type` |")
+  })
   test("cli catalog lists top-level commands with option tables", async () => {
     const body = await generateCli()
     expect(body).toContain("## Commands")
@@ -73,6 +83,10 @@ describe("generated catalog completeness", () => {
     }
     expect(body).toContain("| `00-general.jsonc` |")
     expect(body).toContain("| `55-skills.jsonc` |")
+    for (const key of ["embedding", "library", "channel", "plugin", "voice", "mcp", "theme", "skills", "boss"]) {
+      expect(body).toContain(`| \`${key}\` |`)
+      expect(body).not.toContain(`| \`${key}\` | - |`)
+    }
   })
 
   test("tools catalog carries kind and description for builtin tools", async () => {
@@ -86,11 +100,28 @@ describe("generated catalog completeness", () => {
 })
 
 describe("parser behavior", () => {
+  test("CLI source discovery follows lazy nested contributions without importing their runtime", async () => {
+    const root = await fixture()
+    const cli = path.join(root, "cli")
+    await mkdir(cli)
+    await writeFile(path.join(cli, "data.ts"), 'export const load = async () => (await import("./move")).MoveCommand')
+    await writeFile(
+      path.join(cli, "move.ts"),
+      'throw new Error("must remain static"); export const MoveCommand = cmd({ command: "move", describe: "move data" })',
+    )
+    const files = await collectCommandSources([path.join(cli, "data.ts")])
+    expect(files).toContain(path.join(cli, "move.ts"))
+  })
+
   test("CLI catalog includes grouped data imports without replacing the migrate alias with its nested command", async () => {
     const output = await generateCli()
     expect(output).toContain("| `data` | manage synergy data location and storage |")
     expect(output).toContain("| `migrate` | move synergy data to a new location (alias for 'data move') |")
     expect(output).toContain("## snapshots")
+    expect(output).toContain("## pack [output]")
+    expect(output).toContain("## merge <source>")
+    expect(output).toContain("## move <target>")
+    expect(output).toContain("## lsp")
   })
 
   test("parseCommandBlocks extracts describe and options from cmd blocks", () => {

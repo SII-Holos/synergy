@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-`ToolScheduler` (`packages/synergy/src/session/tool-scheduler.ts`) is a module-level singleton whose `stop()` closes admission (`accepting = false`) without restoring it, and `dispatch()` rejects with "Tool scheduler is stopping" while admission is closed. `test/session/tool-scheduler.test.ts` exercises shutdown semantics and leaves the singleton stopped. Bun runs each `--shard` file group inside one shared process, so the closed singleton leaks into sibling files of the same shard and settles their tool parts as `error`. The incident that surfaced this, including the shard-boundary shift that exposed it, is recorded in [postmortem 0002](../../../postmortem/0002-tool-scheduler-singleton-leakage.md).
+`ToolScheduler` (`packages/harness/src/session/tool-scheduler.ts`) is a module-level singleton whose `stop()` closes admission (`accepting = false`) without restoring it, and `dispatch()` rejects with "Tool scheduler is stopping" while admission is closed. `test/session/tool-scheduler.test.ts` exercises shutdown semantics and leaves the singleton stopped. Bun runs each `--shard` file group inside one shared process, so the closed singleton leaks into sibling files of the same shard and settles their tool parts as `error`. The incident that surfaced this, including the shard-boundary shift that exposed it, is recorded in [postmortem 0002](../../../postmortem/0002-tool-scheduler-singleton-leakage.md).
 
 ## Decision
 

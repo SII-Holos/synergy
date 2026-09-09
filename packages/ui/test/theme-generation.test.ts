@@ -33,12 +33,12 @@ describe("theme generated artifacts", () => {
   })
 
   test("checked-in Desktop fallback skin is generated from the same resolved theme", async () => {
-    const source = await Bun.file("../desktop/src/default-shell-skin.generated.ts").text()
+    const source = await Bun.file("../../apps/desktop/src/default-shell-skin.generated.ts").text()
     expect(source).toBe(renderDesktopFallbackSkin(synergyTheme))
   })
 
   test("checked-in Web boot fallback skin is generated from the same resolved theme", async () => {
-    const html = await Bun.file("../app/index.html").text()
+    const html = await Bun.file("../../apps/web/index.html").text()
     const match = html.match(
       /^      \/\* BEGIN GENERATED SKIN FALLBACK \*\/\n([\s\S]*?)\n      \/\* END GENERATED SKIN FALLBACK \*\//m,
     )

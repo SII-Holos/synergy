@@ -34,6 +34,10 @@ export default definePlugin({
 
 Tool IDs are plugin-local. Synergy exposes them as namespaced host tools and validates input from the generated schema. `requires` drives the contribution capability gate and must reference top-level capabilities.
 
+## Invoke Host Tools
+
+`context.tools.invoke()` executes an available host tool through the Harness execution API. Calls preserve the session's tool visibility, permission enforcement, cancellation and durable tool evidence. A nested invocation completes under a single global concurrency slot; host shutdown rejects new calls, and cancellation of the parent cancels unfinished nested work. Output-recording failures remain errors rather than successful plugin results.
+
 ## Delegated Tasks
 
 `context.task` exists only when `task.delegate` is approved. It exposes five finite Host calls:

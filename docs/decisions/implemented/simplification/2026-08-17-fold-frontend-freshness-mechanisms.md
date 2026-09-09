@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-Three modules in `packages/app/src/context` independently implement the same "keyed map + monotonic counter + prefix-scoped release" machinery, each re-deriving per-scope/per-session generation counters:
+Three modules in `apps/web/src/context` independently implement the same "keyed map + monotonic counter + prefix-scoped release" machinery, each re-deriving per-scope/per-session generation counters:
 
 - `SyncResourceFreshness` (`sync-resource-freshness.ts:44-193`): `generations Map<string,number>` + `nextGeneration` (:48-49), `revisions Map<string,number>` + `nextRevision` (:50-51), prefix-scoped `clearResources` (:184-192). Guards scope/resource sync responses/events/snapshots with epoch+seq versions.
 - `SessionPartSnapshotFreshness` (`session-part-snapshot-freshness.ts:16-87`): `generations` + `nextGeneration` (:17,20), `revisions` + `nextRevision` (:18,21), `snapshotRequiredRevisions` (:19), prefix-scoped `releaseScope`/`releaseSession` (:54-77). Guards message-page apply decisions for a session's message parts.
@@ -14,13 +14,13 @@ The mechanical pipe (allocate a monotonic number, get-or-default, set, delete, d
 
 ## Decision
 
-`packages/app/src/context/monotonic-key-space.ts` now ships a `MonotonicKeySpace` class: a `Map<string, number>` with a global monotonic `next` counter and `get` (0 default), `ensure` (lazy create), `allocate` (unconditional fresh number), `set`, `delete`, `deletePrefix`, and `entries` (yields the raw stored pairs).
+`apps/web/src/context/monotonic-key-space.ts` now ships a `MonotonicKeySpace` class: a `Map<string, number>` with a global monotonic `next` counter and `get` (0 default), `ensure` (lazy create), `allocate` (unconditional fresh number), `set`, `delete`, `deletePrefix`, and `entries` (yields the raw stored pairs).
 
 - `SyncResourceFreshness` (`sync-resource-freshness.ts`): `generations` and `revisions` are `MonotonicKeySpace` instances; `generation()` uses `ensure`, `advanceGeneration()`/`bumpRevision()` use `allocate`, and `clearResources()` calls `deletePrefix` on the revisions space while still clearing `resources` directly. `resources`/`scopes`/`retiredEpochs` and every public method signature and semantic are unchanged.
 - `SessionPartSnapshotFreshness` (`session-part-snapshot-freshness.ts`): `generations`, `revisions`, and `snapshotRequiredRevisions` are `MonotonicKeySpace` instances; `capture()` iterates `revisions.entries()`, `touch()` uses `allocate`, and `releaseScope()`/`releaseSession()` use `deletePrefix`. The `action` decision rules are unchanged (revision `===` captured → apply, snapshot-required `>` captured → retry, else preserve; generation mismatch → retry).
 - `createScopeReconnectRecovery` (`scope-reconnect-recovery.ts`): `versions` is a `MonotonicKeySpace`; `version()` reads with `get` (0 default), `run()` writes only externally supplied generations via `set` after the strict `generation > current` check, and `release()` uses `delete`. The `lifecycles` identity map and `run()` semantics are unchanged.
 
-No public API, signature, return value, or decision semantic of the three modules changed; no consumers were touched. The primitive imports nothing from outside `packages/app/src/context`.
+No public API, signature, return value, or decision semantic of the three modules changed; no consumers were touched. The primitive imports nothing from outside `apps/web/src/context`.
 
 ## Alternatives considered
 

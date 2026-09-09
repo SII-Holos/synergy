@@ -54,6 +54,7 @@ export interface BasicToolProps {
   icon?: IconName
   children?: JSX.Element
   hideDetails?: boolean
+  hasDetails?: boolean
   defaultOpen?: boolean
   forceOpen?: boolean
   status?: string
@@ -129,6 +130,7 @@ export function BasicTool(props: BasicToolProps) {
   const resultOnly = useContext(ToolResultPresentationContext)
   const { _ } = useLingui()
   const [open, setOpen] = createSignal(props.defaultOpen ?? false)
+  const hasDetails = () => !props.hideDetails && (props.hasDetails ?? "children" in props)
   const active = () => props.status === "pending" || props.status === "running" || props.status === "generating"
 
   createEffect(() => {
@@ -194,13 +196,13 @@ export function BasicTool(props: BasicToolProps) {
               </Show>
               <Spinner />
             </Match>
-            <Match when={props.children && !props.hideDetails}>
+            <Match when={hasDetails()}>
               <Collapsible.Arrow />
             </Match>
           </Switch>
         </div>
       </Collapsible.Trigger>
-      <Show when={props.children && !props.hideDetails}>
+      <Show when={hasDetails()}>
         <Collapsible.Content>{props.children}</Collapsible.Content>
       </Show>
     </Collapsible>

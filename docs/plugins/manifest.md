@@ -8,7 +8,7 @@
 {
   "manifestVersion": 1,
   "apiVersion": "4.0",
-  "compatibility": { "synergy": ">=3.0.11" },
+  "compatibility": { "synergy": ">=3.0.23" },
   "id": "my-plugin",
   "name": "My Plugin",
   "version": "1.0.0",
@@ -18,7 +18,7 @@
   "artifacts": {
     "generation": "content-derived-generation",
     "runtime": { "entry": "runtime/index.js", "sha256": "..." },
-    "ui": { "entry": "ui/index.js", "sha256": "..." },
+    "ui": { "apiVersion": "5.0", "entry": "ui/index.js", "sha256": "...", "resources": [] },
   },
 }
 ```
@@ -26,6 +26,8 @@
 Identity, compatibility, and descriptive fields come from `definePlugin()`. `compatibility.synergy` is a semver range for the oldest host that implements every stable API4 feature used by that plugin; `definePlugin()` defaults it to the first GA API4 host. Raise the minimum only when adopting a later additive feature. `capabilities` is the approved ceiling for Synergy Host Services. `contributions` is the handler-free form of the flat source list. `artifacts` and `generation` come from the build.
 
 `apiVersion: "4.0"` identifies the entire stable API4 family. The npm authoring packages follow the Synergy product release version, so their package major does not select the Plugin API family. Synergy reads `apiVersion` and `compatibility` before strict V4 decoding and before executable import. Early pre-GA API4 artifacts that omitted `compatibility` receive the API4 base range at the decoder boundary.
+
+UI artifacts declare their independent API version and explicit resource path/hash graph. Plugin Kit raises the generated minimum host version for UI API 5; a backend-only plugin retains the API4 baseline. A missing UI version identifies UI4 metadata, which can still be inspected but cannot execute in the UI5 host. See [UI contributions](ui-contributions.md).
 
 ## Contribution Kinds
 
@@ -49,6 +51,11 @@ Identity, compatibility, and descriptive fields come from `definePlugin()`. `com
 | `ui.textAction`         | no         | host-rendered selected-text action and command operation reference           |
 | `ui.messageSlot`        | no         | message slot, optional role filter, and trusted component                    |
 | `ui.settings`           | no         | group, form schema, visibility, optional trusted component                   |
+| `ui.shell`              | no         | root component and optional finite page component map                        |
+| `ui.skin`               | no         | validated structured material/font/image JSON and resources                  |
+| `ui.command`            | no         | command title, conditions, keybinding and operation reference                |
+| `ui.menu`               | no         | command reference, finite menu location and ordering                         |
+| `ui.slot`               | no         | finite extension slot, conditions and trusted component                      |
 | `ui.theme`              | no         | label and packaged structured-theme JSON path                                |
 | `ui.icon`               | no         | packaged SVG path                                                            |
 | `lifecycle.install`     | yes        | post-commit fresh-install handler identity                                   |

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { ObservabilityRedaction } from "../packages/synergy/src/observability/redaction"
-import { PerformanceTimeline } from "../packages/synergy/src/performance/timeline"
+import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observability/redaction"
+import { PerformanceTimeline } from "@ericsanchezok/synergy-workbench/performance/timeline"
 
 const iterations = Number(process.env.SYNERGY_BENCH_ITERATIONS ?? 20_000)
 

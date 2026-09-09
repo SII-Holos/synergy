@@ -1,0 +1,212 @@
+import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js"
+import type {
+  OAuthClientMetadata,
+  OAuthTokens,
+  OAuthClientInformation,
+  OAuthClientInformationFull,
+} from "@modelcontextprotocol/sdk/shared/auth.js"
+import { McpAuth } from "./auth"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
+
+const log = Log.create({ service: "mcp.oauth" })
+
+const DEFAULT_OAUTH_CALLBACK_PORT = 19876
+const OAUTH_CALLBACK_PATH = "/mcp/oauth/callback"
+
+function getOAuthCallbackPort(): number {
+  const value = process.env.SYNERGY_OAUTH_CALLBACK_PORT
+  if (!value) return DEFAULT_OAUTH_CALLBACK_PORT
+
+  const port = Number(value)
+  if (!Number.isInteger(port) || port <= 0) {
+    return DEFAULT_OAUTH_CALLBACK_PORT
+  }
+
+  return port
+}
+
+export type McpOAuthMode = "interactive" | "background"
+
+export interface McpOAuthConfig {
+  clientId?: string
+  clientSecret?: string
+  scope?: string
+}
+
+export interface McpOAuthCallbacks {
+  onRedirect: (url: URL) => void | Promise<void>
+  isCurrent?: () => boolean
+}
+
+// Provenance: MCP Authorization specification ( https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization );
+// dynamic client registration per RFC 7591 ( https://www.rfc-editor.org/rfc/rfc7591 ).
+// Local adaptation: implements the SDK's OAuthClientProvider over Synergy-owned token storage;
+// public client by default (token_endpoint_auth_method "none") unless a client secret is configured.
+export class McpOAuthProvider implements OAuthClientProvider {
+  private memoryCodeVerifier: string | undefined
+  private memoryState: string | undefined
+
+  private get mutationOptions(): McpAuth.MutationOptions {
+    return { isCurrent: this.callbacks.isCurrent }
+  }
+  constructor(
+    private mcpName: string,
+    private serverUrl: string,
+    private config: McpOAuthConfig,
+    private callbacks: McpOAuthCallbacks,
+    private mode: McpOAuthMode = "interactive",
+  ) {}
+
+  get redirectUrl(): string {
+    return `http://127.0.0.1:${getOAuthCallbackPort()}${OAUTH_CALLBACK_PATH}`
+  }
+
+  get clientMetadata(): OAuthClientMetadata {
+    return {
+      redirect_uris: [this.redirectUrl],
+      client_name: "Holos Synergy",
+      client_uri: "https://synergy.holosai.io",
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      token_endpoint_auth_method: this.config.clientSecret ? "client_secret_post" : "none",
+      scope: this.config.scope,
+    }
+  }
+
+  async clientInformation(): Promise<OAuthClientInformation | undefined> {
+    // Check config first (pre-registered client)
+    if (this.config.clientId) {
+      return {
+        client_id: this.config.clientId,
+        client_secret: this.config.clientSecret,
+      }
+    }
+
+    // Check stored client info (from dynamic registration)
+    // Use getForUrl to validate credentials are for the current server URL
+    const entry = await McpAuth.getForUrl(this.mcpName, this.serverUrl)
+    if (entry?.clientInfo) {
+      // Check if client secret has expired
+      if (entry.clientInfo.clientSecretExpiresAt && entry.clientInfo.clientSecretExpiresAt < Date.now() / 1000) {
+        log.info("client secret expired, need to re-register", { mcpName: this.mcpName })
+        return undefined
+      }
+      return {
+        client_id: entry.clientInfo.clientId,
+        client_secret: entry.clientInfo.clientSecret,
+      }
+    }
+
+    // No client info or URL changed - will trigger dynamic registration
+    return undefined
+  }
+
+  async saveClientInformation(info: OAuthClientInformationFull): Promise<void> {
+    if (this.mode === "background") return
+    await McpAuth.updateClientInfo(
+      this.mcpName,
+      {
+        clientId: info.client_id,
+        clientSecret: info.client_secret,
+        clientIdIssuedAt: info.client_id_issued_at,
+        clientSecretExpiresAt: info.client_secret_expires_at,
+      },
+      this.serverUrl,
+      this.mutationOptions,
+    )
+    log.info("saved dynamically registered client", {
+      mcpName: this.mcpName,
+      clientId: info.client_id,
+    })
+  }
+
+  async tokens(): Promise<OAuthTokens | undefined> {
+    // Use getForUrl to validate tokens are for the current server URL
+    const entry = await McpAuth.getForUrl(this.mcpName, this.serverUrl)
+    if (!entry?.tokens) return undefined
+
+    return {
+      access_token: entry.tokens.accessToken,
+      token_type: "Bearer",
+      refresh_token: entry.tokens.refreshToken,
+      expires_in: entry.tokens.expiresAt
+        ? Math.max(0, Math.floor(entry.tokens.expiresAt - Date.now() / 1000))
+        : undefined,
+      scope: entry.tokens.scope,
+    }
+  }
+
+  async saveTokens(tokens: OAuthTokens): Promise<void> {
+    if (this.mode === "background") {
+      // Persist refreshed tokens so later requests send the new access token.
+      // Probe-only connects (no stored entry) still never write shared state.
+      const existing = await McpAuth.getForUrl(this.mcpName, this.serverUrl)
+      if (!existing) return
+    }
+    await McpAuth.updateTokens(
+      this.mcpName,
+      {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresAt: tokens.expires_in ? Date.now() / 1000 + tokens.expires_in : undefined,
+        scope: tokens.scope,
+      },
+      this.serverUrl,
+      this.mutationOptions,
+    )
+    log.info("saved oauth tokens", { mcpName: this.mcpName })
+  }
+
+  async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
+    log.info("redirecting to authorization", {
+      mcpName: this.mcpName,
+      host: authorizationUrl.hostname,
+      path: authorizationUrl.pathname,
+    })
+    await this.callbacks.onRedirect(authorizationUrl)
+  }
+
+  async saveCodeVerifier(codeVerifier: string): Promise<void> {
+    if (this.mode === "background") {
+      this.memoryCodeVerifier = codeVerifier
+      return
+    }
+    await McpAuth.updateCodeVerifier(this.mcpName, codeVerifier, this.mutationOptions)
+  }
+
+  async codeVerifier(): Promise<string> {
+    if (this.mode === "background") {
+      if (!this.memoryCodeVerifier) {
+        throw new Error(`No code verifier saved for MCP server: ${this.mcpName}`)
+      }
+      return this.memoryCodeVerifier
+    }
+    const entry = await McpAuth.get(this.mcpName)
+    if (!entry?.codeVerifier) {
+      throw new Error(`No code verifier saved for MCP server: ${this.mcpName}`)
+    }
+    return entry.codeVerifier
+  }
+
+  async saveState(state: string): Promise<void> {
+    if (this.mode === "background") {
+      this.memoryState = state
+      return
+    }
+    await McpAuth.updateOAuthState(this.mcpName, state, this.mutationOptions)
+  }
+
+  async state(): Promise<string> {
+    if (this.mode === "background") {
+      if (!this.memoryState) this.memoryState = crypto.randomUUID()
+      return this.memoryState
+    }
+    const entry = await McpAuth.get(this.mcpName)
+    if (entry?.oauthState) return entry.oauthState
+    const state = crypto.randomUUID()
+    await McpAuth.updateOAuthState(this.mcpName, state, this.mutationOptions)
+    return state
+  }
+}
+
+export { DEFAULT_OAUTH_CALLBACK_PORT as OAUTH_CALLBACK_PORT, OAUTH_CALLBACK_PATH, getOAuthCallbackPort }

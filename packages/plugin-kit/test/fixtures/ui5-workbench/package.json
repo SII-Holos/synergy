@@ -1,0 +1,25 @@
+{
+  "name": "ui5-workbench",
+  "version": "0.1.0",
+  "type": "module",
+  "source": "./src/index.ts",
+  "scripts": {
+    "dev": "synergy-plugin dev",
+    "typegen": "synergy-plugin typegen",
+    "typecheck": "synergy-plugin typegen && tsc --noEmit",
+    "validate": "synergy-plugin validate --runtime-discovery",
+    "build": "synergy-plugin build",
+    "pack": "synergy-plugin pack",
+    "test": "synergy-plugin test"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-plugin": "^1.1.26",
+    "zod": "^4.0.0",
+    "solid-js": "^1.9.0"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-plugin-kit": "^1.1.26",
+    "typescript": "^5.8.0"
+  },
+  "private": true
+}

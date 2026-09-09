@@ -1,24 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import fs from "fs"
-import path from "path"
-import { captureStdout, createFixtureProject, writeMinimalPlugin } from "./fixtures"
-
-const loaderChildPath = path.resolve(import.meta.dir, "../src/lib/definition-loader-child.ts")
-const marker = "__SYNERGY_PLUGIN_DEFINITION__"
-
-function cacheBustedSpecifier(label: string) {
-  return `../src/lib/definition-loader-child.ts?probe=${label}-${Date.now()}-${Math.random().toString(16).slice(2)}`
-}
-
-async function runLoaderChild(argvTail: string[], label: string) {
-  const originalArgv = process.argv
-  process.argv = [...process.argv, ...argvTail]
-  try {
-    return await captureStdout(() => import(cacheBustedSpecifier(label)))
-  } finally {
-    process.argv = originalArgv
-  }
-}
+import { createFixtureProject, writeMinimalPlugin } from "./fixtures"
+import { loadPluginDefinition } from "../src/lib/definition"
 
 describe("definition loader child", () => {
   test("serializes a definePlugin() definition across the process boundary", async () => {
@@ -49,15 +31,11 @@ export default definePlugin({
 `,
         "loader-child",
       )
-      const entry = path.join(project.root, "src", "index.ts")
-      const { output } = await runLoaderChild([entry], "success")
-
-      expect(output).toContain(marker)
-      const snapshot = JSON.parse(output.slice(output.lastIndexOf(marker) + marker.length))
+      const { definition: snapshot } = await loadPluginDefinition(project.root)
       expect(snapshot.id).toBe("loader-child")
       expect(snapshot.handlerIds.sort()).toEqual(["hook:hook", "operation:query", "tool:echo"])
-      expect(snapshot.__hasActivate).toBe(true)
-      expect(snapshot.__hasDeactivate).toBe(true)
+      expect(snapshot.activate).toBeTypeOf("function")
+      expect(snapshot.deactivate).toBeTypeOf("function")
 
       const [operation, event, tool, hook] = snapshot.contributions
       expect(operation.kind).toBe("operation")
@@ -78,26 +56,18 @@ export default definePlugin({
   test("rejects an entry that does not export a definition", async () => {
     const project = createFixtureProject("loader-child-missing-")
     try {
-      project.writeFile("entry.ts", "export default { not: 'a definition' }\n")
-      await expect(runLoaderChild([path.join(project.root, "entry.ts")], "no-definition")).rejects.toThrow(
-        /No definePlugin\(\) definition exported/,
-      )
+      project.writeFile("index.ts", "export default { not: 'a definition' }\n")
+      await expect(loadPluginDefinition(project.root)).rejects.toThrow(/No definePlugin\(\) definition exported/)
     } finally {
       project.cleanup()
     }
   })
 
-  test("rejects a missing entry argument", async () => {
-    await expect(runLoaderChild([loaderChildPath], "missing-entry")).rejects.toThrow(
-      /definition entry argument is missing/,
-    )
-  })
-
   test("rejects an entry that fails to load", async () => {
     const project = createFixtureProject("loader-child-broken-")
     try {
-      project.writeFile("entry.ts", "export default @")
-      await expect(runLoaderChild([path.join(project.root, "entry.ts")], "broken")).rejects.toThrow()
+      project.writeFile("index.ts", "export default @")
+      await expect(loadPluginDefinition(project.root)).rejects.toThrow()
     } finally {
       project.cleanup()
     }

@@ -30,13 +30,8 @@ import type { AssistantMessage, Message as MessageType, UserMessage } from "@eri
 
 export type TurnDisplayMessage = AssistantMessage | UserMessage
 
-export type SessionTurnProjection = {
-  roots: UserMessage[]
-  byRoot: Map<string, TurnDisplayMessage[]>
-  memberIndex: Map<string, number>
-  compactionParentIDs: Set<string>
-  turnMessagesFor(anchor: UserMessage | undefined): TurnDisplayMessage[]
-}
+export type { PluginTurnProjection as SessionTurnProjection } from "@ericsanchezok/synergy-plugin"
+import type { PluginTurnProjection as SessionTurnProjection } from "@ericsanchezok/synergy-plugin"
 
 export function buildSessionTurnProjection(messages: readonly MessageType[]): SessionTurnProjection {
   const roots: UserMessage[] = []

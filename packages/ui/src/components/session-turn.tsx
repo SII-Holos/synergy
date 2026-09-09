@@ -988,8 +988,8 @@ export function SessionTurn(
     sessionID: string
     messageID: string
     rootMessage: UserMessage
-    messages: SessionTurnDisplayMessage[]
-    compactionParentIDs?: Set<string>
+    messages: readonly SessionTurnDisplayMessage[]
+    compactionParentIDs?: ReadonlySet<string>
     lastUserMessageID?: string
     onUserInteracted?: () => void
     onRewind?: () => void

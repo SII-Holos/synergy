@@ -2,12 +2,14 @@
 
 This package is the published plugin-author contract. Load `change-plugin-runtime` and read [Plugin documentation](../../docs/plugins/README.md) before changing it.
 
-- Keep this package independent from `packages/synergy` private runtime modules. Public definitions, generated-manifest schemas, capabilities, contributions, contexts, tools, UI contracts, artifacts, and version helpers must remain usable by third-party plugins.
+- Keep this package independent from private Harness and product runtime modules. Public definitions, generated-manifest schemas, capabilities, contributions, contexts, tools, UI contracts, artifacts, and version helpers must remain usable by third-party plugins.
 - Infer TypeScript types from the public schemas and preserve stable IDs, defaults, validation errors, and export paths. A host-only implementation detail does not belong in the public manifest.
 - Keep canonical manifest and permissions hashing in `src/integrity.ts`; plugin-kit and the host must import that public contract rather than duplicate its payload or stable serialization.
 - Capability declarations are Host Service ceilings consumed by approval and enforcement. Do not restore the old nested permission model or imply control over direct OS access.
 - Preserve tool result, hook, shell, UI API-major, and artifact contracts across Bun source exports and built `dist` output.
 - Keep `src/theme` independent from Solid and usable through `@ericsanchezok/synergy-plugin/theme`. Token names, seed/schema validation, reference resolution, color math, and contrast requirements are public plugin-author contracts; runtime registration and DOM application remain in `packages/ui`.
-- Keep `PluginManifestV4` and every stable API4 type/semantic backward compatible. Decode each future API family at one boundary; do not scatter compatibility branches through the runtime. Plugin API 3 remains unsupported, while early API4 artifacts remain loadable.
+- Keep `PluginManifestV4` and every stable API4 type/semantic backward compatible. Decode each future API family at one boundary; do not scatter compatibility branches through the runtime. Plugin API 3 remains unsupported, while early API4 backend artifacts remain loadable. UI API 5 is independently versioned and rejects executable UI4 before evaluation; it does not add an IPC protocol family.
 
-Run `bun run typecheck` and `bun run build`, then the focused host/plugin-kit tests and root `bun run package:check` plus `bun run quality:quick`. Inspect the built package and public exports, not only source compilation.
+Run `bun run typecheck` and root `bun turbo build --filter=@ericsanchezok/synergy-plugin`, then the focused host/plugin-kit tests and root `bun run package:check` plus `bun run quality:quick`. Inspect the built package and public exports, not only source compilation.
+
+The workspace `build` writes only this package’s outputs. Turbo and the release/development entrypoints build declared dependencies first; never clear a sibling package’s `dist` from a package build.

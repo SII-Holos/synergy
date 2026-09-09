@@ -16,17 +16,17 @@ const rawIconPatterns = [
 ]
 
 const rawIconExceptionReasons: Record<string, string> = {
-  "packages/app/src/components/agenda/form.tsx":
+  "apps/web/src/components/agenda/form.tsx":
     "Kobalte select controls use structural chevrons and selected-option checks.",
-  "packages/app/src/components/prompt-input/permission-selector.tsx":
+  "apps/web/src/components/prompt-input/permission-selector.tsx":
     "Toolbar selector trigger uses a structural disclosure chevron.",
-  "packages/app/src/components/prompt-input/start-options.tsx":
+  "apps/web/src/components/prompt-input/start-options.tsx":
     "Toolbar selector trigger uses a structural disclosure chevron.",
-  "packages/app/src/components/settings/components/AccountToggleCard.tsx":
+  "apps/web/src/components/settings/components/AccountToggleCard.tsx":
     "Settings select trigger uses a structural disclosure chevron.",
-  "packages/app/src/components/settings/components/ModelRoleRow.tsx":
+  "apps/web/src/components/settings/components/ModelRoleRow.tsx":
     "Settings model selectors use structural disclosure chevrons.",
-  "packages/app/src/components/settings/components/ModelVariantPicker.tsx":
+  "apps/web/src/components/settings/components/ModelVariantPicker.tsx":
     "Settings variant selectors use a structural disclosure chevron.",
   "packages/ui/src/components/collapsible.tsx": "Shared primitive drag/disclosure affordance.",
   "packages/ui/src/components/dialog.tsx": "Shared dialog primitive close affordance.",
@@ -49,7 +49,7 @@ const excludedRawIconPaths = new Set([
 const excludedRawIconPathFragments = [
   "/packages/ui/src/components/tool/renders/",
   "/packages/ui/src/components/file-icon",
-  "/packages/app/src/plugin/registries/",
+  "/apps/web/src/plugin/registries/",
 ]
 
 function collectFiles(dir: string, result: string[] = []): string[] {
@@ -128,7 +128,7 @@ describe("semantic icons", () => {
   })
 
   test("product UI does not use raw Lucide literals outside documented exceptions", () => {
-    const roots = [path.join(repoRoot, "packages/app/src"), path.join(repoRoot, "packages/ui/src/components")]
+    const roots = [path.join(repoRoot, "apps/web/src"), path.join(repoRoot, "packages/ui/src/components")]
     const violations: string[] = []
 
     for (const root of roots) {

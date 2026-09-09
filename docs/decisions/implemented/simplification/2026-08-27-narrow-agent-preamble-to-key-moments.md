@@ -8,7 +8,7 @@ The shared preamble guidance injected into every agent prompt instructed: "Befor
 
 ## Decision
 
-Rework the injected `## Preamble Messages` section in `packages/synergy/src/agent/prompt/preamble.ts`:
+Rework the injected `## Preamble Messages` section in `packages/harness/src/agent/prompt/preamble.ts`:
 
 - State that tool calls are already visible as they happen, so routine reads, searches, edits, and commands must not be narrated.
 - List the moments worth a short message: starting a multi-step task (one sentence on the plan), key decisions (what is being chosen and why), unexpected findings or risks (what differs from expectations), and completion (outcome and anything still uncertain).

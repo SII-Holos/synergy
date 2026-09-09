@@ -9,7 +9,7 @@ import {
   resolveUnder,
 } from "../src/lib/artifact-assets"
 import { sha256File, sha256Hex, sha256JSON, sha256Content, sortKeys } from "../src/lib/crypto"
-import { resolveDefinitionEntry, resolveDefinitionLoaderPath } from "../src/lib/definition"
+import { resolveDefinitionEntry } from "../src/lib/definition"
 import { readSignatureFile } from "../src/lib/signature"
 import { extractTarballText } from "../src/lib/tarball"
 import { SIGNING_KEY_FILE, SIGNING_KEYS_DIR, SYNERGY_HOME, SYNERGY_ROOT } from "../src/lib/paths"
@@ -205,12 +205,5 @@ describe("plugin definition entry resolution", () => {
     } finally {
       project.cleanup()
     }
-  })
-
-  test("resolves the compiled loader first and falls back to TypeScript", () => {
-    expect(resolveDefinitionLoaderPath(import.meta.url, (candidate) => candidate.endsWith(".js"))).toContain(
-      "definition-loader-child.js",
-    )
-    expect(resolveDefinitionLoaderPath(import.meta.url, () => false)).toContain("definition-loader-child.ts")
   })
 })

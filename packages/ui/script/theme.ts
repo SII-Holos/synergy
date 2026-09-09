@@ -10,7 +10,7 @@ import {
   renderWebThemeColorMeta,
 } from "../src/theme/generate"
 
-const appIndexUrl = new URL("../../app/index.html", import.meta.url)
+const appIndexUrl = new URL("../../../apps/web/index.html", import.meta.url)
 const appIndex = await Bun.file(appIndexUrl).text()
 const webFallback = renderWebBootFallbackCss(synergyTheme)
 const fallbackPattern =
@@ -31,7 +31,7 @@ await Promise.all([
   Bun.write(new URL("../src/styles/tailwind/colors.css", import.meta.url), renderTailwindColorsCss()),
   Bun.write(new URL("../src/theme/theme.schema.json", import.meta.url), renderThemeSchemaJson()),
   Bun.write(
-    new URL("../../desktop/src/default-shell-skin.generated.ts", import.meta.url),
+    new URL("../../../apps/desktop/src/default-shell-skin.generated.ts", import.meta.url),
     renderDesktopFallbackSkin(synergyTheme),
   ),
   Bun.write(appIndexUrl, nextAppIndex),

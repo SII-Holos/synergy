@@ -660,8 +660,7 @@ describe("Activity summary DOM behavior", () => {
   test("renders minimal summaries without a nano topic parent row", () => {
     expect(document.querySelector('#activity-main-host [data-slot="activity-trace-title"]')).toBeNull()
     const now = document.querySelector('[data-slot="minimal-activity-now"]')
-    expect(now?.textContent).toBe("Verifying compressed activity")
-    expect(now?.getAttribute("aria-hidden")).toBe("true")
+    expect(now).toBeNull()
   })
 })
 
@@ -787,9 +786,9 @@ describe("ActivityTrace DOM behavior", () => {
 
     expect(viewHost.querySelector('[data-component="tool-result-body"]')).not.toBeNull()
     expect(viewHost.querySelector('[data-component="anchored-summary"]')).not.toBeNull()
-    expect(viewHost.querySelector('[data-component="view-content"]')).not.toBeNull()
-    expect(viewHost.querySelector('[data-component="code-fixture"]')?.textContent).toBe("const parity = true")
-    expect(viewHost.querySelector('[data-component="tool-output-text"]')).toBeNull()
+    expect(viewHost.querySelector('[data-component="tool-content-preview"]')).not.toBeNull()
+    expect(viewHost.querySelector('[data-component="code-fixture"]')).toBeNull()
+    expect(viewHost.querySelector('[data-component="tool-output-text"]')?.textContent).toBe("const parity = true")
     expect(viewHost.querySelector('[data-component="collapsible"][data-variant="tool"]')).toBeNull()
   })
 

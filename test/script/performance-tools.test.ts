@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 const requiredFiles = [
   "lighthouserc.performance.cjs",
-  "packages/app/script/visualizer-report.ts",
+  "apps/web/script/visualizer-report.ts",
   "script/performance-playwright.ts",
   "script/performance-benchmark.ts",
   "script/session-memory-benchmark.ts",

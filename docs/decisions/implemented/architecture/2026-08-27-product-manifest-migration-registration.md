@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-The central migration runner (`packages/synergy/src/migration/index.ts`) statically imported twelve domain migration modules as side-effect registrations — eight of them product domains (agenda, blueprint_loop, browser, holos, lattice, library, note, plugin_catalog) — making the L1 harness-core migration runner a compile-time dependency hub for every product domain's persisted-state upgrades. This was inversion point P8 of the harness-core layering program: the runner cannot reach R1 (core imports no product module) while those imports exist, and any new product domain had to edit the core file to be migrated.
+The central migration runner (`packages/harness/src/migration/index.ts`) statically imported twelve domain migration modules as side-effect registrations — eight of them product domains (agenda, blueprint_loop, browser, holos, lattice, library, note, plugin_catalog) — making the L1 harness-core migration runner a compile-time dependency hub for every product domain's persisted-state upgrades. This was inversion point P8 of the harness-core layering program: the runner cannot reach R1 (core imports no product module) while those imports exist, and any new product domain had to edit the core file to be migrated.
 
 ## Decision
 

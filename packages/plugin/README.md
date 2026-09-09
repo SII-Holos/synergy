@@ -72,22 +72,18 @@ Capabilities govern Host Services; they do not claim to restrict direct OS acces
 
 ## Trusted UI
 
-Trusted Solid components receive `PluginSurfaceContext`. The component uses bound `operations.query/command`, scoped `events.subscribe`, settings `get/subscribe`, capability-gated `settings.replace`, and capability-gated host actions. plugin-kit compiles TSX and binds `solid-js`, `solid-js/web`, and `solid-js/store` to the host runtime; plugins must not ship a private Solid runtime.
-
-Source component shape:
+UI API 5 uses `PluginComponentProps<Context>` with one `context` property for every executable surface. The public service types cover environment/navigation, session collections and messages, draft/editor/submission, workbench resources, commands, overlays and lifetime. Specialized settings values, changes and save status live in `context.settings`. Import host components through `@ericsanchezok/synergy-plugin/components`, semantic icon types through `/icons`, formatting through `/format`, and Skin schemas through `/skin`.
 
 ```tsx
-import type { Component } from "solid-js"
-import type { PluginSurfaceContext } from "@ericsanchezok/synergy-plugin/ui"
+import type { PluginComponentProps } from "@ericsanchezok/synergy-plugin"
+import { EmptyState } from "@ericsanchezok/synergy-plugin/components"
 
-const Panel: Component<{ context: PluginSurfaceContext }> = (props) => (
-  <section aria-label={props.context.surface.id}>Plugin content</section>
-)
-
-export default Panel
+export default function Panel({ context }: PluginComponentProps) {
+  return <EmptyState title={context.surface.id} description="Plugin content" />
+}
 ```
 
-A custom `ui.settings` component uses `PluginSettingsComponentProps`. It receives `context: PluginSettingsSurfaceContext` together with the compatible `pluginId`, `values`, and `onChange` props, allowing bound UI operations and approved host actions without a raw Synergy client.
+Plugin Kit generates `artifacts.ui.apiVersion`, named exports and hashes for the full JS/CSS/font/image graph. The host shares Solid, scopes styles and portals, and disposes registrations by generation. UI 4 executable surfaces require a rebuild and migration; backend API4 compatibility remains independent. See [UI contributions](../../docs/plugins/ui-contributions.md) for services, Shells, Skins and real-host preview, and [UI 4 migration](../../docs/migrations/plugin-ui-4-to-5.md) for the breaking changes.
 
 ## Runtime and Data
 

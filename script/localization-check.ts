@@ -916,7 +916,7 @@ async function scanRepository() {
   const violations: LocalizationViolation[] = []
   const glob = new Bun.Glob("**/*.{ts,tsx}")
 
-  for (const relativeRoot of ["packages/app/src", "packages/ui/src"]) {
+  for (const relativeRoot of ["apps/web/src", "packages/ui/src"]) {
     const sourceRoot = path.join(REPOSITORY_ROOT, relativeRoot)
     for await (const relativePath of glob.scan({ cwd: sourceRoot })) {
       if (relativePath.endsWith(".test.ts") || relativePath.endsWith(".test.tsx")) continue

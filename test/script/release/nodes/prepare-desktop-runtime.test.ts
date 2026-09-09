@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { prepareRuntimeCoreAssets } from "../../../../script/release/shared/runtime-assets"
+import { prepareRuntimeApplicationAssets } from "../../../../script/release/shared/runtime-assets"
 import { desktopRuntimePackageNames } from "../../../../script/release/prepare-desktop-runtime"
 
 const temporaryDirectories: string[] = []
@@ -31,7 +31,7 @@ describe("Desktop release runtime preparation", () => {
     await fs.writeFile(path.join(playwrightCoreDir, "index.js"), "module.exports = {}")
     await fs.writeFile(path.join(playwrightCoreDir, "lib", "coreBundle.js"), "module.exports = {}")
 
-    await prepareRuntimeCoreAssets({ runtimeDir, appDistDir, schemaPath, playwrightCoreDir })
+    await prepareRuntimeApplicationAssets({ runtimeDir, appDistDir, schemaPath, playwrightCoreDir })
 
     expect(await Bun.file(path.join(runtimeDir, "app", "index.html")).text()).toContain("Synergy")
     expect(await Bun.file(path.join(runtimeDir, "app", "assets", "app.js")).text()).toBe("export {}")
@@ -54,11 +54,11 @@ describe("Desktop release runtime preparation", () => {
     await fs.mkdir(appDistDir, { recursive: true })
     await fs.writeFile(path.join(appDistDir, "index.html"), "first")
     await fs.writeFile(schemaPath, "{}")
-    await prepareRuntimeCoreAssets({ runtimeDir, appDistDir, schemaPath })
+    await prepareRuntimeApplicationAssets({ runtimeDir, appDistDir, schemaPath })
     await fs.writeFile(path.join(runtimeDir, "app", "stale.js"), "stale")
     await fs.writeFile(path.join(appDistDir, "index.html"), "second")
 
-    await prepareRuntimeCoreAssets({ runtimeDir, appDistDir, schemaPath })
+    await prepareRuntimeApplicationAssets({ runtimeDir, appDistDir, schemaPath })
 
     expect(await Bun.file(path.join(runtimeDir, "app", "index.html")).text()).toBe("second")
     expect(await Bun.file(path.join(runtimeDir, "app", "stale.js")).exists()).toBe(false)
@@ -73,4 +73,21 @@ describe("Desktop release runtime preparation", () => {
       "synergy-linux-x64-baseline",
     ])
   })
+})
+
+test("core staging copies its schema without requiring Web or Playwright", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-core-staging-"))
+  temporaryDirectories.push(root)
+  const schemaPath = path.join(root, "schema.json")
+  const runtimeDir = path.join(root, "runtime")
+  await fs.writeFile(schemaPath, '{"type":"object"}')
+  await prepareRuntimeApplicationAssets({
+    runtimeDir,
+    profile: "core",
+    schemaPath,
+    appDistDir: path.join(root, "absent-web"),
+    playwrightCoreDir: path.join(root, "absent-playwright"),
+  })
+  expect(await Bun.file(path.join(runtimeDir, "schema/config.schema.json")).json()).toEqual({ type: "object" })
+  expect(await fs.readdir(runtimeDir)).toEqual(["schema"])
 })

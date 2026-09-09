@@ -138,6 +138,7 @@ import type {
   ChannelStopResponses,
   CommandListErrors,
   CommandListResponses,
+  ComputerHostBrokerErrors,
   Config as Config2,
   ConfigDiagnosticsErrors,
   ConfigDiagnosticsResponses,
@@ -196,6 +197,7 @@ import type {
   ExperienceListSort,
   ExperimentalResourceListErrors,
   ExperimentalResourceListResponses,
+  ExperimentFile,
   FormatterStatusErrors,
   FormatterStatusResponses,
   GlobalAgendaListErrors,
@@ -452,6 +454,8 @@ import type {
   PluginListGlobalThemeContributionsResponses,
   PluginListUiContributionsErrors,
   PluginListUiContributionsResponses,
+  PluginReloadDevelopmentErrors,
+  PluginReloadDevelopmentResponses,
   PluginRuntimeLogsErrors,
   PluginRuntimeLogsResponses,
   PluginRuntimeStartErrors,
@@ -464,8 +468,6 @@ import type {
   PluginStatusResponses,
   PluginUpdateConfigErrors,
   PluginUpdateConfigResponses,
-  PostPluginDevReloadErrors,
-  PostPluginDevReloadResponses,
   ProviderAuthErrors,
   ProviderAuthGithubIdentityErrors,
   ProviderAuthGithubIdentityResponses,
@@ -546,6 +548,7 @@ import type {
   RegistryRefreshErrors,
   RegistryRefreshResponses,
   RewardsInfo,
+  RolloutArtifactRef,
   RuntimeReloadErrors,
   RuntimeReloadResponses,
   RuntimeReloadScope,
@@ -573,6 +576,8 @@ import type {
   SessionAbortResponses,
   SessionAgendaErrors,
   SessionAgendaResponses,
+  SessionCancelRunErrors,
+  SessionCancelRunResponses,
   SessionChildrenErrors,
   SessionChildrenResponses,
   SessionCommandErrors,
@@ -629,6 +634,10 @@ import type {
   SessionRollbackAckResponses,
   SessionRollbackErrors,
   SessionRollbackResponses,
+  SessionRunErrors,
+  SessionRunResponses,
+  SessionRunResultErrors,
+  SessionRunResultResponses,
   SessionShellErrors,
   SessionShellResponses,
   SessionStatusErrors,
@@ -657,6 +666,17 @@ import type {
   SkillReloadResponses,
   SkillRemoveErrors,
   SkillRemoveResponses,
+  StorageSnapshotCleanErrors,
+  StorageSnapshotCleanInput,
+  StorageSnapshotCleanResponses,
+  StorageSnapshotCompactErrors,
+  StorageSnapshotCompactInput,
+  StorageSnapshotCompactResponses,
+  StorageSnapshotMigrateErrors,
+  StorageSnapshotMigrateInput,
+  StorageSnapshotMigrateResponses,
+  StorageSnapshotUsageErrors,
+  StorageSnapshotUsageResponses,
   SynergyLinkTargetCreateErrors,
   SynergyLinkTargetCreateInput,
   SynergyLinkTargetCreateResponses,
@@ -844,7 +864,7 @@ export class Stats extends HeyApiClient {
   /**
    * Get stats snapshot
    *
-   * Get the full stats snapshot. Returns cached snapshot if available, otherwise computes incrementally. Use ?recompute=true to force a full recompute from scratch.
+   * Get the full stats snapshot after incrementally refreshing changed session and rollout records. Use ?recompute=true to force a full recompute from scratch.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -1730,6 +1750,8 @@ export class Export extends HeyApiClient {
       sessionID: string
       directory?: string
       scopeID?: string
+      format?: "json" | "rollout"
+      run?: string
       mode?: SessionExportMode
     },
     options?: Options<never, ThrowOnError>,
@@ -1742,6 +1764,8 @@ export class Export extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "format" },
+            { in: "query", key: "run" },
             { in: "query", key: "mode" },
           ],
         },
@@ -1936,6 +1960,42 @@ export class Session extends HeyApiClient {
   }
 
   /**
+   * Get session agenda wakeups
+   *
+   * Retrieve agenda items that can wake the specified session.
+   */
+  public agenda<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      limit?: number
+      offset?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "limit" },
+            { in: "query", key: "offset" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionAgendaResponses, SessionAgendaErrors, ThrowOnError>({
+      url: "/session/{sessionID}/agenda",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * List session navigation entries
    *
    * Get paginated session navigation entries for the current scope with filtering and cursor support.
@@ -1972,6 +2032,108 @@ export class Session extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<SessionIndexResponses, SessionIndexErrors, ThrowOnError>({
       url: "/session/index",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Cancel one task and drain its execution
+   *
+   * Close admission for this run, cancel its descendants, and await durable terminal records without cancelling an unrelated session root.
+   */
+  public cancelRun<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      runID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "runID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionCancelRunResponses, SessionCancelRunErrors, ThrowOnError>({
+      url: "/session/{sessionID}/run/{runID}/cancel",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read a task trajectory and accounting
+   *
+   * Read a fixed journal boundary for each related run, including descendant calls and separate reported and estimated costs.
+   */
+  public runResult<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      runID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "runID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionRunResultResponses, SessionRunResultErrors, ThrowOnError>({
+      url: "/session/{sessionID}/run/{runID}/result",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get durable task execution status
+   *
+   * Read the persisted run status after execution, descendant delivery, and auxiliary work settle.
+   */
+  public run<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      runID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "runID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionRunResponses, SessionRunErrors, ThrowOnError>({
+      url: "/session/{sessionID}/run/{runID}",
       ...options,
       ...params,
     })
@@ -2329,42 +2491,6 @@ export class Session extends HeyApiClient {
   }
 
   /**
-   * Get session agenda wakeups
-   *
-   * Retrieve agenda items that can wake the specified session.
-   */
-  public agenda<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      directory?: string
-      scopeID?: string
-      limit?: number
-      offset?: number
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "limit" },
-            { in: "query", key: "offset" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<SessionAgendaResponses, SessionAgendaErrors, ThrowOnError>({
-      url: "/session/{sessionID}/agenda",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
    * Initialize session
    *
    * Analyze the current application and create an AGENTS.md file with project-specific agent configurations.
@@ -2539,6 +2665,7 @@ export class Session extends HeyApiClient {
       sessionID: string
       directory?: string
       scopeID?: string
+      experiment?: ExperimentFile
       messageID?: string
       model?: {
         providerID: string
@@ -2569,6 +2696,7 @@ export class Session extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "body", key: "experiment" },
             { in: "body", key: "messageID" },
             { in: "body", key: "model" },
             { in: "body", key: "agent" },
@@ -2788,6 +2916,7 @@ export class Session extends HeyApiClient {
       sessionID: string
       directory?: string
       scopeID?: string
+      experiment?: ExperimentFile
       messageID?: string
       model?: {
         providerID: string
@@ -2818,6 +2947,7 @@ export class Session extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "body", key: "experiment" },
             { in: "body", key: "messageID" },
             { in: "body", key: "model" },
             { in: "body", key: "agent" },
@@ -2956,6 +3086,7 @@ export class Session extends HeyApiClient {
       sessionID: string
       directory?: string
       scopeID?: string
+      experiment?: ExperimentFile
       messageID?: string
       model?: {
         providerID: string
@@ -2986,6 +3117,7 @@ export class Session extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "body", key: "experiment" },
             { in: "body", key: "messageID" },
             { in: "body", key: "model" },
             { in: "body", key: "agent" },
@@ -3022,6 +3154,7 @@ export class Session extends HeyApiClient {
       sessionID: string
       directory?: string
       scopeID?: string
+      experiment?: ExperimentFile
       messageID?: string
       agent?: string
       model?: string
@@ -3031,6 +3164,7 @@ export class Session extends HeyApiClient {
       parts?: Array<{
         id?: string
         type: "attachment"
+        artifact?: RolloutArtifactRef
         mime: string
         filename?: string
         url: string
@@ -3053,6 +3187,7 @@ export class Session extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "body", key: "experiment" },
             { in: "body", key: "messageID" },
             { in: "body", key: "agent" },
             { in: "body", key: "model" },
@@ -3278,7 +3413,7 @@ export class Session extends HeyApiClient {
   /**
    * Import session data
    *
-   * Import a Synergy session export JSON or gzipped JSON file into the current scope.
+   * Import a Synergy rollout ZIP, session export JSON, or gzipped JSON file into the current scope.
    */
   public import<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -4172,6 +4307,109 @@ export class Performance extends HeyApiClient {
   browserMetrics = new BrowserMetrics({ client: this.client })
 
   events = new Events({ client: this.client })
+}
+
+export class Snapshot extends HeyApiClient {
+  /**
+   * Report snapshot storage usage
+   *
+   * Per-scope file snapshot storage report: owner counts by backend, retained legacy directories (unowned, reclaimed, shared baselines, unregistered), and legacy/shared/index storage statistics. Read-only; reclamation is a separate POST.
+   */
+  public usage<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      StorageSnapshotUsageResponses,
+      StorageSnapshotUsageErrors,
+      ThrowOnError
+    >({ url: "/global/storage/snapshot", ...options })
+  }
+
+  /**
+   * Reclaim unowned legacy snapshot directories
+   *
+   * Reclaim retained legacy snapshot directories with no owner record and no session record, including the __reclaimed__ scope. The shared store and directories with owners are never touched. Dry run by default; apply refuses a scope whose integrity check fails. Conflicts with running maintenance or a corrupted scope return 409.
+   */
+  public clean<ThrowOnError extends boolean = false>(
+    parameters: {
+      storageSnapshotCleanInput: StorageSnapshotCleanInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "storageSnapshotCleanInput", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      StorageSnapshotCleanResponses,
+      StorageSnapshotCleanErrors,
+      ThrowOnError
+    >({
+      url: "/global/storage/snapshot/clean",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Migrate legacy snapshots into shared storage
+   *
+   * Move owned legacy snapshot repositories into the per-scope shared object store. Dry run by default: reports pending repositories without changing anything. Legacy repositories without a confirmed session record are skipped, not failures. Conflicts with running maintenance return 409.
+   */
+  public migrate<ThrowOnError extends boolean = false>(
+    parameters: {
+      storageSnapshotMigrateInput: StorageSnapshotMigrateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "storageSnapshotMigrateInput", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      StorageSnapshotMigrateResponses,
+      StorageSnapshotMigrateErrors,
+      ThrowOnError
+    >({
+      url: "/global/storage/snapshot/migrate",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Pack shared snapshot storage
+   *
+   * Repack the per-scope shared object store to reclaim space. Dry run by default: reports current statistics without changing anything. Apply verifies integrity first and refuses a corrupted scope; with prune it also collects unreferenced objects after recovery checks. A missing shared store is a no-op. Conflicts with running maintenance return 409.
+   */
+  public compact<ThrowOnError extends boolean = false>(
+    parameters: {
+      storageSnapshotCompactInput: StorageSnapshotCompactInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "storageSnapshotCompactInput", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      StorageSnapshotCompactResponses,
+      StorageSnapshotCompactErrors,
+      ThrowOnError
+    >({
+      url: "/global/storage/snapshot/compact",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Storage extends HeyApiClient {
+  snapshot = new Snapshot({ client: this.client })
 }
 
 export class Credentials extends HeyApiClient {
@@ -6137,19 +6375,19 @@ export class Domain extends HeyApiClient {
         | "general"
         | "models"
         | "providers"
-        | "library"
-        | "mcp"
-        | "plugins"
-        | "skills"
         | "agents"
         | "commands"
         | "permissions"
+        | "runtime"
+        | "plugins"
         | "channels"
         | "holos"
         | "email"
         | "github"
+        | "library"
+        | "mcp"
+        | "skills"
         | "voice"
-        | "runtime"
       directory?: string
       scopeID?: string
     },
@@ -6185,19 +6423,19 @@ export class Domain extends HeyApiClient {
         | "general"
         | "models"
         | "providers"
-        | "library"
-        | "mcp"
-        | "plugins"
-        | "skills"
         | "agents"
         | "commands"
         | "permissions"
+        | "runtime"
+        | "plugins"
         | "channels"
         | "holos"
         | "email"
         | "github"
+        | "library"
+        | "mcp"
+        | "skills"
         | "voice"
-        | "runtime"
       directory?: string
       scopeID?: string
       configDomainUpdateInput?: ConfigDomainUpdateInput
@@ -6240,19 +6478,19 @@ export class Domain extends HeyApiClient {
         | "general"
         | "models"
         | "providers"
-        | "library"
-        | "mcp"
-        | "plugins"
-        | "skills"
         | "agents"
         | "commands"
         | "permissions"
+        | "runtime"
+        | "plugins"
         | "channels"
         | "holos"
         | "email"
         | "github"
+        | "library"
+        | "mcp"
+        | "skills"
         | "voice"
-        | "runtime"
       directory?: string
       scopeID?: string
     },
@@ -6496,36 +6734,36 @@ export class Config extends HeyApiClient {
         | "general"
         | "models"
         | "providers"
-        | "library"
-        | "mcp"
-        | "plugins"
-        | "skills"
         | "agents"
         | "commands"
         | "permissions"
+        | "runtime"
+        | "plugins"
         | "channels"
         | "holos"
         | "email"
         | "github"
+        | "library"
+        | "mcp"
+        | "skills"
         | "voice"
-        | "runtime"
         | Array<
             | "general"
             | "models"
             | "providers"
-            | "library"
-            | "mcp"
-            | "plugins"
-            | "skills"
             | "agents"
             | "commands"
             | "permissions"
+            | "runtime"
+            | "plugins"
             | "channels"
             | "holos"
             | "email"
             | "github"
+            | "library"
+            | "mcp"
+            | "skills"
             | "voice"
-            | "runtime"
           >
       includeSecrets?: string
     },
@@ -10653,6 +10891,40 @@ export class Browser extends HeyApiClient {
   }
 }
 
+export class Host extends HeyApiClient {
+  /**
+   * Connect the authenticated native Computer host
+   */
+  public broker<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<unknown, ComputerHostBrokerErrors, ThrowOnError>({
+      url: "/computer/host/broker",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Computer extends HeyApiClient {
+  host = new Host({ client: this.client })
+}
+
 export class Plugin extends HeyApiClient {
   /**
    * List plugin theme contributions across all enabled scopes
@@ -10884,6 +11156,49 @@ export class Plugin extends HeyApiClient {
       url: "/plugin/{pluginId}/status",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Replace an installed development plugin with a validated artifact generation
+   */
+  public reloadDevelopment<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      pluginId?: string
+      generation?: string
+      artifactDir?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "pluginId" },
+            { in: "body", key: "generation" },
+            { in: "body", key: "artifactDir" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      PluginReloadDevelopmentResponses,
+      PluginReloadDevelopmentErrors,
+      ThrowOnError
+    >({
+      url: "/plugin/dev/reload",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 
@@ -12271,49 +12586,13 @@ export class SynergyClient extends HeyApiClient {
     SynergyClient.__registry.set(this, args?.key)
   }
 
-  public postPluginDevReload<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-      pluginId?: string
-      generation?: string
-      artifactDir?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "body", key: "pluginId" },
-            { in: "body", key: "generation" },
-            { in: "body", key: "artifactDir" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<PostPluginDevReloadResponses, PostPluginDevReloadErrors, ThrowOnError>(
-      {
-        url: "/plugin/dev/reload",
-        ...options,
-        ...params,
-        headers: {
-          "Content-Type": "application/json",
-          ...options?.headers,
-          ...params.headers,
-        },
-      },
-    )
-  }
-
   global = new Global({ client: this.client })
 
   observability = new Observability({ client: this.client })
 
   performance = new Performance({ client: this.client })
+
+  storage = new Storage({ client: this.client })
 
   holos = new Holos({ client: this.client })
 
@@ -12341,9 +12620,9 @@ export class SynergyClient extends HeyApiClient {
 
   worktree = new Worktree({ client: this.client })
 
-  vcs = new Vcs({ client: this.client })
-
   session = new Session({ client: this.client })
+
+  vcs = new Vcs({ client: this.client })
 
   part = new Part({ client: this.client })
 
@@ -12378,6 +12657,8 @@ export class SynergyClient extends HeyApiClient {
   voice = new Voice({ client: this.client })
 
   browser = new Browser({ client: this.client })
+
+  computer = new Computer({ client: this.client })
 
   plugin = new Plugin({ client: this.client })
 

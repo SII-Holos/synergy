@@ -37,6 +37,14 @@ export namespace ModelLimit {
     return tokens.input + tokens.cache.read + tokens.cache.write
   }
 
+  export function totalTokens(tokens: TokenUsage): number {
+    return actualInput(tokens) + tokens.output
+  }
+
+  export function nonReasoningOutput(tokens: TokenUsage): number {
+    return Math.max(0, tokens.output - tokens.reasoning)
+  }
+
   /**
    * Compute how many tokens are available for input within a model's context.
    *

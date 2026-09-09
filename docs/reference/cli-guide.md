@@ -16,14 +16,14 @@ Run `synergy --help` or `synergy <command> --help` for the exact options support
 
 ## Runtime Modes
 
-| Command            | Ownership and lifetime                                                                                            |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `synergy start`    | Install/start a managed background service through launchd, systemd user services, or Windows Task Scheduler      |
-| `synergy server`   | Run the server in the current foreground terminal; bare `synergy` is an alias for this command                    |
-| `synergy web`      | Open the Web UI served by an already running runtime                                                              |
-| `synergy send ...` | Attach to a runtime when `--attach` is supplied; otherwise start a private ephemeral local server for the command |
+| Command            | Ownership and lifetime                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `synergy start`    | Install/start a managed background service through launchd, systemd user services, or Windows Task Scheduler |
+| `synergy server`   | Run the server in the current foreground terminal; bare `synergy` is an alias for this command               |
+| `synergy web`      | Open the Web UI served by an already running runtime                                                         |
+| `synergy send ...` | Attach to a runtime when `--attach` is supplied; otherwise start a private local runtime for the command     |
 
-These modes share data and configuration when they use the same `SYNERGY_HOME`, but only one persistent server process may own that home at a time. A private `send` server stops when its task reaches idle.
+These modes share data and configuration when they use the same `SYNERGY_HOME`, but only one writing runtime process may own that home at a time. Local `send` calls the runtime directly and drains task execution and evidence before closing; it does not open an HTTP listener. Use `--attach` to submit work to an existing server that owns the home.
 
 ### Background service
 
@@ -77,7 +77,7 @@ Important options:
 
 | Option                           | Meaning                                                                                                                                                         |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--attach <url>`                 | Use a running server instead of a private ephemeral server                                                                                                      |
+| `--attach <url>`                 | Use a running server instead of an in-process local runtime                                                                                                     |
 | `--scope <id>`                   | Use the registered home or project Scope ID; unknown or archived IDs fail without creation                                                                      |
 | `-c`, `--continue`               | Continue the latest top-level session in the selected Scope                                                                                                     |
 | `-s`, `--session <id>`           | Continue a specific session                                                                                                                                     |
@@ -89,7 +89,7 @@ Important options:
 | `--title [text]`                 | Set the new-session title; an empty value derives it from the prompt                                                                                            |
 | `--workflow lightloop`           | Run the message as a Light Loop workflow task: the session enables `loop_stop` and a reviewer loop, and `send` exits when the workflow reaches a terminal state |
 | `--format default\|json`         | Render progress for humans or emit newline-delimited event JSON                                                                                                 |
-| `--port <number>`                | Port for the private local server; omitted means an available port                                                                                              |
+| `--port <number>`                | Accepted for command-line compatibility; local execution does not bind a port                                                                                   |
 
 When `--scope` is omitted, `send` uses the launch directory (or `SYNERGY_CWD`). An existing directory is resolved and registered as a project Scope when needed, even if Synergy has not opened it before; a missing directory resolves to the home Scope. Pass `--scope` to select an already registered Scope without registering the launch directory. With `--attach`, the target runtime owns and validates the Scope ID.
 
@@ -110,6 +110,8 @@ Piped stdin is appended to the prompt. The command subscribes to session events 
 | `synergy agent create\|list`                 | Create or inspect agent definitions                             |
 | `synergy mcp add\|list\|auth\|logout\|debug` | Configure, authenticate, and inspect MCP servers                |
 | `synergy embed download`                     | Download the local embedding model assets                       |
+
+`synergy models --refresh` refreshes the shared service/model directory before listing configured models. A failed or disabled refresh exits nonzero and preserves the existing cache; partial results report skipped entries. See [Service and model directory](configuration-layout.md#service-and-model-directory) for validation and fallback behavior.
 
 ### config import
 
@@ -208,7 +210,7 @@ See [Knowledge: Embedding Model](../product/knowledge.md#embedding-model) for th
 | `synergy migrate [--target <path>]`                 | Backward-compatible alias for the interactive data-move workflow                                                   |
 | `synergy migration status\|run\|rollback\|generate` | Inspect and manage versioned schema/data migrations                                                                |
 
-`synergy data snapshots inspect` reports logical bytes, filesystem allocation, and storage ownership. `check` validates objects and historical roots. `migrate` imports registered legacy repositories; `compact` packs shared objects while preserving unreachable contents. Both default to dry-run and require `--apply` to execute. Non-pruning compaction preserves interrupted import packs under explicit unknown-object refs before releasing their import protection. Only `compact --apply --prune` collects unreferenced objects, after integrity and recovery checks. All four accept `--scope <id>` and `--json`; JSON results contain `ok`, `results`, and an optional structured `error`. Failed checks or execution return a nonzero exit status. Busy maintenance leaves the running instance untouched.
+`synergy data snapshots inspect` reports logical bytes, filesystem allocation, and storage ownership. `check` validates objects and historical roots. `migrate` imports registered legacy repositories; `compact` packs shared objects while preserving unreachable contents; `clean` reclaims legacy directories that have neither an owner record nor a session record. `migrate`, `compact`, and `clean` default to dry-run and require `--apply` to execute. Non-pruning compaction preserves interrupted import packs under explicit unknown-object refs before releasing their import protection. Only `compact --apply --prune` collects unreferenced objects, after integrity and recovery checks. All five accept `--scope <id>` and `--json`; JSON results contain `ok`, `results`, and an optional structured `error`. Failed checks or execution return a nonzero exit status. Busy maintenance leaves the running instance untouched.
 
 Use the data commands for supported relocation and merge workflows. Copying individual JSON files while the server is running can violate indexes and atomic update assumptions.
 

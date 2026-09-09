@@ -1,8 +1,11 @@
+import { generatePluginDataTypes } from "../lib/typegen.js"
+import { createUIAssetPlugin } from "../lib/ui-asset-plugin.js"
 import fs from "fs"
 import path from "path"
 import type { Argv } from "yargs"
 import {
   PluginArtifact,
+  PLUGIN_UI_API_VERSION,
   PluginManifest,
   compilePluginManifest,
   hasBundledSolidRuntime,
@@ -19,6 +22,8 @@ import { sha256File, sha256JSON } from "../lib/crypto.js"
 import { hashPackagedFiles, normalizeManifestPath, resolveUnder } from "../lib/artifact-assets.js"
 import { loadPluginDefinition } from "../lib/definition.js"
 import { solidCompilerPlugin } from "../lib/solid-compiler.js"
+import { scopePluginCSS } from "../lib/ui-css.js"
+import { validateSkinAssets } from "../lib/skin-assets.js"
 import { validateThemeAssets } from "../lib/theme-assets.js"
 
 function ensureDir(directory: string) {
@@ -38,24 +43,40 @@ function copyPath(pluginDir: string, distDir: string, source: string, target = s
   else throw new Error(`Unsupported plugin asset: ${source}`)
 }
 
-function assetPaths(definition: PluginDefinition): Array<{ source: string; target: string }> {
+function assetPaths(pluginDir: string, definition: PluginDefinition): Array<{ source: string; target: string }> {
   const result = new Map<string, { source: string; target: string }>()
   const add = (source: string, target = source) => {
     const normalizedTarget = normalizeManifestPath(target)
-    if (result.has(normalizedTarget)) throw new Error(`Duplicate packaged plugin asset target: ${normalizedTarget}`)
+    if (result.has(normalizedTarget)) {
+      if (result.get(normalizedTarget)?.source === source) return
+      throw new Error(`Duplicate packaged plugin asset target: ${normalizedTarget}`)
+    }
     result.set(normalizedTarget, { source, target: normalizedTarget })
   }
   for (const asset of definition.assets) add(asset.source, asset.target)
   if (definition.icon && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(definition.icon)) add(definition.icon)
   for (const contribution of definition.contributions) {
     if (contribution.kind === "skill" && contribution.skill.dir) add(contribution.skill.dir)
-    if (contribution.kind === "ui.theme" || contribution.kind === "ui.icon") add(contribution.path)
+    if (contribution.kind === "ui.theme" || contribution.kind === "ui.icon" || contribution.kind === "ui.skin")
+      add(contribution.path)
+  }
+  for (const { skin } of validateSkinAssets(pluginDir, definition.contributions)) {
+    for (const asset of Object.values(skin.assets)) add(asset.path)
   }
   return [...result.values()]
 }
 
 function trustedComponents(contributions: PluginContribution[]) {
   return contributions.flatMap((contribution) => {
+    if (contribution.kind === "ui.shell") {
+      return [
+        { key: `${contribution.kind}:${contribution.id}`, component: contribution.component },
+        ...Object.entries(contribution.pages ?? {}).map(([page, component]) => ({
+          key: `${contribution.kind}:${contribution.id}:${page}`,
+          component,
+        })),
+      ]
+    }
     if (contribution.kind === "ui.textAction" && contribution.presentation) {
       return [{ key: `${contribution.kind}:${contribution.id}`, component: contribution.presentation.component }]
     }
@@ -83,23 +104,25 @@ function runtimeSourceLoader(): Bun.BunPlugin {
   }
 }
 
-async function buildRuntime(entry: string, distDir: string, required: boolean) {
+async function buildRuntime(entry: string, distDir: string, required: boolean, dependencies: Set<string>) {
   if (!required) return undefined
   const outputDirectory = path.join(distDir, path.dirname(PluginArtifact.runtimeEntry))
   const result = await Bun.build({
     entrypoints: [entry],
     outdir: outputDirectory,
     target: "bun",
+    metafile: true,
     naming: "index.js",
     define: { "process.env.SYNERGY_PLUGIN_BUNDLE_TARGET": JSON.stringify("runtime") },
     plugins: [runtimeSourceLoader()],
   })
+  collectDependencies(result, dependencies)
   if (!result.success) throw new AggregateError(result.logs, "Plugin runtime build failed")
   const output = path.join(distDir, PluginArtifact.runtimeEntry)
   return { entry: PluginArtifact.runtimeEntry, sha256: sha256File(output) }
 }
 
-async function buildUI(pluginDir: string, distDir: string, definition: PluginDefinition) {
+async function buildUI(pluginDir: string, distDir: string, definition: PluginDefinition, dependencies: Set<string>) {
   const components = trustedComponents(definition.contributions)
   if (components.length === 0) return undefined
 
@@ -124,14 +147,27 @@ async function buildUI(pluginDir: string, distDir: string, definition: PluginDef
     })
     fs.writeFileSync(entry, `${lines.join("\n")}\n`)
     const outputDirectory = path.join(distDir, "ui")
+    const assets = createUIAssetPlugin(outputDirectory)
     const result = await Bun.build({
       entrypoints: [entry],
       outdir: outputDirectory,
       target: "browser",
+      metafile: true,
       naming: "index.[ext]",
       external: ["solid-js", "solid-js/web", "solid-js/store"],
-      plugins: [solidCompilerPlugin()],
+      loader: {
+        ".woff": "file",
+        ".woff2": "file",
+        ".ttf": "file",
+        ".otf": "file",
+        ".png": "file",
+        ".jpg": "file",
+        ".webp": "file",
+        ".svg": "file",
+      },
+      plugins: [assets.plugin, solidCompilerPlugin()],
     })
+    collectDependencies(result, dependencies)
     if (!result.success) {
       const details = result.logs.map((log) => log.message).join("\n")
       throw new Error(details ? `Plugin UI build failed:\n${details}` : "Plugin UI build failed")
@@ -145,39 +181,73 @@ async function buildUI(pluginDir: string, distDir: string, definition: PluginDef
     if (hasUnlinkedSolidRuntimeImport(linked))
       throw new Error("Plugin UI bundle is not bound to the host Solid runtime")
     fs.writeFileSync(output, linked)
-    return { entry: "ui/index.js", sha256: sha256File(output), exports }
+    for (const asset of result.outputs) {
+      if (!asset.path.endsWith(".css")) continue
+      fs.writeFileSync(asset.path, scopePluginCSS(fs.readFileSync(asset.path, "utf8"), definition.id))
+    }
+    const resources = [...new Set([...result.outputs.map((asset) => asset.path), ...assets.outputs])]
+      .filter((asset) => path.resolve(asset) !== path.resolve(output))
+      .map((asset) => ({
+        entry: path.relative(distDir, asset).split(path.sep).join("/"),
+        sha256: sha256File(asset),
+        kind: asset.endsWith(".css") ? ("stylesheet" as const) : ("asset" as const),
+      }))
+      .sort((a, b) => a.entry.localeCompare(b.entry))
+    return { apiVersion: PLUGIN_UI_API_VERSION, entry: "ui/index.js", sha256: sha256File(output), resources, exports }
   } finally {
     fs.rmSync(tempDirectory, { recursive: true, force: true })
   }
 }
 
-export async function buildPluginProject(pluginDir: string, options: { outputDir?: string } = {}): Promise<boolean> {
+export async function buildPluginProject(
+  pluginDir: string,
+  options: { outputDir?: string; dependencies?(files: string[], valid: boolean): void } = {},
+): Promise<boolean> {
+  let valid = false
+  const dependencies = new Set<string>()
+  let staging: string | undefined
   try {
     const { entry, definition } = await loadPluginDefinition(pluginDir)
+    dependencies.add(entry)
+    await generatePluginDataTypes(pluginDir, definition)
     validateThemeAssets(pluginDir, definition.contributions)
-    const declaredAssets = assetPaths(definition)
-    const distDir = options.outputDir ?? path.join(pluginDir, "dist")
-    fs.rmSync(distDir, { recursive: true, force: true })
-    ensureDir(distDir)
+    const declaredAssets = assetPaths(pluginDir, definition)
+    for (const asset of declaredAssets) dependencies.add(path.resolve(pluginDir, asset.source))
+    const outputDir = path.resolve(options.outputDir ?? path.join(pluginDir, "dist"))
+    ensureDir(path.dirname(outputDir))
+    const distDir = fs.mkdtempSync(path.join(path.dirname(outputDir), ".synergy-plugin-build-"))
+    staging = distDir
 
     UI.println(`${UI.Style.TEXT_NORMAL_BOLD}Building${UI.Style.TEXT_NORMAL} ${definition.id} v${definition.version}`)
     const runtime = await buildRuntime(
       entry,
       distDir,
       definition.handlerIds.length > 0 || Boolean(definition.activate) || Boolean(definition.deactivate),
+      dependencies,
     )
-    const ui = await buildUI(pluginDir, distDir, definition)
+    const ui = await buildUI(pluginDir, distDir, definition, dependencies)
     for (const asset of declaredAssets) copyPath(pluginDir, distDir, asset.source, asset.target)
     validateThemeAssets(distDir, definition.contributions)
+    const skins = Object.fromEntries(
+      validateSkinAssets(distDir, definition.contributions).map(({ contribution, skin }) => [
+        contribution.id,
+        {
+          sha256: sha256File(path.join(distDir, contribution.path!)),
+          assets: [...new Set(Object.values(skin.assets).map((asset) => asset.path))]
+            .sort()
+            .map((entry) => ({ entry, sha256: sha256File(path.join(distDir, entry)) })),
+        },
+      ]),
+    )
 
-    const generation = sha256JSON({
-      id: definition.id,
-      version: definition.version,
-      handlers: definition.handlerIds,
-      files: hashPackagedFiles(distDir),
-    })
-    const artifacts: CompiledPluginArtifacts = { generation, ...(runtime ? { runtime } : {}), ...(ui ? { ui } : {}) }
+    const artifacts: CompiledPluginArtifacts = {
+      generation: "pending",
+      skins,
+      ...(runtime ? { runtime } : {}),
+      ...(ui ? { ui } : {}),
+    }
     const manifest = compilePluginManifest(definition, artifacts)
+    manifest.artifacts.generation = sha256JSON({ manifest, files: hashPackagedFiles(distDir) })
     PluginManifest.parse(manifest)
     const manifestPath = path.join(distDir, PluginArtifact.manifestFile)
     fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
@@ -204,11 +274,35 @@ export async function buildPluginProject(pluginDir: string, options: { outputDir
       path.join(distDir, PluginArtifact.integrityFile),
       `${JSON.stringify({ manifest: sha256File(manifestPath), files: hashPackagedFiles(distDir) }, null, 2)}\n`,
     )
-    UI.println(`${UI.Style.TEXT_SUCCESS}Built${UI.Style.TEXT_NORMAL} ${definition.id} -> ${distDir}`)
+    const previous = `${distDir}-previous`
+    const hasPrevious = fs.existsSync(outputDir)
+    if (hasPrevious) fs.renameSync(outputDir, previous)
+    try {
+      fs.renameSync(distDir, outputDir)
+    } catch (error) {
+      if (hasPrevious) fs.renameSync(previous, outputDir)
+      throw error
+    }
+    staging = undefined
+    if (hasPrevious) {
+      try {
+        fs.rmSync(previous, { recursive: true, force: true })
+      } catch {
+        UI.error("Build succeeded; previous artifact cleanup failed")
+      }
+    }
+    UI.println(`${UI.Style.TEXT_SUCCESS}Built${UI.Style.TEXT_NORMAL} ${definition.id} -> ${outputDir}`)
+    valid = true
     return true
   } catch (error) {
     UI.error(buildErrorMessage(error))
     return false
+  } finally {
+    if (staging) fs.rmSync(staging, { recursive: true, force: true })
+    options.dependencies?.(
+      [...dependencies].filter((file) => fs.existsSync(file)),
+      valid,
+    )
   }
 }
 
@@ -230,3 +324,10 @@ export const PluginBuildCommand = cmd({
     if (!ok) process.exitCode = 1
   },
 })
+
+function collectDependencies(result: Bun.BuildOutput, dependencies: Set<string>) {
+  for (const file of Object.keys(result.metafile?.inputs ?? {})) {
+    const normalized = file.replace(/^synergy-ui-asset:/, "")
+    dependencies.add(path.resolve(normalized))
+  }
+}

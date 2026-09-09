@@ -67,6 +67,7 @@
     "dompurify": "3.4.11",
     "fuzzysort": "catalog:",
     "katex": "catalog:",
+    "lru_map": "0.4.1",
     "lucide-solid": "0.577.0",
     "marked": "catalog:",
     "marked-katex-extension": "5.1.6",

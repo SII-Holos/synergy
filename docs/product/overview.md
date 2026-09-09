@@ -238,4 +238,4 @@ The following principles should remain true as individual features evolve:
 - Channels adapt external messaging into sessions; Holos provides optional identity and agent-network connectivity.
 - Browser is a session workspace with one shared page, not a separate tab or screenshot-stream automation system.
 
-For implementation-level invariants, continue with the [architecture documentation](../architecture/README.md). For durable Web interaction and visual rules, see the [Web product contract](../../packages/app/PRODUCT.md). Plugin authors should begin with the [plugin documentation](../plugins/README.md).
+For implementation-level invariants, continue with the [architecture documentation](../architecture/README.md). For durable Web interaction and visual rules, see the [Web product contract](../../apps/web/PRODUCT.md). Plugin authors should begin with the [plugin documentation](../plugins/README.md).
