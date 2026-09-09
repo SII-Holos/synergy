@@ -9884,6 +9884,13 @@ msgstr "Lattice 已激活"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.attach.removeButton"
+msgstr "移除 {filename}"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.attach.requestFailed"
 msgstr "请求失败"
 
@@ -9893,6 +9900,17 @@ msgstr "请求失败"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.attach.slotOccupied"
 msgstr "当前任务已启用其他 Blueprint"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.attach.uploadedStatus"
+msgstr "已上传"
+
+#. attachments.tsx — pending upload card states
+msgid "prompt.attach.uploadingStatus"
+msgstr "上传中…"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -11254,6 +11272,20 @@ msgstr "使用普通模式"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.submit.useNormal.description"
 msgstr "Light Loop 会从下一条文本提示开始，而不是从 shell 模式开始。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.waitUploads.description"
+msgstr "请等待附件上传完成后再发送。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.waitUploads.title"
+msgstr "附件仍在上传中"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.

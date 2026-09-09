@@ -16,6 +16,12 @@ export function canSubmitPrompt(input: { text: string; working: boolean; hasBlue
   return resolvePromptSubmitIntent(input) !== "blocked"
 }
 
+/** Sending must wait for every composer attachment upload to settle. Stopping
+ *  the session stays available because it sends nothing. */
+export function shouldBlockSubmitForUploadingAttachments(input: { uploading: boolean; intent: PromptSubmitIntent }) {
+  return input.uploading && input.intent !== "abort"
+}
+
 export function shouldAllowPromptSubmit(input: {
   intent: PromptSubmitIntent
   variantReady: boolean

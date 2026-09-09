@@ -77,7 +77,12 @@ import { usePromptAttachments } from "@/components/prompt-input/attachments-hook
 import { usePromptEditor } from "@/components/prompt-input/editor-hook"
 import { sendSessionCommand } from "@/components/prompt-input/session-command"
 import { inlineLength, inlineText } from "@/components/prompt-input/content"
-import { resolvePromptSubmitIntent, shouldAllowPromptSubmit } from "@/components/prompt-input/submit-intent"
+import {
+  resolvePromptSubmitIntent,
+  shouldAllowPromptSubmit,
+  shouldBlockSubmitForUploadingAttachments,
+} from "@/components/prompt-input/submit-intent"
+import { createPendingAttachmentTracker } from "@/components/prompt-input/pending-attachments"
 import { getCursorPosition, setCursorPosition } from "@/components/prompt-input/editor-dom"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { resolveBossWorkflowMenuState, resolveLatticeWorkflowMenuState } from "@/components/prompt-input/workflow-menu"
@@ -522,6 +527,9 @@ export function createPromptInputController(props: PromptInputProps) {
   const promptText = createMemo(() => inlineText(prompt.current()))
   const sessionTransitionPending = createMemo(() => props.sessionTransitionPending === true)
   const submitPending = createMemo(() => newSessionSubmitPending() || sessionTransitionPending())
+  const pendingUploads = createPendingAttachmentTracker()
+  onCleanup(() => pendingUploads.clear())
+  const attachmentsUploading = createMemo(() => pendingUploads.uploading())
   const canSubmit = createMemo(() => {
     if (props.readOnly || submitPending()) return false
     const intent = resolvePromptSubmitIntent({
@@ -530,6 +538,7 @@ export function createPromptInputController(props: PromptInputProps) {
       hasBlueprintSlot: !!localArmedLoop(),
     })
     if (intent === "blocked") return false
+    if (shouldBlockSubmitForUploadingAttachments({ uploading: attachmentsUploading(), intent })) return false
     return shouldAllowPromptSubmit({
       intent,
       variantReady: local.model.variant.ready(),
@@ -545,6 +554,7 @@ export function createPromptInputController(props: PromptInputProps) {
       () => {
         cancelLongPress()
         setLocalArmedLoop(null)
+        pendingUploads.clear()
       },
       { defer: true },
     ),
@@ -1548,6 +1558,7 @@ export function createPromptInputController(props: PromptInputProps) {
       },
       setLocalArmedLoop,
       setStore,
+      pendingUploads,
     })
 
   const addToHistory = (prompt: Prompt, mode: "normal" | "shell") => {
@@ -1771,6 +1782,7 @@ export function createPromptInputController(props: PromptInputProps) {
     uploadedAttachments,
     noteAttachments,
     sessionAttachments,
+    attachmentsUploading,
     selectedControlProfile,
     pendingPlan,
     clearPendingPlan: () => setPendingPlan(false),
@@ -1930,11 +1942,12 @@ export function createPromptInputController(props: PromptInputProps) {
             </For>
           </div>
         </Show>
-        <Show when={hasAttachments()}>
+        <Show when={hasAttachments() || attachmentsUploading()}>
           <PromptAttachments
             uploads={uploadedAttachments}
             notes={noteAttachments}
             sessions={sessionAttachments}
+            pending={pendingUploads.pending}
             serverUrl={sdk.url}
             removeAttachment={removeAttachment}
           />
@@ -2223,7 +2236,7 @@ export function createPromptInputController(props: PromptInputProps) {
                 </Show>
                 <Tooltip
                   placement="top"
-                  inactive={!submitPending() && !canSubmit() && !abortStopping()}
+                  inactive={!submitPending() && !canSubmit() && !abortStopping() && !attachmentsUploading()}
                   value={
                     <Show
                       when={!submitPending() && !abortStopping()}
@@ -2244,6 +2257,9 @@ export function createPromptInputController(props: PromptInputProps) {
                             <span class="text-icon-base text-12-medium text-[10px]!">{i18n._(PI.escKey)}</span>
                           </div>
                         </Match>
+                        <Match when={attachmentsUploading()}>
+                          <span>{i18n._(PI.submitWaitUploadsTitle)}</span>
+                        </Match>
                         <Match when={true}>
                           <div class="flex items-center gap-2">
                             <span>{i18n._(PI.sendAction)}</span>
@@ -2261,7 +2277,9 @@ export function createPromptInputController(props: PromptInputProps) {
                         ? i18n._(PI.stopping)
                         : submitStopsSession()
                           ? i18n._(PI.stopSession)
-                          : i18n._(PI.sendMessage)
+                          : attachmentsUploading()
+                            ? i18n._(PI.submitWaitUploadsTitle)
+                            : i18n._(PI.sendMessage)
                     }
                     disabled={abortStopping() || !canSubmit()}
                     icon={

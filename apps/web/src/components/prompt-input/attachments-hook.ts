@@ -5,12 +5,14 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useParams } from "@solidjs/router"
 import { useSDK } from "@/context/sdk"
 import { usePrompt } from "@/context/prompt"
-import type { ContentPart, NoteAttachmentPart, SessionAttachmentPart } from "@/context/prompt"
+import type { ContentPart, NoteAttachmentPart, SessionAttachmentPart, UploadedAttachmentPart } from "@/context/prompt"
 import { PromptAttachmentError, uploadPromptAttachment } from "@/utils/prompt-attachment"
 import { useLocale } from "@/context/locale"
 import { formatAttachmentBatchToast, formatOversizedAttachmentToast, partitionPromptAttachmentFiles } from "./files"
 import { createPromptPartID, inlineLength } from "./content"
 import { getCursorPosition } from "./editor-dom"
+import type { PendingAttachmentTracker } from "./pending-attachments"
+import { runPendingAttachmentUpload } from "./attachment-upload-flow"
 import { PI } from "./prompt-input-i18n"
 import type { BlueprintSlot, DroppedBlueprintData, DroppedSessionData, PromptInputStore } from "./types"
 import { decideDroppedSession } from "./session-drop"
@@ -28,6 +30,7 @@ type PromptAttachmentsInput = {
   workflowKind: Accessor<"plan" | "lightloop" | "lattice" | "boss" | "extension" | undefined>
   clearPendingWorkflows: () => void
   setStore: SetStoreFunction<PromptInputStore>
+  pendingUploads: PendingAttachmentTracker
 }
 
 const DROPPABLE_TYPES = [
@@ -43,6 +46,7 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
   const params = useParams()
   const dialog = useDialog()
   const { i18n } = useLocale()
+  const pendingUploads = input.pendingUploads
 
   const cursor = () => {
     const editor = input.editor()
@@ -50,25 +54,20 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
   }
 
   const appendAttachment = async (file: File, draft: ReturnType<typeof prompt.capture>["draft"]) => {
+    const id = createPromptPartID()
+    const sessionKeyAtStart = `${params.dir}${params.id ? "/" + params.id : ""}`
     try {
-      const cursorPosition = draft.cursor() ?? cursor()
-      const uploaded = await uploadPromptAttachment(sdk.client, file)
-      draft.set(
-        [
-          ...draft.current(),
-          {
-            type: "attachment",
-            id: createPromptPartID(),
-            filename: file.name,
-            mime: uploaded.mime,
-            url: uploaded.url,
-            size: uploaded.size,
-            metadata: uploaded.metadata,
-            presentation: uploaded.presentation,
-          },
-        ],
-        cursorPosition,
-      )
+      await runPendingAttachmentUpload({
+        file,
+        id,
+        tracker: pendingUploads,
+        upload: (uploadFile) => uploadPromptAttachment(sdk.client, uploadFile),
+        insertAttachment: (attachment) => {
+          const cursorPosition = draft.cursor() ?? cursor()
+          draft.set([...draft.current(), attachment], cursorPosition)
+        },
+        isDestinationCurrent: () => `${params.dir}${params.id ? "/" + params.id : ""}` === sessionKeyAtStart,
+      })
     } catch (error) {
       const description =
         error instanceof PromptAttachmentError
@@ -98,9 +97,7 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
     if (toast) showToast(toast)
     const draft = prompt.capture()
     try {
-      for (const file of accepted) {
-        await appendAttachment(file, draft.draft)
-      }
+      await Promise.allSettled(accepted.map((file) => appendAttachment(file, draft.draft)))
     } finally {
       draft.release()
     }
@@ -111,16 +108,24 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
     const attachments = parts.filter(
       (part): part is Extract<ContentPart, { type: "attachment" }> => part.type === "attachment",
     )
+    const pendingScope = pendingUploads.scope()
     return {
-      count: attachments.length,
-      bytes: attachments.reduce((total, part) => total + (typeof part.size === "number" ? part.size : 0), 0),
+      count: attachments.length + pendingScope.count,
+      bytes:
+        attachments.reduce((total, part) => total + (typeof part.size === "number" ? part.size : 0), 0) +
+        pendingScope.bytes,
     }
   }
 
   const removeAttachment = (id: string) => {
     const current = prompt.current()
-    const next = current.filter((part) => !("id" in part) || part.id !== id)
-    prompt.set(next, prompt.cursor())
+    if (current.some((part) => "id" in part && part.id === id)) {
+      prompt.set(
+        current.filter((part) => !("id" in part) || part.id !== id),
+        prompt.cursor(),
+      )
+    }
+    pendingUploads.cancel(id)
   }
 
   const handlePaste = async (event: ClipboardEvent) => {
