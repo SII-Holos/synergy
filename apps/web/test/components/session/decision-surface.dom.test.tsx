@@ -67,7 +67,7 @@ beforeAll(async () => {
         import { DataProvider } from "@ericsanchezok/synergy-ui/context"
         import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
         import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
-        import { SessionDecisionSurface } from ${JSON.stringify(`/@fs/${componentPath}`)}
+        import { SessionDecisionHost, SessionDecisionOutlet } from ${JSON.stringify(`/@fs/${componentPath}`)}
 
         const mode = new URLSearchParams(location.search).get("mode") ?? "question"
 
@@ -100,8 +100,8 @@ beforeAll(async () => {
           session_diff: {},
           message: {},
           part: {},
-          question: mode === "question" ? { s1: [questionRequest] } : {},
-          permission: mode === "permission" ? { s1: [permissionRequest] } : {},
+          question: mode !== "none" && mode !== "permission" ? { s1: [questionRequest] } : {},
+          permission: mode !== "none" && mode !== "question" ? { s1: [permissionRequest] } : {},
         }
 
         const i18n = setupI18n({ locale: "en", messages: {} })
@@ -121,7 +121,13 @@ beforeAll(async () => {
                           serverUrl: "http://127.0.0.1:5212",
                           onPermissionRespond: () => {},
                           get children() {
-                            return createComponent(SessionDecisionSurface, { sessionId: "s1" })
+                            return createComponent(SessionDecisionHost, {
+                              sessionId: "s1",
+                              get children() {
+                                return new URLSearchParams(location.search).has("outlet")
+                                  ? createComponent(SessionDecisionOutlet, {}) : null
+                              },
+                            })
                           },
                         })
                       },
@@ -140,6 +146,19 @@ beforeAll(async () => {
     configFile: false,
     root: fixtureDirectory,
     plugins: [solidPlugin()],
+    cacheDir: path.join(fixtureDirectory, ".vite"),
+    optimizeDeps: {
+      include: [
+        "solid-js",
+        "solid-js/web",
+        "solid-js/jsx-runtime",
+        "zod",
+        "@lingui/core",
+        "@lingui/solid",
+        "fuzzysort",
+      ],
+      noDiscovery: true,
+    },
     resolve: {
       alias: {
         "@/context/locale": localeStubPath,
@@ -150,12 +169,12 @@ beforeAll(async () => {
     },
     server: {
       host: "127.0.0.1",
-      port: 5212,
-      strictPort: true,
+      port: 0,
       fs: { allow: [path.resolve(import.meta.dir, "../../../..")] },
     },
   })
   await server.listen()
+  await server.warmupRequest("/main.tsx")
 
   const url = server.resolvedUrls?.local[0]
   if (!url) throw new Error("Expected Vite test server URL")
@@ -183,7 +202,8 @@ afterEach(() => {
 })
 describe("inline session decision surface", () => {
   test("renders a pending question inline without a dialog", async () => {
-    await page.goto(`${baseUrl}?mode=question`)
+    await page.goto(`${baseUrl}?mode=question&outlet`)
+    await page.getByText("How should we deliver this feature?").waitFor()
     await expect(page.locator('[data-component="dialog"]').count()).resolves.toBe(0)
     await expect(page.locator('[data-component="dialog-overlay"]').count()).resolves.toBe(0)
     await expect(page.getByText("How should we deliver this feature?").count()).resolves.toBe(1)
@@ -191,7 +211,8 @@ describe("inline session decision surface", () => {
   })
 
   test("renders a pending permission inline without a dialog", async () => {
-    await page.goto(`${baseUrl}?mode=permission`)
+    await page.goto(`${baseUrl}?mode=permission&outlet`)
+    await page.getByText("Deny", { exact: true }).waitFor()
     await expect(page.locator('[data-component="dialog"]').count()).resolves.toBe(0)
     await expect(page.locator('[data-component="dialog-overlay"]').count()).resolves.toBe(0)
     await expect(page.locator(".workbench-card-surface").count()).resolves.toBe(1)
@@ -204,4 +225,42 @@ describe("inline session decision surface", () => {
     await expect(page.locator(".question-prompt-shell").count()).resolves.toBe(0)
     await expect(page.locator(".workbench-card-surface").count()).resolves.toBe(0)
   })
+})
+
+test("custom shells retain host-owned decisions without rendering the native outlet", async () => {
+  await page.goto(`${baseUrl}?mode=combined`)
+  await page.getByText("How should we deliver this feature?").waitFor()
+  await page.getByText("Deny", { exact: true }).waitFor()
+  expect(await page.locator("[data-session-decision-outlet]").count()).toBe(0)
+  expect(await page.locator("[data-session-decision-host]").evaluate((node) => getComputedStyle(node).position)).toBe(
+    "fixed",
+  )
+  expect(
+    await page
+      .locator("[data-session-decision-host]")
+      .evaluate((node) => node.closest("[data-plugin-ui]")?.getAttribute("data-plugin-ui")),
+  ).toBe("synergy")
+})
+
+test("combined decisions remain bounded and scrollable at a narrow viewport", async () => {
+  await page.setViewportSize({ width: 375, height: 600 })
+  await page.goto(`${baseUrl}?mode=combined&outlet`)
+  await page.getByText("Deny", { exact: true }).waitFor()
+  const result = await page.locator("[data-session-decision-stack]").evaluate((node) => {
+    const element = node as HTMLElement
+    const growth = document.createElement("div")
+    growth.style.height = "1200px"
+    element.append(growth)
+    element.scrollTop = element.scrollHeight
+    return {
+      height: element.getBoundingClientRect().height,
+      scrollTop: element.scrollTop,
+      overflow: getComputedStyle(element).overflowY,
+    }
+  })
+  expect(result.height).toBeLessThanOrEqual(300)
+  expect(result.scrollTop).toBeGreaterThan(0)
+  expect(result.overflow).toBe("auto")
+  expect(await page.locator("[data-session-decision-outlet] [data-session-decision-host]").count()).toBe(1)
+  await page.setViewportSize({ width: 800, height: 600 })
 })

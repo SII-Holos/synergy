@@ -59,7 +59,7 @@ Create dialogs with `context.overlays.dialog(handle => <Dialog title="Preference
 - `session` reads the existing bounded message/part window, status and history state and delegates history loading, return-to-latest, refresh, rewind and fork to the session owner.
 - `conversation` supplies the shared turn projection, bounded render window, history controls, viewport bindings and canonical message actions. Replacing its view does not create another message store or derive message semantics.
 - `input` supplies revisioned text and selection, IME state, attachments, agent/model/variant choices and explicit submit/stop. Its optional native editor mounting API uses the same document as headless edits. Native workflow controls can be composed through the service's named control views.
-- `composerLayout` supplies layout state, navigation links and host-owned inbox, delegation, greeting, status, priority and decision views. It does not expose the SDK or synchronization store.
+- `composerLayout` supplies layout state, navigation links and host-owned inbox, delegation, greeting, status and priority views. It does not expose the SDK or synchronization store.
 
 Draft edits reject stale revisions, read-only state, overlapping ranges and file-pill crossings. Model selection retains explicit draft → session default → fallback resolution. Preflight work and late upload/submission results retain the captured draft identity; failed submission cannot overwrite subsequent user edits. IME prevents settlement/submission until composition ends. Detaching the presentation releases editor and scroll bindings without disposing domain state.
 
@@ -106,3 +106,5 @@ Themes aggregate across enabled Scopes through the global theme registrar; icons
 The public `@ericsanchezok/synergy-plugin-kit/testing` entry exports isolated preview startup, explicit fixture approval and caller-owned browser-page helpers. The [packed template suite](../../test/plugin-ui5/templates-browser.test.ts), [functional sample](../../packages/plugin-kit/test/fixtures/ui5-functional/src/index.ts) and [workbench/Skin sample](../../packages/plugin-kit/test/fixtures/ui5-workbench/README.md) exercise the production host. Run `bun run plugin-ui:test` after building the App.
 
 Start with `?safe-ui=1` to skip executable third-party UI and Skins before loading them. Recovery stays active in that browser tab across routing and reloads. Settings → General → Restart normally explicitly clears it. This path does not depend on a third-party Shell rendering successfully; a synchronous plugin loop still requires reloading into recovery.
+
+Session questions and permissions remain mounted by the host. The native composer provides an inline outlet; custom session pages without that outlet retain a protected, viewport-bounded host surface automatically.
