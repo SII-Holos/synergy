@@ -68,9 +68,10 @@ function SessionActionMenu(props: {
       placement="bottom-end"
       gutter={8}
       class="stb-menu-popover"
-      trigger={
+      triggerAs={(triggerProps) => (
         <Tooltip value={_(topBar.sessionActions)} placement="bottom">
           <button
+            {...triggerProps}
             type="button"
             class="stb-icon-btn"
             aria-label={_(topBar.sessionActions)}
@@ -80,7 +81,7 @@ function SessionActionMenu(props: {
             <Icon name={getSemanticIcon("action.more")} size="normal" />
           </button>
         </Tooltip>
-      }
+      )}
     >
       <div class="stb-menu-list" role="menu">
         <Show when={props.visibility.rename}>

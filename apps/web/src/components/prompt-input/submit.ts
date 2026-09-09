@@ -39,7 +39,12 @@ import { sendSessionCommand } from "./session-command"
 import type { BlueprintSlot, PromptInputMode, PromptInputProps, PromptInputStore } from "./types"
 import { buildLightLoopInstructions } from "./light-loop-instructions"
 import { getPendingLightLoopSlashBlock, resolveSlashCommandIntent, type SlashUiCommand } from "./slash-command-intent"
-import { resolvePromptSubmitIntent, shouldAllowPromptSubmit, shouldRunComposerBeforeSubmit } from "./submit-intent"
+import {
+  resolvePromptSubmitIntent,
+  shouldAllowPromptSubmit,
+  shouldBlockSubmitForUploadingAttachments,
+  shouldRunComposerBeforeSubmit,
+} from "./submit-intent"
 import { acquireNewSessionSubmitLock } from "./new-session-submit-lock"
 import {
   createNewSessionWorkspaceAcceptedProgress,
@@ -82,6 +87,7 @@ type PromptSubmitInput = {
   uploadedAttachments: Accessor<UploadedAttachmentPart[]>
   noteAttachments: Accessor<NoteAttachmentPart[]>
   sessionAttachments: Accessor<SessionAttachmentPart[]>
+  attachmentsUploading: Accessor<boolean>
   selectedControlProfile: Accessor<ControlProfileId>
   pendingPlan: Accessor<boolean>
   clearPendingPlan: () => void
@@ -215,6 +221,14 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       })
       if (submitIntent === "abort") {
         input.abort()
+        return
+      }
+      if (shouldBlockSubmitForUploadingAttachments({ uploading: input.attachmentsUploading(), intent: submitIntent })) {
+        showToast({
+          type: "warning",
+          title: i18n._(PI.submitWaitUploadsTitle),
+          description: i18n._(PI.submitWaitUploadsDesc),
+        })
         return
       }
       if (submitIntent === "blocked") {

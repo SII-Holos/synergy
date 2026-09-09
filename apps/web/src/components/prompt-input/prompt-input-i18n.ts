@@ -365,6 +365,15 @@ export const PI = {
     id: "prompt.attach.failedGeneric",
     message: "This attachment couldn't be prepared. Try another file.",
   },
+  // attachments.tsx — pending upload card states
+  attachUploadingStatus: { id: "prompt.attach.uploadingStatus", message: "Uploading…" },
+  attachUploadedStatus: { id: "prompt.attach.uploadedStatus", message: "Uploaded" },
+  attachRemoveButton: { id: "prompt.attach.removeButton", message: "Remove {filename}" },
+  submitWaitUploadsTitle: { id: "prompt.submit.waitUploads.title", message: "Attachments still uploading" },
+  submitWaitUploadsDesc: {
+    id: "prompt.submit.waitUploads.description",
+    message: "Wait for attachments to finish uploading before sending.",
+  },
   attachWaitLightLoop: {
     id: "prompt.attach.waitLightLoop",
     message: "Wait for Light Loop to stop before equipping a Blueprint.",

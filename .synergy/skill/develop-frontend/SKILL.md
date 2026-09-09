@@ -14,6 +14,8 @@ description: Implement or review Synergy Web and shared UI changes across apps/w
 
 ## Preserve State and API Ownership
 
+Solid JSX may evaluate to a function. Never distinguish a rendered trigger from a component with `typeof`; use an explicit component prop such as Popover `triggerAs`, and forward its event, ref, and accessibility props to the native button. Test click, keyboard activation, Escape, and focus return with the real Tooltip composition.
+
 1. Use stores for coherent keyed collections and signals for independent scalar state.
 2. Apply entity updates with targeted setters and `reconcile`; do not replace a whole stored object for a one-field event.
 3. Keep derived values one-way. Preserve composer resolution as explicit draft → session default → fallback; only explicit user choices persist upward.
@@ -138,3 +140,5 @@ Report state ownership, API path, semantic icon token, shared primitives, access
 Read [frontend plugin ownership](../../../docs/architecture/frontend-plugin-platform.md) before changing Shell, conversation, composer, resource or overlay composition. Keep domain owners above replaceable presentation and test their public services with native and external views. Capture draft identity before asynchronous work and restore only at an unchanged owning revision. Dispose DOM references, pending UI work and portals by surface identity; accepted server work keeps its domain lifetime.
 
 For UI API 5 changes, build the production App and run bun run plugin-ui:test. Its public preview helper installs extracted archives into an isolated real host. Also run the owning App/UI tests, private HTTP smoke, typecheck, localization and package gates. Browser fixtures must pre-discover their actual module entry so dependency optimization cannot reload the page during interaction assertions. Verify styles on ordinary inherited text and protected portals, not only elements that explicitly restate font variables.
+
+Keep question and permission ownership above replaceable session pages. Native presentation may register an inline outlet; a missing outlet must retain an accessible host surface automatically. Bound the combined decision region, reset plugin style ownership, and verify both native and custom-page composition.

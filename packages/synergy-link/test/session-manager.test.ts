@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { SessionManager } from "../src/session/manager.js"
+import { ACTIVE_WORK_HOLD_MS, SessionManager } from "../src/session/manager.js"
 
 describe("synergy-link session manager", () => {
   test("opens a session for the first caller", async () => {
@@ -96,6 +96,55 @@ describe("synergy-link session manager", () => {
     expect(sessionID).toBeTruthy()
     const expired = await manager.expireIdle(Date.now() + 61_000)
     expect(expired?.sessionID).toBe(sessionID)
+    expect(manager.current()).toBeNull()
+  })
+
+  test("defers idle expiry while the session owns active work", async () => {
+    const manager = new SessionManager({
+      timeoutMs: 60_000,
+      hasActiveWork: () => true,
+    })
+    await manager.open({ type: "agent", agentID: "agent_a", ownerUserID: 1 })
+    const expired = await manager.expireIdle(Date.now() + 61_000)
+    expect(expired).toBeUndefined()
+    expect(manager.current()).not.toBeNull()
+  })
+
+  test("boundedly expires a session that owns active work after the hold window", async () => {
+    const manager = new SessionManager({
+      timeoutMs: 60_000,
+      hasActiveWork: () => true,
+    })
+    const opened = await manager.open({ type: "agent", agentID: "agent_a", ownerUserID: 1 })
+    const sessionID = opened.metadata.sessionID
+    const expired = await manager.expireIdle(Date.now() + 61_000 + ACTIVE_WORK_HOLD_MS + 1)
+    expect(expired?.sessionID).toBe(sessionID)
+    expect(manager.current()).toBeNull()
+  })
+
+  test("expires immediately when active work ends", async () => {
+    let active = true
+    const manager = new SessionManager({
+      timeoutMs: 60_000,
+      hasActiveWork: () => active,
+    })
+    const opened = await manager.open({ type: "agent", agentID: "agent_a", ownerUserID: 1 })
+    const sessionID = opened.metadata.sessionID
+    active = false
+    const expired = await manager.expireIdle(Date.now() + 61_000)
+    expect(expired?.sessionID).toBe(sessionID)
+    expect(manager.current()).toBeNull()
+  })
+
+  test("explicit kick reclaims a session that owns active work", async () => {
+    const manager = new SessionManager({
+      timeoutMs: 60_000,
+      hasActiveWork: () => true,
+    })
+    const opened = await manager.open({ type: "agent", agentID: "agent_a", ownerUserID: 1 })
+    const sessionID = opened.metadata.sessionID
+    const kicked = await manager.kickCurrent()
+    expect(kicked?.sessionID).toBe(sessionID)
     expect(manager.current()).toBeNull()
   })
 })

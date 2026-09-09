@@ -228,6 +228,14 @@ export class ProcessRegistry {
     return this.#running.has(processId) || this.#finished.has(processId)
   }
 
+  /** Whether the session still owns live tracked (non-detached) process work. */
+  hasActiveSessionWork(session: SessionRecord): boolean {
+    for (const record of this.#running.values()) {
+      if (!record.detached && leaseMatchesSession(record.lease, session)) return true
+    }
+    return false
+  }
+
   async releaseSession(session: SessionRecord) {
     const running = [...this.#running.values()].filter((record) => leaseMatchesSession(record.lease, session))
     const sessionKey = sessionLeaseKey(session)

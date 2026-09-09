@@ -106,3 +106,5 @@ Themes aggregate across enabled Scopes through the global theme registrar; icons
 The public `@ericsanchezok/synergy-plugin-kit/testing` entry exports isolated preview startup, explicit fixture approval and caller-owned browser-page helpers. The [packed template suite](../../test/plugin-ui5/templates-browser.test.ts), [functional sample](../../packages/plugin-kit/test/fixtures/ui5-functional/src/index.ts) and [workbench/Skin sample](../../packages/plugin-kit/test/fixtures/ui5-workbench/README.md) exercise the production host. Run `bun run plugin-ui:test` after building the App.
 
 Start with `?safe-ui=1` to skip executable third-party UI and Skins before loading them. Recovery stays active in that browser tab across routing and reloads. Settings → General → Restart normally explicitly clears it. This path does not depend on a third-party Shell rendering successfully; a synchronous plugin loop still requires reloading into recovery.
+
+Session questions and permissions remain mounted by the host. The native composer provides an inline outlet; custom session pages without that outlet retain a protected, viewport-bounded host surface automatically.

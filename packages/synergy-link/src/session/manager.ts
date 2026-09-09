@@ -13,23 +13,36 @@ export interface SessionRecord {
 
 export type SessionEndReason = "closed" | "kicked" | "expired"
 
+/**
+ * Bounded grace beyond the idle lease during which a session that owns live
+ * tracked process work is not expired. Long-running remote work must not be
+ * killed just because the sender is quiet or unreachable, but the hold stays
+ * finite so a vanished owner is still reclaimed (explicit kick/revocation is
+ * unaffected and reclaims immediately).
+ */
+export const ACTIVE_WORK_HOLD_MS = 2 * 60 * 60 * 1000
+
 export class SessionManager {
   #current: SessionRecord | null = null
   #blocked = new Set<string>()
   #timeoutMs: number
+  #deferLoggedSessionID: string | null = null
   readonly #onChange?: (input: { current: SessionRecord | null; blockedAgentIDs: string[] }) => void | Promise<void>
   readonly #onEnd?: (session: SessionRecord, reason: SessionEndReason) => void | Promise<void>
+  readonly #hasActiveWork?: (session: SessionRecord) => boolean | Promise<boolean>
 
   constructor(input?: {
     blockedAgentIDs?: string[]
     timeoutMs?: number
     onChange?: (input: { current: SessionRecord | null; blockedAgentIDs: string[] }) => void | Promise<void>
     onEnd?: (session: SessionRecord, reason: SessionEndReason) => void | Promise<void>
+    hasActiveWork?: (session: SessionRecord) => boolean | Promise<boolean>
   }) {
     for (const agentID of input?.blockedAgentIDs ?? []) this.#blocked.add(agentID)
     this.#timeoutMs = Math.max(60_000, input?.timeoutMs ?? 10 * 60 * 1000)
     this.#onChange = input?.onChange
     this.#onEnd = input?.onEnd
+    this.#hasActiveWork = input?.hasActiveWork
   }
 
   current() {
@@ -239,8 +252,34 @@ export class SessionManager {
   }
 
   async expireIdle(now = Date.now()) {
-    if (!this.#current) return undefined
+    if (!this.#current) {
+      this.#deferLoggedSessionID = null
+      return undefined
+    }
+    if (this.#current.sessionID !== this.#deferLoggedSessionID) {
+      this.#deferLoggedSessionID = null
+    }
     if (now - this.#current.lastSeenAt < this.#timeoutMs) return undefined
+    // A session that still owns live tracked process work is not idle, even
+    // when the remote side is quiet or unreachable: expiring it would kill
+    // in-flight work whose results were never returned. The hold is bounded
+    // so a vanished owner is still reclaimed after the hold window.
+    if (this.#hasActiveWork && (await this.#hasActiveWork(this.#current))) {
+      const heldMs = now - this.#current.lastSeenAt
+      if (heldMs < this.#timeoutMs + ACTIVE_WORK_HOLD_MS) {
+        if (!this.#deferLoggedSessionID) {
+          this.#deferLoggedSessionID = this.#current.sessionID
+          SynergyLinkLog.info("session.expired.deferred.active_work", {
+            sessionID: this.#current.sessionID,
+            remoteAgentID: this.#current.remoteAgentID,
+            idleMs: heldMs,
+            timeoutMs: this.#timeoutMs,
+            holdMs: ACTIVE_WORK_HOLD_MS,
+          })
+        }
+        return undefined
+      }
+    }
     const expired = this.#current
     await this.#endCurrent(expired, "expired")
     SynergyLinkLog.warn("session.expired.idle_timeout", {

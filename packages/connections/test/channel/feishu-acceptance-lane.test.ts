@@ -348,9 +348,11 @@ describe("Channel conversation acceptance lane", () => {
         const wakes: string[] = []
         const wake = Promise.withResolvers<string>()
         let sessionID = ""
+        let otherSessionID = ""
         ;(SessionInvoke.loop as any) = mock(async (wokenSessionID: string) => {
-          wakes.push(wokenSessionID)
           await SessionInbox.drainReady(wokenSessionID)
+          if (wokenSessionID !== sessionID) return
+          wakes.push(wokenSessionID)
           wake.resolve(wokenSessionID)
         })
 
@@ -375,6 +377,16 @@ describe("Channel conversation acceptance lane", () => {
             type: "text",
             text: "root",
           })
+
+          const other = await Session.create({})
+          otherSessionID = other.id
+          await SessionInbox.deliverUnique({
+            sessionID: otherSessionID,
+            deliveryKey: "channel:other-session",
+            mode: "task",
+            message: { role: "user", parts: [{ type: "text", text: "Other session work" }] },
+          })
+          await SessionManager.wake(otherSessionID)
 
           const acceptance = await ChannelConversationAcceptance.accept({
             sessionID,
@@ -414,6 +426,7 @@ describe("Channel conversation acceptance lane", () => {
         } finally {
           ;(SessionInvoke.loop as any) = originalLoop
           if (sessionID) SessionManager.unregisterRuntime(sessionID)
+          if (otherSessionID) SessionManager.unregisterRuntime(otherSessionID)
           SessionDrive.reset()
         }
       },

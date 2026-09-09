@@ -31,6 +31,7 @@ import {
   selectMessagesInCanonicalOrder,
 } from "@/components/session/session-message-order"
 import { resolveSessionVisualState, type SessionVisualStore } from "@/components/sidebar/session-visual-state"
+import { paneHeadStatusFromVisual } from "../model/head-status"
 import { hasMessageWindowSnapshot, type MessageWindowMetadata } from "@/context/session-message-window"
 import { useLocale } from "@/context/locale"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -112,6 +113,16 @@ export function KanbanPane(props: {
   const visual = createMemo(() =>
     props.pane.entry ? resolveSessionVisualState(visualStore, props.pane.entry) : undefined,
   )
+  const headStatus = createMemo(() =>
+    props.pane.entry
+      ? paneHeadStatusFromVisual({
+          statusType: props.data.session_status[props.pane.sessionID]?.type,
+          tone: visual()?.tone,
+          pulse: visual()?.pulse,
+          completionUnread: visual()?.completionUnread,
+        })
+      : undefined,
+  )
 
   // Localized relative activity label with a one-minute update cadence so an
   // idle pinned pane keeps advancing while mounted.
@@ -177,7 +188,7 @@ export function KanbanPane(props: {
       data-compact={props.compact || undefined}
       class="kanban-pane"
     >
-      <div class="kanban-pane-head">
+      <div class="kanban-pane-head" data-status={headStatus() || undefined}>
         <Show when={props.pane.kind === "live" && props.pane.entry}>
           <span
             class={`kanban-dot kanban-dot-${visual()?.tone ?? "default"}`}

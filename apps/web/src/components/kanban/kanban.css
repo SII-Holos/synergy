@@ -298,6 +298,40 @@
   flex: none;
 }
 
+/* Head status tint (data-status set by the pane's resolved visual state).
+ * One color-mix formula serves both modes: the status strong seed is vivid
+ * in light and dark, so mixing a low percentage into the resting head
+ * surface keeps the pane readable while the tint stays clearly distinct. */
+.kanban-pane-head[data-status="working"] {
+  background: color-mix(in srgb, var(--surface-warning-strong) 16%, var(--surface-base-hover));
+  border-bottom-color: color-mix(in srgb, var(--border-warning-base) 60%, transparent);
+}
+
+.kanban-pane-head[data-status="completed"] {
+  background: color-mix(in srgb, var(--surface-success-strong) 16%, var(--surface-base-hover));
+  border-bottom-color: color-mix(in srgb, var(--border-success-base) 60%, transparent);
+}
+
+.kanban-pane-head[data-status="waiting"] {
+  background: color-mix(in srgb, var(--surface-info-strong) 16%, var(--surface-base-hover));
+  border-bottom-color: color-mix(in srgb, var(--border-info-base) 60%, transparent);
+}
+
+/* Keep the leading status dot on the same semantic as the head tint; the
+ * legacy per-tone dot colors would contradict the bar (e.g. a green dot on
+ * an orange working head). */
+.kanban-pane-head[data-status="working"] .kanban-dot {
+  background: var(--surface-warning-strong);
+}
+
+.kanban-pane-head[data-status="completed"] .kanban-dot {
+  background: var(--surface-success-strong);
+}
+
+.kanban-pane-head[data-status="waiting"] .kanban-dot {
+  background: var(--surface-info-strong);
+}
+
 .kanban-dot {
   width: 8px;
   height: 8px;

@@ -3,6 +3,7 @@ import {
   canSubmitPrompt,
   resolvePromptSubmitIntent,
   shouldAllowPromptSubmit,
+  shouldBlockSubmitForUploadingAttachments,
   shouldRunComposerBeforeSubmit,
 } from "../../../src/components/prompt-input/submit-intent"
 
@@ -38,6 +39,19 @@ describe("prompt submit readiness", () => {
 
   test("allows variant-dependent submits after intent resolves", () => {
     expect(shouldAllowPromptSubmit({ intent: "message", variantReady: true, requiresVariant: true })).toBe(true)
+  })
+})
+
+describe("uploading attachment submit gate", () => {
+  test("blocks message and blueprint submits while attachments upload", () => {
+    expect(shouldBlockSubmitForUploadingAttachments({ uploading: true, intent: "message" as const })).toBe(true)
+    expect(shouldBlockSubmitForUploadingAttachments({ uploading: true, intent: "blueprint" as const })).toBe(true)
+    expect(shouldBlockSubmitForUploadingAttachments({ uploading: true, intent: "blocked" as const })).toBe(true)
+  })
+
+  test("keeps stop-session available and idle uploads sendable", () => {
+    expect(shouldBlockSubmitForUploadingAttachments({ uploading: true, intent: "abort" as const })).toBe(false)
+    expect(shouldBlockSubmitForUploadingAttachments({ uploading: false, intent: "message" as const })).toBe(false)
   })
 })
 
