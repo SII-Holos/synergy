@@ -43,7 +43,11 @@ const LOCAL_GATES: Gate[] = [
     run: "bun test --cwd apps/web test/testing/browser-crypto-contract.test.ts",
     needs: [],
   },
-  { id: "coverage:check", run: "bun run coverage:check", needs: [] },
+  {
+    id: "ci-matrix:check",
+    run: "bun test --config /dev/null test/script/coverage-matrix.test.ts test/script/test-matrix.test.ts",
+    needs: [],
+  },
   { id: "secrets:check", run: "bun run secrets:check", needs: [] },
   { id: "workflow:check", run: "bun run workflow:check", needs: [] },
 ]
@@ -51,12 +55,11 @@ const LOCAL_GATES: Gate[] = [
 const ALL_GATE_IDS = LOCAL_GATES.map((gate) => gate.id)
 
 const MODES: Record<string, { include: string[]; exclude: string[] }> = {
-  local: { include: ALL_GATE_IDS, exclude: ["browser-crypto:check", "coverage:check"] },
+  local: { include: ALL_GATE_IDS, exclude: ["browser-crypto:check"] },
   "ci-static": {
     include: ALL_GATE_IDS,
-    exclude: ["coverage:check", "secrets:check", "workflow:check"],
+    exclude: ["secrets:check", "workflow:check"],
   },
-  "ci-coverage": { include: ["coverage:check"], exclude: [] },
 }
 
 export interface GateError {

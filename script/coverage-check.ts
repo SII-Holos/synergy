@@ -407,7 +407,15 @@ async function runPackage(
 }
 
 export async function runCoverageCheck(
-  options: { validateOnly?: boolean; root?: string; json?: boolean; packages?: string[]; existing?: boolean } = {},
+  options: {
+    validateOnly?: boolean
+    root?: string
+    json?: boolean
+    packages?: string[]
+    existing?: boolean
+    executeOnly?: boolean
+    aggregate?: boolean
+  } = {},
 ): Promise<{
   verdicts: PackageVerdict[]
   errors: string[]
@@ -420,7 +428,7 @@ export async function runCoverageCheck(
     (name) => !options.packages?.length || options.packages.includes(name),
   )
   const verification = {
-    source: options.existing ? ("existing" as const) : ("fresh" as const),
+    source: options.existing || options.aggregate ? ("existing" as const) : ("fresh" as const),
     shared: false,
     packages: selected,
   }
@@ -431,12 +439,28 @@ export async function runCoverageCheck(
   if (options.validateOnly || errors.length > 0) {
     return { verdicts: [], errors, passed: errors.length === 0, verification }
   }
+  if (options.executeOnly) {
+    // Matrix shard mode: run this shard's manifest commands and stop. No
+    // thresholds are evaluated here — owners whose own suites cannot reach
+    // the floor without cross-package credit (harness, cli, connections)
+    // would false-fail per shard; the aggregator owns union evaluation.
+    const failures: string[] = []
+    for (const [name, config] of Object.entries(manifest.packages)) {
+      if (options.packages?.length && !options.packages.includes(name)) continue
+      try {
+        await runPackage(name, config, root, false)
+      } catch (error) {
+        failures.push(`${name}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    return { verdicts: [], errors: failures, passed: failures.length === 0, verification }
+  }
   const verdicts: PackageVerdict[] = []
   const reports = new Map<string, { lcov: LcovRecord[]; universe: string[] }>()
   for (const [name, config] of Object.entries(manifest.packages)) {
     try {
       if (options.packages?.length && !options.packages.includes(name)) continue
-      const { lcov, universe } = await runPackage(name, config, root, options.existing)
+      const { lcov, universe } = await runPackage(name, config, root, options.existing || !!options.aggregate)
       reports.set(name, { lcov, universe })
       verdicts.push(evaluatePackage(name, config, universe, lcov))
     } catch (error) {
@@ -458,7 +482,7 @@ export async function runCoverageCheck(
   }
   // Only a complete, successful invocation may share measurements. Reports
   // from --existing have no execution provenance and remain package-local.
-  if (!options.existing && !options.packages?.length && reports.size === selected.length) {
+  if (!options.existing && reports.size === selected.length && (options.aggregate || !options.packages?.length)) {
     const combined = mergeLcov(
       [...reports].map(([name, report]) =>
         report.lcov.map((record) => ({
@@ -493,6 +517,8 @@ export function parseCoverageArguments(args: string[]) {
       validate: { type: "boolean" },
       json: { type: "boolean" },
       existing: { type: "boolean" },
+      aggregate: { type: "boolean" },
+      "execute-only": { type: "boolean" },
       package: { type: "string", multiple: true },
     },
   })
@@ -501,7 +527,9 @@ export function parseCoverageArguments(args: string[]) {
     validateOnly: !!values.validate,
     json: !!values.json,
     existing: !!values.existing,
-    packages: values.package ?? [],
+    aggregate: !!values.aggregate,
+    executeOnly: !!values["execute-only"],
+    packages: (values.package ?? []).flatMap((value) => value.split(",")),
   }
 }
 
@@ -509,7 +537,7 @@ if (import.meta.main) {
   const options = parseCoverageArguments(process.argv.slice(2))
   if (options.help) {
     console.log(
-      "Usage: bun script/coverage-check.ts [--validate] [--existing] [--json] [--package <workspace>]\nDefault: run all configured coverage commands. --existing only inspects reports. --validate only checks policy.",
+      "Usage: bun script/coverage-check.ts [--validate] [--existing] [--aggregate] [--execute-only] [--json] [--package <workspace>[,<workspace>…]]\nDefault: run all configured coverage commands and evaluate. --execute-only runs shard commands without evaluating thresholds. --aggregate evaluates unioned thresholds from reports the shards produced without running commands. --existing only inspects reports. --validate only checks policy.",
     )
   } else {
     const { validateOnly, json: asJson } = options
