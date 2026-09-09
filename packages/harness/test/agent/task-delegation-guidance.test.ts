@@ -5,6 +5,8 @@ describe("task delegation guidance", () => {
   test("parallelism is preserved for independent, ready work only", () => {
     expect(TASK_DESCRIPTION).toMatch(/Launch independent tasks concurrently when their inputs are ready/i)
     expect(TASK_DESCRIPTION).toMatch(/continue useful independent parent work/i)
+    expect(TASK_DESCRIPTION).not.toMatch(/parallelize across multiple agents/i)
+    expect(TASK_DESCRIPTION).toMatch(/independent, ready tasks/i)
   })
 
   test("assignments are scoped around one coherent, independently verifiable deliverable", () => {

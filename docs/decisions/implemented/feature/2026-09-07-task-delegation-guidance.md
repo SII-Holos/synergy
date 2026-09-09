@@ -8,7 +8,7 @@ The `task` tool description told the primary agent when to delegate and how to m
 
 ## Decision
 
-`packages/synergy/src/cortex/tools/task.txt` now teaches parallelism and scoping as separate decisions, in a new "Parallelism and task boundaries" section plus revised usage notes and examples:
+`packages/harness/src/cortex/tools/task.txt` now teaches parallelism and scoping as separate decisions, in a new "Parallelism and task boundaries" section plus revised usage notes and examples:
 
 - **Parallelism is preserved but conditioned.** Independent tasks launch concurrently when their inputs are ready and write/resource ownership is compatible; the parent continues useful independent work while background tasks run.
 - **One assignment = one coherent, independently verifiable deliverable.** A task may include every step needed to produce and verify that deliverable. Bundling separately decidable goals and splitting tightly coupled work by file, step count, or duration are both called out as anti-patterns.
@@ -17,7 +17,7 @@ The `task` tool description told the primary agent when to delegate and how to m
 - **Implementation vs. bounded investigation.** Material design decisions are resolved in the parent before dependent implementation, or dispatched as a clearly bounded investigation; an open-ended planning problem must not be disguised as an implementation task.
 - **Examples disambiguate review.** Parallel implementation now shows two independent implementations with settled interfaces, review-of-existing-boundary runs alongside unrelated implementation, and review of new implementation is shown dispatching only after a reviewable artifact exists.
 
-No runtime semantics change: background execution, notifications, result acknowledgment, session reuse, output contracts, and DAG binding are untouched. The sections that teach background-task mechanics — including the polling-discipline literals asserted by `test/agent/task-polling-prompt.test.ts` and preserved verbatim per [the tool-context slimming decision](../simplification/2026-09-06-slim-static-prompt-and-tool-context.md) — are unchanged.
+No runtime semantics change: background execution, notifications, result acknowledgment, session reuse, output contracts, and DAG binding are untouched. The polling/notification-discipline literals asserted by `packages/harness/test/agent/task-polling-prompt.test.ts` are preserved verbatim per [the tool-context slimming decision](../simplification/2026-09-06-slim-static-prompt-and-tool-context.md). A review follow-up harmonized the two remaining pre-existing unconditioned-parallelism phrasings — the "Use this when" list entry and the `background=true` default note — with the conditioned language; the prose test locks the amendment with a negative assertion on the retired phrasing.
 
 ## Alternatives considered
 

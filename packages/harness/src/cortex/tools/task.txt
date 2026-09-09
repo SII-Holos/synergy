@@ -9,7 +9,7 @@ Task delegation enables parallel execution and access to specialized agents.
 
 Use this when:
 - The work can run independently
-- You can parallelize across multiple agents
+- The work decomposes into independent, ready subtasks (see "Parallelism and task boundaries")
 - A specialized agent is better suited for the task
 - The task is non-trivial (more than a single quick action)
 
@@ -36,7 +36,7 @@ Launches the task and **returns immediately** with `task_id`. You continue worki
 ### `background: false` / omitted (blocking, default)
 Launches the task and **waits up to 300 seconds** for it to complete. If the subagent finishes within that time, returns the full result. Otherwise, the task is **auto-backgrounded** — you get a `task_id` and continue.
 
-> **Prefer `background=true` by default.** This lets you launch multiple tasks in parallel and continue working. Use `background=false` only when you truly cannot proceed without the result.
+> **Prefer `background=true` by default** for independent, ready tasks. This lets you launch them concurrently and continue working. Use `background=false` only when you truly cannot proceed without the result.
 
 ## Checking on background tasks
 
