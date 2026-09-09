@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from "bun:test"
+import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
@@ -67,6 +67,12 @@ beforeAll(async () => {
   await page.goto(server.resolvedUrls!.local[0]!)
 }, 60000)
 
+beforeEach(async () => {
+  errors.length = 0
+  await page.goto(server.resolvedUrls!.local[0]!)
+  await page.getByRole("button", { name: "Plugin actions", exact: true }).waitFor()
+})
+
 afterAll(async () => {
   await browser?.close()
   await server?.close()
@@ -97,6 +103,9 @@ for (const key of ["Enter", "Space"]) {
     expect(await trigger.getAttribute("aria-expanded")).toBe("false")
     await page.keyboard.press(key)
     await action.waitFor({ state: "visible" })
+    await page.waitForFunction(() =>
+      document.querySelector('[data-component="popover-content"]')?.contains(document.activeElement),
+    )
     expect(await trigger.getAttribute("aria-expanded")).toBe("true")
     await page.keyboard.press("Escape")
     await action.waitFor({ state: "detached" })
@@ -112,6 +121,9 @@ test("public plugin component triggers retain pointer and focus behavior", async
   const action = page.getByRole("button", { name: "Plugin action", exact: true })
   await trigger.click()
   await action.waitFor({ state: "visible" })
+  await page.waitForFunction(() =>
+    document.querySelector('[data-component="popover-content"]')?.contains(document.activeElement),
+  )
   await page.keyboard.press("Escape")
   await action.waitFor({ state: "detached" })
   await page.waitForFunction((element) => element === document.activeElement, await trigger.elementHandle())

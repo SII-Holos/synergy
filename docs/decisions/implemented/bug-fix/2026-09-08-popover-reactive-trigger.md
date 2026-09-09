@@ -18,4 +18,4 @@ Popover accepts rendered content through `trigger` and an explicit native-button
 
 ## Consequences
 
-Session actions open with pointer and keyboard input and return focus after Escape. Component callers use the explicit prop; rendered JSX callers keep the existing prop. A real browser fixture covers reactive Tooltip content, repeated actions, native keyboard activation, and focus restoration.
+Session actions open with pointer and keyboard input and return focus after Escape. Component callers use the explicit prop; rendered JSX callers keep the existing prop. A real browser fixture covers reactive Tooltip content, repeated actions, native keyboard activation, and focus restoration. Each case loads a fresh document so deferred focus cleanup cannot cross case boundaries; keyboard dismissal waits for the content autofocus to complete before sending Escape.
