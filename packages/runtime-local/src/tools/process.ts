@@ -21,7 +21,11 @@ const parameters = z
     timeout: z
       .number()
       .optional()
-      .describe(`Max seconds to wait when block is true (default: ${ToolTimeout.DEFAULTS.processPollWaitMs / 1_000})`),
+      .describe(
+        `Max seconds to wait when block is true (default: ${
+          ToolTimeout.DEFAULTS.processPollWaitMs / 1_000
+        }). Synergy Link hosts cap remote blocking waits at 25 seconds so a still-running result returns before the transport deadline.`,
+      ),
     linkID: z
       .string()
       .optional()

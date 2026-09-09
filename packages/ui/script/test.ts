@@ -37,5 +37,9 @@ await runBatchedTests({
     "test/components/tooltip-focus.test.ts",
     "test/components/provider-icon.test.ts",
   ],
-  browserOnly: ["test/hooks/use-filtered-list.test.tsx", "test/theme-provider-fallback.test.ts"],
+  browserOnly: [
+    "test/hooks/create-auto-scroll.test.ts",
+    "test/hooks/use-filtered-list.test.tsx",
+    "test/theme-provider-fallback.test.ts",
+  ],
 })

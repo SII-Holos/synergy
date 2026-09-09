@@ -96,7 +96,10 @@ export function KanbanPane(props: {
   // Autoscroll follows only while the pane's follow toggle is enabled, so
   // "Paused" actually stops the stream from scrolling; the viewport's manual
   // scroll-to-bottom button still forces a jump.
-  const autoScroll = createAutoScroll({ working: () => props.follow() && working() })
+  const autoScroll = createAutoScroll({
+    working: () => props.follow() && working(),
+    onMeasure: (distance) => setScrolledUp(distance > 100),
+  })
   const visualStore: SessionVisualStore | undefined = props.pane.entry
     ? {
         session_status: props.data.session_status,

@@ -9,12 +9,24 @@ Task delegation enables parallel execution and access to specialized agents.
 
 Use this when:
 - The work can run independently
-- You can parallelize across multiple agents
+- The work decomposes into independent, ready subtasks (see "Parallelism and task boundaries")
 - A specialized agent is better suited for the task
 - The task is non-trivial (more than a single quick action)
 
 Do NOT use this when:
 - The task requires immediate back-and-forth with the user
+
+## Parallelism and task boundaries
+
+Parallelism is a scheduling decision; task boundaries are a scoping decision — do not let one drive the other. Launch independent tasks concurrently when their inputs are ready and their write/resource ownership does not conflict. While background tasks run, continue useful independent parent work.
+
+Scope each assignment around one coherent, independently verifiable deliverable. A task may include every step needed to produce and verify that deliverable — do not bundle separately decidable goals into one assignment, and do not split tightly coupled work by file, step count, or duration merely to create parallelism.
+
+Start dependent tasks after the inputs they need exist. Do not serialize unrelated ready work just because the final integration will be sequential — run the integration or acceptance check yourself once its inputs are ready.
+
+Resolve material design decisions before dispatching dependent implementation, or delegate a clearly bounded investigation first. Do not disguise an open-ended planning problem as an implementation task.
+
+The parent composes the handoff — settled decisions, evidence, allowed changes, deliverable, verification criteria, and escalation conditions — and owns decomposition, integration, and acceptance. Do not ask the user to write a task contract.
 
 ## Blocking vs Background
 
@@ -24,7 +36,7 @@ Launches the task and **returns immediately** with `task_id`. You continue worki
 ### `background: false` / omitted (blocking, default)
 Launches the task and **waits up to 300 seconds** for it to complete. If the subagent finishes within that time, returns the full result. Otherwise, the task is **auto-backgrounded** — you get a `task_id` and continue.
 
-> **Prefer `background=true` by default.** This lets you launch multiple tasks in parallel and continue working. Use `background=false` only when you truly cannot proceed without the result.
+> **Prefer `background=true` by default** for independent, ready tasks. This lets you launch them concurrently and continue working. Use `background=false` only when you truly cannot proceed without the result.
 
 ## Checking on background tasks
 
@@ -52,7 +64,7 @@ Use **`task_list()`** once when you need an overview of all visible background t
 
 ## Usage notes
 
-1. Launch multiple agents concurrently whenever possible
+1. Launch tasks concurrently when they are independent and ready — inputs available and write/resource ownership compatible (see "Parallelism and task boundaries")
 2. The result is not visible to the user - summarize it back to them
 3. Provide `session_id` to reuse an existing session (must be idle and belong to this parent).
    - **Why reuse**: The subagent retains prior conversation context, useful for iterative refinement,
@@ -62,7 +74,7 @@ Use **`task_list()`** once when you need an overview of all visible background t
    - **Busy sessions**: If the session is busy, the tool will error — wait for it to finish
      or use a different session.
 4. Pass `output` when the caller needs a specific completion contract: `{ mode: "summary" }`, `{ mode: "final_response" }`, or `{ mode: "structured", schema, maxRepairTurns }`. Structured schemas can describe top-level objects, arrays, primitives, `anyOf`, or `oneOf`; the result is rendered as JSON for tool text and also exposed in metadata.
-5. Clearly tell the agent whether to write code or just research
+5. State clearly whether the agent should implement or investigate — while a material design decision is still open, delegate a bounded investigation instead of dependent implementation
 
 ## Writing effective prompts
 
@@ -88,9 +100,27 @@ task(background: true, subagent_type: "literature-searcher", description: "Find 
 ```
 
 ### Parallel implementation and review
+
+Two implementations with settled interfaces and separate ownership run concurrently; you run integration and acceptance yourself once both finish.
 ```
 task(background: true, subagent_type: "implementation-engineer", description: "Add validation", prompt: "...")
-task(background: true, subagent_type: "security-reviewer", description: "Review trust boundary", prompt: "...")
+task(background: true, subagent_type: "implementation-engineer", description: "Add error handling", prompt: "...")
+```
+
+Reviewing an existing trust boundary is independent of unrelated implementation — it may run alongside it.
+```
+task(background: true, subagent_type: "security-reviewer", description: "Review existing trust boundary", prompt: "...")
+task(background: true, subagent_type: "implementation-engineer", description: "Add error handling", prompt: "...")
+```
+
+Review of new implementation waits until the implementation produces a reviewable artifact.
+```
+task(background: true, subagent_type: "implementation-engineer", description: "Add validation", prompt: "...")
+```
+
+Once that task completes, dispatch the review.
+```
+task(background: true, subagent_type: "security-reviewer", description: "Review validation change", prompt: "...")
 ```
 
 ### Synchronous (when result needed immediately)

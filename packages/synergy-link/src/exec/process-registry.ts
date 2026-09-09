@@ -12,6 +12,19 @@ const MAX_OUTPUT_CHARS = 200_000
 const TAIL_CHARS = 2_000
 const DEFAULT_TTL_MS = 30 * 60 * 1000
 const MAX_REMOTE_YIELD_SECONDS = 5
+const DEFAULT_BLOCKING_POLL_SECONDS = 30
+// Remote requests must conclude inside the sender's 30-second transport
+// deadline (the Holos transport timer default). A blocking poll that waits
+// the full 30 seconds leaves no time for the still-running result to return,
+// so the wait is capped at 25 seconds — the same 5-second response margin
+// that remote bash yields reserve.
+const MAX_BLOCKING_POLL_SECONDS = 25
+
+export interface ProcessRegistryOptions {
+  ttlMs?: number
+  /** Caps how long a blocking poll may wait before returning a still-running result (default 25s). */
+  maxBlockingPollMs?: number
+}
 
 interface ProcessRecord {
   processId: SynergyLinkIdentity.ProcessID
@@ -70,12 +83,14 @@ export class ProcessRegistry {
   // Markers outlive finished process history so session cleanup can still reap escaped descendants.
   readonly #sessionOwnerMarkers = new Map<string, Set<string>>()
   readonly #ttlMs: number
+  readonly #maxBlockingPollMs: number
   readonly #host: SynergyLinkHost
   #sweeper?: ReturnType<typeof setInterval>
 
-  constructor(host: SynergyLinkHost, options?: { ttlMs?: number }) {
+  constructor(host: SynergyLinkHost, options?: ProcessRegistryOptions) {
     this.#host = host
     this.#ttlMs = Math.max(60_000, options?.ttlMs ?? DEFAULT_TTL_MS)
+    this.#maxBlockingPollMs = Math.max(1_000, options?.maxBlockingPollMs ?? MAX_BLOCKING_POLL_SECONDS * 1000)
   }
 
   async executeBash(
@@ -357,7 +372,10 @@ export class ProcessRegistry {
     }
 
     if (running && block) {
-      const timeout = Math.min(Math.max(timeoutSeconds ?? 30, 1), 30)
+      const timeout = Math.min(
+        Math.max(timeoutSeconds ?? DEFAULT_BLOCKING_POLL_SECONDS, 1),
+        this.#maxBlockingPollMs / 1000,
+      )
       await this.#waitForExit(processId, timeout * 1000)
     }
 
