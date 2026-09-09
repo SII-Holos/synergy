@@ -529,13 +529,17 @@ export namespace SessionManager {
   }
 
   export const WAKE_RETRY_DELAYS_MS = [250, 1_000, 2_000, 4_000, 8_000]
-  const activeWakeChains = new Set<string>()
+  const activeWakeChains = new Map<string, { requested: boolean }>()
 
   function scheduleWakeAttempt(sessionID: string, reason: string, delayMs: number, failureCount: number): void {
     const timer = setTimeout(() => {
+      const chain = activeWakeChains.get(sessionID)
+      if (!chain) return
+      chain.requested = false
       void wake(sessionID)
         .then(() => {
-          activeWakeChains.delete(sessionID)
+          if (chain.requested) scheduleWakeAttempt(sessionID, reason, 0, 0)
+          else activeWakeChains.delete(sessionID)
         })
         .catch((error) => {
           const delay = WAKE_RETRY_DELAYS_MS[failureCount]
@@ -564,8 +568,12 @@ export namespace SessionManager {
   }
 
   export function scheduleWake(sessionID: string, reason: string): void {
-    if (activeWakeChains.has(sessionID)) return
-    activeWakeChains.add(sessionID)
+    const chain = activeWakeChains.get(sessionID)
+    if (chain) {
+      chain.requested = true
+      return
+    }
+    activeWakeChains.set(sessionID, { requested: false })
     scheduleWakeAttempt(sessionID, reason, 0, 0)
   }
 

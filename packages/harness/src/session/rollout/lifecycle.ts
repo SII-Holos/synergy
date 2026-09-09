@@ -134,7 +134,7 @@ export namespace RolloutLifecycle {
       })
     }
     for (const process of await RolloutLedger.processes(identity, runID)) {
-      if (process.status !== "running") continue
+      if (process.status !== "running" || RolloutProcess.isActive(identity, runID, process.id)) continue
       await RolloutLedger.writeProcess({ ...process, status: "interrupted", ended: Date.now() })
     }
   }

@@ -21,3 +21,5 @@ Status: implemented
 ## Consequences
 
 被中止的 turn 留下的孤儿证据以 `interrupted` 状态保留在 ledger 中（与进程重启 recovery 的结转语义一致），不再把 session 楔死；用户重发消息会由重试链驱动到成功，无需重启。代价是 `reconcile` 每次对 run 的 call/tool/process 做三次枚举（原本只读 segments），对正常完成的 run 这些列表非空但全部已终结，结转循环零写入。唤醒合并意味着同一 session 的第二个入队请求不再触发额外唤醒链，依赖"每次 deliver 必触发一次 wake"的调用方不受影响——合并只发生在既有链尚未收敛时，链结束时收件箱仍有可运行项的情况由 release 路径的 `requestNextWork` 再次驱动。
+
+Live background process writers remain authoritative after their tool and segment finish: reconciliation interrupts only process records without an active rollout writer, preserving later output and terminal exit evidence. Wake coalescing retains requests arriving during a running attempt and schedules a fresh attempt after success, so the release path cannot lose queued continuation work. Regression tests cover both boundaries.

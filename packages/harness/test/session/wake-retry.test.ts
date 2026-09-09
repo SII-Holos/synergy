@@ -75,4 +75,17 @@ describe("session wake retry", () => {
     await Bun.sleep(30)
     expect(loop.mock.calls.length).toBe(MAX_ATTEMPTS)
   })
+  test("scheduleWake preserves a release request arriving while the loop is finishing", async () => {
+    spyOn(SessionInbox, "hasRunnableItem").mockResolvedValue(true)
+    spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
+    let attempts = 0
+    const loop = spyOn(SessionInvoke, "loop").mockImplementation((async () => {
+      attempts++
+      if (attempts === 1) SessionManager.scheduleWake(sessionID, "release")
+      return {} as never
+    }) as unknown as typeof SessionInvoke.loop)
+    SessionManager.scheduleWake(sessionID, "user-input")
+    await waitFor(() => loop.mock.calls.length === 2)
+    expect(attempts).toBe(2)
+  })
 })

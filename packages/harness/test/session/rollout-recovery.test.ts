@@ -3,6 +3,7 @@ import { tmpdir } from "../support/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Identifier } from "../../src/id/id"
 import { Session } from "../../src/session"
+import { RolloutProcess } from "../../src/session/rollout/process"
 import { RolloutLifecycle } from "../../src/session/rollout/lifecycle"
 import { RolloutRecovery } from "../../src/session/rollout/recovery"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
@@ -73,6 +74,49 @@ test("reconcile settles records left running by an interrupted turn and complete
       expect(snapshot.calls.find((entry) => entry.id === call.id)?.status).toBe("interrupted")
       expect(snapshot.runs.find((run) => run.id === runID)?.status).toBe("failed")
       await Session.remove(session.id)
+    },
+  })
+})
+
+test("reconcile preserves live background process evidence through its eventual exit", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const session = await Session.create({})
+      const owner = RolloutLifecycle.owner(session)
+      const runID = Identifier.ascending("message")
+      const tool = await RolloutLedger.beginTool({
+        owner,
+        runID,
+        messageID: runID,
+        toolCallID: "background",
+        tool: "bash",
+        args: {},
+      })
+      const writer = await RolloutProcess.open(
+        { owner, runID, toolExecutionID: tool.id, processID: "background" },
+        async (error) => {
+          throw error
+        },
+      )
+      try {
+        await writer.append("stdout", new TextEncoder().encode("before"))
+        await RolloutLedger.writeTool({ ...tool, status: "completed", ended: Date.now() })
+        await RolloutLifecycle.reconcile(session.id, runID, "failed")
+        expect((await RolloutLedger.processes(owner, runID))[0].status).toBe("running")
+        await writer.append("stdout", new TextEncoder().encode("after"))
+        await writer.finish({ interrupted: false, exitCode: 0, signal: null })
+        const process = (await RolloutLedger.processes(owner, runID))[0]
+        expect(process.status).toBe("completed")
+        expect(process.exitCode).toBe(0)
+        const chunks: Uint8Array[] = []
+        for await (const bytes of RolloutArtifact.read(owner, process.stream)) chunks.push(bytes)
+        expect(Buffer.concat(chunks).toString()).toContain("after")
+      } finally {
+        await writer.finish({ interrupted: true, exitCode: null, signal: null })
+        await Session.remove(session.id)
+      }
     },
   })
 })
