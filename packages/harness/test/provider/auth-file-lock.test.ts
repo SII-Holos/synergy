@@ -27,7 +27,7 @@ test("provider credential locks serialize writers across worker processes", asyn
       stdout: "ignore",
       stderr: "pipe",
       ipc(message) {
-        if (message === (marker === "first" ? "locked" : "attempting")) ready.resolve()
+        if (message === (marker === "first" ? "locked" : "contended")) ready.resolve()
       },
     })
     children.push(child)

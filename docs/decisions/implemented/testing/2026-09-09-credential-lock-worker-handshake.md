@@ -8,7 +8,7 @@ The credential-lock serialization test observes the exact intermediate log `firs
 
 ## Decision
 
-The first worker announces lock acquisition through IPC and holds the lock until the parent explicitly releases it. The second worker announces its attempt before entering the same public credential-lock operation. The parent retains each readiness message in a promise, releases the first owner after the second worker starts, and verifies both exit codes and the complete serialized write order. Child stderr is drained from startup, premature exit rejects readiness, and an after-test hook stops and drains all owned workers. Homes live under the preload-managed fixture root.
+The first worker announces lock acquisition through IPC and holds the lock until the parent explicitly releases it. The second worker reports contention only after the real exclusive filesystem open for that credential lock returns `EEXIST`. Its fixture observer forwards every filesystem operation and preserves the original results and errors. The parent retains each readiness message in a promise, releases the first owner after that contention signal, and verifies both exit codes and the complete serialized write order. Child stderr is drained from startup, premature exit rejects readiness, and an after-test hook stops and drains all owned workers. Homes live under the preload-managed fixture root.
 
 ## Alternatives considered
 
@@ -18,4 +18,4 @@ The first worker announces lock acquisition through IPC and holds the lock until
 
 ## Consequences
 
-The test retains real cross-process credential locking and removes correctness dependencies on scheduler speed. IPC adds explicit fixture coordination; a generous test timeout remains as deadlock detection. Product locking behavior and coverage thresholds are unchanged.
+The test retains real cross-process credential locking and removes correctness dependencies on scheduler speed. IPC and a narrowly scoped filesystem observer add explicit fixture coordination; a generous test timeout remains as deadlock detection. Product locking behavior and coverage thresholds are unchanged.
