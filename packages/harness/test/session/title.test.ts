@@ -164,6 +164,27 @@ describe("ensureTitle", () => {
       },
     })
   })
+  test("does not clobber a title renamed while the detached call was in flight", async () => {
+    installMocks()
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session } = await createSessionWithUser(createDefaultTitle())
+        ;(AgentCall.text as any) = mock(async () => {
+          await Session.update(session.id, (draft) => {
+            draft.title = "User renamed during flight"
+          })
+          return { text: "Late generated title", model: { providerID: "test", id: "test" } }
+        })
+
+        await runEnsureTitle(session.id)
+
+        const updated = await Session.get(session.id)
+        expect(updated?.title).toBe("User renamed during flight")
+      },
+    })
+  })
 
   test("does not call the model when the session has multiple real users", async () => {
     installMocks()

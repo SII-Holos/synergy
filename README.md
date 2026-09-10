@@ -241,6 +241,7 @@ The [documentation home](docs/README.md) routes readers by product area and task
 - [Configuration reference](docs/reference/configuration.md) — domains, precedence, providers, and instructions
 - [Storage and paths](docs/reference/storage-and-paths.md) — persistent state and workspace layout
 - [Plugin documentation](docs/plugins/README.md) — definitions, generated artifacts, capabilities, runtime, UI, and publishing
+- [Oryn maintenance](docs/operations/oryn.md) — repository Actions, triage and validated repairs
 - [Contributing](CONTRIBUTING.md) — repository setup and pull request workflow
 
 Coding agents and LLM tools should begin with [llms.txt](llms.txt). Read [AGENTS.md](AGENTS.md) only when modifying the Synergy repository; plugin authors do not need the repository agent guide.

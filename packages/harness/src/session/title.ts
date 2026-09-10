@@ -28,6 +28,7 @@ LoopJob.register({
   type: "ensure-title",
   phase: "pre",
   blocking: false,
+  detached: true,
   collect(ctx) {
     if (ctx.step !== 1) return []
     return [{ type: "ensure-title" }]
@@ -108,6 +109,9 @@ export async function ensureTitle(input: {
   if (text) {
     const { Session } = await import(".")
     return Session.update(input.session.id, (draft) => {
+      // The LLM call ran detached: the user may have renamed the session
+      // while it was in flight. Only replace a title that is still the default.
+      if (!isDefaultTitle(draft.title)) return
       const cleaned = text
         .replace(/<think>[\s\S]*?<\/think>\s*/g, "")
         .split("\n")
