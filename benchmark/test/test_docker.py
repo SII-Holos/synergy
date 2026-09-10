@@ -258,6 +258,5 @@ def test_faults_preserve_terminal_evidence_and_cleanup(prepared_fixture, mode: s
     for resource in [["ps", "-a"], ["network", "ls"]]:
         projects = command(["docker", *resource, "--format", '{{.Label "com.docker.compose.project"}}'])
         assert not any(name.startswith(f"sb-{root.name[-8:]}-") for name in projects.splitlines())
-    if mode != "docker-stop":
-        asyncio.run(resume(root))
-        assert len(list(root.glob("trials/*/attempt-*/evidence.json"))) == 1
+    asyncio.run(resume(root))
+    assert len(list(root.glob("trials/*/attempt-*/evidence.json"))) == 1
