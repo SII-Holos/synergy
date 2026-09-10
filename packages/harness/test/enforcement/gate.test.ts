@@ -1313,8 +1313,8 @@ do make install`,
     const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeUndefined()
 
-    const shell = result.capabilities.find((c: any) => c.class === "shell")!
-    expect(shell).toBeDefined()
+    const shellRead = result.capabilities.find((c: any) => c.class === "shell_read")!
+    expect(shellRead).toBeDefined()
   })
 
   test("echo padded output is NOT destructive", async () => {
@@ -1328,8 +1328,8 @@ do make install`,
     const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeUndefined()
 
-    const shell = result.capabilities.find((c: any) => c.class === "shell")!
-    expect(shell).toBeDefined()
+    const shellRead = result.capabilities.find((c: any) => c.class === "shell_read")!
+    expect(shellRead).toBeDefined()
   })
 
   test("git commit -m add is NOT destructive", async () => {

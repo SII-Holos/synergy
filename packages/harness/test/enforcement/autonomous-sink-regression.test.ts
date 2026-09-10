@@ -158,4 +158,18 @@ describe("autonomous bash sink regression (Phase 0)", () => {
     expect(result.capabilities.some((c: any) => c.class === "file_external_write")).toBe(false)
     expect(result.capabilities.some((c: any) => c.class === "file_write")).toBe(true)
   })
+  test("echo separator in compound with external path reads stays allowed", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: WORKSPACE,
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", {
+      command: 'ls /Users/test/other-project/ && echo --- && ls /Users/test/projects/ | grep -i -E "meme|lingo"',
+      workdir: WORKSPACE,
+    })
+    expect(envelope.decision).toBe("allow")
+    expect(envelope.capabilities.some((c: any) => c.class === "file_external_write")).toBe(false)
+    expect(envelope.capabilities.some((c: any) => c.class === "file_external_read")).toBe(true)
+  })
 })
