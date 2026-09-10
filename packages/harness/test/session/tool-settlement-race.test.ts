@@ -98,6 +98,7 @@ async function createTurn() {
 }
 
 function gateUpdatePart(callID: string) {
+  const events: string[] = []
   let holding = false
   let releaseFlush!: () => void
   const flushReleased = new Promise<void>((resolve) => {
@@ -115,10 +116,15 @@ function gateUpdatePart(callID: string) {
       holding = false
       flushArrived()
       await flushReleased
+      events.push("flush:commit")
+    }
+    if (isTarget && (input.state.status === "completed" || input.state.status === "error")) {
+      events.push("terminal:enter")
     }
     return realUpdatePart(input)
   }) as unknown as typeof Session.updatePart)
   return {
+    events,
     arm: () => {
       holding = true
     },
@@ -127,6 +133,11 @@ function gateUpdatePart(callID: string) {
   }
 }
 
+// Deterministic scheduling barrier: macrotask turns give any unqueued async
+// write chain room to start without a wall-clock timeout.
+async function pumpMacrotasks(turns: number) {
+  for (let i = 0; i < turns; i++) await new Promise<void>((resolve) => setTimeout(resolve, 0))
+}
 describe("tool settlement vs late state flushes", () => {
   afterEach(() => {
     mock.restore()
@@ -167,16 +178,20 @@ describe("tool settlement vs late state flushes", () => {
           )
 
         await gate.flushWriteHeld
-        // The terminal settlement must serialize behind the in-flight flush:
-        // while the running write is held, settlement may not complete.
-        const settledWhileHeld = await Promise.race([execution.then(() => true), Bun.sleep(2_000).then(() => false)])
+        // The terminal settlement must serialize behind the in-flight flush.
+        // A fixed number of macrotask turns is a deterministic barrier: an
+        // unqueued terminal write would have started long before they run
+        // out, so its absence here is not a timing accident.
+        await pumpMacrotasks(20)
         try {
-          expect(settledWhileHeld).toBe(false)
+          expect(gate.events).not.toContain("terminal:enter")
         } finally {
           gate.release()
         }
         const outcome = await execution
         expect(outcome.ok).toBe(true)
+        expect(gate.events.indexOf("flush:commit")).toBeGreaterThanOrEqual(0)
+        expect(gate.events.indexOf("terminal:enter")).toBeGreaterThan(gate.events.indexOf("flush:commit"))
 
         const durable = await readDurableToolPart(callID)
         const state = durable.state
@@ -219,14 +234,16 @@ describe("tool settlement vs late state flushes", () => {
           )
 
         await gate.flushWriteHeld
-        const settledWhileHeld = await Promise.race([execution.then(() => true), Bun.sleep(2_000).then(() => false)])
+        await pumpMacrotasks(20)
         try {
-          expect(settledWhileHeld).toBe(false)
+          expect(gate.events).not.toContain("terminal:enter")
         } finally {
           gate.release()
         }
         const outcome = await execution
         expect(outcome.ok).toBe(false)
+        expect(gate.events.indexOf("flush:commit")).toBeGreaterThanOrEqual(0)
+        expect(gate.events.indexOf("terminal:enter")).toBeGreaterThan(gate.events.indexOf("flush:commit"))
 
         const durable = await readDurableToolPart(callID)
         const state = durable.state
