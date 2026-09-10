@@ -10,7 +10,7 @@ export interface PluginTurnProjection {
 }
 
 export interface PluginConversationViewport {
-  contentRef(element: HTMLElement | undefined): void
+  contentRef(element: HTMLElement | undefined, releaseOf?: HTMLElement): void
   handleScroll(): void
   handleInteraction(event: Event): void
   forceScrollToBottom(): void
@@ -46,7 +46,7 @@ export interface PluginConversationService {
   autoScroll: PluginConversationViewport
   onClearHash: () => void
   onScheduleScrollSpy: (container: HTMLDivElement) => void
-  setScrollRef: (el: HTMLDivElement | undefined) => void
+  setScrollRef: (el: HTMLDivElement | undefined, releaseOf?: HTMLDivElement) => void
   isDesktop: Accessor<boolean>
   scrollToMessage: (msg: UserMessage, behavior?: ScrollBehavior) => void
   anchor: (id: string) => string

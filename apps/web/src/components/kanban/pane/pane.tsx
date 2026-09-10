@@ -292,7 +292,7 @@ export function KanbanPane(props: {
                 scrolledUp={scrolledUp()}
                 onScrolledUpChange={setScrolledUp}
                 autoScroll={autoScroll}
-                setScrollRef={(el) => autoScroll.scrollRef(el)}
+                setScrollRef={(el, releaseOf) => autoScroll.scrollRef(el, releaseOf)}
                 scrollButtonOffsetClass="bottom-3"
                 contentClass="px-2 py-2 flex flex-col items-start gap-3 text-sm"
               >
