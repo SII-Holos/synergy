@@ -6,7 +6,138 @@ import {
   type ShellHeredocBody,
 } from "./shell-command"
 
-const SAFE_COMMANDS = new Set(["pwd", "ls", "cat", "head", "tail", "wc", "grep", "rg", "jq", "true"])
+/**
+ * Closed-world catalog of read-only utilities: stdin→stdout/stderr transforms
+ * that never mutate files by themselves. It is the single source shared by
+ * compound-segment classification (isSafeSimpleCommand) and find/fd
+ * -exec/-execdir inspection, so a utility trusted in one context cannot stay
+ * untrusted in the other. Utilities able to write through a flag are gated
+ * by READ_ONLY_ARG_BLOCKERS.
+ */
+const READ_ONLY_COMMANDS = new Set([
+  "basename",
+  "bzcat",
+  "cat",
+  "cksum",
+  "cmp",
+  "column",
+  "comm",
+  "cut",
+  "diff",
+  "dirname",
+  "du",
+  "echo",
+  "egrep",
+  "expand",
+  "false",
+  "fgrep",
+  "file",
+  "fmt",
+  "fold",
+  "grep",
+  "head",
+  "hexdump",
+  "join",
+  "jq",
+  "ls",
+  "md5sum",
+  "nl",
+  "od",
+  "paste",
+  "pr",
+  "printf",
+  "pwd",
+  "readlink",
+  "rg",
+  "seq",
+  "sha1sum",
+  "sha224sum",
+  "sha256sum",
+  "sha384sum",
+  "sha512sum",
+  "shasum",
+  "sort",
+  "stat",
+  "sum",
+  "tail",
+  "tr",
+  "true",
+  "uniq",
+  "unexpand",
+  "wc",
+  "xxd",
+  "xzcat",
+  "zcat",
+])
+
+/**
+ * Flag-level write exclusions for catalog utilities that can still produce
+ * files: `sort -o`, `diff -o/--output`, and `file -C/--compile` (magic
+ * database compilation). A matching argument makes the invocation NOT
+ * read-only even though redirect extraction never sees the target.
+ */
+const READ_ONLY_ARG_BLOCKERS: Record<string, RegExp[]> = {
+  diff: [/^--output(=.+)?$/, /^-[^-]*o/],
+  file: [/^--compile$/, /^-[^-]*C/],
+  sort: [/^--output(=.+)?$/, /^-[^-]*[oT]/],
+  rg: [/^--(?:pre|hostname-bin)(?:=|$)/],
+  printf: [/^-[^-]*v/],
+}
+
+const READ_ONLY_LONG_ARG_BLOCKERS: Record<string, string[]> = {
+  diff: ["--output"],
+  file: ["--compile"],
+  sort: ["--output", "--compress-program", "--temporary-directory"],
+}
+
+/**
+ * Whether one resolved invocation is read-only: catalog membership plus the
+ * utility's flag-level write exclusions. Shared by compound-segment
+ * classification and find/fd exec-target inspection.
+ */
+function isReadOnlyInvocation(name: string, args: string[]): boolean {
+  if (!READ_ONLY_COMMANDS.has(name)) return false
+  const blockers = READ_ONLY_ARG_BLOCKERS[name]
+  if (blockers && args.some((arg) => /[$`]/.test(arg) || blockers.some((pattern) => pattern.test(arg)))) return false
+  if (
+    args.some(
+      (arg) =>
+        arg.startsWith("--") &&
+        arg !== "--" &&
+        READ_ONLY_LONG_ARG_BLOCKERS[name]?.some((option) => option.startsWith(arg.split("=", 1)[0]!)),
+    )
+  )
+    return false
+  if (name !== "uniq" && name !== "xxd") return true
+  if (args.some((arg) => /[$`*?\[]|\{[^}]*[,][^}]*\}|\{[^}]*\.\.[^}]*\}/.test(arg))) return false
+  let operands = 0
+  let options = true
+  const valueOptions =
+    name === "uniq"
+      ? new Set(["-f", "-s", "-w", "--skip-fields", "--skip-chars", "--check-chars"])
+      : new Set(["-c", "-cols", "-g", "-groupsize", "-l", "-len", "-o", "-s", "-seek", "-n", "-name"])
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]!
+    if (options && arg === "--") {
+      options = false
+      continue
+    }
+    if (options && valueOptions.has(arg)) {
+      if (++index >= args.length) return false
+      continue
+    }
+    if (options && arg.startsWith("-") && arg !== "-") {
+      const safe =
+        name === "uniq"
+          ? /^(?:-[cduizD]+|-[fsw]\d+|--(?:count|repeated|unique|ignore-case|zero-terminated|all-repeated(?:=.*)?|group(?:=.*)?|skip-fields=\d+|skip-chars=\d+|check-chars=\d+))$/
+          : /^(?:-[abCeEipPru]+|-(?:c|g|l|o|s)[+\-]?(?:0x)?[\da-fA-F]+)$/
+      if (!safe.test(arg)) return false
+      continue
+    }
+    if (++operands > 1) return false
+  }
+  return true
+}
 
 const GIT_TAXONOMY: Map<string, BashRisk> = new Map([
   // ── read_only ──────────────────────────────────────────────
@@ -607,7 +738,6 @@ const UNSAFE_SHELL_TOKENS = [
   // Shell escape
   ". ",
   "read ",
-  "printf ",
 
   // Redirect operators (missing)
   "&>",
@@ -839,10 +969,7 @@ function simpleCommandParts(segment: string): { name?: string; args: string[] } 
 function isSafeSimpleCommand(segment: string): boolean {
   const { name, args } = simpleCommandParts(segment)
   if (!name || name === "cd") return true
-  if (name === "file") {
-    return !args.some((word) => word === "--compile" || /^-[^-]*C/.test(word))
-  }
-  return SAFE_COMMANDS.has(name)
+  return isReadOnlyInvocation(name, args)
 }
 
 // Patterns for commands that can NEVER be executed regardless of profile.
@@ -888,68 +1015,6 @@ const ARGUMENT_INJECTION_PATTERNS: Array<{ pattern: RegExp; reason: string }> = 
   },
 ]
 
-/**
- * Closed-world read-only utilities permitted after find/fd -exec/-execdir/-x:
- * anything else — interpreters, shells, mutators, network tools, or unknown
- * commands — keeps the command shell_destructive. awk/gawk/sed are excluded
- * because awk can system() and sed -i writes; xargs/tee can execute or write
- * derived content. Unknown tools fail closed (destructive).
- */
-const READ_ONLY_EXEC_TOOLS = new Set([
-  "cat",
-  "wc",
-  "grep",
-  "egrep",
-  "fgrep",
-  "rg",
-  "head",
-  "tail",
-  "sort",
-  "uniq",
-  "cut",
-  "tr",
-  "od",
-  "hexdump",
-  "xxd",
-  "diff",
-  "cmp",
-  "comm",
-  "basename",
-  "dirname",
-  "readlink",
-  "stat",
-  "du",
-  "ls",
-  "file",
-  "echo",
-  "printf",
-  "nl",
-  "paste",
-  "join",
-  "expand",
-  "unexpand",
-  "fmt",
-  "fold",
-  "pr",
-  "column",
-  "seq",
-  "cksum",
-  "sum",
-  "shasum",
-  "sha1sum",
-  "sha224sum",
-  "sha256sum",
-  "sha384sum",
-  "sha512sum",
-  "md5sum",
-  "zcat",
-  "bzcat",
-  "xzcat",
-  "pwd",
-  "true",
-  "false",
-])
-
 const FIND_FD_EXEC_OPTIONS = new Set(["-exec", "-execdir", "-ok", "-okdir", "-x", "-X", "--exec", "--exec-batch"])
 
 /**
@@ -977,7 +1042,20 @@ function findFdExecTextUnsafe(executable: string): boolean {
         if (rawUtility === undefined || rawUtility === "{}") return true
         if (/[$`\\]/.test(rawUtility)) return true
         const utility = commandBasename(rawUtility)
-        if (!READ_ONLY_EXEC_TOOLS.has(utility)) return true
+        if (!utility) return true
+        const utilityArgs: string[] = []
+        let batch = option === "-X" || option === "--exec-batch"
+        for (let argIndex = optionIndex + 2; argIndex < words.length; argIndex++) {
+          const arg = words[argIndex]!
+          if (word === "find" && (arg === "\\;" || arg === ";")) break
+          if (word === "find" && arg === "+" && words[argIndex - 1] === "{}") {
+            batch = true
+            break
+          }
+          utilityArgs.push(arg)
+        }
+        if (batch && (utility === "uniq" || utility === "xxd")) return true
+        if (!isReadOnlyInvocation(utility, utilityArgs)) return true
       }
     }
   }
@@ -994,7 +1072,7 @@ function findFdExecTextUnsafe(executable: string): boolean {
  */
 function hasUnsafeExecTarget(command: string, state: ClassificationState, depth = 0): boolean {
   if (classificationExhausted(state, command) || depth > DIRECTORY_CHANGE_MAX_DEPTH) return true
-  if (findFdExecTextUnsafe(executableShellSyntaxText(command))) return true
+  if (findFdExecTextUnsafe(command)) return true
   const payloads = commandSubstitutionPayloads(command, state)
   if (payloads === undefined) return true
   if (payloads.some((payload) => hasUnsafeExecTarget(payload, state, depth + 1))) return true
@@ -2430,6 +2508,92 @@ function executableShellSyntaxText(command: string): string {
   return result.join("")
 }
 
+/**
+ * Blank quoted string literals while keeping shell operators, backtick
+ * regions, and $() substitution payloads visible, so token scanning can no
+ * longer misread argument text as executable syntax. Quotes are inert by
+ * shell rules; substitutions and double-quoted backticks are not, and their
+ * regions suspend the enclosing quote while scanned. Any unbalanced quote,
+ * backtick, or $() sequence returns the original text so scanning stays
+ * conservative (fail-closed).
+ */
+function literalMaskedShellText(command: string): string {
+  const result = Array<string>(command.length).fill(" ")
+  for (let index = 0; index < command.length; index++) {
+    if (command[index] === "\n") result[index] = "\n"
+  }
+
+  interface MaskRegion {
+    kind: "backtick" | "substitution"
+    savedQuote: "'" | '"' | undefined
+    parenDepth: number
+  }
+  const regions: MaskRegion[] = []
+  let quote: "'" | '"' | undefined
+
+  for (let index = 0; index < command.length; index++) {
+    const char = command[index]!
+    const visible = quote === undefined
+
+    if (char === "\\" && quote !== "'") {
+      const next = command[index + 1]
+      if (next === undefined) return command
+      result[index] = visible ? char : " "
+      result[index + 1] = visible ? next : " "
+      index++
+      continue
+    }
+
+    const top = regions[regions.length - 1]
+    if (top?.kind === "backtick" && char === "`" && quote === undefined) {
+      regions.pop()
+      quote = top.savedQuote
+      result[index] = char
+      continue
+    }
+    if (top?.kind === "substitution" && quote === undefined && char === "(") {
+      top.parenDepth++
+      result[index] = char
+      continue
+    }
+    if (top?.kind === "substitution" && quote === undefined && char === ")") {
+      result[index] = char
+      top.parenDepth--
+      if (top.parenDepth < 0) {
+        regions.pop()
+        quote = top.savedQuote
+      }
+      continue
+    }
+
+    if ((char === "'" || char === '"') && (!quote || quote === char)) {
+      quote = quote ? undefined : char
+      result[index] = char
+      continue
+    }
+
+    if (char === "$" && command[index + 1] === "(" && quote !== "'") {
+      regions.push({ kind: "substitution", savedQuote: quote, parenDepth: 0 })
+      quote = undefined
+      result[index] = char
+      result[index + 1] = "("
+      index++
+      continue
+    }
+    if (char === "`" && quote !== "'") {
+      regions.push({ kind: "backtick", savedQuote: quote, parenDepth: 0 })
+      quote = undefined
+      result[index] = char
+      continue
+    }
+
+    result[index] = visible ? char : " "
+  }
+
+  if (quote !== undefined || regions.length > 0) return command
+  return result.join("")
+}
+
 function unquotedShellText(command: string): string {
   let result = ""
   let quote: "'" | '"' | undefined
@@ -3286,8 +3450,9 @@ export type BashRisk =
 export namespace ShellSafety {
   export function isReadOnly(command: string): boolean {
     const padded = " " + normalizeCommand(command) + " "
+    const masked = literalMaskedShellText(padded)
+    const lower = stripAllowedRedirects(masked).toLowerCase()
     const normalized = stripAllowedRedirects(padded)
-    const lower = normalized.toLowerCase()
     if (UNSAFE_SHELL_TOKENS.some((token) => lower.includes(token))) return false
 
     const segments = lexCompoundCommands(normalized.trim()).segments
