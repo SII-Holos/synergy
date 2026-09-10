@@ -267,59 +267,78 @@ export namespace SessionProcessor {
     }
 
     async function settleToolPart(part: MessageV2.ToolPart, outcome: ToolOutcome) {
-      const startTime = toolStartTime(part)
-      await Observability.emit("tool.settle.start", {
-        sessionID: input.sessionID,
-        messageID: input.assistantMessage.id,
-        callID: part.callID,
-        tool: part.tool,
-        data: {
-          status: outcome.status,
-        },
+      // Terminal settlement must serialize behind queued and in-flight
+      // running-state flushes for the same call (#1335): a stale full-part
+      // running write that is already underway has to commit before the
+      // terminal state, never after it. Registering the settlement on the
+      // same per-call queue also forces flushes queued mid-settlement to run
+      // behind the terminal write, where the mutated in-memory part stops
+      // them. The in-memory part is moved to its terminal state as soon as
+      // the durable write lands so every guard sees the settled status.
+      const previous = toolCallStateUpdates.get(part.callID)?.catch(() => {}) ?? Promise.resolve()
+      const write = previous.then(async () => {
+        const startTime = toolStartTime(part)
+        await Observability.emit("tool.settle.start", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID: part.callID,
+          tool: part.tool,
+          data: {
+            status: outcome.status,
+          },
+        })
+        if (outcome.status === "completed") {
+          const updated = await Session.updatePart({
+            ...part,
+            state: {
+              status: "completed",
+              input: SessionToolInput.normalize(outcome.input),
+              output: outcome.result.output,
+              metadata: ToolTimeout.mergeMetadata(
+                part.state.status === "running" ? part.state.metadata : undefined,
+                outcome.result.metadata,
+              )!,
+              title: outcome.result.title,
+              time: { start: startTime, end: Date.now() },
+              attachments: outcome.result.attachments,
+            },
+          })
+          Object.assign(part, updated)
+          await outcome.result.afterPersist?.()
+        } else {
+          const updated = await Session.updatePart({
+            ...part,
+            state: {
+              status: "error",
+              input: SessionToolInput.normalize(outcome.input),
+              error: outcome.error,
+              metadata: ToolTimeout.mergeMetadata(
+                part.state.status === "running" ? part.state.metadata : undefined,
+                outcome.metadata,
+              ),
+              time: { start: startTime, end: Date.now() },
+            },
+          })
+          Object.assign(part, updated)
+        }
+        settledToolCalls.add(part.callID)
+        await Observability.emit("tool.settle.end", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID: part.callID,
+          tool: part.tool,
+          level: outcome.status === "error" ? "error" : "info",
+          data: {
+            status: outcome.status,
+          },
+        })
       })
-      if (outcome.status === "completed") {
-        await Session.updatePart({
-          ...part,
-          state: {
-            status: "completed",
-            input: SessionToolInput.normalize(outcome.input),
-            output: outcome.result.output,
-            metadata: ToolTimeout.mergeMetadata(
-              part.state.status === "running" ? part.state.metadata : undefined,
-              outcome.result.metadata,
-            )!,
-            title: outcome.result.title,
-            time: { start: startTime, end: Date.now() },
-            attachments: outcome.result.attachments,
-          },
-        })
-        await outcome.result.afterPersist?.()
-      } else {
-        await Session.updatePart({
-          ...part,
-          state: {
-            status: "error",
-            input: SessionToolInput.normalize(outcome.input),
-            error: outcome.error,
-            metadata: ToolTimeout.mergeMetadata(
-              part.state.status === "running" ? part.state.metadata : undefined,
-              outcome.metadata,
-            ),
-            time: { start: startTime, end: Date.now() },
-          },
-        })
+      toolCallStateUpdates.set(part.callID, write)
+      try {
+        await write
+      } finally {
+        if (toolCallStateUpdates.get(part.callID) === write) toolCallStateUpdates.delete(part.callID)
       }
-      settledToolCalls.add(part.callID)
-      await Observability.emit("tool.settle.end", {
-        sessionID: input.sessionID,
-        messageID: input.assistantMessage.id,
-        callID: part.callID,
-        tool: part.tool,
-        level: outcome.status === "error" ? "error" : "info",
-        data: {
-          status: outcome.status,
-        },
-      })
     }
 
     function toolSettlementSnapshot(callID?: string, detail = false): Record<string, any> {
@@ -675,26 +694,20 @@ export namespace SessionProcessor {
             fastAbort,
             snapshot: toolSettlementSnapshot(part.callID),
           })
-          const startTime = toolStartTime(part)
-          await Session.updatePart({
-            ...part,
-            state: {
-              ...part.state,
-              status: "error",
-              error: unresolvedToolError(fastAbort),
-              metadata: fastAbort
-                ? streamingToolMetadata(part)
-                : ToolTimeout.mergeMetadata(
-                    streamingToolMetadata(part),
-                    slot ? pendingExecutionSlotMetadata(part, slot) : missingExecutionSlotMetadata(part),
-                  ),
-              time: {
-                start: startTime,
-                end: Date.now(),
-              },
-            },
+          await settleToolPart(part, {
+            status: "error",
+            input:
+              part.state.status === "running" || part.state.status === "pending" || part.state.status === "generating"
+                ? part.state.input
+                : {},
+            error: unresolvedToolError(fastAbort),
+            metadata: fastAbort
+              ? streamingToolMetadata(part)
+              : ToolTimeout.mergeMetadata(
+                  streamingToolMetadata(part),
+                  slot ? pendingExecutionSlotMetadata(part, slot) : missingExecutionSlotMetadata(part),
+                ),
           })
-          settledToolCalls.add(part.callID)
           forgetToolCall(part.callID)
         }
       }
@@ -909,7 +922,9 @@ export namespace SessionProcessor {
           expanded: ToolResolver.AutoExpandedTool,
         ) => {
           const part = toolcalls[call.callID]
-          if (part && part.state.status === "running") {
+          // A settled call must never receive a late full-part write here;
+          // this guard keeps the bypass aligned with flushToolCallState().
+          if (part && part.state.status === "running" && !settledToolCalls.has(call.callID)) {
             const updated = await Session.updatePart({
               ...part,
               state: {
