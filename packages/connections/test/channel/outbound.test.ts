@@ -664,7 +664,13 @@ test("delivers a card-only async channel result once and marks the terminal outb
           },
         })
 
-        await waitFor(() => calls.responseCards?.length === 1)
+        await waitFor(async () => {
+          const current = await MessageV2.get({
+            sessionID: session.id,
+            messageID: task.terminal.info.id,
+          })
+          return current.info.metadata?.channelOutboundSent === true
+        })
         expect(calls.responseCards).toEqual([
           {
             accountId: "acct_test",

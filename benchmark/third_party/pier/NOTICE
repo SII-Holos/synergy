@@ -1,0 +1,13 @@
+Pier
+
+Pier includes code derived from Harbor:
+https://github.com/harbor-framework/harbor
+
+Harbor is licensed under the Apache License, Version 2.0.
+Pier contains modifications to the original Harbor code.
+
+Synergy's benchmark/src/synergy_bench/trial.py adapts the separate-verifier
+lifecycle from datacurve-pier 0.3.1 (https://pypi.org/project/datacurve-pier/0.3.1/).
+Modifications separate cleanup from verifier deadlines, preserve committed
+rewards, bound cleanup, and disable automatic verifier timeout retries.
+The dependency version is pinned in benchmark/pyproject.toml and uv.lock.

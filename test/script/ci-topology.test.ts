@@ -8,6 +8,7 @@ const ciSource = await readFile(path.join(root, ".github/workflows/ci.yml"), "ut
 
 const REQUIRED_NEEDS = [
   "runtime-artifacts",
+  "oryn-validation",
   "quality",
   "typecheck",
   "windows",
@@ -92,7 +93,15 @@ describe("CI topology", () => {
     const jobs = parseJobNames(ciSource)
     const blocking = jobs.filter((job) => job !== "all-checks-passed")
     expect(blocking.sort()).toEqual(
-      [...REQUIRED_NEEDS, "coverage-shards", "test-shards", "test-aux", "test-harness"].sort(),
+      [
+        ...REQUIRED_NEEDS,
+        "coverage-shards",
+        "test-shards",
+        "test-aux",
+        "test-harness",
+        "test-benchmark",
+        "test-rollout-long",
+      ].sort(),
     )
   })
 })

@@ -10,6 +10,8 @@ on:
       - "packages/runtime-local/src/sandbox/helper-linux/**"
       - "packages/runtime-local/src/sandbox/helper/**"
       - "packages/runtime-local/script/build-helper.ts"
+      - "packages/runtime-local/script/build-watcher.ts"
+      - "packages/runtime-local/script/watcher/**"
   push:
     branches: [dev, main]
     paths:
@@ -17,6 +19,8 @@ on:
       - "packages/runtime-local/src/sandbox/helper-linux/**"
       - "packages/runtime-local/src/sandbox/helper/**"
       - "packages/runtime-local/script/build-helper.ts"
+      - "packages/runtime-local/script/build-watcher.ts"
+      - "packages/runtime-local/script/watcher/**"
 
 permissions:
   contents: read
@@ -71,6 +75,18 @@ jobs:
             "packages/runtime-local/sandbox-assets/linux-${{ matrix.arch }}-musl/synergy-sandbox-linux"
           chmod 755 packages/runtime-local/sandbox-assets/linux-*/synergy-sandbox-linux
 
+      - name: Build verified Linux watcher bindings
+        run: |
+          bun install --frozen-lockfile
+          bun packages/runtime-local/script/build-watcher.ts --arch "${{ matrix.arch }}"
+          bun packages/runtime-local/script/build-watcher.ts --arch "${{ matrix.arch }}" --libc musl
+      - name: Upload Linux watcher bindings
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: watcher-assets-linux-${{ matrix.arch }}
+          path: packages/runtime-local/.artifacts/watcher
+          include-hidden-files: true
+          if-no-files-found: error
       - name: Upload Linux sandbox assets
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

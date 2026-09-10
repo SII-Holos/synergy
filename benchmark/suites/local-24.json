@@ -1,0 +1,249 @@
+{
+  "version": 1,
+  "name": "local-24",
+  "selection": "Seed 0; SHA-256 rank of seed:task within fixed language/category quotas; CPU Linux tasks with <=4 CPUs and <=8192 MiB RAM. Selection uses metadata only, never measured outcomes. This is a development subset, not an official score.",
+  "sources": {
+    "deepswe-1.1": {
+      "url": "https://github.com/datacurve-ai/deep-swe",
+      "commit": "0b9fabbb63b9104d678fe965e1632f2dd9eaa2ea",
+      "license": "LICENSE"
+    },
+    "terminal-bench-2.1": {
+      "url": "https://github.com/harbor-framework/terminal-bench-2-1",
+      "commit": "7131e4375048a0e408a8fb404b5f499d726b695b",
+      "license": "LICENSE"
+    }
+  },
+  "tasks": [
+    {
+      "id": "deepswe-1.1/bandit-incremental-cache-control",
+      "source": "deepswe-1.1",
+      "path": "tasks/bandit-incremental-cache-control",
+      "digest": "57591792df33bff8eec76e3d760a747d47a64332c2efdb5ac812ba63f80f7a21",
+      "tags": ["deepswe-1.1", "feature_request", "python"],
+      "agent_seconds": 10800.0,
+      "verifier_seconds": 1800.0
+    },
+    {
+      "id": "deepswe-1.1/boa-hierarchical-evaluation-cancellation",
+      "source": "deepswe-1.1",
+      "path": "tasks/boa-hierarchical-evaluation-cancellation",
+      "digest": "74755bc965bf367ed3f4af3549170ad3ab3fb70bd690543e42e3cf434331a935",
+      "tags": ["deepswe-1.1", "feature_request", "rust"],
+      "agent_seconds": 10800.0,
+      "verifier_seconds": 1800.0
+    },
+    {
+      "id": "deepswe-1.1/dasel-html-document-format",
+      "source": "deepswe-1.1",
+      "path": "tasks/dasel-html-document-format",
+      "digest": "dca5f40de1b3fad7c4917da8762990b5f3b112f291cb58955ec8f407bdcaa5bd",
+      "tags": ["deepswe-1.1", "feature_request", "go"],
+      "agent_seconds": 10800.0,
+      "verifier_seconds": 1800.0
+    },
+    {
+      "id": "deepswe-1.1/drizzle-orm-window-function-builders",
+      "source": "deepswe-1.1",
+      "path": "tasks/drizzle-orm-window-function-builders",
+      "digest": "6ea74d4e12e26337b2654eb8209ebfa410030487b5a8c40c8ceb2e9ab8f45d45",
+      "tags": ["deepswe-1.1", "feature_request", "typescript"],
+      "agent_seconds": 10800.0,
+      "verifier_seconds": 1800.0
+    },
+    {
+      "id": "deepswe-1.1/fd-deterministic-multi-key-sorting",
+      "source": "deepswe-1.1",
+      "path": "tasks/fd-deterministic-multi-key-sorting",
+      "digest": "d7bc1a5bc96128183f01fe8251d840a4a30f35382a2cbd799e8a0c3efaddcff3",
+      "tags": ["deepswe-1.1", "feature_request", "rust"],
+      "agent_seconds": 10800.0,
+      "verifier_seconds": 1800.0
+    },
+    {
+      "id": "deepswe-1.1/katex-multicolumn-array-spans",
+      "source": "deepswe-1.1",
+      "path": "tasks/katex-multicolumn-array-spans",
+      "digest": "c7a64e0c6b01b3f11a26bbc2bc301e8e2957d47a8077f336debfb12f82e04d99",
+      "tags": ["deepswe-1.1", "feature_request", "javascript"],
+      "agent_seconds": 10800.0,
+      "verifier_seconds": 1800.0
+    },
+    {
+      "id": "deepswe-1.1/kcp-go-multiplexed-kcp-streams",
+      "source": "deepswe-1.1",
+      "path": "tasks/kcp-go-multiplexed-kcp-streams",
+      "digest": "c6234605fcf8876dede0a550619c00bd8cdf57dfd3f5527c61fb921a7130af2b",
+      "tags": ["deepswe-1.1", "feature_request", "go"],
+      "agent_seconds": 10800.0,
+      "verifier_seconds": 1800.0
+    },
+    {
+      "id": "deepswe-1.1/kgateway-consistent-hash-policy",
+      "source": "deepswe-1.1",
+      "path": "tasks/kgateway-consistent-hash-policy",
+      "digest": "36e4607ff066d11bf7c87a70a4f86ce09abb0621a12330330f5a071ae160fa1f",
+      "tags": ["deepswe-1.1", "feature_request", "go"],
+      "agent_seconds": 10800.0,
+      "verifier_seconds": 1800.0
+    },
+    {
+      "id": "deepswe-1.1/mobly-grouped-test-barriers",
+      "source": "deepswe-1.1",
+      "path": "tasks/mobly-grouped-test-barriers",
+      "digest": "d270b20f8d246b045146daa669bf3c0b7e4cdd40ad160bc89261ab30d464a2b2",
+      "tags": ["deepswe-1.1", "feature_request", "python"],
+      "agent_seconds": 10800.0,
+      "verifier_seconds": 1800.0
+    },
+    {
+      "id": "deepswe-1.1/sqlfmt-create-table-ddl-formatting",
+      "source": "deepswe-1.1",
+      "path": "tasks/sqlfmt-create-table-ddl-formatting",
+      "digest": "9301cbecc65c1ff2de58268853d9d8516cf8ec18494a604226ae9ce816986b0d",
+      "tags": ["deepswe-1.1", "feature_request", "python"],
+      "agent_seconds": 10800.0,
+      "verifier_seconds": 1800.0
+    },
+    {
+      "id": "deepswe-1.1/superjson-error-stack-serialization",
+      "source": "deepswe-1.1",
+      "path": "tasks/superjson-error-stack-serialization",
+      "digest": "fb66b7fd7e8385902deeee035b763baa761ba62aadde117bc8e9526a8d2c32bc",
+      "tags": ["deepswe-1.1", "feature_request", "typescript"],
+      "agent_seconds": 10800.0,
+      "verifier_seconds": 1800.0
+    },
+    {
+      "id": "deepswe-1.1/valibot-recursive-schema-composition",
+      "source": "deepswe-1.1",
+      "path": "tasks/valibot-recursive-schema-composition",
+      "digest": "34e54f239fc9c1ab64ef4b1491816e79cb9790887787d7cb6ce920dbff83d385",
+      "tags": ["deepswe-1.1", "feature_request", "typescript"],
+      "agent_seconds": 10800.0,
+      "verifier_seconds": 1800.0
+    },
+    {
+      "id": "terminal-bench-2.1/adaptive-rejection-sampler",
+      "source": "terminal-bench-2.1",
+      "path": "tasks/adaptive-rejection-sampler",
+      "digest": "cfebea283d9dad350e816500796078c8ca0945b419d46d1d4a2da9d103e754e3",
+      "tags": [
+        "Bayesian-inference",
+        "adaptive-rejection-sampling",
+        "applied-statistics",
+        "scientific-computing",
+        "simulation",
+        "terminal-bench-2.1"
+      ],
+      "agent_seconds": 900.0,
+      "verifier_seconds": 900.0
+    },
+    {
+      "id": "terminal-bench-2.1/build-cython-ext",
+      "source": "terminal-bench-2.1",
+      "path": "tasks/build-cython-ext",
+      "digest": "48040166f4dba43b0ec78f1cd064f3c8c3c31b909682e48bac0ae44830079ba1",
+      "tags": ["coding", "compilation", "debugging", "dependency", "terminal-bench-2.1"],
+      "agent_seconds": 900.0,
+      "verifier_seconds": 900.0
+    },
+    {
+      "id": "terminal-bench-2.1/compile-compcert",
+      "source": "terminal-bench-2.1",
+      "path": "tasks/compile-compcert",
+      "digest": "b010e3868349cfc48ca7da4c2ffae41b22c46d4bae193b1e7a95a4f57d278566",
+      "tags": ["compilation", "compilers", "system-administration", "terminal-bench-2.1"],
+      "agent_seconds": 2400.0,
+      "verifier_seconds": 2400.0
+    },
+    {
+      "id": "terminal-bench-2.1/feal-linear-cryptanalysis",
+      "source": "terminal-bench-2.1",
+      "path": "tasks/feal-linear-cryptanalysis",
+      "digest": "0ebabb63e217ec8df43b8a13327c58e4e9b6dc4eee687a3e8f74c5c3c1f5fc3d",
+      "tags": ["mathematics", "software-engineering", "terminal-bench-2.1"],
+      "agent_seconds": 1800.0,
+      "verifier_seconds": 1800.0
+    },
+    {
+      "id": "terminal-bench-2.1/financial-document-processor",
+      "source": "terminal-bench-2.1",
+      "path": "tasks/financial-document-processor",
+      "digest": "686e13969275d99dc1943461eb93bf7ed93809ab3b3def102a0e31d9575e8bf1",
+      "tags": ["data-processing", "file-operations", "financial", "image-processing", "ocr", "terminal-bench-2.1"],
+      "agent_seconds": 1200.0,
+      "verifier_seconds": 1200.0
+    },
+    {
+      "id": "terminal-bench-2.1/large-scale-text-editing",
+      "source": "terminal-bench-2.1",
+      "path": "tasks/large-scale-text-editing",
+      "digest": "3efcd0c61662ab681f9e6e73407a56276178e5e2f38c36501495590a983a688c",
+      "tags": [
+        "file-operations",
+        "large-scale-text-manipulation",
+        "terminal-bench-2.1",
+        "text-editing",
+        "vim",
+        "vim-macros"
+      ],
+      "agent_seconds": 1200.0,
+      "verifier_seconds": 1200.0
+    },
+    {
+      "id": "terminal-bench-2.1/mailman",
+      "source": "terminal-bench-2.1",
+      "path": "tasks/mailman",
+      "digest": "85c8d4ff93d80fb3f219325eea2c879ec84954c203ce010f3b1cbd8470961deb",
+      "tags": ["email-server", "mailing-list", "system-administration", "terminal-bench-2.1"],
+      "agent_seconds": 1800.0,
+      "verifier_seconds": 1800.0
+    },
+    {
+      "id": "terminal-bench-2.1/make-doom-for-mips",
+      "source": "terminal-bench-2.1",
+      "path": "tasks/make-doom-for-mips",
+      "digest": "ccff8869f4810e40ed2d69650695801982c20a4e7ddd798fc48722ea35c3291d",
+      "tags": ["software-engineering", "terminal-bench-2.1"],
+      "agent_seconds": 900.0,
+      "verifier_seconds": 900.0
+    },
+    {
+      "id": "terminal-bench-2.1/mcmc-sampling-stan",
+      "source": "terminal-bench-2.1",
+      "path": "tasks/mcmc-sampling-stan",
+      "digest": "4237e2c3544bff3894d071af5bfaec418d879753b05d11410dd70441590e26ca",
+      "tags": ["R", "bayesian-statistics", "data-science", "mcmc", "stan", "terminal-bench-2.1"],
+      "agent_seconds": 1800.0,
+      "verifier_seconds": 1800.0
+    },
+    {
+      "id": "terminal-bench-2.1/openssl-selfsigned-cert",
+      "source": "terminal-bench-2.1",
+      "path": "tasks/openssl-selfsigned-cert",
+      "digest": "887b6437e4a30bdbf090aaa5185fead08bc33dbcc6fcc298b6dcfac454183578",
+      "tags": ["coding", "file-operations", "security", "system", "terminal-bench-2.1"],
+      "agent_seconds": 900.0,
+      "verifier_seconds": 900.0
+    },
+    {
+      "id": "terminal-bench-2.1/path-tracing-reverse",
+      "source": "terminal-bench-2.1",
+      "path": "tasks/path-tracing-reverse",
+      "digest": "01c46d7eb7ce7813119b95b84a10a877b72083db8a17765f7acdb03cb6b674f1",
+      "tags": ["images", "software-engineering", "terminal-bench-2.1"],
+      "agent_seconds": 1800.0,
+      "verifier_seconds": 1800.0
+    },
+    {
+      "id": "terminal-bench-2.1/polyglot-c-py",
+      "source": "terminal-bench-2.1",
+      "path": "tasks/polyglot-c-py",
+      "digest": "39f07cf87a1373d7942eb345d5fb84280961e7662e710393970968c0a9557600",
+      "tags": ["coding", "software-engineering", "terminal-bench-2.1"],
+      "agent_seconds": 900.0,
+      "verifier_seconds": 900.0
+    }
+  ]
+}
