@@ -1,3 +1,4 @@
+import hashlib
 import json
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,7 +23,10 @@ class Handler(BaseHTTPRequestHandler):
         else:
             body.extend(self.rfile.read(int(self.headers["Content-Length"])))
         request = json.loads(body)
-        if self.headers.get("Authorization") != "Bearer deterministic-local-fixture":
+        if (
+            hashlib.sha256(self.headers.get("Authorization", "").encode()).hexdigest()
+            != "b08bd1721320be8feb3c7003bee8b933b0222c4a8f0ef589a6a1e9ce6d549c77"
+        ):
             self.send_error(401)
             return
         if self.path.endswith("/embeddings"):

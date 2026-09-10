@@ -150,6 +150,7 @@ def test_real_synergy_paired_rollout(prepared_fixture) -> None:
     assert all(result["verifier"]["rewards"] == {"reward": 1.0} for result in evidence), evidence
     assert all(result["evidence"]["valid"] for result in evidence), evidence
     assert all(result["accounting"]["tokens"]["cacheRead"]["total"] > 0 for result in evidence), evidence
+    assert_retained_credentials_absent(root)
     asyncio.run(resume(root))
     assert len(list(root.glob("trials/*/attempt-*/evidence.json"))) == 8
 
