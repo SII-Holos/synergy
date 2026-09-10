@@ -684,3 +684,37 @@ test("clearing the last custom JSONC field keeps the agent definition", async ()
     },
   })
 })
+
+test("a project JSONC override owns mutations above global markdown", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const created = await AgentConfig.create({
+        name: "scoped-owner",
+        prompt: "global prompt",
+        description: "global",
+        scope: "global",
+      })
+      const root = path.join(tmp.path, ".synergy")
+      try {
+        await Config.domainUpdate("agents", { agent: { "scoped-owner": { description: "project" } } }, { root })
+        await Agent.reload()
+        expect((await AgentConfig.describe("scoped-owner")).source).toBe("jsonc")
+        await AgentConfig.update({ name: "scoped-owner", patch: { description: "updated project" } })
+        expect((await Agent.get("scoped-owner"))?.description).toBe("updated project")
+        expect(await Bun.file(created.file!).text()).toContain("description: global")
+        await AgentConfig.remove({ name: "scoped-owner" })
+        expect((await Config.domainGet("agents", root)).agent?.["scoped-owner"]?.disable).toBe(true)
+        expect((await Config.domainGet("agents")).agent?.["scoped-owner"]).toBeUndefined()
+        await AgentConfig.update({ name: "scoped-owner", patch: { disable: false } })
+        await AgentConfig.remove({ name: "scoped-owner", strategy: "delete" })
+        expect(await Bun.file(created.file!).exists()).toBe(true)
+        expect((await Agent.get("scoped-owner"))?.description).toBe("global")
+      } finally {
+        await fs.unlink(created.file!)
+        await Config.state.resetAll()
+      }
+    },
+  })
+})

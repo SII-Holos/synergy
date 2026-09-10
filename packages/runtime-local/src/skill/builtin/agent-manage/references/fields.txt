@@ -9,7 +9,7 @@ Field semantics, validation rules, and storage layers for agent definitions mana
 | markdown | `.synergy/agent/<name>.md` (project) or `~/.synergy/config/agent/<name>.md` (global) | Agents with a system prompt; the body is the prompt, frontmatter holds fields |
 | jsonc | `60-agents.jsonc` `agent` map | Short overrides of built-ins, `disable`, entries without prompts |
 
-`agent_config` chooses the storage layer by scope: markdown when a `prompt` is present; pass `storage: "jsonc"` to force a config entry. The default scope follows the current Scope — project layers inside a project, global everywhere else; pass `scope: "global"` or `scope: "project"` explicitly to override. Precedence when multiple layers define the same name: project markdown > global markdown > config entries > built-in.
+`agent_config` chooses the storage layer by scope: markdown when a `prompt` is present; pass `storage: "jsonc"` to force a config entry. The default scope follows the current Scope — project layers inside a project, global everywhere else; pass `scope: "global"` or `scope: "project"` explicitly to override. Precedence when multiple layers define the same name: project markdown > project JSONC > global markdown > global JSONC > built-in. A project JSONC override owns project mutations even when its underlying definition is global markdown.
 
 Configuration operations are serialized across validation, writing, and reload and validated against the whole agent graph before landing. Plugin-contributed and external agents reject update/remove — manage them in the owning plugin or external definition instead.
 

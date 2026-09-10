@@ -154,6 +154,12 @@ export namespace AgentConfig {
     return undefined
   }
 
+  async function storedOwners(name: string) {
+    const [markdown, jsonc] = await Promise.all([scanMarkdownOwners(), findJsoncOwner(name)])
+    const md = markdown.get(name)
+    return { md: md?.scope === "global" && jsonc?.scope === "project" ? undefined : md, jsonc }
+  }
+
   function ensureActive(signal: AbortSignal | undefined, stage: string): void {
     if (signal?.aborted) {
       throw new Error(`agent_config ${stage} was cancelled before the change was applied`)
@@ -453,8 +459,7 @@ export namespace AgentConfig {
     const { name, patch, signal } = input
     ensureActive(signal, "update")
     const existing = await Agent.get(name)
-    const md = (await scanMarkdownOwners()).get(name)
-    const jsonc = await findJsoncOwner(name)
+    const { md, jsonc } = await storedOwners(name)
     if (!existing && !md && !jsonc) {
       throw new Error(
         `Agent "${name}" does not exist, was fully deleted, or is disabled without a stored definition. Use the list action to see known agents, or create it again.`,
@@ -535,11 +540,11 @@ export namespace AgentConfig {
     await validateGraphChange(strategy === "delete" ? "delete" : "disable", name)
     ensureActive(signal, strategy)
 
+    const { md, jsonc } = await storedOwners(name)
     if (strategy === "disable") {
       // Scope the disable to the layer that owns the definition: a
       // project-defined agent keeps working in every other Scope.
-      const md = (await scanMarkdownOwners()).get(name)
-      const owner = md ?? (await findJsoncOwner(name))
+      const owner = md ?? jsonc
       ensureActive(signal, strategy)
       if (owner?.scope === "project") {
         const domain = await Config.domainGet("agents", owner.root)
@@ -560,7 +565,6 @@ export namespace AgentConfig {
       )
     }
 
-    const md = (await scanMarkdownOwners()).get(name)
     if (md) {
       using _ = await Lock.write(`agent-config:${md.file}`)
       ensureActive(signal, strategy)
@@ -574,7 +578,6 @@ export namespace AgentConfig {
       return { name, strategy }
     }
 
-    const jsonc = await findJsoncOwner(name)
     if (jsonc) {
       await removeJsoncEntry(jsonc, name)
       await refreshRuntime(`agent-config:delete:${name}`, signal)
@@ -610,11 +613,11 @@ export namespace AgentConfig {
   export async function describe(name: string): Promise<Describe> {
     const agent = await Agent.get(name)
     if (!agent) throw new Error(`Agent "${name}" does not exist or is disabled.`)
-    const md = (await scanMarkdownOwners()).get(name)
+    const { md, jsonc } = await storedOwners(name)
     if (md) return { agent, source: "markdown", file: md.file }
     if (agent.source === "plugin") return { agent, source: "plugin" }
     if (agent.source === "external") return { agent, source: "external" }
-    if (await findJsoncOwner(name)) return { agent, source: "jsonc" }
+    if (jsonc) return { agent, source: "jsonc" }
     return { agent, source: "builtin" }
   }
 
