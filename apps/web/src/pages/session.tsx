@@ -1413,6 +1413,7 @@ function SessionPageContent() {
       ([sessionID, ready]) => {
         if (initScrollFrame !== undefined) {
           cancelAnimationFrame(initScrollFrame)
+          initScrollFrame = undefined
         }
 
         // Re-arm: a chain cancelled by a readiness flip must be able to run
@@ -1422,9 +1423,7 @@ function SessionPageContent() {
           return
         }
 
-        if (initializedSessions.has(sessionID)) {
-          return
-        }
+        if (initializedSessions.has(sessionID)) return
         initializedSessions.add(sessionID)
         initialScrollSettled = false
 

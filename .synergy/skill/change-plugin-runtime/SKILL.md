@@ -46,6 +46,8 @@ description: Add, modify, or review Synergy Plugin API 4 definitions, generated 
 27. Keep compiler dependencies reachable from the packaged Synergy CLI statically analyzable so Bun includes them in standalone executables. A package dependency in `node_modules` is not sufficient for runtime `require()` from `/$bunfs`.
 28. Give every external generation one owned memory monitor and stop it on every lifecycle exit. A memory-limit callback may restart only its exact active registry generation with the same manifest and limits; never let a stale callback stop or replace a newer generation. Attribute trusted `inProcess` allocations to the Control Plane rather than double-counting plugin RSS.
 
+Viewport reference bindings must carry their acquired element through cleanup and permission disposal. Test both replacement within one surface and disposal after a successor surface has mounted; stale releases must not clear successor references.
+
 ## Verify
 
 1. Add or update behavior tests at the owning boundary: descriptor/schema, plugin-kit build/validate/pack/sign, metadata-only discovery, approval, transaction rollback, runtime generation, operation/event/hook contract, server route, or Web registration lifecycle. For install-lifecycle changes cover fresh install, legacy lockfile entry (no `lifecycleInstall`), update preservation, offline CLI pending, in-host delivery, boot/reload catch-up, in-flight skip, retry completed guard, and generation mismatch. Hash contract changes require a fixed public hash vector plus a real plugin-kit sign/registry-entry to host-verification test.

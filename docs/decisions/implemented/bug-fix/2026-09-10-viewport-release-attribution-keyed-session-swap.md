@@ -31,4 +31,4 @@ Reference releases are attributed: a viewport releases exactly the element it bo
 
 - The successor viewport's binding survives the stale owner's cleanup, so the initial pin and the jump button keep operating on a live scroller on every switch path.
 - Attribution is a naming convention at the release boundary, not an enforcement: an unattributed release still clears (legacy callers), so future viewports must pass the bound element to keep the guarantee. The shared viewport and the plugin binding layer are the only release sites and both do.
-- Regression tests cover the keyed-swap sequence for both scroller and content bindings, including that a stale release leaves the successor's forced pin working while an owning release still clears.
+- Regression tests cover the keyed-swap sequence for both scroller and content bindings, including that a stale release leaves the successor's forced pin working while an owning release still clears. Plugin binding tests cover same-surface replacement, stale component cleanup, cross-surface disposal, rejected rebinding after disposal and exactly-once release.
