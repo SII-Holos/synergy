@@ -2537,8 +2537,8 @@ describe("SessionInvoke detached turn settlement", () => {
   })
 })
 
-for (const phase of ["materializing", "persisted-terminal"] as const) {
-  test(`rollout continuation at ${phase} finishes before the queued new task`, async () => {
+for (const phase of ["materializing", "persisted-terminal", "startup-without-task", "startup-retry"] as const) {
+  test(`rollout continuation recovers at ${phase}`, async () => {
     await using tmp = await tmpdir({ git: true })
     const processedRoots: string[] = []
     let reconciliation: ReturnType<typeof RolloutLifecycle.reconcile> | undefined
@@ -2571,7 +2571,7 @@ for (const phase of ["materializing", "persisted-terminal"] as const) {
             })
             const owner = RolloutLifecycle.owner(session)
             await RolloutLifecycle.configuration(session, rootID)
-            if (phase === "persisted-terminal") await RolloutLedger.finishRun(owner, rootID, "completed")
+            if (phase !== "materializing") await RolloutLedger.finishRun(owner, rootID, "completed")
             const originalMaterialize = SessionInbox.materializeItem
             using materialize = spyOn(SessionInbox, "materializeItem").mockImplementation(async (...args) => {
               if (phase === "materializing" && args[0].mode === "steer") {
@@ -2585,23 +2585,35 @@ for (const phase of ["materializing", "persisted-terminal"] as const) {
               noReply: true,
               parts: [{ type: "text", text: "Child task completed" }],
             })
-            if (phase === "persisted-terminal")
+            if (phase !== "materializing")
               for (const item of await SessionInbox.drainSteer(session.id))
                 await SessionInbox.materializeItem(item, rootID, { guiding: true })
-            const queued = await SessionInbox.enqueueUser({
-              sessionID: session.id,
-              model: { providerID: "test-provider", modelID: "test-model" },
-              parts: [{ type: "text", text: "New task after the stuck continuation" }],
-            })
+            const queued = phase.startsWith("startup")
+              ? undefined
+              : await SessionInbox.enqueueUser({
+                  sessionID: session.id,
+                  model: { providerID: "test-provider", modelID: "test-model" },
+                  parts: [{ type: "text", text: "New task after the stuck continuation" }],
+                })
             await migrations
               .find((migration) => migration.id === "20260910-rollout-unanswered-continuation")!
               .up(() => {})
-            await SessionManager.wake(session.id)
-            expect(processedRoots).toEqual([rootID, queued.messageID])
+            if (phase.startsWith("startup")) {
+              if (phase === "startup-retry") {
+                using wake = spyOn(SessionManager, "wake").mockRejectedValueOnce(new Error("Temporary wake failure"))
+                await SessionInvoke.resumePending({ scopeID: session.scope!.id, waitForProcessing: true })
+                expect(processedRoots).toEqual([])
+              }
+              expect(await SessionInbox.list(session.id)).toHaveLength(0)
+              await SessionInvoke.resumePending({ scopeID: session.scope!.id, waitForProcessing: true })
+              await SessionInvoke.resumePending({ scopeID: session.scope!.id, waitForProcessing: true })
+            } else await SessionManager.wake(session.id)
+            expect(processedRoots).toEqual(queued ? [rootID, queued.messageID] : [rootID])
             expect(await SessionInbox.list(session.id)).toHaveLength(0)
             const messages = await Session.messages({ sessionID: session.id })
             expect(SessionProgress.needsModelCall(messages, rootID)).toBe(false)
-            expect(SessionProgress.needsModelCall(messages, queued.messageID)).toBe(false)
+            if (queued) expect(SessionProgress.needsModelCall(messages, queued.messageID)).toBe(false)
+            expect(messages.filter((message) => message.info.role === "user")).toHaveLength(queued ? 3 : 2)
             await LoopJob.settleDetached(session.id)
           } finally {
             SessionManager.unregisterRuntime(session.id)

@@ -92,6 +92,8 @@ Lattice stores every v2 run by immutable run ID. A session's `lattice/current` r
 
 The rollout artifact store uses `rollout/` beneath its owning session, or `data/operations/<scope>/<operation>/rollout/` for sessionless operations. `artifacts/<id>/info.json` commits the readable byte/chunk count and completeness state; individually addressed chunk descriptors reference owner-local, SHA-256-addressed binary blobs. Payloads are streamed in bounded chunks and verified on read. Interrupted streams retain their committed prefix. Under the same rollout owner, `runs/<run>/info.json` stores run state, `runs/<run>/calls/<call>.json` stores logical calls, and `runs/<run>/attempts/<call>/<attempt>.json` stores actual provider attempts with ordered indices and body references. Private records use owner-only permissions and durable atomic writes; they are separate from public product assets and telemetry retention.
 
+Session rollout `continuation-recovery/<run>.json` records the recovery intent created by the unanswered-continuation migration before repairing terminal state. Startup uses it to wake the existing root without adding inbox or transcript records. The intent survives failed wake attempts and is removed when the root is answered, cancelled, failed, or superseded; ordinary interrupted runs without this intent are not automatically resumed.
+
 Externalized files in `data/tool-output/` have no age-based expiration. Creating a new tool-output file does not delete older observations.
 
 ## Library Database

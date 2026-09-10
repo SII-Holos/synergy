@@ -12,6 +12,10 @@ Session invocation holds a per-session, per-root lock across steer drainage, mat
 
 The registered migration `20260910-rollout-unanswered-continuation` changes incorrectly completed runs with unanswered effective-history input to `interrupted`. It appends the correction through the rollout journal and preserves input, evidence, timestamps, configuration, and queued tasks. The existing interrupted-run admission opens the next segment. Cancelled runs, failed runs, recording failures, and correctly completed runs remain unchanged. Migration reads owner-addressed message metadata and history events without relying on session-index hydration.
 
+Before changing a run, the migration durably records a recovery intent under that owner's rollout storage. Startup discovers these intents alongside queued inbox tasks and uses `SessionDrive` and `SessionManager.wake` to resume the existing root even when no new task is queued. Discovery and failed wake attempts retain the intent; checking a settled, cancelled, failed, or superseded root removes it. Archived sessions and active rollbacks are not automatically resumed. Ordinary interrupted work without a migration intent retains the existing explicit-resume policy. No synthetic transcript messages are added.
+
+Migration registration keeps history and progress imports type-only or deferred until execution. Static history imports reach session initialization through the manager and inbox, which otherwise exposes an incompletely initialized history module during cold startup.
+
 ## Alternatives considered
 
 **Restart or repeated wake attempts.** The completed status and unanswered continuation are durable, so retries encounter the same rejection.
@@ -22,4 +26,4 @@ The registered migration `20260910-rollout-unanswered-continuation` changes inco
 
 ## Consequences
 
-Pending user tasks retain their order and execute after the recovered continuation. Reconciliation waits for admission to finish before checking the inbox and transcript. Upgrade scans rollout metadata and reads message metadata only for owners with eligible completed runs; it does not load tool payloads or rewrite historical calls. Behavioral tests cover materialization-time reconciliation, persisted-state recovery, unaffected terminal states, and migration idempotence.
+Pending user tasks retain their order and execute after the recovered continuation. Reconciliation waits for admission to finish before checking the inbox and transcript. Upgrade scans rollout metadata and reads message metadata only for owners with eligible completed runs; it does not load tool payloads or rewrite historical calls. Behavioral tests cover materialization-time reconciliation, persisted-state recovery without queued tasks, failed-wake retries, repeated startup, unaffected terminal states, and migration idempotence. Fresh-process migration registration tests verify the cold import graph.

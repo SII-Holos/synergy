@@ -3,8 +3,8 @@ import { Identifier } from "../../id/id"
 import { StoragePath } from "../../storage/path"
 import { Storage } from "../../storage/storage"
 import { MessageV2 } from "../message-v2"
-import { SessionHistory } from "../history"
-import { SessionProgress } from "../progress"
+import type { SessionHistory as History } from "../history"
+import { RolloutContinuationRecovery } from "./continuation-recovery"
 import { RolloutArtifact } from "./artifact"
 import { RolloutJournal } from "./journal"
 import { RolloutLedger } from "./ledger"
@@ -20,6 +20,7 @@ export namespace RolloutContinuationMigration {
       if (run.status === "completed" && run.recording !== "failed" && !run.cancelRequestedAt) candidates.push(run)
     }
     if (!candidates.length) return
+    const [{ SessionHistory }, { SessionProgress }] = await Promise.all([import("../history"), import("../progress")])
     const scopeID = Identifier.asScopeID(owner.scopeID)
     const sessionID = Identifier.asSessionID(owner.sessionID)
     const history = StoragePath.sessionHistoryRoot(scopeID, sessionID)
@@ -27,13 +28,14 @@ export namespace RolloutContinuationMigration {
       MessageV2.readInfoList({ scopeID, sessionID }),
       Storage.scan(history, { strict: true }),
     ])
-    const events = await Promise.all(eventIDs.sort().map((id) => Storage.read<SessionHistory.Event>([...history, id])))
+    const events = await Promise.all(eventIDs.sort().map((id) => Storage.read<History.Event>([...history, id])))
     const messages = SessionHistory.applyEvents(
       MessageV2.deriveSemantics(infos.map((info) => ({ info, parts: [] }))),
       events,
     )
     for (const run of candidates) {
       if (!SessionProgress.needsModelCall(messages, run.id)) continue
+      await RolloutContinuationRecovery.request(owner, run.id)
       await RolloutJournal.write(owner, [...root, run.id, "info"], { ...run, status: "interrupted" })
     }
   }

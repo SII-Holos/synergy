@@ -50,6 +50,8 @@ Playwright DOM-test fixtures that boot a Vite dev server must declare their pack
 
 For inbox-to-transcript transitions, exercise settlement while a real inbox item has been drained but its message is still being materialized, then again after materialization. Verify that the continuation and a task queued behind it both execute. Test persisted contradictory terminal state through the registered migration as well as fresh runtime ordering; a restart-only test cannot prove that durable state was repaired.
 
+Recovery migrations must also exercise startup with no newly queued task, failed wake attempts, and repeated startup. Persisting repaired state alone does not prove that startup can discover and execute the work. When adding migration imports, run the fresh-process migration registration and owner-ledger tests; a suite with preloaded session modules can hide a cold-import cycle.
+
 ## Local Performance Experiments
 
 Test process signals through an actual child process after a deterministic provider readiness barrier. An in-process abort or timer preserves different async context from an operating-system signal; both paths must retain Scope ownership and terminal accounting.
