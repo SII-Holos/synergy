@@ -1,13 +1,24 @@
+import { AsyncLocalStorage } from "node:async_hooks"
 import { Log } from "../util/log"
 
 export namespace State {
   interface Entry {
+    cleanup?: Promise<void>
     state: any
     dispose?: (state: any) => Promise<void>
   }
 
   const log = Log.create({ service: "state" })
   const recordsByKey = new Map<string, Map<any, Entry>>()
+
+  function release(entry: Entry, key: string) {
+    entry.cleanup ??= Promise.resolve(entry.state)
+      .then((state) => entry.dispose?.(state))
+      .catch((error) => {
+        log.error("Error while disposing state:", { error, key })
+      })
+    return entry.cleanup
+  }
 
   export function create<S>(root: () => string, init: () => S, dispose?: (state: Awaited<S>) => Promise<void>) {
     const accessor = (() => {
@@ -22,7 +33,7 @@ export namespace State {
       const state = init()
       entries.set(init, {
         state,
-        dispose,
+        dispose: dispose ? AsyncLocalStorage.bind(dispose) : undefined,
       })
       // Auto-evict on rejection so transient failures don't become permanent.
       // The caller still sees the rejection — this only prevents it from being
@@ -46,14 +57,8 @@ export namespace State {
       if (!entries) return
       const entry = entries.get(init)
       if (!entry) return
-      if (entry.dispose) {
-        await Promise.resolve(entry.state)
-          .then((state) => entry.dispose!(state))
-          .catch((error) => {
-            log.error("Error while resetting state:", { error, key })
-          })
-      }
-      entries.delete(init)
+      await release(entry, key)
+      if (entries.get(init) === entry) entries.delete(init)
       log.info("state entry reset", { key })
     }
 
@@ -71,17 +76,12 @@ export namespace State {
       for (const [key, entries] of recordsByKey) {
         const entry = entries.get(init)
         if (!entry) continue
-        if (entry.dispose) {
-          tasks.push(
-            Promise.resolve(entry.state)
-              .then((state) => entry.dispose!(state))
-              .catch((error) => {
-                log.error("Error while resetting state across scopes:", { error, key })
-              }),
-          )
-        }
-        entries.delete(init)
-        if (entries.size === 0) recordsByKey.delete(key)
+        tasks.push(
+          release(entry, key).then(() => {
+            if (entries.get(init) === entry) entries.delete(init)
+            if (entries.size === 0) recordsByKey.delete(key)
+          }),
+        )
       }
       await Promise.all(tasks)
       if (tasks.length > 0) log.info("state entry reset across all scopes", { count: tasks.length })
@@ -108,19 +108,15 @@ export namespace State {
     }, 10000).unref()
 
     const tasks: Promise<void>[] = []
-    for (const entry of entries.values()) {
-      if (!entry.dispose) continue
-
-      const task = Promise.resolve(entry.state)
-        .then((state) => entry.dispose!(state))
-        .catch((error) => {
-          log.error("Error while disposing state:", { error, key })
-        })
-
-      tasks.push(task)
+    for (const [init, entry] of entries) {
+      tasks.push(
+        release(entry, key).then(() => {
+          if (entries.get(init) === entry) entries.delete(init)
+        }),
+      )
     }
-    entries.clear()
     await Promise.all(tasks)
+    if (entries.size === 0 && recordsByKey.get(key) === entries) recordsByKey.delete(key)
     disposalFinished = true
     log.info("state disposal completed", { key })
   }

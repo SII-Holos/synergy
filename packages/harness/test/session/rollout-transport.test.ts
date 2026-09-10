@@ -228,3 +228,82 @@ describe("rollout transport", () => {
     ])
   })
 })
+
+describe("rollout cancellation barriers", () => {
+  test("drains a received prefix before closing a body with a pending upstream read", async () => {
+    const waiting = Promise.withResolvers<void>()
+    const events: RolloutTransport.Event[] = []
+    let bodyClosed = false
+    const source = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("retained prefix"))
+      },
+      pull() {
+        waiting.resolve()
+      },
+    })
+    const response = await RolloutTransport.provide(
+      async (event) => {
+        if (event.type === "body-end" && event.channel === "response") bodyClosed = true
+        if (event.type === "chunk" && bodyClosed) throw new Error("write after body-end")
+        events.push(event)
+      },
+      () => RolloutTransport.fetch(async () => new Response(source), "https://example.test"),
+    )
+    const reader = response.body!.getReader()
+    const reading = reader.read()
+    await waiting.promise
+    await Promise.all([reader.cancel(), reading])
+    const chunks = events.filter((event) => event.type === "chunk")
+    expect(chunks.map((event) => new TextDecoder().decode(event.data)).join("")).toBe("retained prefix")
+    expect(events.slice(-2)).toMatchObject([
+      { type: "body-end", channel: "response", complete: false },
+      { type: "attempt-end", status: "cancelled" },
+    ])
+    expect(source.locked).toBe(false)
+    reader.releaseLock()
+  })
+
+  test("cancellation waits for an admitted chunk write before ending the attempt", async () => {
+    const writing = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const cancelled = Promise.withResolvers<void>()
+    const events: RolloutTransport.Event[] = []
+    const source = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(256 * 1024))
+      },
+      cancel() {
+        cancelled.resolve()
+      },
+    })
+    const response = await RolloutTransport.provide(
+      async (event) => {
+        if (event.type === "chunk") {
+          writing.resolve()
+          await release.promise
+        }
+        events.push(event)
+      },
+      () => RolloutTransport.fetch(async () => new Response(source), "https://example.test"),
+    )
+    const reader = response.body!.getReader()
+    const reading = reader.read()
+    await writing.promise
+    const cancelling = reader.cancel()
+    try {
+      await cancelled.promise
+      await Promise.resolve()
+      expect(events.some((event) => event.type === "attempt-end")).toBe(false)
+      expect(events.some((event) => event.type === "body-end" && event.channel === "response")).toBe(false)
+    } finally {
+      release.resolve()
+      await Promise.all([cancelling, reading])
+      reader.releaseLock()
+    }
+    expect(events.slice(-2)).toMatchObject([
+      { type: "body-end", channel: "response", complete: false },
+      { type: "attempt-end", status: "cancelled" },
+    ])
+  })
+})

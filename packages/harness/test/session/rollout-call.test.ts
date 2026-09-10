@@ -255,3 +255,36 @@ test("non-streaming response commit failure aborts the owner and closes run admi
   expect(aborted).toBe(true)
   expect((await RolloutLedger.getRun(args.owner, args.runID)).recording).toBe("failed")
 })
+
+test("transport recorder joins concurrent finishes while draining accepted writes", async () => {
+  const { RolloutTransportRecorder } = await import("../../src/session/rollout/transport-recorder")
+  const args = input()
+  const call = await RolloutLedger.beginCall(args)
+  const recorder = RolloutTransportRecorder.create(call)
+  const attemptID = crypto.randomUUID()
+  await recorder.emit({
+    type: "attempt-start",
+    attemptID,
+    url: "https://example.test",
+    method: "POST",
+    mediaType: "text/plain",
+  })
+  await recorder.emit({ type: "response", attemptID, status: 200, mediaType: "text/plain", headers: {} })
+  const writing = recorder.emit({
+    type: "chunk",
+    attemptID,
+    channel: "response",
+    data: new TextEncoder().encode("partial response"),
+  })
+  const first = recorder.finish()
+  const second = recorder.finish()
+  expect(first).toBe(second)
+  await writing
+  expect(await first).toBe(false)
+  await expect(
+    recorder.emit({ type: "body-end", attemptID, channel: "response", complete: true }),
+  ).rejects.toMatchObject({ name: "RolloutRecordingError" })
+  const [attempt] = await RolloutLedger.attempts(args.owner, args.runID, call.id)
+  expect(attempt.status).toBe("interrupted")
+  expect(attempt.response?.status).toBe("partial")
+})

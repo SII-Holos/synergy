@@ -41,7 +41,7 @@ export namespace RolloutTransport {
     const original = new Request(input, init)
     const endpoint = new URL(original.url)
     const controller = new AbortController()
-    let finished = false
+    let finishing: Promise<void> | undefined
     let recordingFailure: unknown
     let responseOK = false
     async function emit(event: Event) {
@@ -54,14 +54,24 @@ export namespace RolloutTransport {
         throw error
       }
     }
-    async function finish(status: "completed" | "failed" | "cancelled", error?: unknown) {
-      if (finished || recordingFailure) return
-      finished = true
-      await emit({ type: "attempt-end", attemptID, status, error: error instanceof Error ? error.message : undefined })
+    function finish(status: "completed" | "failed" | "cancelled", error?: unknown) {
+      finishing ??= recordingFailure
+        ? Promise.reject(recordingFailure)
+        : emit({
+            type: "attempt-end",
+            attemptID,
+            status,
+            error: error instanceof Error ? error.message : undefined,
+          })
+      return finishing
     }
     function body(source: ReadableStream<Uint8Array>, channel: "request" | "response") {
       const reader = source.getReader()
-      let ended = false
+      let cancelling = false
+      let pulling: Promise<void> | undefined
+      let closing: Promise<void> | undefined
+      let cancellation: Promise<void> | undefined
+      let upstreamCancellation: Promise<void> | undefined
       let pending: Uint8Array | undefined
       let nextRead: ReturnType<typeof reader.read> | undefined
       let sourceEnded = false
@@ -103,46 +113,76 @@ export namespace RolloutTransport {
           if (timer) clearTimeout(timer)
         }
       }
-      async function close(complete: boolean, reason?: unknown) {
-        if (ended) return
-        ended = true
-        pending = undefined
-        let cleanupError: unknown
-        try {
-          if (!complete) await reader.cancel(reason)
-        } catch (error) {
-          cleanupError = error
-        } finally {
-          reader.releaseLock()
-        }
-        if (!recordingFailure) await emit({ type: "body-end", attemptID, channel, complete })
-        if (cleanupError && !reason && !recordingFailure) throw cleanupError
+      function cancelUpstream(reason?: unknown) {
+        upstreamCancellation ??= reader.cancel(reason)
+        return upstreamCancellation
+      }
+      function close(complete: boolean, reason?: unknown) {
+        closing ??= (async () => {
+          let cleanupError: unknown
+          try {
+            if (!complete) await cancelUpstream(reason)
+            if (nextRead) {
+              const next = await nextRead
+              nextRead = undefined
+              if (!next.done) pending = next.value
+            }
+            while (pending?.byteLength && !recordingFailure) {
+              const data = pending.subarray(0, RolloutTransportSchema.CHUNK_BYTES)
+              pending = pending.subarray(data.byteLength)
+              await emit({ type: "chunk", attemptID, channel, data })
+            }
+          } catch (error) {
+            cleanupError = error
+          } finally {
+            reader.releaseLock()
+          }
+          if (recordingFailure) throw recordingFailure
+          await emit({ type: "body-end", attemptID, channel, complete })
+          if (cleanupError && cleanupError !== reason && cleanupError !== sourceFailure) throw cleanupError
+        })()
+        return closing
       }
       return new ReadableStream<Uint8Array>(
         {
-          async pull(output) {
-            try {
-              const chunk = await readChunk()
-              if (!chunk.byteLength && sourceEnded) {
-                await close(true)
-                if (channel === "response") await finish(responseOK ? "completed" : "failed")
-                output.close()
-                return
+          pull(output) {
+            pulling = (async () => {
+              try {
+                const chunk = await readChunk()
+                if (chunk.byteLength) {
+                  await emit({ type: "chunk", attemptID, channel, data: chunk })
+                  if (!cancelling) output.enqueue(chunk)
+                }
+                if (cancelling) return
+                if (!chunk.byteLength && sourceEnded) {
+                  await close(true)
+                  if (channel === "response") await finish(responseOK ? "completed" : "failed")
+                  output.close()
+                }
+              } catch (error) {
+                if (cancelling) return
+                let failure = error
+                try {
+                  await close(false, error)
+                  if (!RolloutRecordingError.isInstance(error))
+                    await finish(original.signal.aborted ? "cancelled" : "failed", error)
+                } catch (cleanupError) {
+                  failure = recordingFailure ?? cleanupError
+                }
+                output.error(recordingFailure ?? failure)
               }
-              if (chunk.byteLength) {
-                await emit({ type: "chunk", attemptID, channel, data: chunk })
-                output.enqueue(chunk)
-              }
-            } catch (error) {
-              await close(false, error)
-              if (!RolloutRecordingError.isInstance(error))
-                await finish(original.signal.aborted ? "cancelled" : "failed", error)
-              output.error(recordingFailure ?? error)
-            }
+            })()
+            return pulling
           },
-          async cancel(reason) {
-            await close(false, reason)
-            if (channel === "response") await finish("cancelled", reason)
+          cancel(reason) {
+            cancelling = true
+            cancellation ??= (async () => {
+              await cancelUpstream(reason)
+              await pulling
+              await close(false, reason)
+              if (channel === "response") await finish("cancelled", reason)
+            })()
+            return cancellation
           },
         },
         { highWaterMark: 0 },
