@@ -10,19 +10,21 @@ Cancelling a Cortex task could silently restart the cancelled work. A parent cou
 
 Cancellation that Cortex owns is now fenced end to end.
 
-`SessionManager.signalAbort` accepts `fenceQueuedWork`, recorded on the loop owner, and `SessionManager.isFenced` exposes it to the loop. `SessionInvoke.cancel` forwards the option.
+`SessionManager.signalAbort` accepts `fenceQueuedWork` together with a `fenceQueuedBefore` timestamp, recorded on the loop owner and exposed through `SessionManager.fenceQueuedBefore`; `SessionInvoke.cancel` forwards the option.
 
-`Cortex.cancel` and the runtime-timeout path signal the abort with `fenceQueuedWork: true`, then synchronously discard the child session's queued inbox items (`removeByMode(task/steer/context)`) before the terminal status is persisted, so the returned acknowledgement already means the queued follow-ups are gone.
+`Cortex.cancel` and the runtime-timeout path signal the abort with `fenceQueuedWork: true`, then synchronously discard the child session's queued inbox items (`removeByModes(task/steer/context, createdBefore)`) before the terminal status is persisted, so the returned acknowledgement already means every follow-up queued before the fence is gone. Mail delivered after the cancelled acknowledgement is newer than the fence and survives as explicit new work. A cleanup failure propagates: the cancel rolls back its cancellation request and throws instead of acknowledging, and `task_cancel` reports the cancellation as incomplete so the parent does not take over the workspace.
 
-The loop's abort boundary extends its existing steer/context disposal to task items when the active abort is fenced; unfenced user aborts keep task items exactly as before.
+The loop's abort boundary extends its existing steer/context disposal to task items queued before the fence timestamp when the active abort is fenced; unfenced user aborts keep task items exactly as before.
 
-A fenced run's release no longer requests follow-up work (`requestNextWork: false`), closing the release-drive wake path for every internal caller of `SessionManager.run`, not just Cortex.
+A fenced run's release requests follow-up work only when runnable items newer than the fence exist, closing the release-drive wake path for pre-fence items for every internal caller of `SessionManager.run`, not just Cortex.
 
-`task_cancel` no longer returns an unqualified "cancelled": the output states that queued follow-ups were discarded, in-flight execution is stopping, and the parent should wait for the session to go idle before taking over the workspace.
+`task_cancel` no longer returns an unqualified "cancelled": the output states that queued follow-ups were discarded, in-flight execution is stopping, and the parent should wait for the session to go idle before taking over the workspace — on both the single-task and the cancel-all paths — and reports an incomplete cancellation loudly when cleanup failed.
+
+At the runtime deadline the timeout claims the task before its first await (`timeoutRequests`/`timeoutErrors`), so a run settling concurrently cannot publish completed first: every settlement path converts the claim into the runtime-limit error, and a cleanup failure is folded into that error message instead of being swallowed.
 
 ## Alternatives considered
 
-**Bind each queued item to a task/execution generation and reject stale items at consumption time.** This is the issue's most general suggestion and would survive any future source that queues work against a child session, but it requires touching every enqueue path plus the item schema and persisted-state migration for a failure mode that today has exactly one writer with an existing disposal protocol (`signalAbort`'s comment already promises internal cancellations remove their own inbox items). Fencing reuses that protocol; generation binding can layer on later if a second internal writer appears.
+**Bind each queued item to a task/execution generation and reject stale items at consumption time.** This is the issue's most general suggestion and would survive any future source that queues work against a child session, but it requires touching every enqueue path plus the item schema and persisted-state migration for a failure mode that today has exactly one writer with an existing disposal protocol (`signalAbort`'s comment already promises internal cancellations remove their own inbox items). Fencing reuses that protocol, and the fence timestamp keeps delivery-versus-cancel races well-defined without per-item schema changes; generation binding can layer on later if a second internal writer appears.
 
 **Await task-run settlement inside `Cortex.cancel` before acknowledging.** This matches the issue's "cancelling vs stopped" wording, but Cortex deliberately documents cancellation as non-blocking (`cancel-nonblocking.test.ts`), and an in-flight LLM turn can take minutes; making `task_cancel` wait would stall the parent's loop. The fence achieves the safety property (no restart, no writes after takeover begins) without changing the acknowledgement's latency contract.
 
@@ -32,4 +34,4 @@ A fenced run's release no longer requests follow-up work (`requestNextWork: fals
 
 A cancelled or timed-out task can no longer be resurrected by mail queued before cancellation, and the parent hears an honest acknowledgement. Explicit new work sent after cancellation still starts and is driven normally, so session reuse is unaffected.
 
-The cost is that any caller of `SessionManager.run` whose run is fenced loses the release-time follow-up drive — intended for internal cancellations, and user aborts (`recoverQueuedTasks`) keep their existing behavior. Queued follow-ups sent to a cancelled child are deleted, not quarantined; a caller that needs delivery after cancellation must resend, which matches how a parent would re-task an idle session anyway.
+A fenced run keeps its release-time follow-up drive only for items newer than the fence; pre-fence items lose it by design, and user aborts (`recoverQueuedTasks`) keep their existing behavior. Queued follow-ups sent before the cancellation are deleted, not quarantined; a caller that needs delivery after cancellation resends, which matches how a parent would re-task an idle session anyway.

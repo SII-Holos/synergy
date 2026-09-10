@@ -76,8 +76,11 @@ export namespace SessionManager {
     /** Set when the abort came from an explicit user action; release then schedules the pending-work drive. */
     recoverQueuedTasks?: boolean
     /** Set by an internal cancellation (Cortex) that owns the session's queued work: fenced cleanup
-     *  discards remaining queued items at the loop boundary and release stops requesting follow-up work. */
+     *  discards items queued before this timestamp at the loop boundary, preserving mail delivered
+     *  after the cancelled acknowledgement, and release stops requesting follow-up work unless such
+     *  post-fence work exists. */
     fenceQueuedWork?: boolean
+    fenceQueuedBefore?: number
   }
 
   export interface SessionRuntime {
@@ -400,13 +403,18 @@ export namespace SessionManager {
           // internal cancellation (Boss/Lattice/Cortex abort before removing
           // inbox items), so only an abort that marked recoverQueuedTasks may
           // drive pending-work recovery — release cannot race that cleanup.
-          const runtime = getRuntime(sessionID)
-          const recoverQueuedTasks =
-            !!runtime?.owner && owns(runtime, lease) && runtime.owner.recoverQueuedTasks === true
-          const fenced = !!runtime?.owner && owns(runtime, lease) && runtime.owner.fenceQueuedWork === true
+          const owner = runtime?.owner && owns(runtime, lease) ? runtime.owner : undefined
+          const recoverQueuedTasks = owner?.recoverQueuedTasks === true
+          const fenced = owner?.fenceQueuedWork === true
+          const fenceQueuedBefore = owner?.fenceQueuedBefore
+          const postFenceWork =
+            fenced && fenceQueuedBefore !== undefined
+              ? await SessionInbox.hasRunnableItem(sessionID, { createdAfter: fenceQueuedBefore }).catch(() => false)
+              : false
           await finish(lease, {
             requestNextWork:
-              !fenced && (completed || recoverQueuedTasks || options?.requestNextWorkOnFailure !== false),
+              (!fenced || postFenceWork) &&
+              (completed || recoverQueuedTasks || options?.requestNextWorkOnFailure !== false),
           })
         }
       } finally {
@@ -476,7 +484,7 @@ export namespace SessionManager {
 
   export function signalAbort(
     sessionID: string,
-    options?: { recoverQueuedTasks?: boolean; fenceQueuedWork?: boolean; rootID?: string },
+    options?: { recoverQueuedTasks?: boolean; fenceQueuedWork?: boolean; fenceQueuedBefore?: number; rootID?: string },
   ): AbortOutcome {
     const runtime = getRuntime(sessionID)
     if (!runtime) return "not_found"
@@ -491,6 +499,7 @@ export namespace SessionManager {
 
     owner.recoverQueuedTasks = options?.recoverQueuedTasks === true || undefined
     owner.fenceQueuedWork = options?.fenceQueuedWork === true || undefined
+    owner.fenceQueuedBefore = options?.fenceQueuedBefore
     owner.phase = "stopping"
     transitionExecutionPhase(runtime, "stopping")
     owner.controller.abort()
@@ -498,11 +507,12 @@ export namespace SessionManager {
     return "signaled"
   }
 
-  /** Whether the active abort fenced queued work: an internal cancellation that
-   *  owns the session's inbox and discards remaining queued items. */
-  export function isFenced(sessionID: string): boolean {
-    return getRuntime(sessionID)?.owner?.fenceQueuedWork === true
+  /** Fence timestamp of the active abort, if it fenced queued work. */
+  export function fenceQueuedBefore(sessionID: string): number | undefined {
+    const owner = getRuntime(sessionID)?.owner
+    return owner?.fenceQueuedWork === true ? owner.fenceQueuedBefore : undefined
   }
+
   export function completeWaiters(lease: LoopLease, result: MessageV2.WithParts): boolean {
     const runtime = getRuntime(lease.sessionID)
     if (!runtime || !owns(runtime, lease)) return false

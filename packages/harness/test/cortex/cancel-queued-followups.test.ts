@@ -150,4 +150,119 @@ describe("Cortex cancellation fences queued follow-ups", () => {
       },
     })
   })
+
+  test("fence cutoff discards only follow-ups queued before cancellation", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const parent = await Session.create({ title: "fence cutoff" })
+        const firstItem = await SessionInbox.enqueueMail({
+          sessionID: parent.id,
+          mail: followUpMail(parent.id, parent.id, "queued before cancellation"),
+        })
+        // Advance past the first item's created millisecond so the cutoff is
+        // strictly newer than it even under timer coalescing.
+        while (Date.now() <= firstItem.time.created) await Bun.sleep(1)
+        const cutoff = Date.now()
+        await Bun.sleep(5)
+        await SessionInbox.enqueueMail({
+          sessionID: parent.id,
+          mail: followUpMail(parent.id, parent.id, "explicit new work after cancellation"),
+        })
+
+        expect(await SessionInbox.hasRunnableItem(parent.id)).toBe(true)
+        const removed = await SessionInbox.removeByModes(parent.id, ["task", "steer", "context"], cutoff)
+        expect(removed).toBe(1)
+
+        const remaining = await SessionInbox.list(parent.id)
+        expect(remaining).toHaveLength(1)
+        const keptText = remaining[0]?.message?.parts.find((part) => part.type === "text")
+        expect(keptText?.type === "text" ? keptText.text : "").toContain("after cancellation")
+
+        expect(await SessionInbox.hasRunnableItem(parent.id, { createdAfter: cutoff })).toBe(true)
+        expect(await SessionInbox.hasRunnableItem(parent.id, { createdAfter: Date.now() + 5_000 })).toBe(false)
+      },
+    })
+  })
+
+  test("cancellation surfaces cleanup failure instead of acknowledging", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const started = Promise.withResolvers<void>()
+        const release = Promise.withResolvers<void>()
+        spyOn(SessionInvoke, "invokeInternal").mockImplementation(() => {
+          started.resolve()
+          return (async () => {
+            await release.promise
+            throw new DOMException("Task stopped", "AbortError")
+          })() as Promise<never>
+        })
+        spyOn(SessionInvoke, "loop").mockResolvedValue({} as never)
+        spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
+
+        const parent = await Session.create({ title: "cancel cleanup failure" })
+        const task = await Cortex.launch({
+          description: "Stuck task",
+          prompt: "Do the work",
+          agent: "developer",
+          parentSessionID: parent.id,
+          parentMessageID: "msg_cancel_cleanup_failure",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          notifyParentOnComplete: false,
+        })
+        await started.promise
+
+        spyOn(SessionInbox, "removeByModes").mockRejectedValue(new Error("storage unavailable"))
+        await expect(Cortex.cancel(task.id)).rejects.toThrow("queued follow-ups")
+        expect(Cortex.get(task.id)?.status).toBe("running")
+        expect((await Session.get(task.sessionID)).cortex?.status).toBe("running")
+
+        release.resolve()
+        await Cortex.drain(task.id)
+      },
+    })
+  })
+
+  test("timeout with failing cleanup still surfaces the runtime-limit error and a cleanup warning", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const started = Promise.withResolvers<void>()
+        spyOn(SessionInvoke, "invokeInternal").mockImplementation(() => {
+          started.resolve()
+          return new Promise<never>(() => {})
+        })
+        spyOn(SessionInvoke, "loop").mockResolvedValue({} as never)
+        spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
+        spyOn(SessionInbox, "removeByModes").mockRejectedValue(new Error("storage unavailable"))
+
+        const parent = await Session.create({ title: "timeout cleanup failure" })
+        const task = await Cortex.launch({
+          description: "Stuck task",
+          prompt: "Do the work",
+          agent: "developer",
+          parentSessionID: parent.id,
+          parentMessageID: "msg_timeout_cleanup_failure",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          notifyParentOnComplete: false,
+          timeoutMs: 50,
+        })
+        await started.promise
+
+        await waitFor(() => Cortex.get(task.id)?.status === "error", 2_000, "task did not hit its runtime limit")
+        const error = Cortex.get(task.id)?.error ?? ""
+        expect(error).toContain("runtime limit")
+        expect(error).toContain("cleanup failed")
+        await waitFor(
+          async () => ((await Session.get(task.sessionID)).cortex?.settledAt ?? 0) > 0,
+          2_000,
+          "timeout settlement did not complete",
+        )
+      },
+    })
+  })
 })

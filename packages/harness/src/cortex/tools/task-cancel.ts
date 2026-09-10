@@ -39,7 +39,7 @@ task_cancel(all: true)
       return {
         title: `Cancelled ${cancelled} tasks`,
         metadata: { cancelledCount: cancelled },
-        output: `Cancelled ${cancelled} background task${cancelled !== 1 ? "s" : ""}.`,
+        output: `Cancelled ${cancelled} background task${cancelled !== 1 ? "s" : ""}. Their queued follow-ups were discarded and in-flight execution is stopping; wait for each session to go idle before taking over its workspace.`,
       }
     }
 
@@ -60,7 +60,15 @@ task_cancel(all: true)
       }
     }
 
-    await Cortex.cancel(params.task_id)
+    try {
+      await Cortex.cancel(params.task_id)
+    } catch {
+      return {
+        title: `Cancellation incomplete for ${params.task_id}`,
+        metadata: { taskId: params.task_id, description: task.description },
+        output: `${params.task_id} cancellation could not discard its queued follow-ups; they may still restart the session. Do not take over its workspace yet — retry the cancellation or inspect the session inbox.`,
+      }
+    }
     return {
       title: `Cancelled ${params.task_id}`,
       metadata: { taskId: params.task_id, description: task.description },

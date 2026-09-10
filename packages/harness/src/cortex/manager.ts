@@ -42,6 +42,8 @@ export namespace Cortex {
   const taskTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
   const finalizingTasks = new Set<string>()
   const cancellationRequests = new Set<string>()
+  const timeoutRequests = new Set<string>()
+  const timeoutErrors = new Map<string, string>()
   let progressUpdateTimer: Timer | undefined
 
   const PROMPT_COMPACT_DELAY_MS = 30 * 1000
@@ -323,11 +325,25 @@ export namespace Cortex {
         void (async () => {
           const active = tasks.get(taskID)
           if (!active || isTerminal(active.status)) return
-          SessionInvoke.cancel(active.sessionID, { fenceQueuedWork: true })
-          await SessionInbox.removeByMode(active.sessionID, ["task", "steer", "context"]).catch((error) => {
+          // Claim the deadline before any await so a concurrently settling run
+          // cannot publish completed first; updateTaskStatus converts the claim.
+          if (timeoutRequests.has(taskID)) return
+          timeoutRequests.add(taskID)
+          if (isTerminal(tasks.get(taskID)?.status ?? "queued")) {
+            timeoutRequests.delete(taskID)
+            return
+          }
+          const message = `Task exceeded its ${current.timeoutMs}ms runtime limit.`
+          timeoutErrors.set(taskID, message)
+          const fenceBefore = Date.now()
+          SessionInvoke.cancel(active.sessionID, { fenceQueuedWork: true, fenceQueuedBefore: fenceBefore })
+          try {
+            await SessionInbox.removeByModes(active.sessionID, ["task", "steer", "context"], fenceBefore)
+          } catch (error) {
             log.error("failed to discard queued follow-ups on timeout", { taskID, error })
-          })
-          await updateTaskStatus(taskID, "error", `Task exceeded its ${current.timeoutMs}ms runtime limit.`)
+            timeoutErrors.set(taskID, `${message} Queued follow-up cleanup failed; they may still be queued.`)
+          }
+          await updateTaskStatus(taskID, "error", timeoutErrors.get(taskID))
         })()
       }, current.timeoutMs)
       taskTimeouts.set(taskID, timeout)
@@ -615,6 +631,13 @@ export namespace Cortex {
       output = undefined
       options = undefined
     }
+    const timeoutMessage = timeoutErrors.get(taskID)
+    if (timeoutMessage !== undefined) {
+      status = "error"
+      error = timeoutMessage
+      output = undefined
+      options = undefined
+    }
 
     if (isTerminal(task.status)) {
       log.info("ignoring task status update for terminal task", { taskID, current: task.status, next: status })
@@ -638,6 +661,23 @@ export namespace Cortex {
         )
         publishVisibleTasksUpdate()
         log.info("published cancellation during concurrent task finalization", { taskID })
+        return
+      }
+      if (timeoutErrors.has(taskID)) {
+        task.status = "error"
+        task.completedAt ??= Date.now()
+        task.error = timeoutErrors.get(taskID)
+        tasks.set(taskID, task)
+        await record(() =>
+          Session.update(task.sessionID, (draft) => {
+            if (!draft.cortex) return
+            draft.cortex.status = "error"
+            draft.cortex.completedAt = task.completedAt
+            draft.cortex.error = task.error
+          }),
+        )
+        publishVisibleTasksUpdate()
+        log.info("published runtime-limit failure during concurrent task finalization", { taskID })
         return
       }
       log.info("ignoring concurrent task finalization", { taskID, next: status })
@@ -680,22 +720,27 @@ export namespace Cortex {
         }),
       )
 
-      // Cancellation may arrive while usage/session metadata is being
-      // persisted. Reconcile once more immediately before the synchronous
-      // publication boundary so an accepted cancel cannot surface as error.
-      if (cancellationRequests.has(taskID) && terminalTask.status !== "cancelled") {
-        terminalTask.status = "cancelled"
-        terminalTask.error = undefined
+      // Cancellation or a claimed runtime deadline may arrive while usage and
+      // session metadata are being persisted. Reconcile once more immediately
+      // before the synchronous publication boundary so an accepted cancel or
+      // timeout cannot surface as completed.
+      const forcedStatus = cancellationRequests.has(taskID)
+        ? "cancelled"
+        : timeoutErrors.has(taskID)
+          ? "error"
+          : undefined
+      if (forcedStatus && terminalTask.status !== forcedStatus) {
+        terminalTask.status = forcedStatus
+        terminalTask.error = forcedStatus === "error" ? timeoutErrors.get(taskID) : undefined
         terminalTask.output = undefined
         terminalTask.launchFailure = undefined
         await record(() =>
           Session.update(task.sessionID, (draft) => {
-            if (draft.cortex) {
-              draft.cortex.status = "cancelled"
-              draft.cortex.error = undefined
-              draft.cortex.output = undefined
-              draft.cortex.launchFailure = undefined
-            }
+            if (!draft.cortex) return
+            draft.cortex.status = forcedStatus
+            draft.cortex.error = terminalTask.error
+            draft.cortex.output = undefined
+            draft.cortex.launchFailure = undefined
           }),
         )
       }
@@ -814,6 +859,8 @@ export namespace Cortex {
       // guard. Keeping task IDs here would turn this lock into a lifetime leak.
       finalizingTasks.delete(taskID)
       cancellationRequests.delete(taskID)
+      timeoutRequests.delete(taskID)
+      timeoutErrors.delete(taskID)
     }
   }
 
@@ -1232,13 +1279,22 @@ export namespace Cortex {
 
     log.info("cancelling task", { taskID, sessionID: task.sessionID, status: task.status })
     cancellationRequests.add(taskID)
+    const fenceBefore = Date.now()
     // Fenced cancellation: the cancelled task owns the child session's queued
-    // work, so follow-ups queued before the cancellation are discarded instead
-    // of being restarted as a new root after this acknowledgement (#1339).
-    SessionInvoke.cancel(task.sessionID, { fenceQueuedWork: true })
-    await SessionInbox.drainReady(task.sessionID).catch((error) => {
+    // work, so follow-ups queued before the fence are discarded instead of
+    // being restarted as a new root after this acknowledgement (#1339). Mail
+    // delivered after the acknowledgement is explicit new work and survives.
+    SessionInvoke.cancel(task.sessionID, { fenceQueuedWork: true, fenceQueuedBefore: fenceBefore })
+    try {
+      await SessionInbox.removeByModes(task.sessionID, ["task", "steer", "context"], fenceBefore)
+    } catch (error) {
       log.error("failed to discard queued follow-ups on cancel", { taskID, error })
-    })
+      // Do not acknowledge: retained items could restart the cancelled work.
+      cancellationRequests.delete(taskID)
+      throw new Error(
+        `Task ${taskID} cancellation could not discard its queued follow-ups; they may still restart the session.`,
+      )
+    }
     await updateTaskStatus(taskID, "cancelled")
   }
 
@@ -1255,11 +1311,17 @@ export namespace Cortex {
   export async function cancelAll(parentSessionID: string): Promise<number> {
     const toCancel = getDescendantTasks(parentSessionID).filter((t) => t.status === "running" || t.status === "queued")
 
+    let cancelled = 0
     for (const task of toCancel) {
-      await cancel(task.id)
+      try {
+        await cancel(task.id)
+        cancelled++
+      } catch (error) {
+        log.error("failed to cancel descendant task", { taskID: task.id, error })
+      }
     }
 
-    return toCancel.length
+    return cancelled
   }
 
   export async function output(
@@ -1390,6 +1452,8 @@ export namespace Cortex {
     acquiredTasks.clear()
     finalizingTasks.clear()
     cancellationRequests.clear()
+    timeoutRequests.clear()
+    timeoutErrors.clear()
     for (const timeout of taskTimeouts.values()) clearTimeout(timeout)
     taskTimeouts.clear()
     if (progressUpdateTimer) {

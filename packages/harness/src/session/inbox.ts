@@ -358,9 +358,13 @@ export namespace SessionInbox {
 
   export async function hasRunnableItem(
     sessionID: string,
-    options?: { allowSteer?: boolean; excludeIDs?: Set<string> },
+    options?: { allowSteer?: boolean; excludeIDs?: Set<string>; createdAfter?: number },
   ): Promise<boolean> {
-    const items = await peekReady(sessionID, options?.excludeIDs)
+    const stored = await peekReady(sessionID, options?.excludeIDs)
+    const items =
+      options?.createdAfter === undefined
+        ? stored
+        : stored.filter((item) => item.time.created >= (options.createdAfter ?? 0))
     if (items.some((item) => item.mode === "task")) return true
     if (options?.allowSteer === false) return false
     if (!items.some((item) => item.mode === "steer")) return false
@@ -790,11 +794,15 @@ export namespace SessionInbox {
     return items.find((item) => item.mode === "task")
   }
 
-  export async function removeByMode(sessionID: string, modes: ItemMode[]): Promise<void> {
+  export async function removeByModes(sessionID: string, modes: ItemMode[], createdBefore?: number): Promise<number> {
     const items = await listStored(sessionID)
-    const ids = items.filter((item) => modes.includes(item.mode)).map((item) => item.id)
-    if (ids.length === 0) return
+    const ids = items
+      .filter((item) => modes.includes(item.mode))
+      .filter((item) => createdBefore === undefined || item.time.created < createdBefore)
+      .map((item) => item.id)
+    if (ids.length === 0) return 0
     await removeItems(sessionID, ids)
+    return ids.length
   }
 
   // --- Idempotent materialization (Commit 2) ---
