@@ -140,7 +140,7 @@ describe("Boss Mode end-to-end", () => {
         expect((await SessionInbox.list(worker.id)).map((item) => item.id)).toEqual(before.map((item) => item.id))
         expect((await Session.get(worker.id)).workflow?.kind).toBe("boss")
       } finally {
-        await SessionInbox.removeByMode(worker.id, ["task"])
+        await SessionInbox.removeByModes(worker.id, ["task"])
         await SessionManager.release(lease!, { requestNextWork: false })
         SessionManager.unregisterRuntime(worker.id)
       }

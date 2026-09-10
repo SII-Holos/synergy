@@ -35,11 +35,20 @@ task_cancel(all: true)
   async execute(params: z.infer<typeof parameters>, ctx) {
     const { Cortex } = await import("..")
     if (params.all) {
-      const cancelled = await Cortex.cancelAll(ctx.sessionID)
+      let cancelled: number
+      try {
+        cancelled = await Cortex.cancelAll(ctx.sessionID)
+      } catch (error) {
+        return {
+          title: "Cancellation incomplete",
+          metadata: {},
+          output: `${error instanceof Error ? error.message : "Some task cancellations failed."} Do not take over affected workspaces yet. Inspect task_list and retry failed cancellations; wait for successfully cancelled sessions to go idle.`,
+        }
+      }
       return {
         title: `Cancelled ${cancelled} tasks`,
         metadata: { cancelledCount: cancelled },
-        output: `Cancelled ${cancelled} background task${cancelled !== 1 ? "s" : ""}.`,
+        output: `Cancelled ${cancelled} background task${cancelled !== 1 ? "s" : ""}. Their queued follow-ups were discarded and in-flight execution is stopping; wait for each session to go idle before taking over its workspace.`,
       }
     }
 
@@ -60,11 +69,19 @@ task_cancel(all: true)
       }
     }
 
-    await Cortex.cancel(params.task_id)
+    try {
+      await Cortex.cancel(params.task_id)
+    } catch {
+      return {
+        title: `Cancellation incomplete for ${params.task_id}`,
+        metadata: { taskId: params.task_id, description: task.description },
+        output: `${params.task_id} cancellation could not discard its queued follow-ups; they may still restart the session. Do not take over its workspace yet — retry the cancellation or inspect the session inbox.`,
+      }
+    }
     return {
       title: `Cancelled ${params.task_id}`,
       metadata: { taskId: params.task_id, description: task.description },
-      output: `Task ${params.task_id} cancelled.`,
+      output: `Task ${params.task_id} cancelled. Its queued follow-ups were discarded and in-flight execution is stopping; wait for the session to go idle before taking over its workspace.`,
     }
   },
 })
