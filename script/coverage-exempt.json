@@ -835,6 +835,10 @@
           "reason": "global context requires full app bootstrap"
         },
         {
+          "glob": "src/components/session/prompt-dock-height.ts",
+          "reason": "reactive ResizeObserver is verified by prompt-dock-height.dom.test.tsx through Vite and Chromium, outside Bun coverage"
+        },
+        {
           "glob": "src/context/session-bottom-recovery.ts",
           "reason": "reactive trigger executed through the dom suite's vite build, invisible to bun coverage"
         },

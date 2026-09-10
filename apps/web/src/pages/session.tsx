@@ -25,7 +25,6 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLocal } from "@/context/local"
 import { useFile, type SelectedLineRange } from "@/context/file"
 import { createStore } from "solid-js/store"
@@ -61,6 +60,7 @@ import { useNavigateToSession } from "@/composables/use-navigate-to-session"
 import { replaceSessionHistoryUrl, sessionRouteReplaceOptions } from "@/composables/use-navigate-to-session-model"
 import { SessionConversation } from "@/components/session/conversation"
 import { PromptDock } from "@/components/session/prompt-dock"
+import { createPromptDockHeight } from "@/components/session/prompt-dock-height"
 import { createWorkbenchService } from "@/plugin/workbench-service"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { useLocale } from "@/context/locale"
@@ -914,7 +914,6 @@ function SessionPageContent() {
 
   const idle = { type: "idle" as const }
   let inputRef!: HTMLDivElement
-  let promptDock: HTMLDivElement | undefined
   let scroller: HTMLDivElement | undefined
 
   const hydratedSessions = new Set<string>()
@@ -1326,25 +1325,20 @@ function SessionPageContent() {
     ),
   )
 
-  createResizeObserver(
-    () => promptDock,
-    ({ height }) => {
-      const next = Math.ceil(height)
+  const dockHeight = createPromptDockHeight((next) => {
+    if (next === store.promptHeight) return
 
-      if (next === store.promptHeight) return
+    const el = scroller
+    const stick = el ? el.scrollHeight - el.clientHeight - el.scrollTop < 10 : false
 
-      const el = scroller
-      const stick = el ? el.scrollHeight - el.clientHeight - el.scrollTop < 10 : false
+    setStore("promptHeight", next)
 
-      setStore("promptHeight", next)
-
-      if (stick && el) {
-        requestAnimationFrame(() => {
-          el.scrollTo({ top: el.scrollHeight, behavior: "auto" })
-        })
-      }
-    },
-  )
+    if (stick && el) {
+      requestAnimationFrame(() => {
+        el.scrollTo({ top: el.scrollHeight, behavior: "auto" })
+      })
+    }
+  })
 
   const updateHash = (id: string) => {
     replaceSessionHistoryUrl(window.history, `#${anchor(id)}`)
@@ -1723,9 +1717,7 @@ function SessionPageContent() {
   }
   const composerLayout: PluginComposerLayoutService = {
     input: () => composer()?.input,
-    mount: (element) => {
-      promptDock = element
-    },
+    mount: dockHeight.mount,
     ready: prompt.ready,
     isNewSession,
     readOnly: () => sessionMeta().isReadOnly,

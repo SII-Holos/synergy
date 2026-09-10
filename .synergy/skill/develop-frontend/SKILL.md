@@ -14,6 +14,8 @@ description: Implement or review Synergy Web and shared UI changes across apps/w
 
 ## Preserve State and API Ownership
 
+Observer targets delivered by asynchronous mount callbacks must be reactive element signals, with cleanup on unmount. Verify late mount and replacement against rendered layout or computed CSS properties instead of asserting implementation strings.
+
 Solid JSX may evaluate to a function. Never distinguish a rendered trigger from a component with `typeof`; use an explicit component prop such as Popover `triggerAs`, and forward its event, ref, and accessibility props to the native button. Test click, keyboard activation, Escape, and focus return with the real Tooltip composition.
 
 1. Use stores for coherent keyed collections and signals for independent scalar state.
