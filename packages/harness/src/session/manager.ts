@@ -530,6 +530,18 @@ export namespace SessionManager {
 
   export const WAKE_RETRY_DELAYS_MS = [250, 1_000, 2_000, 4_000, 8_000]
   const activeWakeChains = new Map<string, { requested: boolean }>()
+  // A removed worktree fails before any inbox work starts, so no retry can
+  // make progress and no queued work can be stranded behind it; the error
+  // class lives above this package boundary, so it is recognized by name.
+  // InvalidUrlError stays retryable on purpose: steer and context items are
+  // drained (deleted) before materialization, so the error can surface after
+  // the poisoned item is already gone, and abandoning the chain then would
+  // strand runnable work queued behind it.
+  const PERMANENT_WAKE_ERROR_NAMES = new Set(["WorktreeNotFoundError"])
+
+  function isPermanentWakeFailure(error: unknown): boolean {
+    return error instanceof Error && PERMANENT_WAKE_ERROR_NAMES.has(error.name)
+  }
 
   function scheduleWakeAttempt(sessionID: string, reason: string, delayMs: number, failureCount: number): void {
     const timer = setTimeout(() => {
@@ -542,6 +554,11 @@ export namespace SessionManager {
           else activeWakeChains.delete(sessionID)
         })
         .catch((error) => {
+          if (isPermanentWakeFailure(error)) {
+            activeWakeChains.delete(sessionID)
+            log.error("async session wake failed permanently", { sessionID, reason, error, permanent: true })
+            return
+          }
           const delay = WAKE_RETRY_DELAYS_MS[failureCount]
           if (delay === undefined) {
             activeWakeChains.delete(sessionID)
