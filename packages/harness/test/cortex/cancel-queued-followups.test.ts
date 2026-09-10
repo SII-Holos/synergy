@@ -221,15 +221,13 @@ describe("Cortex cancellation fences queued follow-ups", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const started = Promise.withResolvers<void>()
         spyOn(SessionInvoke, "invokeInternal").mockImplementation(() => {
-          started.resolve()
           return new Promise<never>(() => {})
         })
         spyOn(SessionInvoke, "loop").mockResolvedValue({} as never)
 
         const parent = await Session.create({ title: "timeout fence" })
-        const task = await Cortex.launch({
+        const task = await Cortex.prepare({
           description: "Stuck task",
           prompt: "Do the work",
           agent: "developer",
@@ -239,13 +237,12 @@ describe("Cortex cancellation fences queued follow-ups", () => {
           notifyParentOnComplete: false,
           timeoutMs: 50,
         })
-        await started.promise
-
-        await SessionManager.deliver({
-          target: task.sessionID,
+        await SessionInbox.enqueueMail({
+          sessionID: task.sessionID,
           mail: followUpMail(task.sessionID, parent.id, "Queued corrective follow-up."),
         })
         expect(await SessionInbox.hasRunnableItem(task.sessionID)).toBe(true)
+        await Cortex.start(task.id)
 
         await waitFor(() => Cortex.get(task.id)?.status === "error", 2_000, "task did not hit its runtime limit")
         expect(await SessionInbox.hasRunnableItem(task.sessionID)).toBe(false)
