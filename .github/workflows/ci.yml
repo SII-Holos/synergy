@@ -339,7 +339,7 @@ jobs:
         env:
           SYNERGY_ROLLOUT_LONG_STREAM: "1"
       - name: Verify Docker rollout with a deterministic local provider
-        run: uv run --locked --project benchmark pytest -s benchmark/test/test_docker.py benchmark/test/test_native.py
+        run: uv run --locked --project benchmark pytest -s benchmark/test/test_docker.py benchmark/test/test_native.py benchmark/test/test_recovery.py
         env:
           SYNERGY_BENCH_DOCKER: "1"
       - name: Preserve benchmark test evidence

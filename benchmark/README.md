@@ -139,7 +139,7 @@ SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/t
 
 执行沿用原题时限，随后保留 cleanup 期限，再给导出和校验独立 export 期限。Pier 外层 agent 期限覆盖三者，并留 15 秒退出余量。正常取消保留收到的响应前缀，缺失 usage 保持未知；部分响应、文件缺失、写入失败和损坏 ZIP 分别记录。v2 的 `evidence.valid` 表示证据链路有效，`archive_valid` 表示归档结构有效，`recording` 与 `usage` 分别描述记录和计量覆盖程度；正常部分记录可以是有效结果。
 
-`recover-export` 在 retained Home 的副本中重新导出，输出到 run 下独立的 `recoveries/`。它不调用模型，不覆盖原 attempt、评分或失败状态。恢复导出完成只表示新归档已通过结构校验，不表示原始记录失败得到修复。清理、恢复和执行共享位于 run 目录之外的所有权锁，删除 run 不会解除另一个进程持有的锁。
+`recover-export` 在 retained Home 的副本中重新导出，输出到 run 下独立的 `recoveries/`。它不调用模型，不覆盖原 attempt、评分或失败状态。恢复导出完成只表示新归档已通过结构校验，不表示原始记录失败得到修复。恢复容器退出前将副本与新产物的所有权交还宿主用户，私有权限保持不变；不会修改原 Home 的所有权。清理、恢复和执行共享位于 run 目录之外的所有权锁，删除 run 不会解除另一个进程持有的锁。
 
 Linux 源码准备与发行资产使用同一 watcher 构建器，固定 Parcel 源码及 EINTR 补丁，验证实际 native binding。首次准备需要额外的固定 Node 编译镜像。
 

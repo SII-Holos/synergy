@@ -51,3 +51,5 @@ Pier 0.3.1 includes separate-verifier container cleanup inside its verifier time
 Terminal reconciliation also examines retained execution records and incremental CLI terminal events when aggregate evidence is absent. A host crash after model completion must not become another paid attempt; reconstructed evidence records its origin while retaining missing verifier/export/accounting issues. A completed schedule entry without any terminal evidence fails closed.
 
 Native accounting is populated through Pier's post-download hook, after mounted logs have been handed back to the host. The adapter must not read container-owned private files from `run()` cleanup. Active fault-injection observers read within the verified owned container, preserving mode-0600 files and mode-0700 ledger directories on Linux.
+
+Recovery export runs against its private copy, then hands that copy and its output back to the host UID/GID before the container exits. Export failures preserve their exit status through the handoff, and ownership failures remain recovery failures. Permissions stay private; original evidence is never chowned or rewritten.

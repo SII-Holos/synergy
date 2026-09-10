@@ -37,3 +37,5 @@ Transport 取消没有等待已开始的读取与 chunk 持久化，body-end 因
 断流容器测试进一步发现，操作系统信号进入 CLI 时没有保留 Scope 上下文，取消期间读取 history 失败，导致缺少终态 accounting。SIGTERM、SIGINT 的真实子进程回归均先复现失败；信号入口绑定注册时的上下文后，取消继续保存原生终态与未知 usage。
 
 Linux 所有权审查发现，adapter 在 Pier 交接日志之前读取容器创建的私有 accounting；Docker Desktop 的所有权映射掩盖了这个顺序错误。行为测试先复现 PermissionError，再将读取移到 Pier 日志交接后的 hook。运行中的故障注入探针在已验证的所属容器内读取记录，不扩大文件权限。
+
+同一所有权审查扩大到离线恢复导出：新生成的私有文件仍由容器用户所有。真实 Docker 行为测试先确认身份不匹配，再补齐恢复副本及产物的宿主所有权交接；保留 0600 权限、原始失败评分与 exporter 退出状态。
