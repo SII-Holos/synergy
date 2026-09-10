@@ -142,4 +142,36 @@ describe("LoopJob detached background runs", () => {
     release.resolve()
     await expect(settling).rejects.toMatchObject({ name: "RolloutRecordingError" })
   })
+  test("cancelDetachedAll aborts detached runs across sessions and drops pending payloads", async () => {
+    const firstStarted = Promise.withResolvers<void>()
+    const aborted: string[] = []
+    const type = `test_detach_all_${crypto.randomUUID()}`
+    LoopJob.register({
+      type,
+      phase: "post",
+      blocking: false,
+      detached: true,
+      collect: () => [],
+      capture: (_ctx, instance) => ({ type, session: String(instance.session) }),
+      key: (payload) => payload.session,
+      async execute(payload, signal) {
+        if (payload.session.startsWith("ses_all_first")) firstStarted.resolve()
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) resolve()
+          else signal.addEventListener("abort", () => resolve(), { once: true })
+        })
+        aborted.push(payload.session)
+        return "pass"
+      },
+    })
+    const first = `ses_all_first_${crypto.randomUUID()}`
+    const second = `ses_all_second_${crypto.randomUUID()}`
+    await LoopJob.execute([{ type, session: first }], context(first))
+    await firstStarted.promise
+    await LoopJob.execute([{ type, session: second }], context(second))
+    LoopJob.cancelDetachedAll()
+    await LoopJob.settleDetached(first)
+    await LoopJob.settleDetached(second)
+    expect(aborted.sort()).toEqual([first, second])
+  })
 })

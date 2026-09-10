@@ -144,6 +144,7 @@ export namespace SessionInvoke {
     PermissionNext.clearForSession(sessionID).catch((err) => {
       log.error("permission cleanup failed", { sessionID, error: err })
     })
+    LoopJob.cancelDetached(sessionID)
     SessionManager.signalAbort(sessionID, options)
   }
 
@@ -314,17 +315,16 @@ export namespace SessionInvoke {
       // Detached turn work (summaries, titles) keeps running after the lease
       // releases, so session idle publishes immediately. Rollout runs finalize
       // only after that work settles, so its ledger records land before
-      // finishRun closes the run. Settlement failures are logged, not thrown:
-      // the loop result is already committed and a later reconcile settles
-      // any run left behind.
+      // finishRun closes the run. A settlement failure means those detached
+      // ledger writes themselves failed; reconcile refuses a run whose
+      // recording failed unless an outcome is supplied, so every processed
+      // run is closed with the turn outcome (or failed) instead of being
+      // left permanently open for a later reconcile to trip over.
       const runIDs = new Set(segments.map((segment) => segment.runID))
       const lastRunID = segments.at(-1)?.runID
       if (runIDs.size > 0) {
-        void LoopJob.settleDetached(sessionID, runIDs)
-          .catch((error) => {
-            log.error("detached turn work failed to settle", { sessionID, error })
-          })
-          .then(async () => {
+        void LoopJob.settleDetached(sessionID, runIDs).then(
+          async () => {
             for (const runID of runIDs) {
               try {
                 await RolloutLifecycle.reconcile(sessionID, runID, runID === lastRunID ? outcome : undefined)
@@ -332,7 +332,24 @@ export namespace SessionInvoke {
                 log.error("rollout run reconcile failed after release", { sessionID, runID, error })
               }
             }
-          })
+          },
+          (error) => {
+            log.error("detached turn work failed to settle", { sessionID, error })
+            for (const runID of runIDs) {
+              RolloutLifecycle.reconcile(
+                sessionID,
+                runID,
+                runID === lastRunID ? (outcome ?? "failed") : "failed",
+              ).catch((reconcileError) => {
+                log.error("rollout run reconcile failed after settlement failure", {
+                  sessionID,
+                  runID,
+                  error: reconcileError,
+                })
+              })
+            }
+          },
+        )
       }
       const recordingError = errors.find(RolloutRecordingError.isInstance)
       if (recordingError) throw recordingError

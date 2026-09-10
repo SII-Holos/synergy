@@ -239,6 +239,15 @@ export namespace LoopJob {
     }
   }
 
+  /** Abort every detached run in the process, regardless of lease state. */
+  export function cancelDetachedAll(): void {
+    for (const state of background.values()) {
+      if (!state.detached) continue
+      state.pending = undefined
+      state.cancel?.abort()
+    }
+  }
+
   function scheduleBackground(job: RegisteredBackgroundJob, payload: JobInstance, ctx: Context) {
     const sessionID = ctx.sessionID
     const rootID = ctx.lastUser.rootID ?? ctx.lastUser.id
