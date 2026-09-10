@@ -22,10 +22,11 @@ export type ProjectScopeCandidate = {
 
 /**
  * Normalize a directory key so route directories and scope metadata match
- * across separator, casing, and trailing-slash drift (notably Windows paths).
+ * across separator and trailing-slash drift, folding case only for Windows paths.
  */
 function normalizeDirectoryKey(input: string) {
-  return input.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase()
+  const normalized = input.replace(/\\/g, "/").replace(/\/+$/, "")
+  return /^[a-z]:\//i.test(normalized) || normalized.startsWith("//") ? normalized.toLowerCase() : normalized
 }
 
 function matchesDirectory(candidate: ProjectScopeCandidate, target: string) {

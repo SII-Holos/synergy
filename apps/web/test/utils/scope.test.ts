@@ -73,7 +73,15 @@ describe("resolveProjectScope", () => {
   test("normalizes separators, case, and trailing slashes when matching", () => {
     const owner = { worktree: "C:/repo/synergy" }
     expect(resolveProjectScope("C:\\repo\\synergy\\", undefined, [owner])).toBe(owner)
-    const sub = { worktree: "/repo/a", sandboxes: ["/repo/a/apps/web"] }
-    expect(resolveProjectScope("/Repo/A/Apps/Web/", undefined, [sub])).toBe(sub)
+    const sub = { worktree: "C:/repo/a", sandboxes: ["C:/repo/a/apps/web"] }
+    expect(resolveProjectScope("c:/Repo/A/Apps/Web/", undefined, [sub])).toBe(sub)
   })
+})
+
+test("preserves distinct POSIX projects whose directories differ only by case", () => {
+  const upper = { worktree: "/repo/Project", id: "upper" }
+  const lower = { worktree: "/repo/project", id: "lower" }
+  expect(resolveProjectScope("/repo/project", undefined, [upper, lower])).toBe(lower)
+  expect(resolveProjectScope("/repo/Project", undefined, [lower, upper])).toBe(upper)
+  expect(resolveProjectScope("/REPO/PROJECT", undefined, [upper, lower])).toBeUndefined()
 })
