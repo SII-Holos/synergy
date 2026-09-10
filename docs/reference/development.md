@@ -16,6 +16,8 @@ bun dev prepare
 
 Preparation installs dependencies, generates OpenAPI/SDK artifacts, builds the plugin SDK and Web app, and prepares the platform sandbox helper where supported. Linux and Windows helper compilation requires Rust; Linux sandboxing also uses Bubblewrap. `build-helper.ts --local` installs the local helper without editing tracked trust hashes. Stable builds compile each release helper first and embed its SHA-256 into the matching runtime binary.
 
+Linux preparation also requires Docker to build the pinned Parcel watcher with its EINTR fix. After updating a Linux source checkout, run `bun dev prepare` before starting the new runtime; an old unpatched watcher binding is rejected. The same verified binding builder supplies release assets for glibc and musl.
+
 ## Development Modes
 
 ```bash

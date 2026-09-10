@@ -4,6 +4,7 @@ import { qizhiSynergyLink } from "./qizhi-synergy-link"
 import { synergySkillCreator } from "./synergy-skill-creator"
 import { clarusAgentParticipation } from "./clarus-agent-participation"
 import { synergyConfig } from "./synergy-config"
+import { agentManage } from "./agent-manage"
 
 export interface BuiltinSkill {
   name: string
@@ -20,4 +21,5 @@ export const BUILTIN_SKILLS: BuiltinSkill[] = [
   qizhiSynergyLink,
   synergyPromptArchitect,
   synergyAgentTooling,
+  agentManage,
 ]

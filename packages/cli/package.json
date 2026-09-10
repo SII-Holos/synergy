@@ -53,7 +53,6 @@
     "boxen": "8.0.1",
     "figlet": "1.11.0",
     "gradient-string": "3.0.0",
-    "gray-matter": "4.0.3",
     "jsonc-parser": "3.3.1",
     "remeda": "catalog:",
     "yargs": "18.0.0",

@@ -24,10 +24,13 @@ import { ScopeListTool } from "./tools/scope-list"
 import { AttachTool } from "./tools/attach"
 import { SkillTool } from "./tools/skill"
 import { ProcessTool } from "./tools/process"
+import { AgentConfigTool, AgentConfigToolGroup } from "./tools/agent-config"
+import { ToolExposure } from "@ericsanchezok/synergy-harness/tool/exposure"
 import { RuntimeReloadTool } from "./tools/runtime-reload"
 
 export function registerLocalTools() {
   registerToolGroup()
+  ToolExposure.registerGroups("runtime-local", [AgentConfigToolGroup])
   ToolRegistry.registerToolProvider("runtime-local", () => {
     const tools = [
       BashTool,
@@ -58,6 +61,7 @@ export function registerLocalTools() {
       SkillTool,
       ProcessTool,
       RuntimeReloadTool,
+      AgentConfigTool,
     ]
     return tools
   })

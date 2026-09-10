@@ -13,3 +13,4 @@ Keep lifecycle implementation in harness and local capability registration here.
 
 - Own bundled model SDK factories and custom SDK loading in `src/provider/sdk-registry.ts`; register them through `registerLocalRuntime()` in host and agent workers.
 - Own native PTY, filesystem watchers, OS sandbox backends, helper Rust sources and packaging assets. Register `SandboxHost` and the `file-watcher` Scope startup contribution explicitly; keep permission policy and generic wrapper types in harness.
+- Linux watcher preparation and release assets use `script/build-watcher.ts` and its pinned source patch. Validate the compiled binding and signal recovery; an unused C++ source edit does not fix the installed watcher.

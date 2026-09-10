@@ -145,6 +145,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   worktree_enter: d("tool.title.enter-worktree", "Enter isolated workspace"),
   worktree_leave: d("tool.title.leave-worktree", "Leave isolated workspace"),
   worktree_list: d("tool.title.worktrees", "View isolated workspaces"),
+  agent_config: d("tool.title.agent-config", "Manage agents"),
 
   // Render
   render: d("tool.title.render", "Render content"),
@@ -490,6 +491,7 @@ export const TOOL_LABEL_DESC = {
   blueprints: d("tool.label.blueprints", "{count, plural, one {# blueprint} other {# blueprints}}"),
   targets: d("tool.label.targets", "{count, plural, one {# target} other {# targets}}"),
   memories: d("tool.label.memories", "{count, plural, one {# memory} other {# memories}}"),
+  agents: d("tool.label.agents", "{count, plural, one {# agent} other {# agents}}"),
   found: d("tool.label.found", "{count} found"),
   browserSettled: d("browser.label.settled", "settled"),
   browserUnsettled: d("browser.label.unsettled", "unsettled"),

@@ -1,3 +1,4 @@
+import { Flag } from "../flag/flag"
 import { parseModelID } from "./model-id"
 import { ProviderPricing } from "./pricing"
 import z from "zod"
@@ -565,7 +566,7 @@ export namespace Provider {
     const configProviders = Object.entries(config.provider ?? {})
     const inheritsModelsDev = configProviders.some(([, provider]) => provider.modelsDevProviderID)
     const [liveModelsDev, inheritedModelsDev] = await Promise.all([
-      ProviderCatalog.resolve({ config, includeLive: true }),
+      ProviderCatalog.resolve({ config, includeLive: true, refresh: !Flag.SYNERGY_DISABLE_MODELS_FETCH }),
       inheritsModelsDev ? ProviderCatalog.resolve({ config, includeLive: false }) : Promise.resolve(undefined),
     ])
     const modelsDev = { ...liveModelsDev }

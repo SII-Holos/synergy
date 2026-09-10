@@ -70,6 +70,11 @@
     "sqlite-vec-windows-x64",
   ],
   "ignoreBinaries": [
+    // Oryn entrypoints resolve inside the separately pinned .oryn-runtime checkout.
+    "script/run-workflow.ts",
+    "script/plan-workflow.ts",
+    "script/admit-workflow.ts",
+    "src/cli.ts",
     "swiftc",
     "codesign",
     "hdiutil",
@@ -96,6 +101,7 @@
     "latest",
     "gitleaks",
     "uvx",
+    "uv",
     "rg",
     "linux",
     "windows",
@@ -110,6 +116,18 @@
     "catalog": "off",
   },
   "workspaces": {
+    "benchmark": {
+      "entry": [
+        "runtime/entry.ts",
+        "runtime/trial.ts",
+        "runtime/prepare.ts",
+        "runtime/worker.ts",
+        "runtime/inspect.ts",
+        "runtime/compositions/*.ts",
+        "test/**/*.ts",
+      ],
+      "project": ["runtime/**/*.ts", "test/**/*.ts"],
+    },
     "packages/ui": {
       "entry": [
         "src/components/**/*.{ts,tsx}",

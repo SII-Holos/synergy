@@ -178,6 +178,12 @@ jobs:
           pattern: sandbox-assets-*
           merge-multiple: true
 
+      - name: Download verified watcher assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: packages/runtime-local/.artifacts/watcher
+          pattern: watcher-assets-*
+          merge-multiple: true
       - name: Prepare release version
         run: bun run ./script/release/desktop-prepare-version.ts
         env:

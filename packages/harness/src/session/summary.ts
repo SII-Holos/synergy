@@ -584,6 +584,7 @@ LoopJob.register({
   type: "summarize",
   phase: "post",
   blocking: false,
+  detached: true,
   collect(ctx) {
     if (!ctx.lastAssistant || !SessionProgress.isTerminalAssistant(ctx.lastAssistant)) return []
     return [{ type: "summarize" }]

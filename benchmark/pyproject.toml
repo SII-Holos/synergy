@@ -1,0 +1,31 @@
+[project]
+name = "synergy-bench"
+version = "0.1.0"
+description = "Reproducible local Synergy experiments over Harbor tasks"
+requires-python = ">=3.12,<3.14"
+dependencies = ["datacurve-pier==0.3.1", "pydantic>=2.11,<3", "pyyaml>=6,<7"]
+
+[project.scripts]
+synergy-bench = "synergy_bench.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["pytest>=8,<9", "pytest-asyncio>=1,<2", "ruff>=0.12", "mypy>=1.16", "types-PyYAML"]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["synergy_bench"]

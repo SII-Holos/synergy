@@ -82,6 +82,8 @@ The curl installer downloads the CLI checksum asset beside the selected archive 
 
 musl Linux archives (`synergy-linux-*-musl`) intentionally exclude `bin/ast-grep` and the `vec0` SQLite vector extension because no musl-compatible release assets exist for them; their manifests omit those entries and runtime preparation removes any residual copies. `watcher.node` is different: @parcel/watcher publishes musl packages, so every Linux target — glibc and musl — ships the watcher binding. glibc Linux, macOS, and Windows archives require all native helpers and fail packaging when any of them is missing.
 
+Linux watcher assets are built from pinned Parcel 2.5.6 source with the EINTR patch and checked for the `parcel-2.5.6-eintr-1` marker at load time. Upgrade the executable and its matching assets together: a new executable with an old unpatched binding refuses file watching. Reinstall the matching runtime distribution to repair an incomplete installed upgrade; source checkouts use `bun dev prepare` with Docker available.
+
 Updater metadata expected on stable releases:
 
 - `latest-mac.yml`

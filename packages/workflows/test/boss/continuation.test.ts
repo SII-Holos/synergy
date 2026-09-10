@@ -158,7 +158,7 @@ describe("BossContinuationPolicy", () => {
         expect(proposal).toBeUndefined()
       } finally {
         for (const lease of leases.reverse()) {
-          await SessionInbox.removeByMode(lease.sessionID, ["task", "steer"])
+          await SessionInbox.removeByModes(lease.sessionID, ["task", "steer"])
           await SessionManager.finish(lease, { requestNextWork: false })
         }
       }
