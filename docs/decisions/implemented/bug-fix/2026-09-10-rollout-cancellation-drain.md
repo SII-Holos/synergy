@@ -12,6 +12,8 @@ Transport cancellation stops upstream reading, joins the admitted pull, persists
 
 State disposal binds the resource's creation context and joins the same entry cleanup across reset and disposal callers. Entries are removed after their cleanup completes.
 
+CLI operating-system signal listeners bind their registration context before requesting cancellation. Process signal delivery does not preserve the local client's Scope; cancellation must retain that context through history reads and terminal accounting.
+
 ## Alternatives considered
 
 **Ignore writes after close.** This loses received bytes and incorrectly certifies incomplete evidence.
