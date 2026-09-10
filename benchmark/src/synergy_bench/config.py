@@ -70,7 +70,15 @@ class ExperimentConfig(StrictModel):
 
 
 def load_config(path: Path) -> ExperimentConfig:
-    return ExperimentConfig.model_validate(yaml.safe_load(path.read_text()))
+    try:
+        content = path.read_text()
+    except OSError as error:
+        raise ValueError(f"Unable to read experiment configuration: {path}") from error
+    try:
+        value = yaml.safe_load(content)
+    except yaml.YAMLError as error:
+        raise ValueError("Invalid experiment YAML") from error
+    return ExperimentConfig.model_validate(value)
 
 
 def resolve_plan(config: ExperimentConfig, tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -37,6 +37,12 @@ test("custom recipes cannot import outside the frozen runtime", async () => {
   expect(result.stderr).toContain("inside the frozen runtime")
 })
 
+test("missing custom recipes fail as invalid input", async () => {
+  const result = await inspect("./missing-recipe.ts")
+  expect(result.code).toBe(2)
+  expect(result.stderr).toContain("composition file not found")
+})
+
 test("each named composition reports its own capabilities", async () => {
   for (const runtime of ["core", "core-library", "full"]) {
     const result = await inspect(runtime)

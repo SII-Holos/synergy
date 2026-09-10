@@ -78,9 +78,12 @@ def validate_inputs(config: ExperimentConfig, base: Path) -> None:
         for file in [variant.config, variant.experiment]:
             if not file:
                 continue
-            value = read_json(base / file)
+            try:
+                content = (base / file).read_text()
+            except OSError as error:
+                raise ValueError(f"Unable to read configuration reference: {file}") from error
+            value = json.loads(content)
             validate_credentials(value)
-            content = (base / file).read_text()
             if "{file:" in content:
                 raise ValueError("File references must be materialized into the experiment config")
             for reference in re.findall(r"\{env:([A-Za-z_][A-Za-z0-9_]*)\}", content):

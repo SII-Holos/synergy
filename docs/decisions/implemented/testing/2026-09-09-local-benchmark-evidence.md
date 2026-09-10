@@ -42,6 +42,8 @@ Resume reconciles terminal evidence before scheduling a new attempt. Recovery ex
 
 Credential presence and references are checked before preparation; actual models and role composition are resolved offline inside the frozen runtime. Temporary credential files are removed before child execution, and values never enter Docker arguments. Source preparation and release staging compile the same pinned Linux watcher patch and verify the native binding.
 
+Unreadable experiment, suite and configuration references and malformed YAML are input errors (exit 2), detected before Docker preparation. A missing custom recipe is likewise an input error in runtime validation. These checks do not reclassify execution, storage or export failures as configuration mistakes.
+
 ### Verifier lifecycle ownership
 
 Pier 0.3.1 includes separate-verifier container cleanup inside its verifier timeout and retries that timeout. `BenchmarkTrial` owns this narrow integration boundary: original verifier setup/execution deadlines remain, rewards commit before cleanup, and timeouts are not regraded. The adapter retains Pier's environment, artifact and verifier implementations; its derived code and license are attributed in `benchmark/third_party/pier/`. Cleanup has a separate deadline and a final ownership audit. Future Pier upgrades must pass the behavioral verifier lifecycle and Docker tests before removing or changing this boundary.

@@ -48,7 +48,11 @@ class Suite(StrictModel):
 
     @classmethod
     def load(cls, path: Path) -> Suite:
-        return cls.model_validate_json(path.read_text())
+        try:
+            content = path.read_text()
+        except OSError as error:
+            raise ValueError(f"Unable to read task suite: {path}") from error
+        return cls.model_validate_json(content)
 
 
 def tree_digest(root: Path) -> str:
