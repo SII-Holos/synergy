@@ -104,3 +104,84 @@ def test_changed_terminal_bytes_are_not_rescheduled(tmp_path: Path) -> None:
     file.write_bytes(b"modified")
     with pytest.raises(ValueError, match="hash changed"):
         verify_terminal(tmp_path, evidence)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source", ["execution", "events"])
+async def test_resume_recovers_retained_terminal_before_scheduling_any_model(
+    tmp_path: Path, monkeypatch, source
+) -> None:
+    import time
+
+    from synergy_bench import runner
+    from synergy_bench.prepare import evaluator_identity
+    from synergy_bench.storage import digest
+
+    root = tmp_path / "run-12345678"
+    plan = {
+        "version": 2,
+        "result_version": 2,
+        "evaluator": evaluator_identity(),
+        "variants": {},
+        "tasks": {},
+        "config": {"platform": "linux/amd64", "export_timeout_seconds": 1},
+        "schedule": [{"pair": "p", "variant": "A", "task": "fixture"}],
+        "concurrency": 1,
+    }
+    plan["digest"] = digest(plan)
+    atomic_json(root / "owner.json", {"kind": "synergy-benchmark-run", "version": 1})
+    atomic_json(root / "plan.json", plan)
+    atomic_json(root / "state.json", {"trials": {"0000": {"status": "running", "attempt": 1}}})
+    attempt = root / "trials/0000/attempt-001"
+    project = "sb-12345678-0000-attempt-001"
+    atomic_json(attempt / "environment.json", {"project": project})
+    agent = attempt / project / "agent"
+    agent.mkdir(parents=True)
+    if source == "execution":
+        atomic_json(
+            agent / "execution.json",
+            {
+                "version": 2,
+                "outcome": "timeout",
+                "ended_at": time.time() * 1000,
+                "exit_code": 3,
+            },
+        )
+        (agent / "finished").write_text("done")
+    else:
+        import json
+
+        (agent / "events.jsonl").write_text(
+            json.dumps(
+                {
+                    "type": "result",
+                    "outcome": "timeout",
+                    "timestamp": time.time() * 1000,
+                    "sessionID": "s",
+                    "runID": "r",
+                    "exitCode": 3,
+                }
+            )
+            + "\n"
+        )
+    monkeypatch.setattr(runner, "command", lambda *args, **kwargs: "")
+    atomic_json(
+        attempt / project / "result.json",
+        {
+            "verifier_result": {"rewards": {"reward": 0.0}},
+            "exception_info": {"exception_type": "AgentTimeoutError"},
+        },
+    )
+
+    async def execute(*args, **kwargs):
+        pytest.fail("Retained terminal execution must never call the model again")
+
+    monkeypatch.setattr(runner, "execute_trial", execute)
+    monkeypatch.setattr(runner, "remove_environment", lambda *args: None)
+    await runner.resume(root)
+    result = read_json(attempt / "evidence.json")
+    assert result["attempt_status"] == "completed"
+    assert result["verifier"]["rewards"] == {"reward": 0.0}
+    assert not result["evidence"]["valid"]
+    assert read_json(root / "state.json")["trials"]["0000"]["attempt"] == 1
+    assert len(list((root / "trials/0000").glob("attempt-*"))) == 1

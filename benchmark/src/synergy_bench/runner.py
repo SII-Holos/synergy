@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -395,9 +396,107 @@ def verify_terminal(attempt: Path, result: dict[str, Any]) -> None:
             raise ValueError("Terminal evidence hash changed; refusing to reschedule")
 
 
+def retained_terminal(trial: Path) -> dict[str, Any] | None:
+    file = trial / "agent/events.jsonl"
+    if not file.exists():
+        return None
+    terminal = None
+    with file.open() as stream:
+        for line in stream:
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(event, dict) and event.get("type") in {"result", "failed"}:
+                terminal = event
+    return terminal
+
+
+async def reconcile_terminal(root: Path, attempt: Path, plan: dict[str, Any]) -> bool:
+    ownership = attempt / "environment.json"
+    if not ownership.exists():
+        return False
+    project = read_json(ownership)["project"]
+    if not re.fullmatch(rf"sb-{re.escape(root.name[-8:])}-[a-z0-9-]+", project):
+        raise ValueError("Unexpected retained trial ownership")
+    trial = attempt / project
+    agent = trial / "agent"
+    resolved_agent = await background(agent.resolve)
+    if trial.is_symlink() or agent.is_symlink() or not resolved_agent.is_relative_to(root):
+        raise ValueError("Retained terminal path escapes its run")
+    terminal = await background(retained_terminal, trial)
+    if not (agent / "execution.json").exists() and not (agent / "finished").exists() and not terminal:
+        return False
+    progress(f"resume: reconciling retained terminal for {attempt.parent.name} without model execution")
+    budget = plan["config"]["export_timeout_seconds"] + 15
+    execution = {}
+    if (agent / "execution.json").exists():
+        try:
+            observed = read_json(agent / "execution.json")
+            if isinstance(observed, dict):
+                execution = observed
+        except ValueError:
+            pass
+    stamp = execution.get("ended_at", (terminal or {}).get("timestamp", 0))
+    remaining = max(0, min(budget, stamp / 1000 + budget - time.time())) if isinstance(stamp, (int, float)) else 0
+    deadline = time.monotonic() + remaining
+    while not (agent / "finished").exists() and time.monotonic() < deadline:
+        exported = agent / "export.json"
+        if exported.exists():
+            try:
+                observed = read_json(exported)
+                if not isinstance(observed, dict) or observed.get("status") in {"completed", "failed"}:
+                    break
+            except ValueError:
+                break
+        running = await background(
+            command, ["docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={project}"], timeout=15
+        )
+        if not running:
+            break
+        await asyncio.sleep(0.2)
+    try:
+        await background(remove_environment, root, ownership)
+    except Exception as error:
+        atomic_json(agent / "environment-cleanup.json", {"status": "failed", "errors": [type(error).__name__]})
+    pier = {
+        "exception_info": {"exception_type": "OrchestratorInterrupted", "exception_message": "No retained Pier result"}
+    }
+    if (trial / "result.json").exists():
+        try:
+            observed = read_json(trial / "result.json")
+            if isinstance(observed, dict):
+                pier = observed
+        except ValueError:
+            pass
+    evidence = await background(collect_evidence, trial, pier)
+    if evidence["execution"] is None and terminal:
+        evidence["execution"] = {
+            "version": 2,
+            "recovered_from": "events.jsonl",
+            "terminal": terminal,
+            "outcome": terminal.get("outcome", "interrupted"),
+            "exit_code": terminal.get("exitCode"),
+            "session_id": terminal.get("sessionID"),
+            "run_id": terminal.get("runID"),
+            "wall_ms": None,
+        }
+        if evidence["accounting"] is None:
+            evidence["accounting"] = (terminal.get("result") or {}).get("accounting")
+    evidence.update(attempt_status="completed", trial_directory=project)
+    atomic_json(
+        attempt / "reconciliation.json",
+        {"version": 1, "source": "retained-terminal", "model_calls": 0, "created_at": time.time()},
+    )
+    atomic_json(attempt / "evidence.json", evidence)
+    return True
+
+
 async def resume(root: Path, *, debug_trial: str | None = None) -> None:
     root = await asyncio.to_thread(root.resolve)
     with locked(root, create=False):
+        if read_json(root / "owner.json") != {"kind": "synergy-benchmark-run", "version": 1}:
+            raise ValueError("Not a benchmark-owned run")
         if not (root / "plan.json").exists():
             raise ValueError("Preparation did not complete; inspect preparation records and create a new run")
         plan = read_json(root / "plan.json")
@@ -423,6 +522,10 @@ async def resume(root: Path, *, debug_trial: str | None = None) -> None:
         if (root / "state.json").exists():
             for trial_id, state in read_json(root / "state.json")["trials"].items():
                 evidence_file = root / "trials" / trial_id / f"attempt-{state['attempt']:03d}" / "evidence.json"
+                if not evidence_file.exists():
+                    await reconcile_terminal(root, evidence_file.parent, plan)
+                    if state["status"] == "completed" and not evidence_file.exists():
+                        raise ValueError("Completed attempt has no retained terminal evidence")
                 if evidence_file.exists():
                     await background(verify_terminal, evidence_file.parent, read_json(evidence_file))
                 if state["status"] in {"running", "interrupted"}:

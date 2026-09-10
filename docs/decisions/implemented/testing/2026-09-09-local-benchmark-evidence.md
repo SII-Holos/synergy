@@ -45,3 +45,5 @@ Credential presence and references are checked before preparation; actual models
 ### Verifier lifecycle ownership
 
 Pier 0.3.1 includes separate-verifier container cleanup inside its verifier timeout and retries that timeout. `BenchmarkTrial` owns this narrow integration boundary: original verifier setup/execution deadlines remain, rewards commit before cleanup, and timeouts are not regraded. The adapter retains Pier's environment, artifact and verifier implementations; its derived code and license are attributed in `benchmark/third_party/pier/`. Cleanup has a separate deadline and a final ownership audit. Future Pier upgrades must pass the behavioral verifier lifecycle and Docker tests before removing or changing this boundary.
+
+Terminal reconciliation also examines retained execution records and incremental CLI terminal events when aggregate evidence is absent. A host crash after model completion must not become another paid attempt; reconstructed evidence records its origin while retaining missing verifier/export/accounting issues. A completed schedule entry without any terminal evidence fails closed.

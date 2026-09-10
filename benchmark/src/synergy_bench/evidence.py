@@ -70,6 +70,11 @@ def collect_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
         "NonZeroAgentExitCodeError",
         "CancelledError",
     }
+    if not pier.get("verifier_result") and (exception or {}).get("exception_type") not in {
+        "CancelledError",
+        "VerifierTimeoutError",
+    }:
+        missing.append("verifier_missing")
     tokens = accounting.get("tokens", {}) if accounting else {}
     if not isinstance(tokens, dict):
         missing.append("accounting_invalid")

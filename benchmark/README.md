@@ -143,3 +143,5 @@ SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/t
 Linux 源码准备与发行资产使用同一 watcher 构建器，固定 Parcel 源码及 EINTR 补丁，验证实际 native binding。首次准备需要额外的固定 Node 编译镜像。
 
 Pier 0.3.1 的独立 verifier 由本包的 `BenchmarkTrial` 固定生命周期：评分环境准备和评分仍使用原题期限，容器清理在评分结果提交后进行；评分超时不自动重跑。清理另有期限及所有权审计，清理失败保持为基础设施问题，不会丢掉已有评分。该边界依赖固定版本 Pier 的扩展接口，升级依赖必须同时通过独立 verifier、超时与取消测试；来源与许可证位于 `third_party/pier/`。
+
+`resume` 也会检查 attempt 内的原始执行记录与 CLI 终态事件；宿主在汇总落盘前退出时，已有终态会重建证据并修复调度状态，模型调用数保持为零。缺失评分、导出或计量文件仍保留对应问题，不会由恢复动作补成成功。
