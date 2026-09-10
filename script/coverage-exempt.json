@@ -835,6 +835,10 @@
           "reason": "global context requires full app bootstrap"
         },
         {
+          "glob": "src/context/session-bottom-recovery.ts",
+          "reason": "reactive trigger executed through the dom suite's vite build, invisible to bun coverage"
+        },
+        {
           "glob": "src/context/sync.tsx",
           "reason": "global context requires full app bootstrap"
         },

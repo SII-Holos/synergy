@@ -124,7 +124,6 @@ import {
   adjustTrimScrollTop,
   computeTurnTrim,
   selectPrependAnchor,
-  shouldRecoverToLatest,
   type PrependScrollAnchor,
 } from "@/components/session/session-history-scroll"
 import { buildSessionTurnProjection } from "@ericsanchezok/synergy-ui/session-turn-projection"
@@ -132,6 +131,7 @@ import { resolveActivityDisplay } from "@ericsanchezok/synergy-ui/session-turn-a
 import { hasMessageWindowSnapshot } from "@/context/session-message-window"
 import { sessionSyncWatchKey, shouldRunSessionSync } from "@/context/session-sync-plan"
 import { messageAllowsCanonicalActions } from "@/context/session-optimistic-message"
+import { createBottomRecoveryTrigger } from "@/context/session-bottom-recovery"
 
 const handoff = {
   prompt: "",
@@ -1220,27 +1220,25 @@ function SessionPageContent() {
   }
 
   // When the bounded history window no longer reaches the true latest
-  // (cap-evicted tail or unseen arrivals) and the user heads back to the
-  // local bottom, recover through the existing return-to-latest path.
-  // The transition from scrolled-up to bottom keeps load-earlier-at-bottom
-  // from auto-jumping; gap-less history preserves the old scroll behavior.
-  createEffect(
-    on(scrolledUp, (up, prev) => {
-      if (up || prev === undefined) return
-      const id = params.id
-      if (!id) return
-      if (
-        !shouldRecoverToLatest({
-          mode: historyMode(),
-          tailMissingLatest: historyTailMissingLatest(),
-          pendingLatest: historyPendingLatest(),
-          historyLoading: historyLoading(),
-        })
-      ) {
-        return
-      }
-      void returnToLatestMessages()
-    }),
+  // (cap-evicted tail or unseen arrivals), recover through the existing
+  // return-to-latest path. The trigger evaluates the recovery predicate as a
+  // level rather than a single scrolled-up falling edge, so a history load
+  // finishing under an already-parked cursor or streamed arrivals parking
+  // into a history window the user never left recover too. A session starts
+  // disarmed and is armed by engagement (a history load or scrolling up), so
+  // navigating onto a retained history window never discards its stored view.
+  // The recover callback returns the request promise so the in-flight guard
+  // spans the actual return-to-latest load.
+  createBottomRecoveryTrigger(
+    {
+      sessionID: () => params.id,
+      scrolledUp,
+      mode: historyMode,
+      tailMissingLatest: historyTailMissingLatest,
+      pendingLatest: historyPendingLatest,
+      historyLoading: historyLoading,
+    },
+    () => returnToLatestMessages(),
   )
 
   const turnInit = 20
