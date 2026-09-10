@@ -1991,3 +1991,39 @@ describe("ShellSafety heredoc scanning", () => {
     expect(result).not.toBe("shell_read")
   })
 })
+
+describe("read-only invocation boundary regressions", () => {
+  const { ShellSafety } = require("../../src/enforcement/shell-safety")
+  test.each([
+    'sort "-o" "/tmp/output" input',
+    'file "-C"',
+    '"custom-command" "/tmp/output"',
+    "uniq input /tmp/output",
+    "xxd input /tmp/output",
+    "xxd -r input /tmp/output",
+    "sort --compress-program=/tmp/program input",
+    "sort --out=/tmp/output input",
+    "uniq -f $options",
+    "xxd -g $options",
+    "uniq /tmp/*",
+    "xxd /tmp/{input,output}",
+    "printf -v variable value",
+    "rg --hostname-bin=/tmp/program pattern input",
+  ])("does not grant read-only classification to %s", (command) => {
+    expect(ShellSafety.isReadOnly(command)).toBe(false)
+    expect(ShellSafety.classifyBashRisk(command)).not.toBe("shell_read")
+  })
+
+  test.each([
+    "find . -exec sort {} -o /tmp/output \\;",
+    'find . -exec sort {} "-o" "/tmp/output" \\;',
+    "find . -exec uniq {} /tmp/output \\;",
+    "find . -exec xxd {} /tmp/output \\;",
+    "find . -exec uniq {} +",
+    "fd -X xxd",
+    "find . -exec sort + -o /tmp/output {} \\;",
+    "fd -x sort {} + -o /tmp/output",
+  ])("inspects arguments after placeholders in %s", (command) => {
+    expect(ShellSafety.classifyBashRisk(command)).toBe("shell_destructive")
+  })
+})

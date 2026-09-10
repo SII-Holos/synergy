@@ -19,6 +19,7 @@ const READ_ONLY_COMMANDS = new Set([
   "bzcat",
   "cat",
   "cksum",
+  "cmp",
   "column",
   "comm",
   "cut",
@@ -78,7 +79,15 @@ const READ_ONLY_COMMANDS = new Set([
 const READ_ONLY_ARG_BLOCKERS: Record<string, RegExp[]> = {
   diff: [/^--output(=.+)?$/, /^-[^-]*o/],
   file: [/^--compile$/, /^-[^-]*C/],
-  sort: [/^--output(=.+)?$/, /^-[^-]*o/],
+  sort: [/^--output(=.+)?$/, /^-[^-]*[oT]/],
+  rg: [/^--(?:pre|hostname-bin)(?:=|$)/],
+  printf: [/^-[^-]*v/],
+}
+
+const READ_ONLY_LONG_ARG_BLOCKERS: Record<string, string[]> = {
+  diff: ["--output"],
+  file: ["--compile"],
+  sort: ["--output", "--compress-program", "--temporary-directory"],
 }
 
 /**
@@ -89,8 +98,45 @@ const READ_ONLY_ARG_BLOCKERS: Record<string, RegExp[]> = {
 function isReadOnlyInvocation(name: string, args: string[]): boolean {
   if (!READ_ONLY_COMMANDS.has(name)) return false
   const blockers = READ_ONLY_ARG_BLOCKERS[name]
-  if (!blockers) return true
-  return !args.some((arg) => blockers.some((pattern) => pattern.test(arg)))
+  if (blockers && args.some((arg) => /[$`]/.test(arg) || blockers.some((pattern) => pattern.test(arg)))) return false
+  if (
+    args.some(
+      (arg) =>
+        arg.startsWith("--") &&
+        arg !== "--" &&
+        READ_ONLY_LONG_ARG_BLOCKERS[name]?.some((option) => option.startsWith(arg.split("=", 1)[0]!)),
+    )
+  )
+    return false
+  if (name !== "uniq" && name !== "xxd") return true
+  if (args.some((arg) => /[$`*?\[]|\{[^}]*[,][^}]*\}|\{[^}]*\.\.[^}]*\}/.test(arg))) return false
+  let operands = 0
+  let options = true
+  const valueOptions =
+    name === "uniq"
+      ? new Set(["-f", "-s", "-w", "--skip-fields", "--skip-chars", "--check-chars"])
+      : new Set(["-c", "-cols", "-g", "-groupsize", "-l", "-len", "-o", "-s", "-seek", "-n", "-name"])
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]!
+    if (options && arg === "--") {
+      options = false
+      continue
+    }
+    if (options && valueOptions.has(arg)) {
+      if (++index >= args.length) return false
+      continue
+    }
+    if (options && arg.startsWith("-") && arg !== "-") {
+      const safe =
+        name === "uniq"
+          ? /^(?:-[cduizD]+|-[fsw]\d+|--(?:count|repeated|unique|ignore-case|zero-terminated|all-repeated(?:=.*)?|group(?:=.*)?|skip-fields=\d+|skip-chars=\d+|check-chars=\d+))$/
+          : /^(?:-[abCeEipPru]+|-(?:c|g|l|o|s)[+\-]?(?:0x)?[\da-fA-F]+)$/
+      if (!safe.test(arg)) return false
+      continue
+    }
+    if (++operands > 1) return false
+  }
+  return true
 }
 
 const GIT_TAXONOMY: Map<string, BashRisk> = new Map([
@@ -998,11 +1044,17 @@ function findFdExecTextUnsafe(executable: string): boolean {
         const utility = commandBasename(rawUtility)
         if (!utility) return true
         const utilityArgs: string[] = []
+        let batch = option === "-X" || option === "--exec-batch"
         for (let argIndex = optionIndex + 2; argIndex < words.length; argIndex++) {
           const arg = words[argIndex]!
-          if (arg === "{}" || arg === "\\;" || arg === ";" || arg === "+" || arg === "\\+") break
+          if (word === "find" && (arg === "\\;" || arg === ";")) break
+          if (word === "find" && arg === "+" && words[argIndex - 1] === "{}") {
+            batch = true
+            break
+          }
           utilityArgs.push(arg)
         }
+        if (batch && (utility === "uniq" || utility === "xxd")) return true
         if (!isReadOnlyInvocation(utility, utilityArgs)) return true
       }
     }
@@ -1020,7 +1072,7 @@ function findFdExecTextUnsafe(executable: string): boolean {
  */
 function hasUnsafeExecTarget(command: string, state: ClassificationState, depth = 0): boolean {
   if (classificationExhausted(state, command) || depth > DIRECTORY_CHANGE_MAX_DEPTH) return true
-  if (findFdExecTextUnsafe(executableShellSyntaxText(command))) return true
+  if (findFdExecTextUnsafe(command)) return true
   const payloads = commandSubstitutionPayloads(command, state)
   if (payloads === undefined) return true
   if (payloads.some((payload) => hasUnsafeExecTarget(payload, state, depth + 1))) return true
@@ -3399,8 +3451,8 @@ export namespace ShellSafety {
   export function isReadOnly(command: string): boolean {
     const padded = " " + normalizeCommand(command) + " "
     const masked = literalMaskedShellText(padded)
-    const normalized = stripAllowedRedirects(masked)
-    const lower = normalized.toLowerCase()
+    const lower = stripAllowedRedirects(masked).toLowerCase()
+    const normalized = stripAllowedRedirects(padded)
     if (UNSAFE_SHELL_TOKENS.some((token) => lower.includes(token))) return false
 
     const segments = lexCompoundCommands(normalized.trim()).segments
