@@ -7,6 +7,7 @@ from typing import Any
 
 from pier.environments.base import BaseEnvironment
 from pier.environments.factory import EnvironmentFactory
+from pier.models.agent.context import AgentContext
 from pier.models.task.config import ArtifactConfig, StepConfig
 from pier.models.task.config import EnvironmentConfig as TaskEnvironmentConfig
 from pier.models.task.task import Task
@@ -15,6 +16,7 @@ from pier.models.verifier.result import VerifierResult
 from pier.trial.trial import Trial, VerifierTimeoutError
 from pier.verifier.verifier import Verifier
 
+from .agent import SynergyAgent
 from .storage import atomic_json, read_json
 
 
@@ -29,6 +31,12 @@ class BenchmarkTrial(Trial):
         super().__init__(config, _task=_task)
         self._cleanup_seconds = float(config.agent.kwargs["settings"]["cleanup_seconds"])
         self._verifier_environments: list[BaseEnvironment] = []
+
+    def _maybe_populate_agent_context(self, agent_result: AgentContext | None) -> None:
+        if agent_result is not None and isinstance(self._agent, SynergyAgent):
+            self._agent.populate_context_post_run(agent_result)
+            return
+        super()._maybe_populate_agent_context(agent_result)
 
     async def _verify_with_retry(self) -> None:
         try:

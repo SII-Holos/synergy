@@ -14,3 +14,4 @@ Own local research orchestration, frozen source inputs, task catalogs, runtime c
 - Run deterministic cancellation, long-stream and Linux watcher tests in the benchmark CI job. Keep live-provider acceptance outside CI.
 - `BenchmarkTrial` owns the pinned Pier verifier/cleanup boundary. Preserve source attribution and upgrade it only with deadline, reward-retention and Docker regressions passing. Never let environment cleanup consume verifier time or trigger automatic regrading.
 - The current result contract covers single-step tasks. Reject multi-step tasks during preparation instead of overwriting step evidence in shared log paths.
+- Read container-owned private accounting only after Pier's log handoff. Observe active native evidence through the owned container; keep ledger files private on Linux hosts.

@@ -160,8 +160,6 @@ class SynergyAgent(BaseAgent):
             except (TimeoutError, RuntimeError) as error:
                 atomic_json(self.logs_dir / "cleanup.json", {"status": "failed", "error": type(error).__name__})
             raise
-        finally:
-            self.populate_context_post_run(context)
 
     def populate_context_post_run(self, context: AgentContext) -> None:
         path = self.logs_dir / "accounting.json"

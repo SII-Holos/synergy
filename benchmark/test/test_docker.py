@@ -204,9 +204,34 @@ def test_faults_preserve_terminal_evidence_and_cleanup(prepared_fixture, mode: s
             return
         try:
             async with asyncio.timeout(180):
-                while not any(
-                    (attempt.get("response") or {}).get("bytes", 0) > 0 for attempt in primary_attempts(root)
-                ):
+                while not list(root.glob("trials/*/attempt-*/*/artifacts/provider-started")):
+                    if execution.done():
+                        await execution
+                        pytest.fail("Primary provider response was never recorded")
+                    await asyncio.sleep(0.05)
+                environment = next(root.glob("trials/*/attempt-*/environment.json"))
+                project = read_json(environment)["project"]
+                containers = await asyncio.to_thread(
+                    command, ["docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={project}"]
+                )
+                assert len(containers.splitlines()) == 1
+                container = containers.strip()
+                probe = """
+import json
+from pathlib import Path
+observed = False
+for call in Path('/logs/agent/home').glob('.synergy/data/sessions/*/*/rollout/runs/*/calls/*.json'):
+    if json.loads(call.read_text())['purpose'] != 'synergy':
+        continue
+    for file in (call.parent.parent / 'attempts' / call.stem).glob('*.json'):
+        observed |= (json.loads(file.read_text()).get('response') or {}).get('bytes', 0) > 0
+print(observed)
+"""
+                while (
+                    await asyncio.to_thread(
+                        command, ["docker", "exec", "--user", "0", container, "python", "-c", probe]
+                    )
+                ).strip() != "True":
                     if execution.done():
                         await execution
                         pytest.fail("Primary provider response was never recorded")
@@ -221,13 +246,7 @@ def test_faults_preserve_terminal_evidence_and_cleanup(prepared_fixture, mode: s
                 with pytest.raises(asyncio.CancelledError):
                     await execution
                 return
-            environment = next(root.glob("trials/*/attempt-*/environment.json"))
-            project = read_json(environment)["project"]
-            containers = await asyncio.to_thread(
-                command, ["docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={project}"]
-            )
-            assert len(containers.splitlines()) == 1
-            await asyncio.to_thread(command, ["docker", "kill", containers.strip()])
+            await asyncio.to_thread(command, ["docker", "kill", container])
             await execution
         finally:
             if not execution.done():
