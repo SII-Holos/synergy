@@ -111,6 +111,9 @@ export namespace RuntimeHandle {
         for (const session of sessions) {
           await cleanup(() => LoopJob.drain(session.id))
         }
+        for (const session of sessions) {
+          await cleanup(() => LoopJob.cancelDetached(session.id))
+        }
         for (const stop of [() => AgentTurn.stop(), () => PolicyWorker.stop(), () => ToolScheduler.stop()])
           await cleanup(stop)
         await cleanup(() => LoopJob.drainAll())

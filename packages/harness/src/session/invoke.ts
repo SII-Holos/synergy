@@ -311,12 +311,28 @@ export namespace SessionInvoke {
           errors.push(error)
         }
       }
-      for (const runID of new Set(segments.map((segment) => segment.runID))) {
-        try {
-          await RolloutLifecycle.reconcile(sessionID, runID, runID === segments.at(-1)?.runID ? outcome : undefined)
-        } catch (error) {
-          errors.push(error)
-        }
+      // Detached turn work (summaries, titles) keeps running after the lease
+      // releases, so session idle publishes immediately. Rollout runs finalize
+      // only after that work settles, so its ledger records land before
+      // finishRun closes the run. Settlement failures are logged, not thrown:
+      // the loop result is already committed and a later reconcile settles
+      // any run left behind.
+      const runIDs = new Set(segments.map((segment) => segment.runID))
+      const lastRunID = segments.at(-1)?.runID
+      if (runIDs.size > 0) {
+        void LoopJob.settleDetached(sessionID, runIDs)
+          .catch((error) => {
+            log.error("detached turn work failed to settle", { sessionID, error })
+          })
+          .then(async () => {
+            for (const runID of runIDs) {
+              try {
+                await RolloutLifecycle.reconcile(sessionID, runID, runID === lastRunID ? outcome : undefined)
+              } catch (error) {
+                log.error("rollout run reconcile failed after release", { sessionID, runID, error })
+              }
+            }
+          })
       }
       const recordingError = errors.find(RolloutRecordingError.isInstance)
       if (recordingError) throw recordingError

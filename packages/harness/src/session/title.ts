@@ -28,6 +28,7 @@ LoopJob.register({
   type: "ensure-title",
   phase: "pre",
   blocking: false,
+  detached: true,
   collect(ctx) {
     if (ctx.step !== 1) return []
     return [{ type: "ensure-title" }]
