@@ -45,7 +45,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
         mode = request.get("model", "fixture")
-        if request.get("stream") and mode in {"hang", "disconnect"}:
+        if request.get("stream") and request.get("tools") and mode in {"hang", "disconnect"}:
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             if mode == "disconnect":
@@ -63,11 +63,11 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(("data: " + json.dumps(frame) + "\n\n").encode())
             self.wfile.flush()
             Path("/logs/artifacts/provider-started").write_text(mode)
-            if mode == "disconnect":
-                self.close_connection = True
-                return
             try:
                 while True:
+                    if mode == "disconnect" and Path("/logs/artifacts/disconnect-release").exists():
+                        self.close_connection = True
+                        return
                     self.wfile.write(b":" + b"x" * 1024 + b"\n\n")
                     self.wfile.flush()
                     time.sleep(0.02)

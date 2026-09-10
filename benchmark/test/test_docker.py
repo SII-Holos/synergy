@@ -171,6 +171,13 @@ def assert_retained_credentials_absent(root: Path) -> None:
                         assert sentinel not in archive.read(item), item.filename
 
 
+def primary_attempts(root: Path):
+    for call in root.glob("trials/*/attempt-*/*/agent/home/.synergy/data/sessions/*/*/rollout/runs/*/calls/*.json"):
+        if read_json(call)["purpose"] == "synergy":
+            for attempt in (call.parent.parent / "attempts" / call.stem).glob("*.json"):
+                yield read_json(attempt)
+
+
 @pytest.mark.parametrize("mode", ["long", "disconnect", "timeout", "cancel", "docker-stop"])
 def test_faults_preserve_terminal_evidence_and_cleanup(prepared_fixture, mode: str) -> None:
     from synergy_bench.prepare import command
@@ -192,16 +199,23 @@ def test_faults_preserve_terminal_evidence_and_cleanup(prepared_fixture, mode: s
 
     async def run() -> None:
         execution = asyncio.create_task(resume(root))
-        if mode not in {"cancel", "docker-stop"}:
+        if mode not in {"disconnect", "cancel", "docker-stop"}:
             await execution
             return
         try:
             async with asyncio.timeout(180):
-                while not list(root.glob("trials/*/attempt-*/*/artifacts/provider-started")):
+                while not any(
+                    (attempt.get("response") or {}).get("bytes", 0) > 0 for attempt in primary_attempts(root)
+                ):
                     if execution.done():
                         await execution
-                        pytest.fail("Provider stream never started")
+                        pytest.fail("Primary provider response was never recorded")
                     await asyncio.sleep(0.05)
+            if mode == "disconnect":
+                marker = next(root.glob("trials/*/attempt-*/*/artifacts/provider-started"))
+                marker.with_name("disconnect-release").touch()
+                await execution
+                return
             if mode == "cancel":
                 execution.cancel()
                 with pytest.raises(asyncio.CancelledError):
@@ -238,6 +252,8 @@ def test_faults_preserve_terminal_evidence_and_cleanup(prepared_fixture, mode: s
             assert result["execution"]["outcome"] in {"failed", "timeout", "cancelled"}, result
             assert result["evidence"]["recording"] == "partial", result
             assert result["accounting"]["tokens"]["input"]["unknown"] > 0, result
+            attempts = list(primary_attempts(root))
+            assert any((attempt.get("response") or {}).get("bytes", 0) > 0 for attempt in attempts), attempts
     assert_retained_credentials_absent(root)
     for resource in [["ps", "-a"], ["network", "ls"]]:
         projects = command(["docker", *resource, "--format", '{{.Label "com.docker.compose.project"}}'])
