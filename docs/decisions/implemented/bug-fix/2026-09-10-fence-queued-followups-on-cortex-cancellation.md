@@ -37,3 +37,5 @@ At the runtime deadline the timeout claims the task before its first await (`tim
 A cancelled or timed-out task can no longer be resurrected by mail queued before cancellation, and the parent hears an honest acknowledgement. Explicit new work sent after cancellation still starts and is driven normally, so session reuse is unaffected.
 
 A fenced run keeps its release-time follow-up drive only for items newer than the fence; pre-fence items lose it by design, and user aborts (`recoverQueuedTasks`) keep their existing behavior. Queued follow-ups sent before the cancellation are deleted, not quarantined; a caller that needs delivery after cancellation resends, which matches how a parent would re-task an idle session anyway.
+
+The timeout regression prepares the task and persists its follow-up before calling `Cortex.start`. This proves timeout fencing without requiring inbox I/O to finish within a fifty-millisecond runtime deadline. CI exposed that race when valid timeout cleanup completed before the former setup assertion; production deadlines and fencing behavior are unchanged.
