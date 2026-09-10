@@ -15,7 +15,7 @@ Hold the observed dock element in a signal so the resize observer resubscribes w
 - `apps/web/src/components/session/prompt-dock-height.ts` exports `createPromptDockHeight(onHeight)`: a `createSignal`-backed mount handle plus `createResizeObserver(dock, ({ height }) => onHeight(Math.ceil(height)))`. Signal reads inside the observer's diff effect make late mounts and shell swaps both observable.
 - `session.tsx` wires `composerLayout.mount` to `dockHeight.mount` and keeps the existing height consumer unchanged (store write plus the pinned-at-bottom re-scroll when the scroller was already within 10 px of the bottom).
 
-The regression net is `apps/web/test/components/session/prompt-dock-height.dom.test.tsx` (registered in `apps/web/script/test.ts` `playwrightIsolated`): it drives the real helper in Chromium through late mount → resize → shell swap (keyed `Show` rebuild, the same DOM churn the shell resource causes) and pins the session page wiring (`createPromptDockHeight`, no bare `createResizeObserver` in the page).
+The regression net is `apps/web/test/components/session/prompt-dock-height.dom.test.tsx` (registered in `apps/web/script/test.ts` `playwrightIsolated`): it drives the real helper in Chromium through late mount → resize → shell swap (keyed `Show` rebuild, the same DOM churn the shell resource causes) and renders the real `DefaultSession` layout to assert its computed `--prompt-height`, including fractional-height ceiling. The fixture owns its observer through the Solid component lifecycle and calls mount cleanup during shell replacement.
 
 ## Alternatives considered
 

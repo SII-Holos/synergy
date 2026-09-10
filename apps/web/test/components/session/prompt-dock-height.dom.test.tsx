@@ -10,6 +10,7 @@ import solidPlugin from "vite-plugin-solid"
 // resubscribes, so `--prompt-height` stays unset and the scroll-to-bottom button
 // falls back to an offset the dock covers. This suite proves the late-mount,
 // resize, and shell-swap contracts against the real helper in a real browser.
+const layoutPath = path.resolve(import.meta.dir, "../../../src/plugin/default-session.tsx")
 const helperPath = path.resolve(import.meta.dir, "../../../src/components/session/prompt-dock-height.ts")
 
 let browser: Browser
@@ -24,7 +25,10 @@ async function waitForHeight(target: number, timeoutMs = 5000): Promise<number[]
   let heights: number[] = []
   while (Date.now() < deadline) {
     heights = await page.evaluate(() => (globalThis as unknown as { __heights: number[] }).__heights)
-    if (heights.includes(target)) return heights
+    const cssHeight = await page
+      .locator(".session-workbench-pane")
+      .evaluate((element) => getComputedStyle(element).getPropertyValue("--prompt-height").trim())
+    if (heights.at(-1) === target && cssHeight === `${target}px`) return heights
     await page.waitForTimeout(100)
   }
   throw new Error(`Timed out waiting for dock height ${target}; observed: ${JSON.stringify(heights)}`)
@@ -39,22 +43,30 @@ beforeAll(async () => {
   await Bun.write(
     path.join(fixtureDirectory, "main.tsx"),
     `
-      import { Show, createSignal } from "solid-js"
+      import { Show, createSignal, onCleanup } from "solid-js"
       import { render } from "solid-js/web"
       import { createPromptDockHeight } from ${JSON.stringify(`/@fs/${helperPath}`)}
 
+      import { DefaultSession } from ${JSON.stringify(`/@fs/${layoutPath}`)}
+
+      function App() {
       const heights: number[] = []
       globalThis.__heights = heights
-      const dock = createPromptDockHeight((height) => heights.push(height))
+      const [promptHeight, setPromptHeight] = createSignal<number>()
+      const dock = createPromptDockHeight((height) => {
+        heights.push(height)
+        setPromptHeight(height)
+      })
       const [generation, setGeneration] = createSignal(0)
       const heightFor = (gen: number) => 100 + gen * 50
 
       const Dock = (props: { gen: number }) => {
+        onCleanup(() => dock.mount(undefined))
         return (
           <div
             ref={(el: HTMLDivElement) => {
               dock.mount(el)
-              ;(globalThis as any).__dockElement = el
+              ;(globalThis as typeof globalThis & { __dockElement: HTMLDivElement }).__dockElement = el
             }}
             data-dock={props.gen}
             style={{ height: heightFor(props.gen) + "px" }}
@@ -64,18 +76,21 @@ beforeAll(async () => {
         )
       }
 
-      render(
-        () => (
-          <div>
-            <button data-mount onClick={() => setGeneration(1)}>mount</button>
-            <button data-swap onClick={() => setGeneration((gen) => gen + 1)}>swap</button>
-            <Show when={generation()} keyed>
-              {(gen) => <Dock gen={gen} />}
-            </Show>
-          </div>
-        ),
-        document.querySelector("#root")!,
+      return (
+        <div>
+          <button data-mount onClick={() => setGeneration(1)}>mount</button>
+          <button data-swap onClick={() => setGeneration((gen) => gen + 1)}>swap</button>
+          <DefaultSession context={{ layout: {
+            minimumWidth: () => undefined,
+            promptHeight,
+            render: (part) => part === "composer" ? (
+              <Show when={generation()} keyed>{(gen) => <Dock gen={gen} />}</Show>
+            ) : undefined,
+          } }} />
+        </div>
       )
+      }
+      render(() => <App />, document.querySelector("#root")!)
     `,
   )
 
@@ -134,12 +149,16 @@ describe("prompt dock height observer", () => {
     await page.click("[data-swap]")
     await waitForHeight(200)
     expect(pageErrors).toEqual([])
-  })
+  }, 10_000)
 
-  test("session page wires the reactive dock mount instead of a bare variable", async () => {
-    const source = await Bun.file(path.resolve(import.meta.dir, "../../../src/pages/session.tsx")).text()
-    expect(source).toContain("createPromptDockHeight(")
-    expect(source).toContain("mount: dockHeight.mount")
-    expect(source).not.toContain("createResizeObserver")
-  })
+  test("the rendered session rounds fractional dock height up for layout clearance", async () => {
+    await page.goto(baseUrl)
+    await page.click("[data-mount]")
+    await waitForHeight(150)
+    await page.locator("[data-dock]").evaluate((element) => {
+      ;(element as HTMLElement).style.height = "179.25px"
+    })
+    await waitForHeight(180)
+    expect(pageErrors).toEqual([])
+  }, 10_000)
 })
