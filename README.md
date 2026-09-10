@@ -181,6 +181,8 @@ bun run quality:quick
 
 For programmatic experiments, `packages/harness` exposes the execution and lifecycle APIs, and `packages/runtime-local` supplies local tools, native execution and provider SDKs. `packages/cli` keeps the same `synergy` command with an injected runtime; the complete product composes optional capabilities in `packages/product-runtime`. See the [package map](docs/reference/packages.md) for build and installation checks.
 
+Local performance experiments use the [benchmark workspace](benchmark/README.md): fixed task subsets, frozen source revisions, paired variants and native rollout evidence. Start with `bun bench plan benchmark/configs/ab.yaml`.
+
 Core runtime tests run from `packages/harness`:
 
 ```bash
