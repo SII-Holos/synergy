@@ -28,7 +28,7 @@ import type {
   NoteMetaScopeGroup,
   NotePatchInput,
 } from "@ericsanchezok/synergy-sdk/client"
-import { getScopeLabel, HOME_SCOPE_KEY } from "@/utils/scope"
+import { getScopeLabel, HOME_SCOPE_KEY, resolveProjectScope } from "@/utils/scope"
 import { assetHttpUrl } from "@/utils/asset-url"
 import { useLocale } from "@/context/locale"
 import { useLingui } from "@lingui/solid"
@@ -969,8 +969,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   const currentScopeID = createMemo(() => {
     const dir = directory()
     if (!dir || dir === "home") return "home"
-    const scope = globalSync.data.scope.find((s) => s.worktree === dir || (s.sandboxes ?? []).includes(dir))
-    return scope?.id ?? ""
+    return resolveProjectScope(dir, undefined, globalSync.data.scope)?.id ?? ""
   })
 
   const scopeLookup = createMemo(() => {

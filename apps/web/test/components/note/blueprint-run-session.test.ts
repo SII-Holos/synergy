@@ -105,6 +105,15 @@ describe("Blueprint run session helpers", () => {
     ).toBe(false)
   })
 
+  test("resolves a directory that is both its own project worktree and another scope's sandbox to the owner", () => {
+    const claimed = [
+      { id: "scope-claimant", worktree: "C:/repo/other", sandboxes: ["C:/repo/claimed"] },
+      { id: "scope-owner", worktree: "C:/repo/claimed", sandboxes: [] },
+    ]
+    expect(blueprintScopeIDForDirectory("C:/repo/claimed", claimed)).toBe("scope-owner")
+    expect(blueprintScopeIDForDirectory("C:/repo/claimed/", claimed)).toBe("scope-owner")
+  })
+
   test("only enables worktree runs for git project scopes", () => {
     expect(canCreateBlueprintWorktree({ blueprintDirectory: "home", scopes })).toBe(false)
     expect(canCreateBlueprintWorktree({ blueprintDirectory: "C:/repo/docs", scopes })).toBe(false)
