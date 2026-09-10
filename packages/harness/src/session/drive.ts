@@ -2,6 +2,7 @@ import { Log } from "../util/log"
 import { ContinuationKernel } from "./continuation-kernel"
 import { SessionInbox } from "./inbox"
 import { SessionManager } from "./manager"
+import { RolloutContinuationRecovery } from "./rollout/continuation-recovery"
 
 export namespace SessionDrive {
   const log = Log.create({ service: "session.drive" })
@@ -41,6 +42,7 @@ export namespace SessionDrive {
   async function arbitrate(sessionID: string, reason: string): Promise<boolean> {
     if (SessionManager.isRunning(sessionID)) return false
     if (await SessionInbox.hasRunnableItem(sessionID)) return true
+    if (await RolloutContinuationRecovery.pending(sessionID)) return true
 
     const proposal = await ContinuationKernel.propose(sessionID)
     if (!proposal) return false
