@@ -86,19 +86,20 @@ export namespace Chronicler {
       type: "chronicle",
       phase: "pre",
       blocking: false,
+      detached: true,
       signals: ["compact"],
       collect() {
         return []
       },
       capture(ctx) {
-        return { type: "chronicle", sessionID: ctx.sessionID, abort: ctx.abort }
+        return { type: "chronicle", sessionID: ctx.sessionID }
       },
       key(input) {
         return input.sessionID
       },
       timeoutMs: 180_000,
       async execute(input, signal) {
-        await run({ sessionID: input.sessionID, abort: AbortSignal.any([input.abort, signal]) })
+        await run({ sessionID: input.sessionID, abort: signal })
         return "pass"
       },
     })
