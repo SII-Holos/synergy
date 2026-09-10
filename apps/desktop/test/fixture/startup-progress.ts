@@ -12,7 +12,9 @@ void run().catch((error) => {
 })
 
 async function run() {
+  console.log("Startup progress: waiting for Electron")
   await app.whenReady()
+  console.log("Startup progress: Electron ready")
   const window = new BrowserWindow({
     width: 700,
     height: 520,
@@ -27,6 +29,7 @@ async function run() {
           theme: desktopThemeSnapshot(defaultDesktopSkinState(mode), mode === "dark"),
         }),
       )
+      console.log(`Startup progress: ${mode} page loaded`)
       const startup = new DesktopServerStartup()
       startup.receive('SYNERGY_STARTUP_V1 {"phase":"migration","step":1,"current":358,"total":8494}\n')
       await window.webContents.executeJavaScript(startupStatusScript(startup.status()))
@@ -34,6 +37,7 @@ async function run() {
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
         await Promise.all(document.querySelector('.startup-progress__fill').getAnimations().map(animation => animation.finished))
       })()`)
+      console.log(`Startup progress: ${mode} animation settled`)
       const state = await window.webContents.executeJavaScript(`(() => {
         const bar = document.querySelector('[role="progressbar"]')
         const title = document.querySelector('[role="status"]')

@@ -20,10 +20,13 @@ export async function fixture(
     fn: async () => {
       const session = await Session.create({})
       try {
+        const rootID = Identifier.ascending("message")
         const root = await Session.updateMessage({
-          id: Identifier.ascending("message"),
+          id: rootID,
           sessionID: session.id,
           role: "user",
+          isRoot: true,
+          rootID,
           agent: "synergy",
           model: { providerID: "test", modelID: "test" },
           time: { created: Date.now() },

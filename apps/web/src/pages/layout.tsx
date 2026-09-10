@@ -20,7 +20,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { toastConfigFromServerToast } from "@/components/settings/toast-preferences"
-import { HOME_SCOPE_KEY } from "@/utils/scope"
+import { HOME_SCOPE_KEY, resolveProjectScope } from "@/utils/scope"
 
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
@@ -176,8 +176,10 @@ export default function Layout(props: ParentProps) {
   // Derive current project and sessions from route params
   const currentProject = createMemo(() => {
     const directory = params.dir ? base64Decode(params.dir) : undefined
-    if (!directory) return
-    return layout.scopes.list().find((p) => p.worktree === directory || p.sandboxes?.includes(directory))
+    const scopes = layout.scopes.list()
+    const resolved = resolveProjectScope(directory, undefined, scopes)
+    if (!resolved) return undefined
+    return scopes.find((scope) => scope.worktree === resolved.worktree)
   })
 
   const currentSessions = createMemo(() => layout.nav.projectSessions(currentProject()))
