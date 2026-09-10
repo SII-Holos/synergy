@@ -28,7 +28,7 @@ import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
 import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
-import { migrations } from "@ericsanchezok/synergy-harness/test/internal/session/migration"
+import { RolloutContinuationMigration } from "@ericsanchezok/synergy-harness/test/internal/session/rollout/continuation-migration"
 import { RolloutSnapshot } from "@ericsanchezok/synergy-harness/session/rollout/snapshot"
 import { Command } from "@ericsanchezok/synergy-runtime-local/command/command"
 import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
@@ -2595,9 +2595,7 @@ for (const phase of ["materializing", "persisted-terminal", "startup-without-tas
                   model: { providerID: "test-provider", modelID: "test-model" },
                   parts: [{ type: "text", text: "New task after the stuck continuation" }],
                 })
-            await migrations
-              .find((migration) => migration.id === "20260910-rollout-unanswered-continuation")!
-              .up(() => {})
+            await RolloutContinuationMigration.session(owner)
             if (phase.startsWith("startup")) {
               if (phase === "startup-retry") {
                 using wake = spyOn(SessionManager, "wake").mockRejectedValueOnce(new Error("Temporary wake failure"))

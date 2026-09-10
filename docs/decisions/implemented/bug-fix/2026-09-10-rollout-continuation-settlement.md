@@ -27,3 +27,5 @@ Migration registration keeps history and progress imports type-only or deferred 
 ## Consequences
 
 Pending user tasks retain their order and execute after the recovered continuation. Reconciliation waits for admission to finish before checking the inbox and transcript. Upgrade scans rollout metadata and reads message metadata only for owners with eligible completed runs; it does not load tool payloads or rewrite historical calls. Behavioral tests cover materialization-time reconciliation, persisted-state recovery without queued tasks, failed-wake retries, repeated startup, unaffected terminal states, and migration idempotence. Fresh-process migration registration tests verify the cold import graph.
+
+Product recovery integration tests apply the domain migration to their owned session. The Harness migration suite separately verifies global runner registration, ordering, and idempotence, so unrelated incomplete test records cannot contaminate recovery assertions. Production migration scans retain strict storage error handling.
