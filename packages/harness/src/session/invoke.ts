@@ -138,7 +138,7 @@ export namespace SessionInvoke {
   export function assertIdle(sessionID: string) {
     return SessionManager.assertIdle(sessionID)
   }
-  export function cancel(sessionID: string, options?: { recoverQueuedTasks?: boolean }) {
+  export function cancel(sessionID: string, options?: { recoverQueuedTasks?: boolean; fenceQueuedWork?: boolean }) {
     log.info("cancel", { sessionID })
     evictRecallCache(sessionID)
     PermissionNext.clearForSession(sessionID).catch((err) => {
@@ -1261,7 +1261,14 @@ export namespace SessionInvoke {
             // they are successfully materialized and the reply cycle completes.
             if (abort.aborted) {
               // Abort: discard steer/context, keep task items (no auto-start).
-              await SessionInbox.removeByMode(sessionID, ["steer", "context"])
+              // A fenced internal cancellation owns the session's queued work
+              // and discards task items too, so a cancelled delegation cannot
+              // be restarted by mail queued before the cancellation (#1339).
+              if (SessionManager.isFenced(sessionID)) {
+                await SessionInbox.removeByMode(sessionID, ["task", "steer", "context"])
+              } else {
+                await SessionInbox.removeByMode(sessionID, ["steer", "context"])
+              }
               return false
             }
 

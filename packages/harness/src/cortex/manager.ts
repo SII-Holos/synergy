@@ -320,10 +320,15 @@ export namespace Cortex {
 
     if (current.timeoutMs) {
       const timeout = setTimeout(() => {
-        const active = tasks.get(taskID)
-        if (!active || isTerminal(active.status)) return
-        SessionInvoke.cancel(active.sessionID)
-        void updateTaskStatus(taskID, "error", `Task exceeded its ${current.timeoutMs}ms runtime limit.`)
+        void (async () => {
+          const active = tasks.get(taskID)
+          if (!active || isTerminal(active.status)) return
+          SessionInvoke.cancel(active.sessionID, { fenceQueuedWork: true })
+          await SessionInbox.removeByMode(active.sessionID, ["task", "steer", "context"]).catch((error) => {
+            log.error("failed to discard queued follow-ups on timeout", { taskID, error })
+          })
+          await updateTaskStatus(taskID, "error", `Task exceeded its ${current.timeoutMs}ms runtime limit.`)
+        })()
       }, current.timeoutMs)
       taskTimeouts.set(taskID, timeout)
     }
@@ -1227,7 +1232,13 @@ export namespace Cortex {
 
     log.info("cancelling task", { taskID, sessionID: task.sessionID, status: task.status })
     cancellationRequests.add(taskID)
-    SessionInvoke.cancel(task.sessionID)
+    // Fenced cancellation: the cancelled task owns the child session's queued
+    // work, so follow-ups queued before the cancellation are discarded instead
+    // of being restarted as a new root after this acknowledgement (#1339).
+    SessionInvoke.cancel(task.sessionID, { fenceQueuedWork: true })
+    await SessionInbox.drainReady(task.sessionID).catch((error) => {
+      log.error("failed to discard queued follow-ups on cancel", { taskID, error })
+    })
     await updateTaskStatus(taskID, "cancelled")
   }
 

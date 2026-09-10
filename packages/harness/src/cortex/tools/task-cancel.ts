@@ -64,7 +64,7 @@ task_cancel(all: true)
     return {
       title: `Cancelled ${params.task_id}`,
       metadata: { taskId: params.task_id, description: task.description },
-      output: `Task ${params.task_id} cancelled.`,
+      output: `Task ${params.task_id} cancelled. Its queued follow-ups were discarded and in-flight execution is stopping; wait for the session to go idle before taking over its workspace.`,
     }
   },
 })

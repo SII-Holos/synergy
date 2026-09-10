@@ -75,6 +75,9 @@ export namespace SessionManager {
     rootID?: string
     /** Set when the abort came from an explicit user action; release then schedules the pending-work drive. */
     recoverQueuedTasks?: boolean
+    /** Set by an internal cancellation (Cortex) that owns the session's queued work: fenced cleanup
+     *  discards remaining queued items at the loop boundary and release stops requesting follow-up work. */
+    fenceQueuedWork?: boolean
   }
 
   export interface SessionRuntime {
@@ -400,8 +403,10 @@ export namespace SessionManager {
           const runtime = getRuntime(sessionID)
           const recoverQueuedTasks =
             !!runtime?.owner && owns(runtime, lease) && runtime.owner.recoverQueuedTasks === true
+          const fenced = !!runtime?.owner && owns(runtime, lease) && runtime.owner.fenceQueuedWork === true
           await finish(lease, {
-            requestNextWork: completed || recoverQueuedTasks || options?.requestNextWorkOnFailure !== false,
+            requestNextWork:
+              !fenced && (completed || recoverQueuedTasks || options?.requestNextWorkOnFailure !== false),
           })
         }
       } finally {
@@ -471,7 +476,7 @@ export namespace SessionManager {
 
   export function signalAbort(
     sessionID: string,
-    options?: { recoverQueuedTasks?: boolean; rootID?: string },
+    options?: { recoverQueuedTasks?: boolean; fenceQueuedWork?: boolean; rootID?: string },
   ): AbortOutcome {
     const runtime = getRuntime(sessionID)
     if (!runtime) return "not_found"
@@ -485,11 +490,18 @@ export namespace SessionManager {
     if (owner.phase === "stopping") return "already_stopping"
 
     owner.recoverQueuedTasks = options?.recoverQueuedTasks === true || undefined
+    owner.fenceQueuedWork = options?.fenceQueuedWork === true || undefined
     owner.phase = "stopping"
     transitionExecutionPhase(runtime, "stopping")
     owner.controller.abort()
     cancelWaiters(runtime)
     return "signaled"
+  }
+
+  /** Whether the active abort fenced queued work: an internal cancellation that
+   *  owns the session's inbox and discards remaining queued items. */
+  export function isFenced(sessionID: string): boolean {
+    return getRuntime(sessionID)?.owner?.fenceQueuedWork === true
   }
   export function completeWaiters(lease: LoopLease, result: MessageV2.WithParts): boolean {
     const runtime = getRuntime(lease.sessionID)

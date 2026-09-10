@@ -127,7 +127,7 @@ Plugin Host delegation is always handle-based: `start()` returns immediately, wh
 
 ## Cancellation and Retention
 
-Cancelling a task traverses its descendant task tree, aborts active work, releases concurrency slots, records terminal state, and cleans up owned worktree resources. Cancellation does not erase the child session.
+Cancelling a task traverses its descendant task tree, aborts active work, releases concurrency slots, records terminal state, and cleans up owned worktree resources. Cancellation is fenced: follow-ups queued in the child inbox before the cancellation are discarded before the cancelled acknowledgement is returned, so a cancelled delegation cannot be restarted by mail the parent queued earlier. Cancellation does not erase the child session.
 
 Visible terminal tasks keep their live task record long enough for clients to observe completion, then the in-memory entry is removed. The durable child session remains available through normal session navigation and inspection.
 
@@ -142,4 +142,5 @@ Visible terminal tasks keep their live task record long enough for clients to ob
 - Backgrounding changes who waits; it does not change the task's execution or persistence.
 - Output mode is an explicit contract, not a best-effort prompt convention.
 - Cancellation covers descendant tasks and runtime resources without deleting durable history.
+- Cancelled and timed-out tasks fence the child session's queued work: the terminal acknowledgement means queued follow-ups are already discarded, while mail sent after cancellation starts a new, normally tracked execution.
 - Parent completion notification and silent workflow handoff are durable and idempotent; notification acknowledgement and delivery are mutually exclusive per task.
