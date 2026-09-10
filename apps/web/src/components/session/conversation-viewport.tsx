@@ -8,7 +8,7 @@ export function ConversationViewport(props: {
   scrolledUp: boolean
   onScrolledUpChange: (value: boolean) => void
   autoScroll: PluginConversationViewport
-  setScrollRef: (el: HTMLDivElement | undefined) => void
+  setScrollRef: (el: HTMLDivElement | undefined, releaseOf?: HTMLDivElement) => void
   overlay?: JSX.Element
   stickyHeader?: JSX.Element
   contentClass?: string
@@ -18,9 +18,15 @@ export function ConversationViewport(props: {
   onScrollContainer?: (el: HTMLDivElement) => void
   children: JSX.Element
 }) {
+  // Keyed session-tree swaps mount the successor viewport before this
+  // owner's cleanup runs. Releasing with the element this viewport bound
+  // lets holders ignore the stale cleanup instead of dropping the
+  // successor's binding.
+  let boundScrollEl: HTMLDivElement | undefined
+  let boundContentEl: HTMLElement | undefined
   onCleanup(() => {
-    props.setScrollRef(undefined)
-    props.autoScroll.contentRef(undefined)
+    props.setScrollRef(undefined, boundScrollEl)
+    props.autoScroll.contentRef(undefined, boundContentEl)
   })
   return (
     <div class="relative w-full h-full min-w-0">
@@ -44,7 +50,10 @@ export function ConversationViewport(props: {
         </div>
       </Show>
       <div
-        ref={props.setScrollRef}
+        ref={(el) => {
+          boundScrollEl = el
+          props.setScrollRef(el)
+        }}
         onScroll={(event) => {
           props.autoScroll.handleScroll()
           const el = event.currentTarget
@@ -56,7 +65,10 @@ export function ConversationViewport(props: {
       >
         <Show when={props.stickyHeader}>{props.stickyHeader}</Show>
         <div
-          ref={props.autoScroll.contentRef}
+          ref={(el) => {
+            boundContentEl = el
+            props.autoScroll.contentRef(el)
+          }}
           class={["min-w-0 w-full max-w-full", props.contentClass].filter(Boolean).join(" ")}
           classList={props.contentClassList}
         >

@@ -57,7 +57,7 @@ Create dialogs with `context.overlays.dialog(handle => <Dialog title="Preference
 
 - `shell.render()` and `HostView` compose native navigation, route, footer, conversation, composer, side workbench and bottom workbench views. A view unsupported on that page throws explicitly.
 - `session` reads the existing bounded message/part window, status and history state and delegates history loading, return-to-latest, refresh, rewind and fork to the session owner.
-- `conversation` supplies the shared turn projection, bounded render window, history controls, viewport bindings and canonical message actions. Replacing its view does not create another message store or derive message semantics.
+- `conversation` supplies the shared turn projection, bounded render window, history controls, viewport bindings and canonical message actions. Replacing its view does not create another message store or derive message semantics. Custom viewports release their bound elements with `setScrollRef(undefined, scrollElement)` and `autoScroll.contentRef(undefined, contentElement)` so cleanup of a replaced view cannot clear its successor. Omitting the optional release element retains unconditional clearing.
 - `input` supplies revisioned text and selection, IME state, attachments, agent/model/variant choices and explicit submit/stop. Its optional native editor mounting API uses the same document as headless edits. Native workflow controls can be composed through the service's named control views.
 - `composerLayout` supplies layout state, navigation links and host-owned inbox, delegation, greeting, status and priority views. It does not expose the SDK or synchronization store.
 

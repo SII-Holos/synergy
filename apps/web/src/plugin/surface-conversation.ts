@@ -14,7 +14,9 @@ export function bindPluginConversation(
     return source
   }
   let releaseScroll: (() => void) | undefined
+  let releaseScrollElement: HTMLDivElement | undefined
   let releaseContent: (() => void) | undefined
+  let releaseContentElement: HTMLElement | undefined
   return {
     get sessionID() {
       return read().sessionID
@@ -52,20 +54,23 @@ export function bindPluginConversation(
     scrolledUp: () => read().scrolledUp(),
     onScrolledUpChange: (value) => read().onScrolledUpChange(value),
     autoScroll: {
-      contentRef(element) {
+      contentRef(element, releaseOf) {
+        if (!element && releaseOf !== undefined && releaseContentElement !== releaseOf) return
         if (!element) {
           releaseContent?.()
           releaseContent = undefined
+          releaseContentElement = undefined
           return
         }
         read()
         releaseContent?.()
-        releaseContent = element
-          ? access.own("session.read", () => {
-              source.autoScroll.contentRef(element)
-              return () => source.autoScroll.contentRef(undefined)
-            })
-          : undefined
+        releaseContentElement = element
+        releaseContent = access.own("session.read", () => {
+          source.autoScroll.contentRef(element)
+          return () => {
+            source.autoScroll.contentRef(undefined, element)
+          }
+        })
       },
       handleScroll: () => read().autoScroll.handleScroll(),
       handleInteraction: (event) => read().autoScroll.handleInteraction(event),
@@ -73,20 +78,23 @@ export function bindPluginConversation(
     },
     onClearHash: () => read().onClearHash(),
     onScheduleScrollSpy: (container) => read().onScheduleScrollSpy(container),
-    setScrollRef(element) {
+    setScrollRef(element, releaseOf) {
+      if (!element && releaseOf !== undefined && releaseScrollElement !== releaseOf) return
       if (!element) {
         releaseScroll?.()
         releaseScroll = undefined
+        releaseScrollElement = undefined
         return
       }
       read()
       releaseScroll?.()
-      releaseScroll = element
-        ? access.own("session.read", () => {
-            source.setScrollRef(element)
-            return () => source.setScrollRef(undefined)
-          })
-        : undefined
+      releaseScrollElement = element
+      releaseScroll = access.own("session.read", () => {
+        source.setScrollRef(element)
+        return () => {
+          source.setScrollRef(undefined, element)
+        }
+      })
     },
     isDesktop: () => read().isDesktop(),
     scrollToMessage: (message, behavior) => read().scrollToMessage(message, behavior),

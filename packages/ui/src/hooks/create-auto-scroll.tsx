@@ -61,7 +61,6 @@ export function createAutoScroll(options: AutoScrollOptions) {
     scrollFrame = undefined
     const force = forceNextScroll
     forceNextScroll = false
-
     if (!force && !active()) return
     if (!scroll) return
 
@@ -177,7 +176,11 @@ export function createAutoScroll(options: AutoScrollOptions) {
   })
 
   return {
-    scrollRef: (el: HTMLElement | undefined) => {
+    scrollRef: (el: HTMLElement | undefined, releaseOf?: HTMLElement) => {
+      // A keyed subtree swap mounts the successor viewport before the
+      // swapped-out owner's cleanup runs; an attributed release only
+      // clears a binding it still owns.
+      if (!el && releaseOf !== undefined && scroll !== releaseOf) return
       if (cleanup) {
         cleanup()
         cleanup = undefined
@@ -213,7 +216,10 @@ export function createAutoScroll(options: AutoScrollOptions) {
         window.removeEventListener("touchend", handleTouchEnd)
       }
     },
-    contentRef: (el: HTMLElement | undefined) => setStore("contentRef", el),
+    contentRef: (el: HTMLElement | undefined, releaseOf?: HTMLElement) => {
+      if (!el && releaseOf !== undefined && store.contentRef !== releaseOf) return
+      setStore("contentRef", el)
+    },
     handleScroll,
     handleInteraction,
     scrollToBottom: () => scrollToBottom(false),

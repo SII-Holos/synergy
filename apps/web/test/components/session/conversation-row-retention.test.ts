@@ -9,6 +9,7 @@ let browser: Browser
 let page: Page
 let server: ViteDevServer
 let fixtureDirectory: string
+const pageErrors: string[] = []
 
 // Deterministic message factory so the fixture and the test share ids.
 function msg(id: string, role: "user" | "assistant", text: string) {
@@ -101,11 +102,11 @@ beforeAll(async () => {
           const [timeline, setTimeline] = createSignal<AnyMsg[]>([])
           ;(window as any).__setTimeline = (msgs: AnyMsg[]) => setTimeline(msgs)
           const autoScroll = {
-            contentRef: undefined,
+            contentRef: () => {},
             forceScrollToBottom: () => {},
             handleInteraction: () => {},
             handleScroll: () => {},
-            scrollRef: undefined,
+            scrollRef: () => {},
           }
           const turnProjection = () => ({
             turnMessagesFor: (m: AnyMsg) => [m],
@@ -173,6 +174,7 @@ beforeAll(async () => {
 
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 900, height: 700 } })
+  page.on("pageerror", (error) => pageErrors.push(error.message))
   await page.goto(url)
 })
 
@@ -192,6 +194,7 @@ describe("conversation row retention", () => {
       [JSON.parse(msg("msg_a", "user", "first")), JSON.parse(msg("msg_b", "user", "second"))] as unknown[],
     )
 
+    expect(pageErrors).toEqual([])
     const rows = page.locator('[data-slot="session-turn-stub"]')
     await expect(rows.count()).resolves.toBe(2)
     const textA = await page.evaluate(() => {
@@ -224,6 +227,7 @@ describe("conversation row retention", () => {
 
     // Same row owner stayed mounted (no new component instance) and the
     // replaced object's data propagated into the existing row.
+    expect(pageErrors).toEqual([])
     expect(mountsAfter).toBe(mountsBefore)
     expect(textUpdated).toBe("first-updated")
 
