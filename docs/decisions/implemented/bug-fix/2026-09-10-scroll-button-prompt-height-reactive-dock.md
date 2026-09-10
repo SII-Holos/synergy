@@ -30,3 +30,5 @@ The regression net is `apps/web/test/components/session/prompt-dock-height.dom.t
 - `--prompt-height` tracks the real dock height across initial mount and shell swaps; the scroll-to-bottom button and the conversation bottom padding (`md:pb-[calc(var(--prompt-height,10rem)+96px)]`) position from measured geometry again. Verified at 900 px: the variable reports `161px` against a 160.8 px dock and the button bottom clears the dock content top by ~12 px.
 - The dock-observation contract is now pinned by a real-browser suite instead of relying on the wiring happening to be reactive.
 - The observer callback still receives the content-box height (ceil'd), matching the pre-existing calibration of the fallback values.
+
+The exact observer module is exempted from Bun line accounting because its regression executes the real Vite-compiled helper in Chromium. The browser tests remain required and exercise delayed mount, resize, replacement and fractional height through the rendered session layout. Package coverage thresholds are unchanged.
