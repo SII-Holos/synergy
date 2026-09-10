@@ -463,27 +463,30 @@ export namespace SessionInvoke {
 
               const rollbackActive = (await SessionHistory.storedInfo(sessionID))?.rollback?.canUnrollback === true
 
-              // Mode-based drain ①: steer items must be materialized BEFORE needsModelCall
-              // so they can trigger a model call in this iteration. Context items follow
-              // in ② after the predicate confirms a call is needed (piggyback).
-              if (!rollbackActive) {
-                const steerItems = await SessionInbox.drainSteer(sessionID)
-                if (steerItems.length > 0) {
-                  log.info("drained steer items into session", { sessionID, count: steerItems.length })
-                  for (const item of steerItems) {
-                    const materialized = await SessionInbox.materializeItem(item, R.id, { guiding: true })
-                    if (materialized) msgs.push(materialized)
+              {
+                using lock = await Lock.write(`session-rollout:${sessionID}:${R.id}`)
+                // Mode-based drain ①: steer items must be materialized BEFORE needsModelCall
+                // so they can trigger a model call in this iteration. Context items follow
+                // in ② after the predicate confirms a call is needed (piggyback).
+                if (!rollbackActive) {
+                  const steerItems = await SessionInbox.drainSteer(sessionID)
+                  if (steerItems.length > 0) {
+                    log.info("drained steer items into session", { sessionID, count: steerItems.length })
+                    for (const item of steerItems) {
+                      const materialized = await SessionInbox.materializeItem(item, R.id, { guiding: true })
+                      if (materialized) msgs.push(materialized)
+                    }
                   }
                 }
-              }
 
-              if (!SessionProgress.needsModelCall(msgs, R.id)) {
-                break
-              }
-              processedRootID = R.id
-              if (!segment) {
-                segment = await RolloutLifecycle.start(session, R, RParts ?? [])
-                segments.push(segment)
+                if (!SessionProgress.needsModelCall(msgs, R.id)) {
+                  break
+                }
+                processedRootID = R.id
+                if (!segment) {
+                  segment = await RolloutLifecycle.start(session, R, RParts ?? [])
+                  segments.push(segment)
+                }
               }
               previousTerminalReplyID = SessionProgress.findTerminalReply(msgs, R.id)?.info.id
 
@@ -2161,11 +2164,15 @@ export namespace SessionInvoke {
     await SessionRecovery.resumePendingStopRequests(input?.scopeID)
     await SessionCortexRuntime.reconcileParentNotifications(input?.scopeID)
 
-    // Startup inbox discovery: sessions with a durable queued task are driven
-    // through the existing SessionDrive/wake path so the owning loop performs
-    // the peek/materialize/commit work. No direct materialization here.
+    // Durable inbox tasks and migration recovery intents use the owning loop;
+    // startup discovery never materializes messages itself.
     const { SessionDrive } = await import("./drive")
-    for (const sessionID of await SessionInbox.listRunnableSessions(input?.scopeID)) {
+    const { RolloutContinuationRecovery } = await import("./rollout/continuation-recovery")
+    const [inboxSessions, continuationSessions] = await Promise.all([
+      SessionInbox.listRunnableSessions(input?.scopeID),
+      RolloutContinuationRecovery.list(input?.scopeID),
+    ])
+    for (const sessionID of new Set([...continuationSessions, ...inboxSessions])) {
       if (SessionManager.isRunning(sessionID)) continue
       try {
         const handled = await SessionDrive.request(sessionID, "inbox-recovery", {

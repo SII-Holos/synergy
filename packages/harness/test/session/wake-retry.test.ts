@@ -144,6 +144,7 @@ describe("session wake retry", () => {
         })
 
         let attempts = 0
+        let committed = false
         const loop = spyOn(SessionInvoke, "loop").mockImplementation((async () => {
           attempts++
           if (attempts === 1) {
@@ -160,13 +161,13 @@ describe("session wake retry", () => {
           expect(task).toBeDefined()
           await SessionInbox.materializeItem(task!)
           await SessionInbox.commitReady(session.id, [task!.id])
+          committed = true
           return {} as never
         }) as unknown as typeof SessionInvoke.loop)
         spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
 
         SessionManager.scheduleWake(session.id, "test")
-        await waitFor(() => attempts >= 2)
-        await Bun.sleep(30)
+        await waitFor(() => committed)
         expect(attempts).toBe(2)
         expect(await SessionInbox.peekTask(session.id)).toBeUndefined()
       },

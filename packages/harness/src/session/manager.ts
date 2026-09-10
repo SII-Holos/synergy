@@ -14,6 +14,7 @@ import { Info, type StatusInfo } from "./types"
 import { SessionEndpoint } from "./endpoint"
 import { SessionMemoryPressure } from "./memory-pressure"
 import { SessionInbox } from "./inbox"
+import { RolloutContinuationRecovery } from "./rollout/continuation-recovery"
 import { ObservabilityMetrics } from "../observability/metrics"
 import { SessionProjectHealth } from "./project-health"
 
@@ -596,7 +597,8 @@ export namespace SessionManager {
 
   export async function wake(sessionID: string): Promise<void> {
     if (isRunning(sessionID)) return
-    if (!(await SessionInbox.hasRunnableItem(sessionID))) return
+    if (!(await SessionInbox.hasRunnableItem(sessionID)) && !(await RolloutContinuationRecovery.pending(sessionID)))
+      return
     const { SessionInvoke } = await import("./invoke")
     // Repair is best-effort: loop() surfaces its own terminal errors to the
     // retry chain, so a failed repair must not keep queued work undriven.
@@ -604,6 +606,7 @@ export namespace SessionManager {
       log.warn("session repair before wake failed", { sessionID, error })
     })
     await SessionInvoke.loop(sessionID)
+    await RolloutContinuationRecovery.pending(sessionID)
   }
 
   export function scheduleWake(sessionID: string, reason: string): void {
