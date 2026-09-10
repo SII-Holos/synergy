@@ -103,21 +103,22 @@ run/
   debug/                    # 手动重现，独立于正式 trial
 ```
 
-`execution` 表示 CLI 是否完成、失败、超时或中断；`verifier` 原样保存原题 reward；`evidence.complete` 表示计量、执行结果及 ZIP 中声明的文件和完整性是否齐全。三者不能互相替代。文件摘要覆盖留存的证据，ZIP 内部逐项验证 size 和 SHA-256。
+`execution` 表示 CLI 是否完成、失败、超时或中断；`verifier` 原样保存原题 reward；`evidence.valid` 表示证据链路是否有效，记录和 usage 的覆盖程度单独表示。三者不能互相替代。文件摘要覆盖留存的证据，ZIP 内部逐项验证 size 和 SHA-256。
 
 `accounting` 使用 Synergy 原生字段：token 的 known/unknown/total、cache read/write、reasoning、API estimate、subscription equivalent、reported currencies 等原样保存。未知 total 保持 null，reported cost 与估算金额保持不同语义。`execution.wall_ms` 是 CLI 运行耗时，Pier result 另外记录环境准备和 verifier 时间。这里不计算成功率、tokens/s、置信区间或金额汇率；后续分析只消费这些固定记录。
 
 ## 维护与扩展
 
-| 位置                          | 所有权                                |
-| ----------------------------- | ------------------------------------- |
-| `src/synergy_bench/config.py` | 实验配置和配对计划                    |
-| `catalog.py`、`suites/`       | 数据集版本、原题身份和选择            |
-| `source.py`、`prepare.py`     | 源码冻结、Linux 依赖准备、能力预检    |
-| `runner.py`、`storage.py`     | 生命周期、恢复、原子状态、所有权锁    |
-| `agent.py`                    | Pier 到 Synergy CLI 的单一适配边界    |
-| `evidence.py`                 | 原始记录归档与完整性校验              |
-| `runtime/`                    | 公开包组合、worker、CLI 执行及 export |
+| 位置                                       | 所有权                                           |
+| ------------------------------------------ | ------------------------------------------------ |
+| `src/synergy_bench/config.py`              | 实验配置和配对计划                               |
+| `catalog.py`、`suites/`                    | 数据集版本、原题身份和选择                       |
+| `source.py`、`prepare.py`                  | 源码冻结、Linux 依赖准备、能力预检               |
+| `runner.py`、`storage.py`、`background.py` | 调度、终态核对、原子状态、所有权锁、受限后台工作 |
+| `trial.py`、`recovery.py`                  | Pier 评分与清理期限、保留证据的恢复导出          |
+| `agent.py`                                 | Pier 到 Synergy CLI 的单一适配边界               |
+| `evidence.py`、`results.py`                | 版本化结果、原始记录与完整性校验                 |
+| `runtime/`                                 | 公开包组合、worker、CLI 执行及 export            |
 
 新增 benchmark 时添加一份 Suite 清单，并保持 task.toml 兼容 Pier；不同 suite 可以有不同题型、标签和 verifier reward 名称，无需改调度器。新增能力组合时在 `runtime/` 中编写具名 recipe，通过公开包 register/open 接口组合，父进程与 worker 使用同一 recipe。不要向 Harness 塞入评测调度，也不要复制 agent loop、CLI parser 或 accounting。
 
