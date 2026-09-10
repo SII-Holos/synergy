@@ -127,13 +127,6 @@ def initialize(path: Path) -> Path:
                 experiment = read_json(base / variant.experiment)
                 validate_credentials(experiment)
                 atomic_json(inputs / "experiment.json", experiment)
-            for key, reference in variant.env.items():
-                if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) or not re.fullmatch(
-                    r"[A-Za-z_][A-Za-z0-9_]*", reference
-                ):
-                    raise ValueError("Credentials must map environment variable names to environment variable names")
-                if key.startswith("SYNERGY_") or key in {"HOME", "PATH", "NODE_OPTIONS", "BUN_OPTIONS", "LD_PRELOAD"}:
-                    raise ValueError(f"Reserved benchmark environment variable: {key}")
             source_key = digest(variant.source.model_dump())
             if source_key not in artifacts:
                 stage = "source"
