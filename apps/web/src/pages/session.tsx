@@ -1127,9 +1127,13 @@ function SessionPageContent() {
 
   const anchor = (id: string) => `message-${id}`
 
-  const setScrollRef = (el: HTMLDivElement | undefined) => {
+  const setScrollRef = (el: HTMLDivElement | undefined, releaseOf?: HTMLDivElement) => {
+    // Attributed release: keyed session swaps mount the successor viewport
+    // before the swapped-out owner's cleanup runs; only clear when the
+    // binding is still the element this releaser bound.
+    if (!el && releaseOf !== undefined && scroller !== releaseOf) return
     scroller = el
-    autoScroll.scrollRef(el)
+    autoScroll.scrollRef(el, releaseOf)
   }
 
   const afterHistoryLayoutSettles = (fn: () => void) => {
@@ -1403,14 +1407,12 @@ function SessionPageContent() {
       setStore("messageId", id)
     })
   }
-
   createEffect(
     on(
       () => [params.id, messagesReady()] as const,
       ([sessionID, ready]) => {
         if (initScrollFrame !== undefined) {
           cancelAnimationFrame(initScrollFrame)
-          initScrollFrame = undefined
         }
 
         // Re-arm: a chain cancelled by a readiness flip must be able to run
@@ -1420,7 +1422,9 @@ function SessionPageContent() {
           return
         }
 
-        if (initializedSessions.has(sessionID)) return
+        if (initializedSessions.has(sessionID)) {
+          return
+        }
         initializedSessions.add(sessionID)
         initialScrollSettled = false
 
