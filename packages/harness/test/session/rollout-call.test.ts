@@ -288,3 +288,49 @@ test("transport recorder joins concurrent finishes while draining accepted write
   expect(attempt.status).toBe("interrupted")
   expect(attempt.response?.status).toBe("partial")
 })
+
+test("concurrent disposal waits for an in-flight response checkpoint", async () => {
+  const args = input()
+  const writing = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const original = RolloutLedger.checkpointCall.bind(RolloutLedger)
+  let checkpoints = 0
+  let disposals = 0
+  using checkpoint = spyOn(RolloutLedger, "checkpointCall").mockImplementation(async (...parameters) => {
+    if (++checkpoints === 2) {
+      writing.resolve()
+      await release.promise
+    }
+    return original(...parameters)
+  })
+  const stream = await RolloutCall.stream(args, async () => ({
+    fullStream: (async function* () {
+      yield { type: "text-delta" as const, id: "text", text: "x".repeat(RolloutArtifact.CHUNK_BYTES) }
+    })(),
+    usage: Promise.resolve(undefined),
+    async dispose() {
+      disposals++
+    },
+  }))
+  const iterator = stream.fullStream[Symbol.asyncIterator]()
+  const reading = iterator.next()
+  await writing.promise
+  let disposed = false
+  const first = stream.dispose().then(() => {
+    disposed = true
+  })
+  const second = stream.dispose()
+  try {
+    await Promise.resolve()
+    expect(disposed).toBe(false)
+    expect((await RolloutLedger.calls(args.owner, args.runID))[0].status).toBe("running")
+  } finally {
+    release.resolve()
+    await Promise.all([first, second, reading])
+  }
+  expect(disposals).toBe(1)
+  const [call] = await RolloutLedger.calls(args.owner, args.runID)
+  expect(call.status).toBe("cancelled")
+  expect(call.response?.status).toBe("partial")
+  expect(call.response?.bytes).toBeGreaterThanOrEqual(RolloutArtifact.CHUNK_BYTES)
+})

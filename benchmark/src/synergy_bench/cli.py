@@ -11,7 +11,7 @@ from typing import Any
 
 from .catalog import Suite
 from .evidence import summarize
-from .prepare import BENCHMARK
+from .prepare import BENCHMARK, remove_owned_container
 from .recovery import recover_export
 from .runner import initialize, inspect_config, remove_environment, resume
 from .storage import locked, read_json
@@ -29,6 +29,9 @@ def clean(root: Path) -> None:
         for category in ["trials", "debug"]:
             for record in (root / category).glob("*/attempt-*/environment.json"):
                 remove_environment(root, record)
+        for category in ["recoveries", "preparation"]:
+            for record in (root / category).glob("*/container.id"):
+                remove_owned_container(record)
         shutil.rmtree(root)
 
 

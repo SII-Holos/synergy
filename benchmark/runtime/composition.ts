@@ -1,3 +1,4 @@
+import { BenchmarkInputError } from "./input-error"
 import { pathToFileURL } from "node:url"
 import path from "node:path"
 import { realpath } from "node:fs/promises"
@@ -18,7 +19,7 @@ export async function loadComposition(name: string): Promise<Composition> {
   const loader = Object.hasOwn(builtin, name) ? builtin[name as keyof typeof builtin] : undefined
   const custom = !loader && name.startsWith("./") ? await realpath(path.resolve(import.meta.dir, name)) : undefined
   if (custom && !custom.startsWith(import.meta.dir + path.sep))
-    throw new Error("Custom compositions must stay inside the frozen runtime directory")
+    throw new BenchmarkInputError("Custom compositions must stay inside the frozen runtime directory")
   const module = loader ? await loader() : custom ? await import(pathToFileURL(custom).href) : undefined
   const value = module?.default as Composition | undefined
   if (
@@ -27,6 +28,6 @@ export async function loadComposition(name: string): Promise<Composition> {
     typeof value.register !== "function" ||
     typeof value.open !== "function"
   )
-    throw new Error(`Invalid runtime composition: ${name}`)
+    throw new BenchmarkInputError(`Invalid runtime composition: ${name}`)
   return value
 }

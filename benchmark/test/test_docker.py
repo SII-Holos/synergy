@@ -1,3 +1,4 @@
+import asyncio
 import os
 import shutil
 from pathlib import Path
@@ -16,9 +17,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_real_synergy_paired_rollout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import asyncio
-
+@pytest.fixture(scope="module")
+def prepared_fixture(tmp_path_factory: pytest.TempPathFactory):
+    tmp_path = tmp_path_factory.mktemp("docker-benchmark")
     dataset = tmp_path / "dataset"
     shutil.copytree(BENCHMARK / "test/fixtures/task", dataset / "tasks/fixture")
     separate = dataset / "tasks/separate"
@@ -95,7 +96,8 @@ def test_real_synergy_paired_rollout(tmp_path: Path, monkeypatch: pytest.MonkeyP
                     "npm": "@ai-sdk/openai-compatible",
                     "env": [],
                     "models": {
-                        "fixture": {"name": "Fixture", "tool_call": True, "limit": {"context": 128000, "output": 4096}}
+                        name: {"name": name, "tool_call": True, "limit": {"context": 128000, "output": 4096}}
+                        for name in ["fixture", "hang", "disconnect", "long"]
                     },
                     "options": {"apiKey": "{env:BENCH_FIXTURE_KEY}", "baseURL": "http://127.0.0.1:8087/v1"},
                 }
@@ -132,9 +134,15 @@ def test_real_synergy_paired_rollout(tmp_path: Path, monkeypatch: pytest.MonkeyP
     }
     path = tmp_path / "experiment.yaml"
     path.write_text(yaml.safe_dump(config))
-    monkeypatch.setenv("BENCH_FIXTURE_KEY", "deterministic-local-fixture")
-    root = initialize(path)
-    print(f"Integration evidence: {root}", flush=True)
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setenv("BENCH_FIXTURE_KEY", "deterministic-local-fixture")
+        root = initialize(path)
+        print(f"Integration evidence: {root}", flush=True)
+        yield root, path
+
+
+def test_real_synergy_paired_rollout(prepared_fixture) -> None:
+    root, _ = prepared_fixture
     asyncio.run(resume(root))
     evidence = [read_json(file) for file in root.glob("trials/*/attempt-*/evidence.json")]
     assert len(evidence) == 8
@@ -144,3 +152,95 @@ def test_real_synergy_paired_rollout(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert all(result["accounting"]["tokens"]["cacheRead"]["total"] > 0 for result in evidence), evidence
     asyncio.run(resume(root))
     assert len(list(root.glob("trials/*/attempt-*/evidence.json"))) == 8
+
+
+def assert_retained_credentials_absent(root: Path) -> None:
+    import zipfile
+
+    sentinel = b"deterministic-local-fixture"
+    for evidence_file in root.glob("trials/*/attempt-*/evidence.json"):
+        evidence = read_json(evidence_file)
+        trial = evidence_file.parent / evidence["trial_directory"]
+        for name in evidence["files"]:
+            file = trial / name
+            assert sentinel not in file.read_bytes(), name
+            if file.suffix == ".zip":
+                with zipfile.ZipFile(file) as archive:
+                    for item in archive.infolist():
+                        assert sentinel not in archive.read(item), item.filename
+
+
+@pytest.mark.parametrize("mode", ["long", "disconnect", "timeout", "cancel", "docker-stop"])
+def test_faults_preserve_terminal_evidence_and_cleanup(prepared_fixture, mode: str) -> None:
+    from synergy_bench.prepare import command
+
+    original, path = prepared_fixture
+    config = yaml.safe_load(path.read_text())
+    artifact = read_json(original / "plan.json")["variants"]["A"]["artifact"]
+    variant = config["variants"]["A"]
+    variant["source"] = {"artifact": artifact}
+    variant["model"] = "fixture/" + ("hang" if mode in {"timeout", "cancel", "docker-stop"} else mode)
+    config["variants"] = {mode: variant}
+    config["selection"] = {"tasks": ["fixture/marker"]}
+    if mode == "timeout":
+        config["timeout_seconds"] = 15
+    fault = path.with_name(f"{mode}.yaml")
+    fault.write_text(yaml.safe_dump(config))
+    root = initialize(fault)
+    print(f"Fault injection ({mode}): {root}", flush=True)
+
+    async def run() -> None:
+        execution = asyncio.create_task(resume(root))
+        if mode not in {"cancel", "docker-stop"}:
+            await execution
+            return
+        try:
+            async with asyncio.timeout(180):
+                while not list(root.glob("trials/*/attempt-*/*/artifacts/provider-started")):
+                    if execution.done():
+                        await execution
+                        pytest.fail("Provider stream never started")
+                    await asyncio.sleep(0.05)
+            if mode == "cancel":
+                execution.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await execution
+                return
+            environment = next(root.glob("trials/*/attempt-*/environment.json"))
+            project = read_json(environment)["project"]
+            containers = await asyncio.to_thread(
+                command, ["docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={project}"]
+            )
+            assert len(containers.splitlines()) == 1
+            await asyncio.to_thread(command, ["docker", "kill", containers.strip()])
+            await execution
+        finally:
+            if not execution.done():
+                execution.cancel()
+                await asyncio.gather(execution, return_exceptions=True)
+
+    asyncio.run(run())
+    file = next(root.glob("trials/*/attempt-*/evidence.json"))
+    result = read_json(file)
+    if mode == "docker-stop":
+        assert result["evidence"]["valid"] is False
+        assert result["evidence"]["issues"]
+    else:
+        assert result["evidence"]["valid"], result
+        assert result["export"]["status"] == "completed", result
+        assert result["evidence"]["archive_valid"]
+        if mode == "long":
+            assert result["execution"]["outcome"] == "completed", result
+            assert result["verifier"]["rewards"] == {"reward": 1.0}
+            assert result["evidence"]["recording"] == "complete"
+        else:
+            assert result["execution"]["outcome"] in {"failed", "timeout", "cancelled"}, result
+            assert result["evidence"]["recording"] == "partial", result
+            assert result["accounting"]["tokens"]["input"]["unknown"] > 0, result
+    assert_retained_credentials_absent(root)
+    for resource in [["ps", "-a"], ["network", "ls"]]:
+        projects = command(["docker", *resource, "--format", '{{.Label "com.docker.compose.project"}}'])
+        assert not any(name.startswith(f"sb-{root.name[-8:]}-") for name in projects.splitlines())
+    if mode != "docker-stop":
+        asyncio.run(resume(root))
+        assert len(list(root.glob("trials/*/attempt-*/evidence.json"))) == 1

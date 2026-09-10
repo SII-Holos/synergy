@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import os
-import re
 import shutil
 import time
 import uuid
 from pathlib import Path
 from typing import Any
 
-from .prepare import BENCHMARK, command, recipe_links, verify_prepared
+from .prepare import BENCHMARK, command, recipe_links, remove_owned_container, verify_prepared
 from .storage import atomic_json, locked, read_json
 
 
@@ -98,18 +97,7 @@ def recover_export(root: Path, trial: str, attempt: int, *, timeout: int = 300) 
             metadata.update(status="failed", error={"type": type(error).__name__, "message": str(error)})
         finally:
             try:
-                cid = target / "container.id"
-                if cid.exists():
-                    container = cid.read_text().strip()
-                    if not re.fullmatch(r"[a-f0-9]{64}", container):
-                        raise ValueError("Invalid owned recovery container ID")
-                    remaining = command(
-                        ["docker", "ps", "-aq", "--no-trunc", "--filter", f"id={container}"], timeout=30
-                    )
-                    if remaining:
-                        if remaining != container:
-                            raise ValueError("Recovery container ownership changed")
-                        command(["docker", "rm", "-f", container], timeout=30)
+                remove_owned_container(target / "container.id")
                 metadata["cleanup"] = {"status": "completed"}
             except Exception as error:
                 metadata.update(status="failed", cleanup={"status": "failed", "error": type(error).__name__})

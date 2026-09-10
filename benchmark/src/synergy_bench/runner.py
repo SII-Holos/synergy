@@ -12,8 +12,8 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
+from pier.models.task.task import Task
 from pier.models.trial.config import AgentConfig, EnvironmentConfig, TaskConfig, TrialConfig
-from pier.trial.trial import Trial
 
 from .background import background
 from .catalog import Suite, materialize, tree_digest
@@ -22,6 +22,7 @@ from .evidence import collect_evidence
 from .prepare import command, evaluator_identity, preflight, prepare_source, verify_prepared
 from .results import RESULT_VERSION, AttemptResult
 from .storage import atomic_json, digest, locked, read_json
+from .trial import BenchmarkTrial
 
 
 def inspect_config(path: Path) -> tuple[ExperimentConfig, Suite, dict[str, Any]]:
@@ -109,6 +110,7 @@ def initialize(path: Path) -> Path:
         artifacts: dict[str, Path] = {}
         for name, variant in config.variants.items():
             stage = "inputs"
+            progress(f"prepare: freezing source and inputs for {name}")
             inputs = root / "inputs" / name
             inputs.mkdir(parents=True)
             settings = read_json(base / variant.config) if variant.config else {}
@@ -137,7 +139,8 @@ def initialize(path: Path) -> Path:
             artifact = artifacts[source_key]
             receipt = read_json(artifact / "receipt.json")
             stage = "runtime-validation"
-            capability = preflight(artifact, variant.model_dump(), inputs, config.platform)
+            progress(f"preflight: resolving {name} / {variant.runtime} / {variant.model} offline")
+            capability = preflight(artifact, variant.model_dump(), inputs, config.platform, root / "preparation" / name)
             variants[name] = {
                 **variant.model_dump(),
                 "artifact": str(artifact),
@@ -151,7 +154,10 @@ def initialize(path: Path) -> Path:
         tasks = {}
         for task in suite.tasks:
             if task.id in selected:
+                progress(f"prepare: verifying task {task.id}")
                 task_path = materialize(suite, task, cache)
+                if Task(task_dir=task_path).has_steps:
+                    raise ValueError("Multi-step tasks require a step-aware benchmark result contract")
                 tasks[task.id] = {**task.model_dump(), "local_path": str(task_path)}
         plan.update({"variants": variants, "tasks": tasks})
         plan["digest"] = digest(plan)
@@ -308,9 +314,13 @@ async def execute_trial(
             {"type": "docker", "delete": not debug, "mounts": mounts, "kwargs": {"keep_containers": debug}}
         ),
     )
-    trial = await Trial.create(config)
+    trial = await BenchmarkTrial.create(config)
     try:
-        result = await trial.run()
+        try:
+            result = await trial.run()
+        finally:
+            if not debug:
+                await background(audit_environment, root, attempt / "environment.json", trial_dir / "agent")
     except asyncio.CancelledError:
         evidence = await background(collect_evidence, trial_dir, trial.result.model_dump(mode="json"))
         evidence["trial_directory"] = trial_name
@@ -322,20 +332,38 @@ async def execute_trial(
     return evidence
 
 
-def remove_environment(root: Path, record: Path) -> None:
+def environment_projects(root: Path, record: Path) -> set[str]:
     project = read_json(record)["project"]
     if not re.fullmatch(rf"sb-{re.escape(root.name[-8:])}-[a-z0-9-]+", project):
         raise ValueError("Unexpected Docker project ownership")
     label = '{{.Label "com.docker.compose.project"}}'
-    names = set(command(["docker", "ps", "-a", "--format", label]).splitlines())
-    names.update(command(["docker", "network", "ls", "--format", label]).splitlines())
-    projects = {name for name in names if name == project or name.startswith(project + "__verifier__")}
-    for name in sorted(projects):
+    names = set(command(["docker", "ps", "-a", "--format", label], timeout=15).splitlines())
+    names.update(command(["docker", "network", "ls", "--format", label], timeout=15).splitlines())
+    return {name for name in names if name == project or name.startswith(project + "__verifier__")}
+
+
+def remove_environment(root: Path, record: Path) -> None:
+    for name in sorted(environment_projects(root, record)):
         selector = f"label=com.docker.compose.project={name}"
-        for container in command(["docker", "ps", "-aq", "--filter", selector]).splitlines():
-            command(["docker", "rm", "-f", container])
-        for network in command(["docker", "network", "ls", "-q", "--filter", selector]).splitlines():
-            command(["docker", "network", "rm", network])
+        for container in command(["docker", "ps", "-aq", "--filter", selector], timeout=15).splitlines():
+            command(["docker", "rm", "-f", container], timeout=30)
+        for network in command(["docker", "network", "ls", "-q", "--filter", selector], timeout=15).splitlines():
+            command(["docker", "network", "rm", network], timeout=30)
+
+
+def audit_environment(root: Path, ownership: Path, agent: Path) -> None:
+    errors = []
+    try:
+        if environment_projects(root, ownership):
+            errors.append("residual_resources")
+            remove_environment(root, ownership)
+    except Exception as error:
+        errors.append(type(error).__name__)
+    if errors:
+        file = agent / "environment-cleanup.json"
+        record: dict[str, Any] = read_json(file) if file.exists() else {"status": "failed", "errors": []}
+        record["errors"].extend(errors)
+        atomic_json(file, record)
 
 
 def verify_terminal(attempt: Path, result: dict[str, Any]) -> None:
@@ -379,6 +407,7 @@ async def resume(root: Path, *, debug_trial: str | None = None) -> None:
             raise ValueError("Experiment plan changed")
         if plan["evaluator"] != evaluator_identity():
             raise ValueError("Evaluator changed; use the recorded evaluator revision to resume")
+        progress("resume: verifying frozen artifacts, inputs and terminal evidence")
         for artifact in {variant["artifact"] for variant in plan["variants"].values()}:
             await background(verify_prepared, Path(artifact))
         for name, variant in plan["variants"].items():

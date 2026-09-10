@@ -338,6 +338,10 @@ jobs:
             .artifacts/benchmark/integration/**/evidence.json
             .artifacts/benchmark/integration/**/result.json
             .artifacts/benchmark/integration/**/rollout.zip
+            .artifacts/benchmark/integration/**/execution.json
+            .artifacts/benchmark/integration/**/accounting.json
+            .artifacts/benchmark/integration/**/environment-cleanup.json
+            .artifacts/benchmark/integration/**/cleanup.json
             .artifacts/benchmark/integration/**/export.json
             .artifacts/benchmark/integration/**/archive.json
             .artifacts/benchmark/integration/**/export.log

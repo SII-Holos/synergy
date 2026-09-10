@@ -1,5 +1,7 @@
 import json
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -38,6 +40,35 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return
+        mode = request.get("model", "fixture")
+        if request.get("stream") and mode in {"hang", "disconnect"}:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            if mode == "disconnect":
+                self.send_header("Content-Length", "1048576")
+            self.end_headers()
+            frame = {
+                "id": "partial",
+                "object": "chat.completion.chunk",
+                "created": 0,
+                "model": mode,
+                "choices": [
+                    {"index": 0, "delta": {"role": "assistant", "content": "Retained prefix"}, "finish_reason": None}
+                ],
+            }
+            self.wfile.write(("data: " + json.dumps(frame) + "\n\n").encode())
+            self.wfile.flush()
+            Path("/logs/artifacts/provider-started").write_text(mode)
+            if mode == "disconnect":
+                self.close_connection = True
+                return
+            try:
+                while True:
+                    self.wfile.write(b":" + b"x" * 1024 + b"\n\n")
+                    self.wfile.flush()
+                    time.sleep(0.02)
+            except (BrokenPipeError, ConnectionResetError):
+                return
         usage = {
             "prompt_tokens": 100,
             "completion_tokens": 10,
@@ -79,6 +110,8 @@ class Handler(BaseHTTPRequestHandler):
                 },
             ]
             data = ("".join("data: " + json.dumps(frame) + "\n\n" for frame in frames) + "data: [DONE]\n\n").encode()
+            if mode == "long":
+                data = (b":" + b"x" * 1021 + b"\n\n") * (30 * 1024) + data
             kind = "text/event-stream"
         else:
             data = json.dumps(

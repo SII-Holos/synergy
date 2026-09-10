@@ -27,13 +27,13 @@ async function inspect(runtime: string, config: Record<string, unknown> = {}) {
 
 test("core rejects settings for unloaded capabilities", async () => {
   const result = await inspect("core", { library: { memory: { enabled: true } } })
-  expect(result.code).not.toBe(0)
+  expect(result.code).toBe(2)
   expect(result.stderr).toContain("library")
 })
 
 test("custom recipes cannot import outside the frozen runtime", async () => {
   const result = await inspect("./../package.json")
-  expect(result.code).not.toBe(0)
+  expect(result.code).toBe(2)
   expect(result.stderr).toContain("inside the frozen runtime")
 })
 
@@ -71,7 +71,7 @@ test("offline preflight rejects an unavailable measured model before inference",
       new Response(child.stdout).text(),
       new Response(child.stderr).text(),
     ])
-    expect(code).not.toBe(0)
+    expect(code).toBe(2)
     expect(stderr).toContain("ModelNotFoundError")
   } finally {
     await rm(home, { recursive: true, force: true })

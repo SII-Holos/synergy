@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import platform as host_platform
 import re
@@ -52,6 +51,19 @@ def command(args: list[str], log: Path | None = None, *, timeout: float = 1800) 
             raise RuntimeError(f"{args[0]} failed; see {log}")
         return ""
     return subprocess.check_output(args, stderr=subprocess.PIPE, timeout=timeout).decode().strip()
+
+
+def remove_owned_container(file: Path) -> None:
+    if not file.exists():
+        return
+    container = file.read_text().strip()
+    if not re.fullmatch(r"[a-f0-9]{64}", container):
+        raise ValueError("Invalid owned container ID")
+    remaining = command(["docker", "ps", "-aq", "--no-trunc", "--filter", f"id={container}"], timeout=15)
+    if remaining:
+        if remaining != container:
+            raise ValueError("Container ownership changed")
+        command(["docker", "rm", "-f", container], timeout=30)
 
 
 def verify_prepared(path: Path) -> dict[str, Any]:
@@ -176,11 +188,27 @@ def prepare_source(source: Source, base: Path, cache: Path, platform: str, *, ti
                 log,
                 timeout=max(1, deadline - time.monotonic()),
             )
+            container_file = work / f"{artifact_id}.container.id"
+            remove_owned_container(container_file)
+            container_file.unlink(missing_ok=True)
             try:
-                command(["docker", "create", "--platform", platform, "--name", container, image])
+                command(
+                    [
+                        "docker",
+                        "create",
+                        "--cidfile",
+                        str(container_file),
+                        "--platform",
+                        platform,
+                        "--name",
+                        container,
+                        image,
+                    ]
+                )
                 command(["docker", "cp", f"{container}:/opt/synergy", str(stage / "bundle")], log)
             finally:
-                command(["docker", "rm", "-f", container], log)
+                remove_owned_container(container_file)
+                container_file.unlink(missing_ok=True)
             runtime_digest = tree_digest(stage / "bundle" / "runtime")
             result = {
                 "version": 1,
@@ -203,7 +231,7 @@ def prepare_source(source: Source, base: Path, cache: Path, platform: str, *, ti
             return target
 
 
-def preflight(artifact: Path, variant: dict[str, Any], directory: Path, platform: str) -> dict[str, Any]:
+def preflight(artifact: Path, variant: dict[str, Any], directory: Path, platform: str, logs: Path) -> dict[str, Any]:
     args = [
         "docker",
         "run",
@@ -242,5 +270,31 @@ def preflight(artifact: Path, variant: dict[str, Any], directory: Path, platform
         "MODELS_DEV_API_JSON": "/opt/synergy/source/packages/testing/fixtures/models-api.json",
     }.items():
         args[2:2] = ["-e", f"{key}={value}"]
-    result: dict[str, Any] = json.loads(command(args, timeout=120))
-    return result
+    logs.mkdir(parents=True, exist_ok=True)
+    args[2:2] = ["--cidfile", str(logs / "container.id")]
+    started = time.time()
+    timed_out = False
+    result = None
+    try:
+        with (logs / "stdout.log").open("w") as stdout, (logs / "stderr.log").open("w") as stderr:
+            result = subprocess.run(args, stdout=stdout, stderr=stderr, timeout=120)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        raise
+    finally:
+        atomic_json(
+            logs / "process.json",
+            {
+                "started_at": started,
+                "ended_at": time.time(),
+                "timed_out": timed_out,
+                "exit_code": result.returncode if result is not None else None,
+            },
+        )
+        remove_owned_container(logs / "container.id")
+    if result.returncode == 2:
+        raise ValueError(f"Frozen runtime rejected the experiment; see {logs / 'stderr.log'}")
+    if result.returncode:
+        raise RuntimeError(f"Frozen runtime validation failed; see {logs / 'stderr.log'}")
+    capability: dict[str, Any] = read_json(logs / "stdout.log")
+    return capability

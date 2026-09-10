@@ -141,3 +141,5 @@ SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/t
 `recover-export` 在 retained Home 的副本中重新导出，输出到 run 下独立的 `recoveries/`。它不调用模型，不覆盖原 attempt、评分或失败状态。恢复导出完成只表示新归档已通过结构校验，不表示原始记录失败得到修复。清理、恢复和执行共享位于 run 目录之外的所有权锁，删除 run 不会解除另一个进程持有的锁。
 
 Linux 源码准备与发行资产使用同一 watcher 构建器，固定 Parcel 源码及 EINTR 补丁，验证实际 native binding。首次准备需要额外的固定 Node 编译镜像。
+
+Pier 0.3.1 的独立 verifier 由本包的 `BenchmarkTrial` 固定生命周期：评分环境准备和评分仍使用原题期限，容器清理在评分结果提交后进行；评分超时不自动重跑。清理另有期限及所有权审计，清理失败保持为基础设施问题，不会丢掉已有评分。该边界依赖固定版本 Pier 的扩展接口，升级依赖必须同时通过独立 verifier、超时与取消测试；来源与许可证位于 `third_party/pier/`。

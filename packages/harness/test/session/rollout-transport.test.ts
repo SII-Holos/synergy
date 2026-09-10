@@ -371,3 +371,38 @@ test("an upstream abort cannot discard an already received oversized chunk tail"
   expect(source.locked).toBe(false)
   reader.releaseLock()
 })
+
+test("cancellation joins an admitted body-end without writing or finishing twice", async () => {
+  const ending = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const events: RolloutTransport.Event[] = []
+  const response = await RolloutTransport.provide(
+    async (event) => {
+      if (event.type === "body-end" && event.channel === "response") {
+        ending.resolve()
+        await release.promise
+      }
+      events.push(event)
+    },
+    () => RolloutTransport.fetch(async () => new Response("body"), "https://fixture.test"),
+  )
+  const reader = response.body!.getReader()
+  await reader.read()
+  const reading = reader.read()
+  await ending.promise
+  let closed = false
+  const closing = reader.cancel().then(() => {
+    closed = true
+  })
+  try {
+    await Promise.resolve()
+    expect(closed).toBe(false)
+  } finally {
+    release.resolve()
+    await Promise.all([closing, reading])
+    reader.releaseLock()
+  }
+  expect(events.filter((event) => event.type === "body-end" && event.channel === "response")).toHaveLength(1)
+  expect(events.filter((event) => event.type === "attempt-end")).toHaveLength(1)
+  expect(events.at(-1)?.type).toBe("attempt-end")
+})

@@ -60,12 +60,13 @@ def collect_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
         missing.append("recording_failed")
     if execution and (execution.get("forced") or execution.get("invalid_event_lines")):
         missing.append("execution_truncated")
-    for name in ["cleanup", "credential-cleanup"]:
+    for name in ["cleanup", "credential-cleanup", "environment-cleanup"]:
         if (agent / f"{name}.json").exists():
             missing.append(f"{name}_failed")
     exception = pier.get("exception_info")
     expected = exception and exception.get("exception_type") in {
         "AgentTimeoutError",
+        "VerifierTimeoutError",
         "NonZeroAgentExitCodeError",
         "CancelledError",
     }
@@ -118,8 +119,10 @@ def summarize(root: Path, *, category: str = "trials") -> dict[str, Any]:
         outcomes[outcome] = outcomes.get(outcome, 0) + 1
         score = (result.get("verifier") or {}).get("rewards")
         rewards.append(score)
-        task_failures += outcome != "completed" or bool(
-            score and all(isinstance(value, (int, float)) and value <= 0 for value in score.values())
+        task_failures += (
+            (result.get("pier_exception") or {}).get("exception_type") == "VerifierTimeoutError"
+            or outcome != "completed"
+            or bool(score and all(isinstance(value, (int, float)) and value <= 0 for value in score.values()))
         )
     return {
         "run": str(root),
