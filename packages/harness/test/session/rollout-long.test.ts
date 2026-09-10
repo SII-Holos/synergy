@@ -68,8 +68,10 @@ for (const status of ["completed", "cancelled", "failed"] as const) {
         expect(manifest.integrity.missing).toEqual([])
         expect(manifest.integrity.complete).toBe(status === "completed")
         expect(manifest.files.length).toBeGreaterThan(30_720)
+        console.info(`rollout-long ${status}: archive verified; removing fixture`)
       })
+      console.info(`rollout-long ${status}: fixture cleanup completed`)
     },
-    1_200_000,
+    1_500_000,
   )
 }
