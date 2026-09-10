@@ -398,6 +398,24 @@ export namespace Agent {
       result["lightloop-reviewer"].prompt = buildLightLoopReviewerPrompt(agentInfos)
     }
 
+    // Cross-agent reference lint: visibleTo entries that match no agent name
+    // or declared delegation group silently restrict nothing — surface them
+    // so a typo does not hide behind an agent that is never visible.
+    const knownIdentities = new Set<string>()
+    for (const item of Object.values(result)) {
+      knownIdentities.add(item.name)
+      for (const group of item.delegationGroups ?? []) knownIdentities.add(group)
+    }
+    for (const item of Object.values(result)) {
+      for (const ref of item.visibleTo ?? []) {
+        if (!knownIdentities.has(ref)) {
+          log.warn(`agent "${item.name}" has a visibleTo entry matching no agent or delegation group`, {
+            agent: item.name,
+            reference: ref,
+          })
+        }
+      }
+    }
     return result
   })
 
@@ -495,7 +513,24 @@ export namespace Agent {
   }
 
   export async function defaultAgent() {
-    return (await list())[0]?.name
+    const cfg = await Config.current()
+    const agents = await list()
+    const eligible = (x: Info) => x.mode !== "subagent" && !x.hidden
+    const configured = cfg.default_agent
+    if (configured) {
+      const agent = agents.find((x) => x.name === configured)
+      if (agent && eligible(agent)) return agent.name
+      const reason = !agent
+        ? `default_agent "${configured}" does not exist or is disabled`
+        : agent.mode === "subagent"
+          ? `default_agent "${configured}" is subagent-only`
+          : `default_agent "${configured}" is hidden`
+      log.warn(`${reason}; falling back`)
+    }
+    const fallback = agents.find((agent) => agent.name === "synergy" && eligible(agent)) ?? agents.find(eligible)
+    if (!fallback)
+      throw new Error("No visible primary agent is available. Enable a primary agent in the agents configuration.")
+    return fallback.name
   }
 
   export async function generate(input: { description: string; model?: { providerID: string; modelID: string } }) {

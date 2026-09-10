@@ -138,7 +138,10 @@ export namespace SessionInvoke {
   export function assertIdle(sessionID: string) {
     return SessionManager.assertIdle(sessionID)
   }
-  export function cancel(sessionID: string, options?: { recoverQueuedTasks?: boolean }) {
+  export function cancel(
+    sessionID: string,
+    options?: { recoverQueuedTasks?: boolean; fenceQueuedWork?: boolean; fenceQueuedBefore?: number },
+  ) {
     log.info("cancel", { sessionID })
     evictRecallCache(sessionID)
     PermissionNext.clearForSession(sessionID).catch((err) => {
@@ -1294,7 +1297,17 @@ export namespace SessionInvoke {
             // they are successfully materialized and the reply cycle completes.
             if (abort.aborted) {
               // Abort: discard steer/context, keep task items (no auto-start).
-              await SessionInbox.removeByMode(sessionID, ["steer", "context"])
+              // A fenced internal cancellation owns the session's queued work
+              // and discards items queued before its fence timestamp, so a
+              // cancelled delegation cannot be restarted by mail queued before
+              // the cancellation (#1339). Mail delivered after the cancelled
+              // acknowledgement is explicit new work and must survive.
+              const fenceQueuedBefore = SessionManager.fenceQueuedBefore(sessionID)
+              if (fenceQueuedBefore === undefined) {
+                await SessionInbox.removeByModes(sessionID, ["steer", "context"])
+              } else {
+                await SessionInbox.removeByModes(sessionID, ["task", "steer", "context"], fenceQueuedBefore)
+              }
               return false
             }
 

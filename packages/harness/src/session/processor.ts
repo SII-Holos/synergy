@@ -203,6 +203,12 @@ export namespace SessionProcessor {
     const executionCallbacks = new Map<string, Promise<unknown>>()
     const settlementPromises = new Map<string, Promise<void>>()
     const settledToolCalls = new Set<string>()
+    // Calls whose terminal write is registered on the per-call queue but has
+    // not committed yet. Replayed stream events must be ignored in this
+    // window exactly as for settled calls: the terminal write has not
+    // landed, so the settled-stream filter would otherwise let a full-part
+    // replay write commit after it.
+    const settlingToolCalls = new Set<string>()
     // LLM-side tool-error events without an execution slot or tool part are
     // recorded for observability but never settled, so track their call IDs
     // separately to avoid double-counting when the stream repeats the event.
@@ -267,59 +273,82 @@ export namespace SessionProcessor {
     }
 
     async function settleToolPart(part: MessageV2.ToolPart, outcome: ToolOutcome) {
-      const startTime = toolStartTime(part)
-      await Observability.emit("tool.settle.start", {
-        sessionID: input.sessionID,
-        messageID: input.assistantMessage.id,
-        callID: part.callID,
-        tool: part.tool,
-        data: {
-          status: outcome.status,
-        },
+      settlingToolCalls.add(part.callID)
+      // Terminal settlement must serialize behind queued and in-flight
+      // running-state flushes for the same call (#1335): a stale full-part
+      // running write that is already underway has to commit before the
+      // terminal state, never after it. The settling mark goes down before
+      // the queue wait so replayed stream events are ignored during that
+      // window exactly as for settled calls; the in-memory part moves to its
+      // terminal state as soon as the durable write lands, and flushes
+      // queued mid-settlement run behind that write.
+      const previous = toolCallStateUpdates.get(part.callID)?.catch(() => {}) ?? Promise.resolve()
+      const write = previous.then(async () => {
+        // Resolve the live tracked part at write time: callers may hold a
+        // detached durable snapshot (resolveUnsettledParts scans loaded
+        // parts), and an in-flight flush that committed ahead of us carries
+        // fresher metadata than the caller's copy.
+        const live = toolcalls[part.callID] ?? part
+        const startTime = toolStartTime(live)
+        await Observability.emit("tool.settle.start", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID: live.callID,
+          tool: live.tool,
+          data: {
+            status: outcome.status,
+          },
+        })
+        if (outcome.status === "completed") {
+          const updated = await Session.updatePart({
+            ...live,
+            state: {
+              status: "completed",
+              input: SessionToolInput.normalize(outcome.input),
+              output: outcome.result.output,
+              metadata: ToolTimeout.mergeMetadata(
+                live.state.status === "running" ? live.state.metadata : undefined,
+                outcome.result.metadata,
+              )!,
+              title: outcome.result.title,
+              time: { start: startTime, end: Date.now() },
+              attachments: outcome.result.attachments,
+            },
+          })
+          Object.assign(live, updated)
+          await outcome.result.afterPersist?.()
+        } else {
+          const updated = await Session.updatePart({
+            ...live,
+            state: {
+              status: "error",
+              input: SessionToolInput.normalize(outcome.input),
+              error: outcome.error,
+              metadata: ToolTimeout.mergeMetadata(streamingToolMetadata(live), outcome.metadata),
+              time: { start: startTime, end: Date.now() },
+            },
+          })
+          Object.assign(live, updated)
+        }
+        settledToolCalls.add(live.callID)
+        await Observability.emit("tool.settle.end", {
+          sessionID: input.sessionID,
+          messageID: input.assistantMessage.id,
+          callID: live.callID,
+          tool: live.tool,
+          level: outcome.status === "error" ? "error" : "info",
+          data: {
+            status: outcome.status,
+          },
+        })
       })
-      if (outcome.status === "completed") {
-        await Session.updatePart({
-          ...part,
-          state: {
-            status: "completed",
-            input: SessionToolInput.normalize(outcome.input),
-            output: outcome.result.output,
-            metadata: ToolTimeout.mergeMetadata(
-              part.state.status === "running" ? part.state.metadata : undefined,
-              outcome.result.metadata,
-            )!,
-            title: outcome.result.title,
-            time: { start: startTime, end: Date.now() },
-            attachments: outcome.result.attachments,
-          },
-        })
-        await outcome.result.afterPersist?.()
-      } else {
-        await Session.updatePart({
-          ...part,
-          state: {
-            status: "error",
-            input: SessionToolInput.normalize(outcome.input),
-            error: outcome.error,
-            metadata: ToolTimeout.mergeMetadata(
-              part.state.status === "running" ? part.state.metadata : undefined,
-              outcome.metadata,
-            ),
-            time: { start: startTime, end: Date.now() },
-          },
-        })
+      toolCallStateUpdates.set(part.callID, write)
+      try {
+        await write
+      } finally {
+        settlingToolCalls.delete(part.callID)
+        if (toolCallStateUpdates.get(part.callID) === write) toolCallStateUpdates.delete(part.callID)
       }
-      settledToolCalls.add(part.callID)
-      await Observability.emit("tool.settle.end", {
-        sessionID: input.sessionID,
-        messageID: input.assistantMessage.id,
-        callID: part.callID,
-        tool: part.tool,
-        level: outcome.status === "error" ? "error" : "info",
-        data: {
-          status: outcome.status,
-        },
-      })
     }
 
     function toolSettlementSnapshot(callID?: string, detail = false): Record<string, any> {
@@ -376,7 +405,7 @@ export namespace SessionProcessor {
     }
 
     function shouldIgnoreSettledStreamEvent(callID: string, event: "tool-input-start" | "tool-call", tool: string) {
-      if (!settledToolCalls.has(callID)) return false
+      if (!settledToolCalls.has(callID) && !settlingToolCalls.has(callID)) return false
       delete generatingAccum[callID]
       delete generatingBytes[callID]
       log.warn("ignoring tool stream event after settlement", {
@@ -662,7 +691,8 @@ export namespace SessionProcessor {
             outcomeStatus: slot.outcome.status,
             snapshot: toolSettlementSnapshot(part.callID),
           })
-          await settleToolPart(part, slot.outcome)
+          const tracked = toolcalls[part.callID] ?? part
+          await settleToolPart(tracked, slot.outcome)
           forgetToolCall(part.callID)
         } else {
           const reason = slot ? "pending_execution_slot_timeout" : "missing_execution_slot"
@@ -675,26 +705,25 @@ export namespace SessionProcessor {
             fastAbort,
             snapshot: toolSettlementSnapshot(part.callID),
           })
-          const startTime = toolStartTime(part)
-          await Session.updatePart({
-            ...part,
-            state: {
-              ...part.state,
-              status: "error",
-              error: unresolvedToolError(fastAbort),
-              metadata: fastAbort
-                ? streamingToolMetadata(part)
-                : ToolTimeout.mergeMetadata(
-                    streamingToolMetadata(part),
-                    slot ? pendingExecutionSlotMetadata(part, slot) : missingExecutionSlotMetadata(part),
-                  ),
-              time: {
-                start: startTime,
-                end: Date.now(),
-              },
-            },
+          const tracked = toolcalls[part.callID] ?? part
+          await settleToolPart(tracked, {
+            status: "error",
+            input:
+              tracked.state.status === "running" ||
+              tracked.state.status === "pending" ||
+              tracked.state.status === "generating"
+                ? tracked.state.input
+                : {},
+            error: unresolvedToolError(fastAbort),
+            // Streamed metadata is re-read from the live part inside
+            // settleToolPart once the flush queue drains; only the
+            // diagnostic metadata is fixed at scan time.
+            metadata: fastAbort
+              ? undefined
+              : slot
+                ? pendingExecutionSlotMetadata(tracked, slot)
+                : missingExecutionSlotMetadata(tracked),
           })
-          settledToolCalls.add(part.callID)
           forgetToolCall(part.callID)
         }
       }
@@ -789,6 +818,7 @@ export namespace SessionProcessor {
       executionCallbacks.clear()
       settlementPromises.clear()
       settledToolCalls.clear()
+      settlingToolCalls.clear()
       recordedToolFailures.clear()
       for (const callID of Object.keys(generatingAccum)) delete generatingAccum[callID]
       for (const callID of Object.keys(generatingBytes)) delete generatingBytes[callID]
@@ -909,7 +939,14 @@ export namespace SessionProcessor {
           expanded: ToolResolver.AutoExpandedTool,
         ) => {
           const part = toolcalls[call.callID]
-          if (part && part.state.status === "running") {
+          // A settled call must never receive a late full-part write here;
+          // this guard keeps the bypass aligned with flushToolCallState().
+          if (
+            part &&
+            part.state.status === "running" &&
+            !settledToolCalls.has(call.callID) &&
+            !settlingToolCalls.has(call.callID)
+          ) {
             const updated = await Session.updatePart({
               ...part,
               state: {
@@ -1166,7 +1203,7 @@ export namespace SessionProcessor {
 
                     case "tool-input-delta": {
                       const match = toolcalls[value.id]
-                      if (!match) break
+                      if (!match || settledToolCalls.has(value.id) || settlingToolCalls.has(value.id)) break
                       const prevRaw = generatingAccum[value.id]
                       if (prevRaw === undefined) break
                       const receivedBytes = (generatingBytes[value.id] ?? 0) + SessionBounds.byteLength(value.delta)
@@ -1210,7 +1247,7 @@ export namespace SessionProcessor {
 
                     case "tool-input-end": {
                       const match = toolcalls[value.id]
-                      if (!match) break
+                      if (!match || settledToolCalls.has(value.id) || settlingToolCalls.has(value.id)) break
                       const raw = generatingAccum[value.id]
                       if (!raw) break
                       streamInput.memoryTurn?.observeToolRawChars(value.id, raw.length)
