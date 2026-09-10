@@ -16,6 +16,8 @@ A trusted validation entry captures the workspace graph from the workflow revisi
 
 Maintain canonical advisory labels alongside human-owned labels. Migrate matching legacy classifications without dropping assignments; retire stale in-progress stages to needs-triage on open items rather than claiming current execution. The [operations guide](../../../operations/oryn.md) owns setup, verification and command details.
 
+Use the remaining task budget as the default per-request wall limit while preserving first-byte/idle limits and cancellation. A separate short fixed wall cap can interrupt healthy max-reasoning streams before the task budget expires. Preserve bounded, redacted failure evidence from the pinned Core public APIs through worker, CLI and Actions artifacts so provider errors, report format failures and host cancellation remain diagnosable. Do not export raw model history or infer a cause from a bare abort status. The upstream implementation and real Core fault fixtures are recorded in Oryn Mini decision 0013 at the setup action's pinned revision.
+
 ## Alternatives considered
 
 **Run the sweeper from another repository.** Centralized execution reuses configuration but separates target secrets, Actions history and operational ownership from this repository.
