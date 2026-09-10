@@ -133,6 +133,8 @@ SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/t
 
 普通测试不启动 Docker 或付费模型。显式 Docker 测试使用固定本地 chat/embedding provider，覆盖三种 runtime、共享及独立 verifier、真实工具执行、A/B、reward、cache token、rollout 和 resume。24 个官方任务的全套 oracle/nop 结果必须实际运行后另行记录，静态清单校验不能替代这些结果。
 
+CI 将 30 MiB、30,720 次 checkpoint 的成功、取消和失败样本分别放到独立 runner，三个结果都必须通过；Docker 回归独立执行。长流测试自身允许 20 分钟，并输出持久化和校验进度，适应 CI 磁盘耗时。这不改变任何正式任务或 verifier 的时限。
+
 ## 结束与恢复
 
 进度写 stderr，最终 JSON 摘要写 stdout。摘要包含完成、失败、超时、评分和记录问题；不能把仅输出目录当作运行成功。退出码为：0 编排完成且结果有效（包括正常答错）；1 基础设施、导出或记录失败；2 配置或输入无效；130 用户中断。

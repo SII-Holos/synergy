@@ -55,3 +55,5 @@ Terminal reconciliation also examines retained execution records and incremental
 Native accounting is populated through Pier's post-download hook, after mounted logs have been handed back to the host. The adapter must not read container-owned private files from `run()` cleanup. Active fault-injection observers read within the verified owned container, preserving mode-0600 files and mode-0700 ledger directories on Linux.
 
 Recovery export runs against its private copy, then hands that copy and its output back to the host UID/GID before the container exits. Export failures preserve their exit status through the handoff, and ownership failures remain recovery failures. Permissions stay private; original evidence is never chowned or rewritten.
+
+Large deterministic rollout outcomes run on independent CI workers, separate from the Docker matrix. Every outcome remains required by the test aggregate. The 30 MiB/30,720-checkpoint fixture has a twenty-minute test deadline because Linux CI measured roughly ten to eleven minutes per outcome; official task and verifier deadlines remain unchanged.

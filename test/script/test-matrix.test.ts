@@ -16,7 +16,7 @@ const workflow = Bun.YAML.parse(ciSource) as {
     {
       name?: string
       needs?: string | string[]
-      strategy?: { "fail-fast"?: boolean; matrix?: { include?: ShardEntry[] } }
+      strategy?: { "fail-fast"?: boolean; matrix?: { include?: ShardEntry[]; outcome?: string[] } }
       steps?: Array<{ name?: string; run?: string; env?: Record<string, unknown>; if?: string }>
     }
   >
@@ -112,11 +112,12 @@ describe("CI test matrix", () => {
   test("the anchored Test check includes the benchmark contracts", () => {
     const fanIn = workflow.jobs["test"]!
     expect(fanIn.name).toBe("Test")
-    expect(fanIn.needs).toEqual(["test-shards", "test-aux", "test-harness", "test-benchmark"])
+    expect(fanIn.needs).toEqual(["test-shards", "test-aux", "test-harness", "test-benchmark", "test-rollout-long"])
     const verify = fanIn.steps?.find((step) => step.run?.includes("needs.test-shards.result"))
     expect(verify?.run).toContain("needs.test-aux.result")
     expect(verify?.run).toContain("needs.test-harness.result")
     expect(verify?.run).toContain("needs.test-benchmark.result")
+    expect(verify?.run).toContain("needs.test-rollout-long.result")
     expect(verify?.run).toContain("exit 1")
   })
 
@@ -124,8 +125,20 @@ describe("CI test matrix", () => {
     const needs = workflow.jobs["all-checks-passed"]!.needs
     const flat = Array.isArray(needs) ? needs : [needs]
     expect(flat).toContain("test")
-    for (const leaf of ["test-shards", "test-aux", "test-harness", "test-benchmark"]) {
+    for (const leaf of ["test-shards", "test-aux", "test-harness", "test-benchmark", "test-rollout-long"]) {
       expect(flat).not.toContain(leaf)
     }
+  })
+
+  test("long rollout outcomes run on independent workers and keep every outcome required", () => {
+    const long = workflow.jobs["test-rollout-long"]!
+    expect(long.strategy?.["fail-fast"]).toBe(false)
+    expect(long.strategy?.matrix?.outcome).toEqual(["completed", "cancelled", "failed"])
+    const run = long.steps?.find((step) => step.run?.includes("rollout-long.test.ts"))
+    expect(run?.run).toContain('--test-name-pattern ": ${{ matrix.outcome }}$"')
+    expect(run?.env?.SYNERGY_ROLLOUT_LONG_STREAM).toBe("1")
+    expect(workflow.jobs["test-benchmark"]?.steps?.some((step) => step.run?.includes("rollout-long.test.ts"))).toBe(
+      false,
+    )
   })
 })

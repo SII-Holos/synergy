@@ -30,6 +30,9 @@ for (const status of ["completed", "cancelled", "failed"] as const) {
         for (let index = 0; index < 30_720; index++) {
           hash.update(chunk)
           await recorder.emit({ type: "chunk", attemptID, channel: "response", data: chunk })
+          if ((index + 1) % 10_240 === 0) {
+            console.info(`rollout-long ${status}: persisted ${(index + 1) / 1024} MiB (${index + 1} checkpoints)`)
+          }
         }
         if (status === "completed") {
           const usage = new TextEncoder().encode(
@@ -47,6 +50,7 @@ for (const status of ["completed", "cancelled", "failed"] as const) {
           transportCaptured: await recorder.finish(),
         })
         await RolloutLedger.finishRun(call.owner, rootID, status)
+        console.info(`rollout-long ${status}: verifying retained bytes, accounting and archive`)
         const snapshot = await RolloutSnapshot.read(call.owner)
         expect(snapshot.runs[0].recording).not.toBe("failed")
         expect(snapshot.attempts[0].status).toBe(status)
@@ -66,6 +70,6 @@ for (const status of ["completed", "cancelled", "failed"] as const) {
         expect(manifest.files.length).toBeGreaterThan(30_720)
       })
     },
-    600_000,
+    1_200_000,
   )
 }
