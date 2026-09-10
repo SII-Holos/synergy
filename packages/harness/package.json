@@ -305,6 +305,7 @@
     "./test/internal/session/recall": "./src/session/recall.ts",
     "./test/internal/provider/models-macro": "./src/provider/models-macro.ts",
     "./test/internal/provider/builtin": "./src/provider/builtin.ts",
+    "./test/internal/session/rollout/continuation-migration": "./src/session/rollout/continuation-migration.ts",
     "./test/internal/session/rollout/call": "./src/session/rollout/call.ts",
     "./test/internal/config/migration": "./src/config/migration.ts",
     "./config/schema": "./src/config/schema.ts",

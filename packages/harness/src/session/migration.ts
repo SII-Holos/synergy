@@ -1,3 +1,4 @@
+import { RolloutContinuationMigration } from "./rollout/continuation-migration"
 import { RolloutMigration } from "./rollout/migration"
 import { $ } from "bun"
 import path from "path"
@@ -2197,6 +2198,7 @@ export const migrations: Migration[] = [
     },
   },
   RolloutMigration.migration,
+  RolloutContinuationMigration.migration,
 
   {
     id: "20260907-snapshot-shared-store",

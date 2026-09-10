@@ -1,4 +1,5 @@
 import type { Agent, NotePatchInput, SessionWorkspaceSelection } from "@ericsanchezok/synergy-sdk/client"
+import { resolveProjectScope } from "@/utils/scope"
 
 export type BlueprintRunMode = "current" | "new" | "worktree"
 export type BlueprintExecutionControlProfile = "autonomous" | "full_access"
@@ -25,10 +26,6 @@ export type BlueprintRunNoteSummary = {
   blueprint?: {
     activeLoopID?: string | null
   }
-}
-
-function normalizeDirectory(input?: string) {
-  return (input ?? "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase()
 }
 
 export function blueprintSessionWorkspaceSelection(mode: BlueprintRunMode): SessionWorkspaceSelection {
@@ -65,13 +62,8 @@ export function blueprintExecutionAgentPatch(note: { version: number }, agentNam
 export function blueprintScopeIDForDirectory(directory: string | undefined, scopes: BlueprintScopeSummary[]) {
   if (!directory) return ""
   if (directory === "home") return "home"
-
-  const target = normalizeDirectory(directory)
-  const scope = scopes.find((item) => {
-    if (normalizeDirectory(item.worktree) === target) return true
-    return (item.sandboxes ?? []).some((sandbox) => normalizeDirectory(sandbox) === target)
-  })
-  return scope?.id ?? ""
+  const candidates = scopes.filter((scope): scope is BlueprintScopeSummary & { worktree: string } => !!scope.worktree)
+  return resolveProjectScope(directory, undefined, candidates)?.id ?? ""
 }
 
 export function canRunBlueprintInCurrentSession(input: {

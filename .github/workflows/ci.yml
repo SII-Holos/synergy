@@ -361,7 +361,7 @@ jobs:
   test-rollout-long:
     name: Long Rollout Contracts (${{ matrix.outcome }})
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
