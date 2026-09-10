@@ -19,6 +19,7 @@ bun bench resume /absolute/path/printed/by/prepare
 bun bench run benchmark/configs/ab.yaml
 bun bench inspect /absolute/path/to/run --trial 0
 bun bench debug /absolute/path/to/run --trial 0
+bun bench recover-export /absolute/path/to/run --trial 0 --attempt 1
 bun bench clean /absolute/path/to/run
 ```
 
@@ -26,7 +27,7 @@ bun bench clean /absolute/path/to/run
 
 ## 配置约定
 
-所有相对路径以 YAML 所在目录为基准。配置严格校验未知字段；模型及能力配置在准备好的 Linux runtime 中预检。
+所有相对路径以 YAML 所在目录为基准。配置严格校验未知字段；模型及能力配置在准备好的 Linux runtime 中离线解析，包括实际 provider/model、角色模型、agent、variant 和 Experiment。模型目录来自冻结源码的固定 fixture，并随产物校验；不会在线刷新目录。缺少任务、配置文件或映射凭据时，在构建前失败。
 
 | 配置                                 | 含义                                                                   |
 | ------------------------------------ | ---------------------------------------------------------------------- |
@@ -35,7 +36,9 @@ bun bench clean /absolute/path/to/run
 | `repeat` / `seed` / `concurrency`    | 每题重复次数、调度种子、并发 task-repeat 对数；默认 1 / 0 / 1          |
 | `platform`                           | Linux Docker 平台，默认 `linux/amd64`；原题镜像也必须支持所选架构      |
 | `timeout_seconds`                    | 可选实验时间上限；未填写时使用原题 agent 时间限制                      |
-| `cleanup_seconds`                    | CLI 取消、子任务收尾、rollout 导出的保留时间，默认 60 秒               |
+| `cleanup_seconds`                    | CLI 取消与子任务收尾期限，默认 60 秒                                   |
+| `export_timeout_seconds`             | 导出及 ZIP 校验的独立期限，默认 300 秒                                 |
+| `preparation_timeout_seconds`        | 每个源码产物准备的期限，默认 1800 秒                                   |
 | `variants.<name>.source.path`        | 被测 Git checkout                                                      |
 | `source.revision`                    | 可选固定 revision；省略则冻结当前 tracked 与非 ignored untracked 文件  |
 | `source.artifact`                    | 复用已准备的源码产物，要求平台和 runtime recipe 一致                   |
@@ -48,7 +51,7 @@ bun bench clean /absolute/path/to/run
 
 任务容器默认使用 `full_access`，隔离边界是 Docker；可在原生配置中显式覆盖。未指定的 nano/mini/mid/thinking/long_context/creative/vision 角色默认使用该 variant 的主模型，防止辅助调用悄悄选到其他模型。需要单独评测某个角色时，在 `config` 或 `experiment` 中配置它。
 
-原生配置中的凭据使用 `{env:VARIABLE_NAME}`，并在 `env` 中声明传入关系。`SYNERGY_HOME`、PATH 等评测器控制的环境变量不能通过这个映射覆盖。每个 attempt 都有全新的 Home、进程和任务容器；云服务端 prompt cache 仍由服务商管理，不能把 fresh Home 当作远端 cold cache。
+原生配置中的凭据使用 `{env:VARIABLE_NAME}`，并在 `env` 中声明传入关系。`SYNERGY_HOME`、PATH 等评测器控制的环境变量不能通过这个映射覆盖。凭据值经权限为 0600 的临时文件上传到容器临时目录，包装器读取后立即删除，并仅通过子进程环境传给 Synergy。每个 attempt 都有全新的 Home、进程和任务容器；云服务端 prompt cache 仍由服务商管理，不能把 fresh Home 当作远端 cold cache。
 
 ## 数据集及可比性
 
@@ -69,7 +72,7 @@ Local adaptation: 仅固定子集、冻结源码与运行组合、配对调度�
 
 评测工程、被测源码、运行组合和数据集分别标识。源码准备读取 Git 内容，不改分支、index 或创建实验 commit；保存未提交改动、删除、新文件、可执行位和内部 symlink。忽略文件不进入快照，外部 symlink 与 submodule 被拒绝。试验执行只挂载冻结副本及 Linux 依赖，全部只读。包装器按冻结 workspace manifest 的公开包名建立依赖链接，不依赖根目录依赖提升，也不要求被测 revision 已包含 `benchmark/`。
 
-运行前校验源码文件清单和内容、依赖 bundle、recipe、输入及任务摘要。原 checkout 后续变化不影响已有实验。`resume` 拒绝使用变化后的评测器、Python 版本或输入继续已有实验；已结束的失败也是结束，不能借 resume 自动重抽样。中断重跑使用新 attempt，并保留旧 Home 和证据。固定输入仍不能冻结外部模型服务版本或消除服务端缓存、网络负载变化。
+运行前校验源码文件清单和内容、依赖 bundle、recipe、输入及任务摘要。原 checkout 后续变化不影响已有实验。`resume` 拒绝使用变化后的评测器、Python 版本或输入继续已有实验；已有终态证据优先于滞后的调度状态；只修复状态，不重复模型调用。已结束的失败也是结束，不能借 resume 自动重抽样。新 attempt 使用 v2 结果；历史结果可 inspect，但新评测器不会续跑或改写旧实验。中断重跑使用新 attempt，并保留旧 Home 和证据。固定输入仍不能冻结外部模型服务版本或消除服务端缓存、网络负载变化。
 
 ```text
 run/
@@ -89,6 +92,8 @@ run/
         events.jsonl
         execution.json
         accounting.json
+        export.json         # 导出/校验期限、退出码、信号与最终状态
+        archive.json        # 产品校验器认证及 archive 哈希
         rollout.zip
         stderr.log
         export.log
@@ -126,3 +131,13 @@ SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/t
 ```
 
 普通测试不启动 Docker 或付费模型。显式 Docker 测试使用固定本地 chat/embedding provider，覆盖三种 runtime、共享及独立 verifier、真实工具执行、A/B、reward、cache token、rollout 和 resume。24 个官方任务的全套 oracle/nop 结果必须实际运行后另行记录，静态清单校验不能替代这些结果。
+
+## 结束与恢复
+
+进度写 stderr，最终 JSON 摘要写 stdout。摘要包含完成、失败、超时、评分和记录问题；不能把仅输出目录当作运行成功。退出码为：0 编排完成且结果有效（包括正常答错）；1 基础设施、导出或记录失败；2 配置或输入无效；130 用户中断。
+
+执行沿用原题时限，随后保留 cleanup 期限，再给导出和校验独立 export 期限。Pier 外层 agent 期限覆盖三者，并留 15 秒退出余量。正常取消保留收到的响应前缀，缺失 usage 保持未知；部分响应、文件缺失、写入失败和损坏 ZIP 分别记录。v2 的 `evidence.valid` 表示证据链路有效，`archive_valid` 表示归档结构有效，`recording` 与 `usage` 分别描述记录和计量覆盖程度；正常部分记录可以是有效结果。
+
+`recover-export` 在 retained Home 的副本中重新导出，输出到 run 下独立的 `recoveries/`。它不调用模型，不覆盖原 attempt、评分或失败状态。恢复导出完成只表示新归档已通过结构校验，不表示原始记录失败得到修复。清理、恢复和执行共享位于 run 目录之外的所有权锁，删除 run 不会解除另一个进程持有的锁。
+
+Linux 源码准备与发行资产使用同一 watcher 构建器，固定 Parcel 源码及 EINTR 补丁，验证实际 native binding。首次准备需要额外的固定 Node 编译镜像。

@@ -55,6 +55,8 @@ class ExperimentConfig(StrictModel):
     output: str = ".artifacts/benchmark/runs"
     cache: str = ".artifacts/benchmark/cache"
     cleanup_seconds: int = Field(default=60, ge=10, le=600)
+    export_timeout_seconds: int = Field(default=300, ge=1, le=3600)
+    preparation_timeout_seconds: int = Field(default=1800, ge=1, le=7200)
     timeout_seconds: int | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")

@@ -47,3 +47,33 @@ test("each named composition reports its own capabilities", async () => {
     expect(report.configKeys.includes("mcp")).toBe(runtime === "full")
   }
 }, 30_000)
+
+test("offline preflight rejects an unavailable measured model before inference", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "synergy-bench-model-"))
+  try {
+    const config = path.join(home, "config.json")
+    await Bun.write(config, "{}")
+    const child = Bun.spawn([process.execPath, "runtime/inspect.ts", "core", config, "", "missing/model", "synergy"], {
+      cwd: path.resolve(import.meta.dir, ".."),
+      env: {
+        PATH: process.env.PATH,
+        SYNERGY_HOME: home,
+        SYNERGY_CONFIG: config,
+        SYNERGY_CONFIG_CONTENT: "{}",
+        SYNERGY_DISABLE_MODELS_FETCH: "1",
+        MODELS_DEV_API_JSON: path.resolve(import.meta.dir, "../../packages/testing/fixtures/models-api.json"),
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const [code, , stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    expect(code).not.toBe(0)
+    expect(stderr).toContain("ModelNotFoundError")
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})

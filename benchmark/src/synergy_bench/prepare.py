@@ -8,6 +8,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -43,18 +44,18 @@ def recipe_links(source: Path, dependencies: dict[str, str]) -> dict[str, str]:
     return {name: packages[name] for name in sorted(dependencies)}
 
 
-def command(args: list[str], log: Path | None = None) -> str:
+def command(args: list[str], log: Path | None = None, *, timeout: float = 1800) -> str:
     if log:
         with log.open("a") as stream:
-            process = subprocess.run(args, stdout=stream, stderr=subprocess.STDOUT)
+            process = subprocess.run(args, stdout=stream, stderr=subprocess.STDOUT, timeout=timeout)
         if process.returncode:
-            raise ValueError(f"{args[0]} failed; see {log}")
+            raise RuntimeError(f"{args[0]} failed; see {log}")
         return ""
-    return subprocess.check_output(args, stderr=subprocess.PIPE).decode().strip()
+    return subprocess.check_output(args, stderr=subprocess.PIPE, timeout=timeout).decode().strip()
 
 
 def verify_prepared(path: Path) -> dict[str, Any]:
-    receipt = read_json(path / "receipt.json")
+    receipt: dict[str, Any] = read_json(path / "receipt.json")
     if receipt["id"] != digest(receipt["identity"]):
         raise ValueError("Prepared artifact identity changed")
     verify_source(path / "bundle" / "source", receipt["source"])
@@ -76,7 +77,8 @@ def bundle_digest(root: Path) -> str:
     return digest(files)
 
 
-def prepare_source(source: Source, base: Path, cache: Path, platform: str) -> Path:
+def prepare_source(source: Source, base: Path, cache: Path, platform: str, *, timeout: int = 1800) -> Path:
+    deadline = time.monotonic() + timeout
     if source.artifact:
         path = (base / source.artifact).resolve()
         receipt = verify_prepared(path)
@@ -102,7 +104,7 @@ def prepare_source(source: Source, base: Path, cache: Path, platform: str) -> Pa
             "recipe_dependencies": read_json(BENCHMARK / "package.json")["dependencies"],
             "bun": version,
             "platform": platform,
-            "build": 4,
+            "build": digest(Path(__file__).read_text()),
         }
         artifact_id = digest(identity)
         target = cache / "prepared" / artifact_id
@@ -113,7 +115,9 @@ def prepare_source(source: Source, base: Path, cache: Path, platform: str) -> Pa
             shutil.copytree(BENCHMARK / "runtime", stage / "runtime")
             base_image = f"oven/bun:{version}"
             log = work / f"{artifact_id}.log"
-            command(["docker", "pull", "--platform", platform, base_image], log)
+            command(
+                ["docker", "pull", "--platform", platform, base_image], log, timeout=max(1, deadline - time.monotonic())
+            )
             image_id = command(["docker", "image", "inspect", base_image, "--format", "{{index .RepoDigests 0}}"])
             manifests = stage / "manifests"
             manifests.mkdir()
@@ -138,14 +142,22 @@ def prepare_source(source: Source, base: Path, cache: Path, platform: str) -> Pa
                     ]
                 )
             (stage / "Dockerfile").write_text(
-                f"FROM {image_id}\nUSER root\nWORKDIR /opt/synergy/source\n"
+                f"FROM {image_id} AS source\nUSER root\nWORKDIR /opt/synergy/source\n"
                 "COPY manifests/ ./\nENV HUSKY=0 ELECTRON_SKIP_BINARY_DOWNLOAD=1\n"
-                "RUN bun install --frozen-lockfile\n"
+                "RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked "
+                "bun install --frozen-lockfile --network-concurrency 16\n"
                 "COPY source/ ./\n"
                 "COPY runtime/ /opt/synergy/runtime/\n"
                 f"RUN {' && '.join(link_commands)}\n"
                 "RUN mkdir -p /opt/synergy/bin && cp /usr/local/bin/bun /opt/synergy/bin/bun\n"
                 "RUN SYNERGY_HOME=/tmp/benchmark-prepare bun /opt/synergy/runtime/prepare.ts\n"
+                "FROM node:22.14.0-bullseye AS native\n"
+                "COPY --from=source /opt/synergy /opt/synergy\n"
+                "WORKDIR /opt/synergy/source\n"
+                "RUN /opt/synergy/bin/bun packages/runtime-local/script/build-watcher.ts --local\n"
+                "FROM source\n"
+                "COPY --from=native /opt/synergy/source/packages/runtime-local/.artifacts/watcher "
+                "/opt/synergy/source/packages/runtime-local/.artifacts/watcher\n"
             )
             image = f"synergy-bench:{artifact_id}"
             container = f"synergy-bench-prepare-{uuid.uuid4().hex[:16]}"
@@ -162,6 +174,7 @@ def prepare_source(source: Source, base: Path, cache: Path, platform: str) -> Pa
                     str(stage),
                 ],
                 log,
+                timeout=max(1, deadline - time.monotonic()),
             )
             try:
                 command(["docker", "create", "--platform", platform, "--name", container, image])
@@ -213,6 +226,21 @@ def preflight(artifact: Path, variant: dict[str, Any], directory: Path, platform
         variant["runtime"],
         "/inputs/config.json",
     ]
-    if variant.get("experiment"):
-        args.append("/inputs/experiment.json")
-    return json.loads(command(args))
+    args += [
+        "/inputs/experiment.json" if variant.get("experiment") else "",
+        variant["model"],
+        variant["agent"],
+        variant.get("variant") or "",
+    ]
+    for key in variant.get("env", {}):
+        args[2:2] = ["-e", f"{key}=benchmark-preflight"]
+    for key, value in {
+        "SYNERGY_CONFIG": "/inputs/config.json",
+        "SYNERGY_DISABLE_MODELS_FETCH": "1",
+        "SYNERGY_DISABLE_DEFAULT_PLUGINS": "1",
+        "SYNERGY_DISABLE_AUTOUPDATE": "1",
+        "MODELS_DEV_API_JSON": "/opt/synergy/source/packages/testing/fixtures/models-api.json",
+    }.items():
+        args[2:2] = ["-e", f"{key}={value}"]
+    result: dict[str, Any] = json.loads(command(args, timeout=120))
+    return result

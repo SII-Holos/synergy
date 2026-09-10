@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "bun test --config /dev/null test/runtime.test.ts",
+    "test": "bun test --config /dev/null test/*.test.ts",
     "typecheck": "tsgo --noEmit",
     "test:python": "uv run --locked pytest",
     "check:python": "uv run --locked ruff check . && uv run --locked mypy src/synergy_bench"

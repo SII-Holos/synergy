@@ -217,3 +217,29 @@ test("rollout ZIP retains file snapshot objects after the source store is remove
     }
   })
 })
+
+test("a partial manifest cannot hide an undeclared missing artifact reference", async () => {
+  await fixture(async ({ session, rootID }) => {
+    const writer = new Uint8ArrayWriter()
+    await RolloutArchive.write({ sessionID: session.id, runID: rootID }, writer)
+    const reader = new ZipReader(new Uint8ArrayReader(await writer.getData()))
+    const output = new Uint8ArrayWriter()
+    const zip = new ZipWriter(output)
+    for (const entry of await reader.getEntries()) {
+      if (entry.directory) continue
+      let data = await entry.getData(new Uint8ArrayWriter())
+      if (entry.filename === "manifest.json") {
+        const manifest = JSON.parse(new TextDecoder().decode(data))
+        manifest.integrity = { complete: false, missing: [] }
+        manifest.artifacts = []
+        data = new TextEncoder().encode(JSON.stringify(manifest))
+      }
+      await zip.add(entry.filename, new Uint8ArrayReader(data))
+    }
+    await zip.close()
+    await reader.close()
+    await expect(RolloutArchive.inspect(new Blob([await output.getData()]))).rejects.toThrow(
+      "missing referenced artifact",
+    )
+  })
+})

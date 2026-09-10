@@ -307,3 +307,38 @@ describe("rollout cancellation barriers", () => {
     ])
   })
 })
+
+test("joins an aborted upstream reader before closing its buffered response", async () => {
+  const waiting = Promise.withResolvers<void>()
+  let upstream: ReadableStreamDefaultController<Uint8Array>
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      upstream = controller
+      controller.enqueue(new TextEncoder().encode("before abort"))
+    },
+    pull() {
+      waiting.resolve()
+    },
+  })
+  const events: RolloutTransport.Event[] = []
+  const response = await RolloutTransport.provide(
+    async (event) => {
+      events.push(event)
+    },
+    () => RolloutTransport.fetch(async () => new Response(source), "https://fixture.test"),
+  )
+  const reader = response.body!.getReader()
+  const reading = reader.read()
+  await waiting.promise
+  upstream!.error(new DOMException("aborted", "AbortError"))
+  await Promise.all([reader.cancel(), reading])
+  expect(
+    events
+      .filter((event) => event.type === "chunk")
+      .map((event) => new TextDecoder().decode(event.data))
+      .join(""),
+  ).toBe("before abort")
+  expect(events.at(-1)).toMatchObject({ type: "attempt-end", status: "cancelled" })
+  expect(source.locked).toBe(false)
+  reader.releaseLock()
+})

@@ -8,3 +8,7 @@ Own local research orchestration, frozen source inputs, task catalogs, runtime c
 - Tests live in `test/`. Use isolated homes and deterministic providers; never use personal credentials in tests.
 - Run `uv run --project benchmark pytest benchmark/test`, Python checks, runtime tests and affected repository gates.
 - Never overwrite prior trials or silently retry a paid execution. Preserve incomplete evidence.
+- Version attempt results; historical experiments are read-only when evaluator or result versions differ. Reconcile durable terminal evidence before rescheduling or cleanup.
+- Keep execution, cleanup and export deadlines independent. Validate rollout archives with the product contract and keep structural validity, recording coverage and usage coverage distinct.
+- Pass credentials through temporary mode-0600 files outside retained evidence. Never pass their values to Docker arguments or persistent options.
+- Run deterministic cancellation, long-stream and Linux watcher tests in the benchmark CI job. Keep live-provider acceptance outside CI.

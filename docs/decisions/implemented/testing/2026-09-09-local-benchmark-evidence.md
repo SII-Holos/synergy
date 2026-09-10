@@ -33,3 +33,11 @@ Native CLI results and rollout archives remain the accounting authority. The eva
 Provenance: [Pier 0.3.1](https://pypi.org/project/datacurve-pier/0.3.1/), [DeepSWE source](https://github.com/datacurve-ai/deep-swe/tree/0b9fabbb63b9104d678fe965e1632f2dd9eaa2ea), [Terminal-Bench source](https://github.com/harbor-framework/terminal-bench-2-1/tree/7131e4375048a0e408a8fb404b5f499d726b695b).
 
 Local adaptation: retain Pier task lifecycle and verifier behavior while supplying the Synergy CLI adapter, immutable input receipts, paired schedule and raw evidence storage. The [benchmark guide](../../../../benchmark/README.md) owns configuration, commands, extension and validation procedures.
+
+## Evidence lifecycle
+
+New attempts use result version 2. Execution, verifier reward, export process outcome, archive validation, recording coverage and usage coverage are independent. `evidence.valid` certifies the evidence pipeline; `recording=partial` and unknown usage can accompany a valid cancellation result. Missing referenced artifacts must have explicit missing-evidence declarations, even in partial ZIPs. Export and validation share their own deadline; normal cancellation drains received bytes within the cleanup deadline. ZIP validation reuses `RolloutArchive.inspect()` and binds the report to the actual archive hash.
+
+Resume reconciles terminal evidence before scheduling a new attempt. Recovery export copies the retained Home and writes an independent recovery record without model calls or changes to the original evidence. Locks live outside the removable run directory. Expensive evidence scanning runs on bounded background workers.
+
+Credential presence and references are checked before preparation; actual models and role composition are resolved offline inside the frozen runtime. Temporary credential files are removed before child execution, and values never enter Docker arguments. Source preparation and release staging compile the same pinned Linux watcher patch and verify the native binding.

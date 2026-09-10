@@ -4,6 +4,10 @@ import asyncio
 import json
 import os
 import shlex
+import tempfile
+import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -84,40 +88,77 @@ class SynergyAgent(BaseAgent):
             observed.append(json.loads(value))
         atomic_json(self.logs_dir / "environment.json", {"containers": observed, "bun": result.stdout})
 
+    @asynccontextmanager
+    async def credential_file(self, environment: BaseEnvironment) -> AsyncIterator[str]:
+        credentials = {target: os.environ[reference] for target, reference in self.settings["env"].items()}
+        remote_secret = f"/tmp/synergy-bench-credentials-{uuid.uuid4().hex}.json"
+        fd, secret = tempfile.mkstemp(prefix="synergy-bench-credentials-")
+        try:
+            try:
+                with os.fdopen(fd, "w") as handle:
+                    json.dump(credentials, handle)
+                identity = await environment.exec("id -u", timeout_sec=15)
+                uid = (identity.stdout or "").strip()
+                if identity.return_code or not uid.isdecimal():
+                    raise RuntimeError("Unable to resolve credential file owner")
+                await environment.upload_file(Path(secret), remote_secret)
+                secured = await environment.exec(
+                    f"chmod 600 {shlex.quote(remote_secret)} && chown {uid} {shlex.quote(remote_secret)}",
+                    user="root",
+                    timeout_sec=30,
+                )
+                if secured.return_code:
+                    raise RuntimeError("Unable to secure uploaded credential file")
+            finally:
+                await asyncio.to_thread(Path(secret).unlink, missing_ok=True)
+            yield remote_secret
+        finally:
+            try:
+                removed = await environment.exec(f"rm -f {shlex.quote(remote_secret)}", user="root", timeout_sec=15)
+                if removed.return_code:
+                    atomic_json(self.logs_dir / "credential-cleanup.json", {"status": "failed"})
+            except Exception as error:
+                atomic_json(
+                    self.logs_dir / "credential-cleanup.json", {"status": "failed", "error": type(error).__name__}
+                )
+
     async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
         logs = environment.env_paths.agent_dir.as_posix()
         local = self.logs_dir / "instruction.md"
         local.write_text(instruction)
         await environment.upload_file(local, f"{logs}/instruction.md")
-        credentials = {target: os.environ[reference] for target, reference in self.settings["env"].items()}
-        command = shlex.join(
-            [
-                "/opt/synergy/bin/bun",
-                "/opt/synergy/runtime/trial.ts",
-                "/benchmark-input/options.json",
-                f"{logs}/instruction.md",
-                logs,
-            ]
-        )
         try:
-            result = await environment.exec(command, env=credentials)
-            if result.return_code:
-                raise NonZeroAgentExitCodeError(f"Synergy exited with code {result.return_code}")
+            async with self.credential_file(environment) as remote_secret:
+                invocation = shlex.join(
+                    [
+                        "/opt/synergy/bin/bun",
+                        "/opt/synergy/runtime/trial.ts",
+                        "/benchmark-input/options.json",
+                        f"{logs}/instruction.md",
+                        logs,
+                        remote_secret,
+                    ]
+                )
+                result = await environment.exec(invocation)
+                if result.return_code:
+                    raise NonZeroAgentExitCodeError(f"Synergy exited with code {result.return_code}")
         except asyncio.CancelledError:
-            cleanup = int(self.settings["cleanup_seconds"])
+            cleanup = int(self.settings["cleanup_seconds"]) + int(self.settings["export_timeout_seconds"]) + 15
             try:
-                await asyncio.wait_for(
+                drained = await asyncio.wait_for(
                     environment.exec(
                         f"test ! -f {shlex.quote(logs + '/runner.pid')} || "
                         f"kill -TERM $(cat {shlex.quote(logs + '/runner.pid')}); "
                         f"for i in $(seq 1 {cleanup}); do test -f {shlex.quote(logs + '/finished')} "
-                        "&& exit 0; sleep 1; done",
+                        "&& exit 0; sleep 1; done; exit 1",
                         timeout_sec=cleanup + 1,
                     ),
                     timeout=cleanup + 2,
                 )
-            except (TimeoutError, RuntimeError):
-                pass
+                if drained.return_code:
+                    raise RuntimeError("Wrapper did not finish within the cleanup and export deadline")
+            except (TimeoutError, RuntimeError) as error:
+                atomic_json(self.logs_dir / "cleanup.json", {"status": "failed", "error": type(error).__name__})
             raise
         finally:
             self.populate_context_post_run(context)

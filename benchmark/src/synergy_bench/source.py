@@ -15,7 +15,9 @@ EXCLUDED = {".git", "node_modules", ".venv", "__pycache__", ".artifacts", ".turb
 
 
 def git(root: Path, *args: str) -> bytes:
-    return subprocess.check_output(["git", "--no-optional-locks", "-C", str(root), *args], stderr=subprocess.PIPE)
+    return subprocess.check_output(
+        ["git", "--no-optional-locks", "-C", str(root), *args], stderr=subprocess.PIPE, timeout=600
+    )
 
 
 def safe_path(name: str) -> Path:

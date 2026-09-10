@@ -140,7 +140,7 @@ def test_real_synergy_paired_rollout(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert len(evidence) == 8
     assert all(result["execution"] and result["execution"]["exit_code"] == 0 for result in evidence), evidence
     assert all(result["verifier"]["rewards"] == {"reward": 1.0} for result in evidence), evidence
-    assert all(result["evidence"]["complete"] for result in evidence), evidence
+    assert all(result["evidence"]["valid"] for result in evidence), evidence
     assert all(result["accounting"]["tokens"]["cacheRead"]["total"] > 0 for result in evidence), evidence
     asyncio.run(resume(root))
     assert len(list(root.glob("trials/*/attempt-*/evidence.json"))) == 8

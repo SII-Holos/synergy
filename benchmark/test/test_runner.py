@@ -60,3 +60,47 @@ async def test_cancellation_preserves_evidence_and_marks_attempt_interrupted(tmp
         await running
     assert read_json(tmp_path / "state.json")["trials"]["0000"]["status"] == "interrupted"
     assert (tmp_path / "trials/0000/attempt-001/partial.log").read_text() == "retained"
+
+
+@pytest.mark.asyncio
+async def test_terminal_evidence_repairs_interrupted_state_without_paid_execution(tmp_path: Path) -> None:
+    plan = {"schedule": [{"pair": "p", "variant": "A"}], "concurrency": 1}
+    atomic_json(tmp_path / "state.json", {"trials": {"0000": {"status": "interrupted", "attempt": 1}}})
+    atomic_json(
+        tmp_path / "trials/0000/attempt-001/evidence.json",
+        {"version": 2, "attempt_status": "completed", "execution": {"outcome": "failed"}},
+    )
+
+    async def execute(item: dict, attempt: Path) -> dict:
+        pytest.fail("terminal attempts must not call the model again")
+
+    await execute_plan(tmp_path, plan, execute)
+    assert read_json(tmp_path / "state.json")["trials"]["0000"] == {"status": "completed", "attempt": 1}
+
+
+def test_changed_terminal_bytes_are_not_rescheduled(tmp_path: Path) -> None:
+    import hashlib
+
+    from synergy_bench.runner import verify_terminal
+
+    file = tmp_path / "owned/agent/events.jsonl"
+    file.parent.mkdir(parents=True)
+    file.write_bytes(b"original")
+    evidence = {
+        "version": 2,
+        "trial_directory": "owned",
+        "files": {"agent/events.jsonl": {"bytes": 8, "sha256": hashlib.sha256(b"original").hexdigest()}},
+    }
+    evidence.update(
+        execution=None,
+        export=None,
+        verifier=None,
+        pier_exception=None,
+        infrastructure_error=None,
+        accounting=None,
+        evidence={"valid": True, "issues": [], "archive_valid": True, "recording": "complete", "usage": "complete"},
+    )
+    verify_terminal(tmp_path, evidence)
+    file.write_bytes(b"modified")
+    with pytest.raises(ValueError, match="hash changed"):
+        verify_terminal(tmp_path, evidence)

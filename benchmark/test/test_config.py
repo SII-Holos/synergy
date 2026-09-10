@@ -45,3 +45,19 @@ def test_selection_precedes_pair_expansion():
     assert [row["task"] for row in plan] == ["fast", "fast"]
     with pytest.raises(ValueError, match="No tasks"):
         resolve_plan(parsed, [{"id": "slow", "tags": []}])
+
+
+def test_missing_credentials_fail_before_preparation(tmp_path, monkeypatch):
+    from synergy_bench.config import ExperimentConfig
+    from synergy_bench.runner import validate_inputs
+
+    monkeypatch.delenv("BENCH_MISSING_CREDENTIAL", raising=False)
+    config = ExperimentConfig.model_validate(
+        {
+            "version": 1,
+            "suite": "unused",
+            "variants": {"A": {"model": "provider/model", "env": {"KEY": "BENCH_MISSING_CREDENTIAL"}}},
+        }
+    )
+    with pytest.raises(ValueError, match="Missing credential environment"):
+        validate_inputs(config, tmp_path)

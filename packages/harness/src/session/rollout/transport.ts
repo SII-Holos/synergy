@@ -177,7 +177,11 @@ export namespace RolloutTransport {
           cancel(reason) {
             cancelling = true
             cancellation ??= (async () => {
-              await cancelUpstream(reason)
+              try {
+                await cancelUpstream(reason)
+              } catch {
+                // close() reports the same cancellation failure after admitted writes drain.
+              }
               await pulling
               await close(false, reason)
               if (channel === "response") await finish("cancelled", reason)

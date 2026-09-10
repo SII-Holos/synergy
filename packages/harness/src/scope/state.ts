@@ -79,7 +79,7 @@ export namespace State {
         tasks.push(
           release(entry, key).then(() => {
             if (entries.get(init) === entry) entries.delete(init)
-            if (entries.size === 0) recordsByKey.delete(key)
+            if (entries.size === 0 && recordsByKey.get(key) === entries) recordsByKey.delete(key)
           }),
         )
       }
