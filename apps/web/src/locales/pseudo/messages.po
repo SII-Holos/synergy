@@ -19480,6 +19480,10 @@ msgstr ""
 msgid "special-user.status.changes-requested"
 msgstr ""
 
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.agents"
+msgstr ""
+
 #. Question subtitle
 msgid "tool.label.asked-count"
 msgstr ""
@@ -19650,6 +19654,10 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.agenda-logs"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.agent-config"
 msgstr ""
 
 #. Dynamic tool-state labels used by standard.tsx renders

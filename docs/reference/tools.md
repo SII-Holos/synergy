@@ -15,6 +15,7 @@ Generated from the builtin tool registry in `packages/harness/src/tool/registry.
 | `agenda_trigger` | `orchestration.agenda` | Manually trigger an agenda item to execute immediately, regardless of its configured schedule. If the item is pending or paused, it will be activated first. This does NOT change the item's regular sch |
 | `agenda_update` | `orchestration.agenda` | Update an existing agenda item. Only provided fields are changed — omitted fields remain unchanged. Use agenda_list to find the item ID first. Common actions: - Pause: agenda_update(id="agd_xxx", stat |
 | `agenda_watch` | `orchestration.agenda` | Set a one-time wake-up in THIS session. The primary use case is **recursive adaptive monitoring**: - Start with a short delay (3–5min) to check an external process, experiment, or pipeline. - Assess h |
+| `agent_config` | `platform.config` | Manage Synergy agent definitions: create, update, disable, delete, inspect, and set the default agent through validated writes. Use this when the user wants to create a custom agent ("make me an agent |
 | `ast_grep` | `search.codebase` | Search code using AST-aware pattern matching. Unlike regex-based grep, ast_grep understands code structure and finds patterns based on syntax, not just text. Supports 25 languages: bash, c, cpp, cshar |
 | `attach` | `communication.deliver` | Deliver files to the user by making them available as conversation attachments. Use this after generating or obtaining user-facing artifacts such as PDFs, images, documents, archives, exports, plots,  |
 | `bash` | `code.execute` | Executes a bash command in a persistent shell session. All commands run in ${directory} by default. Use the `workdir` parameter to run in a different directory. AVOID `cd <directory> && <command>` pat |
@@ -237,6 +238,16 @@ Set a one-time wake-up in THIS session. The primary use case is **recursive adap
 | `ref` | string |  | Branch/tag/commit ref for workflow and check targeting (e.g. 'main', full SHA). Defaults to HEAD for checks and the default branch for workflows |
 | `states` | string |  | Only wake on transitions into these states (e.g. ['merged'], ['failure'], ['completed']) |
 | `global` | boolean |  | If true, visible from all scopes. Default: false (current project only) |
+
+## agent_config
+
+Kind: `platform.config`
+
+Manage Synergy agent definitions: create, update, disable, delete, inspect, and set the default agent through validated writes. Use this when the user wants to create a custom agent ("make me an agent that..."), change an existing agent's model, prompt, permissions, visibility, or mode, disable or remove an agent, list which agents exist and where each is defined, or change which agent is the default for new sessions. Do not hand-edit agent config files when this tool is available. Every write is validated before it lands: agent names, model references (provider/model format), mode/permission/controlProfile values, and cross-agent references — each visibleTo entry must match an existing agent name or a delegation group declared through delegationGroups, otherwise the write is rejected with the offending reference. Actions (pass one object as `input`): - create — define a new agent. Agents with a `prompt` are stored as a markdown file under the project's `.synergy/agent/` directory by default (`scope: "global"` stores under the global config directory; `storage: "jsonc"` writes a `60-agents.jsonc` entry instead, best for short overrides). - update — change fields of an existing agent (description, mode, prompt, model, modelRole, temperature, top_p, color, steps, permission, visibleTo, delegationGroups, controlProfile, defaultVariant, disable). Unspecified fields keep their current values. Updating a built-in agent writes a config override entry. - remove — `strategy: "disable"` (default, reversible) writes `disable: true`; `strategy: "delete"` removes the markdown file or config entry that owns the agent. Built-in agents can be disabled but not deleted. - set_default — set `default_agent`. The target must exist and be a visible primary agent; subagent-only, hidden, unknown, or disabled targets are rejected. - describe — show one agent's resolved configuration, its owning layer (markdown file / config entry / built-in), and the file path for manual editing. - list — list all agents with their mode, source layer, and file path when markdown-owned. Returns a summary of the applied change (agent name, storage layer, file or config path) plus the resolved agent description, or an actionable error naming the invalid input and how to correct it.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `input` | union | yes | One action object. create/update/remove/set_default/describe each take agent fields; list takes none. |
 
 ## ast_grep
 

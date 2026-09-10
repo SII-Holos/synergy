@@ -428,6 +428,7 @@ export const SYNERGY_PERMISSION_CAPABILITY: Record<string, string> = {
   doom_loop: "session_state",
   worktree_enter: "file_write",
   worktree_leave: "file_write",
+  agent_config: "config:write",
   session_data: "session_data",
   workspace_data: "workspace_data",
   "config:read": "config:read",

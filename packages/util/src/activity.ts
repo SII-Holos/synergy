@@ -205,6 +205,7 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   worktree_enter: "config",
   worktree_leave: "config",
   worktree_list: "config",
+  agent_config: "config",
   connect: "network",
   inspire_status: "config",
   inspire_config: "config",
