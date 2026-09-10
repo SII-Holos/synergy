@@ -1,0 +1,52 @@
+# Agent Config Field Reference
+
+Field semantics, validation rules, and storage layers for agent definitions managed through `agent_config`.
+
+## Storage layers
+
+| Layer | Location | Best for |
+|---|---|---|
+| markdown | `.synergy/agent/<name>.md` (project) or `~/.synergy/config/agent/<name>.md` (global) | Agents with a system prompt; the body is the prompt, frontmatter holds fields |
+| jsonc | `60-agents.jsonc` `agent` map (global) | Short overrides of built-ins, `disable`, entries without prompts |
+
+`agent_config` chooses markdown automatically when a `prompt` is present; pass `storage: "jsonc"` to force the config entry. Project scope is the default; `scope: "global"` targets the global config directory. Precedence when both define the same name: project markdown > global markdown > jsonc entry > built-in.
+
+## Fields
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string | Letters, digits, `.`, `_`, `-`; `/` for subdirectories. Must not collide with an existing agent on create |
+| `description` | string | The routing signal. Required in practice for delegation and menus |
+| `prompt` | string | System prompt. Markdown body in file storage |
+| `mode` | `primary` / `subagent` / `all` | Default `all`. `primary` appears in the `@` menu; `subagent` is task-only |
+| `model` | string | `provider/model` format. Explicit model wins over `modelRole` |
+| `modelRole` | enum | `vision`, `nano`, `mini`, `mid`, `thinking`, `long`, `creative` |
+| `temperature` / `top_p` | number | Sampling overrides |
+| `color` | string | `#RRGGBB` |
+| `steps` | positive int | Max agentic iterations before text-only mode |
+| `permission` | object | Merges over inherited rules, e.g. `{ edit: "deny", bash: "allow" }` |
+| `controlProfile` | enum | `guarded`, `autonomous`, `full_access` |
+| `visibleTo` | string[] | Caller identities (agent names or group ids) allowed to delegate to this subagent. Empty/omitted = unrestricted |
+| `delegationGroups` | string[] | Group identities this agent receives when resolving delegation visibility |
+| `deferredTools` | string[] | Tools folded behind expand_tools for this agent |
+| `defaultVariant` | string | Default model variant; per-request variant wins |
+| `disable` | boolean | `true` removes the agent from the runtime. Clear with `update { disable: false }` |
+| `hidden` | boolean | Hide from menus |
+| `default_agent` | config key | Global config only (set via `set_default`). Must target a visible, non-subagent-only agent |
+
+## Validation enforced at write time
+
+1. Zod schema: types, enum values, `color` format, positive `steps`.
+2. `model` must contain `/` (provider/model).
+3. Cross-agent references: every `visibleTo` entry must match an existing agent name or a `delegationGroups` identity declared by any agent. Unknown references reject the write with the offending name.
+4. `set_default` rejects targets that do not exist, are disabled, are subagent-only, or are hidden; `Agent.defaultAgent()` logs a warning and falls back to `synergy` when config was edited by hand.
+5. Load-time lint: unresolved `visibleTo` references in any agent log a warning naming the agent and reference.
+
+## Deletion semantics
+
+- `remove { strategy: "disable" }` (default) writes `disable: true` — reversible, and the only removal allowed for built-in agents.
+- `remove { strategy: "delete" }` deletes the owning markdown file or jsonc entry. Built-ins reject delete.
+
+## Manual editing
+
+Files written by `agent_config` are ordinary config files; users can hand-edit them and `runtime_reload({ target: "agent" })`. The `describe` action reports the owning path or entry for any agent.

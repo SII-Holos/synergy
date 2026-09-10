@@ -1077,6 +1077,17 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         subtitle: target || input.reason,
       }
     }
+    case "agent_config": {
+      const action = input?.input?.action
+      const args: string[] = []
+      pushArg(args, input?.input?.strategy)
+      return {
+        icon: "bot",
+        title: TOOL_TITLE_DESC["agent_config"],
+        subtitle: input?.input?.name ?? (metadata?.count !== undefined ? `${metadata.count} agents` : ""),
+        args,
+      }
+    }
     case "worktree_enter": {
       const args: string[] = []
       pushArg(args, input?.target)

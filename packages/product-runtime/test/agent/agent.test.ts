@@ -822,14 +822,14 @@ test("Agent.defaultAgent() returns synergy by default", async () => {
 test("Agent.defaultAgent() with default_agent config returns configured agent", async () => {
   await using tmp = await tmpdir({
     config: {
-      default_agent: "developer",
+      default_agent: "synergy-max",
     },
   })
   await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
       const defaultAgent = await Agent.defaultAgent()
-      expect(defaultAgent).toBe("developer")
+      expect(defaultAgent).toBe("synergy-max")
     },
   })
 })

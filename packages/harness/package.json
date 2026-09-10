@@ -55,6 +55,7 @@
     "./util/identity": "./src/util/identity.ts",
     "./session/nav": "./src/session/nav.ts",
     "./agent/delegation": "./src/agent/delegation.ts",
+    "./agent/config-crud": "./src/agent/config-crud.ts",
     "./observability/browser-metrics": "./src/observability/browser-metrics.ts",
     "./global": "./src/global/index.ts",
     "./bus/sequencer": "./src/bus/sequencer.ts",

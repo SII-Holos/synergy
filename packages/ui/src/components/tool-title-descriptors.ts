@@ -145,6 +145,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   worktree_enter: d("tool.title.enter-worktree", "Enter isolated workspace"),
   worktree_leave: d("tool.title.leave-worktree", "Leave isolated workspace"),
   worktree_list: d("tool.title.worktrees", "View isolated workspaces"),
+  agent_config: d("tool.title.agent-config", "Manage agents"),
 
   // Render
   render: d("tool.title.render", "Render content"),

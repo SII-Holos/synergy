@@ -19652,6 +19652,10 @@ msgstr "View schedule"
 msgid "tool.title.agenda-logs"
 msgstr "View schedule history"
 
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.agent-config"
+msgstr "Manage agents"
+
 #. Dynamic tool-state labels used by standard.tsx renders
 msgid "tool.title.analysis-timed-out"
 msgstr "Analysis timed out"
