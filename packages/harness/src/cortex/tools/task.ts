@@ -132,13 +132,23 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
         providerID: msg.info.providerID,
       }
 
-      let model = ctx.extra?.subtaskModel ?? (await Agent.getAvailableModel(agent)) ?? parentModel
+      // Keep the parent's provider choice while that model remains available.
+      let model =
+        ctx.extra?.subtaskModel ??
+        ((await Provider.isModelAvailable(parentModel))
+          ? parentModel
+          : ((await Agent.getAvailableModel(agent)) ?? parentModel))
       let promptAppend = ""
 
       const categoryConfig = await Category.resolve(params.category)
       if (categoryConfig) {
         if (categoryConfig.model) {
           const parsed = Provider.parseModel(categoryConfig.model)
+          if (!parsed.providerID.trim() || !parsed.modelID.trim()) {
+            throw new Error(
+              `Model must be in provider/model format for category ${params.category}: ${categoryConfig.model}`,
+            )
+          }
           model = { providerID: parsed.providerID, modelID: parsed.modelID }
         }
         promptAppend = categoryConfig.promptAppend ?? ""
