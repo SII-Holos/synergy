@@ -145,6 +145,10 @@ Behavior:
 - If a credential is injected, telemetry emits `bash.github.token.injected`;
   if injection is skipped, `bash.github.token.skipped` records the reason.
 
+## Maintain Repository Automation
+
+Oryn configuration and labels follow [the operations guide](../../../docs/operations/oryn.md). Keep executable workflow/policy and validation selection on a trusted revision, use separate read/publication App tokens, and keep model credentials out of validation. Update the immutable runtime pin, label catalog and validation graph together when their contracts change. Verify `bun test --config /dev/null test/script/oryn-validation.test.ts` and `bun run workflow:check`, then perform a manual preflight and selected live review. A successful preflight does not establish model or publication success.
+
 ## Rebase or Recover
 
 Do not rebase a shared or pre-existing checkout unless the user explicitly requests it. Before any rebase, confirm the branch and dirty state; stop on conflicts, preserve both owners' intent, and rerun affected tests. Do not use `reset --hard`, checkout-based file destruction, force push, or hook bypass without explicit user authority and a reviewed recovery plan.

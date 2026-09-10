@@ -1,0 +1,6 @@
+# Provenance: https://github.com/rhysd/actionlint/blob/v1.7.12/docs/config.md
+# Local adaptation: allow only GitHub's queued concurrency key until the pinned linter recognizes it.
+paths:
+  .github/workflows/oryn.yml:
+    ignore:
+      - '^unexpected key "queue" for "concurrency" section\.'
