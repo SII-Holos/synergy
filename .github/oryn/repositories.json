@@ -1,0 +1,32 @@
+{
+  "repositories": [
+    {
+      "name": "SII-Holos/synergy",
+      "enabled": true,
+      "maxItems": 20,
+      "cooldownHours": 168,
+      "allowRepair": true,
+      "allowAdopt": true,
+      "allowRebase": true,
+      "autoImplement": true,
+      "allowClusters": true,
+      "syncLabels": true,
+      "maxJobAttempts": 3,
+      "maxShepherdCycles": 6,
+      "retryMinutes": 15,
+      "scanPages": 10,
+      "allowCommands": true,
+      "allowClose": true,
+      "allowMerge": true,
+      "requiredChecks": ["All checks passed"],
+      "selection": "balanced",
+      "maxRepairAttempts": 2,
+      "validation": [
+        "bun /opt/oryn-validation/validate.ts prepare",
+        "bun /opt/oryn-validation/validate.ts checks",
+        "bun /opt/oryn-validation/validate.ts tests"
+      ],
+      "protectedLabels": ["security", "type: security", "do-not-bot", "oryn:hold", "oryn:kind: 🛡️ security"]
+    }
+  ]
+}

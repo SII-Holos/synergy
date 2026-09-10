@@ -2,6 +2,7 @@
 
 These documents describe repeatable maintenance and release procedures for the current repository.
 
+- [Oryn repository maintenance](oryn.md) — App configuration, event intake, labels, repair validation and publication gates.
 - [Open-source quality](open-source-quality.md) — local checks, CI jobs, package validation, secret scanning, and failure guidance.
 - [Desktop release](desktop-release.md) — Electron packaging, signing, updater artifacts, publication, and recovery.
 - [Qizhi Synergy Link](qizhi-synergy-link.md) — shared-filesystem deployment, verification, recovery, and credential rotation for Synergy Link hosts
