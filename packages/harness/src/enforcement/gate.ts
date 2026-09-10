@@ -31,6 +31,7 @@ export class ApprovalCache {
   }
 }
 
+import { worktreeSandboxReadGrants } from "../sandbox/policy"
 import { buildPermissionProfile, type SynergySandboxPermissionProfile } from "../sandbox/policy-engine"
 import { Filesystem } from "../util/filesystem"
 
@@ -940,6 +941,11 @@ export namespace EnforcementGate {
     // boundary declares.
     const approvedReadPaths = new Set<string>(trustedRootList)
     const approvedWritePaths = new Set<string>([...trustedRootList, ...(resolved.filesystem.writeRoots ?? [])])
+    if (workspaceType === "worktree") {
+      for (const grant of worktreeSandboxReadGrants(activeWorkspace, originalCheckout)) {
+        approvedReadPaths.add(grant)
+      }
+    }
     const pathOptions = { activeWorkspace, originalCheckout, readRoots, trustedRoots }
     let approvedNetwork = false
     const approvalCache = new ApprovalCache()
