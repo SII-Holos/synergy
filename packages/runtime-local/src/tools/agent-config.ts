@@ -122,18 +122,20 @@ export const AgentConfigTool = Tool.define<typeof parameters, AgentConfigMetadat
           const { action, name, ...patch } = input
           const result = await AgentConfig.update({ name, patch, signal: ctx.abort })
           const lines = [
-            `Agent "${result.agent.name}" updated (${result.source}${result.file ? `: ${result.file}` : ""}).`,
+            `Agent "${result.name}" ${result.agent ? "updated" : "disabled"} (${result.source}${result.file ? `: ${result.file}` : ""}).`,
             "",
-            summarizeAgent(result),
+            result.agent
+              ? summarizeAgent({ ...result, agent: result.agent })
+              : "Re-enable with update { disable: false }.",
           ]
           return {
-            title: `Update agent ${result.agent.name}`,
+            title: `Update agent ${result.name}`,
             metadata: {
               action,
-              name: result.agent.name,
+              name: result.name,
               source: result.source,
               file: result.file,
-              agent: projectAgent(result.agent),
+              agent: result.agent ? projectAgent(result.agent) : undefined,
             },
             output: lines.join("\n"),
           }
@@ -171,7 +173,9 @@ export const AgentConfigTool = Tool.define<typeof parameters, AgentConfigMetadat
               file: result.file,
               agent: projectAgent(result.agent),
             },
-            output: summarizeAgent(result),
+            output: `${summarizeAgent(result)}
+
+${JSON.stringify(projectAgent(result.agent), null, 2)}`,
           }
         }
         case "list": {

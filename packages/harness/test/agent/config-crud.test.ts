@@ -56,6 +56,7 @@ describe("AgentConfig.create", () => {
       fn: async () => {
         await AgentConfig.create({
           name: "explore-override",
+          scope: "global",
           description: "Override entry for explore model.",
           storage: "jsonc",
         })
@@ -361,7 +362,7 @@ describe("AgentConfig scoped disable", () => {
     })
   })
 
-  test("deleting a markdown agent clears same-name jsonc overlays in every layer", async () => {
+  test("deleting a markdown agent clears the owning layer jsonc overlay", async () => {
     await using tmp = await tmpdir()
     const scope = await tmp.scope()
     await ScopeContext.provide({
@@ -480,7 +481,7 @@ describe("AgentConfig.remove", () => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        await AgentConfig.create({ name: "jsonc-agent", description: "entry", storage: "jsonc" })
+        await AgentConfig.create({ name: "jsonc-agent", description: "entry", storage: "jsonc", scope: "global" })
         expect((await Config.domainGet("agents")).agent?.["jsonc-agent"]).toBeDefined()
 
         await AgentConfig.remove({ name: "jsonc-agent", strategy: "delete" })
@@ -552,5 +553,134 @@ describe("Agent.defaultAgent fallback", () => {
         expect(await Agent.defaultAgent()).toBe("custom_agent")
       },
     })
+  })
+})
+
+describe("AgentConfig write boundaries", () => {
+  test("JSONC creation and disable stay in the project layer", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await AgentConfig.create({ name: "scoped-json", storage: "jsonc", scope: "project", description: "local" })
+        const root = path.join(tmp.path, ".synergy")
+        expect((await Config.domainGet("agents", root)).agent?.["scoped-json"]?.description).toBe("local")
+        expect((await Config.domainGet("agents")).agent?.["scoped-json"]).toBeUndefined()
+        await AgentConfig.remove({ name: "scoped-json" })
+        expect((await Config.domainGet("agents", root)).agent?.["scoped-json"]?.disable).toBe(true)
+        expect((await Config.domainGet("agents")).agent?.["scoped-json"]).toBeUndefined()
+      },
+    })
+  })
+
+  test("null clears a markdown prompt", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await AgentConfig.create({ name: "clear-prompt", prompt: "old prompt" })
+        await AgentConfig.update({ name: "clear-prompt", patch: { prompt: null } })
+        expect((await Agent.get("clear-prompt"))?.prompt ?? "").toBe("")
+      },
+    })
+  })
+
+  test("built-in overrides and re-enabling use the same model validation", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await expect(AgentConfig.update({ name: "explore", patch: { model: "broken" } })).rejects.toThrow(
+          /provider\/model/,
+        )
+        await AgentConfig.create({ name: "disabled-json", storage: "jsonc", scope: "global" })
+        await AgentConfig.remove({ name: "disabled-json" })
+        await expect(
+          AgentConfig.update({ name: "disabled-json", patch: { disable: false, model: "broken" } }),
+        ).rejects.toThrow(/provider\/model/)
+      },
+    })
+  })
+
+  test("concurrent JSONC updates preserve both patches", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await AgentConfig.create({ name: "concurrent-json", storage: "jsonc", scope: "global", description: "before" })
+        await Promise.all([
+          AgentConfig.update({ name: "concurrent-json", patch: { description: "after" } }),
+          AgentConfig.update({ name: "concurrent-json", patch: { model: "openai/test" } }),
+        ])
+        expect((await Config.domainGet("agents")).agent?.["concurrent-json"]).toMatchObject({
+          description: "after",
+          model: "openai/test",
+        })
+      },
+    })
+  })
+
+  test("update disable reports success and validates dependent visibility", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await AgentConfig.create({ name: "disable-update", prompt: "owner", delegationGroups: ["unique-review-group"] })
+        await AgentConfig.create({ name: "dependent-update", prompt: "member", visibleTo: ["unique-review-group"] })
+        await expect(AgentConfig.update({ name: "disable-update", patch: { disable: true } })).rejects.toThrow(
+          /unreachable/,
+        )
+        await expect(AgentConfig.update({ name: "disable-update", patch: { delegationGroups: null } })).rejects.toThrow(
+          /unreachable/,
+        )
+        await AgentConfig.update({ name: "dependent-update", patch: { visibleTo: [] } })
+        await expect(AgentConfig.update({ name: "disable-update", patch: { disable: true } })).resolves.toBeDefined()
+        expect(await Agent.get("disable-update")).toBeUndefined()
+      },
+    })
+  })
+
+  test("deleting project markdown preserves an independent global definition", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await AgentConfig.create({ name: "layered-agent", prompt: "project" })
+        await Config.domainUpdate("agents", { agent: { "layered-agent": { description: "global definition" } } })
+        await Agent.reload()
+        await AgentConfig.remove({ name: "layered-agent", strategy: "delete" })
+        expect((await Config.domainGet("agents")).agent?.["layered-agent"]?.description).toBe("global definition")
+      },
+    })
+  })
+
+  test("defaultAgent fails explicitly when no visible primary exists", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const primary = (await Agent.list()).filter((agent) => agent.mode !== "subagent" && !agent.hidden)
+        await Config.domainUpdate("agents", {
+          agent: Object.fromEntries(primary.map((agent) => [agent.name, { hidden: true }])),
+        })
+        await Agent.reload()
+        await expect(Agent.defaultAgent()).rejects.toThrow(/visible primary/)
+      },
+    })
+  })
+})
+
+test("clearing the last custom JSONC field keeps the agent definition", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      await AgentConfig.create({ name: "minimal-json", storage: "jsonc", description: "only field" })
+      await AgentConfig.update({ name: "minimal-json", patch: { description: null } })
+      expect(await Agent.get("minimal-json")).toBeDefined()
+      await AgentConfig.remove({ name: "minimal-json" })
+      await AgentConfig.update({ name: "minimal-json", patch: { disable: false } })
+      expect(await Agent.get("minimal-json")).toBeDefined()
+    },
   })
 })

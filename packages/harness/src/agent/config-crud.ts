@@ -194,7 +194,7 @@ export namespace AgentConfig {
     const references = entry.visibleTo ?? []
     if (references.length === 0) return
     const agents = await Agent.list()
-    const known = new Set<string>(agents.map((agent) => agent.name))
+    const known = new Set<string>([name, ...agents.map((agent) => agent.name)])
     for (const agent of agents) {
       for (const group of agent.delegationGroups ?? []) known.add(group)
     }
@@ -257,7 +257,7 @@ export namespace AgentConfig {
   async function validateGraphChange(
     action: "disable" | "delete" | "update" | "create",
     name: string,
-    patch?: Partial<Entry>,
+    patch?: Patch,
   ): Promise<void> {
     const agents = await Agent.list()
     const current: GraphNode[] = agents.map((agent) => ({
@@ -266,16 +266,20 @@ export namespace AgentConfig {
       delegationGroups: agent.delegationGroups,
     }))
     let next: GraphNode[]
-    if (action === "delete" || action === "disable") {
+    if (action === "delete" || action === "disable" || patch?.disable === true) {
       next = current.filter((node) => node.name !== name)
     } else {
       next = current.map((node) => ({ ...node }))
       const merged = next.find((node) => node.name === name)
       if (merged) {
-        if (patch?.visibleTo !== undefined) merged.visibleTo = patch.visibleTo
-        if (patch?.delegationGroups !== undefined) merged.delegationGroups = patch.delegationGroups
+        if (patch?.visibleTo !== undefined) merged.visibleTo = patch.visibleTo ?? undefined
+        if (patch?.delegationGroups !== undefined) merged.delegationGroups = patch.delegationGroups ?? undefined
       } else if (patch) {
-        next.push({ name, visibleTo: patch.visibleTo, delegationGroups: patch.delegationGroups })
+        next.push({
+          name,
+          visibleTo: patch.visibleTo ?? undefined,
+          delegationGroups: patch.delegationGroups ?? undefined,
+        })
       }
     }
     const broken = newlyBrokenAgents(current, next)
@@ -345,17 +349,8 @@ export namespace AgentConfig {
     return out as Partial<Entry>
   }
 
-  /** An overlay with no meaningful fields left should fall away entirely. */
-  function isEmptyOverlay(entry: Partial<Entry>): boolean {
-    return Object.keys(cleanEntry(entry)).every((key) => key === "name")
-  }
-
   async function writeJsoncEntry(owner: JsoncOwner, name: string, entry: Partial<Entry>): Promise<void> {
     const cleaned = cleanEntry(entry)
-    if (isEmptyOverlay(cleaned)) {
-      await removeJsoncEntry(owner, name)
-      return
-    }
     // replace-domain, not merge: deep-merge cannot remove keys, so a
     // re-enable that drops `disable` must replace the whole entry.
     if (owner.scope === "global") {
@@ -401,7 +396,9 @@ export namespace AgentConfig {
   }
 
   export async function create(input: CreateInput): Promise<CreateResult> {
+    using mutation = await Lock.write("agent-config-mutation")
     const { name, storage, directory, signal } = input
+    ensureActive(signal, "create")
     const scope = input.scope ?? defaultScope()
     // An explicit directory scaffolds an agent file that may live outside the
     // scanned config directories (CLI `--path`): existence checks fall back to
@@ -428,6 +425,7 @@ export namespace AgentConfig {
       const root = directory ?? markdownTargetDirectory(scope)
       const file = path.join(root, "agent", `${name}.md`)
       using _ = await Lock.write(`agent-config:${file}`)
+      ensureActive(signal, "create")
       if (await fileExists(file)) throw new Error(`Agent file already exists: ${file}`)
       await fs.mkdir(path.dirname(file), { recursive: true })
       const { prompt = "", ...frontmatter } = entry
@@ -436,9 +434,8 @@ export namespace AgentConfig {
       await refreshRuntime(`agent-config:create:${name}`, signal)
       if (scaffold) return { name, source: "markdown", file, agent: await Agent.get(name) }
     } else {
-      await Config.domainMutateWithChange("agents", (current) => ({
-        agent: { ...current.agent, [name]: entry },
-      }))
+      const root = markdownTargetDirectory(scope)
+      await Config.domainUpdate("agents", { agent: { [name]: entry } }, { root })
       await refreshRuntime(`agent-config:create:${name}`, signal)
       return { name, source: "jsonc", agent: await Agent.get(name) }
     }
@@ -451,8 +448,10 @@ export namespace AgentConfig {
     return { name, source: "markdown", file: owner?.file, agent }
   }
 
-  export async function update(input: UpdateInput): Promise<Describe> {
+  export async function update(input: UpdateInput): Promise<CreateResult> {
+    using mutation = await Lock.write("agent-config-mutation")
     const { name, patch, signal } = input
+    ensureActive(signal, "update")
     const existing = await Agent.get(name)
     const md = (await scanMarkdownOwners()).get(name)
     const jsonc = await findJsoncOwner(name)
@@ -474,15 +473,15 @@ export namespace AgentConfig {
       using _ = await Lock.write(`agent-config:${md.file}`)
       const raw = await fs.readFile(md.file, "utf8")
       const parsed = matter(raw)
-      const merged = applyPatch(parsed.data as Partial<Entry>, patch)
+      const merged = applyPatch({ ...parsed.data, prompt: parsed.content } as Partial<Entry>, patch)
       await validateEntry(omit(merged, ["disable"]), name)
-      await validateGraphChange("update", name, merged)
+      await validateGraphChange("update", name, patch)
       ensureActive(signal, "update")
-      const { prompt = parsed.content, ...frontmatter } = merged
+      const { prompt = "", ...frontmatter } = merged
       await Bun.write(md.file, matter.stringify(prompt, frontmatter))
       await Config.state.resetAll()
       await refreshRuntime(`agent-config:update:${name}`, signal)
-      return describe(name)
+      return { name, source: "markdown", file: md.file, agent: await Agent.get(name) }
     }
 
     if (jsonc) {
@@ -492,38 +491,39 @@ export namespace AgentConfig {
       // so the owning definition stands alone.
       if (patch.disable === false) {
         delete merged.disable
-        const remaining = Object.keys(merged).filter((key) => key !== "name")
+        const remaining = Object.keys(cleanEntry(merged)).filter((key) => key !== "name")
         if (md && remaining.length === 0) {
           ensureActive(signal, "update")
           await removeJsoncEntry(jsonc, name)
           await refreshRuntime(`agent-config:update:${name}`, signal)
-          return describe(name)
+          return { name, ...(await describe(name)) }
         }
       }
-      if (existing || patch.disable === true) {
-        await validateEntry(omit(merged, ["disable"]), name)
-      }
-      await validateGraphChange("update", name, merged)
+      await validateEntry(omit(merged, ["disable"]), name)
+      await validateGraphChange("update", name, patch)
       ensureActive(signal, "update")
       await writeJsoncEntry(jsonc, name, merged)
       await refreshRuntime(`agent-config:update:${name}`, signal)
-      return describe(name)
+      return { name, source: "jsonc", agent: await Agent.get(name) }
     }
 
     // No stored definition the patch can target (disabled markdown agent with
     // its overlay already gone): treat like the jsonc path against global.
     const merged = applyPatch({}, patch)
-    await validateGraphChange("update", name, merged)
+    await validateEntry(omit(merged, ["disable"]), name)
+    await validateGraphChange("update", name, patch)
     ensureActive(signal, "update")
     await Config.domainMutateWithChange("agents", (domain) => ({
       agent: { ...domain.agent, [name]: merged },
     }))
     await refreshRuntime(`agent-config:update:${name}`, signal)
-    return describe(name)
+    return { name, source: "jsonc", agent: await Agent.get(name) }
   }
 
   export async function remove(input: RemoveInput): Promise<{ name: string; strategy: RemoveStrategy }> {
+    using mutation = await Lock.write("agent-config-mutation")
     const { name, signal } = input
+    ensureActive(signal, "remove")
     const strategy: RemoveStrategy = input.strategy ?? "disable"
     const existing = await Agent.get(name)
     if (!existing) {
@@ -539,10 +539,12 @@ export namespace AgentConfig {
       // Scope the disable to the layer that owns the definition: a
       // project-defined agent keeps working in every other Scope.
       const md = (await scanMarkdownOwners()).get(name)
-      if (md?.scope === "project") {
-        const domain = await Config.domainGet("agents", md.root)
+      const owner = md ?? (await findJsoncOwner(name))
+      ensureActive(signal, strategy)
+      if (owner?.scope === "project") {
+        const domain = await Config.domainGet("agents", owner.root)
         const current = domain.agent?.[name] ?? {}
-        await Config.domainUpdate("agents", { agent: { [name]: { ...current, disable: true } } }, { root: md.root })
+        await Config.domainUpdate("agents", { agent: { [name]: { ...current, disable: true } } }, { root: owner.root })
       } else {
         await Config.domainMutateWithChange("agents", (domain) => ({
           agent: { ...domain.agent, [name]: { ...(domain.agent?.[name] ?? {}), disable: true } },
@@ -561,14 +563,11 @@ export namespace AgentConfig {
     const md = (await scanMarkdownOwners()).get(name)
     if (md) {
       using _ = await Lock.write(`agent-config:${md.file}`)
+      ensureActive(signal, strategy)
       await fs.unlink(md.file)
-      // A same-name jsonc overlay (disable/re-enable bookkeeping or overrides)
-      // would immediately recreate a blank agent — clear it in every layer.
-      for (const { root, scope } of layerRoots()) {
-        const domain = await Config.domainGet("agents", root)
-        if (domain.agent?.[name] !== undefined) {
-          await removeJsoncEntry({ root, scope, entry: domain.agent[name] }, name)
-        }
+      const domain = await Config.domainGet("agents", md.root)
+      if (domain.agent?.[name] !== undefined) {
+        await removeJsoncEntry({ root: md.root, scope: md.scope, entry: domain.agent[name] }, name)
       }
       await Config.state.resetAll()
       await refreshRuntime(`agent-config:delete:${name}`, signal)
@@ -586,6 +585,8 @@ export namespace AgentConfig {
   }
 
   export async function setDefault(name: string, signal?: AbortSignal): Promise<{ default_agent: string }> {
+    using mutation = await Lock.write("agent-config-mutation")
+    ensureActive(signal, "set_default")
     const agent = await Agent.get(name)
     if (!agent) {
       throw new Error(
@@ -670,7 +671,9 @@ export namespace AgentConfig {
       storage: z
         .enum(["markdown", "jsonc"])
         .optional()
-        .describe("Storage layer. Default: markdown when a prompt is given, else a global 60-agents.jsonc entry"),
+        .describe(
+          "Storage layer. Default: markdown when a prompt is given, else a 60-agents.jsonc entry in the selected scope",
+        ),
       scope: z.enum(["project", "global"]).optional().describe("Storage scope. Default: the current Scope's layer"),
     }),
     Update: z.object({

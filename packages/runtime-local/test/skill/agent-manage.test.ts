@@ -17,7 +17,7 @@ describeBuiltinContract({
 describe.serial("agent-manage operational content", () => {
   test("routes writes through the agent_config tool with validation guarantees", () => {
     const builtin = BUILTIN_SKILLS.find((skill) => skill.name === "agent-manage")!
-    expect(builtin.content).toContain("the tool rejects unknown references with the offending name")
+    expect(builtin.content).toContain("whole agent graph")
     expect(builtin.content).toContain("set_default")
     expect(builtin.content).toContain("describe")
   })

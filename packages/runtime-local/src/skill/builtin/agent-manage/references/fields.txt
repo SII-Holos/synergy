@@ -11,7 +11,7 @@ Field semantics, validation rules, and storage layers for agent definitions mana
 
 `agent_config` chooses the storage layer by scope: markdown when a `prompt` is present; pass `storage: "jsonc"` to force a config entry. The default scope follows the current Scope — project layers inside a project, global everywhere else; pass `scope: "global"` or `scope: "project"` explicitly to override. Precedence when multiple layers define the same name: project markdown > global markdown > config entries > built-in.
 
-Writes are serialized per file/entry and validated against the whole agent graph before landing. Plugin-contributed and external agents reject update/remove — manage them in the owning plugin or external definition instead.
+Configuration operations are serialized across validation, writing, and reload and validated against the whole agent graph before landing. Plugin-contributed and external agents reject update/remove — manage them in the owning plugin or external definition instead.
 
 ## Fields
 
@@ -46,14 +46,14 @@ On `update`, omitting a field keeps its current value; passing `null` clears it 
 2. `model` must be `provider/model` with both halves non-empty.
 3. Cross-agent references: every `visibleTo` entry must match an existing agent name or a `delegationGroups` identity declared by any agent. Unknown references reject the write with the offending name.
 4. Graph integrity: a change (create/update/disable/delete) that would leave another agent's `visibleTo` with no resolvable identity — for example removing a delegation group another agent depends on, or disabling the only agent a subagent is visible to — rejects with the affected agent names.
-5. `set_default` rejects targets that do not exist, are disabled, are subagent-only, or are hidden; `Agent.defaultAgent()` logs a warning and falls back to synergy (then to any available visible primary) when config was edited by hand.
+5. `set_default` rejects targets that do not exist, are disabled, are subagent-only, or are hidden; `Agent.defaultAgent()` logs a warning and falls back to synergy (then to any available visible primary) when config was edited by hand. If no visible primary remains, it reports a configuration error.
 6. Load-time lint: unresolved `visibleTo` references in any agent log a warning naming the agent and reference.
 
 ## Deletion semantics
 
 - `remove { strategy: "disable" }` (default) writes `disable: true` **in the layer that owns the definition** — a project-defined agent stays available in every other Scope. Reversible; the only removal allowed for built-in agents.
-- `remove { strategy: "delete" }` deletes the owning markdown file plus any same-name config overlay in every layer (a leftover overlay would recreate a blank agent). Built-ins reject delete.
-- Re-enabling (`update { disable: false }`) removes the disable marker outright; an overlay left with no fields falls away entirely.
+- `remove { strategy: "delete" }` deletes the owning markdown file plus any same-name config overlay in its owning layer (a leftover overlay would recreate a blank agent); independent definitions in other layers are preserved. Built-ins reject delete.
+- Re-enabling (`update { disable: false }`) removes the disable marker outright; an empty overlay above a markdown definition falls away; an empty JSONC definition remains a valid agent.
 
 ## Ownership resolution
 

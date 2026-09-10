@@ -527,14 +527,10 @@ export namespace Agent {
           : `default_agent "${configured}" is hidden`
       log.warn(`${reason}; falling back`)
     }
-    // Prefer synergy, then any other visible primary agent that actually
-    // exists — never a bare name: a disabled synergy must not produce a
-    // default agent that fails to resolve at session creation.
-    return (
-      agents.find((x) => x.name === "synergy" && eligible(x))?.name ??
-      agents.find((x) => eligible(x))?.name ??
-      "synergy"
-    )
+    const fallback = agents.find((agent) => agent.name === "synergy" && eligible(agent)) ?? agents.find(eligible)
+    if (!fallback)
+      throw new Error("No visible primary agent is available. Enable a primary agent in the agents configuration.")
+    return fallback.name
   }
 
   export async function generate(input: { description: string; model?: { providerID: string; modelID: string } }) {

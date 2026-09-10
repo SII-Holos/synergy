@@ -1,8 +1,19 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { AgentConfigTool } from "../../src/tools/agent-config"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+
+import { Config } from "@ericsanchezok/synergy-harness/config/config"
+
+let original: Awaited<ReturnType<typeof Config.domainGet>>
+beforeEach(async () => {
+  original = await Config.domainGet("agents")
+})
+afterEach(async () => {
+  await Config.domainUpdate("agents", original, { mode: "replace-domain" })
+  await Agent.reload()
+})
 
 const ctx = {
   sessionID: "ses_agent_config_tool",
@@ -139,5 +150,33 @@ describe("tool.agent_config", () => {
     const tool = await AgentConfigTool.init()
     expect(tool.parameters.safeParse({ input: { action: "list" } }).success).toBe(true)
     expect(tool.parameters.safeParse({ action: "list" }).success).toBe(false)
+  })
+})
+
+test("describe includes the bounded prompt and permissions in model-visible output", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const tool = await AgentConfigTool.init()
+      await tool.execute(
+        {
+          input: {
+            action: "create",
+            name: "inspectable",
+            prompt: "Inspect this prompt.",
+            permission: { edit: "deny" },
+          },
+        },
+        ctx,
+      )
+      const result = await tool.execute({ input: { action: "describe", name: "inspectable" } }, ctx)
+      expect(result.output).toContain("Inspect this prompt.")
+      expect(result.output).toContain('"permissionRules"')
+      expect(result.output).toContain('"deny"')
+      const disabled = await tool.execute({ input: { action: "update", name: "inspectable", disable: true } }, ctx)
+      expect(disabled.output).toContain("disabled")
+      expect(await Agent.get("inspectable")).toBeUndefined()
+    },
   })
 })
