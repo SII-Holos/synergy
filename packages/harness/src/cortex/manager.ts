@@ -29,6 +29,7 @@ import { Observability } from "../observability"
 import { pluginTaskSnapshotFromTask } from "./plugin-task"
 import { SessionInbox } from "../session/inbox"
 import { SessionDrive } from "../session/drive"
+import { LoopJob } from "../session/loop-job"
 import { Lock } from "../util/lock"
 
 export namespace Cortex {
@@ -816,6 +817,14 @@ export namespace Cortex {
       }
 
       await updateDagNode(terminalTask)
+      // Detached summary/title work for the child session writes through the
+      // worktree snapshot; settle it before the managed directory is removed
+      // or the summary's git diff races the cleanup into a failed diff state.
+      try {
+        await LoopJob.settleDetached(task.sessionID)
+      } catch (error) {
+        log.warn("child detached work failed to settle before worktree cleanup", { taskID: task.id, error })
+      }
       await cleanupChildWorktree(terminalTask)
 
       if (deliverySettled) {

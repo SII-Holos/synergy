@@ -1,4 +1,5 @@
 import { RolloutRecordingError } from "./rollout/error"
+import { RolloutContext } from "./rollout/context"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { MessageV2 } from "./message-v2"
 import type { Info } from "./types"
@@ -50,6 +51,7 @@ export namespace LoopJob {
     capture(ctx: Context, instance: JobInstance): Payload
     key?(payload: Payload): string
     timeoutMs?: number
+    detached?: boolean
     execute(payload: Payload, signal: AbortSignal): Promise<FlowResult>
   }
 
@@ -72,6 +74,7 @@ export namespace LoopJob {
     sessionID: string
     rootID: string
     abort: AbortSignal
+    detached: boolean
     resume: ReturnType<typeof AsyncLocalStorage.snapshot>
   }
 
@@ -82,12 +85,14 @@ export namespace LoopJob {
     current: BackgroundRun
     pending?: BackgroundRun
     completion: Promise<void>
+    detached: boolean
+    cancel?: AbortController
   }
 
   const registry = new Map<string, RegisteredJob>()
   const signals = new Map<string, Signal>()
   const background = new Map<string, BackgroundState>()
-  const failures = new Map<string, InstanceType<typeof RolloutRecordingError>>()
+  const failures = new Map<string, { error: InstanceType<typeof RolloutRecordingError>; detached: boolean }>()
   const ownerKey = (sessionID: string, rootID: string) => `${sessionID}:${rootID}`
   let backgroundSequence = 0
   const DEFAULT_BACKGROUND_TIMEOUT_MS = 180_000
@@ -127,8 +132,8 @@ export namespace LoopJob {
   }
 
   export async function execute(instances: JobInstance[], ctx: Context): Promise<FlowResult> {
-    const failure = failures.get(ownerKey(ctx.sessionID, ctx.lastUser.rootID ?? ctx.lastUser.id))
-    if (failure) throw failure
+    const recorded = failures.get(ownerKey(ctx.sessionID, ctx.lastUser.rootID ?? ctx.lastUser.id))
+    if (recorded && !recorded.detached) throw recorded.error
     const nonBlocking: { instance: JobInstance; job: RegisteredBackgroundJob }[] = []
     const blocking: { instance: JobInstance; job: BlockingJob }[] = []
     for (const instance of instances) {
@@ -161,15 +166,23 @@ export namespace LoopJob {
 
   export async function drainAll() {
     while (background.size) await Promise.all([...background.values()].map((state) => state.completion))
-    const errors = [...failures.values()]
+    const errors = [...failures.values()].map((entry) => entry.error)
     failures.clear()
     if (errors.length) throw new AggregateError(errors, "Background loop jobs failed during runtime shutdown")
   }
 
+  /**
+   * Wait for the session's lease-bound background runs and surface their
+   * recording failures. Detached runs are excluded: they intentionally
+   * outlive the turn and settle through settleDetached instead.
+   */
   export async function drain(sessionID: string, rootID?: string) {
     while (true) {
       const owned = [...background.values()].filter(
-        (state) => state.current.sessionID === sessionID && (rootID === undefined || state.current.rootID === rootID),
+        (state) =>
+          !state.detached &&
+          state.current.sessionID === sessionID &&
+          (rootID === undefined || state.current.rootID === rootID),
       )
       if (!owned.length) break
       const settled = await Promise.allSettled(owned.map((state) => state.completion))
@@ -177,13 +190,62 @@ export namespace LoopJob {
       if (rejected?.status === "rejected") throw rejected.reason
     }
     let failure: InstanceType<typeof RolloutRecordingError> | undefined
-    for (const [key, error] of failures) {
+    for (const [key, entry] of failures) {
+      if (entry.detached) continue
       if (rootID === undefined ? key.startsWith(`${sessionID}:`) : key === ownerKey(sessionID, rootID)) {
-        failure ??= error
+        failure ??= entry.error
         failures.delete(key)
       }
     }
     if (failure) throw failure
+  }
+
+  /**
+   * Wait for the session's detached background runs and surface their
+   * recording failures. Called after the loop releases the lease so turn
+   * settlement (rollout run finalization) is never gated on — or aborted
+   * with — the lease signal. The wait snapshots the detached runs registered
+   * for the given roots at call time; runs a later loop registers settle
+   * through their own settlement. Without rootIDs, every detached run of the
+   * session registered by now is settled.
+   */
+  export async function settleDetached(sessionID: string, rootIDs?: ReadonlySet<string>) {
+    const owned = [...background.values()].filter(
+      (state) =>
+        state.detached &&
+        state.current.sessionID === sessionID &&
+        (rootIDs === undefined || rootIDs.has(state.current.rootID)),
+    )
+    const settled = await Promise.allSettled(owned.map((state) => state.completion))
+    const rejected = settled.find((result) => result.status === "rejected")
+    if (rejected?.status === "rejected") throw rejected.reason
+    let failure: InstanceType<typeof RolloutRecordingError> | undefined
+    for (const [key, entry] of failures) {
+      if (!entry.detached || !key.startsWith(`${sessionID}:`)) continue
+      if (rootIDs !== undefined && !rootIDs.has(key.slice(sessionID.length + 1))) continue
+      failure ??= entry.error
+      failures.delete(key)
+    }
+    if (failure) throw failure
+  }
+
+  /** Abort a session's detached runs and drop their pending payloads. */
+  export function cancelDetached(sessionID: string, rootIDs?: ReadonlySet<string>): void {
+    for (const state of background.values()) {
+      if (!state.detached || state.current.sessionID !== sessionID) continue
+      if (rootIDs !== undefined && !rootIDs.has(state.current.rootID)) continue
+      state.pending = undefined
+      state.cancel?.abort()
+    }
+  }
+
+  /** Abort every detached run in the process, regardless of lease state. */
+  export function cancelDetachedAll(): void {
+    for (const state of background.values()) {
+      if (!state.detached) continue
+      state.pending = undefined
+      state.cancel?.abort()
+    }
   }
 
   function scheduleBackground(job: RegisteredBackgroundJob, payload: JobInstance, ctx: Context) {
@@ -198,6 +260,7 @@ export namespace LoopJob {
       sessionID,
       rootID,
       abort: ctx.abort,
+      detached: job.detached === true,
       resume: AsyncLocalStorage.snapshot(),
     }
     const current = background.get(key)
@@ -215,6 +278,8 @@ export namespace LoopJob {
       key,
       startedAt: Date.now(),
       current: run,
+      detached: run.detached,
+      cancel: run.detached ? new AbortController() : undefined,
       completion: Promise.resolve(),
     }
     background.set(key, state)
@@ -233,14 +298,19 @@ export namespace LoopJob {
       })
       let outcome = "success"
       try {
-        await executeWithTimeout(run)
+        await executeWithTimeout(state)
       } catch (error) {
         outcome = error instanceof DOMException && error.name === "TimeoutError" ? "timeout" : "error"
         log.error("job failed", { type: state.type, outcome, error })
         if (RolloutRecordingError.isInstance(error)) {
-          failures.set(ownerKey(run.sessionID, run.rootID), error)
-          const { SessionManager } = await import("./manager")
-          SessionManager.signalAbort(run.sessionID, { rootID: run.rootID })
+          failures.set(ownerKey(run.sessionID, run.rootID), { error, detached: run.detached })
+          if (!run.detached) {
+            // Bound recording failures still abort the owning loop: the turn
+            // cannot produce trustworthy evidence without its ledger. A
+            // detached failure surfaces through settleDetached instead.
+            const { SessionManager } = await import("./manager")
+            SessionManager.signalAbort(run.sessionID, { rootID: run.rootID })
+          }
           state.pending = undefined
           break
         }
@@ -267,7 +337,8 @@ export namespace LoopJob {
     )
   }
 
-  async function executeWithTimeout(run: BackgroundRun) {
+  async function executeWithTimeout(state: BackgroundState) {
+    const run = state.current
     const controller = new AbortController()
     const timeoutMs = backgroundTimeoutMs(run.job)
     const timeout = setTimeout(
@@ -275,10 +346,21 @@ export namespace LoopJob {
       timeoutMs,
     )
     timeout.unref()
-    const signal = AbortSignal.any([controller.signal, run.abort])
+    // Detached runs intentionally ignore the loop lease abort: they outlive
+    // the turn and are bounded by their own timeout and cancelDetached.
+    const signal = state.detached
+      ? AbortSignal.any([controller.signal, state.cancel!.signal])
+      : AbortSignal.any([controller.signal, run.abort])
     try {
       signal.throwIfAborted()
-      const result = await run.resume(() => run.job.execute(run.payload, signal))
+      // Detached runs must not inherit the loop lease signal through the
+      // rollout causal context: AgentCall joins it into every nested model
+      // call, which would kill detached work the moment the turn releases.
+      const causal = RolloutContext.current()
+      const execute = () => run.job.execute(run.payload, signal)
+      const result = await run.resume(() =>
+        state.detached && causal ? RolloutContext.provide({ ...causal, signal: undefined }, execute) : execute(),
+      )
       signal.throwIfAborted()
       return result
     } finally {

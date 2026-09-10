@@ -104,7 +104,10 @@ export namespace RolloutLifecycle {
     if (latest?.info.id === runID && session.workflow)
       await SessionWorkflowService.setNone(sessionID, { allowRunning: true })
     while (SessionManager.getRuntime(sessionID)?.owner?.rootID === runID) await Bun.sleep(20)
-    await LoopJob.drain(sessionID, runID)
+    // Detached turn work no longer observes the lease abort; cancel it
+    // explicitly and let its ledger writes settle before the run is closed.
+    LoopJob.cancelDetached(sessionID, new Set([runID]))
+    await LoopJob.settleDetached(sessionID, new Set([runID]))
     await RolloutProcess.cancel(identity, runID)
     return RolloutLedger.finishRun(identity, runID, "cancelled")
   }
