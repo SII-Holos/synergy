@@ -398,7 +398,7 @@ describe("tool.bash permissions", () => {
         )
         expect(requests.length).toBe(1)
         expect(requests[0].permission).toBe("bash")
-        expect(requests[0].metadata.capability).toBe("shell")
+        expect(requests[0].metadata.capability).toBe("shell_read")
         expect(requests[0].patterns).toContain("echo hello")
       },
     })
