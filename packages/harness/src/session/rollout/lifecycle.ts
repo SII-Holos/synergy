@@ -1,3 +1,4 @@
+import { Lock } from "../../util/lock"
 import { RolloutProcess } from "./process"
 import { Session } from ".."
 import { MessageV2 } from "../message-v2"
@@ -143,6 +144,7 @@ export namespace RolloutLifecycle {
   }
 
   export async function reconcile(sessionID: string, runID: string, outcome?: "failed" | "cancelled") {
+    using lock = await Lock.write(`session-rollout:${sessionID}:${runID}`)
     const session = await Session.get(sessionID)
     const identity = owner(session)
     const run = await RolloutLedger.getRun(identity, runID).catch((error) => {
@@ -168,7 +170,7 @@ export namespace RolloutLifecycle {
     if (!outcome && (await SessionInbox.list(sessionID)).some((item) => item.mode === "steer")) return run
     const messages = await SessionHistory.modelMessages({ sessionID })
     const terminal = SessionProgress.findTerminalReply(messages, runID)
-    if (!outcome && !terminal) return run
+    if (!outcome && (!terminal || SessionProgress.needsModelCall(messages, runID))) return run
     const status = outcome ?? (terminal?.info.role === "assistant" && terminal.info.error ? "failed" : "completed")
     return RolloutLedger.finishRun(identity, runID, status)
   }

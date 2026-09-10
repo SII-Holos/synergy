@@ -1,4 +1,4 @@
-import { describe, expect, test, mock } from "bun:test"
+import { describe, expect, test, mock, spyOn } from "bun:test"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
@@ -27,6 +27,8 @@ import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
 import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
 import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { migrations } from "@ericsanchezok/synergy-harness/test/internal/session/migration"
 import { RolloutSnapshot } from "@ericsanchezok/synergy-harness/session/rollout/snapshot"
 import { Command } from "@ericsanchezok/synergy-runtime-local/command/command"
 import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
@@ -2534,3 +2536,81 @@ describe("SessionInvoke detached turn settlement", () => {
     }
   })
 })
+
+for (const phase of ["materializing", "persisted-terminal"] as const) {
+  test(`rollout continuation at ${phase} finishes before the queued new task`, async () => {
+    await using tmp = await tmpdir({ git: true })
+    const processedRoots: string[] = []
+    let reconciliation: ReturnType<typeof RolloutLifecycle.reconcile> | undefined
+    const restore = installBasicLoopMocks({
+      async onProcess(input) {
+        if (reconciliation) expect((await reconciliation)?.status).toBe("running")
+        processedRoots.push(input.user.id)
+      },
+    })
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          try {
+            const rootID = Identifier.ascending("message")
+            await Session.updateMessage({
+              ...(userMessage(rootID).info as MessageV2.User),
+              sessionID: session.id,
+              isRoot: true,
+              rootID,
+              time: { created: Date.now() },
+            })
+            const terminal = assistantMessage(Identifier.ascending("message"), rootID, "Earlier reply")
+            await Session.updateMessage({
+              ...(terminal.info as MessageV2.Assistant),
+              sessionID: session.id,
+              rootID,
+              time: { created: Date.now(), completed: Date.now() },
+            })
+            const owner = RolloutLifecycle.owner(session)
+            await RolloutLifecycle.configuration(session, rootID)
+            if (phase === "persisted-terminal") await RolloutLedger.finishRun(owner, rootID, "completed")
+            const originalMaterialize = SessionInbox.materializeItem
+            using materialize = spyOn(SessionInbox, "materializeItem").mockImplementation(async (...args) => {
+              if (phase === "materializing" && args[0].mode === "steer") {
+                reconciliation = RolloutLifecycle.reconcile(session.id, rootID)
+              }
+              return originalMaterialize(...args)
+            })
+            await SessionInbox.enqueueUser({
+              sessionID: session.id,
+              model: { providerID: "test-provider", modelID: "test-model" },
+              noReply: true,
+              parts: [{ type: "text", text: "Child task completed" }],
+            })
+            if (phase === "persisted-terminal")
+              for (const item of await SessionInbox.drainSteer(session.id))
+                await SessionInbox.materializeItem(item, rootID, { guiding: true })
+            const queued = await SessionInbox.enqueueUser({
+              sessionID: session.id,
+              model: { providerID: "test-provider", modelID: "test-model" },
+              parts: [{ type: "text", text: "New task after the stuck continuation" }],
+            })
+            await migrations
+              .find((migration) => migration.id === "20260910-rollout-unanswered-continuation")!
+              .up(() => {})
+            await SessionManager.wake(session.id)
+            expect(processedRoots).toEqual([rootID, queued.messageID])
+            expect(await SessionInbox.list(session.id)).toHaveLength(0)
+            const messages = await Session.messages({ sessionID: session.id })
+            expect(SessionProgress.needsModelCall(messages, rootID)).toBe(false)
+            expect(SessionProgress.needsModelCall(messages, queued.messageID)).toBe(false)
+            await LoopJob.settleDetached(session.id)
+          } finally {
+            SessionManager.unregisterRuntime(session.id)
+            await Session.remove(session.id)
+          }
+        },
+      })
+    } finally {
+      restore()
+    }
+  })
+}
