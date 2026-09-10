@@ -470,6 +470,8 @@ Local Bash opens process evidence before spawning. stdout and stderr are archive
 
 Continuation admission and rollout reconciliation share a per-session, per-root lock. Admission holds it while draining steer items, materializing their messages, deciding whether a model call is needed, and opening an execution segment. Reconciliation waits while admission holds the lock and requires the latest input for the root to have a terminal reply; an earlier reply does not settle a later continuation.
 
+Run cancellation drains its execution owner, detached jobs, and native processes before taking the settlement lock. With no active segment, it terminalizes orphaned call/tool/process records as interrupted before recording cancellation, so post-release reconciliation cannot race the cancellation result. Active segments still block closure.
+
 The continuation repair migration persists a rollout recovery intent before reopening incorrectly completed work. Startup routes that intent through the normal drive/wake path even when the inbox is empty. The intent survives failed wake attempts and is cleared once the root is answered, cancelled, failed, or superseded. This targeted repair does not enable automatic resume for ordinary interrupted sessions or add messages to the transcript.
 
 Recording-error cancellation carries the source root ID. The active loop lease binds its current root before model or tool work; an error from an older root cannot cancel a replacement root, including another root processed under the same lease. An unbound starting lease is not ownership evidence for an old task. Explicit user cancellation retains its session-wide semantics.

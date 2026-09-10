@@ -110,6 +110,9 @@ export namespace RolloutLifecycle {
     LoopJob.cancelDetached(sessionID, new Set([runID]))
     await LoopJob.settleDetached(sessionID, new Set([runID]))
     await RolloutProcess.cancel(identity, runID)
+    using lock = await Lock.write(`session-rollout:${sessionID}:${runID}`)
+    if (!(await RolloutLedger.segments(identity, runID)).some((segment) => segment.status === "running"))
+      await settleOrphanedRecords(identity, runID)
     return RolloutLedger.finishRun(identity, runID, "cancelled")
   }
 

@@ -16,6 +16,8 @@ Before changing a run, the migration durably records a recovery intent under tha
 
 Migration registration keeps history and progress imports type-only or deferred until execution. Static history imports reach session initialization through the manager and inbox, which otherwise exposes an incompletely initialized history module during cold startup.
 
+Cancellation also acquires the settlement lock after the execution owner, detached jobs, and native processes have drained. When no execution segment remains active, it settles orphaned call/tool/process records as interrupted before closing the run. Previously cancellation could race the post-release reconciliation and fail with active calls even though the execution had stopped; installed CLI timeout acceptance exposed this ordering. Active segments still prevent closure and interrupted evidence is never promoted to a successful call.
+
 ## Alternatives considered
 
 **Restart or repeated wake attempts.** The completed status and unanswered continuation are durable, so retries encounter the same rejection.
