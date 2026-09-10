@@ -21,3 +21,5 @@ State disposal binds the resource's creation context and joins the same entry cl
 ## Consequences
 
 Cancellation waits for already admitted persistence, so orchestration must allocate a separate cleanup deadline. Missing final provider usage remains unknown. Behavioral tests hold reads and writes behind explicit barriers and assert retained prefixes and terminal ordering.
+
+Oversized upstream chunks can retain an unconsumed tail when an abort makes `reader.cancel()` reject. Closing drains that already admitted tail even when upstream cancellation fails; a 2 MiB behavioral regression verifies the complete received prefix.

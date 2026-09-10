@@ -700,3 +700,18 @@ test("snapshot capacity is bounded while the current identity remains available"
   const current = await ProviderCatalog.resolve({ config, includeLive: true })
   expect(current[providerID].models["model-current"].catalog_state).toBe("active")
 })
+
+test("offline resolution retains cached account models without starting discovery", async () => {
+  fetchCatalog = async () => [{ id: "cached-account-model" }]
+  await ProviderCatalog.refresh(providerID)
+  let calls = 0
+  fetchCatalog = async () => {
+    calls++
+    return [{ id: "unexpected-network-model" }]
+  }
+  const catalog = await ProviderCatalog.resolve({ config, includeLive: true, refresh: false })
+  expect(catalog[providerID].models["cached-account-model"]).toBeDefined()
+  expect(catalog[providerID].models["unexpected-network-model"]).toBeUndefined()
+  await ProviderCatalog.resolve({ config, includeLive: true, refresh: false })
+  expect(calls).toBe(0)
+})

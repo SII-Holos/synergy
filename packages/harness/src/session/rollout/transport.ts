@@ -121,11 +121,19 @@ export namespace RolloutTransport {
         closing ??= (async () => {
           let cleanupError: unknown
           try {
-            if (!complete) await cancelUpstream(reason)
-            if (nextRead) {
-              const next = await nextRead
-              nextRead = undefined
-              if (!next.done) pending = next.value
+            try {
+              if (!complete) await cancelUpstream(reason)
+            } catch (error) {
+              cleanupError = error
+            }
+            try {
+              if (nextRead) {
+                const next = await nextRead
+                nextRead = undefined
+                if (!next.done) pending = next.value
+              }
+            } catch (error) {
+              cleanupError ??= error
             }
             while (pending?.byteLength && !recordingFailure) {
               const data = pending.subarray(0, RolloutTransportSchema.CHUNK_BYTES)

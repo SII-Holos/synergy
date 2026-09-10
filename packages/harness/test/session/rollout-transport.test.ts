@@ -342,3 +342,32 @@ test("joins an aborted upstream reader before closing its buffered response", as
   expect(source.locked).toBe(false)
   reader.releaseLock()
 })
+
+test("an upstream abort cannot discard an already received oversized chunk tail", async () => {
+  let upstream!: ReadableStreamDefaultController<Uint8Array>
+  const bytes = new Uint8Array(2 * 1024 * 1024).fill(37)
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      upstream = controller
+      controller.enqueue(bytes)
+    },
+  })
+  const events: RolloutTransport.Event[] = []
+  const response = await RolloutTransport.provide(
+    async (event) => {
+      events.push(event)
+    },
+    () => RolloutTransport.fetch(async () => new Response(source), "https://fixture.test"),
+  )
+  const reader = response.body!.getReader()
+  await reader.read()
+  const failure = new DOMException("aborted after admitted read", "AbortError")
+  upstream.error(failure)
+  await reader.cancel(failure)
+  expect(
+    events.filter((event) => event.type === "chunk").reduce((size, event) => size + event.data.byteLength, 0),
+  ).toBe(bytes.byteLength)
+  expect(events.at(-1)).toMatchObject({ type: "attempt-end", status: "cancelled" })
+  expect(source.locked).toBe(false)
+  reader.releaseLock()
+})
