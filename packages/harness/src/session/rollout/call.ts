@@ -151,12 +151,14 @@ export namespace RolloutCall {
           const line = JSON.stringify(event, (_key, value: unknown) =>
             value instanceof Error ? { name: value.name, message: value.message } : value,
           )
-          writing = response.append(new TextEncoder().encode(line + "\n"))
+          writing = (async () => {
+            await response.append(new TextEncoder().encode(line + "\n"))
+            if (response.committed.chunks !== committedChunks) {
+              await RolloutLedger.checkpointCall(input.owner, input.runID, call.id, response.committed)
+              committedChunks = response.committed.chunks
+            }
+          })()
           await writing
-          if (response.committed.chunks !== committedChunks) {
-            await RolloutLedger.checkpointCall(input.owner, input.runID, call.id, response.committed)
-            committedChunks = response.committed.chunks
-          }
           if (closed) return
           yield event
         }

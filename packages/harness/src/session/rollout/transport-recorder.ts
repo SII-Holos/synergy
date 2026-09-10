@@ -21,6 +21,7 @@ export namespace RolloutTransportRecorder {
     let complete = true
     let pending: Promise<void> = Promise.resolve()
     let closed = false
+    let finishing: Promise<boolean> | undefined
 
     async function handle(raw: RolloutTransportSchema.Event) {
       const event = RolloutTransportSchema.Event.parse(raw)
@@ -95,25 +96,28 @@ export namespace RolloutTransportRecorder {
         pending = pending.then(() => record(() => handle(event)))
         return pending
       },
-      async finish() {
+      finish() {
         closed = true
-        await pending
-        for (const attempt of active.values()) {
-          attempt.value.request = await attempt.request.finish("partial")
-          attempt.value.response = await attempt.response?.finish("partial")
-          attempt.value.usage = attempt.usage?.finish()
-          attempt.value.estimate = ProviderPricing.estimate(
-            call.model.pricing,
-            attempt.value.usage,
-            call.model.providerID,
-          )
-          attempt.value.status = "interrupted"
-          attempt.value.ended = Date.now()
-          await RolloutLedger.writeAttempt(attempt.value)
-          complete = false
-        }
-        active.clear()
-        return count > 0 && complete
+        finishing ??= (async () => {
+          await pending
+          for (const attempt of active.values()) {
+            attempt.value.request = await attempt.request.finish("partial")
+            attempt.value.response = await attempt.response?.finish("partial")
+            attempt.value.usage = attempt.usage?.finish()
+            attempt.value.estimate = ProviderPricing.estimate(
+              call.model.pricing,
+              attempt.value.usage,
+              call.model.providerID,
+            )
+            attempt.value.status = "interrupted"
+            attempt.value.ended = Date.now()
+            await RolloutLedger.writeAttempt(attempt.value)
+            complete = false
+          }
+          active.clear()
+          return count > 0 && complete
+        })()
+        return finishing
       },
     }
   }

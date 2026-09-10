@@ -40,10 +40,34 @@ export namespace FileWatcherBinding {
   export function available(
     input: { platform?: NodeJS.Platform; arch?: string; libc?: string; execPath?: string } = {},
   ): boolean {
+    if ((input.platform ?? process.platform) === "linux")
+      return [builtPath(input), modulePath(), packagedPath(input)].some(existsSync)
     return resolvable(packageName(input)) || existsSync(packagedPath(input))
   }
 
+  function modulePath() {
+    return path.resolve(import.meta.dir, "../watcher.node")
+  }
+
+  export function builtPath(input: { arch?: string; libc?: string } = {}) {
+    const arch = input.arch ?? process.arch
+    const libc = input.libc ?? (typeof SYNERGY_LIBC === "string" ? SYNERGY_LIBC : "glibc")
+    return path.resolve(import.meta.dir, "../../.artifacts/watcher", `linux-${arch}-${libc}`, "watcher.node")
+  }
+
   export function load(input: { platform?: NodeJS.Platform; arch?: string; libc?: string; execPath?: string } = {}) {
+    if ((input.platform ?? process.platform) === "linux") {
+      for (const file of [builtPath(input), modulePath(), packagedPath(input)]) {
+        if (!existsSync(file)) continue
+        const binding = require(file)
+        if (binding.synergyWatcherPatch !== "parcel-2.5.6-eintr-1")
+          throw new Error("Linux watcher binding has no verified EINTR fix")
+        return binding
+      }
+      throw new Error(
+        "Verified Linux watcher binding is unavailable; run bun dev prepare or reinstall the runtime package",
+      )
+    }
     try {
       return require(packageName(input))
     } catch {

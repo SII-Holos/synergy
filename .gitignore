@@ -107,3 +107,10 @@ packages/ui/test/**/.*-fixture-*/
 
 # Isolated Browser Host packaging input
 apps/desktop/build/browser-host-app/
+
+# Local research environments and evidence
+benchmark/.venv/
+benchmark/.pytest_cache/
+benchmark/.mypy_cache/
+benchmark/.ruff_cache/
+benchmark/**/__pycache__/

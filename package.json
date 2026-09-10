@@ -50,7 +50,8 @@
     "typecheck": "bun turbo typecheck",
     "prepare": "husky",
     "test": "echo 'Root test is intentionally disabled. Use bun run quality, bun turbo test, or cd packages/harness && bun test.' && exit 1",
-    "plugin-ui:test": "bun script/plugin-ui-test.ts"
+    "plugin-ui:test": "bun script/plugin-ui-test.ts",
+    "bench": "uv run --locked --project benchmark synergy-bench"
   },
   "workspaces": {
     "packages": [
@@ -80,7 +81,8 @@
       "packages/ui",
       "packages/util",
       "apps/web",
-      "apps/desktop"
+      "apps/desktop",
+      "benchmark"
     ],
     "catalog": {
       "@babel/core": "7.28.4",

@@ -834,6 +834,7 @@ export namespace ProviderCatalog {
   export async function resolve(input?: {
     config?: unknown
     includeLive?: boolean
+    refresh?: boolean
     forceRefresh?: boolean
   }): Promise<Record<string, ModelsDev.Provider>> {
     registerBuiltinProviderProfiles()
@@ -856,7 +857,7 @@ export namespace ProviderCatalog {
   }
 
   function cacheKey(
-    input: { config?: unknown; includeLive?: boolean } | undefined,
+    input: { config?: unknown; includeLive?: boolean; refresh?: boolean } | undefined,
     liveContexts: Map<string, LiveDiscoveryTarget>,
   ) {
     const connections = Object.fromEntries(
@@ -882,11 +883,16 @@ export namespace ProviderCatalog {
     const liveIdentities = Object.fromEntries(
       [...liveContexts.entries()].map(([providerID, target]) => [providerID, target.context.identityHash]),
     )
-    return JSON.stringify({ includeLive: input?.includeLive === true, connections, liveIdentities })
+    return JSON.stringify({
+      includeLive: input?.includeLive === true,
+      refresh: input?.refresh !== false,
+      connections,
+      liveIdentities,
+    })
   }
 
   async function doResolve(
-    input: { config?: unknown; includeLive?: boolean } | undefined,
+    input: { config?: unknown; includeLive?: boolean; refresh?: boolean } | undefined,
     liveContexts: Map<string, LiveDiscoveryTarget>,
     key: string,
     generation: number,
@@ -939,7 +945,7 @@ export namespace ProviderCatalog {
             modelCount: Object.values(projected.models).filter((model) => model.catalog_state !== "retained").length,
           })
         }
-        if (target.profile.fetchModelCatalog || target.profile.fetchModels) {
+        if (input.refresh !== false && (target.profile.fetchModelCatalog || target.profile.fetchModels)) {
           const snapshot = (await readSnapshots()).get(snapshotKey(providerID, target.context.identityHash))
           scheduleRefresh(providerID, target.profile, target.context, target.baseURL, target.configured, snapshot)
         }
