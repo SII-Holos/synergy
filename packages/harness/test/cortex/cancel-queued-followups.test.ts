@@ -6,6 +6,7 @@ import { SessionInbox } from "../../src/session/inbox"
 import { SessionInvoke } from "../../src/session/invoke"
 import { SessionManager } from "../../src/session/manager"
 import { MessageV2 } from "../../src/session/message-v2"
+import { Storage } from "../../src/storage/storage"
 import { tmpdir } from "../support/fixture"
 
 function reset() {
@@ -38,6 +39,112 @@ function followUpMail(sessionID: string, sourceSessionID: string, text: string) 
 }
 
 describe("Cortex cancellation fences queued follow-ups", () => {
+  test("cancellation discards mail queued in the same clock millisecond", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const parent = await Session.create({ title: "same millisecond cancellation" })
+        const task = await Cortex.prepare({
+          description: "queued task",
+          prompt: "work",
+          agent: "developer",
+          parentSessionID: parent.id,
+          parentMessageID: "msg_same_tick",
+          notifyParentOnComplete: false,
+        })
+        const now = Date.now()
+        using clock = spyOn(Date, "now").mockReturnValue(now)
+        await SessionInbox.enqueueMail({
+          sessionID: task.sessionID,
+          mail: followUpMail(task.sessionID, parent.id, "before cancellation"),
+        })
+        await Cortex.cancel(task.id)
+        expect(await SessionInbox.hasRunnableItem(task.sessionID)).toBe(false)
+        await SessionInbox.enqueueMail({
+          sessionID: task.sessionID,
+          mail: followUpMail(task.sessionID, parent.id, "after cancellation"),
+        })
+        expect(await SessionInbox.hasRunnableItem(task.sessionID)).toBe(true)
+      },
+    })
+  })
+
+  test("cancellation waits for an inbox write already in flight before purging", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const parent = await Session.create({ title: "inflight inbox cancellation" })
+        const task = await Cortex.prepare({
+          description: "queued task",
+          prompt: "work",
+          agent: "developer",
+          parentSessionID: parent.id,
+          parentMessageID: "msg_inflight_inbox",
+          notifyParentOnComplete: false,
+        })
+        const held = Promise.withResolvers<void>()
+        const release = Promise.withResolvers<void>()
+        const realWrite = Storage.write
+        using write = spyOn(Storage, "write").mockImplementation(async (key, value, options) => {
+          if (key.includes(task.sessionID) && key.some((part) => part.startsWith("inb_"))) {
+            held.resolve()
+            await release.promise
+          }
+          return realWrite(key, value, options)
+        })
+        const delivery = SessionInbox.enqueueMail({
+          sessionID: task.sessionID,
+          mail: followUpMail(task.sessionID, parent.id, "inflight before cancellation"),
+        })
+        await held.promise
+        const cancellation = Cortex.cancel(task.id)
+        try {
+          await new Promise<void>((resolve) => setImmediate(resolve))
+        } finally {
+          release.resolve()
+        }
+        await Promise.all([delivery, cancellation])
+        expect(await SessionInbox.hasRunnableItem(task.sessionID)).toBe(false)
+      },
+    })
+  })
+
+  test("cancelAll reports a failed child while still cancelling the other children", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const parent = await Session.create({ title: "partial cancellation" })
+        const first = await Cortex.prepare({
+          description: "first",
+          prompt: "work",
+          agent: "developer",
+          parentSessionID: parent.id,
+          parentMessageID: "msg_partial_first",
+          notifyParentOnComplete: false,
+        })
+        const second = await Cortex.prepare({
+          description: "second",
+          prompt: "work",
+          agent: "developer",
+          parentSessionID: parent.id,
+          parentMessageID: "msg_partial_second",
+          notifyParentOnComplete: false,
+        })
+        const remove = SessionInbox.fenceQueuedWork
+        using failure = spyOn(SessionInbox, "fenceQueuedWork").mockImplementation((sessionID, ...args) => {
+          if (sessionID === first.sessionID) throw new Error("inbox unavailable")
+          return remove(sessionID, ...args)
+        })
+        await expect(Cortex.cancelAll(parent.id)).rejects.toThrow("1 of 2")
+        expect(Cortex.get(first.id)?.status).toBe("queued")
+        expect(Cortex.get(second.id)?.status).toBe("cancelled")
+      },
+    })
+  })
+
   beforeEach(reset)
   afterEach(() => {
     reset()
@@ -214,8 +321,9 @@ describe("Cortex cancellation fences queued follow-ups", () => {
           notifyParentOnComplete: false,
         })
         await started.promise
+        await waitFor(async () => (await Session.get(task.sessionID)).cortex?.status === "running")
 
-        spyOn(SessionInbox, "removeByModes").mockRejectedValue(new Error("storage unavailable"))
+        spyOn(SessionInbox, "fenceQueuedWork").mockRejectedValue(new Error("storage unavailable"))
         await expect(Cortex.cancel(task.id)).rejects.toThrow("queued follow-ups")
         expect(Cortex.get(task.id)?.status).toBe("running")
         expect((await Session.get(task.sessionID)).cortex?.status).toBe("running")
@@ -238,7 +346,7 @@ describe("Cortex cancellation fences queued follow-ups", () => {
         })
         spyOn(SessionInvoke, "loop").mockResolvedValue({} as never)
         spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
-        spyOn(SessionInbox, "removeByModes").mockRejectedValue(new Error("storage unavailable"))
+        spyOn(SessionInbox, "fenceQueuedWork").mockRejectedValue(new Error("storage unavailable"))
 
         const parent = await Session.create({ title: "timeout cleanup failure" })
         const task = await Cortex.launch({

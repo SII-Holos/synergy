@@ -336,11 +336,12 @@ export namespace Cortex {
           }
           const message = `Task exceeded its ${current.timeoutMs}ms runtime limit.`
           timeoutErrors.set(taskID, message)
-          const fenceBefore = Date.now()
-          SessionInvoke.cancel(active.sessionID, { fenceQueuedWork: true, fenceQueuedBefore: fenceBefore })
           try {
-            await SessionInbox.removeByModes(active.sessionID, ["task", "steer", "context"], fenceBefore)
+            await SessionInbox.fenceQueuedWork(active.sessionID, (fenceQueuedBefore) => {
+              SessionInvoke.cancel(active.sessionID, { fenceQueuedWork: true, fenceQueuedBefore })
+            })
           } catch (error) {
+            SessionInvoke.cancel(active.sessionID, { fenceQueuedWork: true })
             log.error("failed to discard queued follow-ups on timeout", { taskID, error })
             timeoutErrors.set(taskID, `${message} Queued follow-up cleanup failed; they may still be queued.`)
           }
@@ -1288,15 +1289,12 @@ export namespace Cortex {
 
     log.info("cancelling task", { taskID, sessionID: task.sessionID, status: task.status })
     cancellationRequests.add(taskID)
-    const fenceBefore = Date.now()
-    // Fenced cancellation: the cancelled task owns the child session's queued
-    // work, so follow-ups queued before the fence are discarded instead of
-    // being restarted as a new root after this acknowledgement (#1339). Mail
-    // delivered after the acknowledgement is explicit new work and survives.
-    SessionInvoke.cancel(task.sessionID, { fenceQueuedWork: true, fenceQueuedBefore: fenceBefore })
     try {
-      await SessionInbox.removeByModes(task.sessionID, ["task", "steer", "context"], fenceBefore)
+      await SessionInbox.fenceQueuedWork(task.sessionID, (fenceQueuedBefore) => {
+        SessionInvoke.cancel(task.sessionID, { fenceQueuedWork: true, fenceQueuedBefore })
+      })
     } catch (error) {
+      SessionInvoke.cancel(task.sessionID, { fenceQueuedWork: true })
       log.error("failed to discard queued follow-ups on cancel", { taskID, error })
       // Do not acknowledge: retained items could restart the cancelled work.
       cancellationRequests.delete(taskID)
@@ -1321,15 +1319,23 @@ export namespace Cortex {
     const toCancel = getDescendantTasks(parentSessionID).filter((t) => t.status === "running" || t.status === "queued")
 
     let cancelled = 0
+    const failures: Error[] = []
     for (const task of toCancel) {
       try {
         await cancel(task.id)
         cancelled++
       } catch (error) {
         log.error("failed to cancel descendant task", { taskID: task.id, error })
+        failures.push(new Error(`Task ${task.id} cancellation failed`, { cause: error }))
       }
     }
 
+    if (failures.length) {
+      throw new AggregateError(
+        failures,
+        `Cancelled ${cancelled} of ${toCancel.length} background tasks; ${failures.map((error) => error.message).join("; ")}.`,
+      )
+    }
     return cancelled
   }
 

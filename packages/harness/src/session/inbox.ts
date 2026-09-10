@@ -228,22 +228,33 @@ export namespace SessionInbox {
     return sortItems(items.filter((item): item is StoredItem => !!item?.id).map(normalizeStored))
   }
 
-  async function writeItem(item: StoredItem): Promise<StoredItem> {
-    const session = await readSession(item.sessionID)
-    const scopeID = Identifier.asScopeID((session.scope as Scope).id)
-    await Storage.write(StoragePath.sessionInboxItem(scopeID, Identifier.asSessionID(item.sessionID), item.id), item)
+  async function writeItem(item: StoredItem, preserveCreated = false): Promise<StoredItem> {
+    {
+      using lock = await Lock.write(`session-inbox-write:${item.sessionID}`)
+      if (!preserveCreated) {
+        const { SessionManager } = await import("./manager")
+        item.time.created = Math.max(
+          item.time.created,
+          Date.now(),
+          SessionManager.fenceQueuedBefore(item.sessionID) ?? 0,
+        )
+      }
+      const session = await readSession(item.sessionID)
+      const scopeID = Identifier.asScopeID((session.scope as Scope).id)
+      await Storage.write(StoragePath.sessionInboxItem(scopeID, Identifier.asSessionID(item.sessionID), item.id), item)
+    }
     await publish(item.sessionID)
     return item
   }
 
-  async function removeItems(sessionID: string, itemIDs: string[]): Promise<void> {
+  async function removeItems(sessionID: string, itemIDs: string[], notify = true): Promise<void> {
     if (itemIDs.length === 0) return
     const session = await readSession(sessionID)
     const scopeID = Identifier.asScopeID((session.scope as Scope).id)
     await Promise.all(
       itemIDs.map((id) => Storage.remove(StoragePath.sessionInboxItem(scopeID, Identifier.asSessionID(sessionID), id))),
     )
-    await publish(sessionID)
+    if (notify) await publish(sessionID)
   }
 
   async function publish(sessionID: string): Promise<void> {
@@ -733,7 +744,7 @@ export namespace SessionInbox {
         updated: Date.now(),
       },
     }
-    return publicItem(await writeItem(updated))
+    return publicItem(await writeItem(updated, true))
   }
 
   /**
@@ -794,14 +805,40 @@ export namespace SessionInbox {
     return items.find((item) => item.mode === "task")
   }
 
+  export async function fenceQueuedWork(sessionID: string, onFence: (createdBefore: number) => void): Promise<number> {
+    let removed: number
+    {
+      using lock = await Lock.write(`session-inbox-write:${sessionID}`)
+      const { SessionManager } = await import("./manager")
+      const items = await listStored(sessionID)
+      const createdBefore =
+        SessionManager.fenceQueuedBefore(sessionID) ??
+        Math.max(Date.now(), ...items.map((item) => item.time.created)) + 1
+      onFence(createdBefore)
+      removed = await removeByModesUnlocked(sessionID, ["task", "steer", "context"], createdBefore)
+    }
+    if (removed > 0) await publish(sessionID)
+    return removed
+  }
+
   export async function removeByModes(sessionID: string, modes: ItemMode[], createdBefore?: number): Promise<number> {
+    let removed: number
+    {
+      using lock = await Lock.write(`session-inbox-write:${sessionID}`)
+      removed = await removeByModesUnlocked(sessionID, modes, createdBefore)
+    }
+    if (removed > 0) await publish(sessionID)
+    return removed
+  }
+
+  async function removeByModesUnlocked(sessionID: string, modes: ItemMode[], createdBefore?: number): Promise<number> {
     const items = await listStored(sessionID)
     const ids = items
       .filter((item) => modes.includes(item.mode))
       .filter((item) => createdBefore === undefined || item.time.created < createdBefore)
       .map((item) => item.id)
     if (ids.length === 0) return 0
-    await removeItems(sessionID, ids)
+    await removeItems(sessionID, ids, false)
     return ids.length
   }
 

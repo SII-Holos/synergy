@@ -35,7 +35,16 @@ task_cancel(all: true)
   async execute(params: z.infer<typeof parameters>, ctx) {
     const { Cortex } = await import("..")
     if (params.all) {
-      const cancelled = await Cortex.cancelAll(ctx.sessionID)
+      let cancelled: number
+      try {
+        cancelled = await Cortex.cancelAll(ctx.sessionID)
+      } catch (error) {
+        return {
+          title: "Cancellation incomplete",
+          metadata: {},
+          output: `${error instanceof Error ? error.message : "Some task cancellations failed."} Do not take over affected workspaces yet. Inspect task_list and retry failed cancellations; wait for successfully cancelled sessions to go idle.`,
+        }
+      }
       return {
         title: `Cancelled ${cancelled} tasks`,
         metadata: { cancelledCount: cancelled },
