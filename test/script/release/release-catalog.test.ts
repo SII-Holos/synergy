@@ -44,6 +44,11 @@ test("version updates include the split runtime packages once each", () => {
   }
 })
 
+test("the local benchmark remains private and independently versioned", () => {
+  expect(RELEASE_CATALOG.benchmark.registry).toBeNull()
+  expect(VERSION_MANAGED_PACKAGE_PATHS).not.toContain(path.join(releasePackageDirectory("benchmark"), "package.json"))
+})
+
 test("the release catalog accounts for every workspace package", async () => {
   const root = (await Bun.file(path.join(REPO_ROOT, "package.json")).json()) as {
     workspaces: { packages: string[] }

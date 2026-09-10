@@ -26,6 +26,8 @@ Behavioral tests verify working-tree changes, deletions, new files, executable b
 
 The evaluator is a private root workspace with a pinned Python/Pier dependency graph. Runtime recipes compose the public core, Library or full product packages; both the CLI parent and agent worker register the same recipe before configuration locks. Prepared Linux Bun source and dependencies are mounted read-only into fresh original-task environments. Evaluator content, measured source, recipe, installed bundle and task content have separate identities. Recipe dependencies resolve by public package name from the frozen workspace manifests, with explicit links beside the wrapper; they do not depend on root dependency hoisting or require the measured revision to contain the evaluator workspace.
 
+The unified package catalog includes the benchmark workspace as private and independently versioned. Product release version updates and public registry publication exclude it; the catalog still accounts for every workspace.
+
 The fixed development suite selects twelve DeepSWE 1.1 tasks and twelve Terminal-Bench 2.1 tasks using metadata strata and seed zero. Original instructions, time limits, artifact collection and verifiers are preserved. The suite does not claim official leaderboard equivalence or calibrated population estimates.
 
 Native CLI results and rollout archives remain the accounting authority. The evaluator records task reward separately from process outcome and archive integrity; it does not convert unknown usage to zero or conflate estimated and reported costs. Resume skips all completed attempts, including failures, and creates a new preserved attempt after interruption. Explicit debug execution is outside the formal paired schedule.

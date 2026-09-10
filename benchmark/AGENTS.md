@@ -3,6 +3,7 @@
 Own local research orchestration, frozen source inputs, task catalogs, runtime compositions and experiment records here. Product execution, accounting and rollout remain owned by their runtime packages.
 
 - Use public workspace exports. Never duplicate the Synergy CLI parser, agent loop or accounting.
+- Keep the workspace registered as private and independently versioned in the unified release catalog.
 - Keep runner identity separate from the source under test. Never run a mutable checkout during a trial.
 - Preserve execution status, verifier reward and recording completeness independently.
 - Tests live in `test/`. Use isolated homes and deterministic providers; never use personal credentials in tests.
