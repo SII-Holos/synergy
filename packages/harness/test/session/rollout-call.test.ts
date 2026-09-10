@@ -255,3 +255,82 @@ test("non-streaming response commit failure aborts the owner and closes run admi
   expect(aborted).toBe(true)
   expect((await RolloutLedger.getRun(args.owner, args.runID)).recording).toBe("failed")
 })
+
+test("transport recorder joins concurrent finishes while draining accepted writes", async () => {
+  const { RolloutTransportRecorder } = await import("../../src/session/rollout/transport-recorder")
+  const args = input()
+  const call = await RolloutLedger.beginCall(args)
+  const recorder = RolloutTransportRecorder.create(call)
+  const attemptID = crypto.randomUUID()
+  await recorder.emit({
+    type: "attempt-start",
+    attemptID,
+    url: "https://example.test",
+    method: "POST",
+    mediaType: "text/plain",
+  })
+  await recorder.emit({ type: "response", attemptID, status: 200, mediaType: "text/plain", headers: {} })
+  const writing = recorder.emit({
+    type: "chunk",
+    attemptID,
+    channel: "response",
+    data: new TextEncoder().encode("partial response"),
+  })
+  const first = recorder.finish()
+  const second = recorder.finish()
+  expect(first).toBe(second)
+  await writing
+  expect(await first).toBe(false)
+  await expect(
+    recorder.emit({ type: "body-end", attemptID, channel: "response", complete: true }),
+  ).rejects.toMatchObject({ name: "RolloutRecordingError" })
+  const [attempt] = await RolloutLedger.attempts(args.owner, args.runID, call.id)
+  expect(attempt.status).toBe("interrupted")
+  expect(attempt.response?.status).toBe("partial")
+})
+
+test("concurrent disposal waits for an in-flight response checkpoint", async () => {
+  const args = input()
+  const writing = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const original = RolloutLedger.checkpointCall.bind(RolloutLedger)
+  let checkpoints = 0
+  let disposals = 0
+  using checkpoint = spyOn(RolloutLedger, "checkpointCall").mockImplementation(async (...parameters) => {
+    if (++checkpoints === 2) {
+      writing.resolve()
+      await release.promise
+    }
+    return original(...parameters)
+  })
+  const stream = await RolloutCall.stream(args, async () => ({
+    fullStream: (async function* () {
+      yield { type: "text-delta" as const, id: "text", text: "x".repeat(RolloutArtifact.CHUNK_BYTES) }
+    })(),
+    usage: Promise.resolve(undefined),
+    async dispose() {
+      disposals++
+    },
+  }))
+  const iterator = stream.fullStream[Symbol.asyncIterator]()
+  const reading = iterator.next()
+  await writing.promise
+  let disposed = false
+  const first = stream.dispose().then(() => {
+    disposed = true
+  })
+  const second = stream.dispose()
+  try {
+    await Promise.resolve()
+    expect(disposed).toBe(false)
+    expect((await RolloutLedger.calls(args.owner, args.runID))[0].status).toBe("running")
+  } finally {
+    release.resolve()
+    await Promise.all([first, second, reading])
+  }
+  expect(disposals).toBe(1)
+  const [call] = await RolloutLedger.calls(args.owner, args.runID)
+  expect(call.status).toBe("cancelled")
+  expect(call.response?.status).toBe("partial")
+  expect(call.response?.bytes).toBeGreaterThanOrEqual(RolloutArtifact.CHUNK_BYTES)
+})

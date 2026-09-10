@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { buildWatcher } from "../packages/runtime-local/script/build-watcher"
 import { cp, mkdir, mkdtemp, rm, chmod } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
@@ -69,6 +70,10 @@ export async function packWorkspace(
     }
     if (pkg.directory === "packages/runtime-local") {
       await stageWorkspaceSandbox(path.join(sourceDirectory, "dist"), target, options.assetsRoot)
+      if (target.os === "linux") {
+        const binding = await buildWatcher({ arch: target.arch, libc: target.abi === "musl" ? "musl" : "glibc" })
+        await cp(binding, path.join(sourceDirectory, "dist/watcher.node"))
+      }
     }
     if (pkg.directory === "packages/product-runtime") {
       await cp(path.join(sourceDirectory, "schema"), path.join(sourceDirectory, "dist/schema"), { recursive: true })

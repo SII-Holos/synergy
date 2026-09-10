@@ -43,6 +43,7 @@ export const RELEASE_CATALOG = {
   desktop: { directory: "apps/desktop", registry: null, versioned: true },
   ui: { directory: "packages/ui", registry: null, versioned: false },
   link: { directory: "packages/synergy-link", registry: null, versioned: false },
+  benchmark: { directory: "benchmark", registry: null, versioned: false },
 } as const satisfies Record<string, ReleasePackage>
 
 export type ReleasePackageID = keyof typeof RELEASE_CATALOG

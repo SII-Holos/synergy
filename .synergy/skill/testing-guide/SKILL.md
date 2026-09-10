@@ -50,6 +50,12 @@ Playwright DOM-test fixtures that boot a Vite dev server must declare their pack
 
 For inbox-to-transcript transitions, exercise settlement while a real inbox item has been drained but its message is still being materialized, then again after materialization. Verify that the continuation and a task queued behind it both execute. Test persisted contradictory terminal state through the registered migration as well as fresh runtime ordering; a restart-only test cannot prove that durable state was repaired.
 
+## Local Performance Experiments
+
+Test process signals through an actual child process after a deterministic provider readiness barrier. An in-process abort or timer preserves different async context from an operating-system signal; both paths must retain Scope ownership and terminal accounting.
+
+Use the [benchmark workspace](../../../benchmark/README.md) for model-backed task subsets and A/B evidence. Keep the evaluator, measured source, runtime recipe and dataset identities separate. Compare complete task-repeat pairs; preserve interrupted attempts and unknown accounting. Never substitute a static task-manifest check for an oracle/verifier execution result. Run the deterministic local-provider Docker test when changing preparation, the CLI bridge, cancellation, mounts or rollout capture. For stream/recording changes also run `SYNERGY_ROLLOUT_LONG_STREAM=1 bun test --cwd packages/harness test/session/rollout-long.test.ts`; independent CI workers own its completed, cancelled and failed outcomes, and the test aggregate requires all three. Keep each large outcome in a separate process so a timed-out test body cannot overlap the next pressure sample; retain the full byte/checkpoint load and report persistence/validation progress. Preserve official time limits and failed rewards during live acceptance. Inspect exporter exit/signal/deadline, archive validation, recording coverage, unknown usage and owned Docker residue independently. Test terminal-evidence reconciliation before allowing resume to schedule another paid attempt. Container-created mode-0600 accounting and mode-0700 ledger directories are not host-readable on Linux until Pier hands logs back. Test that boundary without widening permissions; inspect active evidence inside the verified owned container.
+
 ## Run Core Suites Through the Orchestrators
 
 Run `packages/harness` tests through the package scripts, never a raw `bun test --coverage --parallel`:

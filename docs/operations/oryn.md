@@ -6,7 +6,7 @@ Oryn runs in this repository's GitHub Actions with the pinned runtime in [setup-
 
 The GitHub App needs installation on `SII-Holos/synergy` and the private runtime repository `yzxoi/oryn-mini`. Repository secrets are `ORYN_APP_PRIVATE_KEY` and `ORYN_GLM_API_KEY`; `ORYN_APP_CLIENT_ID` is an Actions variable. The source token is Contents-read and scoped to Oryn Mini. Target model jobs receive a read-only GitHub token in the host, and the model subprocess receives no GitHub credentials. Publication runs in a separate job with a fresh installation token.
 
-The model defaults to `oryn/glm-5.3-flash`, the official Zhipu Coding Plan API, max reasoning and image input. Its configured context window is 1,000,000 tokens; this setting is not a capacity benchmark. Optional Actions variables are `ORYN_MODEL`, `ORYN_BASE_URL`, `ORYN_TASK_TIMEOUT_SECONDS` (default 1800) and `ORYN_REQUEST_TIMEOUT_SECONDS` (runtime default 300). Keys remain secrets rather than repository files or model prompts.
+The model defaults to `oryn/glm-5.3-flash`, the official Zhipu Coding Plan API, max reasoning and image input. Its configured context window is 1,000,000 tokens; this setting is not a capacity benchmark. Optional Actions variables are `ORYN_MODEL`, `ORYN_BASE_URL`, `ORYN_TASK_TIMEOUT_SECONDS` (default 1800) and `ORYN_REQUEST_TIMEOUT_SECONDS` (optional 1–3000 seconds; defaults to the remaining task budget). Keys remain secrets rather than repository files or model prompts.
 
 The App permissions are Contents, Issues and Pull requests read/write, plus Actions, Checks and Commit statuses read. It needs no Workflows, Administration or organization grant. Executable workflows and policy come from the trusted default branch for native events, or the selected workflow commit for manual runs. PR source is inspected in a separate checkout as untrusted evidence.
 
@@ -21,6 +21,8 @@ Maintainers can use `@oryn-mini review`, `ask …`, `fix`, `implement issue`, `r
 Source/title/body changes, command edits, revoked command authority and authorized stop commands invalidate a task. Ordinary comments, labels and CI/review progress remain evidence rather than cancellation authority. Publication rechecks current source and authority; merge separately checks live readiness. Protected labels exclude new admissions, while the stop command interrupts active work.
 
 PR context contains statistics and a complete paged file inventory. The model uses Core read tools to inspect per-file diffs and related repository files on demand. Evidence snapshots are outside the candidate checkout and validation home, disappear with the task, and cannot be modified by the model. Incomplete coverage is reported as needs_human; the task deadline and separate repair-publication output limits remain.
+
+Long model requests may use the remaining task budget; first-byte and idle limits remain at most 120 and 60 seconds. Remove a legacy `ORYN_REQUEST_TIMEOUT_SECONDS=300` override to adopt this default. Total task deadlines and authorized cancellation still apply. Failed runs retain a bounded, redacted `diagnostic` in `failure.json` and an `oryn_failure` log event, including Core status, available provider error details, budgets and progress counts. Report format failures include the correction attempt and output size. Raw prompts, reasoning, headers and provider bodies are excluded. An abort without a recorded cause remains explicitly uncertain.
 
 ## Repair Verification
 

@@ -32,7 +32,7 @@ for f in provider-model-catalogs.v1.json models.json; do cp ~/.synergy/cache/"$f
 
 Treat these two cache files as seed data only: they are refreshed in place by the isolated runtime and never copied back to the main home. If the files are absent from the main home, the isolated instance will fetch models.dev on first use as usual.
 
-5. Run `bun dev prepare` once when dependencies, generated SDK, Web dist, plugin SDK, or sandbox helper are missing.
+5. Run `bun dev prepare` once when dependencies, generated SDK, Web dist, plugin SDK, or sandbox helper are missing. Linux preparation also builds the pinned Parcel watcher binding with its EINTR fix through `packages/runtime-local/script/build-watcher.ts`; Docker provides the target compiler image. Validate native code changes by loading the resulting binding and exercising signal interruption, not by inspecting the patched C++ file alone.
 
 ## Choose the Smallest Mode
 

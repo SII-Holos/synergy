@@ -31,6 +31,12 @@ test("native public conversation retains bounded history and reconciles updates 
     await page.getByText("Answer 360", { exact: true }).waitFor()
     const roots = page.locator('[data-message-role="user"]')
     expect(await roots.count()).toBe(20)
+    await page.waitForFunction(() => {
+      const scroller = document.querySelector('[data-message-role="user"]')?.closest(".overflow-y-auto")
+      return scroller && scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop < 10
+    })
+    await roots.last().hover()
+    await page.mouse.wheel(0, -1000)
     for (let pageIndex = 0; pageIndex < 2; pageIndex++) {
       const first = await roots.first().getAttribute("data-message-id")
       await page.getByRole("button", { name: "Load earlier messages", exact: true }).click()

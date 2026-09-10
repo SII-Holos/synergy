@@ -228,3 +228,181 @@ describe("rollout transport", () => {
     ])
   })
 })
+
+describe("rollout cancellation barriers", () => {
+  test("drains a received prefix before closing a body with a pending upstream read", async () => {
+    const waiting = Promise.withResolvers<void>()
+    const events: RolloutTransport.Event[] = []
+    let bodyClosed = false
+    const source = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("retained prefix"))
+      },
+      pull() {
+        waiting.resolve()
+      },
+    })
+    const response = await RolloutTransport.provide(
+      async (event) => {
+        if (event.type === "body-end" && event.channel === "response") bodyClosed = true
+        if (event.type === "chunk" && bodyClosed) throw new Error("write after body-end")
+        events.push(event)
+      },
+      () => RolloutTransport.fetch(async () => new Response(source), "https://example.test"),
+    )
+    const reader = response.body!.getReader()
+    const reading = reader.read()
+    await waiting.promise
+    await Promise.all([reader.cancel(), reading])
+    const chunks = events.filter((event) => event.type === "chunk")
+    expect(chunks.map((event) => new TextDecoder().decode(event.data)).join("")).toBe("retained prefix")
+    expect(events.slice(-2)).toMatchObject([
+      { type: "body-end", channel: "response", complete: false },
+      { type: "attempt-end", status: "cancelled" },
+    ])
+    expect(source.locked).toBe(false)
+    reader.releaseLock()
+  })
+
+  test("cancellation waits for an admitted chunk write before ending the attempt", async () => {
+    const writing = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const cancelled = Promise.withResolvers<void>()
+    const events: RolloutTransport.Event[] = []
+    const source = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(256 * 1024))
+      },
+      cancel() {
+        cancelled.resolve()
+      },
+    })
+    const response = await RolloutTransport.provide(
+      async (event) => {
+        if (event.type === "chunk") {
+          writing.resolve()
+          await release.promise
+        }
+        events.push(event)
+      },
+      () => RolloutTransport.fetch(async () => new Response(source), "https://example.test"),
+    )
+    const reader = response.body!.getReader()
+    const reading = reader.read()
+    await writing.promise
+    const cancelling = reader.cancel()
+    try {
+      await cancelled.promise
+      await Promise.resolve()
+      expect(events.some((event) => event.type === "attempt-end")).toBe(false)
+      expect(events.some((event) => event.type === "body-end" && event.channel === "response")).toBe(false)
+    } finally {
+      release.resolve()
+      await Promise.all([cancelling, reading])
+      reader.releaseLock()
+    }
+    expect(events.slice(-2)).toMatchObject([
+      { type: "body-end", channel: "response", complete: false },
+      { type: "attempt-end", status: "cancelled" },
+    ])
+  })
+})
+
+test("joins an aborted upstream reader before closing its buffered response", async () => {
+  const waiting = Promise.withResolvers<void>()
+  let upstream: ReadableStreamDefaultController<Uint8Array>
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      upstream = controller
+      controller.enqueue(new TextEncoder().encode("before abort"))
+    },
+    pull() {
+      waiting.resolve()
+    },
+  })
+  const events: RolloutTransport.Event[] = []
+  const response = await RolloutTransport.provide(
+    async (event) => {
+      events.push(event)
+    },
+    () => RolloutTransport.fetch(async () => new Response(source), "https://fixture.test"),
+  )
+  const reader = response.body!.getReader()
+  const reading = reader.read()
+  await waiting.promise
+  upstream!.error(new DOMException("aborted", "AbortError"))
+  await Promise.all([reader.cancel(), reading])
+  expect(
+    events
+      .filter((event) => event.type === "chunk")
+      .map((event) => new TextDecoder().decode(event.data))
+      .join(""),
+  ).toBe("before abort")
+  expect(events.at(-1)).toMatchObject({ type: "attempt-end", status: "cancelled" })
+  expect(source.locked).toBe(false)
+  reader.releaseLock()
+})
+
+test("an upstream abort cannot discard an already received oversized chunk tail", async () => {
+  let upstream!: ReadableStreamDefaultController<Uint8Array>
+  const bytes = new Uint8Array(2 * 1024 * 1024).fill(37)
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      upstream = controller
+      controller.enqueue(bytes)
+    },
+  })
+  const events: RolloutTransport.Event[] = []
+  const response = await RolloutTransport.provide(
+    async (event) => {
+      events.push(event)
+    },
+    () => RolloutTransport.fetch(async () => new Response(source), "https://fixture.test"),
+  )
+  const reader = response.body!.getReader()
+  await reader.read()
+  const failure = new DOMException("aborted after admitted read", "AbortError")
+  upstream.error(failure)
+  await reader.cancel(failure)
+  expect(
+    events.filter((event) => event.type === "chunk").reduce((size, event) => size + event.data.byteLength, 0),
+  ).toBe(bytes.byteLength)
+  expect(events.at(-1)).toMatchObject({ type: "attempt-end", status: "cancelled" })
+  expect(source.locked).toBe(false)
+  reader.releaseLock()
+})
+
+test("cancellation joins an admitted body-end without writing or finishing twice", async () => {
+  const ending = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const events: RolloutTransport.Event[] = []
+  const response = await RolloutTransport.provide(
+    async (event) => {
+      if (event.type === "body-end" && event.channel === "response") {
+        ending.resolve()
+        await release.promise
+      }
+      events.push(event)
+    },
+    () => RolloutTransport.fetch(async () => new Response("body"), "https://fixture.test"),
+  )
+  const reader = response.body!.getReader()
+  await reader.read()
+  const reading = reader.read()
+  await ending.promise
+  let closed = false
+  const closing = reader.cancel().then(() => {
+    closed = true
+  })
+  try {
+    await Promise.resolve()
+    expect(closed).toBe(false)
+  } finally {
+    release.resolve()
+    await Promise.all([closing, reading])
+    reader.releaseLock()
+  }
+  expect(events.filter((event) => event.type === "body-end" && event.channel === "response")).toHaveLength(1)
+  expect(events.filter((event) => event.type === "attempt-end")).toHaveLength(1)
+  expect(events.at(-1)?.type).toBe("attempt-end")
+})
