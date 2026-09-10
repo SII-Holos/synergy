@@ -1314,6 +1314,20 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
+      // Agent configuration tool — writes agent definitions, permissions,
+      // control profiles, and the global default agent; classify by action so
+      // reads stay free while writes surface as protected configuration
+      // changes.
+      if (toolName === "agent_config") {
+        const action = (args.input as { action?: string } | undefined)?.action ?? args.action
+        if (action === "list" || action === "describe") {
+          caps.push({ class: "config:read", nonBypassable: false })
+        } else {
+          caps.push({ class: "config:write", nonBypassable: true })
+        }
+        return { capabilities: caps }
+      }
+
       if (AGENT_ORCHESTRATION_TOOLS.has(toolName)) {
         caps.push({ class: "file_write", nonBypassable: false })
         return { capabilities: caps }

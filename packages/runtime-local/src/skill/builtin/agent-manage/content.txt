@@ -1,0 +1,33 @@
+# Agent Management
+
+Create, modify, disable, delete, and inspect Synergy agents — and choose the default agent — through conversation. All writes go through the `agent_config` tool, which validates every field before persisting.
+
+**Load the tool first.** `agent_config` ships collapsed in the "Agent configuration" tool group: call `expand_tools({ groups: ["agent-config"] })` before the first agent write, or `search_tools("agent_config")` when unsure whether it is already expanded.
+
+## When this skill applies
+
+The user wants to create a custom agent, change an existing agent's behavior (model, prompt, permissions, visibility, autonomy), disable or remove an agent, see which agents exist, or set which agent new sessions use by default. Requests like "make me an agent that reviews PRs", "stop the scholar agent from showing up", or "make synergy-max my default" all land here.
+
+This skill does not modify built-in agent source code — that is repository development (load `add-agent`). It manages user/project-level agent configuration.
+
+## Workflow
+
+1. **Gather requirements.** For a new agent, collect: purpose, when it should be used (`description` — the routing signal other agents match against), system prompt, model or model role, mode (primary / subagent / all), and any permission restrictions or autonomy level (`controlProfile`). Load `synergy-prompt-architect` when the user wants help writing the system prompt itself.
+2. **Check for conflicts.** Run `agent_config` `describe` on the intended name first. Existing agents, including built-ins, reject `create` — offer `update` or `remove` instead.
+3. **Present a summary and get confirmation** before writing. Show: name, description, mode, model, storage layer (markdown file under `.synergy/agent/` for prompted agents, `60-agents.jsonc` entry for short overrides), and any permission/visibility changes.
+4. **Write via `agent_config`.** One action per call. The tool returns where the definition landed (file path or config entry) — surface that path so the user can hand-edit later.
+5. **Offer `set_default`** after creating a `primary`-mode agent. Only visible primary agents qualify; the tool rejects subagent-only or hidden targets.
+6. **Verify.** `describe` the agent after the write to confirm the resolved configuration.
+
+## Field guidance
+
+- `description` is the delegation signal, not a label. Name what the agent does and when to use it; vague descriptions lose routing to built-in agents.
+- `model` must be `provider/model` with both halves non-empty. `modelRole` (vision/nano/mini/mid/thinking/long/creative) resolves through configured model roles instead. An agent with an explicit `model` ignores its `modelRole` — switch to role-based resolution with `update { model: null }`.
+- On `update`, omitting a field keeps it; passing `null` clears it (`model`, `modelRole`, `description`, `prompt`, `temperature`, `top_p`, `color`, `steps`, `defaultVariant`).
+- `visibleTo` / `delegationGroups` entries must reference an existing agent name or a declared group identity. The whole agent graph is validated: a change that would strand another agent's `visibleTo` (removing a delegation group it depends on, disabling the only agent it is visible to) is rejected naming the affected agents.
+- Plugin-contributed and external agents are read-only here — update/remove is rejected; manage them in the owning plugin or external definition.
+- Disabling (`remove` with strategy `disable`) is reversible via `update { disable: false }` and is scoped to the owning layer (a project agent stays available in other Scopes); `delete` removes the defining file and any same-name config overlay permanently.
+
+## Reference files
+
+- `references/fields.txt` — full agent config field reference, validation rules, and storage-layer semantics. Load when assembling create/update payloads or diagnosing a rejected write.
