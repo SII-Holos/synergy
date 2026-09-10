@@ -1,0 +1,28 @@
+version: 1
+suite: ../suites/local-24.json
+output: ../../.artifacts/benchmark/runs
+cache: ../../.artifacts/benchmark/cache
+platform: linux/amd64
+seed: 0
+repeat: 1
+concurrency: 1
+selection:
+  limit: 2
+variants:
+  baseline:
+    source:
+      path: ../..
+      revision: HEAD
+    runtime: core
+    model: openai/REPLACE_WITH_YOUR_MODEL
+    env:
+      OPENAI_API_KEY: OPENAI_API_KEY
+    network_domains: [api.openai.com]
+  candidate:
+    source:
+      path: ../..
+    runtime: core
+    model: openai/REPLACE_WITH_YOUR_MODEL
+    env:
+      OPENAI_API_KEY: OPENAI_API_KEY
+    network_domains: [api.openai.com]

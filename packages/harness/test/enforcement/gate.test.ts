@@ -373,6 +373,44 @@ describe("EnforcementGate path classification", () => {
 })
 
 // ------------------------------------------------------------------
+// 1b. Agent configuration tool classification
+// ------------------------------------------------------------------
+describe("EnforcementGate agent_config classification", () => {
+  test("read actions classify as config:read", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    for (const action of ["list", "describe"]) {
+      const result = gate.classify("agent_config", { input: { action, name: "reviewer" } })
+      expect(result.capabilities.map((c: any) => c.class)).toContain("config:read")
+      expect(result.capabilities.some((c: any) => c.class === "config:write")).toBe(false)
+    }
+  })
+
+  test("write actions classify as non-bypassable config:write", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    for (const input of [
+      { action: "create", name: "reviewer", prompt: "x" },
+      { action: "update", name: "reviewer", model: "openai/gpt-5" },
+      { action: "remove", name: "explore" },
+      { action: "remove", name: "explore", strategy: "delete" },
+      { action: "set_default", name: "synergy-max" },
+    ]) {
+      const result = gate.classify("agent_config", { input })
+      const write = result.capabilities.find((c: any) => c.class === "config:write")
+      expect(write).toBeDefined()
+      expect(write?.nonBypassable).toBe(true)
+    }
+  })
+})
+
+// ------------------------------------------------------------------
 // 2. Shell classification
 // ------------------------------------------------------------------
 describe("EnforcementGate shell classification", () => {
@@ -1313,8 +1351,8 @@ do make install`,
     const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeUndefined()
 
-    const shell = result.capabilities.find((c: any) => c.class === "shell")!
-    expect(shell).toBeDefined()
+    const shellRead = result.capabilities.find((c: any) => c.class === "shell_read")!
+    expect(shellRead).toBeDefined()
   })
 
   test("echo padded output is NOT destructive", async () => {
@@ -1328,8 +1366,8 @@ do make install`,
     const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
     expect(destructive).toBeUndefined()
 
-    const shell = result.capabilities.find((c: any) => c.class === "shell")!
-    expect(shell).toBeDefined()
+    const shellRead = result.capabilities.find((c: any) => c.class === "shell_read")!
+    expect(shellRead).toBeDefined()
   })
 
   test("git commit -m add is NOT destructive", async () => {

@@ -817,6 +817,10 @@ async function runPrepare(repoRoot: string, bunPath: string): Promise<number> {
   if (initial !== 0) return initial
 
   const platform = process.platform
+  if (platform === "linux") {
+    const { buildWatcher } = await import("../packages/runtime-local/script/build-watcher")
+    await buildWatcher()
+  }
   if (platform !== "linux" && platform !== "win32") return 0
 
   const helperDir =

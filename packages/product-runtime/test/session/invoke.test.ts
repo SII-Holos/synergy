@@ -1,4 +1,4 @@
-import { describe, expect, test, mock } from "bun:test"
+import { describe, expect, test, mock, spyOn } from "bun:test"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
@@ -25,6 +25,11 @@ import { Worktree } from "@ericsanchezok/synergy-runtime-local/workspace/worktre
 import { SessionMessageCache } from "@ericsanchezok/synergy-harness/session/message-cache"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
+import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
+import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout/lifecycle"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { RolloutContinuationMigration } from "@ericsanchezok/synergy-harness/test/internal/session/rollout/continuation-migration"
+import { RolloutSnapshot } from "@ericsanchezok/synergy-harness/session/rollout/snapshot"
 import { Command } from "@ericsanchezok/synergy-runtime-local/command/command"
 import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
 
@@ -2359,3 +2364,263 @@ describe("SessionInvoke abort with queued inbox work", () => {
     }
   })
 })
+
+describe("SessionInvoke detached turn settlement", () => {
+  test("releases the lease and publishes idle while detached turn work is still running", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    let activeSessionID = ""
+    const jobStarted = Promise.withResolvers<void>()
+    const releaseJob = Promise.withResolvers<void>()
+    let jobDone = false
+    let jobSawAbort = false
+    let idleFired = false
+    let sessionID = ""
+    const jobType = `test_detached_hang_${crypto.randomUUID()}`
+    const restore = installBasicLoopMocks({})
+    let unsubscribe: (() => void) | undefined
+    try {
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          sessionID = session.id
+          activeSessionID = session.id
+          LoopJob.register({
+            type: jobType,
+            phase: "post",
+            blocking: false,
+            detached: true,
+            collect(ctx) {
+              return ctx.sessionID === session.id ? [{ type: jobType }] : []
+            },
+            capture: () => ({ type: jobType }),
+            async execute(_payload, signal) {
+              jobStarted.resolve()
+              await releaseJob.promise
+              jobSawAbort = signal.aborted
+              jobDone = true
+              return "pass"
+            },
+          })
+          unsubscribe = Bus.subscribe(SessionEvent.Idle, (event) => {
+            if (event.properties.sessionID === session.id) idleFired = true
+          })
+          await SessionInvoke.loop.force(session.id)
+
+          expect(idleFired).toBe(true)
+          expect(jobDone).toBe(false)
+
+          releaseJob.resolve()
+          await LoopJob.settleDetached(session.id)
+          expect(jobDone).toBe(true)
+          expect(jobSawAbort).toBe(false)
+
+          const rootID = (await Session.messages({ sessionID: session.id })).find(
+            (message) => message.info.role === "user",
+          )!.info.id
+          await RolloutLifecycle.reconcile(session.id, rootID)
+          const snapshot = await RolloutSnapshot.read({
+            kind: "session",
+            scopeID: scope.id,
+            sessionID: session.id,
+          })
+          expect(snapshot.runs[0]?.status).toBe("completed")
+        },
+      })
+    } finally {
+      unsubscribe?.()
+      restore()
+      LoopJob.cancelDetached(sessionID)
+      await LoopJob.settleDetached(sessionID).catch(() => undefined)
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+  test("cancels detached turn work when the session is aborted after release", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    const jobStarted = Promise.withResolvers<void>()
+    const releaseJob = Promise.withResolvers<void>()
+    let jobSawAbort = false
+    let sessionID = ""
+    const jobType = `test_detached_abort_${crypto.randomUUID()}`
+    const restore = installBasicLoopMocks({})
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          sessionID = session.id
+          activeSessionID = session.id
+          LoopJob.register({
+            type: jobType,
+            phase: "post",
+            blocking: false,
+            detached: true,
+            collect(ctx) {
+              return ctx.sessionID === session.id ? [{ type: jobType }] : []
+            },
+            capture: () => ({ type: jobType }),
+            async execute(_payload, signal) {
+              jobStarted.resolve()
+              await releaseJob.promise
+              jobSawAbort = signal.aborted
+              return "pass"
+            },
+          })
+          await SessionInvoke.loop.force(session.id)
+          await jobStarted.promise
+          SessionInvoke.cancel(session.id)
+          releaseJob.resolve()
+          await LoopJob.settleDetached(session.id)
+          expect(jobSawAbort).toBe(true)
+        },
+      })
+    } finally {
+      restore()
+      LoopJob.cancelDetached(sessionID)
+      await LoopJob.settleDetached(sessionID).catch(() => undefined)
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
+  test("closes the rollout run as failed when detached settlement fails", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    let activeSessionID = ""
+    let sessionID = ""
+    const jobType = `test_detached_rec_fail_${crypto.randomUUID()}`
+    const { RolloutRecordingError } = await import("@ericsanchezok/synergy-harness/session/rollout/error")
+    const restore = installBasicLoopMocks({})
+    try {
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          sessionID = session.id
+          activeSessionID = session.id
+          LoopJob.register({
+            type: jobType,
+            phase: "post",
+            blocking: false,
+            detached: true,
+            collect(ctx) {
+              return ctx.sessionID === session.id ? [{ type: jobType }] : []
+            },
+            capture: () => ({ type: jobType }),
+            async execute() {
+              throw new RolloutRecordingError({ message: "evidence failed" })
+            },
+          })
+          await SessionInvoke.loop.force(session.id)
+
+          const rootID = (await Session.messages({ sessionID: session.id })).find(
+            (message) => message.info.role === "user",
+          )!.info.id
+          const deadline = Date.now() + 5_000
+          let status: string | undefined
+          while (Date.now() < deadline) {
+            const snapshot = await RolloutSnapshot.read({ kind: "session", scopeID: scope.id, sessionID: session.id })
+            status = snapshot.runs.find((run) => run.id === rootID)?.status
+            if (status === "failed") break
+            await Bun.sleep(10)
+          }
+          expect(status).toBe("failed")
+        },
+      })
+    } finally {
+      restore()
+      LoopJob.cancelDetached(sessionID)
+      await LoopJob.settleDetached(sessionID).catch(() => undefined)
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+})
+
+for (const phase of ["materializing", "persisted-terminal", "startup-without-task", "startup-retry"] as const) {
+  test(`rollout continuation recovers at ${phase}`, async () => {
+    await using tmp = await tmpdir({ git: true })
+    const processedRoots: string[] = []
+    let reconciliation: ReturnType<typeof RolloutLifecycle.reconcile> | undefined
+    const restore = installBasicLoopMocks({
+      async onProcess(input) {
+        if (reconciliation) expect((await reconciliation)?.status).toBe("running")
+        processedRoots.push(input.user.id)
+      },
+    })
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          try {
+            const rootID = Identifier.ascending("message")
+            await Session.updateMessage({
+              ...(userMessage(rootID).info as MessageV2.User),
+              sessionID: session.id,
+              isRoot: true,
+              rootID,
+              time: { created: Date.now() },
+            })
+            const terminal = assistantMessage(Identifier.ascending("message"), rootID, "Earlier reply")
+            await Session.updateMessage({
+              ...(terminal.info as MessageV2.Assistant),
+              sessionID: session.id,
+              rootID,
+              time: { created: Date.now(), completed: Date.now() },
+            })
+            const owner = RolloutLifecycle.owner(session)
+            await RolloutLifecycle.configuration(session, rootID)
+            if (phase !== "materializing") await RolloutLedger.finishRun(owner, rootID, "completed")
+            const originalMaterialize = SessionInbox.materializeItem
+            using materialize = spyOn(SessionInbox, "materializeItem").mockImplementation(async (...args) => {
+              if (phase === "materializing" && args[0].mode === "steer") {
+                reconciliation = RolloutLifecycle.reconcile(session.id, rootID)
+              }
+              return originalMaterialize(...args)
+            })
+            await SessionInbox.enqueueUser({
+              sessionID: session.id,
+              model: { providerID: "test-provider", modelID: "test-model" },
+              noReply: true,
+              parts: [{ type: "text", text: "Child task completed" }],
+            })
+            if (phase !== "materializing")
+              for (const item of await SessionInbox.drainSteer(session.id))
+                await SessionInbox.materializeItem(item, rootID, { guiding: true })
+            const queued = phase.startsWith("startup")
+              ? undefined
+              : await SessionInbox.enqueueUser({
+                  sessionID: session.id,
+                  model: { providerID: "test-provider", modelID: "test-model" },
+                  parts: [{ type: "text", text: "New task after the stuck continuation" }],
+                })
+            await RolloutContinuationMigration.session(owner)
+            if (phase.startsWith("startup")) {
+              if (phase === "startup-retry") {
+                using wake = spyOn(SessionManager, "wake").mockRejectedValueOnce(new Error("Temporary wake failure"))
+                await SessionInvoke.resumePending({ scopeID: session.scope!.id, waitForProcessing: true })
+                expect(processedRoots).toEqual([])
+              }
+              expect(await SessionInbox.list(session.id)).toHaveLength(0)
+              await SessionInvoke.resumePending({ scopeID: session.scope!.id, waitForProcessing: true })
+              await SessionInvoke.resumePending({ scopeID: session.scope!.id, waitForProcessing: true })
+            } else await SessionManager.wake(session.id)
+            expect(processedRoots).toEqual(queued ? [rootID, queued.messageID] : [rootID])
+            expect(await SessionInbox.list(session.id)).toHaveLength(0)
+            const messages = await Session.messages({ sessionID: session.id })
+            expect(SessionProgress.needsModelCall(messages, rootID)).toBe(false)
+            if (queued) expect(SessionProgress.needsModelCall(messages, queued.messageID)).toBe(false)
+            expect(messages.filter((message) => message.info.role === "user")).toHaveLength(queued ? 3 : 2)
+            await LoopJob.settleDetached(session.id)
+          } finally {
+            SessionManager.unregisterRuntime(session.id)
+            await Session.remove(session.id)
+          }
+        },
+      })
+    } finally {
+      restore()
+    }
+  })
+}

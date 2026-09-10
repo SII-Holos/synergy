@@ -113,3 +113,36 @@ describe("State.create", () => {
     expect(calls).toBe(4)
   })
 })
+
+test("disposal restores each entry's creation context and concurrent reset waits once", async () => {
+  const { AsyncLocalStorage } = await import("node:async_hooks")
+  const context = new AsyncLocalStorage<string>()
+  const entered = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const disposed: string[] = []
+  const accessor = State.create(
+    () => context.getStore()!,
+    () => context.getStore()!,
+    async (value) => {
+      expect(context.getStore()).toBe(value)
+      disposed.push(value)
+      entered.resolve()
+      await release.promise
+    },
+  )
+  context.run("bound-a", accessor)
+  context.run("bound-b", accessor)
+  const first = context.run("bound-a", accessor.reset)
+  const second = context.run("bound-a", accessor.reset)
+  try {
+    await entered.promise
+    expect(disposed).toEqual(["bound-a"])
+  } finally {
+    release.resolve()
+    await Promise.all([first, second])
+    await accessor.resetAll()
+    await State.dispose("bound-a")
+    await State.dispose("bound-b")
+  }
+  expect(disposed).toEqual(["bound-a", "bound-b"])
+})

@@ -138,12 +138,16 @@ export namespace SessionInvoke {
   export function assertIdle(sessionID: string) {
     return SessionManager.assertIdle(sessionID)
   }
-  export function cancel(sessionID: string, options?: { recoverQueuedTasks?: boolean }) {
+  export function cancel(
+    sessionID: string,
+    options?: { recoverQueuedTasks?: boolean; fenceQueuedWork?: boolean; fenceQueuedBefore?: number },
+  ) {
     log.info("cancel", { sessionID })
     evictRecallCache(sessionID)
     PermissionNext.clearForSession(sessionID).catch((err) => {
       log.error("permission cleanup failed", { sessionID, error: err })
     })
+    LoopJob.cancelDetached(sessionID)
     SessionManager.signalAbort(sessionID, options)
   }
 
@@ -311,12 +315,44 @@ export namespace SessionInvoke {
           errors.push(error)
         }
       }
-      for (const runID of new Set(segments.map((segment) => segment.runID))) {
-        try {
-          await RolloutLifecycle.reconcile(sessionID, runID, runID === segments.at(-1)?.runID ? outcome : undefined)
-        } catch (error) {
-          errors.push(error)
-        }
+      // Detached turn work (summaries, titles) keeps running after the lease
+      // releases, so session idle publishes immediately. Rollout runs finalize
+      // only after that work settles, so its ledger records land before
+      // finishRun closes the run. A settlement failure means those detached
+      // ledger writes themselves failed; reconcile refuses a run whose
+      // recording failed unless an outcome is supplied, so every processed
+      // run is closed with the turn outcome (or failed) instead of being
+      // left permanently open for a later reconcile to trip over.
+      const runIDs = new Set(segments.map((segment) => segment.runID))
+      const lastRunID = segments.at(-1)?.runID
+      if (runIDs.size > 0) {
+        void LoopJob.settleDetached(sessionID, runIDs).then(
+          async () => {
+            for (const runID of runIDs) {
+              try {
+                await RolloutLifecycle.reconcile(sessionID, runID, runID === lastRunID ? outcome : undefined)
+              } catch (error) {
+                log.error("rollout run reconcile failed after release", { sessionID, runID, error })
+              }
+            }
+          },
+          (error) => {
+            log.error("detached turn work failed to settle", { sessionID, error })
+            for (const runID of runIDs) {
+              RolloutLifecycle.reconcile(
+                sessionID,
+                runID,
+                runID === lastRunID ? (outcome ?? "failed") : "failed",
+              ).catch((reconcileError) => {
+                log.error("rollout run reconcile failed after settlement failure", {
+                  sessionID,
+                  runID,
+                  error: reconcileError,
+                })
+              })
+            }
+          },
+        )
       }
       const recordingError = errors.find(RolloutRecordingError.isInstance)
       if (recordingError) throw recordingError
@@ -427,27 +463,30 @@ export namespace SessionInvoke {
 
               const rollbackActive = (await SessionHistory.storedInfo(sessionID))?.rollback?.canUnrollback === true
 
-              // Mode-based drain ①: steer items must be materialized BEFORE needsModelCall
-              // so they can trigger a model call in this iteration. Context items follow
-              // in ② after the predicate confirms a call is needed (piggyback).
-              if (!rollbackActive) {
-                const steerItems = await SessionInbox.drainSteer(sessionID)
-                if (steerItems.length > 0) {
-                  log.info("drained steer items into session", { sessionID, count: steerItems.length })
-                  for (const item of steerItems) {
-                    const materialized = await SessionInbox.materializeItem(item, R.id, { guiding: true })
-                    if (materialized) msgs.push(materialized)
+              {
+                using lock = await Lock.write(`session-rollout:${sessionID}:${R.id}`)
+                // Mode-based drain ①: steer items must be materialized BEFORE needsModelCall
+                // so they can trigger a model call in this iteration. Context items follow
+                // in ② after the predicate confirms a call is needed (piggyback).
+                if (!rollbackActive) {
+                  const steerItems = await SessionInbox.drainSteer(sessionID)
+                  if (steerItems.length > 0) {
+                    log.info("drained steer items into session", { sessionID, count: steerItems.length })
+                    for (const item of steerItems) {
+                      const materialized = await SessionInbox.materializeItem(item, R.id, { guiding: true })
+                      if (materialized) msgs.push(materialized)
+                    }
                   }
                 }
-              }
 
-              if (!SessionProgress.needsModelCall(msgs, R.id)) {
-                break
-              }
-              processedRootID = R.id
-              if (!segment) {
-                segment = await RolloutLifecycle.start(session, R, RParts ?? [])
-                segments.push(segment)
+                if (!SessionProgress.needsModelCall(msgs, R.id)) {
+                  break
+                }
+                processedRootID = R.id
+                if (!segment) {
+                  segment = await RolloutLifecycle.start(session, R, RParts ?? [])
+                  segments.push(segment)
+                }
               }
               previousTerminalReplyID = SessionProgress.findTerminalReply(msgs, R.id)?.info.id
 
@@ -1261,7 +1300,17 @@ export namespace SessionInvoke {
             // they are successfully materialized and the reply cycle completes.
             if (abort.aborted) {
               // Abort: discard steer/context, keep task items (no auto-start).
-              await SessionInbox.removeByMode(sessionID, ["steer", "context"])
+              // A fenced internal cancellation owns the session's queued work
+              // and discards items queued before its fence timestamp, so a
+              // cancelled delegation cannot be restarted by mail queued before
+              // the cancellation (#1339). Mail delivered after the cancelled
+              // acknowledgement is explicit new work and must survive.
+              const fenceQueuedBefore = SessionManager.fenceQueuedBefore(sessionID)
+              if (fenceQueuedBefore === undefined) {
+                await SessionInbox.removeByModes(sessionID, ["steer", "context"])
+              } else {
+                await SessionInbox.removeByModes(sessionID, ["task", "steer", "context"], fenceQueuedBefore)
+              }
               return false
             }
 
@@ -2115,11 +2164,15 @@ export namespace SessionInvoke {
     await SessionRecovery.resumePendingStopRequests(input?.scopeID)
     await SessionCortexRuntime.reconcileParentNotifications(input?.scopeID)
 
-    // Startup inbox discovery: sessions with a durable queued task are driven
-    // through the existing SessionDrive/wake path so the owning loop performs
-    // the peek/materialize/commit work. No direct materialization here.
+    // Durable inbox tasks and migration recovery intents use the owning loop;
+    // startup discovery never materializes messages itself.
     const { SessionDrive } = await import("./drive")
-    for (const sessionID of await SessionInbox.listRunnableSessions(input?.scopeID)) {
+    const { RolloutContinuationRecovery } = await import("./rollout/continuation-recovery")
+    const [inboxSessions, continuationSessions] = await Promise.all([
+      SessionInbox.listRunnableSessions(input?.scopeID),
+      RolloutContinuationRecovery.list(input?.scopeID),
+    ])
+    for (const sessionID of new Set([...continuationSessions, ...inboxSessions])) {
       if (SessionManager.isRunning(sessionID)) continue
       try {
         const handled = await SessionDrive.request(sessionID, "inbox-recovery", {

@@ -10,7 +10,7 @@ import { useNotification } from "@/context/notification"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { holosLogoPath } from "@/utils/brand-assets"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
-import { getScopeLabel, isHomeScope } from "@/utils/scope"
+import { getScopeLabel, isHomeScope, resolveProjectScope } from "@/utils/scope"
 import { ActiveZone } from "@/components/scopes/active-zone"
 import { sessionScopeRequestFor } from "@/components/session/session-actions"
 import { SessionRow } from "@/components/scopes/session-row"
@@ -261,6 +261,10 @@ function ScopeListView(props: {
 
   const isHomeActive = createMemo(() => (props.currentDir ? isHomeScope(props.currentDir) : false))
 
+  const activeProjectScope = createMemo(() =>
+    props.currentDir ? resolveProjectScope(props.currentDir, undefined, scopes()) : undefined,
+  )
+
   return (
     <div class="py-2">
       <button
@@ -303,11 +307,7 @@ function ScopeListView(props: {
       </div>
       <For each={scopes()}>
         {(scope) => {
-          const isActive = createMemo(() => {
-            const dir = props.currentDir
-            if (!dir) return false
-            return dir === scope.worktree || (scope.sandboxes ?? []).includes(dir)
-          })
+          const isActive = createMemo(() => activeProjectScope()?.worktree === scope.worktree)
 
           return (
             <button

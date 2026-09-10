@@ -4,9 +4,7 @@ import { UI } from "../../util/ui"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
-import path from "path"
-import fs from "fs/promises"
-import matter from "gray-matter"
+import { AgentConfig } from "@ericsanchezok/synergy-harness/agent/config-crud"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { EOL } from "os"
@@ -76,34 +74,28 @@ const AgentCreateCommand = cmd({
         const instanceScope = ScopeContext.current.scope
 
         // Determine scope/path
-        let targetPath: string
+        let targetDirectory: string | undefined
+        let scope: "global" | "project" = "global"
         if (cliPath) {
-          targetPath = path.join(cliPath, "agent")
-        } else {
-          let scope: "global" | "project" = "global"
-          if (instanceScope.type === "project" && instanceScope.vcs === "git") {
-            const scopeResult = await prompts.select({
-              message: "Location",
-              options: [
-                {
-                  label: "Current project",
-                  value: "project" as const,
-                  hint: ScopeContext.current.directory,
-                },
-                {
-                  label: "Global",
-                  value: "global" as const,
-                  hint: Global.Path.config,
-                },
-              ],
-            })
-            if (prompts.isCancel(scopeResult)) throw new UI.CancelledError()
-            scope = scopeResult
-          }
-          targetPath = path.join(
-            scope === "global" ? Global.Path.config : path.join(ScopeContext.current.directory, ".synergy"),
-            "agent",
-          )
+          targetDirectory = cliPath
+        } else if (instanceScope.type === "project" && instanceScope.vcs === "git") {
+          const scopeResult = await prompts.select({
+            message: "Location",
+            options: [
+              {
+                label: "Current project",
+                value: "project" as const,
+                hint: ScopeContext.current.directory,
+              },
+              {
+                label: "Global",
+                value: "global" as const,
+                hint: Global.Path.config,
+              },
+            ],
+          })
+          if (prompts.isCancel(scopeResult)) throw new UI.CancelledError()
+          scope = scopeResult
         }
 
         // Get description
@@ -186,41 +178,30 @@ const AgentCreateCommand = cmd({
           }
         }
 
-        // Build frontmatter
-        const frontmatter: {
-          description: string
-          mode: AgentMode
-          tools?: Record<string, boolean>
-        } = {
+        // Persist through the validated agent config CRUD service
+        const created = await AgentConfig.create({
+          name: generated.identifier,
           description: generated.whenToUse,
           mode,
-        }
-        if (Object.keys(tools).length > 0) {
-          frontmatter.tools = tools
-        }
-
-        // Write file
-        const content = matter.stringify(generated.systemPrompt, frontmatter)
-        const filePath = path.join(targetPath, `${generated.identifier}.md`)
-
-        await fs.mkdir(targetPath, { recursive: true })
-
-        const file = Bun.file(filePath)
-        if (await file.exists()) {
+          prompt: generated.systemPrompt,
+          ...(Object.keys(tools).length > 0 ? { tools } : {}),
+          scope,
+          directory: targetDirectory,
+        }).catch((error) => {
+          const message = error instanceof Error ? error.message : String(error)
           if (isFullyNonInteractive) {
-            console.error(`Error: Agent file already exists: ${filePath}`)
+            console.error(`Error: ${message}`)
             process.exit(1)
           }
-          prompts.log.error(`Agent file already exists: ${filePath}`)
+          prompts.log.error(message)
           throw new UI.CancelledError()
-        }
+        })
 
-        await Bun.write(filePath, content)
-
+        const createdPath = created.file ?? `${created.name} (config entry)`
         if (isFullyNonInteractive) {
-          console.log(filePath)
+          console.log(createdPath)
         } else {
-          prompts.log.success(`Agent created: ${filePath}`)
+          prompts.log.success(`Agent created: ${createdPath}`)
           prompts.outro("Done")
         }
       },

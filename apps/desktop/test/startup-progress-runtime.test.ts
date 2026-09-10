@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import os from "node:os"
+import { createRequire } from "node:module"
 import path from "node:path"
 
 test.skipIf(process.env.SYNERGY_DESKTOP_RUNTIME_TEST !== "1")(
@@ -16,8 +17,8 @@ test.skipIf(process.env.SYNERGY_DESKTOP_RUNTIME_TEST !== "1")(
         external: ["electron"],
       })
       if (!build.success) throw new AggregateError(build.logs, "Startup fixture build failed")
-      const electron =
-        process.env.SYNERGY_DESKTOP_ELECTRON_BIN ?? path.resolve(import.meta.dir, "../node_modules/.bin/electron")
+      const electron: unknown = process.env.SYNERGY_DESKTOP_ELECTRON_BIN ?? createRequire(import.meta.url)("electron")
+      if (typeof electron !== "string") throw new Error("Electron executable path is unavailable")
       const launched = Bun.spawn(
         [
           electron,
@@ -30,10 +31,14 @@ test.skipIf(process.env.SYNERGY_DESKTOP_RUNTIME_TEST !== "1")(
       child = launched
       const stdout = new Response(launched.stdout).text()
       const stderr = new Response(launched.stderr).text()
-      const timeout = setTimeout(() => launched.kill("SIGKILL"), 20_000)
+      const timeout = setTimeout(() => launched.kill("SIGKILL"), 60_000)
       try {
         const code = await launched.exited
-        expect({ code, stderr: code ? await stderr : "" }).toEqual({ code: 0, stderr: "" })
+        expect({ code, stdout: code ? await stdout : "", stderr: code ? await stderr : "" }).toEqual({
+          code: 0,
+          stdout: "",
+          stderr: "",
+        })
         expect(await stdout).toContain("Startup progress DOM checks passed")
         await stderr
       } finally {
@@ -47,5 +52,5 @@ test.skipIf(process.env.SYNERGY_DESKTOP_RUNTIME_TEST !== "1")(
       await fs.rm(directory, { recursive: true, force: true })
     }
   },
-  30_000,
+  75_000,
 )

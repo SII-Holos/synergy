@@ -45,6 +45,8 @@ Entries are added only when an incident qualifies; the table stays empty until t
 | 0007   | Hidden tool renderers retained highlight state                             | implemented | 2026-09-07 |
 | 0008   | Transition cleanup retained disposed frontend pages                        | implemented | 2026-09-07 |
 
+| 0009 | Local benchmark cancellation lost export evidence | implemented | 2026-09-10 |
+
 ## History rules
 
 Postmortems are current-history documents: they record what actually happened, they are never edited to hide mistakes, and guardrails that later become obsolete stay recorded as lessons.

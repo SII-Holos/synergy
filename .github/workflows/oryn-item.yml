@@ -1,0 +1,164 @@
+name: Oryn item
+on:
+  workflow_call:
+    inputs:
+      slug:
+        type: string
+        required: true
+      number:
+        type: number
+        required: true
+      runtime:
+        type: boolean
+        required: true
+      source-ref:
+        type: string
+        required: true
+      publish:
+        type: boolean
+        required: true
+    secrets:
+      ORYN_APP_PRIVATE_KEY:
+        required: true
+      ORYN_GLM_API_KEY:
+        required: true
+permissions:
+  contents: read
+defaults:
+  run:
+    working-directory: .oryn-runtime
+jobs:
+  run:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ inputs.source-ref }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-oryn
+        with:
+          client-id: ${{ vars.ORYN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.ORYN_APP_PRIVATE_KEY }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: plan
+          path: .oryn-runtime/.artifacts/plan
+      - run: |
+          mkdir -p .artifacts/result
+          cp "$JOB_FILE" .artifacts/result/job.json
+        env:
+          JOB_FILE: .artifacts/plan/${{ inputs.slug }}/jobs/${{ inputs.number }}.json
+      - id: validation
+        run: |
+          bun -e 'const j = await Bun.file(".artifacts/result/job.json").json(); console.log("repair=" + (j.mode === "repair"));' >> "$GITHUB_OUTPUT"
+      - if: steps.validation.outputs.repair == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - if: steps.validation.outputs.repair == 'true'
+        name: Prepare trusted validation host
+        working-directory: .
+        run: |
+          sudo mkdir -p /opt/oryn-validation /opt/oryn-browsers
+          sudo cp .github/oryn/validate.ts /opt/oryn-validation/validate.ts
+          bun .github/oryn/validate.ts snapshot > /tmp/oryn-workspaces.json
+          sudo cp /tmp/oryn-workspaces.json /opt/oryn-validation/workspaces.json
+          bun -e 'const j = await Bun.file(".oryn-runtime/.artifacts/result/job.json").json(); await Bun.write("/tmp/oryn-base-sha", j.item.baseSha);'
+          sudo cp /tmp/oryn-base-sha /opt/oryn-validation/base-sha
+          bun install --frozen-lockfile --ignore-scripts
+          sudo chmod a+rwx /opt/oryn-browsers
+          bun run --cwd apps/web playwright install --with-deps chromium
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: /opt/oryn-browsers
+      - if: inputs.runtime
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap ripgrep
+      - if: inputs.runtime
+        run: bun run core:install
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        id: target
+        with:
+          client-id: ${{ vars.ORYN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.ORYN_APP_PRIVATE_KEY }}
+          owner: SII-Holos
+          repositories: synergy
+          permission-contents: read
+          permission-issues: read
+          permission-pull-requests: read
+          permission-checks: read
+          permission-statuses: read
+          permission-actions: read
+      - id: execute
+        continue-on-error: true
+        run: bun script/run-workflow.ts
+        env:
+          JOB_FILE: .artifacts/plan/${{ inputs.slug }}/jobs/${{ inputs.number }}.json
+          ORYN_API_KEY: ${{ secrets.ORYN_GLM_API_KEY }}
+          ORYN_BASE_URL: ${{ vars.ORYN_BASE_URL || 'https://open.bigmodel.cn/api/coding/paas/v4' }}
+          ORYN_VARIANT: max
+          ORYN_REQUEST_TIMEOUT_SECONDS: ${{ vars.ORYN_REQUEST_TIMEOUT_SECONDS }}
+          ORYN_READ_TOKEN: ${{ steps.target.outputs.token }}
+          ORYN_BOT_LOGIN: ${{ steps.target.outputs.app-slug }}[bot]
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: result-${{ inputs.slug }}-${{ inputs.number }}
+          path: .oryn-runtime/.artifacts/result/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+      - if: steps.execute.outcome == 'failure'
+        run: exit 1
+  publish:
+    needs: run
+    if: always() && !cancelled() && inputs.publish
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ inputs.source-ref }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-oryn
+        with:
+          client-id: ${{ vars.ORYN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.ORYN_APP_PRIVATE_KEY }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: result-${{ inputs.slug }}-${{ inputs.number }}
+          path: .oryn-runtime/.artifacts/result
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        id: target
+        with:
+          client-id: ${{ vars.ORYN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.ORYN_APP_PRIVATE_KEY }}
+          owner: SII-Holos
+          repositories: synergy
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+          permission-checks: read
+          permission-statuses: read
+          permission-actions: read
+      - id: artifact
+        run: |
+          if test -f .artifacts/result/result.json && test ! -f .artifacts/result/failure.json; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.artifact.outputs.ready == 'true'
+        # This is GitHub report/PR publication through an installation token, not package-registry publishing.
+        run: bun src/cli.ts publish --result .artifacts/result/result.json # zizmor: ignore[use-trusted-publishing]
+        env:
+          ORYN_ALLOW_PUBLISH: "1"
+          ORYN_WRITE_TOKEN: ${{ steps.target.outputs.token }}
+          ORYN_ALLOW_CLOSE: "1"
+          ORYN_ALLOW_MERGE: "1"
+          ORYN_BOT_LOGIN: ${{ steps.target.outputs.app-slug }}[bot]
+      - if: steps.artifact.outputs.ready != 'true'
+        run: bun src/cli.ts settle-failure --job .artifacts/result/job.json
+        env:
+          ORYN_ALLOW_PUBLISH: "1"
+          ORYN_WRITE_TOKEN: ${{ steps.target.outputs.token }}
+          ORYN_BOT_LOGIN: ${{ steps.target.outputs.app-slug }}[bot]

@@ -14,6 +14,7 @@ import { Info, type StatusInfo } from "./types"
 import { SessionEndpoint } from "./endpoint"
 import { SessionMemoryPressure } from "./memory-pressure"
 import { SessionInbox } from "./inbox"
+import { RolloutContinuationRecovery } from "./rollout/continuation-recovery"
 import { ObservabilityMetrics } from "../observability/metrics"
 import { SessionProjectHealth } from "./project-health"
 
@@ -75,6 +76,12 @@ export namespace SessionManager {
     rootID?: string
     /** Set when the abort came from an explicit user action; release then schedules the pending-work drive. */
     recoverQueuedTasks?: boolean
+    /** Set by an internal cancellation (Cortex) that owns the session's queued work: fenced cleanup
+     *  discards items queued before this timestamp at the loop boundary, preserving mail delivered
+     *  after the cancelled acknowledgement, and release stops requesting follow-up work unless such
+     *  post-fence work exists. */
+    fenceQueuedWork?: boolean
+    fenceQueuedBefore?: number
   }
 
   export interface SessionRuntime {
@@ -397,11 +404,18 @@ export namespace SessionManager {
           // internal cancellation (Boss/Lattice/Cortex abort before removing
           // inbox items), so only an abort that marked recoverQueuedTasks may
           // drive pending-work recovery — release cannot race that cleanup.
-          const runtime = getRuntime(sessionID)
-          const recoverQueuedTasks =
-            !!runtime?.owner && owns(runtime, lease) && runtime.owner.recoverQueuedTasks === true
+          const owner = runtime?.owner && owns(runtime, lease) ? runtime.owner : undefined
+          const recoverQueuedTasks = owner?.recoverQueuedTasks === true
+          const fenced = owner?.fenceQueuedWork === true
+          const fenceQueuedBefore = owner?.fenceQueuedBefore
+          const postFenceWork =
+            fenced && fenceQueuedBefore !== undefined
+              ? await SessionInbox.hasRunnableItem(sessionID, { createdAfter: fenceQueuedBefore }).catch(() => false)
+              : false
           await finish(lease, {
-            requestNextWork: completed || recoverQueuedTasks || options?.requestNextWorkOnFailure !== false,
+            requestNextWork:
+              (!fenced || postFenceWork) &&
+              (completed || recoverQueuedTasks || options?.requestNextWorkOnFailure !== false),
           })
         }
       } finally {
@@ -471,7 +485,7 @@ export namespace SessionManager {
 
   export function signalAbort(
     sessionID: string,
-    options?: { recoverQueuedTasks?: boolean; rootID?: string },
+    options?: { recoverQueuedTasks?: boolean; fenceQueuedWork?: boolean; fenceQueuedBefore?: number; rootID?: string },
   ): AbortOutcome {
     const runtime = getRuntime(sessionID)
     if (!runtime) return "not_found"
@@ -485,12 +499,21 @@ export namespace SessionManager {
     if (owner.phase === "stopping") return "already_stopping"
 
     owner.recoverQueuedTasks = options?.recoverQueuedTasks === true || undefined
+    owner.fenceQueuedWork = options?.fenceQueuedWork === true || undefined
+    owner.fenceQueuedBefore = options?.fenceQueuedBefore
     owner.phase = "stopping"
     transitionExecutionPhase(runtime, "stopping")
     owner.controller.abort()
     cancelWaiters(runtime)
     return "signaled"
   }
+
+  /** Fence timestamp of the active abort, if it fenced queued work. */
+  export function fenceQueuedBefore(sessionID: string): number | undefined {
+    const owner = getRuntime(sessionID)?.owner
+    return owner?.fenceQueuedWork === true ? owner.fenceQueuedBefore : undefined
+  }
+
   export function completeWaiters(lease: LoopLease, result: MessageV2.WithParts): boolean {
     const runtime = getRuntime(lease.sessionID)
     if (!runtime || !owns(runtime, lease)) return false
@@ -530,6 +553,18 @@ export namespace SessionManager {
 
   export const WAKE_RETRY_DELAYS_MS = [250, 1_000, 2_000, 4_000, 8_000]
   const activeWakeChains = new Map<string, { requested: boolean }>()
+  // A removed worktree fails before any inbox work starts, so no retry can
+  // make progress and no queued work can be stranded behind it; the error
+  // class lives above this package boundary, so it is recognized by name.
+  // InvalidUrlError stays retryable on purpose: steer and context items are
+  // drained (deleted) before materialization, so the error can surface after
+  // the poisoned item is already gone, and abandoning the chain then would
+  // strand runnable work queued behind it.
+  const PERMANENT_WAKE_ERROR_NAMES = new Set(["WorktreeNotFoundError"])
+
+  function isPermanentWakeFailure(error: unknown): boolean {
+    return error instanceof Error && PERMANENT_WAKE_ERROR_NAMES.has(error.name)
+  }
 
   function scheduleWakeAttempt(sessionID: string, reason: string, delayMs: number, failureCount: number): void {
     const timer = setTimeout(() => {
@@ -542,6 +577,11 @@ export namespace SessionManager {
           else activeWakeChains.delete(sessionID)
         })
         .catch((error) => {
+          if (isPermanentWakeFailure(error)) {
+            activeWakeChains.delete(sessionID)
+            log.error("async session wake failed permanently", { sessionID, reason, error, permanent: true })
+            return
+          }
           const delay = WAKE_RETRY_DELAYS_MS[failureCount]
           if (delay === undefined) {
             activeWakeChains.delete(sessionID)
@@ -557,7 +597,8 @@ export namespace SessionManager {
 
   export async function wake(sessionID: string): Promise<void> {
     if (isRunning(sessionID)) return
-    if (!(await SessionInbox.hasRunnableItem(sessionID))) return
+    if (!(await SessionInbox.hasRunnableItem(sessionID)) && !(await RolloutContinuationRecovery.pending(sessionID)))
+      return
     const { SessionInvoke } = await import("./invoke")
     // Repair is best-effort: loop() surfaces its own terminal errors to the
     // retry chain, so a failed repair must not keep queued work undriven.
@@ -565,6 +606,7 @@ export namespace SessionManager {
       log.warn("session repair before wake failed", { sessionID, error })
     })
     await SessionInvoke.loop(sessionID)
+    await RolloutContinuationRecovery.pending(sessionID)
   }
 
   export function scheduleWake(sessionID: string, reason: string): void {

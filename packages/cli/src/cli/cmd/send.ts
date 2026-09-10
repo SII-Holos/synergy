@@ -1,6 +1,7 @@
 import type { Argv } from "yargs"
 import { pathToFileURL } from "url"
 import path from "path"
+import { AsyncLocalStorage } from "node:async_hooks"
 import { UI } from "../../util/ui"
 import { cmd } from "./cmd"
 import { Flag } from "@ericsanchezok/synergy-harness/flag/flag"
@@ -259,7 +260,7 @@ export function createSendCommand(runtimeFactory: typeof openLocalRuntime = open
             })
           }
         }
-        const onInterrupt = () => requestStop("cancelled")
+        const onInterrupt = AsyncLocalStorage.bind(() => requestStop("cancelled"))
         process.once("SIGINT", onInterrupt)
         process.once("SIGTERM", onInterrupt)
         const timer = setTimeout(() => requestStop("timeout"), args.timeout * 1000)
