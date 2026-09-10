@@ -58,4 +58,22 @@ describe("resolveProjectScope", () => {
   test("returns undefined when nothing matches", () => {
     expect(resolveProjectScope("/repo/unknown", undefined, [{ worktree: "/repo/a" }])).toBeUndefined()
   })
+
+  test("resolves exact worktree ownership over a sandbox claim from another scope", () => {
+    const claimant = { worktree: "/repo/des", sandboxes: ["/repo/synergy"] }
+    const owner = { worktree: "/repo/synergy", name: "synergy" }
+    expect(resolveProjectScope("/repo/synergy", undefined, [claimant, owner])).toBe(owner)
+  })
+
+  test("trusts the active scope's sandbox mapping when the list has no match", () => {
+    const active = { worktree: "/repo/other", sandboxes: ["/repo/other/apps/web"] }
+    expect(resolveProjectScope("/repo/other/apps/web", active, [])).toBe(active)
+  })
+
+  test("normalizes separators, case, and trailing slashes when matching", () => {
+    const owner = { worktree: "C:/repo/synergy" }
+    expect(resolveProjectScope("C:\\repo\\synergy\\", undefined, [owner])).toBe(owner)
+    const sub = { worktree: "/repo/a", sandboxes: ["/repo/a/apps/web"] }
+    expect(resolveProjectScope("/Repo/A/Apps/Web/", undefined, [sub])).toBe(sub)
+  })
 })
