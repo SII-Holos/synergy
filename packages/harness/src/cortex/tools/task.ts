@@ -132,9 +132,7 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
         providerID: msg.info.providerID,
       }
 
-      // Delegation inherits the parent session model for data-safety: the child's
-      // prompts carry parent session context, so they must not fan out to a
-      // subagent-configured or system-default provider the parent never chose.
+      // Keep the parent's provider choice while that model remains available.
       let model =
         ctx.extra?.subtaskModel ??
         ((await Provider.isModelAvailable(parentModel))
@@ -146,7 +144,7 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
       if (categoryConfig) {
         if (categoryConfig.model) {
           const parsed = Provider.parseModel(categoryConfig.model)
-          if (!parsed.modelID) {
+          if (!parsed.providerID.trim() || !parsed.modelID.trim()) {
             throw new Error(
               `Model must be in provider/model format for category ${params.category}: ${categoryConfig.model}`,
             )

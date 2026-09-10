@@ -1,5 +1,6 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test"
 import { Agent } from "../../src/agent/agent"
+import { Category } from "../../src/cortex/category"
 import { Cortex } from "../../src/cortex"
 import { TaskTool } from "../../src/cortex/tools/task"
 import { Identifier } from "../../src/id/id"
@@ -44,126 +45,72 @@ async function writeAssistantMessage(input: {
   return id
 }
 
-async function runTaskTool(input: { parentSessionID: string; messageID: string }) {
-  const launched = { model: undefined as unknown }
-  const resolved = defer<LaunchResult>()
-  const launchMock = mock(async (input: { model?: unknown; sessionID?: string; description: string }) => {
-    launched.model = input.model
-    return resolved.promise
-  })
-  ;(Cortex as any).launch = launchMock
-
-  try {
-    const tool = await TaskTool.init({})
-    const executing = tool.execute(
-      { description: "Model resolution probe", prompt: "probe", subagent_type: "developer", background: true },
-      {
-        sessionID: input.parentSessionID,
-        messageID: input.messageID,
-        agent: "synergy",
-        abort: new AbortController().signal,
-        metadata() {},
-        async ask() {},
-      },
-    )
-    await waitFor(() => launched.model !== undefined)
-    resolved.resolve({ id: "cortex_task_probe", sessionID: "ses_child_probe", description: "probe" } as LaunchResult)
-    await executing
-    return launched.model
-  } finally {
-    ;(Cortex as any).launch = originalLaunch
-  }
-}
-
-const originalLaunch = Cortex.launch
-type LaunchResult = Awaited<ReturnType<typeof Cortex.launch>>
-
-function defer<T>() {
-  let resolve!: (value: T) => void
-  let reject!: (reason?: unknown) => void
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-  return { promise, resolve, reject }
-}
-
-async function waitFor(condition: () => boolean, timeoutMs = 2000) {
-  const start = Date.now()
-  while (!condition()) {
-    if (Date.now() - start > timeoutMs) throw new Error("Timed out waiting for condition")
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
+async function runTaskTool(input: { parentSessionID: string; messageID: string; category?: string }) {
+  using launch = spyOn(Cortex, "launch").mockImplementation(Cortex.prepare)
+  const tool = await TaskTool.init({})
+  await tool.execute(
+    {
+      description: "Model resolution probe",
+      prompt: "probe",
+      subagent_type: "developer",
+      background: true,
+      category: input.category,
+    },
+    {
+      sessionID: input.parentSessionID,
+      messageID: input.messageID,
+      agent: "synergy",
+      abort: new AbortController().signal,
+      metadata() {},
+      async ask() {},
+    },
+  )
+  return launch.mock.calls[0]?.[0].model
 }
 
 describe("task tool delegated model resolution", () => {
-  beforeEach(() => {
-    Cortex.reset()
-  })
+  beforeEach(() => Cortex.reset())
+  afterEach(() => mock.restore())
 
-  afterEach(() => {
-    mock.restore()
-  })
-
-  test("inherits the parent session model over the subagent-default when it is available", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const originalGetAvailableModel = Agent.getAvailableModel
-        const originalIsModelAvailable = Provider.isModelAvailable
-        ;(Agent.getAvailableModel as any) = mock(async (agent: Agent.Info) =>
-          agent.name === "developer" ? SUBAGENT : undefined,
-        )
-        // The test runtime has no providers configured; treat the parent model
-        // as the only available one.
-        ;(Provider.isModelAvailable as any) = mock(
-          async (model: { providerID: string; modelID: string }) => model.modelID === PARENT.modelID,
-        )
-        try {
+  for (const available of [true, false]) {
+    test(`inherits the parent model when available=${available}`, async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          using agentModel = spyOn(Agent, "getAvailableModel").mockResolvedValue(SUBAGENT)
+          using availability = spyOn(Provider, "isModelAvailable").mockResolvedValue(available)
           const parent = await Session.create({})
-          const messageID = await writeAssistantMessage({
-            sessionID: parent.id,
-            agent: "synergy",
-            model: PARENT,
-          })
-
-          const model = await runTaskTool({ parentSessionID: parent.id, messageID })
-          expect(model).toEqual(PARENT)
-        } finally {
-          ;(Agent.getAvailableModel as any) = originalGetAvailableModel
-          ;(Provider.isModelAvailable as any) = originalIsModelAvailable
-        }
-      },
+          const messageID = await writeAssistantMessage({ sessionID: parent.id, agent: "synergy", model: PARENT })
+          expect(await runTaskTool({ parentSessionID: parent.id, messageID })).toEqual(available ? PARENT : SUBAGENT)
+        },
+      })
     })
-  })
+  }
 
-  test("falls back to the subagent-default model when the parent model is no longer available", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const originalGetAvailableModel = Agent.getAvailableModel
-        const originalIsModelAvailable = Provider.isModelAvailable
-        ;(Agent.getAvailableModel as any) = mock(async (agent: Agent.Info) =>
-          agent.name === "developer" ? SUBAGENT : undefined,
-        )
-        ;(Provider.isModelAvailable as any) = mock(async () => false)
-        try {
+  for (const model of [
+    "category-provider/category-model",
+    "model-only",
+    "/model",
+    "provider/",
+    " /model",
+    "provider/ ",
+  ]) {
+    test(`validates the category override ${JSON.stringify(model)}`, async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          using availability = spyOn(Provider, "isModelAvailable").mockResolvedValue(true)
+          using category = spyOn(Category, "resolve").mockResolvedValue({ model })
           const parent = await Session.create({})
-          const messageID = await writeAssistantMessage({
-            sessionID: parent.id,
-            agent: "synergy",
-            model: PARENT,
-          })
-
-          const model = await runTaskTool({ parentSessionID: parent.id, messageID })
-          expect(model).toEqual(SUBAGENT)
-        } finally {
-          ;(Agent.getAvailableModel as any) = originalGetAvailableModel
-          ;(Provider.isModelAvailable as any) = originalIsModelAvailable
-        }
-      },
+          const messageID = await writeAssistantMessage({ sessionID: parent.id, agent: "synergy", model: PARENT })
+          const result = runTaskTool({ parentSessionID: parent.id, messageID, category: "probe" })
+          if (model === "category-provider/category-model") {
+            expect(await result).toEqual({ providerID: "category-provider", modelID: "category-model" })
+          } else await expect(result).rejects.toThrow("provider/model format")
+        },
+      })
     })
-  })
+  }
 })

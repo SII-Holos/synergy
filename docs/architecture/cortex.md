@@ -39,7 +39,7 @@ Tasks are admitted through both per-agent and process-global concurrency limits.
 
 Memory pressure lowers new-task admission to four under elevated pressure or two under critical pressure. The scheduler uses the shared session memory classification, plus earlier ArrayBuffer thresholds at 1 GiB and 2 GiB, so it converges before Bun stream allocations fail. The configured, environment-provided, or default value remains the user-selected maximum; the effective admission limit is the lower of that maximum and the current memory-pressure ceiling. Running tasks are not cancelled. Queued tasks are reconsidered when capacity is released and while pressure is active, so they resume after memory recovers. The read-only `cortex.concurrency` API reports configured, environment, effective, memory-pressure limit and reason, source, per-agent, running, and queued values.
 
-An explicit task model wins. Otherwise the native `task` tool inherits the parent assistant message's model when it is still available — the child's prompts carry parent session context, so they must not fan out to a subagent-configured or system-default provider the parent never chose. Only when the parent model is no longer available does resolution fall back to the selected agent's configured model, with the parent model retained as the final reference. The resolved model is persisted on the child session.
+An explicit task model wins. Otherwise the native `task` tool inherits the parent assistant message's model when it is still available to preserve the parent's provider choice. Only when the parent model is no longer available does resolution fall back to the selected agent's configured model, with the parent model retained as the final reference. Other Cortex callers retain the shared manager fallback: explicit model, available agent model, then the parent session model or provider default. The resolved model is persisted on the child session.
 
 The launcher can pass `maxOutputTokens` to cap the child session's model output and `maxCost` to discard task output when final measured usage exceeds a cost ceiling. `maxOutputTokens` is passed through to `SessionInvoke.invokeInternal()` for both the initial call and any structured-output repair turns; `maxCost` is checked before Cortex publishes terminal output. The GitHub shadow proposer uses both fields to enforce its proposal budget. When either field is absent, that per-task limit is not applied.
 
@@ -127,7 +127,7 @@ Plugin Host delegation is always handle-based: `start()` returns immediately, wh
 
 ## Cancellation and Retention
 
-Cancelling a task traverses its descendant task tree, aborts active work, releases concurrency slots, records terminal state, and cleans up owned worktree resources. Cancellation does not erase the child session.
+Cancelling a task traverses its descendant task tree, aborts active work, releases concurrency slots, records terminal state, and cleans up owned worktree resources. Cancellation is fenced: follow-ups queued in the child inbox before the cancellation are discarded before the cancelled acknowledgement is returned, so a cancelled delegation cannot be restarted by mail the parent queued earlier; mail delivered after the acknowledgement is newer than the fence and queues as ordinary new work. If discarding the queued follow-ups fails, the cancellation does not acknowledge success. A task that exceeds its runtime limit claims the deadline before settling, so it surfaces as the runtime-limit error even when a concurrent turn is finishing. Cancellation does not erase the child session.
 
 Visible terminal tasks keep their live task record long enough for clients to observe completion, then the in-memory entry is removed. The durable child session remains available through normal session navigation and inspection.
 
@@ -142,4 +142,5 @@ Visible terminal tasks keep their live task record long enough for clients to ob
 - Backgrounding changes who waits; it does not change the task's execution or persistence.
 - Output mode is an explicit contract, not a best-effort prompt convention.
 - Cancellation covers descendant tasks and runtime resources without deleting durable history.
+- Cancelled and timed-out tasks fence the child session's queued work: the terminal acknowledgement means follow-ups queued before the fence are discarded, mail delivered after the acknowledgement starts a new, normally tracked execution, and a failed cleanup is reported instead of acknowledged.
 - Parent completion notification and silent workflow handoff are durable and idempotent; notification acknowledgement and delivery are mutually exclusive per task.
